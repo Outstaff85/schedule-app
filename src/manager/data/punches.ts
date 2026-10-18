@@ -10,6 +10,8 @@
 // localStorage never fills up with years of punches.
 import { loadFirestoreBackend } from './api';
 import { getSession, fsTenantId } from './session';
+import { state } from './state';
+import { emit, notify, tr } from './events';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Rec = Record<string, any>;
@@ -34,14 +36,14 @@ export function ensurePunchesSince(from: Date | null): Promise<boolean> {
   ensureChain = ensureChain.then(async () => {
     const have = loadedFrom || punchWindowStart();
     if (want >= have) return true;
-    showToast(want <= ALL_PUNCHES_FROM ? tr('Loading the whole punch history…') : tr('Loading earlier punches…'), 1500);
+    notify(want <= ALL_PUNCHES_FROM ? tr('Loading the whole punch history…') : tr('Loading earlier punches…'), 1500);
     try {
       const older = await (await loadFirestoreBackend()).punchesBetween(fsTenantId(), want, have);
       loadedFrom = want;
       mergeRemotePunches(older);
       return true;
     } catch (e: any) {
-      showToast(tr('Could not load earlier punches: {0}', {0: ((e && e.message) || e)}));
+      notify(tr('Could not load earlier punches: {0}', {0: ((e && e.message) || e)}));
       return false;
     }
   });
@@ -62,13 +64,7 @@ async function gsLoadPunchLog(): Promise<Rec[] | null> {
   try {
     const since = punchWindowStart();
     if (!loadedFrom || loadedFrom > since) loadedFrom = since;
-    return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => {
-      mergeRemotePunches(entries);
-      if (currentTab === 'dashboard') renderDashboard();
-      // Hours approvals compare each day with the punches: redraw them too,
-      // or a day could keep showing a stale "Changed after approval".
-      if (currentTab === 'accounting') renderAccounting();
-    }, since);
+    return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), entries => mergeRemotePunches(entries), since);
   } catch (e: any) { console.warn('Firestore punch load failed: ' + ((e && e.message) || e)); return null; }
 }
 // The first load of the punches (a promise): Accounting → Hours approvals
@@ -105,9 +101,9 @@ export function mergeRemotePunches(remote: Rec[]): void {
   // An own-workers HR keeps cached rows only of the workers it still has (a
   // worker the owner moved to another HR takes its punches along).
   const s = getSession();
-  const mine = s && s.role === 'hr' && s.ownOnly ? new Set(workers.map(w => String(w.id))) : null;
+  const mine = s && s.role === 'hr' && s.ownOnly ? new Set(state.workers.map(w => String(w.id))) : null;
   local.forEach(e => { if (e && e.id != null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom)
     && (!mine || mine.has(String(e.workerId)))) byId[e.id] = e; });
   savePunchLog(Object.values(byId));
-  if (currentTab === 'admin') renderAdmin();
+  emit('punches');
 }

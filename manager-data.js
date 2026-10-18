@@ -4,6 +4,46 @@
 // layer — session, dispatcher, load / save / cache, punches, uploads, telemetry —
 // under its old global names (docs/app-core.md → Data calls).
 (function() {
+	//#region src/manager/data/events.ts
+	/** A text for the user, translated by the page when shown. */
+	var tr = (text, vars) => ({
+		text,
+		vars
+	});
+	var handlers = {};
+	function on(name, fn) {
+		(handlers[name] || (handlers[name] = [])).push(fn);
+	}
+	function emit(name, ...payload) {
+		for (const fn of handlers[name] || []) try {
+			fn(payload[0]);
+		} catch (e) {
+			console.error("Data event " + name + " failed:", e);
+		}
+	}
+	var notify = (msg, ms) => emit("notice", {
+		msg,
+		ms
+	});
+	var host = {
+		canWriteWorkers: () => true,
+		workerWindowOpen: () => false,
+		weekStart: () => null
+	};
+	function setHost(h) {
+		Object.assign(host, h);
+	}
+	//#endregion
+	//#region src/manager/data/ids.ts
+	/** a record's id (a worker, client, supplier, punch…) */
+	function uid() {
+		return "id" + Math.random().toString(36).slice(2, 9);
+	}
+	/** a worker's punch-link token */
+	function genToken() {
+		return Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+	}
+	//#endregion
 	//#region src/manager/data/session.ts
 	var SESSION_KEY = "schedMgr_session";
 	function getSession() {
@@ -45,6 +85,36 @@
 	function gsAuthQuery() {
 		const a = gsAuth();
 		return Object.keys(a).map((k) => "&" + k + "=" + encodeURIComponent(a[k])).join("");
+	}
+	//#endregion
+	//#region src/manager/data/state.ts
+	var state = {
+		workers: [],
+		clients: [],
+		suppliers: [],
+		/** the first load (cache or server) has ended */
+		ready: false
+	};
+	/** What is saved and cached: the three lists, the week on screen, the time. */
+	function getDataObj() {
+		return {
+			workers: state.workers,
+			clients: state.clients,
+			suppliers: state.suppliers,
+			weekStart: host.weekStart(),
+			savedAt: (/* @__PURE__ */ new Date()).toISOString()
+		};
+	}
+	function applyData(d) {
+		if (d.workers) state.workers = d.workers.map((w) => ({
+			id: w.id || uid(),
+			clientIds: w.clientIds || [],
+			token: w.token || genToken(),
+			status: w.status || "active",
+			...w
+		}));
+		if (d.clients) state.clients = d.clients;
+		if (d.suppliers) state.suppliers = d.suppliers;
 	}
 	//#endregion
 	//#region src/manager/data/telemetry.ts
@@ -227,7 +297,7 @@
 		} catch {}
 		if (!quiet && json && json.error === "Session expired or invalid — please sign in again" && getSession()) {
 			clearSession();
-			showToast(tr("Session expired — please sign in again"));
+			notify(tr("Session expired — please sign in again"));
 			setTimeout(() => location.reload(), 1200);
 		}
 		return jsonResponse(json);
@@ -335,14 +405,14 @@
 		ensureChain = ensureChain.then(async () => {
 			const have = loadedFrom || punchWindowStart();
 			if (want >= have) return true;
-			showToast(want <= ALL_PUNCHES_FROM ? tr("Loading the whole punch history…") : tr("Loading earlier punches…"), 1500);
+			notify(want <= ALL_PUNCHES_FROM ? tr("Loading the whole punch history…") : tr("Loading earlier punches…"), 1500);
 			try {
 				const older = await (await loadFirestoreBackend()).punchesBetween(fsTenantId(), want, have);
 				loadedFrom = want;
 				mergeRemotePunches(older);
 				return true;
 			} catch (e) {
-				showToast(tr("Could not load earlier punches: {0}", { 0: e && e.message || e }));
+				notify(tr("Could not load earlier punches: {0}", { 0: e && e.message || e }));
 				return false;
 			}
 		});
@@ -363,11 +433,7 @@
 		try {
 			const since = punchWindowStart();
 			if (!loadedFrom || loadedFrom > since) loadedFrom = since;
-			return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), (entries) => {
-				mergeRemotePunches(entries);
-				if (currentTab === "dashboard") renderDashboard();
-				if (currentTab === "accounting") renderAccounting();
-			}, since);
+			return await (await loadFirestoreBackend()).listenPunches(fsTenantId(), (entries) => mergeRemotePunches(entries), since);
 		} catch (e) {
 			console.warn("Firestore punch load failed: " + (e && e.message || e));
 			return null;
@@ -398,41 +464,15 @@
 		});
 		const keepFrom = (loadedFrom || punchWindowStart()).getTime();
 		const s = getSession();
-		const mine = s && s.role === "hr" && s.ownOnly ? new Set(workers.map((w) => String(w.id))) : null;
+		const mine = s && s.role === "hr" && s.ownOnly ? new Set(state.workers.map((w) => String(w.id))) : null;
 		local.forEach((e) => {
 			if (e && e.id != null && !(e.id in byId) && !(new Date(e.ts).getTime() < keepFrom) && (!mine || mine.has(String(e.workerId)))) byId[e.id] = e;
 		});
 		savePunchLog(Object.values(byId));
-		if (currentTab === "admin") renderAdmin();
+		emit("punches");
 	}
 	//#endregion
 	//#region src/manager/data/store.ts
-	function setSaveStatus(s) {
-		const el = document.getElementById("saveIndicator");
-		if (!el) return;
-		el.className = "save-indicator " + s;
-		el.querySelector("span").textContent = s === "saving" ? tr("Saving...") : tr("Saved");
-	}
-	function getDataObj() {
-		return {
-			workers,
-			clients,
-			suppliers,
-			weekStart: weekStart.toISOString(),
-			savedAt: (/* @__PURE__ */ new Date()).toISOString()
-		};
-	}
-	function applyData(d) {
-		if (d.workers) workers = d.workers.map((w) => ({
-			id: w.id || uid(),
-			clientIds: w.clientIds || [],
-			token: w.token || genToken(),
-			status: w.status || "active",
-			...w
-		}));
-		if (d.clients) clients = d.clients;
-		if (d.suppliers) suppliers = d.suppliers;
-	}
 	function UNSAVED_KEY() {
 		return STORAGE_KEY() + "_unsaved";
 	}
@@ -445,9 +485,9 @@
 		}
 	}
 	function dropWorkerPhotos() {
-		if (!(hasPermission("workers") || hasPermission("schedule"))) return false;
+		if (!host.canWriteWorkers()) return false;
 		let n = 0;
-		workers.forEach((w) => {
+		state.workers.forEach((w) => {
 			if ("avatarB64" in w) {
 				delete w.avatarB64;
 				n++;
@@ -455,24 +495,26 @@
 		});
 		return n > 0;
 	}
+	function writeCache(json) {
+		localStorage.setItem(STORAGE_KEY(), json);
+		localStorage.setItem(STORAGE_KEY_BASE, json);
+	}
 	function applyServerLoad(gd) {
 		if (hasUnsavedLocal()) {
-			showToast(tr("Unsaved changes found on this device — saving them now"), 4e3);
+			notify(tr("Unsaved changes found on this device — saving them now"), 4e3);
 			autoSave();
 			return false;
 		}
 		applyData(gd);
 		const photosDropped = dropWorkerPhotos();
-		render();
+		emit("data");
 		if (photosDropped) autoSave();
-		const gdJson = JSON.stringify(gd);
-		localStorage.setItem(STORAGE_KEY(), gdJson);
-		localStorage.setItem(STORAGE_KEY_BASE, gdJson);
+		writeCache(JSON.stringify(gd));
 		return true;
 	}
 	var saveTimer;
 	function autoSave() {
-		if ((!workers || !workers.length) && (!clients || !clients.length)) {
+		if (!state.workers.length && !state.clients.length) {
 			let hadData = false;
 			try {
 				const prev = JSON.parse(localStorage.getItem(STORAGE_KEY()) || "{}");
@@ -480,20 +522,19 @@
 			} catch {}
 			if (hadData) {
 				console.warn("Empty state but cache has data — skipping save");
-				setSaveStatus("saved");
-				showToast("⚠ Empty data — save skipped");
+				emit("save", "saved");
+				notify({ text: "⚠ Empty data — save skipped" });
 				return;
 			}
 		}
-		setSaveStatus("saving");
+		emit("save", "saving");
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(async () => {
 			try {
 				const data = getDataObj();
 				const json = JSON.stringify(data);
-				localStorage.setItem(STORAGE_KEY(), json);
+				writeCache(json);
 				localStorage.setItem(STORAGE_KEY() + "_bak", json);
-				localStorage.setItem(STORAGE_KEY_BASE, json);
 				try {
 					localStorage.setItem(UNSAVED_KEY(), String(Date.now()));
 				} catch {}
@@ -501,50 +542,54 @@
 				if (ok) try {
 					localStorage.removeItem(UNSAVED_KEY());
 				} catch {}
-				setSaveStatus("saved");
-				if (ok) showToast(tr("Saved"));
-				else showToast(tr("Save failed — kept on this device"));
+				emit("save", "saved");
+				notify(ok ? tr("Saved") : tr("Save failed — kept on this device"));
 			} catch (e) {
 				console.error("Save failed", e);
-				setSaveStatus("saved");
-				showToast(tr("Save error"));
+				emit("save", "saved");
+				notify(tr("Save error"));
 			}
 		}, 800);
+	}
+	/** After a fresh server load: the punches, the live watchers. */
+	function afterServerLoad() {
+		markFreshContent("app");
+		syncPunchesFromGS();
+		emit("loaded");
 	}
 	async function loadData() {
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY()) || localStorage.getItem(STORAGE_KEY() + "_bak");
 			if (raw) {
 				applyData(JSON.parse(raw));
-				__dataReady = true;
-				render();
+				state.ready = true;
+				emit("data");
 				markFirstContent();
 			}
 		} catch {}
 		try {
 			const gd = await gsLoad();
-			__dataReady = true;
+			const wasReady = state.ready;
+			state.ready = true;
 			if (gd) {
 				applyServerLoad(gd);
-				markFreshContent("app");
-				setSaveStatus("saved");
-				syncPunchesFromGS();
-				if (isHrSession()) watchHrWorkers();
+				emit("save", "saved");
+				afterServerLoad();
+				if (getSession()?.role === "hr") watchHrWorkers();
 				watchHoursBatches();
-				maybeRegenAfterFirmEdit();
 			} else {
 				const err = loadError();
-				showToast(tr("Could not load from the server — showing saved data{0}", { 0: err ? " (" + err.slice(0, 80) + ")" : "" }), 6e3);
+				notify(tr("Could not load from the server — showing saved data{0}", { 0: err ? " (" + err.slice(0, 80) + ")" : "" }), 6e3);
 				retryLoadDataWhenBack();
+				if (!wasReady) emit("data");
 			}
 		} catch (e) {
 			console.error("Load failed", e);
-			showToast(tr("Offline — using cached data"));
-		}
-		if (!__dataReady) {
-			__dataReady = true;
-			if (currentTab === "dashboard") renderDashboard();
-			if (currentTab === "schedule") renderSchedulePage();
+			notify(tr("Offline — using cached data"));
+			if (!state.ready) {
+				state.ready = true;
+				emit("data");
+			}
 		}
 	}
 	var hoursWatched = false;
@@ -556,35 +601,16 @@
 		hoursWatched = true;
 		loadFirestoreBackend().then((b) => b.listenPendingHours(fsTenantId(), (list) => {
 			batches = list;
-			updateHoursBadge();
-			refreshBell();
-			refreshCardHoursStatus();
-			if (currentTab === "accounting") renderAccounting();
+			emit("hours");
 		})).catch((e) => {
 			hoursWatched = false;
 			console.warn("Hours watch failed: " + (e && e.message || e));
 		});
 	}
-	function updateHoursBadge() {
-		const tab = document.getElementById("tabAccounting");
-		if (!tab) return;
-		const n = (batches || []).filter((b) => b.status === "pending").length;
-		let el = document.getElementById("accPendingBadge");
-		if (!el) {
-			el = document.createElement("span");
-			el.id = "accPendingBadge";
-			el.className = "tab-badge";
-			tab.querySelector(".ic").appendChild(el);
-		}
-		el.textContent = n > 99 ? "99+" : String(n);
-		el.style.display = n ? "" : "none";
-		el.title = tr("{0} hours batch(es) waiting for review", { 0: n });
-	}
+	/** batches waiting for a decision */
+	var pendingHoursCount = () => (batches || []).filter((b) => b.status === "pending").length;
 	function latestHoursBatch(workerId) {
 		return (batches || []).filter((b) => (b.entries || []).some((r) => r.workerId === workerId)).sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)))[0] || null;
-	}
-	function refreshCardHoursStatus() {
-		if (window.ManagerIsland) window.ManagerIsland.refreshWindows();
 	}
 	var hrWorkersWatched = false;
 	var hrWorkerChanges = [];
@@ -602,11 +628,7 @@
 	var hrRetry;
 	function applyHrWorkerChanges() {
 		if (!hrWorkerChanges.length) return;
-		if ([
-			"workerOverlay",
-			"workerCardOverlay",
-			"payOverlay"
-		].some((id) => document.getElementById(id)?.classList.contains("open"))) {
+		if (host.workerWindowOpen()) {
 			clearTimeout(hrRetry);
 			hrRetry = setTimeout(applyHrWorkerChanges, 2e3);
 			return;
@@ -615,19 +637,19 @@
 		let n = 0;
 		changes.forEach(({ added, removed, changed }) => {
 			const gone = new Set(removed.map(String));
-			const before = workers.length;
-			workers = workers.filter((w) => !gone.has(String(w.id)));
-			n += before - workers.length;
+			const before = state.workers.length;
+			state.workers = state.workers.filter((w) => !gone.has(String(w.id)));
+			n += before - state.workers.length;
 			added.forEach((x) => {
-				if (!workers.some((w) => String(w.id) === String(x.id))) {
-					workers.push(x);
+				if (!state.workers.some((w) => String(w.id) === String(x.id))) {
+					state.workers.push(x);
 					n++;
 				}
 			});
 			(changed || []).forEach(({ data, unsaved }) => {
-				const i = workers.findIndex((w) => String(w.id) === String(data.id));
-				if (i < 0 || unsaved(workers[i])) return;
-				workers[i] = data;
+				const i = state.workers.findIndex((w) => String(w.id) === String(data.id));
+				if (i < 0 || unsaved(state.workers[i])) return;
+				state.workers[i] = data;
 				n++;
 			});
 		});
@@ -635,7 +657,7 @@
 		try {
 			localStorage.setItem(STORAGE_KEY(), JSON.stringify(getDataObj()));
 		} catch {}
-		render();
+		emit("data");
 	}
 	var loadRetryArmed = false;
 	function retryLoadDataWhenBack() {
@@ -649,11 +671,9 @@
 			loadRetryArmed = false;
 			if (gd) {
 				try {
-					if (applyServerLoad(gd)) showToast(tr("Data loaded"));
+					if (applyServerLoad(gd)) notify(tr("Data loaded"));
 				} catch {}
-				markFreshContent("app");
-				syncPunchesFromGS();
-				maybeRegenAfterFirmEdit();
+				afterServerLoad();
 			}
 		};
 		window.addEventListener("online", again);
@@ -663,6 +683,12 @@
 	//#endregion
 	//#region src/manager/data/global.ts
 	Object.assign(window, {
+		ManagerData: {
+			on,
+			setHost
+		},
+		uid,
+		genToken,
 		SESSION_KEY,
 		getSession,
 		saveSession,
@@ -672,6 +698,8 @@
 		STORAGE_KEY,
 		gsAuth,
 		gsAuthQuery,
+		getDataObj,
+		applyData,
 		API_URL,
 		SESSION_EXPIRED_ERROR,
 		loadFirestoreBackend,
@@ -691,9 +719,6 @@
 		periodPunchStart,
 		syncPunchesFromGS,
 		mergeRemotePunches,
-		setSaveStatus,
-		getDataObj,
-		applyData,
 		UNSAVED_KEY,
 		hasUnsavedLocal,
 		dropWorkerPhotos,
@@ -701,8 +726,8 @@
 		autoSave,
 		loadData,
 		watchHoursBatches,
-		updateHoursBadge,
 		latestHoursBatch,
+		pendingHoursCount,
 		watchHrWorkers,
 		queueTelemetry,
 		flushTelemetry,
@@ -710,6 +735,24 @@
 		markFirstContent,
 		markFreshContent,
 		reportError
+	});
+	for (const k of [
+		"workers",
+		"clients",
+		"suppliers"
+	]) Object.defineProperty(window, k, {
+		get: () => state[k],
+		set: (v) => {
+			state[k] = v;
+		},
+		configurable: true
+	});
+	Object.defineProperty(window, "__dataReady", {
+		get: () => state.ready,
+		set: (v) => {
+			state.ready = !!v;
+		},
+		configurable: true
 	});
 	var getters = {
 		__uploadsInFlight: uploadsRunning,

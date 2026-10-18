@@ -4,6 +4,7 @@
 import type { FirestoreBackend } from '../../lib/firestore-backend';
 import { getSession, clearSession, gsAuth, fsTenantId } from './session';
 import { reportTiming, reportError } from './telemetry';
+import { notify, tr } from './events';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Rec = Record<string, any>;
@@ -84,7 +85,7 @@ async function route(url: string, opts?: RequestInit): Promise<Response> {
   if (!quiet && ms >= SLOW_API_CALL_MS) try { reportTiming('gs:' + action, ms, Object.assign({}, meta || {}, params.part ? {part: String(params.part)} : {})); } catch { /* telemetry never breaks a call */ }
   if (!quiet && json && json.error === SESSION_EXPIRED_ERROR && getSession()) {
     clearSession();
-    showToast(tr('Session expired — please sign in again'));
+    notify(tr('Session expired — please sign in again'));
     setTimeout(() => location.reload(), 1200);
   }
   return jsonResponse(json);

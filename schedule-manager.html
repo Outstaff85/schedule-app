@@ -869,51 +869,10 @@ let editingWorkerId = null; // the worker the window edits, by id (a reorder or 
 let editingClientId  = null;
 let editingSupplierId = null;
 
-let workers = [
-  {id:'w1',name:'Raveendra',colorIdx:0,phone:'',clientIds:[],schedule:[
-    {type:'work',start:'07:00',end:'15:00'},
-    {type:'work',start:'09:00',end:'21:00'},
-    {type:'off', start:null,  end:null},
-    {type:'work',start:'07:00',end:'16:00'},
-    {type:'work',start:'07:00',end:'16:00'},
-    {type:'work',start:'07:00',end:'18:00'},
-    {type:'work',start:'07:00',end:'18:00'}
-  ]},
-  {id:'w2',name:'Nagu',colorIdx:1,phone:'',clientIds:[],schedule:[
-    {type:'work',start:'14:00',end:'22:00'},
-    {type:'work',start:'12:00',end:'22:00'},
-    {type:'work',start:'12:00',end:'00:00'},
-    {type:'work',start:'15:00',end:'00:00'},
-    {type:'work',start:'15:00',end:'00:00'},
-    {type:'off', start:null,  end:null},
-    {type:'work',start:'12:00',end:'00:00'}
-  ]},
-  {id:'w3',name:'Manu',colorIdx:2,phone:'',clientIds:[],schedule:[
-    {type:'off', start:null,  end:null},
-    {type:'work',start:'07:00',end:'12:00'},
-    {type:'work',start:'07:00',end:'12:00'},
-    {type:'off', start:null,  end:null},
-    {type:'off', start:null,  end:null},
-    {type:'off', start:null,  end:null},
-    {type:'off', start:null,  end:null}
-  ]}
-];
-
-let clients = [
-  {id:'c1',name:'Office A',color:'#4f8ef7',address:'Tel Aviv',notes:''},
-  {id:'c2',name:'Mall B',  color:'#3ecf8e',address:'Jerusalem',notes:''},
-];
-
-// Suppliers (added 2026-09-30) — same shape/lifecycle as `clients` (a plain
-// array persisted in the same tenant-scoped Schedule blob, see saveSchedule's
-// own comment). {id,name,color,phone,notes,bank,bankBranch,accountNumber,
-// companyNumber}. A worker is linked via w.supplierId (single, not an array
-// like clientIds — a worker has one supplying agency but can work for
-// several clients).
-let suppliers = [];
+// workers, clients and suppliers are the data layer's (src/manager/data/state.ts),
+// read and replaced here under these names.
 
 // --- Utils --------------------------------------------------------------------
-function uid(){ return 'id'+Math.random().toString(36).slice(2,9); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // SheetJS (Excel read and write, ~900 KB) is loaded only when an Excel
 // export or import needs it, not with the page. Same code in
@@ -1968,9 +1927,6 @@ function setWorkerStatus(wi, v){
   render(); autoSave();
   openWorkerCard(wi);
 }
-function genToken(){
-  return Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,6);
-}
 
 // A new punch-link token (the worker window's Access): the old link stops working.
 function regenerateWorkerToken(wid){
@@ -2630,6 +2586,41 @@ function exportJSON(){
 // dispatcher, load / save / cache (loadData, autoSave), the punches, the
 // uploads and the telemetry — is src/manager/data/, loaded before this script
 // as manager-data.js under the same names (React migration stage 8b).
+
+// ── The data layer's events (src/manager/data/events.ts) ──
+// The data layer never draws, shows a toast or looks at the screen: it
+// emits events, and this is the one place the page answers them. Its texts
+// come untranslated ({text, vars}) and are translated here.
+ManagerData.setHost({
+  canWriteWorkers:()=>hasPermission('workers')||hasPermission('schedule'),
+  // an HR's live worker list waits while one of these is open
+  workerWindowOpen:()=>['workerOverlay','workerCardOverlay','payOverlay'].some(id=>document.getElementById(id)?.classList.contains('open')),
+  weekStart:()=>weekStart.toISOString(),
+});
+ManagerData.on('data', ()=>render());
+// Hours approvals compare each day with the punches: they redraw too, or a
+// day could keep showing a stale "Changed after approval".
+ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); else if(currentTab==='accounting') renderAccounting(); else if(currentTab==='admin') renderAdmin(); });
+// An open worker card shows the worker's latest hours batch live.
+ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(window.ManagerIsland) window.ManagerIsland.refreshWindows(); if(currentTab==='accounting') renderAccounting(); });
+ManagerData.on('save', s=>setSaveStatus(s));
+ManagerData.on('notice', ({msg, ms})=>showToast(tr(msg.text, msg.vars), ms));
+ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());
+function setSaveStatus(s){
+  const el=document.getElementById('saveIndicator');
+  el.className='save-indicator '+s;
+  el.querySelector('span').textContent=s==='saving'?tr('Saving...'):tr('Saved');
+}
+// The count of hours batches waiting for a decision, on the Accounting tab.
+function updateHoursBadge(){
+  const tab = document.getElementById('tabAccounting'); if(!tab) return;
+  const n = pendingHoursCount();
+  let el = document.getElementById('accPendingBadge');
+  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
+  el.textContent = n > 99 ? '99+' : String(n);
+  el.style.display = n ? '' : 'none';
+  el.title = tr('{0} hours batch(es) waiting for review',{0:(n)});
+}
 
 const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 const DOC_STORE = 'Firebase Storage';
@@ -3350,7 +3341,6 @@ function renderSchedulePage(){
   if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
 }
 window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); if(document.getElementById('firmsScreen').style.display==='block') window.ManagerIsland.renderFirmsScreen(); renderCrumb(); });
-let __dataReady=false;
 window.ManagerBridge={
   lang:()=>I18N_LANG,
   dict:()=>I18N,
