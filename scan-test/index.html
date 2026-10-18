@@ -81,7 +81,7 @@ ort.env.wasm.wasmPaths = location.origin + '/scan-test/ort/';
 ort.env.wasm.numThreads = 1;
 
 let smooth = null, steadySince = 0, lastRes = null;
-const STEADY_MS = 700, MOVE = 0.02;
+const STEADY_MS = 2000, MOVE = 0.02;
 let session = null, sessionKey = '', running = false, stream = null, busy = false;
 const times = [], frames = [];
 const S = 256, H = 128;
@@ -229,7 +229,7 @@ async function runOnce(src, w, h, el) {
   draw(res, el); lastRes = res;
   const missing = raw.pts.filter(p => !p).length;
   $('hint').textContent = missing ? (missing === 4 ? 'No document in the frame' : missing + ' corner(s) outside the frame — move the phone back')
-    : res.conf < 0.5 ? 'Edges not clear — more light, a darker background' : res.steady != null && res.steady < STEADY_MS ? 'Hold still…' : 'Found';
+    : res.conf < 0.5 ? 'Edges not clear — more light, a darker background' : res.steady != null && res.steady < STEADY_MS ? 'Hold still… ' + ((STEADY_MS - res.steady) / 1000).toFixed(1) + ' s' : 'Found';
   if (el.tagName === 'VIDEO' && $('auto').checked && res.steady >= STEADY_MS) showShot();
 }
 
