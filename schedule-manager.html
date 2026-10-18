@@ -2382,14 +2382,6 @@ function updateHoursBadge(){
 }
 
 const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
-// Server-side Form 101 PDF builder (Python + PyMuPDF Cloud Function) — replaces
-// the old client-side pdf-lib build, which had a confirmed bug dropping a
-// glyph of multi-word RTL (Hebrew) text. See functions/main.py.
-const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
-// Scan preprocessing (OpenCV geometry + Pillow contrast/sharpness) — see
-// preAlignScan(). Its result now feeds straight into the manual
-// corner-adjustment editor (no AI-seeded alignment step in between anymore).
-const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 
 // A supplier never uses this app: its login is written as the supplier
 // portal's session (supplier-portal.html, key supplierPortal_session) and the
@@ -3942,101 +3934,9 @@ function grayscaleCanvas(cv){
 // once loaded, exactly as if it were still inline here.
 let _scanPipelineLoading=null;
 // --- Upload preparation (shared by every file upload) -------------------------
-// Rule for any feature that sends files to the server (scans, hours import,
-// and anything added later): expand files with filesToUploadPages() — every
-// file in parallel, PDFs page by page — which shrinks each image to
-// UPLOAD_MAX_DIM before it leaves the device, then send the pages' requests
-// in parallel (Promise.all) rather than one after another.
-// Anthropic's vision models don't use more than ~1568px on the long edge, so
-// a full phone photo (3000-4000px+, several MB) is pure upload time on the
-// slowest leg (mobile network). Never upscales; any failure falls through to
-// the original image so a hiccup never blocks an upload.
-const UPLOAD_MAX_DIM=1800;
-function downscaleForUpload(b64,mediaType){
-  return new Promise(resolve=>{
-    const img=new Image();
-    img.onload=()=>{
-      try{
-        const iw=img.naturalWidth, ih=img.naturalHeight;
-        const scale=Math.min(1,UPLOAD_MAX_DIM/Math.max(iw,ih,1));
-        if(scale>=1){ resolve({b64,mediaType}); return; }
-        const cv=document.createElement('canvas');
-        cv.width=Math.round(iw*scale); cv.height=Math.round(ih*scale);
-        const ctx=cv.getContext('2d');
-        ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-        ctx.drawImage(img,0,0,cv.width,cv.height);
-        resolve({b64:cv.toDataURL('image/jpeg',0.9).split(',')[1],mediaType:'image/jpeg'});
-      }catch(e){ resolve({b64,mediaType}); }
-    };
-    img.onerror=()=>resolve({b64,mediaType});
-    img.src='data:'+mediaType+';base64,'+b64;
-  });
-}
-let _pdfjsLoading=null;
-function _loadPdfJs(){
-  if(window.pdfjsLib) return Promise.resolve();
-  if(_pdfjsLoading) return _pdfjsLoading;
-  _pdfjsLoading=new Promise((res,rej)=>{
-    const sc=document.createElement('script');
-    sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    sc.onload=()=>{ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} res(); };
-    sc.onerror=()=>{ _pdfjsLoading=null; rej(new Error('pdf.js CDN failed')); };
-    document.head.appendChild(sc);
-  });
-  return _pdfjsLoading;
-}
-function isPdfFile(f){ return !!f&&(f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')); }
-function _readFileB64(file){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=()=>res(r.result.split(',')[1]);
-    r.onerror=()=>rej(new Error('read failed'));
-    r.readAsDataURL(file);
-  });
-}
-// One file -> its pages as upload-ready images [{b64,mediaType,text,fileName}].
-// An image is one page; a PDF is rendered page by page (pdf.js, scale 2.5,
-// pages rendered in parallel) with its text layer kept in `text`.
-async function fileToUploadPages(file){
-  if(isPdfFile(file)){
-    await _loadPdfJs();
-    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
-    const nums=Array.from({length:pdf.numPages},(_,i)=>i+1);
-    return Promise.all(nums.map(async n=>{
-      const page=await pdf.getPage(n);
-      const vp=page.getViewport({scale:2.5});
-      const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
-      await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-      let text='';
-      try{ const tc=await page.getTextContent(); text=tc.items.map(it=>it.str).join(' '); }catch(e){}
-      const d=await downscaleForUpload(cv.toDataURL('image/png').split(',')[1],'image/png');
-      return {b64:d.b64,mediaType:d.mediaType,text,fileName:file.name||''};
-    }));
-  }
-  const raw={b64:await _readFileB64(file),mediaType:file.type||'image/jpeg'};
-  const d=await downscaleForUpload(raw.b64,raw.mediaType);
-  // orig: the photo before shrinking, only when it was shrunk — the scan
-  // crops its zoomed field re-reads from it (scan-pipeline.js _hiFieldCrop).
-  return [{b64:d.b64,mediaType:d.mediaType,text:'',fileName:file.name||'',orig:d.b64!==raw.b64?raw:null}];
-}
-// One file prepared for STORAGE (kept as a single file, unlike the per-page
-// AI path above): an image is shrunk like every upload, anything else (PDF,
-// Word, ...) is sent as-is. -> {b64, mediaType, fileName}
-async function fileForStorage(file){
-  const raw=await _readFileB64(file);
-  const type=file.type||'application/octet-stream';
-  if(/^image\//.test(type)){
-    const d=await downscaleForUpload(raw,type);
-    const name=d.mediaType===type?file.name:String(file.name||'image').replace(/\.[^.]+$/,'')+'.jpg';
-    return {b64:d.b64,mediaType:d.mediaType,fileName:name};
-  }
-  return {b64:raw,mediaType:type,fileName:file.name||'document'};
-}
-// Many files -> one flat, ordered page list; all files processed in parallel.
-async function filesToUploadPages(files){
-  const perFile=await Promise.all([...(files||[])].map(fileToUploadPages));
-  return perFile.flat();
-}
+// downscaleForUpload(), fileToUploadPages(), filesToUploadPages(),
+// fileForStorage(), _loadPdfJs() are src/manager/logic/uploads.ts (CLAUDE.md →
+// Uploads), in manager-core.js.
 
 function ensureScanPipelineLoaded(){
   if(window.__scanPipelineReady) return Promise.resolve();
@@ -4052,27 +3952,8 @@ function ensureScanPipelineLoaded(){
 }
 // New-scan entry point (the "Scan passport" button) — awaits the
 // pipeline before calling openAiScan(), which only exists once it's loaded.
-// Cloud Function warm-up (2026-10-01): a cold preprocess_scan /
-// fill_form_101 / ai_read instance costs seconds on first use (the
-// Timings pane showed ~4-5s in "Enhance (server)"). These {"ping":true} calls
-// wake them while the user is still photographing or filling the form; the
-// functions answer a ping at once without doing any work. At most once per
-// URL per 4 minutes. Results are kept in __fnWarm for the scan timing.
-const __fnWarm={};
-// The AI reads go to the ai_read function, so it is woken too.
-const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
-function SCAN_WARM_URLS(){ return [PREPROCESS_SCAN_FN_URL,FORM101_FN_URL,AI_FN_URL]; }
-const USERS_ADMIN_FN_URL='https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';
-function warmCloudFunctions(urls){
-  const now=Date.now();
-  for(const url of urls){
-    const w=__fnWarm[url];
-    if(w&&now-w.at<240000) continue;
-    const rec={at:now,ms:null}; __fnWarm[url]=rec;
-    fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ping":true}'})
-      .then(()=>{ rec.ms=Date.now()-rec.at; }).catch(()=>{});
-  }
-}
+// The Cloud Function warm-up (warmCloudFunctions, SCAN_WARM_URLS, __fnWarm) and
+// the functions' URLs are src/manager/logic/functions.ts, in manager-core.js.
 async function startNewScan(){
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }

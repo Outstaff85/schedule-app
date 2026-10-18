@@ -1,8 +1,9 @@
 // GENERATED from src/manager/data/, src/manager/logic/ by scripts/build-globals.mjs — never edit
 // by hand: change the TypeScript and run `node scripts/build-globals.mjs`
 // (npm run build fails while this file is stale). The manager page's data
-// layer — session, dispatcher, load / save / cache, punches, uploads, telemetry —
-// under its old global names (docs/app-core.md → Data calls).
+// layer (session, dispatcher, load / save / cache, punches, uploads, telemetry)
+// and its logic (access, i18n, pay, workers, uploads…) under their old global
+// names (docs/app-core.md → Data calls).
 (function() {
 	//#region src/manager/data/events.ts
 	/** A text for the user, translated by the page when shown. */
@@ -1030,6 +1031,176 @@
 		};
 	}
 	//#endregion
+	//#region src/manager/logic/uploads.ts
+	var UPLOAD_MAX_DIM = 1800;
+	function downscaleForUpload(b64, mediaType) {
+		return new Promise((resolve) => {
+			const img = new Image();
+			img.onload = () => {
+				try {
+					const iw = img.naturalWidth, ih = img.naturalHeight;
+					const scale = Math.min(1, UPLOAD_MAX_DIM / Math.max(iw, ih, 1));
+					if (scale >= 1) {
+						resolve({
+							b64,
+							mediaType
+						});
+						return;
+					}
+					const cv = document.createElement("canvas");
+					cv.width = Math.round(iw * scale);
+					cv.height = Math.round(ih * scale);
+					const ctx = cv.getContext("2d");
+					ctx.imageSmoothingEnabled = true;
+					ctx.imageSmoothingQuality = "high";
+					ctx.drawImage(img, 0, 0, cv.width, cv.height);
+					resolve({
+						b64: cv.toDataURL("image/jpeg", .9).split(",")[1],
+						mediaType: "image/jpeg"
+					});
+				} catch {
+					resolve({
+						b64,
+						mediaType
+					});
+				}
+			};
+			img.onerror = () => resolve({
+				b64,
+				mediaType
+			});
+			img.src = "data:" + mediaType + ";base64," + b64;
+		});
+	}
+	var pdfjsLoading = null;
+	function loadPdfJs() {
+		if (window.pdfjsLib) return Promise.resolve();
+		if (pdfjsLoading) return pdfjsLoading;
+		pdfjsLoading = new Promise((res, rej) => {
+			const sc = document.createElement("script");
+			sc.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+			sc.onload = () => {
+				try {
+					window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+				} catch {}
+				res();
+			};
+			sc.onerror = () => {
+				pdfjsLoading = null;
+				rej(/* @__PURE__ */ new Error("pdf.js CDN failed"));
+			};
+			document.head.appendChild(sc);
+		});
+		return pdfjsLoading;
+	}
+	function isPdfFile(f) {
+		return !!f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name || ""));
+	}
+	function readFileB64(file) {
+		return new Promise((res, rej) => {
+			const r = new FileReader();
+			r.onload = () => res(String(r.result).split(",")[1]);
+			r.onerror = () => rej(/* @__PURE__ */ new Error("read failed"));
+			r.readAsDataURL(file);
+		});
+	}
+	async function fileToUploadPages(file) {
+		if (isPdfFile(file)) {
+			await loadPdfJs();
+			const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+			const nums = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+			return Promise.all(nums.map(async (n) => {
+				const page = await pdf.getPage(n);
+				const vp = page.getViewport({ scale: 2.5 });
+				const cv = document.createElement("canvas");
+				cv.width = vp.width;
+				cv.height = vp.height;
+				await page.render({
+					canvasContext: cv.getContext("2d"),
+					viewport: vp
+				}).promise;
+				let text = "";
+				try {
+					text = (await page.getTextContent()).items.map((it) => it.str).join(" ");
+				} catch {}
+				const d = await downscaleForUpload(cv.toDataURL("image/png").split(",")[1], "image/png");
+				return {
+					b64: d.b64,
+					mediaType: d.mediaType,
+					text,
+					fileName: file.name || ""
+				};
+			}));
+		}
+		const raw = {
+			b64: await readFileB64(file),
+			mediaType: file.type || "image/jpeg"
+		};
+		const d = await downscaleForUpload(raw.b64, raw.mediaType);
+		return [{
+			b64: d.b64,
+			mediaType: d.mediaType,
+			text: "",
+			fileName: file.name || "",
+			orig: d.b64 !== raw.b64 ? raw : null
+		}];
+	}
+	async function fileForStorage(file) {
+		const raw = await readFileB64(file);
+		const type = file.type || "application/octet-stream";
+		if (/^image\//.test(type)) {
+			const d = await downscaleForUpload(raw, type);
+			const name = d.mediaType === type ? file.name : String(file.name || "image").replace(/\.[^.]+$/, "") + ".jpg";
+			return {
+				b64: d.b64,
+				mediaType: d.mediaType,
+				fileName: name
+			};
+		}
+		return {
+			b64: raw,
+			mediaType: type,
+			fileName: file.name || "document"
+		};
+	}
+	async function filesToUploadPages(files) {
+		return (await Promise.all([...Array.from(files || [])].map(fileToUploadPages))).flat();
+	}
+	//#endregion
+	//#region src/manager/logic/functions.ts
+	var FORM101_FN_URL = "https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101";
+	var PREPROCESS_SCAN_FN_URL = "https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan";
+	var AI_FN_URL = "https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read";
+	var USERS_ADMIN_FN_URL = "https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin";
+	/** the functions a scan uses */
+	function SCAN_WARM_URLS() {
+		return [
+			PREPROCESS_SCAN_FN_URL,
+			FORM101_FN_URL,
+			AI_FN_URL
+		];
+	}
+	var fnWarm = {};
+	function warmCloudFunctions(urls) {
+		const now = Date.now();
+		for (const url of urls) {
+			const w = fnWarm[url];
+			if (w && now - w.at < 24e4) continue;
+			const rec = {
+				at: now,
+				ms: null
+			};
+			fnWarm[url] = rec;
+			fetch(url, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: "{\"ping\":true}"
+			}).then(() => {
+				rec.ms = Date.now() - rec.at;
+			}).catch(() => {});
+		}
+	}
+	//#endregion
 	//#region src/manager/globals.ts
 	Object.assign(window, {
 		ManagerData: {
@@ -1129,7 +1300,21 @@
 		WORKER_DOC_TYPES,
 		parseDocDate,
 		workerDocExpiries,
-		workerDocStatus
+		workerDocStatus,
+		UPLOAD_MAX_DIM,
+		downscaleForUpload,
+		_loadPdfJs: loadPdfJs,
+		isPdfFile,
+		fileToUploadPages,
+		fileForStorage,
+		filesToUploadPages,
+		FORM101_FN_URL,
+		PREPROCESS_SCAN_FN_URL,
+		AI_FN_URL,
+		USERS_ADMIN_FN_URL,
+		SCAN_WARM_URLS,
+		__fnWarm: fnWarm,
+		warmCloudFunctions
 	});
 	for (const k of [
 		"workers",
