@@ -403,9 +403,18 @@ $('file').onchange = async e => {
   await runOnce(img, img.naturalWidth, img.naturalHeight, img);
   if (lastRes && !lastRes.pts.some(p => !p)) showShot();
 };
+// Switching the model, GPU / CPU or the thread: nothing of the old way stays on screen —
+// no frame, no figures — and the frame and its following start again on the new way.
 $('model').onchange = $('backend').onchange = $('useWorker').onchange = async () => {
-  const was = running; running = false; while (inFlight) await new Promise(r => setTimeout(r, 30));
-  await ensureSession().catch(() => {}); if (was) { running = true; loop(); }
+  const was = running; running = false; shotId++;
+  while (inFlight) await new Promise(r => setTimeout(r, 30));
+  target = shown = smooth = lastRes = null; steadySince = 0; Track.reset();
+  times.length = frames.length = followTimes.length = followMs.length = 0;
+  for (const id of ['sFps', 'sMs', 'sConf', 'sTrack', 'sTrackMs', 'sCap']) $(id).textContent = '—';
+  drawPts(null, false, $('video')); $('hint').textContent = 'Switching…';
+  await ensureSession().catch(() => {});
+  $('hint').textContent = '';
+  if (was) { running = true; loop(); startFollow(); }
 };
 $('engine').value = ORT_DIR === 'ort130' ? '130' : '122';
 $('engine').onchange = () => { location.search = '?ort=' + $('engine').value + '&v=' + Date.now(); };
