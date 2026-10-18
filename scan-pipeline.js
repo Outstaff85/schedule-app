@@ -2172,7 +2172,10 @@ async function processAllPendingPages(){
     renderScanProgress('מחדד קצוות… (עמוד '+(i+1)+' מתוך '+total+')',readPct(i));
     it=await finalTightenPass(it);
     pageParsed.push(thisPageParsed);
-    otherPages.push(it);
+    // A page the AI calls a contract that reads as no ID page (no ID number, no names) is
+    // the worker's contract: saved to the worker's documents as one PDF, not into Form 101.
+    const idLike=thisPageParsed&&(thisPageParsed.idNo||thisPageParsed.surname||thisPageParsed.given);
+    otherPages.push(Object.assign({},it,{kind,contract:kind==='contract'&&!idLike}));
   }
   if(blurIdx>=0){
     // `queue` is a snapshot taken before this run: pages before blurIdx were

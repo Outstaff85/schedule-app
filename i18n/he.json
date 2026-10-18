@@ -1302,5 +1302,7 @@
   "Done ({0})": "סיום ({0})",
   "Capture": "צלם",
   "Camera": "מצלמה",
-  "Photos or PDF": "תמונות או PDF"
+  "Photos or PDF": "תמונות או PDF",
+  "The contract ({0} pages) was added to the documents of {1}": "החוזה ({0} עמודים) נוסף למסמכים של {1}",
+  "The contract could not be saved: {0} — add it from Add document": "לא ניתן לשמור את החוזה: {0} — הוסיפו אותו דרך הוספת מסמך"
 }

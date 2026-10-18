@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { adoptLanguage } from '@/lib/i18n';
 import { Scanner, type ScannedPage } from './Scanner';
+import { imagesToPdf, jpegSize } from './pdf';
 
 let root: Root | null = null;
 let seq = 0;
@@ -30,3 +31,6 @@ export function openScanner(): Promise<ScannedPage[] | null> {
     root!.render(<React.StrictMode><TooltipProvider><Scanner key={key} open onDone={p => end(p)} onClose={() => end(null)} /></TooltipProvider></React.StrictMode>);
   });
 }
+
+// For the browser tests (like window.ManagerAcc): the contract PDF builder.
+(window as unknown as { ManagerScan: unknown }).ManagerScan = { imagesToPdf, jpegSize };

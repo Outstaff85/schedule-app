@@ -171,6 +171,10 @@ A `Window` (a bottom sheet on a phone) — `Scanner.tsx`:
 - Each page can be removed (🗑). **Done (n)** waits for the pages still with the server and resolves `openScanner()` with `{b64, mediaType, turn, blurry}` per page; closing the window resolves null.
 - Covered by the browser test "scan window" (a picked photo, the server's answer mocked: two documents → two pages → the reading).
 
+## Contracts
+
+An extra page that `aiDetectAlign` calls `contract` and whose read has no ID number and no names is marked `contract` in `__aiPacketOtherPages` (`processAllPendingPages`). `aiFillForm101` (`src/manager/page/scan.ts`) leaves those pages out of Form 101 and, once the worker's documents are saved, `saveScanContract()` puts them together as one PDF (`imagesToPdf`, `src/scan/pdf.ts` — a page per photo, A4 wide, JPEG as is) and saves it to the worker's documents as type `contract` (`saveWorkerFile`, one retry); a failure is a toast and an Admin → Errors entry. Its end date is not read. Browser test: "scan contract".
+
 ## Server-side finding (`preprocess_scan` with `find`)
 
 The new scanner's server step (docs/scan-plan.md → S1), called by the scan window (`src/scan/server.ts`). `POST preprocess_scan` with `{"image": <base64>, "find": true, "corners": [[x, y] ×4]}` (corners optional: the phone's live frame, 0..1, top-left first, clockwise) answers `{"ok": true, "size": [w, h], "pages": [...]}`; each page: `quad` (0..1 of its photo), `box` (the photo's place on a white page, pixels, or `null`), `source` (`model` — the corner model; `phone` — the phone's corners kept; `more` — another document on the same photo; `photo` — a photo on a white page with no frame in it, whole; `whole` — nothing found, the whole picture), `turn` (clockwise quarter-turns applied by the face; −1 no face, −2 the face finder failed), `blurry` / `blurVariance`, `imageBase64` (JPEG, enhanced, at most 1800 px). The photo is worked on at most 2400 px.

@@ -615,6 +615,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && JSON.stringify(scw.queued) === JSON.stringify([{ready: true, upright: true}, {ready: true, upright: false}]),
     'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done hands them to the reading, the page without a face still to be turned ' + JSON.stringify({scw, findCalls}));
   await p.unroute(/cloudfunctions\.net\/preprocess_scan$/);
+  // The contract pages of a scan become one PDF, a page per photo (src/scan/pdf.ts).
+  const cpdf = await p.evaluate(async jpg => {
+    const b64 = await ManagerScan.imagesToPdf([{b64: jpg, mediaType: 'image/jpeg'}, {b64: jpg, mediaType: 'image/jpeg'}]);
+    const txt = atob(b64);
+    return {head: txt.slice(0, 8), pages: (txt.match(/\/Type \/Page\b/g) || []).length, count: /\/Count 2\b/.test(txt), images: (txt.match(/\/DCTDecode/g) || []).length, eof: /%%EOF\s*$/.test(txt),
+      size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(jpg), c => c.charCodeAt(0))))};
+  }, JPG);
+  ok(cpdf.head === '%PDF-1.4' && cpdf.pages === 2 && cpdf.count && cpdf.images === 2 && cpdf.eof && cpdf.size === '{"h":8,"w":8}', 'scan contract: its pages become one PDF, a page per photo ' + JSON.stringify(cpdf));
   // Field search: the card's missing rows and the modal's marked fields search the saved scan
   const fs = await p.evaluate(async () => {
     const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'SCAN', scanMediaType:'image/jpeg', sigPng:null, extraPages:[{b64:'SEF', mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});

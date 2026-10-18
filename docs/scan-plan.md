@@ -66,6 +66,9 @@ A standing tool kept in the repo for trying and tuning the scanner's on-device p
 
 ### Contracts in the scan (owner, 2026-10-18)
 
+**Done:** contract pages → one PDF of type Contract in the worker's documents (`saveScanContract`, `src/scan/pdf.ts`). **Left for S3** (the review screen in React): the page kind shown and changed on the review screen, "Other" pages unsaved by default, the failed upload as a worker notice (now a toast and Admin → Errors).
+
+
 - Pages found to be a **contract** (a page Haiku calls a contract that reads as no ספח: no ID number and no names) are saved to the worker's documents as **one PDF of type "Contract"** (all the contract pages of the scan, in order) — the worker's contracts, with its expiry reminder — not into the Form 101 packet as now.
 - The contract's end date is **not** read by AI: the owner sets it when wanted (Add document / the document's expiry), as today.
 - On the review screen every page shows its kind (ID, ספח, Passport, Contract, Other) and a tap changes it before saving; "Other" pages are left unsaved by default.

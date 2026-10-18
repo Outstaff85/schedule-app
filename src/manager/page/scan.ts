@@ -12,13 +12,14 @@ import { DOC_STORE, workerAddress, workerDocId } from '../logic/workers';
 import { firmProfileMissing } from '../logic/admin';
 import { API_URL, loadFirestoreBackend, uploadWorkerFile } from '../data/api';
 import { getSession, gsAuth } from '../data/session';
-import { reportTiming } from '../data/telemetry';
+import { reportError, reportTiming } from '../data/telemetry';
 import { autoSave } from '../data/store';
 import { refreshTenantProfile } from './admin';
 import { renderWorkerUploadProgress } from './worker-window';
 import { render } from './render';
 import { renderWorkersPage } from './workers';
 import { openScanner } from '../../scan/open';
+import { imagesToPdf } from '../../scan/pdf';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
   "_scanPipelineLoading": {get: () => _scanPipelineLoading, set: (v?: any) => { _scanPipelineLoading = v; }, configurable: true},
@@ -61,6 +62,25 @@ function ensureScanPipelineLoaded(){
     document.head.appendChild(s);
   });
   return _scanPipelineLoading;
+}
+// The contract pages of a scan, saved to the worker's documents as one PDF of type
+// "contract" (docs/scan-plan.md → Contracts in the scan): after the worker is saved,
+// with one retry; its end date is not read — set by hand when wanted.
+async function saveScanContract(w?: any,pages?: any[]){
+  try{
+    const pdf=await imagesToPdf(pages!.map((p?: any)=>({b64:p.b64,mediaType:p.mediaType})));
+    const fileName='Contract '+(w.name||'').trim()+'.pdf';
+    const send=()=>uploadWorkerFile({action:'saveWorkerFile',workerId:w.id,fileBase64:pdf,fileName,mimeType:'application/pdf'},()=>{});
+    let r=await send().catch(()=>null);
+    if(!r||!r.ok) r=await send().catch(()=>null);
+    if(!r||!r.ok) throw new Error((r&&r.error)||'network error');
+    const doc={id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),type:'contract',name:fileName,fileId:r.id,url:r.url,mediaType:'application/pdf',uploadedAt:new Date().toISOString(),expiry:''};
+    window.ManagerBridge!.addDocs(w.id,[doc]);
+    showToast(tr('The contract ({0} pages) was added to the documents of {1}',{0:pages!.length,1:w.name||''}));
+  }catch(e: any){
+    showToast(tr('The contract could not be saved: {0} — add it from Add document',{0:(e&&e.message)||String(e)}),5000);
+    reportError('saveScanContract: '+((e&&e.message)||e),'saveScanContract','');
+  }
 }
 // New-scan entry point (the "Scan passport" button) — awaits the
 // pipeline before calling openAiScan(), which only exists once it's loaded.
@@ -263,6 +283,9 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
         if(oldJson&&oldJson.ok&&!sigPng&&oldJson.sigPng) sigPng=oldJson.sigPng;
       }catch(e: any){}
     }
+    // The contract pages of this scan go to the worker's documents as one PDF (saveScanContract), not into Form 101.
+    const contractPages=isRegen?[]:otherPagesToUse.filter((p?: any)=>p&&p.contract);
+    if(contractPages.length) otherPagesToUse=otherPagesToUse.filter((p?: any)=>!(p&&p.contract));
     if(sigPng) payload.signaturePngBase64=sigPng.split(',')[1];
     const extraPages: any=[];
     if(scanImage) extraPages.push({b64:scanImage.b64,mediaType:scanImage.mediaType,caption:'Document scan'});
@@ -365,6 +388,7 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast(tr('Documents of {0} saved to {1}',{0:(w.name||''),1:(DOC_STORE)}));
         window.__aiRescanWorkerId=null;
+        if(contractPages.length) void saveScanContract(w,contractPages);
       } else showToast(tr('File saved to {0}',{0:(DOC_STORE)}));
     } else {
       const blob=new Blob([out],{type:'application/pdf'});
