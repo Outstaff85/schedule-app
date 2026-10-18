@@ -4,7 +4,7 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 
 `schedule-manager.html` is one file: CSS and markup (lines ~1–950), then one inline `<script>`. Every function of the page is a global. Since the React migration (stages 6–7) every tab and window is React; the page keeps the frame (the title bar, the side menu / bottom bar and the More sheet, the bell, the account menu, the Language sheet), the login and the super-admin's Firms screen header, the map picker, the scan window, the data layer and the actions the React pieces call through `window.ManagerBridge`. It loads more files:
 - `assets/manager.js` — at startup, one module script: every tab and window, [build.md](build.md) → The manager's React pieces;
-- `manager-core.js` — before the page's script: the page's data layer (the session, the dispatcher, load / save / cache, the punches, uploads, telemetry — Data calls below), generated from `src/manager/data/` (React migration stage 8b);
+- `manager-core.js` — before the page's script: the page's data layer (the session, the dispatcher, load / save / cache, the punches, uploads, telemetry — Data calls below), generated from `src/manager/globals.ts`, which takes `src/manager/data/` (the data layer) and `src/manager/logic/` (the page's decisions and computations, no drawing) (React migration stages 8b, 8c-1);
 - `firestore-backend.js` — at startup (`manager-core.js` starts loading it), the browser data layer, [backend.md](backend.md);
 - `scan-pipeline.js` — on the first scan, [scan.md](scan.md);
 - pdf.js — when a PDF is read, [scan.md](scan.md).
