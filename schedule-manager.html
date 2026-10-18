@@ -2621,11 +2621,6 @@ function saveMapPick(){
   closeModal('mapPickOverlay');
 }
 
-// Highlights every caption-labelled filter that has a choice made.
-function markActiveFilters(){
-  document.querySelectorAll('.filter-field select').forEach(el=>el.classList.toggle('filter-on', !!el.value));
-}
-document.addEventListener('change', e=>{ if(e.target.closest && e.target.closest('.filter-field')) markActiveFilters(); });
 // Hours worked this calendar month, per worker — the same canonical shift
 // pairing (getWorkerMonthShifts → groupPunchesIntoShifts/analyzeDayPunches)
 // the hours export uses, so the card can never disagree with it.
