@@ -1,9 +1,9 @@
 # Build: the new stack and dist/
 
-The move to React ([react-migration-plan.md](react-migration-plan.md)) runs page by page. Until stage 7 two kinds of page live side by side:
+The move to React ([react-migration-plan.md](react-migration-plan.md)) is done (stages 0–7). Two kinds of page build into `dist/`:
 
-- **New pages** — React + TypeScript + Tailwind + shadcn/ui in `src/`, built by Vite. Now: the test page `/next` (stage 0, `next/index.html` → `src/next/`), the client portal (stage 3, `client-portal.html` at the repo root → `src/client/`), the supplier portal (stage 4, `supplier-portal.html` → `src/supplier/`) and the worker punch page (stage 5, `worker-punch.html` → `src/punch/`); they keep their old file names, so `/client`, `/supplier`, `/punch`, the manager app's hand-over, the workers' links and the service worker's list stay the same.
-- **Old pages** — the self-contained HTML file at the repo root (`schedule-manager.html`) with its scripts and files, copied into the build unchanged. Stage 6 moves it tab by tab: its tabs already in React come from one built module, `assets/manager.js` (below).
+- **New pages** — React + TypeScript + Tailwind + shadcn/ui in `src/`, built by Vite: the test page `/next` (`next/index.html` → `src/next/`), the client portal (`client-portal.html` at the repo root → `src/client/`), the supplier portal (`supplier-portal.html` → `src/supplier/`) and the worker punch page (`worker-punch.html` → `src/punch/`); they keep their old file names, so `/client`, `/supplier`, `/punch`, the manager app's hand-over, the workers' links and the service worker's list stay the same.
+- **The manager app** — `schedule-manager.html` at the repo root, copied into the build unchanged with the files it loads (`firestore-backend.js`, `scan-pipeline.js`, `payroll.js`, `og.css`, the fonts and the icon subset). Every tab and window is React, from one built module, `assets/manager.js` (below); the page itself keeps the frame, the login, the side panel, the map picker, the scan window and the data layer the React pieces call through `ManagerBridge`.
 
 Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
