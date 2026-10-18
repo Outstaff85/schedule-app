@@ -1,8 +1,7 @@
 // The hours review's data (docs/hours-review.md): what the `hours` Cloud
 // Function (functions-auth/hours.py) replies, the month's days per worker and
-// each day's state. The same rules as the old pages' hours-review.js
-// (hrvMonthDays / hrvDayState / hrvSchedDay — keep the two the same until the
-// old pages move): the shift pairing is the payroll module's.
+// each day's state (they replaced the old pages' hours-review.js, now
+// removed); the shift pairing is the payroll module's.
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { analyzeDayPunches, groupPunchesIntoShifts, localYMD, type Punch } from '@/lib/payroll';
 

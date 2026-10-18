@@ -18,6 +18,7 @@
       ".firebaserc",
       "*.md",
       "docs/**",
+      "archive/**",
       "node_modules/**",
       "functions/**",
       "functions-auth/**",

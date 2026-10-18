@@ -3,7 +3,7 @@
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
-const CACHE = 'schedule-mgr-v131';
+const CACHE = 'schedule-mgr-v132';
 // The punch page's manifest is built by Vite under a hashed name in /assets/
 // (not listed here: addAll fails on a missing file); like the pages' built
 // files, it is kept on its first fetch.
@@ -67,7 +67,8 @@ self.addEventListener('fetch', e => {
       caches.match(req, { ignoreSearch: true }).then(r => {
         if (r) return r;
         if (isNav) {
-          const page = url.pathname.indexOf('worker-punch') !== -1 ? './worker-punch.html'
+          // workers open /punch?t=… (the Hosting rewrite), not worker-punch.html
+          const page = (/^\/punch(\/|$)/.test(url.pathname) || url.pathname.indexOf('worker-punch') !== -1) ? './worker-punch.html'
             : url.pathname.indexOf('supplier') !== -1 ? './supplier-portal.html'
             : url.pathname.indexOf('client') !== -1 ? './client-portal.html'
             : './schedule-manager.html';

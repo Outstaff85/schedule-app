@@ -38,6 +38,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
+from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 ROLES_SUB = ("staff", "supplier", "hr", "client")    # what a firm can create for itself
@@ -415,7 +416,7 @@ def create_firm(db, caller, body):
     if err:
         return {"error": err}
     # Strings stay strings in Firestore: no leading-zero loss on phone or
-    # deductions file number (the Sheets bug in CLAUDE.md Troubleshooting).
+    # deductions file number (the old Sheets bug, docs/history.md).
     profile = {k: str(body.get(k) or "") for k in PROFILE_FIELDS}
     db.collection("tenants").document(tenant_id).set(
         dict(profile, createdAt=_now_iso(), workerCount=0, clientCount=0))
@@ -498,7 +499,7 @@ def update_user(db, caller, body, revoke):
                                                        "showPay", "commissionRate", "commissionDayRate")):
         return {"error": E_ADMIN_TARGET}
     upd = {}
-    # A login may move between staff, hr and supplier (never to an admin role).
+    # A login may move between staff, hr, supplier and client (never to an admin role).
     new_role = body.get("role") or role
     if new_role != role:
         if new_role not in ROLES_SUB:
@@ -660,13 +661,23 @@ def set_tenant_active(db, caller, body, revoke):
     users = _tenant_users(db, tid)
     batch = db.batch()
     batch.set(db.collection("tenants").document(tid), {"active": active}, merge=True)
+    # Turning a firm off disables only the logins that were on, and marks
+    # them; turning it back on re-enables only the marked ones — a login the
+    # owner had disabled on its own stays disabled.
+    changed = []
     for u in users:
-        batch.update(u.reference, {"active": active})
+        d = u.to_dict() or {}
+        if not active and d.get("active", True) is not False:
+            batch.update(u.reference, {"active": False, "disabledWithFirm": True})
+            changed.append(u)
+        elif active and d.get("disabledWithFirm"):
+            batch.update(u.reference, {"active": True, "disabledWithFirm": firestore.DELETE_FIELD})
+            changed.append(u)
     batch.commit()
     if not active:
         for u in users:
             revoke(u.id)
-    return {"ok": True, "updated": len(users), "active": active}
+    return {"ok": True, "updated": len(changed), "active": active}
 
 
 def delete_tenant(db, caller, body, revoke):

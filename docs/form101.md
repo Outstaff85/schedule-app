@@ -45,7 +45,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
 
 ## Building the PDF (`build_form101_pdf`, functions/main.py)
 
-- **Template:** `functions/assets/form101_fillable.pdf`, with the Heebo font (`functions/assets/heebo-hebrew.ttf`). The copies at the repo root are the source copies — re-sync `functions/assets/` if they change.
+- **Template:** `functions/assets/form101_fillable.pdf`, with the Heebo font (`functions/assets/heebo-hebrew.ttf`). These are the only copies (the old root copies are in `archive/`).
 - **`Form101Builder`** addresses fields by their AcroForm names.
   - **Hebrew text:** `set_hebrew()` sets the value, blanks the field's own appearance, and draws the text by hand. PyMuPDF has no RTL shaping, so the text goes through `bidi.get_display()` and is right-aligned.
   - **Plain text:** `set_text()` keeps PyMuPDF's own appearance (fine for left-to-right text). `set_text_centered()` draws it centered by hand (the house number).

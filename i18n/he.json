@@ -1283,5 +1283,7 @@
   "Light": "בהירה",
   "System": "לפי המכשיר",
   "Unknown theme": "ערכת נושא לא מוכרת",
-  "Theme switch (Dark / Light / System)": "מתג ערכת נושא (כהה / בהירה / לפי המכשיר)"
+  "Theme switch (Dark / Light / System)": "מתג ערכת נושא (כהה / בהירה / לפי המכשיר)",
+  "Punch not recorded: {0}": "ההחתמה לא נרשמה: {0}",
+  "Checking your location again — punch in a moment": "בודקים שוב את המיקום — נסו להחתים בעוד רגע"
 }

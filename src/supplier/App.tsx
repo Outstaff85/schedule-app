@@ -44,8 +44,9 @@ function passGate(): Promise<Gate | null> {
     if (!getSession()) return null;
     let b;
     try { b = await loadBackend(); } catch { return { sections: ['dashboard', 'workers', 'hours'], review: false }; }
-    // The Firebase sign-in is gone (site data cleared, signed out): log in again.
-    if (!b.currentUser()) { localStorage.removeItem(SESSION_KEY); return null; }
+    // The Firebase sign-in is gone (site data cleared, signed out), or it is another user's: log in again.
+    const u = b.currentUser();
+    if (!u || u.uid !== getSession()?.uid) { localStorage.removeItem(SESSION_KEY); return null; }
     const [ss, hp] = await Promise.all([b.supplierSections().catch(() => ['dashboard', 'workers', 'hours']), b.hourPerms().catch(() => [] as string[])]);
     const sections = (['dashboard', 'workers', 'hours'] as Tab[]).filter(t => ss.includes(t));
     return { sections, review: hp.some(p => p === 'hours' || p === 'schedule') };

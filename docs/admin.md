@@ -35,7 +35,7 @@ The punch log's Log / By Client switch is a segmented switch (`ToggleGroup`); ev
   - another firm's punches (super-admin summary) use the same window (`punchesOnce`).
 - **Writing:**
   - `gsSavePunch(entry)` / `gsUpdatePunch(data)` / `gsDeletePunch(id)` write to Firestore directly;
-  - `updatePunch` writes only `type`, `time`, `site`, `notes`, `clientId` and `editedAt`;
+  - `updatePunch` writes only `type`, `time`, `site`, `notes`, `clientId`, `ts` (`savePunchEdit` moves it to the edited time on the same local day — the live sync rebuilds `time` from `ts`) and `editedAt`;
   - display helpers: `punchSite(e)` (the client from `clientId`, else the stored site, else the worker's first client), `latestOf(entries)`.
 
 ## Punch Log pane

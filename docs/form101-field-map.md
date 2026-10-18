@@ -2,7 +2,7 @@
 
 What `build_form101_pdf()` in `functions/main.py` writes into each field of the PDF template `form101_fillable.pdf` (template revision 0101/130, 11.2025, two pages, A4 595.3 × 841.9 pt). Keep this file in sync with `functions/main.py`. The request that feeds it and where the PDF is stored are in [form101.md](form101.md).
 
-The template file exists twice: `form101_fillable.pdf` at the root and `functions/assets/form101_fillable.pdf`, which the function reads. They must be the same file.
+The template file is `functions/assets/form101_fillable.pdf`, which the function reads — the only copy (the old root copy is in `archive/`).
 
 ## How values are written
 
@@ -141,7 +141,7 @@ When `form101_fillable.pdf` is replaced, dump its fields and compare them with t
 ```
 python - <<'PY'
 import pymupdf
-for i, page in enumerate(pymupdf.open('form101_fillable.pdf')):
+for i, page in enumerate(pymupdf.open('functions/assets/form101_fillable.pdf')):
     page.get_pixmap(matrix=pymupdf.Matrix(2, 2)).save(f'page{i+1}.png')
     for w in page.widgets():
         print(i + 1, w.field_name, w.field_type_string, w.rect, w.text_maxlen)

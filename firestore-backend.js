@@ -367,6 +367,7 @@
     async function updatePunch(t, data){
       const upd = {editedAt: new Date().toISOString()};
       ['type','time','site','notes','clientId'].forEach(k => { if(data[k] !== undefined) upd[k] = k === 'clientId' ? (data[k] || null) : data[k]; });
+      if(data.ts){ const when = new Date(data.ts); if(!isNaN(when.getTime())) upd.ts = F.Timestamp.fromDate(when); }
       await F.updateDoc(F.doc(db,'tenants',t,'punches',String(data.id)), upd);
       return {ok:true};
     }
@@ -499,13 +500,21 @@
         const [h, mi] = String(time).split(':').map(Number);
         return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), h||0, mi||0).toISOString();
       };
+      const ddmmyyyy = d => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
       const batch = F.writeBatch(db);
       (b.rows || []).forEach((r, i) => {
+        const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
         [['in', r.inTime], ['out', r.outTime]].forEach(([type, time]) => {
           if(!time) return;
+          let ts = tsFor(r.date, time), date = r.date;
+          // A night shift (out at or before in) ends the next day.
+          if(type === 'out' && inTs && ts <= inTs){
+            const next = new Date(ts); next.setDate(next.getDate() + 1);
+            ts = next.toISOString(); date = ddmmyyyy(next);
+          }
           const id = 'imp-' + batchId + '-' + i + '-' + type;
           batch.set(F.doc(db,'tenants',t,'punches',id), punchDoc({id, workerId: r.workerId, workerName: names[r.workerId] || '',
-            type, time, date: r.date, ts: tsFor(r.date, time), clientId: r.clientId || '', notes: note, gpsWarnings: []},
+            type, time, date, ts, clientId: r.clientId || '', notes: note, gpsWarnings: []},
             hrs[r.workerId] || null));
         });
       });

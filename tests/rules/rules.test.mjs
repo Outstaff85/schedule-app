@@ -1,5 +1,5 @@
 // Security-rules tests for firestore.rules and storage.rules
-// (FIRESTORE_PLAN.md stage 1). Runs against the local emulators:
+// (docs/backend.md, docs/tests.md). Runs against the local emulators:
 //   cd tests/rules && npm install && npm test
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -257,6 +257,10 @@ test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only w
   await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { name: 'Other 2', hourlyRate: 42, hrId: 'u-other', travelMonthly: 100, bank: 'Y' }));
   await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'n9'), { name: 'New', hourlyRate: 30 }));
   await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'n9'), { name: 'New' }));
+  // only the owner assigns a worker to an hr
+  await assertFails(updateDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrOwn' }));
+  await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'n10'), { name: 'New', hrId: 'u-hrOwn' }));
+  await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrOwn' }));
 });
 
 test('hr own-workers: punches and pending hours of its own workers only', async () => {
@@ -333,6 +337,17 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
 });
 
+test('storage: a client\'s signed month PDF is server-only — managers read it, no browser login writes or deletes it', async () => {
+  const pSigned = 'tenants/' + A + '/clients/c1/documents/hours-2026-10-signed.pdf';
+  await env.withSecurityRulesDisabled(async ctx => { await uploadString(ref(ctx.storage(), pSigned), 'signed'); });
+  await assertSucceeds(getBytes(ref(st('ownerA'), pSigned)));
+  await assertFails(uploadString(ref(st('staffWorkers'), pSigned), 'forged'));
+  await assertFails(uploadString(ref(st('ownerA'), pSigned), 'forged'));
+  await assertFails(uploadString(ref(st('hrAll'), pSigned), 'forged'));
+  await assertFails(deleteObject(ref(st('staffWorkers'), pSigned)));
+  await assertFails(deleteObject(ref(st('ownerA'), pSigned)));
+});
+
 test('storage: hr uploads with the workers section; an own-workers hr reads back only its stamped files, deletes via the function', async () => {
   const pA = 'tenants/' + A + '/workers/w2/form101.pdf';
   const mine = { customMetadata: { hrId: 'u-hrOwn' } };
@@ -340,6 +355,8 @@ test('storage: hr uploads with the workers section; an own-workers hr reads back
   await assertFails(uploadString(ref(st('hrOwn'), pA), 'pdf', 'raw', { customMetadata: { hrId: 'u-other' } }));
   await assertSucceeds(uploadString(ref(st('hrOwn'), pA), 'pdf', 'raw', mine));
   await assertSucceeds(getBytes(ref(st('hrOwn'), pA)));
+  // another own-workers hr can't replace a file stamped by this one
+  await assertFails(uploadString(ref(st('hrOwnClients'), pA), 'evil', 'raw', { customMetadata: { hrId: 'u-hrOwnC' } }));
   const pOther = 'tenants/' + A + '/workers/w3/form101.pdf';
   await assertSucceeds(uploadString(ref(st('ownerA'), pOther), 'pdf'));
   await assertFails(getBytes(ref(st('hrOwn'), pOther)));

@@ -1,6 +1,6 @@
 name: Deploy Firestore and Storage rules
 
-# Firestore migration (FIRESTORE_PLAN.md stage 1): tests the security rules on
+# Security rules (docs/backend.md): tests the security rules on
 # the emulators, then deploys firestore.rules, firestore.indexes.json and
 # storage.rules. A failing rules test stops the deploy.
 on:
