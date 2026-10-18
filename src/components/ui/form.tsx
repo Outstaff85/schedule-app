@@ -44,7 +44,7 @@ function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
 
 function FormLabel({ className, ...props }: React.ComponentProps<typeof LabelPrimitive.Root>) {
   const { error, formItemId } = useFormField();
-  return <Label data-slot="form-label" data-error={!!error} className={cn('data-[error=true]:text-[#ff8a95]', className)} htmlFor={formItemId} {...props} />;
+  return <Label data-slot="form-label" data-error={!!error} className={cn('data-[error=true]:text-[var(--red-text)]', className)} htmlFor={formItemId} {...props} />;
 }
 
 function FormControl(props: React.ComponentProps<typeof Slot.Root>) {
@@ -60,7 +60,7 @@ function FormMessage({ className, ...props }: React.ComponentProps<'p'>) {
   const { error, formMessageId } = useFormField();
   const body = error ? tr(String(error.message ?? '')) : props.children;
   if (!body) return null;
-  return <p data-slot="form-message" id={formMessageId} className={cn('text-xs text-[#ff8a95]', className)} {...props}>{body}</p>;
+  return <p data-slot="form-message" id={formMessageId} className={cn('text-xs text-[var(--red-text)]', className)} {...props}>{body}</p>;
 }
 
 /** Two short fields on one line, on a phone and a computer. */

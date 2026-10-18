@@ -64,7 +64,7 @@ function DayMarks({ w, start, today }: { w: SchedWorker; start: Date; today: str
         const k = isWork(x) ? (crossesMidnight(x) ? 'n' : 'w') : (w.status === 'vacation' ? 'o' : '-');
         return (
           <i key={di} data-k={k} className={cn('h-1.5 w-4 rounded-[3px] bg-white/12', k === 'w' && 'bg-ok', k === 'n' && 'bg-info', k === 'o' && 'bg-warn',
-            localYMD(addDays(start, di)) === today && 'shadow-[0_0_0_1.5px_rgba(255,255,255,.7)]')} />
+            localYMD(addDays(start, di)) === today && 'shadow-[0_0_0_1.5px_rgba(var(--tint),.7)]')} />
         );
       })}
     </span>

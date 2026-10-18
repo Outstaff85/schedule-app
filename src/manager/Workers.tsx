@@ -200,7 +200,7 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
             placeholder={tr('Search: name, ID / passport, phone, client...')} />
           <Button data-testid="workers-filters-btn" aria-expanded={open} className={cn(open && 'border-info text-info')} onClick={toggleOpen}>
             <IconFilter />{tr('Filters')}
-            {chips.length > 0 && <span data-testid="workers-filters-n" className="rounded-full bg-info px-1.5 font-mono text-[11px] text-white">{chips.length}</span>}
+            {chips.length > 0 && <span data-testid="workers-filters-n" className="rounded-full bg-info px-1.5 font-mono text-[11px] text-[#fff]">{chips.length}</span>}
             {open ? <IconChevronUp /> : <IconChevronDown />}
           </Button>
           <ToggleGroup type="single" value={view} onValueChange={v => { if (v) pickView(v as 'cards' | 'list'); }} aria-label={tr('Layout')} data-testid="workers-view">

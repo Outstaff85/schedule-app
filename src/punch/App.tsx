@@ -30,7 +30,7 @@ export function App() {
   return (
     <>
       {s.screen === 'loading' && (
-        <div id="loadingScreen" style={{ position: 'fixed', inset: 0, background: '#0f1117', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#7c84a0', fontFamily: '"DM Sans",-apple-system,sans-serif', zIndex: 999 }}>
+        <div id="loadingScreen" style={{ position: 'fixed', inset: 0, background: 'var(--surface)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--text2)', fontFamily: '"DM Sans",-apple-system,sans-serif', zIndex: 999 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📡</div><div style={{ fontSize: 16 }}>{tr('Verifying...')}</div>
         </div>
       )}

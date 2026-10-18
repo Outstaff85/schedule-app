@@ -20,7 +20,7 @@ export function AccountMenu({ name, sub, onSignOut, children }: {
       <DropdownMenuTrigger asChild>
         <button type="button" data-testid="account-btn" aria-label={name}
           className="flex h-9 max-w-[240px] shrink-0 items-center gap-2 rounded-full border border-glass-edge bg-glass pl-1 pr-2.5 text-[13px] font-semibold max-[500px]:px-1">
-          <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold uppercase text-white"
+          <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold uppercase text-[#fff]"
             style={{ background: 'linear-gradient(135deg, var(--uline-1), var(--uline-2))' }}>{(name.trim()[0] || '?')}</span>
           <span className="truncate max-[500px]:hidden">{name}</span>
           <IconChevronDown className="size-3.5 text-ink-2 max-[500px]:hidden" />

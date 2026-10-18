@@ -151,12 +151,12 @@ function Tiles() {
   React.useEffect(() => { refreshTileHours(); }, [s.rev, s.worker, lang]);
   return (
     <div className="pp-tiles">
-      <button type="button" className="gbtn pp-tile" style={{ ['--c' as string]: '#4f8ef7' }} onClick={openSchedule} data-testid="tile-schedule">
+      <button type="button" className="gbtn pp-tile" style={{ ['--c' as string]: 'var(--accent)' }} onClick={openSchedule} data-testid="tile-schedule">
         {s.schedChanged && <span className="pp-tag" id="schedBadge">{tr('Updated')}</span>}
         <span className="pp-tile-h"><IconCalendarWeek className="ti" /> <span>{tr('My Schedule')}</span></span>
         <span className="pp-tile-v" id="tileNextShift">{nextShiftText(s.worker)}</span>
       </button>
-      <button type="button" className="gbtn pp-tile" style={{ ['--c' as string]: '#6dd6a0' }} id="myHoursLink" onClick={() => set({ screen: 'hours' })} data-testid="tile-hours">
+      <button type="button" className="gbtn pp-tile" style={{ ['--c' as string]: 'var(--green)' }} id="myHoursLink" onClick={() => set({ screen: 'hours' })} data-testid="tile-hours">
         <span className="pp-tile-h"><IconClockHour4 className="ti" /> <span>{tr('My Hours')}</span></span>
         <span className="pp-tile-v"><span>{tr('This month')}</span> <em className="fig" id="tileMonthHours">{s.tileHours}</em></span>
       </button>
@@ -168,18 +168,18 @@ function Tiles() {
 function ObjectPicker({ objs, name }: { objs: PClient[]; name: string }) {
   return (
     <div id="objectPicker" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 998, fontFamily: '"DM Sans",-apple-system,sans-serif' }}>
-      <div style={{ background: '#181c27', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 14, padding: 24, width: 420, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', textAlign: 'left' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 19, fontWeight: 600, color: '#eef0f8', letterSpacing: '-0.3px' }}><IconBuildingStore className="ti" /> {tr('Choose a site')}</div>
-        <div style={{ color: '#7c84a0', fontSize: 13, marginTop: 4, marginBottom: 18 }}>{name}</div>
+      <div style={{ background: 'var(--surface-2)', border: '1px solid rgba(var(--tint),0.13)', borderRadius: 14, padding: 24, width: 420, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', textAlign: 'left' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 19, fontWeight: 600, color: 'var(--text)', letterSpacing: '-0.3px' }}><IconBuildingStore className="ti" /> {tr('Choose a site')}</div>
+        <div style={{ color: 'var(--text2)', fontSize: 13, marginTop: 4, marginBottom: 18 }}>{name}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {objs.map(c => {
             const geo = c.lat != null && c.lng != null && c.lat !== '' && c.lng !== '';
             return (
               <button key={c.id} type="button" className="pp-pick" data-client-id={c.id} onClick={() => pickObject(c.id)}
-                style={{ background: '#1e2333', border: '1px solid rgba(255,255,255,0.13)', borderRadius: 12, padding: '14px 16px', color: '#eef0f8', fontSize: 15, fontWeight: 600, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ background: 'var(--surface-3)', border: '1px solid rgba(var(--tint),0.13)', borderRadius: 12, padding: '14px 16px', color: 'var(--text)', fontSize: 15, fontWeight: 600, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
                 <div><IconBuilding className="ti" /> {c.name || '—'}</div>
-                {c.object && <div style={{ fontSize: 12, color: '#7c84a0', fontWeight: 400, marginTop: 3 }}>{c.object}</div>}
-                <div style={{ fontSize: 11, color: geo ? '#6dd6a0' : '#f5a623', fontWeight: 400, marginTop: 5 }}>
+                {c.object && <div style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 400, marginTop: 3 }}>{c.object}</div>}
+                <div style={{ fontSize: 11, color: geo ? 'var(--green)' : 'var(--amber)', fontWeight: 400, marginTop: 5 }}>
                   {geo ? <IconMapPin className="ti" /> : <IconMapPinOff className="ti" />} {geo ? tr('geofence · {0} m', { 0: Number(c.radius) || 100 }) : tr('no geofence')}
                 </div>
               </button>

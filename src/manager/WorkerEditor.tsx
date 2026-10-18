@@ -329,7 +329,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   return (
     <div data-testid="worker-editor" data-edit={editId || ''} className="grid gap-2">
       <div className="mb-1 flex flex-wrap items-center gap-3" id="wAvatarWrap" style={{ ['--c' as string]: editing ? info.color : 'var(--neutral)' }}>
-        <div className="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-white" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(255,255,255,.06))', boxShadow: '0 0 0 2px var(--c)' }}>
+        <div className="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-ink" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(var(--tint),.06))', boxShadow: '0 0 0 2px var(--c)' }}>
           {initials(w.name || '?')}
         </div>
         <div className="min-w-0 flex-1">
@@ -530,7 +530,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               {token && (
                 <Field label={<><IconLink className="size-3.5" />{tr('Personal punch link')}</>}>
                   <div className="flex flex-wrap items-center gap-2 rounded-[12px] bg-white/[.05] px-3 py-2.5">
-                    <code className="min-w-0 flex-1 break-all text-[11px] text-[#8fb4ff]" data-testid="editor-link">{info.punchLink.replace(/t=.*$/, 't=' + token)}</code>
+                    <code className="min-w-0 flex-1 break-all text-[11px] text-[var(--blue-text)]" data-testid="editor-link">{info.punchLink.replace(/t=.*$/, 't=' + token)}</code>
                     <Button size="sm" onClick={() => api.copyLink(w.id)}><IconClipboardText className="size-4" />{tr('Copy')}</Button>
                   </div>
                   {geo ? <Hint tone="ok"><IconMapPin className="inline size-3" /> {tr('Geofence: {0} · {1}m', { 0: geo.name, 1: geo.radius || 100 })}</Hint>

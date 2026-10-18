@@ -10,6 +10,16 @@ const toks = [...t.color.tokens, ...t.spacing.tokens, ...t.radius.tokens, ...t.s
 const css = read('og.css'), root = (css.match(/:root\{([^}]*)\}/) || [])[1] || '';
 const norm = v => String(v).replace(/\s+/g, '').toLowerCase();
 const errs = [];
+// The light theme (docs/redesign.md → Light theme): every token with a "light"
+// value has it, under its own name, in og.css's :root[data-theme="light"] block.
+const light = [...t.color.tokens, ...t.shadow.tokens].filter(x => 'light' in x).map(x => [x.name, x.light]);
+const lroot = (css.match(/:root\[data-theme="light"\]\{([^}]*)\}/) || [])[1] || '';
+if(!light.length) errs.push('tokens.json: no token carries a light value');
+for(const [n, v] of light){
+  const m = lroot.match(new RegExp('--' + n.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);'));
+  if(!m) errs.push(`og.css: light token --${n} missing`);
+  else if(norm(m[1]) !== norm(v)) errs.push(`og.css: light --${n} is ${m[1].trim()}, tokens.json says ${v}`);
+}
 for(const [n, v] of toks){
   const m = root.match(new RegExp('--' + n.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);'));
   if(!m) errs.push(`og.css: token --${n} missing`);
@@ -29,6 +39,6 @@ for(const f of [...walk(path.join(ROOT, 'src')), path.join(ROOT, 'next', 'index.
   for(const [n] of toks) if(new RegExp('(^|[^\\w-])--' + n + '\\s*:').test(s)) errs.push(`${rel}: defines --${n} (it lives in og.css)`);
 }
 if(!/href="\/og\.css"/.test(fs.existsSync(path.join(ROOT, 'next', 'index.html')) ? read('next/index.html') : 'href="/og.css"')) errs.push('next/index.html: does not link /og.css');
-console.log(`${toks.length} tokens, ${errs.length} problems`);
+console.log(`${toks.length} tokens (${light.length} light), ${errs.length} problems`);
 errs.forEach(e => console.log('  ' + e));
 process.exit(errs.length ? 1 : 0);

@@ -32,7 +32,7 @@ function DropdownMenuContent({ className, sideOffset = 10, align = 'end', childr
         {...props}
       >
         {children}
-        <DropdownMenuPrimitive.Arrow width={14} height={7} className="fill-[rgba(40,45,64,.95)]" />
+        <DropdownMenuPrimitive.Arrow width={14} height={7} className="fill-[var(--pop-tail)]" />
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   );

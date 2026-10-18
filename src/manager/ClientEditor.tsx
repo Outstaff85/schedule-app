@@ -72,7 +72,7 @@ export function MiniFigs({ items, bad, ...rest }: { items: { value: React.ReactN
 export function EditorHead({ color, name, sub, menu }: { color: string; name: string; sub: React.ReactNode; menu?: { label: string; icon: React.ReactNode; danger?: boolean; run: () => void }[] }) {
   return (
     <div className="mb-1 flex items-center gap-3" data-testid="editor-head" style={{ ['--c' as string]: color }}>
-      <div className="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-white" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(255,255,255,.06))', boxShadow: '0 0 0 2px var(--c)' }}>
+      <div className="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-ink" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(var(--tint),.06))', boxShadow: '0 0 0 2px var(--c)' }}>
         {initials(name || '?')}
       </div>
       <div className="min-w-0 flex-1">
