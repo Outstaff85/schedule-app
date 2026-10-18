@@ -3,8 +3,10 @@
    this file is its one copy in the code, linked by all four pages. Part 1 is
    tokens.json as CSS custom properties (the same names; tests/design/check.js
    keeps them equal), part 2 the shared foundation (ground, glass, plates, the
-   highlight line, tick tiles, the Language button), part 3 the components of
-   components/bundle.css whose og-* names the pages do not already use. */
+   Language button), part 3 the components of components/bundle.css the pages
+   use, then the list pieces, the window pieces, the tabs and the light theme's
+   looks. Only what a page or a React piece still draws is kept (React
+   migration stage 7); the rest of the look is Tailwind on the tokens. */
 /* tokens:begin — written by tests/design/build.py from tokens.json */
 :root{
   --ground:#10141f;
