@@ -1565,7 +1565,6 @@ function analyzeDayPunches(entries,date){ return Payroll.analyzeDayPunches(entri
 // Pair one worker's punches into shifts chronologically, across midnight; each
 // bucket is tagged with the date of its opening punch.
 function groupPunchesIntoShifts(entries){ return Payroll.groupPunchesIntoShifts(entries); }
-function isMidnight(s,e){ return !!s&&!!e&&toMins(e)<=toMins(s); }
 // Shifts: the weekly roster (w.schedule[0..6], Sunday first) plus changes
 // made for one date only (w.dateShifts['YYYY-MM-DD'] = {type, start, end}),
 // which win over the roster on that date.
