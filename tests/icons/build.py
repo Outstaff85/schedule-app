@@ -16,10 +16,11 @@ import os, re, sys
 from fontTools import subset
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-FILES = ['schedule-manager.html', 'supplier-portal.html', 'worker-punch.html', 'client-portal.html', 'scan-pipeline.js', 'firestore-backend.js']
-# Built from pieces in code: 'ti ti-map-pin' + (hasGeo ? '' : '-off') (worker-punch.html),
-# 'ti ti-chevron-' + (open ? 'up' : 'down') (schedule-manager.html).
-EXTRA = ['map-pin-off', 'chevron-up', 'chevron-down']
+# The files that still draw `ti-*` icons: the manager page's frame and login,
+# and the scan pipeline. The React pages import their icons from @tabler/icons-react.
+FILES = ['schedule-manager.html', 'scan-pipeline.js']
+# Icon names glued from pieces in code (none at the moment).
+EXTRA = []
 VERSION = '3.31.0'
 
 pkg = sys.argv[1] if len(sys.argv) > 1 else 'package'
