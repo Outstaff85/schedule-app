@@ -37,6 +37,10 @@
     <option value="sa24_w16.onnx">Accurate only (42 MB)</option>
     <option value="lite.onnx">Light only (5 MB)</option>
   </select>
+  <select id="engine">
+    <option value="122">Engine: ONNX Runtime 1.22</option>
+    <option value="130">Engine: ONNX Runtime 1.30</option>
+  </select>
   <select id="backend">
     <option value="auto">Auto (GPU, else CPU)</option>
     <option value="webgpu">GPU (WebGPU)</option>
@@ -74,7 +78,11 @@
 </div>
 <div id="log"></div>
 
-<script src="/scan-test/ort/ort.all.min.js"></script>
+<script>
+// The ONNX Runtime build: ?ort=130 picks 1.30.0, else 1.22.0.
+const ORT_DIR = new URLSearchParams(location.search).get('ort') === '130' ? 'ort130' : 'ort';
+document.write('<script src="/scan-test/' + ORT_DIR + '/ort.all.min.js"><\/script>');
+</script>
 <script src="/scan-test/scan-core.js"></script>
 <script>
 const $ = id => document.getElementById(id);
@@ -83,14 +91,16 @@ const status = (t, frac) => { $('status').textContent = t; if (frac != null) $('
 window.addEventListener('error', e => log('Page error: ' + e.message));
 window.addEventListener('unhandledrejection', e => log('Error: ' + (e.reason && e.reason.message || e.reason)));
 if (typeof ort === 'undefined') log('ONNX Runtime did not load (ort.all.min.js)');
-ort.env.wasm.wasmPaths = location.origin + '/scan-test/ort/';
+ort.env.wasm.wasmPaths = location.origin + '/scan-test/' + ORT_DIR + '/';
 // Several CPU threads need a cross-origin isolated page (COOP/COEP headers on /scan-test).
 const THREADS = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
 ort.env.wasm.numThreads = THREADS;
+// Background threads for the live frame when the pool is used.
+const POOL = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
 
 const STEADY_MS = 2000, MOVE = 0.02;
 let smooth = null, steadySince = 0, lastRes = null, target = null, shown = null;
-let engine = null, engineKey = '', running = false, stream = null, busy = false;
+let engine = null, engineKey = '', running = false, stream = null, inFlight = 0, lastSent = 0, seq = 0, applied = 0;
 const times = [], frames = [], uiFrames = [];
 const small = document.createElement('canvas'); small.width = S; small.height = S;
 const sctx = small.getContext('2d', { willReadFrequently: true });
@@ -111,7 +121,7 @@ function pageEngine() {
   };
 }
 function workerEngine(threads) {
-  const w = new Worker('/scan-test/scan-worker.js'), waiting = new Map(); let n = 0, two = false, heard = performance.now();
+  const w = new Worker('/scan-test/scan-worker.js?ort=' + ORT_DIR), waiting = new Map(); let n = 0, two = false, heard = performance.now();
   const failAll = why => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
   // A worker that says nothing for 30 s while loading is taken as stuck.
   const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 25000) failAll('no answer for 25 s'); }, 1000);
@@ -139,12 +149,38 @@ function workerEngine(threads) {
 // is remembered on this device, so the next open starts with it.
 const WAYS = [
   { id: 'bg-gpu', label: 'GPU · bg', worker: true, ep: 'webgpu', threads: 1 },
+  { id: 'bg-pool', label: 'CPU · ' + POOL + ' bg threads + 1', worker: true, pool: true, ep: 'wasm', threads: 1 },
   { id: 'bg-cpu', label: 'CPU ×' + THREADS + ' · bg', worker: true, ep: 'wasm', threads: THREADS },
   { id: 'bg-cpu1', label: 'CPU ×1 · bg', worker: true, ep: 'wasm', threads: 1 },
   { id: 'page-cpu', label: 'CPU ×' + THREADS + ' · page', worker: false, ep: 'wasm', threads: THREADS },
 ];
-const WAY_KEY = 'scanTestWay';
+const WAY_KEY = 'scanTestWay2';
 const remembered = { get: () => { try { return localStorage.getItem(WAY_KEY); } catch (e) { return null; } }, set: v => { try { localStorage.setItem(WAY_KEY, v); } catch (e) {} } };
+
+// Several single-thread background threads: the live frames go to them in
+// turn (2–3 frames worked on at once), the accurate model has its own thread,
+// so a capture never stops the live frame. Phones that refuse CPU threads
+// inside a background thread still run several background threads.
+function poolEngine() {
+  const lives = Array.from({ length: POOL }, () => workerEngine(1)), capE = workerEngine(1), free = lives.slice();
+  let two = false;
+  return {
+    size: POOL,
+    async load(liveName, capName, want) {
+      two = !!capName;
+      const eps = await Promise.all(lives.map(e => e.load(liveName, null, want)).concat(two ? [capE.load(capName, null, want)] : []));
+      return eps[0] + (two && eps[eps.length - 1] !== eps[0] ? '/' + eps[eps.length - 1] : '');
+    },
+    hasCap: () => two,
+    async detect(which, rgba) {
+      if (which === 'cap' && two) return capE.detect('live', rgba);
+      const e = free.shift() || lives[0];
+      try { return await e.detect('live', rgba); } finally { if (!free.includes(e)) free.push(e); }
+    },
+    warp: (rgba, w, h, pts) => (two ? capE : lives[0]).warp(rgba, w, h, pts),
+    stop() { lives.forEach(e => e.stop()); capE.stop(); },
+  };
+}
 
 async function ensureSession() {
   const [live, cap] = $('model').value.split('+'), want = $('backend').value, inWorker = $('useWorker').checked;
@@ -157,13 +193,13 @@ async function ensureSession() {
   if (!navigator.gpu) ways = ways.filter(w => w.ep !== 'webgpu');
   if (want === 'webgpu') ways = WAYS.filter(w => w.ep === 'webgpu' && (inWorker || !w.worker)).concat(inWorker ? [] : [{ id: 'page-gpu', label: 'GPU · page', worker: false, ep: 'webgpu', threads: 1 }]);
   let last = remembered.get();
-  try { if (!last && localStorage.getItem('scanTestGpuBad') === '1') last = 'bg-cpu'; } catch (e) {}
+  try { if (!last && (localStorage.getItem('scanTestWay') || localStorage.getItem('scanTestGpuBad') === '1')) last = 'bg-pool'; } catch (e) {}
   const at = ways.findIndex(w => w.id === last);
   if (want === 'auto' && at > 0) { log('Starting with "' + ways[at].label + '" — it worked on this device last time (pick another option to retry all)'); ways = ways.slice(at); }
   let e = null, used = null;
   for (const w of ways) {
     status('Trying ' + w.label + '…', 0);
-    const cand = w.worker ? workerEngine(w.threads) : pageEngine();
+    const cand = w.pool ? poolEngine() : w.worker ? workerEngine(w.threads) : pageEngine();
     try { await cand.load(live, cap, w.ep); e = cand; used = w; break; }
     catch (err) { cand.stop(); log(w.label + ': ' + (err && err.message || err) + ' — trying the next way'); }
   }
@@ -216,7 +252,10 @@ requestAnimationFrame(animate);
 
 async function runOnce(src, w, h, el) {
   const isVideo = el.tagName === 'VIDEO';
+  const my = ++seq;
   const { res: raw, ms } = await engine.detect(isVideo ? 'live' : 'cap', smallRGBA(src, w, h));
+  if (isVideo && (!running || my < applied)) return;  // a later frame already answered, or a capture began
+  applied = my;
   const res = isVideo ? smoothen(raw) : raw;
   times.push(ms); if (times.length > 20) times.shift();
   const now = performance.now(); frames.push(now); while (frames.length && now - frames[0] > 2000) frames.shift();
@@ -256,13 +295,14 @@ async function showShot() {
   $('shot').scrollIntoView({ behavior: 'smooth' });
 }
 
-async function loop() {
+// Up to engine.size frames are worked on at once, sent evenly spaced.
+function loop() {
   if (!running) return;
-  const v = $('video');
-  if (!busy && v.readyState >= 2) {
-    busy = true;
-    try { await runOnce(v, v.videoWidth, v.videoHeight, v); } catch (e) { log('Error: ' + (e && e.message || e)); running = false; }
-    busy = false;
+  const v = $('video'), n = (engine && engine.size) || 1, now = performance.now();
+  const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 300;
+  if (inFlight < n && v.readyState >= 2 && now - lastSent >= avg / n) {
+    inFlight++; lastSent = now;
+    runOnce(v, v.videoWidth, v.videoHeight, v).catch(e => { log('Error: ' + (e && e.message || e)); running = false; }).finally(() => { inFlight--; });
   }
   requestAnimationFrame(loop);
 }
@@ -289,9 +329,12 @@ $('file').onchange = async e => {
   if (lastRes && !lastRes.pts.some(p => !p)) showShot();
 };
 $('model').onchange = $('backend').onchange = $('useWorker').onchange = async () => {
-  const was = running; running = false; while (busy) await new Promise(r => setTimeout(r, 30));
+  const was = running; running = false; while (inFlight) await new Promise(r => setTimeout(r, 30));
   await ensureSession().catch(() => {}); if (was) { running = true; loop(); }
 };
+$('engine').value = ORT_DIR === 'ort130' ? '130' : '122';
+$('engine').onchange = () => { location.search = '?ort=' + $('engine').value + '&v=' + Date.now(); };
+log('Engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || ORT_DIR));
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
 log('CPU threads: ' + THREADS + (self.crossOriginIsolated ? '' : ' (page not isolated)') + ' of ' + (navigator.hardwareConcurrency || '?'));
 // The models are fetched as soon as the page opens; the camera button waits for them.

@@ -24,26 +24,33 @@ async function fetchModel(name, onProgress) {
 // rather than at the first camera frame or the capture.
 async function openSession(model, want, onStatus, onLog) {
   const bytes = await fetchModel(model, (got, total) => onStatus('Downloading ' + model + ': ' + (got / 1e6).toFixed(1) + (total ? ' / ' + (total / 1e6).toFixed(1) : '') + ' MB', total ? got / total : 0));
-  const order = want === 'auto' ? ['webgpu', 'wasm'] : [want];
-  for (const ep of order) {
+  // On the GPU both memory layouts are tried: some phone GPUs return zeros with one of them.
+  const order = (want === 'auto' ? ['webgpu', 'wasm'] : [want]).flatMap(ep => ep === 'webgpu' ? [['webgpu', 'NHWC'], ['webgpu', 'NCHW']] : [[ep]]);
+  let gpuWrong = false;
+  for (const [ep, layout] of order) {
     if (ep === 'webgpu' && !(self.navigator && navigator.gpu)) { onLog('WebGPU is not available here'); continue; }
+    const name = ep === 'webgpu' ? 'the GPU (' + layout + ')' : 'the CPU';
     try {
-      onStatus('Starting ' + model + ' on ' + (ep === 'webgpu' ? 'the GPU' : 'the CPU') + '…', 1);
+      onStatus('Starting ' + model + ' on ' + name + '…', 1);
       // A step that hangs (seen on a phone) is given up after 20 s.
       const limit = (p, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
-      const sess = await limit(ort.InferenceSession.create(bytes, { executionProviders: [ep], graphOptimizationLevel: 'all' }), 'starting');
-      onStatus('Warming up ' + model + ' on ' + (ep === 'webgpu' ? 'the GPU' : 'the CPU') + '…', 1);
+      const sess = await limit(ort.InferenceSession.create(bytes, { executionProviders: [ep === 'webgpu' ? { name: 'webgpu', preferredLayout: layout } : ep], graphOptimizationLevel: 'all' }), 'starting');
+      onStatus('Warming up ' + model + ' on ' + name + '…', 1);
       await limit(sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]) }), 'warm-up');
       // Each model is checked on its own: a GPU may run one right and the other wrong.
       if (ep === 'webgpu') {
-        onStatus('Checking the GPU with ' + model + '…', 1);
+        onStatus('Checking ' + name + ' with ' + model + '…', 1);
         const t = await limit(selfTest(sess), 'self-test');
-        onLog('GPU self-test of ' + model + ': ' + (t.ok ? 'correct' : 'WRONG') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
-        if (!t.ok) { try { sess.release(); } catch (e) {} if (want === 'auto') { onLog(model + ': this GPU gives wrong results — using the CPU'); continue; } throw new Error('this GPU gives wrong results'); }
+        onLog('GPU (' + layout + ') self-test of ' + model + ': ' + (t.ok ? 'correct' : 'WRONG') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
+        if (!t.ok) { try { sess.release(); } catch (e) {} gpuWrong = true; continue; }
       }
       return { sess, ep };
-    } catch (e) { onLog('Could not start ' + model + ' on ' + ep + ': ' + (e && e.message || e)); if (want !== 'auto') throw e; }
+    } catch (e) {
+      onLog('Could not start ' + model + ' on ' + name + ': ' + (e && e.message || e));
+      if (want !== 'auto' && !(ep === 'webgpu' && layout === 'NHWC')) throw e;
+    }
   }
+  if (gpuWrong && want === 'webgpu') throw new Error('this GPU gives wrong results');
   throw new Error('no backend for ' + model);
 }
 

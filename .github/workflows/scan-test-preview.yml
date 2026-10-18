@@ -51,6 +51,9 @@ jobs:
           npm pack onnxruntime-web@1.22.0 --silent
           tar xzf onnxruntime-web-1.22.0.tgz
           cp package/dist/ort.all.min.js package/dist/*.wasm package/dist/ort-wasm-simd-threaded*.mjs dist/scan-test/ort/
+          # A newer engine to compare on phones whose GPU computes wrong with 1.22.
+          mkdir -p ort130 dist/scan-test/ort130 && (cd ort130 && npm pack onnxruntime-web@1.30.0 --silent && tar xzf onnxruntime-web-1.30.0.tgz)
+          cp ort130/package/dist/ort.all.min.js ort130/package/dist/*.wasm ort130/package/dist/ort-wasm-simd-threaded*.mjs dist/scan-test/ort130/
           cp scan-test/index.html scan-test/scan-core.js scan-test/scan-worker.js dist/scan-test/
           ls -la dist/scan-test dist/scan-test/ort
       - name: Cross-origin isolation (multithreaded WASM) and no stale copies, for /scan-test only
