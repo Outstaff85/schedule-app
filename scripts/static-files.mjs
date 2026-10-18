@@ -12,7 +12,7 @@ import path from 'node:path';
 // the new stack's own sources and config, and every dot entry.
 const EXCLUDED_TOP = new Set([
   'firebase.json', 'firestore.rules', 'firestore.indexes.json', 'storage.rules',
-  'docs', 'functions', 'functions-auth', 'tests', 'Tokens', 'node_modules',
+  'docs', 'functions', 'functions-auth', 'tests', 'node_modules',
   'dist', 'src', 'next', 'scripts',
   // the new pages' HTML entries at the top level, built by Vite (docs/build.md)
   'client-portal.html', 'supplier-portal.html', 'worker-punch.html',
