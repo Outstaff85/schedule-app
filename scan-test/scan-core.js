@@ -142,3 +142,51 @@ async function selfTest(sess) {
   const err = r.pts.some(p => !p) ? 1 : Math.max(...r.pts.map((p, i) => Math.hypot(p[0] - truth[i][0], p[1] - truth[i][1])));
   return { ok: err < 0.04, err, conf: r.conf };
 }
+
+// Upright by the face on the document (YuNet, MIT, 640×640 BGR 0..255): the
+// face found with the eyes above the mouth tells how to turn the shot.
+const FN = 640;
+function mkCanvas(w, h) { return typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h }); }
+// src turned by k clockwise quarter-turns.
+function turned(src, k) {
+  if (!k) return src;
+  const w = src.width, h = src.height, W = k % 2 ? h : w, H = k % 2 ? w : h, c = mkCanvas(W, H), g = c.getContext('2d');
+  g.translate(W / 2, H / 2); g.rotate(k * Math.PI / 2); g.drawImage(src, -w / 2, -h / 2); return c;
+}
+async function faceScore(sess, src) {
+  const s = FN / Math.max(src.width, src.height), c = mkCanvas(FN, FN), g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#000'; g.fillRect(0, 0, FN, FN); g.drawImage(src, 0, 0, Math.round(src.width * s), Math.round(src.height * s));
+  const d = g.getImageData(0, 0, FN, FN).data, n = FN * FN, f = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { f[i] = d[i * 4 + 2]; f[n + i] = d[i * 4 + 1]; f[2 * n + i] = d[i * 4]; }
+  const out = await sess.run({ input: new ort.Tensor('float32', f, [1, 3, FN, FN]) });
+  let best = null;
+  for (const st of [8, 16, 32]) {
+    const cols = FN / st, cls = out['cls_' + st].data, obj = out['obj_' + st].data, kps = out['kps_' + st].data;
+    for (let i = 0; i < cls.length; i++) {
+      const sc = Math.sqrt(Math.min(Math.max(cls[i], 0), 1) * Math.min(Math.max(obj[i], 0), 1));
+      if (best && sc <= best.sc) continue;
+      const r = Math.floor(i / cols), cc = i % cols;
+      best = { sc, p: [0, 1, 2, 3, 4].map(m => [(kps[i * 10 + 2 * m] + cc) * st, (kps[i * 10 + 2 * m + 1] + r) * st]) };
+    }
+  }
+  if (!best || best.sc < 0.5) return 0;
+  const [er, el, , mr, ml] = best.p;
+  const a = Math.atan2((mr[1] + ml[1]) / 2 - (er[1] + el[1]) / 2, (mr[0] + ml[0]) / 2 - (er[0] + el[0]) / 2);
+  return best.sc * Math.max(0, Math.sin(a));  // 1 when the mouth is straight below the eyes
+}
+// Clockwise quarter-turns that put the document upright; -1 when no face is found.
+async function faceTurn(sess, src) {
+  let bk = -1, bs = 0;
+  for (let k = 0; k < 4; k++) { const sc = await faceScore(sess, turned(src, k)); if (sc > bs) { bs = sc; bk = k; } }
+  return bk;
+}
+// The straightened shot (RGBA) turned upright when a face shows the way.
+async function uprightRGBA(faceSess, out) {
+  if (!faceSess) return Object.assign(out, { turn: -1 });
+  const c = mkCanvas(out.width, out.height);
+  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data.buffer), out.width, out.height), 0, 0);
+  const k = await faceTurn(faceSess, c);
+  if (k <= 0) return Object.assign(out, { turn: k });
+  const t = turned(c, k), d = t.getContext('2d').getImageData(0, 0, t.width, t.height);
+  return { data: d.data, width: t.width, height: t.height, turn: k };
+}

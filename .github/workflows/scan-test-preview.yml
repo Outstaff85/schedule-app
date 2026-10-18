@@ -44,6 +44,9 @@ jobs:
           }
           get 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl sa24.onnx
           get 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a lite.onnx
+          # The face finder that sets a shot upright (YuNet, MIT, OpenCV zoo).
+          [ -s /tmp/models/yunet.onnx ] || curl -sSL --fail -o /tmp/models/yunet.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+          cp /tmp/models/yunet.onnx dist/scan-test/yunet.onnx
           cp /tmp/models/sa24.onnx /tmp/sa24.onnx
           cp /tmp/models/lite.onnx dist/scan-test/lite.onnx
           # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.

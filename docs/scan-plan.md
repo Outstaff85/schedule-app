@@ -45,6 +45,7 @@ Proven on the owner's Android phone with the test page (`scan-test/`, 2026-10-18
 - **Frames:** each camera frame is scaled to 256×256 on the GPU (`createImageBitmap`) and handed to a background thread as is — no full-size copy in the page.
 - **The frame on screen:** a thin line, no corner dots; red while searching, green once it has sat on the document's edges for 0.25 s; it glides toward the latest result on every screen frame. **Autocapture** when the green frame has held still for 1.5 s (a countdown shown); a Capture button too.
 - **The shot** is shown at once, straightened by the live frame; the accurate model then refines the corners in the background and replaces the shot if they moved.
+- **Upright:** the straightened shot is turned upright by the face on the document — a small face finder (YuNet, MIT, 0.2 MB) is run on the 4 quarter-turns and the turn with a face whose eyes are above its mouth wins (40 of 40 turned right on the owner's photos). A document with no face (the ספח) keeps its turn on the phone and is set upright on the server with its reading. A text-direction model (RapidOrientation) was tried and dropped: it takes upright Hebrew documents for upside down.
 - The test page `scan-test/` and its workflow `.github/workflows/scan-test-preview.yml` (a Firebase preview channel) are temporary and are removed before any PR into `main`.
 
 ### S3 — reading in TypeScript

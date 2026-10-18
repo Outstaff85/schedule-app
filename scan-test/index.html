@@ -108,16 +108,17 @@ const sctx = small.getContext('2d', { willReadFrequently: true });
 
 // Two engines with one interface: in the page itself, or in the background worker.
 function pageEngine() {
-  let live = null, cap = null;
+  let live = null, cap = null, face = null;
   return {
-    async load(liveName, capName, want) {
+    async load(liveName, capName, want, withFace) {
       const a = await openSession(liveName, want, status, log); live = a.sess;
       const b = capName ? await openSession(capName, want, status, log) : a; cap = b.sess;
+      if (withFace !== false) face = await ort.InferenceSession.create(await fetchModel('yunet.onnx', () => {}), { executionProviders: ['wasm'] });
       return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
     },
     hasCap: () => cap !== live,
     async detect(which, input) { const t = performance.now(); const res = await detectRGBA(which === 'cap' ? cap : live, rgbaOf(input)); return { res, ms: performance.now() - t }; },
-    async warp(rgba, w, h, pts) { return warpRGBA(rgba, w, h, pts); },
+    async warp(rgba, w, h, pts, upright) { return uprightRGBA(upright ? face : null, warpRGBA(rgba, w, h, pts)); },
     stop() {},
   };
 }
@@ -135,13 +136,13 @@ function workerEngine(threads, dir = ORT_DIR) {
   w.onerror = e => { log('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
   const call = (msg, transfer) => new Promise((resolve, reject) => { msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
   return {
-    async load(liveName, capName, want) { two = !!capName; return (await call({ type: 'load', live: liveName, cap: capName, want, threads })).ep; },
+    async load(liveName, capName, want, withFace = true) { two = !!capName; return (await call({ type: 'load', live: liveName, cap: capName, want, threads, face: withFace })).ep; },
     hasCap: () => two,
     async detect(which, input) {
       const m = input.bitmap ? await call({ type: 'detect', which, bitmap: input.bitmap }, [input.bitmap]) : await call({ type: 'detect', which, rgba: input.rgba.buffer }, [input.rgba.buffer]);
       return { res: m.res, ms: m.ms };
     },
-    async warp(rgba, wd, h, pts) { return (await call({ type: 'warp', rgba: rgba.buffer, w: wd, h, pts }, [rgba.buffer])).out; },
+    async warp(rgba, wd, h, pts, upright) { return (await call({ type: 'warp', rgba: rgba.buffer, w: wd, h, pts, upright }, [rgba.buffer])).out; },
     stop() { clearInterval(watch); w.terminate(); },
   };
 }
@@ -172,7 +173,7 @@ function poolEngine(nLive = POOL, liveEp = null, capEp = null) {
     size: nLive,
     async load(liveName, capName, want) {
       two = !!capName;
-      const eps = await Promise.all(lives.map(e => e.load(liveName, null, liveEp || want)).concat(two ? [capE.load(capName, null, capEp || want)] : []));
+      const eps = await Promise.all(lives.map((e, i) => e.load(liveName, null, liveEp || want, !two && i === 0)).concat(two ? [capE.load(capName, null, capEp || want, true)] : []));
       return eps[0] + (two && eps[eps.length - 1] !== eps[0] ? '/' + eps[eps.length - 1] : '');
     },
     hasCap: () => two,
@@ -181,7 +182,7 @@ function poolEngine(nLive = POOL, liveEp = null, capEp = null) {
       const e = free.shift() || lives[0];
       try { return await e.detect('live', input); } finally { if (!free.includes(e)) free.push(e); }
     },
-    warp: (rgba, w, h, pts) => (two ? capE : lives[0]).warp(rgba, w, h, pts),
+    warp: (rgba, w, h, pts, upright) => (two ? capE : lives[0]).warp(rgba, w, h, pts, upright),
     stop() { lives.forEach(e => e.stop()); capE.stop(); },
   };
 }
@@ -275,7 +276,9 @@ async function runOnce(src, w, h, el) {
   const my = ++seq;
   const input = isVideo ? await frameInput(src, w, h) : { rgba: smallRGBA(src, w, h) };
   if (!input) return;  // the video had no frame (being hidden or stopped)
-  const { res: raw, ms } = await engine.detect('live', input);
+  let { res: raw, ms } = await engine.detect('live', input);
+  // A photo the light model misses goes to the accurate one.
+  if (!isVideo && raw.pts.some(p => !p) && engine.hasCap()) ({ res: raw, ms } = await engine.detect('cap', { rgba: smallRGBA(src, w, h) }));
   if (isVideo && (!running || my < applied || $('video').hidden)) return;  // a later frame already answered, or a capture / photo began
   applied = my;
   const res = isVideo ? smoothen(raw) : raw;
@@ -296,7 +299,8 @@ async function runOnce(src, w, h, el) {
 // Freeze the frame, take the exact corners from the accurate model, straighten.
 // The shot is shown at once, straightened by the live frame; the accurate model
 // then refines the corners in the background and replaces it if they moved.
-let shotId = 0;
+let shotId = 0, lastTurn = -1;
+const turnNote = () => lastTurn > 0 ? '; turned ' + lastTurn * 90 + '° by the face' : lastTurn === 0 ? '; upright by the face' : '; no face to set it upright';
 async function showShot() {
   const v = $('video'), img = $('still'), isVideo = !v.hidden, el = isVideo ? v : img;
   if (!lastRes || lastRes.pts.some(p => !p)) { $('hint').textContent = 'No frame to capture yet'; return; }
@@ -306,7 +310,8 @@ async function showShot() {
   const fctx = frame.getContext('2d'); fctx.drawImage(el, 0, 0, w, h);
   const pix = fctx.getImageData(0, 0, w, h).data;
   const put = async pts => {
-    const out = await engine.warp(pix.slice(), w, h, pts);
+    const out = await engine.warp(pix.slice(), w, h, pts, true);
+    lastTurn = out.turn;
     if (id !== shotId) return false;
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
@@ -317,7 +322,7 @@ async function showShot() {
   const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
   $('shot').hidden = false; $('shot').scrollIntoView({ behavior: 'smooth' });
   const refine = engine.hasCap();
-  $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + (refine ? ' — refining the corners…' : ' — Retake for another');
+  $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + turnNote() + (refine ? ' — refining the corners…' : ' — Retake for another');
   if (!refine) return;
   while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
   const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });
@@ -328,7 +333,7 @@ async function showShot() {
   if (moved > 0.002 && !(await put(exact.pts))) return;
   target = { pts: exact.pts, ok: true }; shown = exact.pts.map(p => p.slice());
   if (!isVideo) drawPts(shown, true, img);
-  $('hint').textContent = 'Shown in ' + ms + ' ms; ' + (moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms — Retake for another';
+  $('hint').textContent = 'Shown in ' + ms + ' ms; ' + (moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms' + turnNote() + ' — Retake for another';
 }
 
 // Up to engine.size frames are worked on at once, sent evenly spaced.

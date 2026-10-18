@@ -4,7 +4,7 @@ const ORT_DIR = new URLSearchParams(self.location.search).get('ort') || 'ort';
 importScripts('/scan-test/' + ORT_DIR + '/ort.all.min.js', '/scan-test/scan-core.js');
 ort.env.wasm.wasmPaths = self.location.origin + '/scan-test/' + ORT_DIR + '/';
 
-let live = null, cap = null;
+let live = null, cap = null, face = null;
 const say = (type, extra) => self.postMessage(Object.assign({ type }, extra));
 
 self.onmessage = async ({ data: m }) => {
@@ -15,6 +15,7 @@ self.onmessage = async ({ data: m }) => {
       const a = await openSession(m.live, m.want, onStatus, onLog);
       live = a.sess;
       const b = m.cap ? await openSession(m.cap, m.want, onStatus, onLog) : a; cap = b.sess;
+      if (m.face) { onStatus('Loading the face finder…', 1); face = await ort.InferenceSession.create(await fetchModel('yunet.onnx', () => {}), { executionProviders: ['wasm'] }); }
       say('reply', { id: m.id, ep: a.ep + (b.ep !== a.ep ? '/' + b.ep : '') });
     } else if (m.type === 'detect') {
       const t = performance.now();
@@ -26,7 +27,7 @@ self.onmessage = async ({ data: m }) => {
       const res = await detectRGBA(m.which === 'cap' ? cap : live, rgba);
       say('reply', { id: m.id, res, ms: performance.now() - t });
     } else if (m.type === 'warp') {
-      const out = warpRGBA(new Uint8ClampedArray(m.rgba), m.w, m.h, m.pts);
+      const out = await uprightRGBA(m.upright ? face : null, warpRGBA(new Uint8ClampedArray(m.rgba), m.w, m.h, m.pts));
       self.postMessage({ type: 'reply', id: m.id, out }, [out.data.buffer]);
     }
   } catch (e) { say('reply', { id: m.id, error: String(e && e.message || e) }); }
