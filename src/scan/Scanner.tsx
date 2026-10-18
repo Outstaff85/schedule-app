@@ -57,7 +57,7 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
   React.useEffect(() => {
     if (!open) return;
     let alive = true;
-    Promise.all([startEngine((t, f) => alive && setStatus(f != null && f < 1 ? t + ' ' + Math.round(f * 100) + '%' : t)), loadTracker()])
+    Promise.all([startEngine((_t, f) => alive && setStatus(tr('Preparing the scanner…') + (f != null && f < 1 ? ' ' + Math.round(f * 100) + '%' : ''))), loadTracker()])
       .then(([e, t]) => { if (!alive) return; st.current.engine = e; st.current.track = t; setReady(true); setStatus(''); })
       .catch(e => alive && setStatus(tr('The live frame is not available here ({0}) — pick photos instead', { 0: (e as Error)?.message || String(e) })));
     return () => { alive = false; };
