@@ -38,8 +38,6 @@
   .titlebar::before{content:'';position:absolute;inset:0;z-index:-1;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);pointer-events:none;}
   .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
   .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
-  .titlebar .logo{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px;align-self:center;white-space:nowrap;}
-  .titlebar .logo span{color:var(--accent);}
   /* The logo 11C "under one roof": a light running over the roof, the three
      people lighting up in turn, a light along the connection line; the name
      and its two lines beside it (only the mark on a phone). */
@@ -220,16 +218,8 @@
 
   /* Sidebar */
   .sidebar{width:290px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0;flex-shrink:0;overflow-y:auto;}
-  .tab-nav{padding:0 12px;margin-bottom:16px;display:flex;gap:4px;}
-  .tab-btn{flex:1;padding:7px 6px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text2);transition:all 0.15s;text-align:center;}
-  .tab-btn.active{background:var(--blue-bg);color:var(--blue);border-color:rgba(96,165,250,0.3);}
   .sidebar-section{padding:0 12px;margin-bottom:16px;}
   .sidebar-label{font-size:13px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:0 4px;margin-bottom:6px;}
-  .week-nav{padding:0 12px;margin-bottom:16px;}
-  .week-display{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:14px;color:var(--text);text-align:center;margin-bottom:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
-  .week-btns{display:flex;gap:4px;}
-  .week-btn{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:var(--radius-sm);padding:5px;cursor:pointer;font-size:15px;transition:all 0.15s;display:flex;align-items:center;justify-content:center;}
-  .week-btn:hover{background:var(--border2);color:var(--text);}
   .worker-list{padding:0 12px;max-height:40vh;overflow-y:auto;}
   .worker-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius-sm);margin-bottom:3px;transition:all 0.15s;}
   .worker-chip:hover{background:var(--bg3);}
@@ -255,9 +245,6 @@
   .main{flex:1;overflow-y:auto;padding:20px 24px;-webkit-overflow-scrolling:touch;}
   .page-section{display:none;}
   .page-section.visible{display:block;}
-  .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
-  .page-title{font-size:14px;font-weight:600;color:var(--text);letter-spacing:-0.5px;}
-  .page-sub{font-size:15px;color:var(--text2);margin-top:2px;}
 
   /* Buttons */
   .btn{touch-action:manipulation;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:15px;font-family:'DM Sans','Heebo',Arial,sans-serif;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text);text-decoration:none;transition:all 0.15s;}
@@ -268,24 +255,13 @@
   .btn.red{background:var(--red-bg);border-color:rgba(248,113,113,0.3);color:var(--red);}
   .btn.sm{padding:5px 10px;font-size:14px;}
 
-  /* Export dropdown */
-  .export-dropdown{position:relative;}
+  /* Dropdown */
   .dropdown-menu{position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:6px;z-index:50;min-width:200px;display:none;}
   .dropdown-menu.open{display:block;}
-  .dropdown-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);font-size:15px;cursor:pointer;color:var(--text2);transition:all 0.15s;}
-  .dropdown-item:hover{background:var(--bg3);color:var(--text);}
 
   /* Stats */
-  .stat-card{background:var(--bg2);border-radius:var(--radius);padding:12px 14px;}
-  .stat-label{font-size:14px;color:var(--text2);margin-bottom:4px;}
-  .stat-val{font-size:22px;font-weight:600;color:var(--text);letter-spacing:-0.5px;font-family:'DM Mono',Consolas,monospace;}
-  .stat-unit{font-size:15px;color:var(--text2);font-weight:400;}
 
   /* Gantt */
-  .day-name{display:inline-flex;align-items:center;gap:5px;}
-  .day-date{font-family:'DM Mono',Consolas,monospace;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;text-transform:none;}
-  .day-hebrew{font-size:13px;color:var(--accent);font-weight:700;}
-  .drag-handle{color:var(--text3);font-size:16px;cursor:grab;flex-shrink:0;}
 
   /* Modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;align-items:center;justify-content:center;}
@@ -297,24 +273,15 @@
      figures as text (.t3-stats), a section line with its count (.t3-sec),
      and rows whose state is a colored line on the left (.t3-line, --c);
      on a phone a window opens from the bottom (a sheet). */
-  .t3-stats{display:flex;gap:20px;flex-wrap:wrap;margin:2px 2px 14px}
-  .t3-stats>div{font-size:11px;color:var(--text2);cursor:default}
-  .t3-stats>div.go{cursor:pointer}
-  .t3-stats b{display:block;font-size:24px;font-weight:700;line-height:1.1;color:var(--text)}
-  .t3-sec{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text2);margin:16px 2px 6px}
-  .t3-sec em{font-style:normal;margin-left:auto;color:var(--text3);font-weight:500}
   .t3-line{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-left:3px solid var(--c,var(--border2));background:linear-gradient(90deg,rgba(var(--tint),.035),transparent 85%);border-radius:0 8px 8px 0;margin-bottom:4px;font-size:13px;cursor:pointer}
   .t3-line:hover{background:linear-gradient(90deg,rgba(var(--tint),.06),transparent 85%)}
   .t3-line .n{flex:1;min-width:0}
   .t3-line .n b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .t3-line .n small{display:block;color:var(--text2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .t3-line .r{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);white-space:nowrap}
-  .t3-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;overflow:hidden}
   .t3-empty{color:var(--text3);font-size:13px;padding:6px 2px 4px}
   /* The lists in the template: worker and client cards lose their box and
      get the colored line on the left. */
-  .wcard,.client-card{border:0 !important;border-left:3px solid var(--c,var(--border2)) !important;border-radius:0 10px 10px 0 !important;background:linear-gradient(90deg,rgba(var(--tint),.04),rgba(var(--tint),.012) 70%) !important}
-  .wcard:hover,.client-card:hover{background:linear-gradient(90deg,rgba(var(--tint),.07),rgba(var(--tint),.02) 70%) !important}
   @media (max-width:700px){
     .overlay{align-items:flex-end}
     .overlay>.modal{width:100% !important;max-width:100% !important;max-height:88vh;border-radius:18px 18px 0 0;border-bottom:0;padding:14px 16px 20px}
@@ -331,14 +298,6 @@
   .form-section{margin:18px 0 8px;padding-top:12px;border-top:1px solid var(--border2);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);}
   .form-section:first-of-type{margin-top:4px;padding-top:0;border-top:none;}
   .check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-  .field label.check-chip,label.check-chip{display:flex;align-items:center;gap:10px;margin:0;padding:10px 12px;min-height:44px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px;font-weight:500;cursor:pointer;user-select:none;}
-  .field label.check-chip input,label.check-chip input{width:18px;height:18px;flex:0 0 18px;margin:0;padding:0;accent-color:var(--accent);cursor:pointer;}
-  label.check-chip:has(input:checked){border-color:var(--accent);background:rgba(79,142,247,0.12);}
-  label.check-chip .chip-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
-  label.check-chip .chip-hint{font-size:12px;font-weight:400;color:var(--text2);line-height:1.35;}
-  .w-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;}
-  .w-panel{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
-  .w-child{padding-bottom:8px;border-bottom:1px solid var(--border);}
   /* Worker status on the card: three small pills, a colored dot each; the
      chosen one is filled in its color. */
   .status-pills{display:inline-flex;gap:4px;padding:3px;background:var(--bg3);border:1px solid var(--border2);border-radius:999px;}
@@ -350,25 +309,9 @@
   .status-pills button.on[data-st="active"]{background:var(--green-bg);color:var(--green);}
   .status-pills button.on[data-st="vacation"]{background:var(--amber-bg);color:var(--amber);}
   .status-pills button.on[data-st="fired"]{background:var(--red-bg);color:var(--red);}
-  .hours-badge{display:inline-block;font-size:14px;color:var(--green);background:var(--green-bg);border-radius:4px;padding:3px 8px;margin-top:6px;font-family:'DM Mono','Heebo',Consolas,monospace;}
   .modal-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
-  .day-grid{display:flex;flex-direction:column;gap:6px;}
-  .day-row{display:grid;grid-template-columns:42px 68px 1fr 1fr;gap:6px;align-items:center;}
-  .day-tag{font-size:14px;font-weight:600;color:var(--text2);text-align:center;line-height:1.3;}
-  .day-row select,.day-row input{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;font-family:'DM Sans','Heebo',Arial,sans-serif;padding:5px 7px;outline:none;width:100%;}
-  .day-row select:focus,.day-row input:focus{border-color:var(--accent);}
 
   /* Clients page */
-  .clients-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));column-gap:12px;row-gap:0;align-items:start;}
-  .client-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:10px;}
-  .wc-row:hover{background:var(--bg3);}
-  .client-card-header{display:flex;align-items:center;gap:10px;}
-  .client-card.tap-edit{position:relative}
-  .client-card.tap-edit .client-card-header{padding-right:22px}
-  .client-card-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
-  .client-card-name{font-size:16px;font-weight:600;color:var(--text);}
-  .client-card-info{font-size:14px;color:var(--text2);}
-  .client-card-actions{display:flex;gap:6px;margin-top:4px;}
 
   /* Scrollbar */
   ::-webkit-scrollbar{width:5px;}
@@ -399,7 +342,6 @@
       padding: env(safe-area-inset-top,8px) 12px 8px;
       gap: 6px; position: sticky; top: 0; z-index: 40;
     }
-    .titlebar .logo { font-size: 13px; }
     .titlebar .brand { padding-right: 8px; }
     .titlebar .brand img { width: 24px; height: 24px; }
     .top-tabs { order: 3; width: 100%; overflow-x: auto; gap: 0; scrollbar-width: none; }
@@ -424,13 +366,6 @@
       scrollbar-width: none;
     }
     .sidebar::-webkit-scrollbar { display: none; }
-    .tab-nav  { padding: 0; margin-bottom: 0; flex-shrink: 0; min-width: fit-content; }
-    .tab-btn  { font-size: 11px; padding: 6px 8px; white-space: nowrap; min-height: 32px; }
-    .week-nav { padding: 0; margin-bottom: 0; flex-shrink: 0; }
-    .week-nav .sidebar-label { display: none; }
-    .week-display { font-size: 11px; padding: 5px 8px; white-space: nowrap; margin-bottom: 4px; }
-    .week-btns { gap: 3px; }
-    .week-btn  { padding: 5px 10px; font-size: 13px; min-width: 36px; min-height: 32px; }
     .sidebar-section { display: none; }   /* Workers/Filter labels+sort: managed via tabs on mobile */
     .sidebar-section .btn { white-space: nowrap; font-size: 11px; padding: 5px 10px; min-height: 32px; }
     /* Hide worker list + client filter — managed via Workers/Clients tabs on mobile */
@@ -443,19 +378,10 @@
     .main { padding: 12px 12px env(safe-area-inset-bottom,12px); overflow: visible; }
 
     /* ── Page header ── */
-    .page-header { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
-    .page-title  { font-size: 17px; }
-    .page-sub    { font-size: 12px; }
 
     /* ── Stats row ── */
-    .stat-card  { padding: 10px 12px; }
-    .stat-val   { font-size: 20px; }
-    .stat-label { font-size: 11px; }
-    .stat-unit  { font-size: 12px; }
 
     /* ── Gantt ── */
-    .day-hebrew { font-size: 10px; }
-    .drag-handle { display: none; }
     .worker-avatar { width: 22px; height: 22px; font-size: 9px; }
 
     /* ── Legend ── */
@@ -470,16 +396,10 @@
       max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); margin: 0;
     }
     .modal-title { font-size: 16px; }
-    .day-row     { grid-template-columns: 38px 60px 1fr 1fr; gap: 4px; font-size: 12px; }
-    .day-row select, .day-row input { font-size: 12px; padding: 5px 4px; }
     .modal-actions { gap: 8px; flex-wrap: wrap; }
     .modal-actions .btn { flex: 1; justify-content: center; min-height: 42px; }
 
     /* ── Clients page ── */
-    .clients-grid { grid-template-columns: 1fr; gap: 10px; }
-    .client-card  { padding: 14px; }
-    .client-card-actions { flex-wrap: wrap; gap: 6px; }
-    .client-card-actions .btn { flex: 1; justify-content: center; font-size: 12px; }
 
 
     /* ── Worker chips in sidebar ── */
@@ -493,9 +413,6 @@
 
   /* ── Phone only ── */
   @media (max-width: 480px) {
-    .stat-val   { font-size: 18px; }
-    .page-title { font-size: 15px; }
-    .tab-btn    { font-size: 10px; padding: 5px 7px; }
     /* Stack titlebar actions */
     .titlebar-actions { gap: 3px; }
     .save-indicator span { display: none; }
@@ -513,24 +430,9 @@
 
   /* Today (variant A): a section folds with the arrow at its right; a
      figure picked as a filter is highlighted, the other sections hidden. */
-  .dash-sec{cursor:pointer;user-select:none}
-  .t3-chev{color:var(--text3);font-size:15px;margin-left:4px;transition:transform .15s}
-  .dash-fold>.t3-sec .t3-chev{transform:rotate(-90deg)}
-  .dash-fold>.t3-sec+div{display:none}
-  .dash-off{display:none!important}
-  .t3-stats>div.on{background:var(--bg3);border-radius:8px;box-shadow:inset 0 -2px 0 var(--accent)}
-  .t3-stats>div{padding:3px 6px;margin:-3px -6px}
-  .dash-filter-note{font-size:11px;color:var(--accent);margin:-8px 2px 8px}
-  .dash-filter-note a{color:inherit;text-decoration:underline;cursor:pointer}
   .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
-  .t3-sec .btn{margin-left:8px}
   /* A worker-modal field the scan left empty: tap it to search the scan for it. */
-  .scan-missing { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); cursor: pointer; }
-  .scan-busy { opacity: 0.6; }
-  .scan-found { border-color: var(--green) !important; box-shadow: 0 0 0 2px rgba(34,197,94,0.3); }
   /* Two reads of the scan disagreed on this value: check it. */
-  .scan-check { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(245,166,35,0.25); }
-  .scan-check[data-check-key]:not([data-rechecked]) { cursor: pointer; }
   @keyframes barSlide { 0% { left: -40%; } 100% { left: 100%; } }
   .progress-bar { position: relative; width: 100%; height: 4px; border-radius: 2px;
     background: var(--bg3); overflow: hidden; margin-top: 10px; }
@@ -549,54 +451,12 @@
   .quad-handle:active { cursor: grabbing; }
   /* Filter dropdowns: a small caption says what each one filters, and one
      with a choice made is highlighted, so it is clear without opening them. */
-  .filter-field{display:inline-flex;flex-direction:column;gap:3px}
-  .filter-cap{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding-left:2px}
-  .filter-field select.filter-on{border-color:var(--accent)!important;color:var(--accent)!important}
-  .rates-head{display:flex;align-items:center;justify-content:space-between}
-  .rates-help{display:none;font-size:11px;color:var(--text3);margin:-4px 0 10px}
-  .rates-help.open{display:block}
-  .rate-in{position:relative}
-  .rate-in input{padding-left:58px}
-  .rate-in span{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3);pointer-events:none}
-  .seg-toggle{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:3px;margin-bottom:12px;gap:3px}
-  .seg-toggle button{flex:1;border:0;background:none;color:var(--text2);font:600 13px inherit;padding:8px 4px;border-radius:8px;cursor:pointer}
-  .seg-toggle button.on{background:var(--accent);color:#fff}
-  .rate-margin{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-bottom:12px}
-  .rate-margin>div{background:rgba(var(--tint),.04);border:1px solid var(--border);border-radius:12px;padding:9px 10px;text-align:center}
-  .rate-margin b{display:block;font-size:17px;font-weight:700;color:var(--green)}
-  .rate-margin small{display:block;font-size:11px;color:var(--text2);margin-top:2px}
-  .rate-margin.neg b{color:var(--red,#ff4f5e)}
   /* The client editor's small map (Place): the GPS radius as a circle; a tap opens the map picker. */
-  .og-map{position:relative;height:110px;border-radius:14px;margin:2px 0 12px;cursor:pointer;overflow:hidden;border:1px solid var(--border);
-    background:linear-gradient(rgba(var(--tint),.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(var(--tint),.035) 1px,transparent 1px) 0 0/22px 22px,rgba(34,211,238,.05)}
-  .og-map-r{position:absolute;left:50%;top:50%;width:calc(var(--r,48px)*2);height:calc(var(--r,48px)*2);transform:translate(-50%,-50%);border-radius:50%;border:1.5px dashed rgba(34,211,238,.7);background:rgba(34,211,238,.10)}
-  .og-map-pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-80%);font-size:22px;color:#22d3ee}
-  .og-map-l{position:absolute;right:8px;bottom:8px;max-width:calc(100% - 16px);padding:3px 9px;border-radius:9px;background:rgba(10,12,20,.7);font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .og-map-tap{position:absolute;left:10px;top:10px;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.14);color:#22d3ee;font-size:16px}
-  .og-map:active{transform:scale(.99)}
-  .og-map:not(.set) .og-map-r,.og-map:not(.set) .og-map-pin{opacity:.35}
-  .view-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
   /* Workers tab toolbar: actions, search + layout toggle, then the filters in
      one row on a computer and two columns on a phone. */
-  .workers-actions{display:flex;gap:8px}
-  .workers-toolbar{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
-  .workers-search-row{display:flex;gap:8px;align-items:stretch}
-  .workers-search-row input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;font-size:13px;outline:none}
   /* Filter rows everywhere (Workers, Admin): one row of --cols on a
      computer; two columns without captions on a phone, an odd last one
      across. */
-  .filters-btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:0 12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);border-radius:var(--radius-sm);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
-  .filters-btn.on{border-color:var(--accent);color:var(--accent)}
-  .filters-btn .n{background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px}
-  .filter-chips{display:flex;flex-wrap:wrap;gap:6px}
-  .filter-chips:empty{display:none}
-  .filter-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.4);color:var(--accent);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
-  .filter-chip b{opacity:.75}
-  .filters-grid{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:8px}
-  .filters-grid .filter-field{display:flex;min-width:0}
-  .filters-grid select{width:100%;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 8px;font-size:13px;outline:none;text-overflow:ellipsis}
-  .workers-count{font-size:12px;color:var(--text2)}
-  .workers-count .inactive-link{color:var(--text2);text-decoration:underline}
   .contract-notice{flex-shrink:0;display:flex;align-items:center;gap:10px;margin:8px 16px 0;padding:8px 12px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600}
   .contract-notice.over{background:var(--red-bg);border-color:rgba(248,113,113,0.35);color:var(--red)}
   .contract-notice span{flex:1}
@@ -604,11 +464,6 @@
   .contract-notice .go{text-decoration:underline}
   /* A pane's top row: the period select and icon buttons, one line on a
      phone too. */
-  .pane-toolbar{display:flex;align-items:center;gap:4px;margin-bottom:10px}
-  .pane-toolbar select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;outline:none}
-  .pane-toolbar .t3-ib{font-size:18px;padding:6px 7px}
-  .pane-toolbar .t3-ib.red{color:var(--red);opacity:.75}
-  .pane-toolbar .t3-ib.red:hover{opacity:1}
   /* ── Phone (≤ 700 px): the tabs become a bar at the bottom of the screen,
      and the tables of Accounting and Admin become one card per row
      (cardTables() puts each column's header on its cells as data-label). ── */
@@ -633,51 +488,29 @@
     body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
     .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));}
     :root{--bar-gap:calc(76px + env(safe-area-inset-bottom,0px));}
-    body:not(.tables-list) table.mtable{min-width:0 !important;border-collapse:separate !important;}
-    body:not(.tables-list) table.mtable thead{display:none;}
-    body:not(.tables-list) table.mtable,body:not(.tables-list) table.mtable tbody,body:not(.tables-list) table.mtable tfoot,body:not(.tables-list) table.mtable tr,body:not(.tables-list) table.mtable td{display:block;width:100%;box-sizing:border-box;}
-    body:not(.tables-list) table.mtable tr{background:var(--bg2);border:1px solid var(--border2) !important;border-radius:12px;margin:0 0 10px;padding:6px 12px;}
-    body:not(.tables-list) table.mtable td{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:5px 0 !important;border:0 !important;text-align:right !important;min-height:28px;}
-    body:not(.tables-list) table.mtable td::before{content:attr(data-label);color:var(--text3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0;margin-right:auto;}
-    body:not(.tables-list) table.mtable td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left !important;}
-    body:not(.tables-list) table.mtable td:first-child::before{display:none;}
-    body:not(.tables-list) table.mtable td:empty{display:none;}
-    body:not(.tables-list) table.mtable td[colspan]{justify-content:center;}
-    body:not(.tables-list) table.mtable td[colspan]::before{display:none;}
+    table.mtable{min-width:0 !important;border-collapse:separate !important;}
+    table.mtable thead{display:none;}
+    table.mtable,table.mtable tbody,table.mtable tfoot,table.mtable tr,table.mtable td{display:block;width:100%;box-sizing:border-box;}
+    table.mtable tr{background:var(--bg2);border:1px solid var(--border2) !important;border-radius:12px;margin:0 0 10px;padding:6px 12px;}
+    table.mtable td{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:5px 0 !important;border:0 !important;text-align:right !important;min-height:28px;}
+    table.mtable td::before{content:attr(data-label);color:var(--text3);font-size:12px;font-weight:500;text-align:left;flex-shrink:0;margin-right:auto;}
+    table.mtable td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left !important;}
+    table.mtable td:first-child::before{display:none;}
+    table.mtable td:empty{display:none;}
+    table.mtable td[colspan]{justify-content:center;}
+    table.mtable td[colspan]::before{display:none;}
   }
-  .head-actions{display:flex;gap:8px}
-  @media (max-width:700px){
-    .workers-head .workers-actions,.page-header .head-actions{width:100%}
-    .workers-head .workers-actions .btn,.page-header .head-actions .btn{flex:1;justify-content:center;min-height:40px}
-    .filters-grid{grid-template-columns:1fr 1fr}
-    .filters-grid .filter-field:last-child:nth-child(odd){grid-column:1/-1}
-    .filters-grid .filter-cap{display:none}
-  }
-  .view-toggle button{background:var(--bg3);border:none;color:var(--text2);padding:6px 10px;cursor:pointer;font-size:15px;line-height:1}
-  .view-toggle button+button{border-left:1px solid var(--border2)}
-  .view-toggle button.active{background:var(--blue-bg);color:var(--blue)}
-  .workers-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));column-gap:12px;row-gap:0;align-items:start}
   /* The worker plate (redesign stage 3): the full name (cut with … when it
      does not fit, owner 2026-10-13), notice chips after it,
      site · today's punch under it, the month's hours at the right. */
-  .wplate .n small,.wc-hn p{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}
-  .wplate .n small:has(.wp-chip1){margin:3px 0 2px}
   /* The Workers screen (owner's design 2026-10-13): no "WORKERS N" line, the
      Active / Vacation / Pending tabs 78px wide, a 38px search. */
   #workersTabs button{width:78px;padding:0;justify-content:center;text-align:center}
-  .workers-search-row input{height:38px}
   .site{overflow:hidden;text-overflow:ellipsis}
   .dot{color:#4a5068}
   .pin{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   .pin i{width:6px;height:6px;border-radius:50%;background:currentColor}
   .pin.ok{color:var(--ok)}.pin.bad{color:var(--red-text)}.pin.vac{color:var(--warn)}
-  .nchip{position:relative;flex:none;display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 7px 0 5px;border-radius:999px;border:0;font:600 11px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;white-space:nowrap}
-  .nchip i{font-size:12px}
-  .nchip.red{background:rgba(255,95,109,.16);color:var(--red-text)}
-  .nchip.amber{background:rgba(245,166,35,.15);color:var(--amber-text)}
-  .nchip.more{background:rgba(var(--tint),.1);color:#cfd3dd;padding:0 7px}
-  .nchip::after{content:'';position:absolute;left:6px;right:6px;bottom:-3px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
-  .nchip:hover::after{transform:scaleX(1)}
   tr.gone{display:none}
   /* An avatar in its holder's colour (--c), like a plate's. */
   /* Greeting (Today) and the notifications bell + panel (redesign stage 5). */
@@ -736,47 +569,16 @@
   .og-ni.new time::after{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#22d3ee;margin:6px 0 0 auto;box-shadow:0 0 8px #22d3ee}
   @media (prefers-reduced-motion:reduce){.gic *,.og-bell i,.og-bell-n{animation:none !important}}
   /* The worker card and the notices sheet. */
-  .wc-h{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-  .wc-hn{flex:1;min-width:0}
-  .wc-hn h4{font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .wc-hn p{font-size:12px;color:var(--text2);margin-top:2px}
-  .wc-hrs{flex:none;text-align:right;font:500 18px 'DM Mono',monospace;color:var(--fig)}
-  .wc-hrs small{display:block;font:500 11px 'DM Sans','Heebo',Arial,sans-serif;color:var(--text3);text-shadow:none}
-  .wc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-  .wc-chips:empty{display:none}
-  .wc-tools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:4px}
-  .wc-tools .gbtn{height:34px;padding:0 12px;font-size:13px}
   .seg button.on::after{content:'';position:absolute;left:30%;right:30%;bottom:2px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
-  .wc-kv{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;font-size:14px;color:var(--text);margin-bottom:12px}
-  .wc-kv>div{min-width:0;overflow-wrap:anywhere}
-  .wc-kv small{display:block;font-size:11px;color:var(--text3);margin-bottom:2px}
-  .wc-kv .wide{grid-column:1/-1}
-  .wc-notes{background:var(--plate);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:12px}
-  .wc-line{display:flex;gap:6px;font-size:13px;color:var(--text2);margin-bottom:12px}
-  .wc-actions{display:flex;gap:10px;margin-top:6px}
-  .wc-actions .gbtn.primary{flex:1}
   .gbtn.nact{height:32px;padding:0 10px;font-size:12px;border-radius:12px;flex:none}
-  .wcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
-  .wcard:hover{border-color:var(--border2)}
-  .wcard{position:relative}
   /* Delete: a faint red ✕ in the tile's top-right corner (deleteWorker asks first). */
-  .wcard-del{position:absolute;top:6px;right:6px;background:none;border:none;color:var(--red);opacity:.4;font-size:16px;line-height:1;padding:6px;border-radius:6px;cursor:pointer;transition:opacity .15s,background .15s}
-  .wcard-del:hover{opacity:1;background:var(--bg3)}
-  .wcard-sum{display:none;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:48px;margin-top:-4px}
   /* A phone: a compact card (user request 2026-10-11) — name, badges and one
      line of hours · clients · supplier; the full details open on a tap (the
      worker card). */
-  @media (max-width:700px){ .wcard{padding:10px 12px;gap:6px} .wcard-rows{display:none !important} .wcard-sum{display:block} }
-  .wcard-rows{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:12px}
-  .wcard-rows .k{color:var(--text3);white-space:nowrap}
-  .wcard-rows .v{color:var(--text);min-width:0;overflow-wrap:anywhere}
-  .workers-group-title{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text2);margin-top:6px}
   .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
-.tables-view-toggle{display:none !important;}
-@media (max-width:700px){ .tables-view-toggle{display:inline-flex !important;} .page-header{position:relative;} .page-header > .tables-view-toggle{position:absolute;top:0;right:0;} .page-header:has(> .tables-view-toggle) > div:first-child{padding-right:96px;} }
 
 /* A window open: the page behind it does not scroll, and a scroll inside the
    window never carries over to the page (swipe down closes it on a phone). */
@@ -804,20 +606,13 @@ body:has(.overlay.open){overflow:hidden}
     outline:none;border-color:rgba(34,211,238,.6);background-color:rgba(var(--tint),.07);box-shadow:0 0 0 3px rgba(34,211,238,.12)}
   .modal .field input::placeholder,.modal .field textarea::placeholder{color:rgba(var(--tint),.35)}
   .modal .field input:disabled,.modal .field select:disabled{opacity:.55}
-  .modal .field .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
-  .modal .rate-in input{padding-left:58px !important}
   /* Inline old-style fields inside any window (style="background:var(--bg3)…") follow the glass look too. */
   .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select,.modal textarea{
     background-color:rgba(var(--tint),.05) !important;border:1px solid rgba(var(--tint),.12) !important;border-radius:12px !important;color:var(--text) !important;font-size:14px !important;box-shadow:none}
   .modal input:is([type=text],[type=number],[type=date],[type=time],[type=tel],[type=email],[type=password],[type=search],[type=url],:not([type])),.modal select{height:38px !important;padding-top:0 !important;padding-bottom:0 !important}
   .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:rgba(34,211,238,.6) !important;box-shadow:0 0 0 3px rgba(34,211,238,.12) !important;outline:none}
-  .modal .scan-missing{border-color:rgba(245,166,35,.6) !important;background-color:rgba(245,166,35,.06) !important}
   .modal .field>label i.ti{display:none}
   .modal input[type=date]{color-scheme:dark}
-  .modal .seg-toggle{gap:4px;padding:4px;border-radius:14px;background:rgba(var(--tint),.05);border:1px solid rgba(var(--tint),.1)}
-  .modal .seg-toggle button{position:relative;height:31px;padding:0 6px;border-radius:10px;color:#8b90a0}
-  .modal .seg-toggle button.on{background:rgba(var(--tint),.12);color:var(--ink)}
-  .modal .seg-toggle button.on::after{content:'';position:absolute;left:28%;right:28%;bottom:3px;height:2px;border-radius:2px;background:var(--uline,#22d3ee);background-size:300% 100%;animation:og-flow 2.4s linear infinite}
 </style>
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="icons/tabler-icons.css">
@@ -831,8 +626,6 @@ body:has(.overlay.open){overflow:hidden}
      the page is at most 1200px wide; on a phone the title bar is two compact
      rows (logo · short date and weather · buttons; the breadcrumb under them)
      and the bottom bar stays. Hebrew mirrors the frame only. ── */
-  .page-title{display:none}
-  .page-sub{font-size:15px;color:var(--text2)}
   .titlebar{align-items:center;gap:14px;padding:0 16px}
   .titlebar .brand{padding-right:0}
   .titlebar-actions{margin-left:0}
@@ -856,10 +649,6 @@ body:has(.overlay.open){overflow:hidden}
   @keyframes og-tab-in{from{opacity:0}to{opacity:1}}
   @media (prefers-reduced-motion:reduce){.page-section.visible{animation:none}}
   /* Readability: figures as glass tiles, empty states in a dashed frame. */
-  .t3-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:2px 0 14px;max-width:680px}
-  .t3-stats>div,.t3-stats>div.on{margin:0;padding:10px 12px;border-radius:14px;background:rgba(var(--tint),.06);border:1px solid rgba(var(--tint),.12);font-size:13px;color:var(--text2);box-shadow:none}
-  .t3-stats>div.on{background:rgba(var(--tint),.12);border-color:rgba(var(--tint),.25)}
-  .t3-stats b{font-size:28px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
   .t3-empty{border:1px dashed rgba(var(--tint),.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
   /* Accounting: Salary shows its own figures, so the ones above the tabs hide (no repeat). */
   @media (min-width:701px){
@@ -891,9 +680,6 @@ body:has(.overlay.open){overflow:hidden}
     .og-date-l,.og-center .gtext{display:none}
     .og-date-s{display:inline}
     .og-center .gic{margin-left:0;width:22px;height:22px}
-    .t3-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-width:none}
-    .t3-stats>div,.t3-stats>div.on{padding:8px 9px;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .t3-stats b{font-size:24px}
   }
   /* Hebrew mirrors the frame only: logo and breadcrumb on the right, the
      account on the left (its menu opens from the left edge); the page content,
@@ -922,8 +708,6 @@ body:has(.overlay.open){overflow:hidden}
   :root[data-theme="light"] .login-card #loginBtn{background:var(--glass-strong);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);}
   :root[data-theme="light"] .og-npop{background:rgba(255,255,255,.96);box-shadow:var(--shadow-pop);}
   :root[data-theme="light"] .og-npop::before{background:rgba(255,255,255,.98);}
-  :root[data-theme="light"] .og-map-l{background:rgba(255,255,255,.88);}
-  :root[data-theme="light"] .nchip.more{color:var(--ink-2);}
   :root[data-theme="light"] .acct-menu{box-shadow:var(--shadow-pop);}
   :root[data-theme="light"] .modal input[type=date]{color-scheme:light;}
   @media (max-width:820px){ .login-theme{grid-column:1/-1;} .login-theme .seg{margin:4px 0 0;} }
