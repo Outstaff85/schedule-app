@@ -57,8 +57,6 @@ Worker pay and client billing are separate sets of fields. Billing never changes
 
 - `openManualPunch(cid)` draws `ManualPunch` (`src/manager/ManualPunch.tsx`) into `#manualPunchModal` (`ManagerIsland.openManualPunch`) and opens `#manualPunchOverlay`: the worker (`ManagerBridge.punchInfo`: the active workers assigned to this client, or every active one if none), Clock IN / Clock OUT, the date (Date Picker), the time and a note; "Manual entry — GPS not verified".
 - Save Punch (a worker and a time are required) builds the punch `{id: Date.now(), workerId, workerName, type, time, date (en-GB), ts, site, clientId, dist:null, gpsVerified:false, manual:true, notes, gpsWarnings:['Manual entry by manager']}` and hands it to `ManagerBridge.addPunch` → `addManualPunch`: added to the local punch log and sent to Firestore with `gsSavePunch()` (see [app-core.md](app-core.md)), the window closes with a toast, Today / Admin redraw.
-- `openPunchClock(cid)` (stores the client in `localStorage.punchClockSite` and opens `worker-punch.html`) is defined but has no caller.
-
 ## Where clients are used elsewhere
 
 - **Schedule sidebar:** `renderSidebarClients()` filters the roster by client (`selectedClientId`) and sorts by name or worker count (`#clientSort`).
