@@ -4373,14 +4373,6 @@ function retryLoadDataWhenBack(){
 
 
 
-// --- Dashboard -------------------------------------------------------------------
-// Template 3 pieces (shared by every list drawn in it): an avatar and a line.
-// name / sub / right are HTML, already escaped by the caller; sub may be a
-// list (one small line each).
-function t3Av(w){
-  const c=w?WORKER_COLORS[w.colorIdx%8]:{bg:'var(--bg3)',text:'var(--text2)'};
-  return `<div class="t3-av" style="background:${c.bg};color:${c.text}">${w?workerAvatarInner(w):'?'}</div>`;
-}
 // ── Odinson Glass list pieces (docs/redesign.md → Plates). The same code in
 // the manager app and the supplier portal — keep the two the same. ──
 // t3Line(o) draws a plate: o.c the bar colour, o.av the avatar (t3Av), o.name /
