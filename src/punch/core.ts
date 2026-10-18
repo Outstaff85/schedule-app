@@ -32,7 +32,17 @@ export interface MonthData { punches?: Record<string, unknown>[]; pay?: Record<s
 
 // ── The link and the site ──
 const params = new URLSearchParams(window.location.search);
-export const URL_TOKEN = params.get('t') || params.get('token') || null;
+// An installed punch app relaunches from the manifest's start_url, without
+// ?t= — the link's token is remembered and reused when running standalone.
+const _standalone = (window.matchMedia?.('(display-mode: standalone)').matches ?? false) || (navigator as { standalone?: boolean }).standalone === true;
+export const URL_TOKEN: string | null = (() => {
+  const t = params.get('t') || params.get('token') || null;
+  try {
+    if (t) localStorage.setItem('punchToken', t);
+    else if (_standalone) return localStorage.getItem('punchToken');
+  } catch { /* storage blocked */ }
+  return t;
+})();
 let _site: Record<string, unknown> & { workers?: PWorker[] } | null = null;
 try { _site = JSON.parse(localStorage.getItem('punchClockSite') || 'null'); } catch { /* none */ }
 // A personal link (token in URL) is self-contained: trust ONLY the URL, never a
@@ -97,7 +107,9 @@ export const usePunch = () => React.useSyncExternalStore(cb => { subs.add(cb); r
 let workers: PWorker[] = [];
 export let allClients: PClient[] = [];
 let _geoLocked = false, _lastPunchAt = 0, locDist: number | null = null;
-let lastGps: { lat: number; lng: number; accuracy: number; dist: number; suspicious: boolean; warnings: string[]; elapsed: number } | null = null;
+let lastGps: { lat: number; lng: number; accuracy: number; dist: number; suspicious: boolean; warnings: string[]; elapsed: number; at: number } | null = null;
+/** How long one on-site GPS reading allows punching: an open tab can't punch OUT from elsewhere on an old fix. */
+const GPS_FRESH_MS = 60 * 1000;
 
 // ── Toasts: the old showToast's kinds, guessed from the text ──
 function toastKind(t: string) {
@@ -142,14 +154,25 @@ function saveQueue(q: PunchEntry[]) { localStorage.setItem(QUEUE_KEY, JSON.strin
 // carries its own, so a flush after switching links still posts to the right firm.
 export function wpToken(): string | null { return (st.worker && st.worker.token) || URL_TOKEN || null; }
 
+// 'retry': no network, a server failure (5xx) or an unreadable reply — the
+// punch is queued. 'refused': the function answered with json.error (a link
+// that no longer works, a punch that isn't this worker's) — a retry can never
+// succeed, so it isn't queued forever; the punch stays in the local history.
+async function sendPunch(e: PunchEntry): Promise<'ok' | 'retry' | { refused: string }> {
+  try {
+    const res = await postPunch(e);
+    let json: { error?: string } | null = null;
+    try { json = await res.json(); } catch { return 'retry'; }
+    if (json && !json.error) return 'ok';
+    return res.ok && json?.error ? { refused: json.error } : 'retry';
+  } catch { return 'retry'; }
+}
+function showRefused(msg: string) { showToast(tr('Punch not recorded: {0}', { 0: msg })); }
 async function gsSavePunch(entry: PunchEntry) {
   if (!navigator.onLine) { queueEntry(entry); return; }
-  try {
-    const json = await (await postPunch(entry)).json();
-    // A refusal comes back as json.error, so the reply is checked, not just the
-    // HTTP status; a refused punch is queued for a retry instead of being lost.
-    if (!json || json.error) queueEntry(entry);
-  } catch { queueEntry(entry); }
+  const r = await sendPunch(entry);
+  if (r === 'retry') queueEntry(entry);
+  else if (r !== 'ok') showRefused(r.refused);
 }
 function queueEntry(entry: PunchEntry) {
   entry.workerToken = entry.workerToken || wpToken();
@@ -164,17 +187,19 @@ export async function flushQueue() {
   if (!q.length || !navigator.onLine) return;
   _flushingQueue = true;
   const failed: PunchEntry[] = [];
+  let left = failed;
   try {
     for (const e of q) {
-      try {
-        const json = await (await postPunch(e)).json();
-        if (!json || json.error) failed.push(e);
-      } catch { failed.push(e); }
+      const r = await sendPunch(e);
+      if (r === 'retry') failed.push(e);
+      else if (r !== 'ok') showRefused(r.refused);
     }
-    saveQueue(failed);
+    // Keep what was queued while this loop was waiting on the network.
+    left = failed.concat(getQueue().slice(q.length));
+    saveQueue(left);
   } finally { _flushingQueue = false; }
-  set({ queued: failed.length });
-  if (!failed.length && q.length) showToast(q.length > 1 ? tr('Synced {0} offline punches', { 0: q.length }) : tr('Synced 1 offline punch'));
+  set({ queued: left.length });
+  if (!left.length && q.length) showToast(q.length > 1 ? tr('Synced {0} offline punches', { 0: q.length }) : tr('Synced 1 offline punch'));
 }
 /** At startup: a queue left from before shows its badge and is sent. */
 export function startQueue() {
@@ -353,7 +378,7 @@ export function getLocation() {
     const dist = Math.round(haversine(a.lat, a.lng, SITE.lat!, SITE.lng!)); locDist = dist;
     const tooFast = elapsed < GPS_REQUEST_MS;
     const distOk = dist <= SITE.radius, accOk = a.acc > 0 && a.acc <= GPS_MAX_ACCURACY;
-    lastGps = { lat: a.lat, lng: a.lng, accuracy: a.acc, dist, suspicious: a.suspicious || tooFast, warnings: tooFast ? ['Response in ' + elapsed + 'ms (too fast)'].concat(a.warnings) : a.warnings, elapsed };
+    lastGps = { lat: a.lat, lng: a.lng, accuracy: a.acc, dist, suspicious: a.suspicious || tooFast, warnings: tooFast ? ['Response in ' + elapsed + 'ms (too fast)'].concat(a.warnings) : a.warnings, elapsed, at: Date.now() };
     if (!distOk) set({ locOk: false, loc: { cls: 'warn', t: '{0}m from site (max {1}m)', p: { 0: dist, 1: SITE.radius } } });
     else if (!accOk) set({ locOk: false, loc: { cls: 'warn', t: 'Weak GPS (±{0}m) — go outside', p: { 0: Math.round(a.acc) } } });
     else if (a.suspicious || tooFast) set({ locOk: false, loc: { cls: 'warn', t: 'Suspicious GPS: {0}', p: { 0: tooFast ? tr('instant response') : a.warnings[0] } } });
@@ -370,11 +395,13 @@ export function doPunch() {
   const w = st.worker;
   if (!st.locOk || !w) return;
   if (Date.now() - _lastPunchAt < 4000) { showToast(tr('Wait a couple of seconds')); return; } // an accidental double tap
+  const geoEnforced = SITE.lat != null && SITE.lng != null;
+  // The site check must be fresh: re-read the GPS instead of punching on an old reading.
+  if (geoEnforced && (!lastGps || Date.now() - lastGps.at > GPS_FRESH_MS)) { showToast(tr('Checking your location again — punch in a moment')); getLocation(); return; }
   _lastPunchAt = Date.now();
   const now = new Date(), hh = String(now.getHours()).padStart(2, '0'), mm = String(now.getMinutes()).padStart(2, '0');
   const log = getPunchLog(), last = getLastEntry(log, w.id), type = last?.type === 'in' ? 'out' : 'in';
   const gps = lastGps || ({} as Partial<NonNullable<typeof lastGps>>);
-  const geoEnforced = !!(SITE.lat && SITE.lng);
   const entry: PunchEntry = {
     id: Date.now(), workerId: w.id, workerName: w.name,
     type, time: hh + ':' + mm, ts: now.toISOString(),
@@ -398,7 +425,13 @@ export function doPunch() {
   }
   set({ done: type, result: { type, text }, rev: st.rev + 1 });
   window.setTimeout(() => { if (st.done) set({ done: null }); }, 1600);
+  if (geoEnforced) { lastGps = null; window.setTimeout(getLocation, 1700); } // the next punch needs its own reading
 }
+
+// Back to the tab after a while: the location is read again.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && st.screen === 'punch' && st.worker) getLocation();
+});
 
 // ── Schedule change notice ──
 // The worker's roster and date changes against what this device last showed them

@@ -305,14 +305,19 @@ def test_list_tenants():
 
 def test_set_tenant_active():
     rv = Revokes()
+    # a login the owner disabled on its own must stay disabled after the firm is turned back on
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "active": False}, rv)["ok"]
+    rv = Revokes()
     assert core.set_tenant_active(DB, ADMIN1, {"tenantId": T1, "active": False}, rv)["error"]
     r = core.set_tenant_active(DB, SUPER, {"tenantId": T1, "active": False}, rv)
-    assert r == {"ok": True, "updated": 3, "active": False}
+    assert r == {"ok": True, "updated": 2, "active": False}
     assert core.login(DB, "owner1", "owner-pass-1", mint)["error"] == "Account disabled"
     assert DB.collection("tenants").document(T1).get().get("active") is False
     assert len(rv) == 3
     core.set_tenant_active(DB, SUPER, {"tenantId": T1, "active": True}, rv)
     assert core.login(DB, "owner1", "owner-pass-1", mint)["ok"] and len(rv) == 3   # turning on revokes nothing
+    assert core.login(DB, "staff1", "staff-pass-1", mint)["error"] == "Account disabled"
+    assert "disabledWithFirm" not in DB.collection("users").document("u-admin1").get().to_dict()
 
 
 def test_delete_tenant():

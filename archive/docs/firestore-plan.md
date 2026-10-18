@@ -1,6 +1,6 @@
 # Firestore migration plan
 
-> **Done.** The migration is finished; Apps Script and the Google Sheets mode were removed on 2026-10-03 (see [history.md](history.md)). Below is the original plan, kept as a historical document. The current design is in [backend.md](backend.md).
+> **Done.** The migration is finished; Apps Script and the Google Sheets mode were removed on 2026-10-03 (see [history.md](../../docs/history.md)). Below is the original plan, kept as a historical document. The current design is in [backend.md](../../docs/backend.md).
 
 Moving the database from Google Sheets + Apps Script to **Firestore (Standard, region `europe-west3`, Frankfurt)**
 in the Firebase project `schedule-odinson`. The site (Hosting) and the Cloud Functions stay where they are.

@@ -13,7 +13,7 @@ import path from 'node:path';
 const EXCLUDED_TOP = new Set([
   'firebase.json', 'firestore.rules', 'firestore.indexes.json', 'storage.rules',
   'docs', 'functions', 'functions-auth', 'tests', 'node_modules',
-  'dist', 'src', 'next', 'scripts',
+  'dist', 'src', 'next', 'scripts', 'archive',
   // the new pages' HTML entries at the top level, built by Vite (docs/build.md)
   'client-portal.html', 'supplier-portal.html', 'worker-punch.html',
   // a new page's file that Vite builds into dist/assets/ under a hashed name (worker-punch.html's manifest)

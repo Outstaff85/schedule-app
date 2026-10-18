@@ -51,7 +51,8 @@ function passGate(): Promise<boolean> {
   return gate || (gate = (async () => {
     if (!getSession()) return false;
     // The Firebase sign-in is gone (site data cleared, signed out): log in again.
-    try { if (!(await loadBackend()).currentUser()) { localStorage.removeItem(SESSION_KEY); return false; } } catch { /* offline: keep the session */ }
+    // A different Firebase user signed in on this browser than the one this session is for: log in again.
+    try { const u = (await loadBackend()).currentUser(); if (!u || u.uid !== getSession()?.uid) { localStorage.removeItem(SESSION_KEY); return false; } } catch { /* offline: keep the session */ }
     return true;
   })());
 }

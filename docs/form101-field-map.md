@@ -141,7 +141,7 @@ When `form101_fillable.pdf` is replaced, dump its fields and compare them with t
 ```
 python - <<'PY'
 import pymupdf
-for i, page in enumerate(pymupdf.open('form101_fillable.pdf')):
+for i, page in enumerate(pymupdf.open('functions/assets/form101_fillable.pdf')):
     page.get_pixmap(matrix=pymupdf.Matrix(2, 2)).save(f'page{i+1}.png')
     for w in page.widgets():
         print(i + 1, w.field_name, w.field_type_string, w.rect, w.text_maxlen)

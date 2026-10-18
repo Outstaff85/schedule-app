@@ -4,6 +4,7 @@
 // "nothing changed" or rebuilds the Form 101. Form 101 labels are Hebrew
 // (CLAUDE.md → UI text language), like the printed form.
 import type { Child, DayShift, WorkerRecord } from './bridge';
+import { localYMD } from '@/lib/payroll';
 
 /** The form's fields, as strings (the inputs' values). */
 export type WorkerForm = {
@@ -77,7 +78,7 @@ export function formOf(w: WorkerRecord): WorkerForm {
     maritalStatus: w.maritalStatus || '', healthFund: w.healthFund || '', docDob: w.docDob || '', phone: w.phone || '',
     address: workerAddress(w), houseNumber: w.houseNumber || '', city: w.city || '',
     supplierId: w.supplierId || '', hrId: w.hrId || '',
-    startDate: w.startDate || w.workStartDate || new Date().toISOString().slice(0, 10),
+    startDate: w.startDate || w.workStartDate || localYMD(new Date()),
     expiryEnabled: !!w.expiryEnabled, expiryMonths: String(w.expiryMonths || 9), expiryWarnMonths: String(w.expiryWarnMonths ?? 1), notes: w.notes || '',
     incomeType: w.incomeType || 'monthly', otherIncomeType: w.otherIncomeType || 'none',
     spouseSurname: w.spouseSurname || '', spouseGiven: w.spouseGiven || '', spouseId: w.spouseId || '', spouseDob: w.spouseDob || '', spouseIncome: w.spouseIncome || '',

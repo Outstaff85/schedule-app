@@ -27,7 +27,7 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 
 ## Global state
 
-`workers`, `clients`, `suppliers` (the data; the in-code defaults are demo data, replaced on load), `weekStart` (Sunday of the shown week), `selectedClientId` (Schedule filter), `currentTab`, `editingWorkerIdx` / `editingClientId` / `editingSupplierId`.
+`workers`, `clients`, `suppliers` (the data; the in-code defaults are demo data, replaced on load), `weekStart` (Sunday of the shown week), `selectedClientId` (Schedule filter), `currentTab`, `editingWorkerId` / `editingClientId` / `editingSupplierId`.
 
 Shared helpers:
 - `uid()`, `genToken()`;
@@ -107,7 +107,7 @@ Not paged: chips and form rows being edited (selected clients, children), and pr
 - **Requests:** `gsAuth()` → `{asTenantId}` for a super-admin viewing a firm, otherwise `{}`; `gsAuthQuery()` is the same as a query string.
 - **Firm profile** (Form 101 employer block):
   - `FIRM_PROFILE_FIELDS` — company name, deductions file, phone, street, city;
-  - `activeTenantProfile()`, `firmProfileMissing()`, `firmProfileWarnHtml()` / `refreshFirmProfileWarnings()` (the amber warning lists the missing fields; a tap on it opens the firm form, `openMyFirmForm`);
+  - `activeTenantProfile()`, `firmProfileMissing()` (the amber warning lists the missing fields; a tap on it opens the firm form, `openMyFirmForm`);
   - `cacheTenantProfile(tenantId, profile)` keeps the session copy current after an edit;
   - an incomplete profile colors the Admin tab icon amber (`renderAccountControl`).
 

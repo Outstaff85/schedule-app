@@ -266,7 +266,7 @@ async function onScanFilesSelected(fileList){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
@@ -325,7 +325,7 @@ async function onScanFileSelected(file){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
@@ -381,7 +381,7 @@ async function onSefachFileSelected(file){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
   }
 }
@@ -405,7 +405,7 @@ async function runSefachOcr(b64,mediaType){
     const json=await resp.json();
     if(!json||json.error){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאת AI: '
-        +((json&&json.error)||'אין תגובה')+'<br><br>'
+        +esc((json&&json.error)||'אין תגובה')+'<br><br>'
         +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
       return;
     }
@@ -434,7 +434,7 @@ async function runSefachOcr(b64,mediaType){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="renderScanPagesPrompt()">שוב</button></div>';
   }
 }
@@ -1077,7 +1077,7 @@ async function runOcr(b64,mediaType){
     const json=await resp.json();
     if(!json||json.error){
       stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאת AI: '
-        +((json&&json.error)||'אין תגובה')+'<br><br>'
+        +esc((json&&json.error)||'אין תגובה')+'<br><br>'
         +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
       return;
     }
@@ -1116,7 +1116,7 @@ async function runOcr(b64,mediaType){
   }catch(err){
     console.error(err);
     stage.innerHTML='<div style="color:#ff6b78;padding:14px;font-size:13px">שגיאה: '
-      +(err&&err.message||'')+'<br><br>'
+      +esc(err&&err.message||'')+'<br><br>'
       +'<button class="btn sm" onclick="openAiScan()">שוב</button></div>';
   }
 }
@@ -2343,7 +2343,7 @@ function openWorkerModalFromScan(p){
   if(rescanId){
     const idx=workers.findIndex(w=>w.id===rescanId);
     if(idx>=0){
-      editingWorkerIdx=idx;
+      editingWorkerId=rescanId;
       // Survives until saveWorker() consumes it (unlike window.__aiRescanWorkerId
       // above, which is cleared immediately here) — saveWorker() runs later,
       // after the manager reviews/edits fields in the modal and presses save,
@@ -2359,7 +2359,7 @@ function openWorkerModalFromScan(p){
       return;
     }
   }
-  editingWorkerIdx=null;
+  editingWorkerId=null;
   showWorkerModal({...blankWorkerDefaults(),...ocrFields});
   if(typeof applyWorkerDraft==='function') applyWorkerDraft();
   if(typeof autoFindMissingScanFields==='function') autoFindMissingScanFields();

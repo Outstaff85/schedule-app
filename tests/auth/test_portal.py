@@ -379,3 +379,12 @@ def test_a_link_cannot_touch_another_workers_requests():
     assert R(T1, f"s_w1_{d}").get().exists
     assert portal.punch_action(DB, {"action": "myRequests", "token": "tok-bella"})["requests"] == []
     assert portal.punch_action(DB, {"action": "myRequests", "token": "tok-other"}) == {"requests": [], "colleagues": []}
+
+
+def test_a_punch_is_filed_only_under_the_workers_own_clients():
+    base = {"workerId": "w1", "type": "in", "ts": "2026-10-01T05:00:00.000Z"}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": {**base, "id": 21, "clientId": "c2", "site": "Site B"}})["ok"]
+    assert P(T1, "21").get().to_dict()["clientId"] == "c2"
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": {**base, "id": 22, "clientId": "c3", "site": "Site C"}})["ok"]
+    d = P(T1, "22").get().to_dict()
+    assert "clientId" not in d and "site" not in d                     # c3 is not Avi's client

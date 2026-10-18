@@ -78,7 +78,7 @@ export async function saveWorker(api: ManagerBridge, o: {
     api.setRescanned(null);
     if (justRescanned) {
       o.progress(tr('Building the PDF, please do not close…'), 0);
-      await api.uploadForm101(isId, editId, undefined);
+      await api.uploadForm101(isId, editId, sig ?? undefined);
       close();
       return;
     }

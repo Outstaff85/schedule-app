@@ -6,6 +6,7 @@
 import * as React from 'react';
 import { IconCheck, IconClock, IconEdit, IconLogin, IconLogout } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
+import { localYMD } from '@/lib/payroll';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +24,7 @@ export function ManualPunch({ clientId, api }: { clientId: string; api: ManagerB
   const [now] = React.useState(() => new Date());
   const [wid, setWid] = React.useState('');
   const [type, setType] = React.useState<'in' | 'out'>('in');
-  const [date, setDate] = React.useState(now.toISOString().slice(0, 10));
+  const [date, setDate] = React.useState(localYMD(now));
   const [time, setTime] = React.useState(pad(now.getHours()) + ':' + pad(now.getMinutes()));
   const [note, setNote] = React.useState('');
   if (!info) return null;
