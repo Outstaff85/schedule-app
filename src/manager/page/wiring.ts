@@ -15,6 +15,7 @@ import { loadFirestoreBackend } from '../data/api';
 import { render } from './render';
 import { refreshBell } from './header';
 import { showToast } from '../toast';
+import { setFrame } from '../frame';
 Object.defineProperties(window, {
   "setSaveStatus": {get: () => setSaveStatus, configurable: true},
   "updateHoursBadge": {get: () => updateHoursBadge, configurable: true},
@@ -56,21 +57,9 @@ ManagerData.on('save', (s?: any)=>setSaveStatus(s));
 ManagerData.on('notice', ({msg, ms}: any)=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
 ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());
 ManagerData.on('requests', ()=>{ if(currentTab==='schedule') renderSchedulePage(); });
-export function setSaveStatus(s?: any){
-  const el=byId('saveIndicator');
-  el.className='save-indicator '+s;
-  el.querySelector('span').textContent=s==='saving'?tr('Saving...'):tr('Saved');
-}
+export function setSaveStatus(s?: any){ setFrame({save:s==='saving'?'saving':'saved'}); }
 // The count of hours batches waiting for a decision, on the Accounting tab.
-function updateHoursBadge(){
-  const tab = byId('tabAccounting'); if(!tab) return;
-  const n = pendingHoursCount();
-  let el = byId('accPendingBadge');
-  if(!el){ el = document.createElement('span'); el.id = 'accPendingBadge'; el.className = 'tab-badge'; tab.querySelector('.ic').appendChild(el); }
-  el.textContent = n > 99 ? '99+' : String(n);
-  el.style.display = n ? '' : 'none';
-  el.title = tr('{0} hours batch(es) waiting for review',{0:(n)});
-}
+function updateHoursBadge(){ setFrame({counts:{accounting:pendingHoursCount()}}); }
 
 export const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 
@@ -88,7 +77,7 @@ export function goToClientPortal(u?: any){
   clearSession();
   location.replace('client-portal.html');
 }
-async function logout(){
+export async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e: any){}
   clearAdminCaches(); clearSession();
   try{ await (await loadFirestoreBackend()).signOut(); }catch(e: any){}

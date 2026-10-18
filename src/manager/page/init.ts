@@ -14,14 +14,14 @@ import { homeTab, isHrSession } from '../logic/access';
 import { loadFirestoreBackend } from '../data/api';
 import { getSession, saveSession } from '../data/session';
 import { USERS_ADMIN_FN_URL, warmCloudFunctions } from '../logic/functions';
-import { esc } from '../logic/util';
 import { applyI18n, placeLangButton, showContractNotice, syncLangButtons } from './language';
-import { closeAccountMenu, gateApp } from './gate';
+import { gateApp } from './gate';
 import { render } from './render';
 import { setSaveStatus } from './wiring';
 import { applyNavPermissions, switchTab } from './nav';
 import { renderAccounting } from './bridge';
 import { showToast } from '../toast';
+import { setFrame } from '../frame';
 Object.defineProperties(window, {
   "_origConsoleError": {get: () => _origConsoleError, configurable: true},
   "_origConsoleWarn": {get: () => _origConsoleWarn, configurable: true},
@@ -39,6 +39,7 @@ Object.defineProperties(window, {
   "_installPrompt": {get: () => _installPrompt, set: (v?: any) => { _installPrompt = v; }, configurable: true},
   "_isStandalone": {get: () => _isStandalone, configurable: true},
   "ensureInstallButton": {get: () => ensureInstallButton, configurable: true},
+  "installApp": {get: () => installApp, configurable: true},
 });
 
 // --- Init ---------------------------------------------------------------------
@@ -168,7 +169,7 @@ async function checkPushStatus(){
     btn.innerHTML='<i class="ti ti-bell" style="color:var(--green)"></i> Enable Alerts';
     btn.style.cssText='';
     btn.onclick=subscribeToPush;
-    qs('.titlebar-actions')?.prepend(btn);
+    qs('[data-slot-for="langBtn"]')?.before(btn); // in the React frame's title bar, before the Language button
   }
 }
 
@@ -199,34 +200,25 @@ if('serviceWorker' in navigator){
   if('Notification' in window) checkPushStatus();
 }
 
-// ── PWA: Install button (always shown until the app is installed) ──
+// ── PWA: "Install app" in the account menu (always shown until the app is installed) ──
 let _installPrompt: any=null;
 window.addEventListener('beforeinstallprompt',(e?: any)=>{ e.preventDefault(); _installPrompt=e; ensureInstallButton(); });
 window.addEventListener('appinstalled',()=>{
   _installPrompt=null;
-  byId('installBtn')?.remove();
+  setFrame({install:false});
   showToast(tr('Schedule Manager installed!'));
 });
 function _isStandalone(){ return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone===true; }
-function ensureInstallButton(){
-  if(_isStandalone()){ byId('installBtn')?.remove(); return; }
-  if(byId('installBtn')) return;
-  const host=byId('accountInstallSlot'); if(!host) return;
-  const btn=document.createElement('button');
-  btn.id='installBtn'; btn.type='button'; btn.className='acct-mi install';
-  btn.innerHTML='<i class="ti ti-download"></i><span>'+esc(tr('Install app'))+'</span>';
-  btn.onclick=async()=>{
-    closeAccountMenu();
-    if(_installPrompt){
-      _installPrompt.prompt();
-      const{outcome}=await _installPrompt.userChoice;
-      if(outcome==='accepted'){ btn.remove(); showToast(tr('App installed!')); }
-      _installPrompt=null;
-    } else {
-      const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
-      showToast(ios ? tr('Safari: Share → «Add to Home Screen»') : tr('Browser menu (⋮) → «Install app»'));
-    }
-  };
-  host.prepend(btn);
+function ensureInstallButton(){ setFrame({install:!_isStandalone()}); }
+async function installApp(){
+  if(_installPrompt){
+    _installPrompt.prompt();
+    const{outcome}=await _installPrompt.userChoice;
+    if(outcome==='accepted'){ setFrame({install:false}); showToast(tr('App installed!')); }
+    _installPrompt=null;
+  } else {
+    const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+    showToast(ios ? tr('Safari: Share → «Add to Home Screen»') : tr('Browser menu (⋮) → «Install app»'));
+  }
 }
 window.addEventListener('load', ensureInstallButton);

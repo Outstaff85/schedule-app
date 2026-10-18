@@ -13,6 +13,7 @@ import { API_URL } from '../data/api';
 import { esc } from '../logic/util';
 import { workerExpiryStatus } from '../logic/workers';
 import { tabAllowed } from '../logic/access';
+import { setFrame } from '../frame';
 Object.defineProperties(window, {
   "applyI18n": {get: () => applyI18n, configurable: true},
   "setLanguage": {get: () => setLanguage, configurable: true},
@@ -72,14 +73,13 @@ export function placeLangButton(){
   const btn = byId('langBtn'); if(!btn) return;
   const shown = (id?: any) => { const el = byId(id); return el && el.style.display && el.style.display !== 'none' ? el : null; };
   // The login screen: its corner; the super-admin's firms list: in its
-  // header row, before the buttons; otherwise the title bar, before the account circle.
+  // header row, before the buttons; otherwise the React frame's title bar, its spot before the account.
   const cover = shown('loginScreen');
   const firms = !cover && shown('firmsScreen') ? byId('firmsActions') : null;
-  const host = cover || firms || qs('.titlebar-actions');
+  const host = cover || firms || qs('[data-slot-for="langBtn"]');
   btn.classList.toggle('on-cover', !!cover);
   if(!host) return;
-  if(cover || firms){ if(host.firstChild !== btn) host.prepend(btn); }
-  else if(btn.nextElementSibling !== byId('accountControl')) host.insertBefore(btn, byId('accountControl'));
+  if(host.firstChild !== btn) host.prepend(btn);
 }
 ['loginScreen','firmsScreen'].forEach((id?: any) => { const el = byId(id); if(el) new MutationObserver(placeLangButton).observe(el, {attributes:true, attributeFilter:['style']}); });
 // The login screen's showcase: the headline turns through the sectors, the
@@ -187,6 +187,7 @@ const loginFx = (() => {
 // sheet or Escape closes it. The same code in all four pages — keep them the same.
 const I18N_LANG_EN: Record<string, string> = {en:'English', he:'Hebrew', ru:'Russian'};
 export function syncLangButtons(){
+  setFrame({lang:I18N_LANG});
   qsa('.lang-btn .lang-btn-name').forEach((el?: any) => { el.textContent = I18N_LANGS[I18N_LANG] || I18N_LANGS.en; });
   const ov = byId('langSheet'); if(ov && ov.classList.contains('open')) renderLangList();
 }
@@ -251,7 +252,6 @@ function redrawForLanguage(){
   syncLangButtons();
   try{ if(byId('loginRoles')) showLoginSector(__loginSector); }catch(e: any){}
   try{ const s = getSession(); if(s) renderAccountControl(s); }catch(e: any){}
-  try{ const b = byId('installBtn'); if(b) b.innerHTML = '<i class="ti ti-download"></i><span>' + esc(tr('Install app')) + '</span>'; }catch(e: any){}
   try{ if(typeof render === 'function') render(); }catch(e: any){}
   try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e: any){}
 }

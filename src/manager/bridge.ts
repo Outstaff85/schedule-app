@@ -333,6 +333,16 @@ export type ManagerBridge = WorkerBridge & {
   /** the page's language and its loaded dictionary (`I18N_LANG`, `I18N`) */
   lang(): string;
   dict(): Record<string, string>;
+  // ── The frame (stage 8e-1): the React Shell's actions on the page ──
+  /** opens a section (`switchTab`) */
+  switchTab(tab: string): void;
+  /** opens or closes the bell's list under the bell button (`toggleBell`) */
+  toggleBell(e: MouseEvent): void;
+  /** the account menu's items: My name, Install app, Sign out; the theme kept on the account */
+  editMyName(): void;
+  installApp(): void;
+  signOut(): void;
+  saveTheme(theme: string): void;
   today(): TodaySnapshot;
   openWorker(id: string): void;
   openNotices(id: string): void;

@@ -163,9 +163,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     row.querySelector('td:nth-child(2)').click(); await T.tick(300); r.after = det();
     document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(300); r.closedDet = !det();
     await ManagerBridge.setPeriod('week');
-    toggleAccountMenu(); const m = document.getElementById('accountMenu');
-    r.menu = {open: getComputedStyle(m).display !== 'none', lang: !m.querySelector('.lang-btn, select') && !!document.querySelector('.titlebar-actions > .lang-btn + #accountControl'), out: /Sign out/.test(m.innerText), name: /My name/.test(m.innerText)};
-    closeAccountMenu(); r.closed = getComputedStyle(m).display === 'none';
+    // The account menu is the React frame's (AccountMenu): it opens on a press of its button.
+    const acct = document.querySelector('[data-testid=account-btn]');
+    acct.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await T.tick(200);
+    const m = document.querySelector('[data-testid=account-menu]');
+    r.menu = {open: !!m, lang: !!m && !m.querySelector('.lang-btn, select') && !!acct.previousElementSibling?.querySelector('#langBtn'), out: !!m && /Sign out/.test(m.innerText), name: !!m && /My name/.test(m.innerText)};
+    document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(200); r.closed = !document.querySelector('[data-testid=account-menu]');
     return r;
   });
   ok(sc.h > 0 && sc.h < 60 && !sc.before && sc.after && sc.closedDet, 'salary: one compact line per worker (the Data Table), a tap opens its details in a window ' + JSON.stringify(sc));
@@ -198,13 +201,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const v7 = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const box = q => document.querySelector(q).getBoundingClientRect(), shown = q => { const el = document.querySelector(q); return !!el && getComputedStyle(el).display !== 'none'; };
-    const crumb = () => document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim();
+    const crumb = () => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim();
     switchTab('dashboard'); await wait(300);
-    const nav = box('.top-tabs'), t = box('#tabDashboard'), s2 = box('#tabSchedule');
+    const nav = box('[data-testid=shell-menu]'), t = box('[data-testid=shell-menu] button:nth-child(1)'), s2 = box('[data-testid=shell-menu] button:nth-child(2)');
     r.menu = nav.left < 2 && Math.abs(nav.width - 210) < 2 && s2.top > t.top && Math.abs(s2.left - t.left) < 2;
     r.crumbToday = crumb();
     r.noTitle = [...document.querySelectorAll('.page-title')].every(e => getComputedStyle(e).display === 'none');
-    r.center = /\d/.test(document.getElementById('ogDate').innerText) && /^Good /.test(document.querySelector('#ogGreet .gtext').textContent);
+    r.center = /\d/.test(document.querySelector('[data-testid=shell-date]').innerText) && /^Good /.test(document.querySelector('[data-testid=shell-greet-text]').textContent);
     r.noSidebarToday = !document.querySelector('.sidebar, #workerList, #sidebarClientList');
     r.react = !!document.querySelector('#todayRoot [data-testid=today]') && document.querySelectorAll('#todayRoot [data-slot=figures] > button').length === 4 && document.querySelectorAll('#todayRoot section[data-panel]').length >= 1;
     r.width = getComputedStyle(document.getElementById('sectionDashboard')).maxWidth === '1200px';
@@ -225,7 +228,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await sleep(400);
   const v7he = await p.evaluate(() => {
     const box = q => document.querySelector(q).getBoundingClientRect();
-    return {menuRight: box('.top-tabs').right > innerWidth - 2, acctLeft: box('#accountControl').left < box('.og-brand').left, crumbRight: box('#ogCrumb').left > innerWidth / 2,
+    return {menuRight: box('[data-testid=shell-menu]').right > innerWidth - 2, acctLeft: box('[data-testid=account-btn]').left < box('[data-testid=app-brand]').left, crumbRight: box('[data-testid=shell-crumb]').left > innerWidth / 2,
       pageLtr: getComputedStyle(document.querySelector('#todayRoot')).direction === 'ltr', today: document.querySelector('#todayRoot [data-testid=today] p').textContent};
   });
   await p.evaluate(() => setLanguage('en', {save:false})); await waitFor(p, () => I18N_LANG === 'en');
@@ -268,23 +271,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
     const box = q => document.querySelector(q).getBoundingClientRect(), figs = [...document.querySelectorAll('#todayRoot [data-slot=figures] > button')];
-    const cr = box('#ogCrumb'), c = box('#ogCenter'), a = box('.titlebar-actions'), tb = getComputedStyle(document.querySelector('.titlebar'));
+    const cr = box('[data-testid=shell-crumb]'), c = box('[data-testid=shell-greeting]'), a = document.querySelector('[data-testid=account-btn]').parentElement.getBoundingClientRect(), tb = getComputedStyle(document.querySelector('[data-slot=shell] > header'));
     return {stats: figs.length, row: figs.every(f => Math.abs(f.getBoundingClientRect().top - figs[0].getBoundingClientRect().top) < 1), lines: document.querySelectorAll('#todayRoot .og-plate').length,
       twoRows: cr.top >= c.bottom - 1 && cr.top >= a.bottom - 1 && Math.abs(c.top - a.top) < 12, fixed: tb.position === 'sticky' && tb.top === '0px',
-      greetHidden: getComputedStyle(document.querySelector('#ogGreet .gtext')).display === 'none' && !!document.querySelector('#ogGreet svg.gic'),
-      shortDate: getComputedStyle(document.querySelector('.og-date-s')).display !== 'none' && getComputedStyle(document.querySelector('.og-date-l')).display === 'none',
-      noMenu: box('.top-tabs').bottom > innerHeight - 2}; });
+      greetHidden: getComputedStyle(document.querySelector('[data-testid=shell-greet-text]')).display === 'none' && !!document.querySelector('[data-testid=shell-greeting] svg.gic'),
+      shortDate: getComputedStyle(document.querySelector('[data-testid=shell-date] > span:last-child')).display !== 'none' && getComputedStyle(document.querySelector('[data-testid=shell-date] > span:first-child')).display === 'none',
+      noMenu: !document.querySelector('[data-testid=shell-menu]') && box('[data-testid=shell-bar]').bottom > innerHeight - 2}; });
   await p.screenshot({path: SP + '/t3-today.png'}).catch(()=>{});
   // The phone bottom bar (variant 11): Today, Schedule, Workers, Accounting, More; More opens a sheet with the other tabs.
   const bb = await p.evaluate(async () => {
-    const shown = [...document.querySelectorAll('.top-tabs .ttab')].filter(t => getComputedStyle(t).display !== 'none').map(t => t.querySelector('.lb').textContent.trim());
-    const bar = document.querySelector('.top-tabs').getBoundingClientRect(), fixed = Math.abs(bar.bottom - innerHeight) < 2 && Math.abs(bar.width - innerWidth) < 2;
-    const todayColor = getComputedStyle(document.getElementById('tabDashboard')).color;
-    document.getElementById('tabMore').click(); await new Promise(r => setTimeout(r, 200));
-    const sheet = document.getElementById('moreOverlay').classList.contains('open'), items = [...document.querySelectorAll('#moreModal .t3-line b')].map(b => b.textContent.trim());
-    document.querySelectorAll('#moreModal .t3-line')[0].click(); await new Promise(r => setTimeout(r, 200));
-    const r = {shown, fixed, todayColor, sheet, items, tab: currentTab, moreOn: document.getElementById('tabMore').classList.contains('active'), closed: !document.getElementById('moreOverlay').classList.contains('open')};
-    switchTab('dashboard'); r.moreOff = !document.getElementById('tabMore').classList.contains('active');
+    const btns = () => [...document.querySelectorAll('[data-testid=shell-bar] > button')], more = () => btns()[btns().length - 1];
+    const shown = btns().map(t => t.querySelector('span.truncate').textContent.trim());
+    const bar = document.querySelector('[data-testid=shell-bar]').getBoundingClientRect(), fixed = Math.abs(bar.bottom - innerHeight) < 2 && Math.abs(bar.width - innerWidth) < 2;
+    const todayColor = getComputedStyle(btns()[0]).color;
+    more().click(); await new Promise(r => setTimeout(r, 400));
+    const win = () => document.querySelector('[data-testid=window]');
+    const sheet = !!win(), items = win() ? [...win().querySelectorAll('button span.flex-1')].map(b => b.textContent.trim()) : [];
+    if(win()) win().querySelectorAll('button span.flex-1')[0].closest('button').click(); await new Promise(r => setTimeout(r, 400));
+    const r = {shown, fixed, todayColor, sheet, items, tab: currentTab, moreOn: more().getAttribute('aria-current') === 'page', closed: !win() || win().dataset.state === 'closed'};
+    switchTab('dashboard'); await new Promise(r => setTimeout(r, 200)); r.moreOff = more().getAttribute('aria-current') !== 'page';
     return r;
   });
   ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
@@ -302,7 +307,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {sum: line ? line.querySelector('small').innerText : '', arrows: q('[data-testid="week-prev"]').length + q('[data-testid="week-next"]').length,
       marks: line ? line.querySelectorAll('[data-testid="daymarks"] i').length : 0, hrs: line ? (line.querySelector('[data-testid="week-hours"]') || {}).textContent : '',
       kinds: line ? [...line.querySelectorAll('[data-testid="daymarks"] i')].map(i => i.dataset.k).join('') : '',
-      week: (document.querySelector('#scheduleRoot [data-testid="week-range"]') || {}).innerText || '', crumb: document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' '),
+      week: (document.querySelector('#scheduleRoot [data-testid="week-range"]') || {}).innerText || '', crumb: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' '),
       old: !!document.getElementById('ganttBody')};
   }, schedPlate);
   await p.click(schedPlate, {position: {x: 30, y: 14}});
@@ -318,10 +323,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Glass week arrows, site tabs (the breadcrumb follows), 7 day marks per worker (green work, blue a night).
   const sc6 = await p.evaluate(async () => {
     const r = {}, tabs = [...document.querySelectorAll('#scheduleRoot [data-testid="site-tabs"] button')]; r.tabs = tabs.map(b => b.textContent);
-    r.crumbAll = document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ');
+    r.crumbAll = document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ');
     if(tabs[1]){ tabs[1].click(); await new Promise(res => setTimeout(res, 50));
       r.filtered = selectedClientId === clients[0].id && document.querySelector('#scheduleRoot [data-testid="site-tabs"] button.on').textContent === clients[0].name;
-      r.crumbSite = document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' '); filterByClient(null); }
+      r.crumbSite = document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' '); filterByClient(null); }
     return r;
   });
   ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.tabs[0] === 'All sites' && sc6.filtered
@@ -367,11 +372,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const hb = await p.evaluate(async () => {
     const r = {};
     const wait = async (fn) => { for(let i = 0; i < 60 && !fn(); i++) await new Promise(res => setTimeout(res, 150)); };
-    const badge = () => document.getElementById('accPendingBadge');
+    // the count on the React frame's Accounting section (its side menu or bottom bar button)
+    const badge = () => document.querySelector('button:has([data-testid=tab-accounting]) [data-testid=shell-count]');
     const before = (__hoursBatches || []).filter(b => b.status === 'pending').length;
     await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'savePendingHoursBatch', fileName: 'e2e', entries: [{workerId: 'w2', date: '03/10/2026', inTime: '08:00', outTime: '12:00'}]})});
-    await wait(() => badge() && badge().textContent === String(before + 1) && badge().style.display !== 'none');
-    r.badge = badge() && badge().style.display !== 'none' ? badge().textContent : null; r.before = before;
+    await wait(() => badge() && badge().textContent === String(before + 1));
+    r.badge = badge() ? badge().textContent : null; r.before = before;
     openWorkerCard(workers.findIndex(w => w.id === 'w2'));
     const hs = () => (document.querySelector('#workerCardModal [data-testid="card-hours-status"]') || {}).textContent || '';
     r.card = hs();
@@ -379,7 +385,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await rejectHoursBatch(b.batchId);
     await wait(() => /Rejected/.test(hs()));
     r.after = hs();
-    r.badgeAfter = badge().style.display === 'none' ? 0 : Number(badge().textContent);
+    r.badgeAfter = badge() ? Number(badge().textContent) : 0;
     closeModal('workerCardOverlay');
     return r;
   });
@@ -403,7 +409,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(as.nameKept === 'Dana Levi' && as.closedEmpty && as.noNew, 'worker window: an empty name is not saved; an empty new worker is not created ' + JSON.stringify(as));
   // The header's language select: English by default; Hebrew from i18n/he.json, Russian (an empty dictionary) falls back to English.
   const lg = await p.evaluate(async () => {
-    const r = {def: I18N_LANG, sel: document.querySelector('.titlebar-actions .lang-btn .lang-btn-name').textContent, firmField: !!document.getElementById('firmEditLanguage')};
+    const r = {def: I18N_LANG, sel: document.querySelector('[data-slot-for=langBtn] .lang-btn .lang-btn-name').textContent, firmField: !!document.getElementById('firmEditLanguage')};
     document.getElementById('langBtn').click();
     const sh = document.getElementById('langSheet'), inp = sh.querySelector('input');
     r.sheet = {open: sh.classList.contains('open'), all: [...sh.querySelectorAll('.lang-li')].map(b => b.querySelector('b').textContent + '/' + b.querySelector('small').textContent).join(), ticked: sh.querySelector('.lang-li.on').dataset.lang};
@@ -416,7 +422,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if(li) li.click();
       for(let i = 0; i < 40 && I18N_LANG !== l; i++) await new Promise(res => setTimeout(res, 150));
       switchTab('accounting'); await new Promise(res => setTimeout(res, 300));
-      return {lang: I18N_LANG, tab: document.getElementById('tabAccounting').innerText.trim(),
+      return {lang: I18N_LANG, tab: document.querySelector('[data-testid=shell-menu] button:has([data-testid=tab-accounting])').innerText.trim(),
         head: ((document.querySelector('#accountingRoot [data-testid=sal-table] thead th') || {}).textContent || '').trim(),
         sec: ((document.querySelector('#accSecSalary [data-slot=section] > div > button span span') || {}).firstChild || {}).textContent,
         period: document.querySelector('#accountingRoot [data-testid=acc-period]').innerText.trim(),
@@ -439,7 +445,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const onLogin = await p2.evaluate(() => ({card: (() => { const c = document.querySelector('.login-card'), cs = getComputedStyle(c); return cs.position === 'fixed' && cs.borderRadius === '22px' && !!c.querySelector('.og-mark') && /gbtn/.test(document.getElementById('loginBtn').className); })(), n: document.querySelectorAll('.lang-btn').length, selects: document.querySelectorAll('select.lang-select').length, inLogin: !!document.querySelector('#loginScreen #langBtn.on-cover'), lang: I18N_LANG}));
     await p2.fill('#loginUsername', 'owner1'); await p2.fill('#loginPassword', 'owner-pass-1'); await p2.click('#loginBtn');
     await p2.waitForNavigation().catch(()=>{});
-    const after = await waitFor(p2, () => I18N_LANG === 'he' && !!document.querySelector('.titlebar-actions #langBtn') && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית' && document.querySelectorAll('.lang-btn').length === 1, 15000);
+    const after = await waitFor(p2, () => I18N_LANG === 'he' && !!document.querySelector('[data-slot-for=langBtn] #langBtn') && document.querySelector('#langBtn .lang-btn-name').textContent === 'עברית' && document.querySelectorAll('.lang-btn').length === 1, 15000);
     ok(onLogin.card, 'sign-in: a compact glass card pinned over the site, with the logo and a glass Sign in ' + JSON.stringify(onLogin));
     ok(onLogin.n === 1 && !onLogin.selects && onLogin.inLogin && onLogin.lang === 'en' && after, 'language: one Language button per page (login screen, then the title bar); the user\'s last choice comes back on a new device ' + JSON.stringify(onLogin));
     await p2.evaluate(() => setLanguage('en')); await sleep(1000);
@@ -451,14 +457,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   {
     const th = await p.evaluate(async () => {
       const r = {def: document.documentElement.dataset.theme, stored: localStorage.getItem('uiTheme')};
-      toggleAccountMenu();
-      r.items = [...document.querySelectorAll('#accountTheme [data-theme-v]')].map(b => b.dataset.themeV + '/' + b.innerText.trim()).join();
-      document.querySelector('#accountTheme [data-theme-v="light"]').click();
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
+      const sw = () => document.querySelector('[data-testid=account-theme] [data-testid=theme-switch]');
+      r.items = [...sw().querySelectorAll('[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
+      sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
-      r.on = (document.querySelector('#accountTheme .on') || {}).dataset?.themeV;
-      r.open = document.getElementById('accountControl').classList.contains('open');
+      r.on = (sw().querySelector('[data-state=on]') || {}).dataset?.testid?.slice(6);
+      r.open = !!document.querySelector('[data-testid=account-menu]');
       r.ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
-      closeAccountMenu();
+      document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await wait(200);
       return r;
     });
     ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light,system/System' && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s switch (Dark / Light / System) turns the light theme on, on this device ' + JSON.stringify(th));
@@ -467,11 +475,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await p3.goto(BASE + 'schedule-manager.html'); await p3.waitForSelector('#loginScreen', {state:'visible'});
     const before = await p3.evaluate(() => ({look: document.documentElement.dataset.theme, sw: document.querySelectorAll('#loginTheme [data-theme-v]').length, on: (document.querySelector('#loginTheme .on') || {}).dataset?.themeV}));
     await p3.fill('#loginUsername', 'owner1'); await p3.fill('#loginPassword', 'owner-pass-1'); await p3.click('#loginBtn');
-    const back = await waitFor(p3, () => !!document.querySelector('.titlebar-actions #langBtn') && document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 15000);
+    const back = await waitFor(p3, () => !!document.querySelector('[data-slot-for=langBtn] #langBtn') && document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 15000);
     await p3.screenshot({path: SP + '/theme-light-manager.png'});
     ok(before.look === 'dark' && before.sw === 3 && before.on === 'dark' && back, 'theme: the sign-in screen has the same switch (Dark on a new device); the user\'s light theme comes back with the login ' + JSON.stringify(before));
     // and back: Dark again, on the account too
-    await p3.evaluate(() => { toggleAccountMenu(); document.querySelector('#accountTheme [data-theme-v="dark"]').click(); closeAccountMenu(); });
+    await p3.evaluate(async () => { const wait = ms => new Promise(res => setTimeout(res, ms));
+      document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
+      document.querySelector('[data-testid=account-theme] [data-testid=theme-dark]').click(); await wait(100);
+      document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await wait(200); });
+    await sleep(800);
     ok(await p3.evaluate(() => document.documentElement.dataset.theme === 'dark' && localStorage.getItem('uiTheme') === 'dark' && getComputedStyle(document.documentElement).getPropertyValue('--ground').trim() === '#10141f'), 'theme: Dark switches the light theme off again');
     await sleep(1000);
     await c3.close();
@@ -773,13 +785,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // The tiles while no section is chosen; a tile opens its section; the breadcrumb follows.
   const at = await p.evaluate(async () => {
     switchTab('admin'); switchAdminPane(null); await new Promise(r => setTimeout(r, 100));
-    return {tiles: [...document.querySelectorAll('#adminRoot [data-testid="admin-tile"]')].map(t => t.dataset.k).join(), crumb0: document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim(),
+    return {tiles: [...document.querySelectorAll('#adminRoot [data-testid="admin-tile"]')].map(t => t.dataset.k).join(), crumb0: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim(),
       noRows: !document.querySelector('#adminRoot [data-testid="punch-row"]'), oldBar: !!document.getElementById('adminPaneBar')};
   });
   await p.click('#adminRoot [data-testid="admin-tile"][data-k="punchlog"] [role="button"]'); await sleep(250);
   Object.assign(at, await p.evaluate(() => ({
     opened: __adminPane === 'punchlog' && !!document.querySelector('#adminRoot [data-testid="punchlog"]') && !document.querySelector('#adminRoot [data-testid="admin-tiles"]'),
-    crumb: document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim(),
+    crumb: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim(),
     figs: [...document.querySelectorAll('#adminRoot [data-slot="figures"] button span:first-of-type')].map(x => x.textContent).join()})));
   ok(at.tiles === 'punchlog,firms,users' && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total',
     'admin: three tiles while no section is chosen, a tile opens its section, the breadcrumb "Admin › Punch Log", the figures ' + JSON.stringify(at));
@@ -1295,7 +1307,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const wh = await p.evaluate(async () => {
     const wait = ms => new Promise(res => setTimeout(res, ms));
     switchTab('workers'); await wait(50);
-    const crumb = () => document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim();
+    const crumb = () => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim();
     const chips = () => [...document.querySelectorAll('#workersRoot [data-testid="workers-chips"] button')].map(b => b.dataset.key + ':' + b.innerText.trim()).join();
     const tabs = () => [...document.querySelectorAll('#workersRoot #workersTabs button')], r = {tabs: tabs().map(b => b.textContent).join(), count: crumb()};
     tabs()[1].click(); await wait(50); r.vac = chips() === 'status:On vacation' && tabs()[1].classList.contains('on'); r.crumbVac = crumb();
@@ -1378,11 +1390,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const nt = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     switchTab('dashboard'); await wait(100);
-    const g = document.querySelector('#ogGreet h3'); r.greet = g ? g.textContent : ''; r.icon = !!(g && g.querySelector('svg.gic'));
+    const g = document.querySelector('[data-testid=shell-greeting]'); r.greet = g ? g.querySelector('[data-testid=shell-greet-text]').textContent : ''; r.icon = !!(g && g.querySelector('svg.gic'));
     const w2 = workers.find(w => w.id === 'w2'), keep = w2.docExpiry; w2.docExpiry = '01/01/2020'; render(); await wait(50);
-    const count = () => { const c = document.getElementById('bellCount'); return c.style.display === 'none' ? 0 : Number(c.textContent); };
-    r.bell = getComputedStyle(document.getElementById('bellBtn')).display !== 'none'; r.before = count();
-    document.getElementById('bellBtn').click(); await wait(100);
+    const bell = () => document.querySelector('[data-testid=shell-bell]');
+    const count = () => { const c = bell() && bell().querySelector('.og-bell-n'); return c ? Number(c.textContent) : 0; };
+    r.bell = !!bell(); r.before = count();
+    bell().click(); await wait(100);
     const items = [...document.querySelectorAll('#bellPanel .og-ni')];
     r.item = items.some(b => /ID \/ passport expired/.test(b.textContent) && /Dana/.test(b.textContent) && b.classList.contains('new'));
     document.querySelector('#bellPanel .og-npop-all').click(); await wait(800);
@@ -1394,7 +1407,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(/^Good (morning|afternoon|evening|night)/.test(nt.greet) && nt.icon, 'today: the greeting by time of day with its icon ' + JSON.stringify(nt));
-  ok(await waitFor(p, () => { const g = document.querySelector('#ogGreet h3'); return !!g && /14°/.test(g.textContent) && !!g.querySelector('svg.gic .drop'); }), 'today: the greeting shows the weather at the firm\'s main site — the rain icon and 14°');
+  ok(await waitFor(p, () => { const g = document.querySelector('[data-testid=shell-greeting]'); return !!g && /14°/.test(g.textContent) && !!g.querySelector('svg.gic .drop'); }), 'today: the greeting shows the weather at the firm\'s main site — the rain icon and 14°');
   ok(nt.bell && nt.before >= 1 && nt.item && nt.after === 0 && nt.noNew && nt.kept === 0 && nt.opens, 'notifications: the bell counts, the panel lists the expired ID as new, Mark all read is kept on the account, a tap opens the worker\'s notices ' + JSON.stringify(nt));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
@@ -1478,7 +1491,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(cl1 && cl2, 'clients: a single click or a double click opens the editor ' + JSON.stringify({cl1, cl2}));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
   // Plates: notices, ⋮ (Edit, Manual punch, Delete), Delete → Undo, Select → Delete after 5 s; supplier plates.
-  const crumbNow = () => p.evaluate(() => document.getElementById('ogCrumb').innerText.replace(/\s+/g, ' ').trim());
+  const crumbNow = () => p.evaluate(() => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim());
   await p.evaluate(() => { clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); });
   const ctmp = '#clientsRoot [data-testid="client-plate"][data-cid="ctmp"]';
   await p.waitForSelector(ctmp);

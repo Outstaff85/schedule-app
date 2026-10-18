@@ -29,54 +29,16 @@
     --red-bg:rgba(248,113,113,0.1);
     --radius:10px;   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'DM Sans','Heebo',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+  body{font-family:'DM Sans','Heebo',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
 
   /* Titlebar / top panel */
-  .titlebar{min-height:58px;background:rgba(var(--bar-rgb),.55);isolation:isolate;border-bottom:1px solid rgba(var(--tint),.1);display:flex;align-items:stretch;padding:0 14px;gap:6px;flex-shrink:0;position:relative;}
   /* The glass blur sits on a layer behind the bar, not on the bar itself: a
      backdrop-filter on the bar would trap the phone bottom bar (fixed) inside it. */
-  .titlebar::before{content:'';position:absolute;inset:0;z-index:-1;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);pointer-events:none;}
-  .titlebar .brand{display:flex;align-items:center;gap:9px;padding-right:14px;}
-  .titlebar .brand img{width:28px;height:28px;border-radius:8px;}
-  .acct{position:relative;}
-  .acct-chip{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px 0 4px;border-radius:999px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font:600 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;max-width:300px;}
-  .acct-av{width:28px;height:28px;flex:none;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7a5cf7);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;text-transform:uppercase;}
-  .acct-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .acct-label .firm{color:var(--text2);font-weight:500;}
-  .acct-chev{color:var(--text2);font-size:14px;}
-  .acct-menu{display:none;position:absolute;right:0;top:44px;width:240px;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.5);padding:6px;z-index:900;}
-  .acct.open .acct-menu{display:block;}
-  .acct-h{padding:8px 10px 10px;border-bottom:1px solid var(--border);margin-bottom:4px;}
-  .acct-h b{display:block;font-size:13px;color:var(--text);}
-  .acct-h span{font-size:11px;color:var(--text2);}
-  .acct-mi{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:8px;border:0;background:none;color:var(--text);font:500 13px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;text-align:left;}
-  .acct-mi i{font-size:17px;color:var(--text2);}
-  .acct-mi:hover{background:var(--bg3);}
-  .acct-mi.install i{color:var(--accent);}
-  .acct-mi.out,.acct-mi.out i{color:var(--red);}
   /* The theme switch (Dark / Light / System): the window's segmented switch (og.css .seg). */
-  .acct-theme{padding:6px 6px 2px;border-top:1px solid var(--border);margin-top:4px;}
-  .acct-theme>span{display:block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);padding:0 4px;}
-  .acct-theme .seg{margin:6px 0 4px;}
-  .acct-theme .seg button{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;}
-  .acct-theme .seg button i{font-size:15px;}
   .login-theme .seg{margin:14px 0 0;}
   .login-theme .seg button,.acct-theme .seg button{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;}
   .login-theme .seg button i{font-size:15px;}
-  .top-tabs{display:flex;gap:2px;align-items:stretch;}
-  .ttab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:70px;padding:0 12px;cursor:pointer;color:var(--text2);transition:color 0.15s;-webkit-tap-highlight-color:transparent;}
   /* The active tab: its section color (--k) and the highlight line under it. */
-  .ttab::after{content:'';position:absolute;left:14px;right:14px;bottom:0;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55),0 0 4px rgba(244,114,182,.5);transform:scaleX(0);pointer-events:none;}
-  .ttab.active::after{transform:scaleX(1);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1);}
-  #tabMore{display:none;}
-  .more-ic{width:34px;height:34px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:color-mix(in srgb,currentColor 18%,transparent);}
-  .t3-line.more-on .n b{color:var(--c);}
-  .ttab .ic{font-size:18px;line-height:1;position:relative;}
-  .tab-badge{position:absolute;top:-6px;right:-12px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--bad);color:#fff;font-size:9px;font-weight:700;line-height:16px;text-align:center;font-family:inherit;box-shadow:0 0 0 2px var(--ground);}
-  .ttab .lb{font-size:12px;font-weight:500;}
-  .ttab:hover{color:var(--text);}
-  .ttab.active,.ttab.admin.active{color:var(--k,var(--text));}
-  .titlebar-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
   /* Login screen: the firm's showcase (left, or on top on a phone) and the sign-in card. */
   .login-screen{position:fixed;inset:0;z-index:1000;overflow-y:auto;align-items:stretch;justify-content:center;background:linear-gradient(135deg,#0a0d15,#121829 60%,#0f1117);}
   .login-hero{display:flex;justify-content:center;position:relative;}
@@ -190,10 +152,10 @@
   @media (prefers-reduced-motion: reduce){ .login-blob,.login-role,.login-feature,.login-floaters i,.login-brand-name,.login-card::before{animation:none;} .login-fx{display:none;} .login-rotator,.login-sector{transition:none;} }
 
   /* Layout */
-  .app{display:flex;flex:1;overflow:hidden;}
 
   /* Main */
-  .main{flex:1;overflow-y:auto;padding:20px 24px;-webkit-overflow-scrolling:touch;}
+  /* The page area: the React frame's Shell gives it its padding and width. */
+  .main{padding:0;}
   .page-section{display:none;}
   .page-section.visible{display:block;}
 
@@ -257,28 +219,11 @@
 
     /* ── Layout ── */
     body { overflow-y: auto; height: auto; min-height: 100vh; }
-    .app  { flex-direction: column; height: auto; overflow: visible; }
 
     /* ── Titlebar ── */
-    .titlebar {
-      flex-wrap: wrap; height: auto;
-      padding: env(safe-area-inset-top,8px) 12px 8px;
-      gap: 6px; position: sticky; top: 0; z-index: 40;
-    }
-    .titlebar .brand { padding-right: 8px; }
-    .titlebar .brand img { width: 24px; height: 24px; }
-    .top-tabs { order: 3; width: 100%; overflow-x: auto; gap: 0; scrollbar-width: none; }
-    .top-tabs::-webkit-scrollbar { display: none; }
-    .ttab { min-width: 60px; padding: 6px 8px; flex: 1; }
-    .ttab .ic { font-size: 16px; }
-    .ttab .lb { font-size: 11px; }
-    .titlebar-actions { margin-left: auto; gap: 4px; flex-wrap: wrap; }
-    .acct-label, .acct-chev { display: none; }
-    .acct-chip { padding: 0 4px; }
     .btn.sm { font-size: 11px; padding: 5px 10px; min-height: 34px; }
 
     /* ── Main ── */
-    .main { padding: 12px 12px env(safe-area-inset-bottom,12px); overflow: visible; }
 
     /* ── Modals — full screen bottom sheet ── */
     .overlay { align-items: flex-end; }
@@ -295,12 +240,6 @@
 
     /* ── Buttons ── */
     .btn { min-height: 36px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-  }
-
-  /* ── Phone only ── */
-  @media (max-width: 480px) {
-    /* Stack titlebar actions */
-    .titlebar-actions { gap: 3px; }
   }
 
   /* ── Loading spinner + progress bar (AI scan, Form 101 generation) ── */
@@ -329,7 +268,7 @@
   /* ── Scan corner (quad) editor ── */
   .quad-handle { fill: var(--accent); stroke: #fff; stroke-width: 2; cursor: grab; touch-action: none; }
   .quad-handle:active { cursor: grabbing; }
-  .contract-notice{flex-shrink:0;display:flex;align-items:center;gap:10px;margin:8px 16px 0;padding:8px 12px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600}
+  .contract-notice{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:8px 12px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600}
   .contract-notice.over{background:var(--red-bg);border-color:rgba(248,113,113,0.35);color:var(--red)}
   .contract-notice span{flex:1}
   .contract-notice button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:2px 4px}
@@ -338,24 +277,8 @@
      and the tables of Admin (Errors, Timings) become one card per row
      (cardTables() puts each column's header on its cells as data-label). ── */
   @media (max-width:700px){
-    /* The bottom bar (variant 11, a color per section): Today, Schedule,
-       Workers, Accounting, More; the active item takes its color (--k) on
-       the icon and label, a soft tile behind the icon and a line on the
-       bottom edge that springs in. Clients, Suppliers, Admin are under More. */
-    .top-tabs{position:fixed;left:0;right:0;bottom:0;z-index:60;width:auto;order:initial;overflow:visible;display:flex;gap:0;
-      height:calc(66px + env(safe-area-inset-bottom,0px));padding:0 0 env(safe-area-inset-bottom,0px);
-      background:rgba(var(--bar-rgb),.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(var(--tint),.1);}
-    .top-tabs::before{content:'';position:absolute;left:0;right:0;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(129,140,248,.5),rgba(34,211,238,.5),rgba(244,114,182,.4),transparent);pointer-events:none;}
-    .ttab{flex:1 1 0;min-width:0;padding:0 1px;gap:3px;border:0;border-radius:0;color:rgba(var(--tint),.5);}
-    .ttab.in-more{display:none !important;}
-    #tabMore{display:flex;}
-    .ttab .ic{width:42px;height:30px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;transition:background .3s;}
-    .ttab.active .ic{background:color-mix(in srgb,var(--k) 18%,transparent);}
-    .ttab::after{left:30%;right:30%;height:3px;border-radius:3px 3px 0 0;background:var(--k);box-shadow:0 0 10px var(--k);animation:none !important;transition:transform .4s cubic-bezier(.34,1.56,.64,1);}
-    .ttab:not(.active):hover{color:rgba(var(--tint),.5);}
-    .ttab .lb{font-size:10px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .ttab .tab-badge{top:-2px;right:-2px;}
-    body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px));}
+    /* The bottom bar is the React frame's (Shell): the toast and the
+       bottom-bar gap stay above it. */
     .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));}
     :root{--bar-gap:calc(76px + env(safe-area-inset-bottom,0px));}
     table.mtable{min-width:0 !important;border-collapse:separate !important;}
@@ -469,76 +392,20 @@ body:has(.overlay.open){overflow:hidden}
 <link rel="stylesheet" href="fonts/fonts.css" vite-ignore>
 <link rel="stylesheet" href="icons/tabler-icons.css" vite-ignore>
 <style>
-  /* ── V7, the new look of the frame (stage 6a; react-migration-plan.md →
-     Additions from the UI audit; the React Shell draws the same frame —
-     docs/components.md). The title bar: brand · the breadcrumb plate · in the
-     middle the date, the greeting and the weather · bell, language, account.
-     On a computer the sections are a side menu (210px, left; right in Hebrew),
-     the Workers / Filter-by-client panel shows only on Workers and Schedule and
-     the page is at most 1200px wide; on a phone the title bar is two compact
-     rows (logo · short date and weather · buttons; the breadcrumb under them)
-     and the bottom bar stays. Hebrew mirrors the frame only. ── */
-  .titlebar{align-items:center;gap:14px;padding:0 16px}
-  .titlebar .brand{padding-right:0}
-  .titlebar-actions{margin-left:0}
-  .og-crumb{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:14px;background:rgba(var(--tint),.08);border:1px solid rgba(var(--tint),.18);
-    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);font-size:14px;white-space:nowrap;min-width:0;max-width:34vw;overflow:hidden;flex:none}
-  .og-crumb:empty{display:none}
-  .og-crumb>i:first-child{color:var(--k);font-size:17px}
-  .og-crumb b{font-weight:600;color:var(--ink)}
-  .og-crumb em{font-style:normal;font:500 12.5px 'DM Mono',ui-monospace,monospace;color:var(--text2)}
-  .og-crumb .og-crumb-sep{font-size:13px;color:var(--text3)}
-  .og-crumb span{color:var(--text2);overflow:hidden;text-overflow:ellipsis}
-  .og-center{margin:0 auto;display:flex;align-items:center;gap:14px;min-width:0;white-space:nowrap}
-  .og-center:has(.og-greet:empty){visibility:hidden}
-  .og-date{font-size:13.5px;color:var(--text2);padding-right:14px;border-right:1px solid rgba(var(--tint),.14)}
-  .og-date-s{display:none}
-  .og-center .og-greet{margin:0}
-  .og-center .og-greet h3{display:flex;align-items:center;font-size:15px;font-weight:600;letter-spacing:0}
-  .og-center .gic{width:24px;height:24px;margin-left:10px;vertical-align:middle}
-  .og-center .gtemp{font-size:12px}
+  /* ── The page area inside the React frame (stage 8e-1, src/manager/Frame.tsx —
+     the Shell with `app` draws the title bar, the side menu and the bottom
+     bar): a section fades in, at most 1200px wide on a computer. ── */
   .page-section.visible{animation:og-tab-in .15s ease-out}
   @keyframes og-tab-in{from{opacity:0}to{opacity:1}}
   @media (prefers-reduced-motion:reduce){.page-section.visible{animation:none}}
   /* Readability: empty states in a dashed frame. */
   .t3-empty{border:1px dashed rgba(var(--tint),.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
   @media (min-width:701px){
-    .top-tabs{flex-direction:column;align-items:stretch;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(var(--bar-rgb),.35);border-right:1px solid rgba(var(--tint),.08);overflow-y:auto}
-    .ttab{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0;height:40px;padding:0 12px;border-radius:12px;flex:none}
-    .ttab .ic{font-size:18px;width:20px;display:flex;justify-content:center}
-    .ttab .lb{font-size:14.5px;font-weight:500}
-    .ttab:hover{background:rgba(var(--tint),.05)}
-    .ttab.active{background:rgba(var(--tint),.08)}
-    .ttab::after{left:0;right:auto;top:9px;bottom:9px;width:3px;height:auto;background:var(--k);box-shadow:0 0 10px var(--k);transform:scaleY(0);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
-    .ttab.active::after{transform:scaleY(1);animation:none}
     .main>.page-section{max-width:1200px;margin-left:auto;margin-right:auto}
-    html[lang=he] .app{flex-direction:row-reverse}
-    html[lang=he] .top-tabs{border-right:0;border-left:1px solid rgba(var(--tint),.08)}
-    html[lang=he] .ttab{direction:rtl}
-    html[lang=he] .ttab::after{left:auto;right:0}
   }
-  @media (min-width:701px) and (max-width:1180px){ .og-center .gtext{display:none} .og-date{border:0;padding:0} }
-  @media (min-width:701px) and (max-width:980px){ .og-name{display:none} .og-date-l{display:none} .og-date-s{display:inline} }
-  @media (max-width:700px){
-    .titlebar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"brand center acts" "crumb crumb crumb";align-items:center;gap:8px 10px;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px}
-    .titlebar .brand{grid-area:brand}
-    .og-crumb{grid-area:crumb;justify-self:start;height:34px;max-width:100%;font-size:13.5px}
-    .og-center{grid-area:center;justify-self:center;margin:0;gap:8px}
-    .titlebar-actions{grid-area:acts;flex-wrap:nowrap}
-    .og-date{font-size:12.5px;padding-right:8px}
-    .og-date-l,.og-center .gtext{display:none}
-    .og-date-s{display:inline}
-    .og-center .gic{margin-left:0;width:22px;height:22px}
-  }
-  /* Hebrew mirrors the frame only: logo and breadcrumb on the right, the
-     account on the left (its menu opens from the left edge); the page content,
-     plates, tables and windows stay left to right. */
-  html[lang=he] .titlebar{direction:rtl}
-  html[lang=he] .acct-chip,html[lang=he] .lang-btn,html[lang=he] .acct-menu,html[lang=he] .og-crumb em{direction:ltr}
-  html[lang=he] .acct-menu{right:auto;left:0}
-  html[lang=he] .og-crumb .og-crumb-sep{transform:scaleX(-1)}
-  html[lang=he] .og-date{padding-right:0;padding-left:14px;border-right:0;border-left:1px solid rgba(var(--tint),.14)}
-  html[lang=he] .og-center .gic{margin-left:0;margin-right:10px}
+  /* Hebrew mirrors the frame only (the React Shell does it); the Language
+     button keeps its own direction. */
+  html[lang=he] .lang-btn{direction:ltr}
   /* ── The light theme (docs/redesign.md → Light theme; the tokens are in
      og.css): this page's own looks drawn for the dark ground — the sign-in
      showcase, the bell's popover, the account menu. ── */
@@ -557,57 +424,22 @@ body:has(.overlay.open){overflow:hidden}
   :root[data-theme="light"] .login-card #loginBtn{background:var(--glass-strong);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);}
   :root[data-theme="light"] .og-npop{background:rgba(255,255,255,.96);box-shadow:var(--shadow-pop);}
   :root[data-theme="light"] .og-npop::before{background:rgba(255,255,255,.98);}
-  :root[data-theme="light"] .acct-menu{box-shadow:var(--shadow-pop);}
   :root[data-theme="light"] .modal input[type=date]{color-scheme:light;}
   @media (max-width:820px){ .login-theme{grid-column:1/-1;} .login-theme .seg{margin:4px 0 0;} }
 </style>
 </head>
 <body>
 
-<div class="titlebar">
-  <div class="brand og-brand">
-    <svg class="og-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ogMarkGrad" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset=".5" stop-color="#22d3ee"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs><path class="og-roof" d="M10 50L50 16l40 34"/><path class="og-run" d="M10 50L50 16l40 34"/><g class="og-p og-p1"><g transform="translate(30 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#818cf8"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#818cf8"/></g></g><g class="og-p og-p2"><g transform="translate(50 66) scale(1.15)"><circle cx="0" cy="-9" r="7" fill="#22d3ee"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#22d3ee"/></g></g><g class="og-p og-p3"><g transform="translate(70 70) scale(.95)"><circle cx="0" cy="-9" r="7" fill="#f472b6"/><path d="M-13 12c0-9 6-14 13-14s13 5 13 14z" fill="#f472b6"/></g></g><path class="og-link" d="M24 92H76"/><path class="og-linkrun" d="M24 92H76"/></svg>
-    <div class="og-name"><b>Interactive <span>Manager</span></b><small data-i18n>Connecting people and business</small><small class="og-roofline" data-i18n>Everything under one roof</small></div>
-    <div class="save-indicator saved" id="saveIndicator"><div class="save-dot"></div><span data-i18n>Saved</span></div>
-  </div>
-  <!-- V7 (stage 6a): the breadcrumb plate (the section, its count, the open
-       sub-tab — renderCrumb) and, in the middle, the date, the greeting and
-       the weather (renderGreeting). The sections are the side menu below. -->
-  <div class="og-crumb" id="ogCrumb"></div>
-  <div class="og-center" id="ogCenter"><span class="og-date" id="ogDate"></span><div class="og-greet" id="ogGreet"></div></div>
-  <div class="titlebar-actions">
-    <!-- The account menu (header variant C, per user request 2026-10-11): one
-         button with the name; inside it install, language, my name, sign out. -->
-    <button type="button" class="gbtn icon og-bell" id="bellBtn" onclick="toggleBell(event)" title="Notifications" data-i18n-title="Notifications" aria-label="Notifications" style="display:none"><i class="ti ti-bell"></i><span class="og-bell-n" id="bellCount"></span></button>
-    <button type="button" class="gbtn lang-btn" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
-    <div class="acct" id="accountControl">
-      <button type="button" class="acct-chip" onclick="toggleAccountMenu(event)" aria-haspopup="true"><span class="acct-av" id="accountAvatar"></span><span id="accountLabelCenter" class="acct-label"></span><i class="ti ti-chevron-down acct-chev"></i></button>
-      <div class="acct-menu" id="accountMenu">
-        <div class="acct-h" id="accountMenuHead"></div>
-        <div id="accountInstallSlot"></div>
-                <button type="button" class="acct-mi" id="accountNameItem" onclick="closeAccountMenu();editMyName()"><i class="ti ti-user-edit"></i><span data-i18n>My name</span></button>
-        <div class="acct-theme" id="accountTheme"><span data-i18n>Theme</span><div class="seg theme-seg"><button type="button" data-theme-v="dark" onclick="pickTheme('dark')"><i class="ti ti-moon"></i><span data-i18n>Dark</span></button><button type="button" data-theme-v="light" onclick="pickTheme('light')"><i class="ti ti-sun"></i><span data-i18n>Light</span></button><button type="button" data-theme-v="system" onclick="pickTheme('system')"><i class="ti ti-device-desktop"></i><span data-i18n>System</span></button></div></div>
-        <button type="button" class="acct-mi out" onclick="logout()"><i class="ti ti-logout"></i><span data-i18n>Sign out</span></button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Contract warnings when the app opens: stays until shown or closed (per user request 2026-10-11). -->
-<div id="contractNotice" class="contract-notice" style="display:none"></div>
-<div class="app">
-  <!-- The sections: the side menu on a computer (V7: left, right in Hebrew), the bottom bar on a phone. -->
-  <nav class="top-tabs" id="sideNav">
-    <div class="ttab active" id="tabDashboard" style="--k:#22d3ee" onclick="switchTab('dashboard')"><span class="ic"><i class="ti ti-home"></i></span><span class="lb" data-i18n>Today</span></div>
-    <div class="ttab" id="tabSchedule" style="--k:#818cf8" onclick="switchTab('schedule')"><span class="ic"><i class="ti ti-calendar"></i></span><span class="lb" data-i18n>Schedule</span></div>
-    <div class="ttab" id="tabWorkers" style="--k:#6dd6a0" onclick="switchTab('workers')"><span class="ic"><i class="ti ti-users-group"></i></span><span class="lb" data-i18n>Workers</span></div>
-    <div class="ttab in-more" id="tabClients" style="--k:#60a5fa" onclick="switchTab('clients')"><span class="ic"><i class="ti ti-users"></i></span><span class="lb" data-i18n>Clients</span></div>
-    <div class="ttab in-more" id="tabSuppliers" style="--k:#c084fc" onclick="switchTab('suppliers')"><span class="ic"><i class="ti ti-truck-delivery"></i></span><span class="lb" data-i18n>Suppliers</span></div>
-    <div class="ttab in-more admin" id="tabAdmin" style="--k:#ff8a95" onclick="switchTab('admin')"><span class="ic"><i class="ti ti-lock"></i></span><span class="lb" data-i18n>Admin</span></div>
-    <div class="ttab admin" id="tabAccounting" style="--k:#f7c062" onclick="switchTab('accounting')"><span class="ic"><i class="ti ti-cash"></i></span><span class="lb" data-i18n>Accounting</span></div>
-    <div class="ttab" id="tabMore" style="--k:#f472b6" onclick="openMoreSheet()"><span class="ic"><i class="ti ti-dots-vertical"></i></span><span class="lb" data-i18n>More</span></div>
-  </nav>
-  <div class="main">
+<!-- The frame — title bar, side menu / bottom bar, bell, account — is React
+     (src/manager/Frame.tsx, the Shell with `app`; React migration stage 8e-1).
+     It moves the page's sections (#appMain) into its page area and the
+     Language button (#langBtn, which also sits on the sign-in and Firms
+     screens — placeLangButton) into its title bar. -->
+<div id="frameRoot" data-island></div>
+<button type="button" class="gbtn lang-btn" id="langBtn" onclick="openLangSheet(event)" title="Language" data-i18n-title="Language" aria-label="Language"><i class="ti ti-world"></i><span class="lang-btn-name">English</span><i class="ti ti-chevron-down lang-btn-chev"></i></button>
+<div class="main" id="appMain">
+    <!-- Contract warnings when the app opens: stays until shown or closed (per user request 2026-10-11). -->
+    <div id="contractNotice" class="contract-notice" style="display:none"></div>
     <!-- Dashboard Section -->
     <!-- Today (stage 6a): drawn in React (src/manager/Today.tsx) through
          window.ManagerIsland — renderDashboard() below. -->
@@ -661,7 +493,6 @@ body:has(.overlay.open){overflow:hidden}
     </div>
 
   </div>
-</div>
 
 <!-- Modals -->
 <div class="overlay" id="payOverlay">
@@ -670,10 +501,6 @@ body:has(.overlay.open){overflow:hidden}
 <!-- A worker's notices (a tap on a notice chip). -->
 <div class="overlay" id="noticesOverlay">
   <div class="modal" id="noticesModal" style="width:440px"></div>
-</div>
-<!-- Phone bottom bar's More: the tabs that don't fit in the bar. -->
-<div class="overlay" id="moreOverlay">
-  <div class="modal" id="moreModal" style="width:380px"></div>
 </div>
 <div class="overlay" id="workerOverlay">
   <div class="modal" id="workerModal" style="width:680px"></div>

@@ -22,7 +22,7 @@ import { exportExcel, exportJSON, exportPDF, exportShiftsDetail } from '../logic
 import { genToken } from '../data/ids';
 import { fileForStorage, fileToUploadPages } from '../logic/uploads';
 import { reportError } from '../data/telemetry';
-import { loadFirmMessages, renderCrumb, renderGreeting, saveFirmMessage, waTemplate } from './header';
+import { loadFirmMessages, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
 import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNotices, openWorkerCard, openWorkerDocUpload, parseHoursExcelFile, parseHoursImagePage, renderClientsPage, renderSuppliersPage, renderWorkersPage, rescanFromWorkerCard, setWorkersStatus, todayPunchLog, workerBarColor, workerNotices, workerSiteName, workerToday } from './workers';
 import { switchTab } from './nav';
 import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, loginsInfo, newLoginFor, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, saveLoginField, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
@@ -31,14 +31,13 @@ import { closeEditorUnsaved, commitClient, deleteClientsNow, openAddClient, open
 import { addManualPunch, commitSupplier, deleteSuppliersNow, openAddSupplier, openEditSupplier, openManualPunch } from './suppliers';
 import { __adminPane, __firmWin, __firmsCache, __firmsErr, __logPeriod, __usersErr, adminTeam, deleteTenantsNow, deleteUsersNow, firmSaved, firmsRows, hrNameOf, hrUsers, loadFirms, loadLogPane, logPaneSnapshot, openCreateFirmForm, openCreateUserForm, openEditFirmForm, openEditUserForm, openMyFirmForm, prefetchAdminUsers, resetLogs, setTenantsActive, switchAdminPane, userSaved } from './admin';
 import { closeModal } from './windows';
-import { switchToTenant } from './wiring';
-import { cacheTenantProfile } from './gate';
+import { logout, switchToTenant } from './wiring';
+import { cacheTenantProfile, editMyName, setTheme } from './gate';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
   "__rowFns": {get: () => __rowFns, configurable: true},
   "__rowFnSeq": {get: () => __rowFnSeq, set: (v?: any) => { __rowFnSeq = v; }, configurable: true},
   "rowFnKey": {get: () => rowFnKey, configurable: true},
-  "t3Line": {get: () => t3Line, configurable: true},
   "renderDashboard": {get: () => renderDashboard, configurable: true},
   "renderSchedulePage": {get: () => renderSchedulePage, configurable: true},
   "workerHeadOf": {get: () => workerHeadOf, configurable: true},
@@ -89,19 +88,12 @@ Object.defineProperties(window, {
 });
 
 // ── Odinson Glass list pieces (docs/redesign.md → Plates) ──
-// t3Line(o) draws a plate (the phone's More sheet): o.c the bar colour, o.av an
-// icon avatar, o.name / o.sub / o.right HTML already escaped by the caller,
-// o.cls / o.onclick. The lists themselves are React (Plate).
-// rowFnKey keeps a function under a key for an onclick (the bell's actions).
+// The lists are React (Plate). rowFnKey keeps a function under a key for an onclick (the bell's actions).
 const __rowFns = new Map(); let __rowFnSeq = 0;
 function rowFnKey(v?: any){
   const k = 'r' + (++__rowFnSeq); __rowFns.set(k, v);
   if(__rowFns.size > 4000) __rowFns.delete(__rowFns.keys().next().value);
   return k;
-}
-function t3Line(o?: any){
-  const iconAv = !!o.av && /<i class="ti /.test(o.av);
-  return `<div class="t3-line${o.cls?' '+o.cls:''}" style="--c:${o.c||'var(--neutral)'}"${o.onclick?` onclick="${o.onclick}"`:''}>${iconAv?o.av:''}<div class="n"><b>${o.name}</b>${[].concat(o.sub||[]).filter(Boolean).map((x?: any)=>`<small>${x}</small>`).join('')}</div>${o.right||''}</div>`;
 }
 // ── Today (stage 6a): drawn in React — src/manager/Today.tsx, loaded as
 // the React pieces (docs/build.md → The manager's React pieces). The page
@@ -124,6 +116,13 @@ window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboa
 window.ManagerBridge={
   lang:()=>currentLang(),
   dict:()=>currentDict(),
+  // ── The frame (stage 8e-1, src/manager/Frame.tsx) ──
+  switchTab:(tab?: any)=>switchTab(tab),
+  toggleBell:(e?: any)=>toggleBell(e),
+  editMyName:()=>{ editMyName(); },
+  installApp:()=>{ window.installApp(); },
+  signOut:()=>{ logout(); },
+  saveTheme:(t?: any)=>setTheme(t),
   // The snapshot Today draws from: each worker with today's shift, today's punch
   // and its notices (worked out here — they still belong to the Workers tab),
   // the suppliers, today's punches with their site.

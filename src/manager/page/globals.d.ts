@@ -7,6 +7,7 @@
 export {};
 declare global {
   // scan-pipeline.js and Google Maps (loaded on demand)
+  var installApp: any;
   var google: any;
   var openAiScan: any;
   var verifyFieldsBatch: any;
@@ -68,7 +69,6 @@ declare global {
   var startNewScan: any;
   var supplierCommission: any;
   var suppliers: any;
-  var t3Line: any;
   var todayPunchLog: any;
   var uid: any;
   var weekStart: any;

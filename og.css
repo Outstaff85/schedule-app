@@ -315,7 +315,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-name b span{background:linear-gradient(90deg,#c7d2fe,#67e8f9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
 .og-name small{display:block;font-size:10.5px;line-height:1.3;color:#8b90a0;white-space:nowrap;}
 .og-name small.og-roofline{color:var(--ok);}
-@media (max-width:700px){ .og-name{display:none;} }
+@media (max-width:980px){ .og-name{display:none;} }
 @media (prefers-reduced-motion:reduce){ .og-run,.og-p,.og-linkrun{animation:none;} .og-p{opacity:1;} }
 .save-indicator{font-size:14px;color:var(--text3);display:flex;align-items:center;gap:4px;transition:color 0.3s;}
 .save-indicator.saving{color:var(--amber);}

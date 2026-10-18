@@ -250,7 +250,7 @@ async function phone(browser) {
   const frp = await p.evaluate(() => {
     const box = q => document.querySelector(q).getBoundingClientRect(), c = box('[data-testid=shell-crumb]'), g = box('[data-testid=shell-greeting]');
     return { rows: c.top >= g.bottom - 1, noMenu: !document.querySelector('[data-testid=shell-menu]'), bar: !!document.querySelector('[data-testid=shell-bar]'),
-      noWords: !/Good /.test(document.querySelector('[data-testid=shell-greeting]').textContent), sticky: getComputedStyle(document.querySelector('[data-slot=shell] > header')).position === 'sticky',
+      noWords: getComputedStyle(document.querySelector('[data-testid=shell-greet-text]')).display === 'none', sticky: getComputedStyle(document.querySelector('[data-slot=shell] > header')).position === 'sticky',
       tilesRow: (() => { const t = [...document.querySelectorAll('[data-slot=figures] > button')].map(b => Math.round(b.getBoundingClientRect().top)); return t.length === 4 && t.every(x => x === t[0]); })() };
   });
   ok(frp.rows && frp.noMenu && frp.bar && frp.noWords && frp.sticky && frp.tilesRow, 'next: the app frame on a phone — two header rows (the breadcrumb under them), no greeting words, the bottom bar, four tiles in a row ' + JSON.stringify(frp));

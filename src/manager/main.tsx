@@ -23,6 +23,7 @@ import { adoptLanguage } from '@/lib/i18n';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { UndoHost } from '@/components/shared/undo';
 import { bridge, type ManagerBridge } from './bridge';
+import { Frame } from './Frame';
 import { Today } from './Today';
 import { Schedule } from './Schedule';
 import { Workers } from './Workers';
@@ -165,6 +166,15 @@ const undoRoot = document.createElement('div');
 undoRoot.dataset.island = 'undo';
 document.body.append(undoRoot);
 createRoot(undoRoot).render(<StrictMode><UndoHost /></StrictMode>);
+
+// The frame (stage 8e-1): the Shell with the title bar, the side menu and the
+// bottom bar, drawn once (synchronously, so the page's sections and the
+// Language button are in it before the page goes on); it follows frame.ts.
+const frameEl = document.getElementById('frameRoot');
+if (frameEl && window.ManagerBridge) {
+  const frameRoot = createRoot(frameEl);
+  flushSync(() => frameRoot.render(<StrictMode><TooltipProvider><Frame api={bridge()} /></TooltipProvider></StrictMode>));
+}
 
 window.ManagerIsland = {
   renderToday, renderSchedule, renderWorkers, renderClients, renderSuppliers,
