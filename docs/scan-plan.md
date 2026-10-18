@@ -70,6 +70,14 @@ A standing tool kept in the repo for trying and tuning the scanner's on-device p
 - On the review screen every page shows its kind (ID, ספח, Passport, Contract, Other) and a tap changes it before saving; "Other" pages are left unsaved by default.
 - A new worker's contract is uploaded after the worker is created, with one retry; a failed upload shows the worker's "Upload failed" notice with a retry. Covered by a browser test: several files, the contract in the worker's documents, a failed upload.
 
+### S6 — the models learn from the corrections (after S1–S2; owner, 2026-10-18)
+
+- **What is learned from:** every correction on the review screen — corners moved, a page's kind changed — is a training example: a 256×256 copy of the page (not the photo) with the right corners and kind, kept in Firebase Storage `training/scan/` (no client access; auto-deleted after a period the owner sets — open). Statistics from day one: how often and how far the corners are moved.
+- **What is trained:** the light and the accurate DocAligner models (Apache-2.0: the fine-tuned weights are the firm's own); later a small page-kind model (ID / ספח / passport / contract / other) that replaces Haiku's kind. Not trained: YuNet (already right), the MRZ reader (check digits), Haiku / Sonnet (Anthropic's — only their prompts and examples improve).
+- **Where:** on the owner's PC (RTX 4070, 12 GB: ~15–30 min for both corner models on ~500 examples), so the examples never leave the firm's hands; the copies are deleted from the PC after the run.
+- **How:** a repo skill, `/scan-train` (`.claude/skills/scan-train/`), run in Claude Code on the PC: download the new examples → train → an exam against a fixed set of photos with known answers (the old model against the new) → a "before → after" report → on the owner's yes, the new model goes to `models/scan/v<N>/` in Storage and `current.json` points at it; the phones take it by its ETag. The old versions stay for a rollback. The training code is in `scripts/scan-train/`.
+- **The agent:** a scheduled task, once a month, counts the new examples and runs the exam on the current model; when ~200 new examples are in or the score drops, it tells the owner to run `/scan-train`. It never trains nor swaps a model itself.
+
 ### S3 — reading in TypeScript
 
 - Port the reading, digit verification and page merging from `scan-pipeline.js` to TS with equivalence tests; the Hebrew strings hardcoded in `scan-pipeline.js` go through `tr()`.
