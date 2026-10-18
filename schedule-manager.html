@@ -2910,21 +2910,6 @@ function addManualPunch(entry){
 }
 
 
-function openPunchClock(cid){
-  const c=clients.find(x=>x.id===cid);
-  if(!c){ showToast(tr('Client not found')); return; }
-  const punchData={
-    clientId:   cid,
-    clientName: c.name,
-    lat:        c.lat    || null,
-    lng:        c.lng    || null,
-    radius:     c.radius || 100,
-    workers:    workers.filter(w=>(w.clientIds||[]).includes(cid))
-                       .map(w=>({id:w.id, name:w.name, colorIdx:w.colorIdx, token:w.token||null}))
-  };
-  localStorage.setItem('punchClockSite', JSON.stringify(punchData));
-  window.open('worker-punch.html','_blank');
-}
 
 // --- Modal close --------------------------------------------------------------
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
