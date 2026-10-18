@@ -372,54 +372,7 @@ export type ManagerBridge = WorkerBridge & {
   /** removes the workers and their files (`deleteWorkerNow`) once their Undo time is up; saved */
   deleteWorkers(ids: string[]): void;
 
-  // ── Admin (stage 6f) ──
-
-export type AdminPane = 'punchlog' | 'firms' | 'users' | 'errors' | 'timings';
-
-/** A punch as the log shows it: as stored, with its site worked out (`punchSite`). */
-export type AdminPunch = {
-  id: string | number;
-  workerId: string;
-  workerName: string;
-  type: 'in' | 'out';
-  time: string;
-  ts: string | number;
-  /** dd/MM/yyyy, set by the server */
-  date?: string;
-  site: string;
-  /** the stored site text (a custom site when there is no clientId) */
-  rawSite?: string;
-  clientId?: string | null;
-  dist?: number | null;
-  gpsAccuracy?: number | null;
-  gpsSuspicious?: boolean;
-  gpsWarnings?: string[];
-  manual?: boolean;
-  notes?: string;
-};
-
-/** The punch window's fields; `site` a client id, '' for none, or '__custom__' to keep the stored custom site. */
-export type PunchEdit = { type: 'in' | 'out'; time: string; site: string; notes: string };
-
-export type AdminSnapshot = {
-  ready: boolean;
-  /** the open section (kept while the app stays open), null: none chosen */
-  pane: AdminPane | null;
-  /** the sections this login sees: Punch Log for everyone; Firms, Users for an owner / super-admin; Errors, Timings for a super-admin */
-  panes: AdminPane[];
-  /** Clear Log: an owner / super-admin (the server's gate too) */
-  canClear: boolean;
-  /** the firm's profile misses a Form 101 field (the Firms tile shows it, as the tab's icon does) */
-  firmIncomplete: boolean;
-  /** the cached punches while the Punch Log section is open (empty otherwise) */
-  log: AdminPunch[];
-  workers: { id: string; name: string; clientIds: string[] }[];
-  clients: { id: string; name: string; color: string; address: string }[];
-  /** the earliest day loaded (dd/mm/yyyy), null when the whole history is in */
-  loadedFrom: string | null;
-};
-
-// ── Clients and Suppliers (stage 6d) ──
+  // ── Clients and Suppliers (stage 6d) ──
   clients(): ClientsSnapshot;
   suppliers(): SuppliersSnapshot;
   /** opens the client window (null: a new client) */
@@ -733,54 +686,7 @@ export type ManagerIsland = {
   openHoursExport(id: string): void;
   /** the open windows read their data again (render(), a live hours batch, the HR list) */
   refreshWindows(): void;
-  // ── Admin (stage 6f) ──
-
-export type AdminPane = 'punchlog' | 'firms' | 'users' | 'errors' | 'timings';
-
-/** A punch as the log shows it: as stored, with its site worked out (`punchSite`). */
-export type AdminPunch = {
-  id: string | number;
-  workerId: string;
-  workerName: string;
-  type: 'in' | 'out';
-  time: string;
-  ts: string | number;
-  /** dd/MM/yyyy, set by the server */
-  date?: string;
-  site: string;
-  /** the stored site text (a custom site when there is no clientId) */
-  rawSite?: string;
-  clientId?: string | null;
-  dist?: number | null;
-  gpsAccuracy?: number | null;
-  gpsSuspicious?: boolean;
-  gpsWarnings?: string[];
-  manual?: boolean;
-  notes?: string;
-};
-
-/** The punch window's fields; `site` a client id, '' for none, or '__custom__' to keep the stored custom site. */
-export type PunchEdit = { type: 'in' | 'out'; time: string; site: string; notes: string };
-
-export type AdminSnapshot = {
-  ready: boolean;
-  /** the open section (kept while the app stays open), null: none chosen */
-  pane: AdminPane | null;
-  /** the sections this login sees: Punch Log for everyone; Firms, Users for an owner / super-admin; Errors, Timings for a super-admin */
-  panes: AdminPane[];
-  /** Clear Log: an owner / super-admin (the server's gate too) */
-  canClear: boolean;
-  /** the firm's profile misses a Form 101 field (the Firms tile shows it, as the tab's icon does) */
-  firmIncomplete: boolean;
-  /** the cached punches while the Punch Log section is open (empty otherwise) */
-  log: AdminPunch[];
-  workers: { id: string; name: string; clientIds: string[] }[];
-  clients: { id: string; name: string; color: string; address: string }[];
-  /** the earliest day loaded (dd/mm/yyyy), null when the whole history is in */
-  loadedFrom: string | null;
-};
-
-// ── Clients and Suppliers (stage 6d) ──
+  // ── Clients and Suppliers (stage 6d) ──
   renderClients(): void;
   renderSuppliers(): void;
   openClient(c: ClientRecord, editId: string | null): void;
@@ -794,6 +700,9 @@ export type AdminSnapshot = {
   setAccTab(tab: string): void;
   /** the pay window, drawn into the page's #payModal */
   openPay(id: string): void;
+  // ── Admin (stage 6f-1) ──
+  /** the section tabs, the tiles and the punch log (#adminRoot) */
+  renderAdmin(): void;
 };
 
 declare global {

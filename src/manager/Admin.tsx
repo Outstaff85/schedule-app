@@ -33,7 +33,7 @@ import { undoDelete } from '@/components/shared/undo';
 import { Window } from '@/components/shared/window';
 import type { AdminPane, AdminPunch, AdminSnapshot, ManagerBridge } from './bridge';
 import { Line } from './pieces';
-import { Field, } from './ClientEditor';
+import { Field } from './ClientEditor';
 import { useTapOpen } from './Clients';
 import { byClient, dayOf, filterChoices, filterLog, logFigures, monthCounts, NO_FILTERS, type LogFilters } from './punchlog';
 
@@ -182,8 +182,8 @@ function PunchLog({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
       ]} />
       <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="punchlog-bar">
         <ToggleGroup type="single" value={view} onValueChange={setView} className="w-auto" data-testid="punchlog-view">
-          <ToggleGroupItem value="log" data-v="log">{tr('Log')}</ToggleGroupItem>
-          <ToggleGroupItem value="clients" data-v="clients">{tr('By Client')}</ToggleGroupItem>
+          <ToggleGroupItem value="log" data-v="log" className="flex-none whitespace-nowrap">{tr('Log')}</ToggleGroupItem>
+          <ToggleGroupItem value="clients" data-v="clients" className="flex-none whitespace-nowrap">{tr('By Client')}</ToggleGroupItem>
         </ToggleGroup>
         {view === 'log' && <span className="font-mono text-[13px] text-ink-2" data-testid="punch-count">{recordsText(rows.length)}</span>}
         <span className="ml-auto flex gap-1">

@@ -1,22 +1,24 @@
 # Admin tab
 
-The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log, firms (every firm for the super-admin, the own firm for an owner), users, errors and timings. Code is in `schedule-manager.html`.
+The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log, firms (every firm for the super-admin, the own firm for an owner), users, errors and timings. The section tabs, the tiles and the Punch Log section are React (stage 6f-1: `src/manager/Admin.tsx` with its figures in `src/manager/punchlog.ts`, the root `#adminRoot`, drawn through `ManagerIsland.renderAdmin()`; the data and the saves through `ManagerBridge.admin()` and its actions — [build.md](build.md) → The manager's React pieces); the Firms, Users, Errors and Timings panes are still the page's code in `schedule-manager.html` (6f-2), shown under the React tabs.
 
 ## Panes and who sees them
 
-`switchTab('admin')` → `setupAdminPaneBar()`. The tab opens with **no section** (`#adminPane_none`, "Choose a section"): nothing is drawn or loaded until a section button is tapped (`switchAdminPane(pane)`, kept in `__adminPane` while the app stays open). `renderAdmin()` draws only while Punch Log is the open section.
+`switchTab('admin')` → `setupAdminPaneBar()` (the super-admin bar of Firms, the users prefetch) → `switchAdminPane(__adminPane)`. The tab opens with **no section**: under the tabs "Choose a section" and **three large tiles** — Punch Log, Firms, Users (those the login sees; a plate each with its icon and what the section is for; the Firms tile amber while the firm's Form 101 profile is incomplete) — and nothing is loaded until a tab or a tile is tapped (`ManagerBridge.setAdminPane` → `switchAdminPane(pane)`, kept in `__adminPane` while the app stays open; a section the login doesn't see is no section). `switchAdminPane` shows the page's pane of a section not moved yet, loads it, and draws the React part (`renderAdmin()`, which `render()` and `switchTab` call too); the breadcrumb reads "Admin › <section>" from the lit tab.
 
 | Pane | Who |
 |---|---|
 | Punch Log | everyone who can open the tab — the tab needs the `workers` permission |
+
+The list is `adminPanes()` on the page (the React tabs draw only these).
 | Firms, Users | `superadmin`, `tenant_admin` |
 
 An `hr` login never sees the Admin tab ([hr.md](hr.md)).
 | Errors, Timings | `superadmin` |
 
-Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in every pane — figures on top, sections with a count, a line per item with a colored mark on the left (`t3Line`). The section buttons (`.admin-pane-bar`) are text tabs in one line (it scrolls sideways on a narrow phone), the open one highlighted. Admin has no list / cards toggle (no tables left).
+Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in every pane — figures on top, sections with a count, a line per item with a colored mark on the left (`t3Line` on the page's panes, `Plate` in the React Punch Log). The section tabs are the glass tabs (`.og-tabs`, icon + name; they scroll sideways on a narrow phone), the open one lit, and under them the open section's line (what it is for). Admin has no list / cards toggle (no tables left).
 
-The pane bar and the punch log's Log / By Client switch are glass tabs (the open one with the highlight line, redesign stage 8); every list is plates. A punch line has a bare ⋮ (Edit, Delete); Delete never asks: the line collapses behind the Undo snack and `deletePunchEntries(ids, els)` (`deletePunchEntry` for one) deletes the punches when the 5 s are up; Select (a button, the boxes after a tap) is above the log (`startPunchesSelect`: Delete the ticked punches the same way); until then its id is in `__punchDelPending` and the Log and By Client views leave it out, so a redraw during the Undo time doesn't bring the line back. **Export CSV** and **Clear Log** are icon buttons at the right of the punch log's Log / By Client line (`#adminHeaderActions`), shown only on the Punch Log pane; Clear Log is only for `tenant_admin` and `superadmin`. Opening the tab as an owner also preloads the user list (`prefetchAdminUsers()`). The pane subtitles are in `ADMIN_PANE_SUBTITLES`.
+The punch log's Log / By Client switch is a segmented switch (`ToggleGroup`); every list is plates. A punch plate has a bare ⋮ (Edit, Delete) and a swipe on a phone; Delete never asks: the plate goes behind the React Undo snack and `ManagerBridge.deletePunches(ids)` (the page's `deletePunchesNow`: the cache, then `gsDeletePunch` each) runs when the 5 s are up; Select (a button above the log, the boxes after it) deletes the ticked punches the same way; until then the ids are kept in the tab (`hidden` in `Admin.tsx`) and the Log and By Client views leave them out, so a redraw during the Undo time doesn't bring them back. **Export CSV** and **Clear Log** are icon buttons at the right of the Log / By Client line; Clear Log is only for `tenant_admin` and `superadmin` (`canClear`). Opening the tab as an owner also preloads the user list (`prefetchAdminUsers()`). The section lines are `SUBTITLES` in `Admin.tsx`.
 
 ## Punch log data
 
@@ -30,7 +32,7 @@ The pane bar and the punch log's Log / By Client switch are glass tabs (the open
   - `__punchLoadedFrom` is the earliest time loaded in this app open;
   - `ensurePunchesSince(from)` reads older punches once (`punchesBetween(t, from, loadedFrom)`), merges them and lowers `__punchLoadedFrom`. Calls run one after another (`__punchEnsureChain`). `ensureAllPunches()` = from 2000-01-01;
   - `periodPunchStart(period)` gives the start a salary period needs (a past month starts one day early);
-  - callers: the Accounting period, salary and hours exports, Export CSV, Clear Log, an approved hours batch, and "Load earlier month" / "Load all history" under the log;
+  - callers: the Accounting period, salary and hours exports, Export CSV, Clear Log, an approved hours batch, and "Load earlier month" / "Load all history" under the log (`ManagerBridge.loadEarlierPunches` / `loadAllPunches`);
   - cached rows older than what this app open loaded are dropped on merge, so the cache doesn't grow;
   - another firm's punches (super-admin summary) use the same window (`punchesOnce`).
 - **Writing:**
@@ -40,25 +42,27 @@ The pane bar and the punch log's Log / By Client switch are glass tabs (the open
 
 ## Punch Log pane
 
-- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded) — figures as text (`.t3-stats`).
-- **Views:** Log (`setAdminView('log')`) or By Client (`setAdminView('clients')`) as text tabs, with the record count and the Export CSV / Clear Log icons on the same line (`.admin-log-bar`).
-- **Filters** (`.filters-grid`, `--cols:4` — one row on a computer, two columns without captions on a phone; see [workers.md](workers.md)):
+Drawn by `PunchLog` in `src/manager/Admin.tsx` from `ManagerBridge.admin()`: `log` (the cached punches as stored, each with its site worked out by `punchSite` and its stored site text as `rawSite`; only while the section is open), the workers (id, name, clients), the clients (id, name, colour, address), `loadedFrom` and `canClear`. The figures are `src/manager/punchlog.ts`.
+
+- **Stats:** Total IN, Total OUT, Today and Total (over what is loaded) — glass tiles (`Figures`, `logFigures`).
+- **Views:** Log or By Client (a `ToggleGroup`), with the record count (Log) and the Export CSV / Clear Log icons on the same line; the view and the filters stay while the app stays open.
+- **Filters** (four selects — one row on a computer, two columns on a phone; the caption is the select's label):
   - Worker — the workers that appear in the log;
   - Client — the punch's own `clientId` (where it was recorded); a punch saved without one falls back to the worker's current clients;
   - Date — the days that have punches, as `en-GB` strings, newest day first (sorted by the real date);
   - Type.
-  
-  The list is sorted newest first by `ts`.
-- **Lines** (`renderAdmin()` → `punchLogLine(e)`, into `#adminTableBody`): a line per punch, green for IN and red for OUT on the left; the worker's name, under it IN/OUT · date · site · GPS (distance, ±accuracy, ⚠ when suspicious, or "Manual"); the time and a ✕ (delete) at the right. A tap opens the worker's card.
-  - **Drawing:** in pages of `LIST_PAGE` = 10 via `renderPagedList(el, 'punchLog', filters, rows, punchLogLine)`. The next 10 rows come when the user scrolls the "Show more" row into view, or taps it ([app-core.md](app-core.md) → Long lists). A redraw keeps the opened count; a new filter starts again at 10. Firms, Users, Errors, Timings and the client logs page the same way.
-  - **Older punches:** under the table, `renderAdminOlder()` shows "Showing punches from <date>" with **Load earlier month** (`loadEarlierPunchMonth()` loads back to the 1st of the month already partly loaded, or the month before) and **Load all history**.
-- **Edit:** a tap, a double click or a long press on a punch line (in the log or By Client), anywhere but its ✕, opens `editPunchEntry(id)` → type, time, site (a client, or a kept custom site) and notes. `savePunchEntry(id)` sets `editedBy:'admin'` and `editedAt`, then calls `gsUpdatePunch`. `deletePunchEntry(id)` removes it locally and calls `gsDeletePunch`.
-- **By Client** (`renderClientLogs()`): per client a section (its color dot, name, address; "N on site now · workers · total punches"), a line per assigned worker (green while on site; a tap opens its card) and its last 5 punches as small lines under it (`punchLogLine(e, 'sub')`: the time first).
-- **Export CSV** (`exportPunchCSV()`, after `ensureAllPunches()`): Worker, Supplier, Type, Time, Date, Site, Distance(m), GPS Accuracy (rounded), Notes, Edited.
-- **Clear Log** (`clearPunchLog()`, after `ensureAllPunches()`):
-  1. A month checklist with counts per month (`punchMonthKey(e)` from `date`, else `ts`); the user must type `DELETE`.
-  2. `submitClearPunchLog()` downloads a CSV of exactly those rows first.
-  3. Then `deletePunchesByMonths` runs (by `day`, or `ts` for a punch without `day`), and the rows are dropped from the local cache.
+
+  `filterChoices` / `filterLog`; the list is sorted newest first by `ts`.
+- **Plates** (a `Plate` per punch, `PagedList` in up to three columns): green for IN and red for OUT on the left; the worker's name, under it IN/OUT · date · site · GPS (distance, ±accuracy, ⚠ with the warnings as its title when suspicious, or "Manual"); the time at the right; ⋮ and a swipe.
+  - **Drawing:** 10 at first, the next 10 when the user scrolls the "Show more" row into view, or taps it ([app-core.md](app-core.md) → Long lists). A redraw keeps the opened count; a new filter starts again at 10 (the list is keyed by the filters).
+  - **Older punches:** under the list, while not everything is loaded, "Showing punches from <date>" with **Load earlier month** (`loadEarlierPunchMonth()` loads back to the 1st of the month already partly loaded, or the month before) and **Load all history** (`ensureAllPunches()`).
+- **Edit:** a tap, a double click or a long press on a punch plate (in the log or By Client; with a mouse a single click waits 250 ms for a double one, `useTapOpen`), or ⋮ → Edit, opens the punch window (`Window`): type, time, site (a client, "— No site —", or a kept custom site) and notes; **Save Changes** → `ManagerBridge.savePunch(id, edit)` → the page's `savePunchEdit`: a client sets `clientId` and its name as `site`, no site clears `clientId` and puts the worker's client name, the custom site is kept as it was; `editedBy:'admin'` and `editedAt`; then `gsUpdatePunch`, `render()` and the toast.
+- **By Client** (`byClient`): per client a panel (its colour dot, name, address; "N on site now · N workers · N total punches"), a plate per assigned worker (green while on site — today's latest punch is IN; "In since …" / "Last: … (IN/OUT)" / "No records today"; "N records" at the right; a tap opens its card) and its last 5 punches, newest first, as small plates under it (the time as the name; a tap edits).
+- **Export CSV** (`ManagerBridge.exportPunches()` → `ensureAllPunches()` then the page's `exportPunchCSV()`): Worker, Supplier, Type, Time, Date, Site, Distance(m), GPS Accuracy (rounded), Notes, Edited.
+- **Clear Log** (owner / super-admin; after `ensureAllPunches()`), **behind the Alert Dialog** (it asks, as an irreversible action; it does not close on the backdrop):
+  1. A month checklist with counts per month (`monthCounts` / `punchMonthKey`: from `date`, else `ts`) and Select all; the user must type `DELETE`; Delete (with the count) is off until a month is ticked and the word typed; Cancel keeps everything.
+  2. `ManagerBridge.clearPunchMonths(months)` → the page's `clearPunchMonths`: downloads a CSV of exactly those rows first,
+  3. then `deletePunchesByMonths` runs (by `day`, or `ts` for a punch without `day`), the rows are dropped from the local cache, `render()`, and the toast gives the count. A failure keeps the dialog open with its toast.
 
 ## Firms pane
 
