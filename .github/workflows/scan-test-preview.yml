@@ -25,12 +25,27 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
+      # The models are kept in the Actions cache: Drive refuses frequent downloads.
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/models
+          key: docaligner-models-v1
       - name: Models (DocAligner, Apache-2.0) and ONNX Runtime Web
         run: |
-          pip install -q gdown onnx numpy
-          mkdir -p dist/scan-test/ort
-          gdown -q 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl -O /tmp/sa24.onnx
-          gdown -q 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a -O dist/scan-test/lite.onnx
+          pip install -q onnx numpy
+          mkdir -p dist/scan-test/ort /tmp/models
+          get() {
+            [ -s "/tmp/models/$2" ] && return 0
+            for i in 1 2 3 4; do
+              curl -sSL --fail "https://drive.usercontent.google.com/download?id=$1&export=download&confirm=t" -o "/tmp/models/$2" && [ "$(stat -c %s /tmp/models/$2)" -gt 1000000 ] && return 0
+              sleep $((i * 5))
+            done
+            echo "could not download $2"; return 1
+          }
+          get 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl sa24.onnx
+          get 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a lite.onnx
+          cp /tmp/models/sa24.onnx /tmp/sa24.onnx
+          cp /tmp/models/lite.onnx dist/scan-test/lite.onnx
           # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.
           python scan-test/w16.py /tmp/sa24.onnx dist/scan-test/sa24_w16.onnx
           npm pack onnxruntime-web@1.22.0 --silent
