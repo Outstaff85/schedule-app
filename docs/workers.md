@@ -134,7 +134,7 @@ The window has no Save button: it saves when closed by a tap outside (`workerOve
 
 `openAddWorker()` clears the scan globals (`__aiScanImage`, `__aiPacketOtherPages`, `__aiAvatarB64`, `__wCapturedSigPng`) so a previous scan never attaches to a manually added worker.
 
-### Deleting (`deleteWorker(wi, el)`, `deleteWorkers(ids, els)`)
+### Deleting (`ManagerBridge.deleteWorkers(ids)` → `deleteWorkerNow(id)`)
 
 Started from a plate's ⋮ or swipe, Select's bulk Delete, or the Delete in the list view's row (only with `hasPermission('workers')`; the worker card has no Delete) — the React list, through the React Undo snack (`undoDelete`): the worker leaves the list at once, Undo brings it back, and when the 5 s are up `ManagerBridge.deleteWorkers(ids)` removes them (`deleteWorkerNow`), `render()`, saves and says so in a toast. **It never asks.** `deleteWorkerNow(id)` removes the worker and their files are deleted best-effort through `gsDeleteWorkerDoc()`: the PDF (`docFileId`), the sidecar, and every `docs[].fileId` (punches and hours stay).
 
