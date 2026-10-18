@@ -9,12 +9,10 @@ The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log,
 | Pane | Who |
 |---|---|
 | Punch Log | everyone who can open the tab — the tab needs the `workers` permission |
-
-The list is `adminPanes()` on the page (the React tabs draw only these).
 | Firms, Users | `superadmin`, `tenant_admin` |
-
-An `hr` login never sees the Admin tab ([hr.md](hr.md)).
 | Errors, Timings | `superadmin` |
+
+The list is `adminPanes()` on the page (the React tabs draw only these). An `hr` login never sees the Admin tab ([hr.md](hr.md)).
 
 Layout: the app's template (variant 3, [app-core.md](app-core.md) → Layout) in every pane — figures on top, sections with a count, a line per item with a colored mark on the left (`t3Line` on the page's panes, `Plate` in the React Punch Log). The section tabs are the glass tabs (`.og-tabs`, icon + name; they scroll sideways on a narrow phone), the open one lit, and under them the open section's line (what it is for). Admin has no list / cards toggle (no tables left).
 
