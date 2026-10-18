@@ -1,8 +1,8 @@
-// Temporary (scan-test preview only). The background thread: runs the models
+// The scanner lab (/scan-lab/). The background thread: runs the models
 // and the warp, so the camera picture and the frame on the page never wait.
 const ORT_DIR = new URLSearchParams(self.location.search).get('ort') || 'ort';
-importScripts('/scan-test/' + ORT_DIR + '/ort.all.min.js', '/scan-test/scan-core.js');
-ort.env.wasm.wasmPaths = self.location.origin + '/scan-test/' + ORT_DIR + '/';
+importScripts('/scan-lab/' + ORT_DIR + '/ort.all.min.js', '/scan-lab/scan-core.js');
+ort.env.wasm.wasmPaths = self.location.origin + '/scan-lab/' + ORT_DIR + '/';
 
 let live = null, cap = null, face = null;
 const say = (type, extra) => self.postMessage(Object.assign({ type }, extra));

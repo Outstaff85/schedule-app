@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Scan model test</title>
-<!-- Temporary test page (preview channel only, never merged into main): runs
-     DocAligner in the phone's browser on the camera stream, on the GPU
-     (WebGPU) or the CPU (WASM), and shows the corners and the speed. -->
+<title>Scanner lab</title>
+<!-- The scanner lab (docs/scan-plan.md → Scanner lab; Admin → Scanner lab, super-admin):
+     runs the scanner's on-device models on this phone's camera and photos — the
+     live frame, the shot, the upright turn — and shows how fast and how sure they
+     are. The models and ONNX Runtime are put next to it at deploy (deploy.yml). -->
 <style>
   :root{--bg:#10141f;--plate:#1b1e29;--ink:#fff;--ink2:#a3a9bb;--ok:#6dd6a0;--warn:#f5a623;--bad:#ff5f6d;--line:rgba(255,255,255,.14)}
   *{box-sizing:border-box}
@@ -30,7 +31,7 @@
 </style>
 </head>
 <body>
-<h1>Scan model test</h1>
+<h1>Scanner lab</h1>
 <div class="row">
   <select id="model">
     <option value="lite.onnx+sa24_w16.onnx">Live: light · capture: accurate</option>
@@ -82,9 +83,9 @@
 // The ONNX Runtime build for the CPU: 1.22.0 (faster and smoother there than 1.30); ?ort=130 picks 1.30.0.
 // The GPU always uses 1.30.0: its GPU runs the light model right on a phone where 1.22 returned zeros.
 const ORT_DIR = new URLSearchParams(location.search).get('ort') === '130' ? 'ort130' : 'ort', GPU_ORT = 'ort130';
-document.write('<script src="/scan-test/' + ORT_DIR + '/ort.all.min.js"><\/script>');
+document.write('<script src="/scan-lab/' + ORT_DIR + '/ort.all.min.js"><\/script>');
 </script>
-<script src="/scan-test/scan-core.js"></script>
+<script src="/scan-lab/scan-core.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const log = t => { $('log').textContent = t + '\n' + $('log').textContent; };
@@ -92,8 +93,8 @@ const status = (t, frac) => { $('status').textContent = t; if (frac != null) $('
 window.addEventListener('error', e => log('Page error: ' + e.message));
 window.addEventListener('unhandledrejection', e => log('Error: ' + (e.reason && e.reason.message || e.reason)));
 if (typeof ort === 'undefined') log('ONNX Runtime did not load (ort.all.min.js)');
-ort.env.wasm.wasmPaths = location.origin + '/scan-test/' + ORT_DIR + '/';
-// Several CPU threads need a cross-origin isolated page (COOP/COEP headers on /scan-test).
+ort.env.wasm.wasmPaths = location.origin + '/scan-lab/' + ORT_DIR + '/';
+// Several CPU threads need a cross-origin isolated page (COOP/COEP headers); /scan-lab/ is not isolated, so 1.
 const THREADS = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
 ort.env.wasm.numThreads = THREADS;
 // Background threads for the live frame when the pool is used.
@@ -123,7 +124,7 @@ function pageEngine() {
   };
 }
 function workerEngine(threads, dir = ORT_DIR) {
-  const w = new Worker('/scan-test/scan-worker.js?ort=' + dir), waiting = new Map(); let n = 0, two = false, heard = performance.now();
+  const w = new Worker('/scan-lab/scan-worker.js?ort=' + dir), waiting = new Map(); let n = 0, two = false, heard = performance.now();
   const failAll = why => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
   // A worker that says nothing for 30 s while loading is taken as stuck.
   const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 25000) failAll('no answer for 25 s'); }, 1000);

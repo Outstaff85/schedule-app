@@ -1,13 +1,13 @@
-// Temporary (scan-test preview only). The detection code shared by the page
+// The scanner lab (/scan-lab/, docs/scan-plan.md → Scanner lab). The detection code shared by the page
 // and its background worker: model download, session, corners, warp.
 const S = 256, H = 128;
 
 async function fetchModel(name, onProgress) {
   try {
-    const cache = await caches.open('scan-test-models');
+    const cache = await caches.open('scan-lab-models');
     const hit = await cache.match(name);
     if (hit) { onProgress(1, 1); return new Uint8Array(await hit.arrayBuffer()); }
-    const res = await fetch('/scan-test/' + name);
+    const res = await fetch('/scan-lab/' + name);
     if (!res.ok) throw new Error('model download failed: HTTP ' + res.status);
     const total = +res.headers.get('content-length') || 0;
     const reader = res.body.getReader(); const parts = []; let got = 0;
@@ -16,7 +16,7 @@ async function fetchModel(name, onProgress) {
     try { await cache.put(name, new Response(buf)); } catch (e) {}
     return buf;
   } catch (e) {
-    const res = await fetch('/scan-test/' + name); return new Uint8Array(await res.arrayBuffer());
+    const res = await fetch('/scan-lab/' + name); return new Uint8Array(await res.arrayBuffer());
   }
 }
 

@@ -10,6 +10,7 @@ import * as React from 'react';
 import {
   IconAlertCircle, IconAlertTriangle, IconBuildingSkyscraper, IconClipboardText, IconDownload, IconEdit, IconHistory, IconMapPin,
   IconStopwatch, IconTrash, IconUsers,
+  IconScan,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -83,6 +84,12 @@ export function Admin({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }
               title={tr(p.label)} sub={<span className="block whitespace-normal">{tr(SUBTITLES[p.k])}</span>}
               onOpen={() => api.setAdminPane(p.k)} />
           ))}
+          {/* The scanner lab (docs/scan-plan.md → Scanner lab): a super-admin's tool, like Errors and Timings. */}
+          {snap.panes.includes('timings') && (
+            <Plate data-testid="admin-tile" data-k="scanlab" size="lg" className="mb-2" icon={<IconScan />} color="var(--info)"
+              title={tr('Scanner lab')} sub={<span className="block whitespace-normal">{tr("Try the scanner's models on this device: the live frame, the shot and the upright turn")}</span>}
+              onOpen={() => window.open('/scan-lab/', '_blank', 'noopener')} />
+          )}
         </div>
       )}
       {pane === 'punchlog' && (snap.ready ? <PunchLog snap={snap} api={api} /> : <Loading />)}

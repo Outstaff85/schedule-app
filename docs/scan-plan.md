@@ -35,7 +35,7 @@ Status: **planned** — no stage started. Each stage is merged only with the own
 
 ### S2b — camera with a live frame
 
-Proven on the owner's Android phone with the test page (`scan-test/`, 2026-10-18): live frame 13 frames/s, the screen at 60 frames/s, the shot shown in 0.18 s.
+Proven on the owner's Android phone with the scanner lab (see below, 2026-10-18): live frame 13 frames/s, the screen at 60 frames/s, the shot shown in 0.18 s.
 
 - **Models on the phone:** the light DocAligner model (5 MB) for the live frame, the accurate one (42 MB, fp16 weights with fp32 math — a plain fp16 conversion gives zeros on WebGPU) for the shot. On the first tap of Scan both download in the background over any network, with the progress shown; **the first time, scanning is enabled only once they are ready**; then they come from the cache (Android: Background Fetch; iOS: a resumable download). Both are warmed up at load.
 - **Where they run** — tried in this order, each way dropped if it fails or stays silent for 25 s, the way that worked remembered on the device:
@@ -46,7 +46,14 @@ Proven on the owner's Android phone with the test page (`scan-test/`, 2026-10-18
 - **The frame on screen:** a thin line, no corner dots; red while searching, green once it has sat on the document's edges for 0.25 s; it glides toward the latest result on every screen frame. **Autocapture** when the green frame has held still for 1.5 s (a countdown shown); a Capture button too.
 - **The shot** is shown at once, straightened by the live frame; the accurate model then refines the corners in the background and replaces the shot if they moved.
 - **Upright:** the straightened shot is turned upright by the face on the document — a small face finder (YuNet, MIT, 0.2 MB) is run on the 4 quarter-turns and the turn with a face whose eyes are above its mouth wins (40 of 40 turned right on the owner's photos). A document with no face (the ספח) keeps its turn on the phone and is set upright on the server with its reading. A text-direction model (RapidOrientation) was tried and dropped: it takes upright Hebrew documents for upside down.
-- The test page `scan-test/` and its workflow `.github/workflows/scan-test-preview.yml` (a Firebase preview channel) are temporary and are removed before any PR into `main`.
+
+### Scanner lab (`/scan-lab/`)
+
+A standing tool kept in the repo for trying and tuning the scanner's on-device part on a real phone, so S2b and later changes start from it, not from scratch.
+
+- **Files:** `scan-lab/index.html` (the page: model and engine pickers, the camera with the live frame, Photo…, Capture, the figures — runs on, frames/s, ms per frame, confidence, model load, camera size, screen frames/s, capture ms — and a log), `scan-lab/scan-core.js` (shared by the page and its worker: model download into the Cache Storage, sessions with the GPU self-test and time limits, corners, warp, the face-based upright turn), `scan-lab/scan-worker.js` (the background thread), `scripts/scan-lab/w16.py` (fp16 weights with fp32 math) and `scripts/scan-lab/fetch-models.sh` (the models and ONNX Runtime 1.22 / 1.30, fetched at deploy, kept in the Actions cache — no model file is committed).
+- **Where:** live at `/scan-lab/` (deploy.yml puts the models next to it; `firebase.json` gives `/scan-lab` `Cache-Control: no-cache`), opened from **Admin → Scanner lab** (a super-admin tile, `src/manager/Admin.tsx`). A branch that touches it gets a preview copy first (`.github/workflows/scan-lab-preview.yml`, Firebase preview channel `scan-test`, 7 days): `https://schedule-odinson--scan-test-<id>.web.app/scan-lab/`.
+- It is a plain page outside the React app on purpose — a lab for the models, with no data, no login and nothing stored but the models in the browser's cache; the product's scanner is built in `src/scan/` (S2, S2b) from what the lab proved.
 
 ### S3 — reading in TypeScript
 

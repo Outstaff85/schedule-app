@@ -1,4 +1,4 @@
-# Temporary (scan-test preview only): stores the weights as fp16 with a Cast to
+# The scanner lab's accurate model (docs/scan-plan.md → Scanner lab): stores the weights as fp16 with a Cast to
 # fp32 in front, so the file is half the size and the math stays fp32.
 import onnx, sys, numpy as np
 from onnx import numpy_helper, helper, TensorProto
