@@ -142,7 +142,7 @@ function accessOf(f: UserForm): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (f.role === 'supplier') { out.supplierId = f.supplierId; out.supplierSections = SUPPLIER_SECTIONS.filter(s => f.supSections.includes(s)); }
   else if (f.role === 'client') out.clientId = f.clientId;
-  else out.permissions = [...PERMISSION_SECTIONS, 'payEdit'].filter(p => f.perms.includes(p)).sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+  else out.permissions = ORDER.filter(p => f.perms.includes(p));
   if (HOUR_ROLES.includes(f.role)) out.hourPerms = Object.keys(HOUR_PERM_LABELS).filter(p => f.hourPerms.includes(p));
   return out;
 }
