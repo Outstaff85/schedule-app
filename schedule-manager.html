@@ -2385,34 +2385,6 @@ function ogSecSummary(sec){
   } else if(bd) bd.remove();
   return missing;
 }
-function ogSections(root, openKey){
-  if(!root) return;
-  root.querySelectorAll('select[data-seg]').forEach(ogSegSelect);
-  root.querySelectorAll('.og-sec').forEach(sec=>{ const miss=ogSecSummary(sec); if(miss || sec.dataset.sec===openKey) sec.classList.add('open'); });
-  if(!root.__ogSecWired){
-    root.__ogSecWired=true;
-    const upd=e=>{ const sec=e.target.closest&&e.target.closest('.og-sec'); if(sec) ogSecSummary(sec); };
-    root.addEventListener('input',upd); root.addEventListener('change',upd);
-  }
-}
-// A select with 2–4 choices as a segmented switch; the select stays the value.
-function ogSegSelect(sel){
-  if(sel.__seg) return;
-  const seg=document.createElement('div'); seg.className='seg seg-sel'; sel.__seg=seg;
-  const draw=()=>{ seg.innerHTML=[...sel.options].filter(o=>o.value!=='').map(o=>`<button type="button" data-v="${esc(o.value)}" class="${o.value===sel.value?'on':''}">${esc(o.text)}</button>`).join(''); };
-  seg.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; sel.value=b.dataset.v; sel.dispatchEvent(new Event('change',{bubbles:true})); draw(); });
-  sel.addEventListener('change',draw); sel.__segDraw=draw;
-  sel.style.display='none'; sel.classList.add('seg-src'); sel.after(seg); draw();
-}
-// A section marked data-auto shows only while one of its fields is shown
-// (the user form: Hours, HR commission depend on the role).
-function ogAutoSections(root){
-  if(!root) return;
-  root.querySelectorAll('.og-sec[data-auto]').forEach(sec=>{
-    const any=[...sec.querySelectorAll('.og-sec-b input, .og-sec-b select')].some(f=>{ for(let p=f.parentElement; p&&p!==sec; p=p.parentElement) if(p.style&&p.style.display==='none') return false; return true; });
-    sec.style.display=any?'':'none';
-  });
-}
 // A field asked to focus (a save that found it empty) opens its section first.
 (()=>{ const f=HTMLElement.prototype.focus; HTMLElement.prototype.focus=function(o){ const sec=this.closest&&this.closest('.og-sec:not(.open)'); if(sec) ogSecOpen(sec); return f.call(this,o); }; })();
 // A tick of a client / supplier login in its window (stage 6d, React —
