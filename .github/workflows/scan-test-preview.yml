@@ -27,11 +27,12 @@ jobs:
           npm run build
       - name: Models (DocAligner, Apache-2.0) and ONNX Runtime Web
         run: |
-          pip install -q gdown onnx onnxconverter-common
+          pip install -q gdown onnx numpy
           mkdir -p dist/scan-test/ort
           gdown -q 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl -O /tmp/sa24.onnx
           gdown -q 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a -O dist/scan-test/lite.onnx
-          python -c "import onnx; from onnxconverter_common import float16; m=onnx.load('/tmp/sa24.onnx'); onnx.save(float16.convert_float_to_float16(m, keep_io_types=True), 'dist/scan-test/sa24_fp16.onnx')"
+          # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.
+          python scan-test/w16.py /tmp/sa24.onnx dist/scan-test/sa24_w16.onnx
           npm pack onnxruntime-web@1.22.0 --silent
           tar xzf onnxruntime-web-1.22.0.tgz
           cp package/dist/ort.all.min.js package/dist/*.wasm package/dist/ort-wasm-simd-threaded*.mjs dist/scan-test/ort/

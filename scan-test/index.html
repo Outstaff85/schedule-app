@@ -32,7 +32,7 @@
 <h1>Scan model test</h1>
 <div class="row">
   <select id="model">
-    <option value="sa24_fp16.onnx">Accurate fp16 (42 MB)</option>
+    <option value="sa24_w16.onnx">Accurate (42 MB)</option>
     <option value="lite.onnx">Light (5 MB)</option>
   </select>
   <select id="backend">
@@ -44,6 +44,7 @@
 <div class="row">
   <button class="primary" id="startCam">Start camera</button>
   <label class="btn">Photo… <input id="file" type="file" accept="image/*" hidden></label>
+  <button id="snap">Capture</button>
   <button id="stop">Stop</button>
 </div>
 <div id="status" style="font-size:13px;color:var(--ink2)">Starting…</div>
@@ -52,6 +53,11 @@
   <video id="video" playsinline muted hidden></video>
   <img id="still" alt="" hidden>
   <canvas id="overlay"></canvas>
+</div>
+<div id="hint" style="font-size:14px;margin-top:8px;min-height:20px"></div>
+<div id="shot" hidden style="margin-top:10px">
+  <div class="row"><button class="primary" id="retake">Retake</button><label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="auto" checked> Auto capture</label></div>
+  <img id="shotImg" alt="" style="width:100%;border-radius:14px;display:block">
 </div>
 <div class="stats">
   <div class="stat"><b id="sBackend">—</b><span>runs on</span></div>
@@ -74,6 +80,8 @@ if (typeof ort === 'undefined') { document.addEventListener('DOMContentLoaded', 
 ort.env.wasm.wasmPaths = location.origin + '/scan-test/ort/';
 ort.env.wasm.numThreads = 1;
 
+let smooth = null, steadySince = 0, lastRes = null;
+const STEADY_MS = 700, MOVE = 0.02;
 let session = null, sessionKey = '', running = false, stream = null, busy = false;
 const times = [], frames = [];
 const S = 256, H = 128;
@@ -147,6 +155,55 @@ function corners(hm) {
   return { pts, conf: Math.min(...confs) };
 }
 
+// Average the corners over frames so the frame does not jitter; a big jump resets it.
+function smoothen(res) {
+  if (res.pts.some(p => !p) || res.conf < 0.5) { smooth = null; steadySince = 0; return res; }
+  const move = smooth ? Math.max(...res.pts.map((p, i) => Math.hypot(p[0] - smooth[i][0], p[1] - smooth[i][1]))) : 1;
+  const now = performance.now();
+  if (move > MOVE * 3 || !smooth) { smooth = res.pts.map(p => p.slice()); steadySince = now; }
+  else { smooth = smooth.map((q, i) => [q[0] * 0.6 + res.pts[i][0] * 0.4, q[1] * 0.6 + res.pts[i][1] * 0.4]); if (move > MOVE) steadySince = now; }
+  return { pts: smooth, conf: res.conf, steady: now - steadySince };
+}
+
+// Perspective warp of the quad (0..1 coords of src) to a flat rectangle.
+function homography(from, to) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = from[i], [u, v] = to[i];
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  for (let c = 0; c < 8; c++) {
+    let m = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[m][c])) m = r;
+    [A[c], A[m]] = [A[m], A[c]]; [b[c], b[m]] = [b[m], b[c]];
+    for (let r = 0; r < 8; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; b[r] -= f * b[c]; }
+  }
+  return b.map((v, i) => v / A[i][i]);
+}
+function capture(src, w, h, pts) {
+  const full = document.createElement('canvas'); full.width = w; full.height = h;
+  const fctx = full.getContext('2d'); fctx.drawImage(src, 0, 0, w, h);
+  const P = pts.map(([x, y]) => [x * w, y * h]);
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const W = Math.round(Math.max(d(P[0], P[1]), d(P[3], P[2]))), Hh = Math.round(Math.max(d(P[0], P[3]), d(P[1], P[2])));
+  const Hm = homography([[0, 0], [W, 0], [W, Hh], [0, Hh]], P);
+  const sd = fctx.getImageData(0, 0, w, h).data;
+  const out = document.createElement('canvas'); out.width = W; out.height = Hh;
+  const octx = out.getContext('2d'), od = octx.createImageData(W, Hh);
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+    const z = Hm[6] * x + Hm[7] * y + 1, sx = (Hm[0] * x + Hm[1] * y + Hm[2]) / z, sy = (Hm[3] * x + Hm[4] * y + Hm[5]) / z;
+    const ix = sx | 0, iy = sy | 0; if (ix < 0 || iy < 0 || ix >= w - 1 || iy >= h - 1) continue;
+    const fx = sx - ix, fy = sy - iy, o = (y * W + x) * 4;
+    for (let c = 0; c < 3; c++) {
+      const i0 = (iy * w + ix) * 4 + c;
+      od.data[o + c] = (sd[i0] * (1 - fx) + sd[i0 + 4] * fx) * (1 - fy) + (sd[i0 + w * 4] * (1 - fx) + sd[i0 + w * 4 + 4] * fx) * fy;
+    }
+    od.data[o + 3] = 255;
+  }
+  octx.putImageData(od, 0, 0);
+  return out.toDataURL('image/jpeg', 0.9);
+}
+
 function draw(res, el) {
   const c = $('overlay'), r = el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   c.width = r.width * dpr; c.height = r.height * dpr;
@@ -162,13 +219,28 @@ async function runOnce(src, w, h, el) {
   const out = await session.run({ [session.inputNames[0]]: toTensor(src, w, h) });
   const ms = performance.now() - t;
   const hm = out[session.outputNames[0]].data;
-  const res = corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
+  const raw = corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
+  const res = el.tagName === 'VIDEO' ? smoothen(raw) : raw;
   times.push(ms); if (times.length > 20) times.shift();
   const now = performance.now(); frames.push(now); while (frames.length && now - frames[0] > 2000) frames.shift();
   $('sMs').textContent = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
   $('sFps').textContent = (frames.length / Math.max(0.5, (now - frames[0]) / 1000)).toFixed(1);
   $('sConf').textContent = res.conf.toFixed(2);
-  draw(res, el);
+  draw(res, el); lastRes = res;
+  const missing = raw.pts.filter(p => !p).length;
+  $('hint').textContent = missing ? (missing === 4 ? 'No document in the frame' : missing + ' corner(s) outside the frame — move the phone back')
+    : res.conf < 0.5 ? 'Edges not clear — more light, a darker background' : res.steady != null && res.steady < STEADY_MS ? 'Hold still…' : 'Found';
+  if (el.tagName === 'VIDEO' && $('auto').checked && res.steady >= STEADY_MS) showShot();
+}
+
+function showShot() {
+  const v = $('video'), img = $('still'), isVideo = !v.hidden, el = isVideo ? v : img;
+  if (!lastRes || lastRes.pts.some(p => !p)) { $('hint').textContent = 'No frame to capture yet'; return; }
+  running = false;
+  const t0 = performance.now();
+  $('shotImg').src = capture(el, isVideo ? v.videoWidth : img.naturalWidth, isVideo ? v.videoHeight : img.naturalHeight, lastRes.pts);
+  $('shot').hidden = false; $('hint').textContent = 'Captured and straightened (' + Math.round(performance.now() - t0) + ' ms) — Retake for another';
+  $('shot').scrollIntoView({ behavior: 'smooth' });
 }
 
 async function loop() {
@@ -191,6 +263,8 @@ $('startCam').onclick = async () => {
     running = true; loop();
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
+$('retake').onclick = () => { $('shot').hidden = true; smooth = null; steadySince = 0; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 $('file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -199,6 +273,7 @@ $('file').onchange = async e => {
   img.hidden = false; $('video').hidden = true;
   $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
   for (let i = 0; i < 3; i++) await runOnce(img, img.naturalWidth, img.naturalHeight, img);
+  if (lastRes && !lastRes.pts.some(p => !p)) showShot();
 };
 $('model').onchange = $('backend').onchange = async () => { const was = running; running = false; await ensureSession().catch(() => {}); if (was) { running = true; loop(); } };
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
