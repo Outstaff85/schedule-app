@@ -1,25 +1,33 @@
 #!/usr/bin/env bash
 # The scanner lab's models and ONNX Runtime Web, put next to it in the built site
-# (docs/scan-plan.md → Scanner lab). No model file is committed: they are fetched
-# here, at deploy, and kept in /tmp/models (the Actions cache) between runs —
-# Drive refuses frequent downloads.
+# (docs/scan-plan.md → Scanner lab). No model file is committed. Each base model
+# comes from the firm's own Firebase Storage (models/scan/base-v1/, through
+# model_store.py, when the deploy's credentials are set); only a model not stored
+# there yet is downloaded from its authors — once — and stored. /tmp/models (the
+# Actions cache) keeps them between runs.
 #   scripts/scan-lab/fetch-models.sh dist/scan-lab
 set -euo pipefail
 OUT="$1"; CACHE=/tmp/models; HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUT/ort" "$OUT/ort130" "$CACHE"
-get() {  # DocAligner (Apache-2.0) from its author's Drive
-  [ -s "$CACHE/$2" ] && return 0
+pip install -q onnx numpy google-cloud-storage
+STORE=""
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py" ping; then STORE=1; else echo "Firebase Storage not reachable: the authors' links are used"; fi
+# get NAME URL: the cache, else the firm's Storage, else the authors' link (then stored).
+get() {
+  [ -s "$CACHE/$1" ] && return 0
+  [ -n "$STORE" ] && python "$HERE/model_store.py" get "$1" "$CACHE/$1" && return 0
   for i in 1 2 3 4; do
-    curl -sSL --fail "https://drive.usercontent.google.com/download?id=$1&export=download&confirm=t" -o "$CACHE/$2" && [ "$(stat -c %s "$CACHE/$2")" -gt 1000000 ] && return 0
-    sleep $((i * 5))
+    curl -sSL --fail "$2" -o "$CACHE/$1" && [ "$(stat -c %s "$CACHE/$1")" -gt 100000 ] && break
+    rm -f "$CACHE/$1"; sleep $((i * 5))
   done
-  echo "could not download $2"; return 1
+  [ -s "$CACHE/$1" ] || { echo "could not download $1"; return 1; }
+  [ -z "$STORE" ] || python "$HERE/model_store.py" put "$CACHE/$1" "$1"
 }
-get 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl sa24.onnx   # the accurate model (fastvit_sa24)
-get 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a lite.onnx   # the light model (lcnet100), the live frame
+drive() { echo "https://drive.usercontent.google.com/download?id=$1&export=download&confirm=t"; }
+get sa24.onnx "$(drive 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl)"   # DocAligner, the accurate model (fastvit_sa24), Apache-2.0
+get lite.onnx "$(drive 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a)"   # DocAligner, the light model (lcnet100), the live frame
 # The face finder that sets a shot upright (YuNet, MIT, OpenCV zoo).
-[ -s "$CACHE/yunet640.onnx" ] || curl -sSL --fail -o "$CACHE/yunet640.onnx" https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
-pip install -q onnx numpy
+get yunet640.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
 [ -s "$CACHE/yunet_any.onnx" ] || python "$HERE/yunet_dyn.py" "$CACHE/yunet640.onnx" "$CACHE/yunet_any.onnx"   # any input size: run at 320
 # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.
 [ -s "$CACHE/sa24_w16.onnx" ] || python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/sa24_w16.onnx"

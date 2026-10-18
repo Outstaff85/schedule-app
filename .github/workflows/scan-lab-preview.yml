@@ -27,9 +27,14 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: /tmp/models
-          key: scan-lab-models-v2
+          key: scan-lab-models-v3
       - name: The scanner lab's models and ONNX Runtime
-        run: scripts/scan-lab/fetch-models.sh dist/scan-lab
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+          scripts/scan-lab/fetch-models.sh dist/scan-lab
+          rm -f "$RUNNER_TEMP/gcp-sa.json"
       - id: deploy
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:

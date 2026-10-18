@@ -1,0 +1,14 @@
+The scanner lab's models and engine, and their licences.
+
+DocAligner (lcnet100 and fastvit_sa24 heatmap models) — DocsaidLab
+  https://github.com/DocsaidLab/DocAligner — Apache License 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+  sa24_w16.onnx is the fastvit_sa24 model with its weights stored as fp16
+  (scripts/scan-lab/w16.py); lite.onnx is lcnet100 as published.
+
+YuNet face detector (face_detection_yunet_2023mar) — OpenCV Zoo
+  https://github.com/opencv/opencv_zoo — MIT License
+  yunet.onnx has its input size freed (scripts/scan-lab/yunet_dyn.py).
+
+ONNX Runtime Web 1.22.0 and 1.30.0 — Microsoft
+  https://github.com/microsoft/onnxruntime — MIT License
