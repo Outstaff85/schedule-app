@@ -292,28 +292,40 @@ async function runOnce(src, w, h, el) {
 }
 
 // Freeze the frame, take the exact corners from the accurate model, straighten.
+// The shot is shown at once, straightened by the live frame; the accurate model
+// then refines the corners in the background and replaces it if they moved.
+let shotId = 0;
 async function showShot() {
   const v = $('video'), img = $('still'), isVideo = !v.hidden, el = isVideo ? v : img;
   if (!lastRes || lastRes.pts.some(p => !p)) { $('hint').textContent = 'No frame to capture yet'; return; }
   running = false;
-  const t0 = performance.now(), w = isVideo ? v.videoWidth : img.naturalWidth, h = isVideo ? v.videoHeight : img.naturalHeight;
+  const id = ++shotId, t0 = performance.now(), w = isVideo ? v.videoWidth : img.naturalWidth, h = isVideo ? v.videoHeight : img.naturalHeight;
   const frame = document.createElement('canvas'); frame.width = w; frame.height = h;
   const fctx = frame.getContext('2d'); fctx.drawImage(el, 0, 0, w, h);
-  let pts = lastRes.pts, how = 'live frame';
-  while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
-  if (isVideo && engine.hasCap()) {
-    $('hint').textContent = 'Taking the exact corners…';
-    const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });
-    if (!exact.pts.some(p => !p) && exact.conf >= 0.5) { pts = exact.pts; how = 'accurate model'; }
-    target = { pts, ok: true }; shown = pts.map(p => p.slice());
-  }
-  const out = await engine.warp(fctx.getImageData(0, 0, w, h).data, w, h, pts);
-  const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
-  oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-  $('shotImg').src = oc.toDataURL('image/jpeg', 0.9);
+  const pix = fctx.getImageData(0, 0, w, h).data;
+  const put = async pts => {
+    const out = await engine.warp(pix.slice(), w, h, pts);
+    if (id !== shotId) return false;
+    const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
+    oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+    $('shotImg').src = oc.toDataURL('image/jpeg', 0.9); return true;
+  };
+  const livePts = lastRes.pts;
+  if (!(await put(livePts))) return;
   const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
-  $('shot').hidden = false; $('hint').textContent = 'Captured and straightened by the ' + how + ' (' + ms + ' ms) — Retake for another';
-  $('shot').scrollIntoView({ behavior: 'smooth' });
+  $('shot').hidden = false; $('shot').scrollIntoView({ behavior: 'smooth' });
+  const refine = isVideo && engine.hasCap();
+  $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + (refine ? ' — refining the corners…' : ' — Retake for another');
+  if (!refine) return;
+  while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
+  const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });
+  if (id !== shotId) return;
+  const total = () => Math.round(performance.now() - t0);
+  if (exact.pts.some(p => !p) || exact.conf < 0.5) { $('hint').textContent = 'Captured by the live frame (' + ms + ' ms); the accurate model did not confirm it — Retake for another'; return; }
+  const moved = Math.max(...exact.pts.map((p, k) => Math.hypot(p[0] - livePts[k][0], p[1] - livePts[k][1])));
+  if (moved > 0.002 && !(await put(exact.pts))) return;
+  target = { pts: exact.pts, ok: true }; shown = exact.pts.map(p => p.slice());
+  $('hint').textContent = 'Shown in ' + ms + ' ms; ' + (moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms — Retake for another';
 }
 
 // Up to engine.size frames are worked on at once, sent evenly spaced.
@@ -337,7 +349,7 @@ $('startCam').onclick = async () => {
     running = true; loop();
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
-$('retake').onclick = () => { $('shot').hidden = true; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('retake').onclick = () => { shotId++; $('shot').hidden = true; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 $('file').onchange = async e => {
