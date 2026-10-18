@@ -32,6 +32,8 @@ Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own
 
 ## Browser data layer (`firestore-backend.js`)
 
+The code is `src/lib/firestore-backend.ts` (TypeScript, the one copy); `firestore-backend.js` at the root is generated from it by `scripts/build-globals.mjs` and committed — change the TypeScript, then `npm run build:globals` (`npm run build` fails while the file is stale; [build.md](build.md) → Generated scripts). `src/lib/backend.ts` types the new pages' `loadBackend()` with its `FirestoreBackend`.
+
 Loaded by `loadFirestoreBackend()` in the manager app and by `loadBackend()` (`src/lib/backend.ts`) in the new pages — the portals use only the sign-in, the ID token, the claims, `updateMyLanguage` and `updateMyTheme` (the punch page talks only to the `punch` function). One global, `initFirestoreBackend()`:
 
 - imports the Firebase SDK `FB_VERSION` 12.19.0 (app, auth, firestore) from gstatic; Storage only on the first upload, or 4 s after a signed-in start (`loadStorage()`);

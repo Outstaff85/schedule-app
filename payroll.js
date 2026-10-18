@@ -1,5 +1,5 @@
-// GENERATED from src/lib/payroll.ts by scripts/build-payroll.mjs — never edit
-// by hand: change payroll.ts and run `node scripts/build-payroll.mjs`
+// GENERATED from src/lib/payroll.ts by scripts/build-globals.mjs — never edit
+// by hand: change the TypeScript and run `node scripts/build-globals.mjs`
 // (npm run build fails while this file is stale). Defines the global `Payroll`
 // used by the old pages (docs/accounting.md → Payroll module).
 var Payroll = (function(exports) {
