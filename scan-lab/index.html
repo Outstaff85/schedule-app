@@ -138,7 +138,7 @@ function workerEngine(threads, dir = ORT_DIR) {
     heard = performance.now();
     if (m.type === 'status') status(m.text, m.frac);
     else if (m.type === 'log') log(m.text);
-    else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); m.error ? p.reject(new Error(m.error)) : p.resolve(m); }
+    else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); if (p) m.error ? p.reject(new Error(m.error)) : p.resolve(m); }  // a late answer to a call given up on: dropped
   };
   w.onerror = e => { log('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
   const call = (msg, transfer) => new Promise((resolve, reject) => { msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
@@ -308,7 +308,7 @@ async function runOnce(src, w, h, el) {
 // Freeze the frame, take the exact corners from the accurate model, straighten.
 // The shot is shown at once, straightened by the live frame; the accurate model
 // then refines the corners in the background and replaces it if they moved.
-let shotId = 0, lastTurn = -1;
+let shotId = 0, lastTurn = -1, pageMore = false;  // pageMore: a later photo of the same page — its pages join the list
 const turnNote = () => lastTurn === -2 ? '; the face finder failed (see the log), not turned' : lastTurn > 0 ? '; turned ' + lastTurn * 90 + '° by the face' : lastTurn === 0 ? '; upright by the face' : '; no face to set it upright';
 async function showShot() {
   try { await takeShot(); }
@@ -332,7 +332,10 @@ async function takeShot() {
     if (id !== shotId) return false;
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-    $('shotImg').src = oc.toDataURL('image/jpeg', 0.9); return true;
+    const url = oc.toDataURL('image/jpeg', 0.9);
+    if (!pageMore) $('shotImg').src = url;
+    else { if (!put.el) { put.el = new Image(); put.el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(put.el); } put.el.src = url; }
+    return true;
   };
   const livePts = lastRes.pts;
   if (!(await put(livePts))) return;
@@ -475,14 +478,63 @@ $('startCam').onclick = async () => {
 $('retake').onclick = () => { shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
+// The photos on a white page (a form's page, a PDF, a screenshot): every band of rows
+// where most of the page is not white, at least 12 % high; inside each, the longest run
+// of columns mostly not white gives its sides. Top to bottom; none when the picture is
+// (nearly) one photo already.
+function photosOnPage(img) {
+  const W = img.naturalWidth, H = img.naturalHeight, sc = 300 / Math.max(W, H), w = Math.max(1, Math.round(W * sc)), h = Math.max(1, Math.round(H * sc));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0, w, h); const d = g.getImageData(0, 0, w, h).data;
+  const busy = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) busy[i] = Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) < 225 ? 1 : 0;
+  const rowShare = y => { let n = 0; for (let x = 0; x < w; x++) n += busy[y * w + x]; return n / w; };
+  const out = [];
+  for (let y = 0; y < h; y++) {
+    if (rowShare(y) <= 0.45) continue;
+    const y0 = y; while (y < h && rowShare(y) > 0.45) y++;
+    const y1 = y;
+    if (y1 - y0 < 0.12 * h) continue;
+    const colShare = x => { let n = 0; for (let yy = y0; yy < y1; yy++) n += busy[yy * w + x]; return n / (y1 - y0); };
+    let run = null;
+    for (let x = 0; x < w; x++) {
+      if (colShare(x) <= 0.6) continue;
+      const x0 = x; while (x < w && colShare(x) > 0.6) x++;
+      if (!run || x - x0 > run[1] - run[0]) run = [x0, x];
+    }
+    if (!run || run[1] - run[0] < 0.25 * w) continue;
+    out.push({ area: (run[1] - run[0]) * (y1 - y0) / (w * h), box: [Math.floor(run[0] / sc), Math.floor(y0 / sc), Math.min(W, Math.ceil(run[1] / sc)), Math.min(H, Math.ceil(y1 / sc))] });
+  }
+  return out.length === 1 && out[0].area > 0.9 ? [] : out.map(o => o.box);
+}
+
 $('file').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
   shotId++; $('shotMore').textContent = ''; $('shot2note').textContent = ''; const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
   img.hidden = false; $('video').hidden = true;
-  $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
-  await runOnce(img, img.naturalWidth, img.naturalHeight, img);
-  if (lastRes && !lastRes.pts.some(p => !p)) showShot();
+  // A white page with photos in it (a form's page, a PDF, a screenshot): each photo is cut
+  // out and goes through on its own, and their documents make one list of pages.
+  const boxes = photosOnPage(img), page = await new Promise(r => { const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0); r(c); });
+  const parts = boxes.length ? boxes : [null];
+  if (boxes.length) log('Photos inside a white page: ' + boxes.map(b => (b[2] - b[0]) + '×' + (b[3] - b[1]) + ' at ' + b[0] + ',' + b[1]).join('; ') + ' of ' + page.width + '×' + page.height);
+  let pages = 0;
+  for (const box of parts) {
+    if (box) {
+      const [x0, y0, x1, y1] = box, c = document.createElement('canvas'); c.width = x1 - x0; c.height = y1 - y0;
+      c.getContext('2d').drawImage(page, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+      img.src = c.toDataURL('image/jpeg', 0.95); await img.decode();
+    }
+    $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
+    lastRes = null; await runOnce(img, img.naturalWidth, img.naturalHeight, img);
+    // A photo cut from a page with no document frame in it is a document already cut to
+    // its edges (a card photographed edge to edge): the whole photo is the page.
+    if (box && (!lastRes || lastRes.pts.some(p => !p))) lastRes = { pts: [[0, 0], [1, 0], [1, 1], [0, 1]], conf: 1 };
+    if (lastRes && !lastRes.pts.some(p => !p)) {
+      pageMore = pages > 0; await showShot(); pageMore = false; pages++;
+    }
+  }
+  if (parts.length > 1) $('shot2note').textContent = 'Pages from ' + parts.length + ' photos on this page:';
 };
 // Switching the model, GPU / CPU or the thread: nothing of the old way stays on screen —
 // no frame, no figures — and the frame and its following start again on the new way.
