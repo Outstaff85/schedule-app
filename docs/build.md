@@ -48,7 +48,7 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
 ## Other commands
 
-- `npm run dev` — the Vite dev server. It serves the repo root, so the old pages open at the same paths as on Hosting (`/schedule-manager.html`, `/og.css` …) and the new ones at theirs (`/next/`), with instant reload for `src/`.
+- `npm run dev` — the Vite dev server. It serves the repo root, so the manager page opens at the same paths as on Hosting (`/schedule-manager.html`, `/og.css` …) and the new ones at theirs (`/next/`), with instant reload for `src/`.
 - `npm run typecheck` — only the TypeScript check.
 - `npm run preview` — serves `dist/` after a build.
 - `npm run check:build` — `tests/build/check.js`.
