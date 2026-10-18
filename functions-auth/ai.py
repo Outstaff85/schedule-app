@@ -191,26 +191,56 @@ def _mrz_check(chars):
     return total % 10
 
 
+def _mrz_part(line, start, end):
+    """Characters start..end-1 of MRZ line 2 when the check digit right after
+    them agrees, else None."""
+    part, chk = line[start:end], line[end:end + 1]
+    if len(part) < end - start or not chk.isdigit() or _mrz_check(part) != int(chk):
+        return None
+    return part
+
+
+def _mrz_date(part, century):
+    """YYMMDD → DD/MM/YYYY; century(yy) picks 19 or 20. None when not a date."""
+    if not part or not part.isdigit():
+        return None
+    yy, mm, dd = part[:2], part[2:4], part[4:6]
+    if not (1 <= int(mm) <= 12 and 1 <= int(dd) <= 31):
+        return None
+    return f"{dd}/{mm}/{century(int(yy))}{yy}"
+
+
+def _from_mrz(parsed, field, value):
+    """The field taken from the MRZ: the zoomed re-read of the printed one is
+    then skipped (its box dropped)."""
+    parsed[field] = value
+    parsed[field + "FromMrz"] = True
+    if isinstance(parsed.get("fieldBoxes"), dict):
+        parsed["fieldBoxes"].pop(field, None)
+
+
 def _expiry_from_mrz(parsed):
-    """A passport's expiry from MRZ line 2 (characters 22-27, YYMMDD, check
-    digit 28) when its check digit is right. The printed dates are easy to
-    mix up (the issue date sits next to the expiry); the MRZ is not. The
-    zoomed re-read of the printed expiry is then skipped (its box dropped)."""
+    """A passport's number, birth date and expiry from MRZ line 2 (ICAO 9303:
+    characters 1-9 the number, 10 its check digit; 14-19 the birth date
+    YYMMDD, 20 its check digit; 22-27 the expiry, 28 its check digit), each
+    taken only when its check digit is right. The printed dates are easy to
+    mix up (the issue date sits next to the expiry) and a printed number is
+    easy to misread (O / 0, I / 1); the checked MRZ is not."""
     if not isinstance(parsed, dict):
         return parsed
     line = re.sub(r"\s", "", str(parsed.get("mrzLine2") or "")).upper()
     if len(line) < 28:
         return parsed
-    exp, chk = line[21:27], line[27]
-    if not (exp.isdigit() and chk.isdigit()) or _mrz_check(exp) != int(chk):
-        return parsed
-    yy, mm, dd = exp[:2], exp[2:4], exp[4:6]
-    if not (1 <= int(mm) <= 12 and 1 <= int(dd) <= 31):
-        return parsed
-    parsed["expiry"] = f"{dd}/{mm}/20{yy}"
-    parsed["expiryFromMrz"] = True
-    if isinstance(parsed.get("fieldBoxes"), dict):
-        parsed["fieldBoxes"].pop("expiry", None)
+    number = _mrz_part(line, 0, 9)
+    if number and number.strip("<") and "<" not in number.strip("<"):
+        _from_mrz(parsed, "passportNo", number.strip("<"))
+    this_year = datetime.date.today().year % 100
+    dob = _mrz_date(_mrz_part(line, 13, 19), lambda yy: 19 if yy > this_year else 20)
+    if dob:
+        _from_mrz(parsed, "dob", dob)
+    exp = _mrz_date(_mrz_part(line, 21, 27), lambda yy: 20)
+    if exp:
+        _from_mrz(parsed, "expiry", exp)
     return parsed
 
 

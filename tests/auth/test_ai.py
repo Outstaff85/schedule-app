@@ -317,15 +317,23 @@ def test_meta_reports_tries_pauses_and_tokens(monkeypatch):
     assert meta["outTok"] == 45 and meta["inTok"] == 120 and meta["cacheReadTok"] == 2900 and meta["stop"] == "end_turn"
 
 
-def test_passport_expiry_comes_from_the_mrz_when_its_check_digit_is_right():
-    # ICAO 9303 specimen line 2: expiry 120415, check digit 9.
+def test_passport_fields_come_from_the_mrz_when_their_check_digits_are_right():
+    # ICAO 9303 specimen line 2: number L898902C3 (check 6), birth 740812 (check 2), expiry 120415 (check 9).
     line2 = "L898902C36UTO7408122F1204159ZE184226B<<<<<10"
     doc = {"type": "passport", "expiry": "15/04/2002", "mrzLine2": line2,
            "fieldBoxes": {"expiry": {"x0": 0, "y0": 0, "x1": 1, "y1": 1}, "dob": {"x0": 0, "y0": 0, "x1": 1, "y1": 1}}}
     raw = json.dumps({"content": [{"type": "text", "text": json.dumps(doc)}]})
     out = ai.parse_reply("aiReadDoc", 200, raw)["parsed"]
     assert out["expiry"] == "15/04/2012" and out["expiryFromMrz"] is True
-    assert "expiry" not in out["fieldBoxes"] and "dob" in out["fieldBoxes"]
+    assert out["passportNo"] == "L898902C3" and out["passportNoFromMrz"] is True
+    assert out["dob"] == "12/08/1974" and out["dobFromMrz"] is True
+    assert out["fieldBoxes"] == {}
+    # a wrong check digit on one field leaves that field as read, the others still taken
+    bad_dob = line2[:19] + "5" + line2[20:]
+    doc4 = dict(doc, dob="12/08/1947", mrzLine2=bad_dob, fieldBoxes={"dob": {}})
+    out4 = ai.parse_reply("aiReadDoc", 200, json.dumps({"content": [{"type": "text", "text": json.dumps(doc4)}]}))["parsed"]
+    assert out4["dob"] == "12/08/1947" and "dobFromMrz" not in out4 and "dob" in out4["fieldBoxes"]
+    assert out4["expiry"] == "15/04/2012" and out4["passportNo"] == "L898902C3"
     # a wrong check digit, a short line or no MRZ (an Israeli ID card) leave the read as it is
     for bad in (line2[:27] + "8" + line2[28:], line2[:20], ""):
         doc2 = dict(doc, mrzLine2=bad, fieldBoxes={"expiry": {}})
