@@ -253,18 +253,12 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 @media (prefers-reduced-motion:reduce){.og-snack-u::after,.sel-head button::after{animation:none;}}
 .sel-bar .gbtn:disabled{opacity:.45;cursor:default;}
 
-/* ── Part 5: windows — the editor's section plates (.og-sec, the design
-   system's Editors.md and mockup 04), its head, document plates, the avatar
-   disc (.og-av), segmented switches (.seg), tick tiles and glass buttons in a
-   window, the figures (.og-figs). One copy for the manager app and the
-   supplier portal (stage 13). ── */
-  /* Editors as section plates (redesign stage 4): a head (avatar, name,
-     summary, chips, tools), then a stack of section plates that open on a tap. */
-  /* The worker editor without a photo: the initials in the status color (a tap adds a photo). */
+/* ── Part 5: windows — segmented switches (.seg), field pairs and glass
+   buttons in a window (the page's map picker and scan window; the React
+   windows draw their own with Tailwind). ── */
   .modal-actions .og-save{flex:1}
-  /* Short fields in pairs (CLAUDE.md template): two short fields share a line
-     on a phone and a computer; .stack-phone puts long ones one per line on a
-     phone. A long text field (a textarea) fills its line. */
+  /* Short fields in pairs: two short fields share a line on a phone and a
+     computer. A long text field (a textarea) fills its line. */
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .field-row>*{min-width:0}
   @media (max-width:768px){.field-row{gap:8px}}
