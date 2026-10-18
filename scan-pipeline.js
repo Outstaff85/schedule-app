@@ -2057,6 +2057,15 @@ async function processAllPendingPages(){
   const prepared=await Promise.all(queue.map(async q=>{
     let it=q;
     const as=Date.now();
+    // A page from the scan window (src/scan/) is already cut, upright by its face and
+    // enhanced on the server: only a page with no face asks the AI for its turn and kind.
+    if(q.ready){
+      if(!q.upright){ try{ it=await autoPreAlignScan(it.b64,it.mediaType); }catch(e){ console.error(e); } }
+      tm.alignMs=Math.max(tm.alignMs,Date.now()-as);
+      prepDone++;
+      renderScanProgress('מיישר ומשפר את התמונות… ('+prepDone+' מתוך '+total+')',Math.round(40*prepDone/total));
+      return {b64:it.b64,mediaType:it.mediaType,blurry:!!q.blurry,kind:it.kind||null,hi:null};
+    }
     try{ it=await autoPreAlignScan(it.b64,it.mediaType); }
     catch(e){ console.error(e); }
     const es=Date.now();

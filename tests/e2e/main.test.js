@@ -571,8 +571,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     T.fill('wGiven', 'Typed');
     T.fill('wCity', '');
     T.fill('wPhone', 'P-123');
-    await rescanFromWorkerModal();
-    const scanOpen = document.getElementById('aiScanOverlay').classList.contains('open');
+    // the scan window opens over the worker window; closed with nothing scanned, the draft stays for the scan
+    const going = rescanFromWorkerModal();
+    await T.until(() => document.querySelector('[data-testid="scanner"]'));
+    const scanOpen = !!document.querySelector('[data-testid="scanner"]');
+    T.esc(); await going;
     openWorkerModalFromScan({type:'israeli_id', given:'FromScan', surname:'Scan', city:'Haifa'});
     await T.tick();
     const r = {scanOpen, given: T.val('wGiven'), city: T.val('wCity'), phone: T.val('wPhone'), rescanned: window.__aiRescannedWorkerId === workers[0].id, draft: window.__wDraft};
@@ -583,6 +586,35 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(rs.scanOpen && rs.given === 'Typed' && rs.city === 'Haifa' && rs.phone === 'P-123' && rs.rescanned && rs.draft === null && rs.card, 'scan again from the worker modal keeps typed values, fills empty ones; card has the button');
+  // The scan window (src/scan/): photos picked from the device go to preprocess_scan whole ("find",
+  // the sign-in token); the documents it returns become the pages; Done hands them to the reading,
+  // already cut and upright (no AI alignment for a page with a face).
+  const JPG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDpKKKKAP/Z';
+  const findCalls = [];
+  await p.route(/cloudfunctions\.net\/preprocess_scan$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
+    const body = JSON.parse(r.request().postData() || '{}');
+    findCalls.push({find: body.find, auth: /^Bearer ./.test(r.request().headers().authorization || ''), image: !!body.image});
+    const page = turn => ({quad: [[0,0],[1,0],[1,1],[0,1]], box: null, source: 'model', turn, blurry: false, imageBase64: JPG, mediaType: 'image/jpeg'});
+    return r.fulfill({status:200, contentType:'application/json', headers:{'Access-Control-Allow-Origin':'*'}, body: JSON.stringify({ok: true, size: [1, 1], pages: [page(0), page(-1)]})});
+  });
+  await p.evaluate(() => { window.__scanDone = null; window.__realProcess = window.processAllPendingPages; window.processAllPendingPages = () => { window.__scanDone = window.__pendingScanPages.map(x => ({ready: x.ready, upright: x.upright})); }; window.__scanGoing = startNewScan(); });
+  await p.waitForSelector('[data-testid="scanner"]');
+  await p.setInputFiles('[data-testid="scan-files"] input', {name: 'id.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(JPG, 'base64')});
+  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"]:not([data-pending])').length === 2, null, {timeout: 15000}).catch(() => {});
+  const scw = await p.evaluate(async () => {
+    const r = {pages: document.querySelectorAll('[data-testid="scan-page"]').length, done: document.querySelector('[data-testid="scan-done"]').textContent};
+    document.querySelector('[data-testid="scan-done"]').click();
+    await window.__scanGoing;
+    r.reading = document.getElementById('aiScanOverlay').classList.contains('open');
+    r.queued = window.__scanDone;
+    closeModal('aiScanOverlay'); window.processAllPendingPages = window.__realProcess; window.__pendingScanPages = [];
+    return r;
+  });
+  ok(scw.pages === 2 && /2/.test(scw.done) && findCalls.length === 1 && findCalls[0].find === true && findCalls[0].auth && findCalls[0].image && scw.reading
+    && JSON.stringify(scw.queued) === JSON.stringify([{ready: true, upright: true}, {ready: true, upright: false}]),
+    'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done hands them to the reading, the page without a face still to be turned ' + JSON.stringify({scw, findCalls}));
+  await p.unroute(/cloudfunctions\.net\/preprocess_scan$/);
   // Field search: the card's missing rows and the modal's marked fields search the saved scan
   const fs = await p.evaluate(async () => {
     const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'SCAN', scanMediaType:'image/jpeg', sigPng:null, extraPages:[{b64:'SEF', mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});

@@ -138,3 +138,5 @@ const Track = (() => {
     since(t0, pts) { for (const s of hist) if (s.t > t0) pts = apply(s.A, pts, s.w, s.h); return pts; },
   };
 })();
+// Reached by the app's scanner too (src/scan/track.ts).
+window.Track = Track;

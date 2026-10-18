@@ -18,6 +18,7 @@ import { refreshTenantProfile } from './admin';
 import { renderWorkerUploadProgress } from './worker-window';
 import { render } from './render';
 import { renderWorkersPage } from './workers';
+import { openScanner } from '../../scan/open';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
   "_scanPipelineLoading": {get: () => _scanPipelineLoading, set: (v?: any) => { _scanPipelineLoading = v; }, configurable: true},
@@ -71,7 +72,19 @@ async function startNewScan(){
   catch(e: any){ showToast(tr('Could not load the scan module — check the connection')); return; }
   window.__aiRescanWorkerId=null;
   window.__wDraft=null;
+  await openNewScan();
+}
+// The scan window (src/scan/, docs/scan.md → The scan window): the camera with
+// the live frame and the device's photos / PDFs; the server cuts every document
+// flat and upright. Its pages then go to the reading (scan-pipeline.js) as pages
+// already aligned and enhanced: Phase 1 only asks the AI for the turn of a page
+// with no face on it.
+export async function openNewScan(){
+  const pages=await openScanner();
+  if(!pages||!pages.length) return;
   openAiScan();
+  window.__pendingScanPages=pages.map(p=>({b64:p.b64,mediaType:p.mediaType,hi:null,ready:true,upright:p.turn>=0,blurry:p.blurry}));
+  processAllPendingPages();
 }
 // Rescan entry point — kept here (not moved into scan-pipeline.js) purely
 // because it's the other real external trigger into the pipeline (called
@@ -84,7 +97,7 @@ async function rescanWorkerDoc(workerId?: any){
   catch(e: any){ showToast(tr('Could not load the scan module — check the connection')); return; }
   window.__aiRescanWorkerId=workerId;
   window.__wDraft=null;
-  openAiScan();
+  await openNewScan();
 }
 
 // The signature for Form 101 is drawn in the worker window (the shared

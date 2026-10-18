@@ -10,10 +10,12 @@ The worker modal that the scan opens is in [workers.md](workers.md); the PDF bui
 - **`rescanWorkerDoc(workerId)`** — a scan tagged to an existing worker; sets `window.__aiRescanWorkerId`.
 - **`rescanFromWorkerModal()`** / **`rescanFromWorkerCard(wi)`** — "Scan / Rescan" in the worker window and card, keeping the window's form as a draft (`ManagerIsland.editorDraft()`, the React window — [workers.md](workers.md)).
 
+**The scan window** (since S2, docs/scan-plan.md): `startNewScan()`, `rescanWorkerDoc()` and a rescan from the worker window (when no scan is in memory) open the new window first — `openNewScan()` (`src/manager/page/scan.ts`) → `openScanner()` (`src/scan/open.tsx`); its pages then go to the reading below. See **The scan window** further down.
+
 Both:
 1. warm the Cloud Functions (`warmCloudFunctions(SCAN_WARM_URLS())` — `{"ping":true}` to `preprocess_scan`, `fill_form_101` and `ai_read`; at most once per URL every 4 min, results in `__fnWarm`);
 2. load the pipeline (`ensureScanPipelineLoaded()`);
-3. call `openAiScan()`.
+3. call `openNewScan()`, which opens the scan window and, on Done, `openAiScan()` with the window's pages queued as ready (`{ready:true, upright, blurry}` in `__pendingScanPages`) and `processAllPendingPages()` started. Phase 1 skips the alignment and enhancement of a ready page; a page with no face (`upright` false) still asks `aiDetectAlign` for its turn and kind. The old queue screen and its "+" tile (Path A / B below) stay as they were, reached from the review screen.
 
 `openAiScan()` opens `#aiScanOverlay` and resets every per-scan global:
 `__aiScanPageThumbs`, `__aiPrimaryParsed`, `__aiParsed`, `__aiScanImage`, `__aiPacketOtherPages`, `__aiAvatarB64`, `__aiPageParsed`, `__pendingScanPages`, `__scanReplace`.
@@ -159,9 +161,19 @@ The scan images stay in `__aiScanImage` / `__aiPacketOtherPages` for the upload.
 - `alignScanImage()` rotates by 0/90/180/270° and crops a box; `rotatePointFrac()` maps corners to match.
 - `cropPortraitAvatar(b64, mediaType, photoBox)` → switched off (owner 2026-10-13, `SCAN_AVATARS = false`): always null, no photo is taken from a document, and `readDoc` no longer asks the AI for a `photoBox` (shorter replies); when on it gives a square 160 px JPEG (`AVATAR_SIZE`), black and white (`grayscaleCanvas`, schedule-manager.html).
 
+## The scan window (`src/scan/`)
+
+A `Window` (a bottom sheet on a phone) — `Scanner.tsx`:
+- **Models on the phone** start when the window opens (`engine.ts`): the scanner lab's background threads (`/scan-lab/scan-worker.js` with `/scan-lab/scan-core.js`, ONNX Runtime and the models from `/scan-lab/`, put there at deploy) run the light corner model and the face finder — 2 GPU threads (ONNX Runtime 1.30), else single-thread CPU threads (half the cores, at most 3; 1.22), else one; the way that worked is remembered on the device (`localStorage` `scanWay1`). Camera stays disabled until they are ready; if they cannot start, photos still work.
+- **Camera:** each frame scaled to 256 px and sent to a free thread; the corners smoothed and carried between answers by the lab's tracker (`track.ts` loads `/scan-lab/track.js`); a thin frame, red while searching, green after 0.25 s on the edges; **the shot is taken by itself after 1 s held still**, then not again until the document leaves that place (taken away, turned over, the next one put down) — `Capture` takes one at any time.
+- **A shot** is cut and turned upright on the phone at once (the thread's warp + face turn) and shown in the strip; the full frame (≤ 2400 px) goes to `preprocess_scan` with `find` and the live corners (`server.ts`, the ID token, at most 4 in flight); the server's pages replace the phone's cut (a photo with two documents → two pages); without the server the phone's cut is kept.
+- **Photos or PDF:** `filesToUploadPages` (every page; old filled Form 101 pages left out), every page to `preprocess_scan` with `find` at once (4 in flight); each page's documents join the strip in order; a page the server cannot work on is kept whole.
+- Each page can be removed (🗑). **Done (n)** waits for the pages still with the server and resolves `openScanner()` with `{b64, mediaType, turn, blurry}` per page; closing the window resolves null.
+- Covered by the browser test "scan window" (a picked photo, the server's answer mocked: two documents → two pages → the reading).
+
 ## Server-side finding (`preprocess_scan` with `find`)
 
-The new scanner's server step (docs/scan-plan.md → S1); the old pipeline above does not call it yet. `POST preprocess_scan` with `{"image": <base64>, "find": true, "corners": [[x, y] ×4]}` (corners optional: the phone's live frame, 0..1, top-left first, clockwise) answers `{"ok": true, "size": [w, h], "pages": [...]}`; each page: `quad` (0..1 of its photo), `box` (the photo's place on a white page, pixels, or `null`), `source` (`model` — the corner model; `phone` — the phone's corners kept; `more` — another document on the same photo; `photo` — a photo on a white page with no frame in it, whole; `whole` — nothing found, the whole picture), `turn` (clockwise quarter-turns applied by the face; −1 no face, −2 the face finder failed), `blurry` / `blurVariance`, `imageBase64` (JPEG, enhanced, at most 1800 px). The photo is worked on at most 2400 px.
+The new scanner's server step (docs/scan-plan.md → S1), called by the scan window (`src/scan/server.ts`). `POST preprocess_scan` with `{"image": <base64>, "find": true, "corners": [[x, y] ×4]}` (corners optional: the phone's live frame, 0..1, top-left first, clockwise) answers `{"ok": true, "size": [w, h], "pages": [...]}`; each page: `quad` (0..1 of its photo), `box` (the photo's place on a white page, pixels, or `null`), `source` (`model` — the corner model; `phone` — the phone's corners kept; `more` — another document on the same photo; `photo` — a photo on a white page with no frame in it, whole; `whole` — nothing found, the whole picture), `turn` (clockwise quarter-turns applied by the face; −1 no face, −2 the face finder failed), `blurry` / `blurVariance`, `imageBase64` (JPEG, enhanced, at most 1800 px). The photo is worked on at most 2400 px.
 
 `find_scan_pages()` (`functions/main.py`) → `docfind.find_documents()` (`functions/docfind.py`), the scanner lab's steps in Python:
 
