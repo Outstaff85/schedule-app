@@ -1710,37 +1710,6 @@ function workerDocStatus(w){
   for(const x of docExpiries) lines.push(x.text);
   return {level, missing, expiry, docExpiries, docExpired, failed, lines};
 }
-// The worker editor's Documents badge: the number of open document problems
-// ("red|2" when one is urgent, "amber|1"), nothing when complete (mockup 04).
-function workerDocBadge(w){
-  const st=workerDocStatus(w), n=st.missing.length+(st.expiry?1:0)+st.docExpiries.length+(st.failed?1:0);
-  return n?(st.level==='error'?'red':'amber')+'|'+n:'';
-}
-// Compact list/cards badge — nothing when documents are complete.
-// "NEW" next to a worker for 3 days after they were added (w.createdAt —
-// set when the manager app or the supplier portal creates the worker).
-// Duplicated on purpose in schedule-manager.html and supplier-portal.html.
-const NEW_WORKER_DAYS = 3;
-function newWorkerBadgeHtml(w){
-  const t = w && w.createdAt ? new Date(w.createdAt).getTime() : NaN;
-  if(!(Date.now() - t < NEW_WORKER_DAYS * 864e5)) return '';
-  return `<span class="new-badge" title="${esc(tr('Added {0}', {0: new Date(t).toLocaleDateString(uiLocale())}))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(--green-bg);color:var(--green);margin-left:5px;white-space:nowrap">${esc(tr('NEW'))}</span>`;
-}
-function docStatusBadgeHtml(w){
-  const s=workerDocStatus(w);
-  if(s.level==='ok') return '';
-  const red=s.level==='error';
-  const label = s.failed ? tr('UPLOAD FAILED') : (s.expiry&&s.expiry.level==='error') ? tr('ID EXPIRED')
-    : s.docExpired ? tr('{0} EXPIRED',{0:tr(WORKER_DOC_TYPES[s.docExpired.doc.type]||'Document').toUpperCase()}) : tr('DOCS');
-  return `<span title="${esc(s.lines.join(' · '))}" style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:var(${red?'--red-bg':'--amber-bg'});color:var(${red?'--red':'--amber'});margin-left:5px;white-space:nowrap"><i class="ti ti-${red?'file-off':'file-alert'}" style="font-size:9px"></i> ${label}</span>`;
-}
-// Full one-line summary for the worker card / cards view.
-function docStatusSummaryHtml(w){
-  const s=workerDocStatus(w);
-  if(s.level==='ok') return `<span style="color:var(--green)"><i class="ti ti-circle-check"></i> ${tr('Complete')}</span>`;
-  const col=s.level==='error'?'var(--red)':'var(--amber)';
-  return `<span style="color:${col}">${s.lines.map(esc).join('<br>')}</span>`;
-}
 // ── Pay (src/lib/payroll.ts through payroll.js — the rules, the 3-tier rate
 // chain, the law tiers, daily pay, travel and the period keys are described
 // there and in docs/accounting.md). ──
