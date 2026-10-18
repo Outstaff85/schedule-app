@@ -64,7 +64,7 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 
 ## The manager's React pieces
 
-Stage 6 moves the manager app (`schedule-manager.html`, an old page) to React one tab at a time; until the last tab moves, the page stays an old page — copied byte for byte, its frame and the tabs not yet moved on the old code — and the moved tabs are React roots inside it:
+Stage 6 moved the manager app (`schedule-manager.html`) to React one tab at a time; the page is copied byte for byte and every tab and window is a React root inside it:
 
 - **Loading.** The page ends with `<script type="module" src="assets/manager.js">`. Vite builds it from `src/manager/main.tsx` under that fixed name (Hosting serves `*.js` with `no-cache`, so a new build is picked up at once); `npm run dev` answers `/assets/manager.js` from the source (a small plugin in `vite.config.mts`). Opened as a file, without the build, the moved tabs stay empty.
 - **Styles.** `src/styles/manager.css`, imported as a string and put in a `<style>` right before the page's `og.css` link: Tailwind's theme and utilities with the shadcn names (`theme.css`) and no preflight (the page has its own reset), not in a cascade layer (the page's unlayered `* {margin:0; padding:0}` would beat layered utilities), and a small reset scoped to the React roots (`[data-island]`). og.css comes after it, so og.css still wins where they meet, as on the new pages.
