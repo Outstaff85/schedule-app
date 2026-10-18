@@ -216,8 +216,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .t3-line:hover{background:#20242f;}
 .t3-line>.n,.t3-line>.r{position:relative;z-index:1;}
 .t3-line .n b{font-size:16px;font-weight:500;}
-/* A worker's full name on a plate (.wp-n): cut with … when it does not fit,
-   so it never runs under the chips after it or the figures at the right. */
 .t3-line>.n{min-width:0;}
 .t3-line .n small{font-size:13px;color:var(--ink-2);margin-top:1px;}
 .t3-line .r{font:500 14px 'DM Mono',ui-monospace,monospace;color:var(--fig);}
