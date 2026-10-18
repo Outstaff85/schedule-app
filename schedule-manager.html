@@ -605,9 +605,8 @@ body:has(.overlay.open){overflow:hidden}
   .page-section.visible{animation:og-tab-in .15s ease-out}
   @keyframes og-tab-in{from{opacity:0}to{opacity:1}}
   @media (prefers-reduced-motion:reduce){.page-section.visible{animation:none}}
-  /* Readability: figures as glass tiles, empty states in a dashed frame. */
+  /* Readability: empty states in a dashed frame. */
   .t3-empty{border:1px dashed rgba(var(--tint),.2);border-radius:14px;padding:12px;text-align:center;color:var(--text2);font-size:13px}
-  /* Accounting: Salary shows its own figures, so the ones above the tabs hide (no repeat). */
   @media (min-width:701px){
     .top-tabs{flex-direction:column;align-items:stretch;gap:4px;width:210px;flex-shrink:0;padding:14px 10px;background:rgba(var(--bar-rgb),.35);border-right:1px solid rgba(var(--tint),.08);overflow-y:auto}
     .ttab{flex-direction:row;justify-content:flex-start;gap:12px;min-width:0;height:40px;padding:0 12px;border-radius:12px;flex:none}
