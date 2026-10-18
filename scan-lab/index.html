@@ -54,6 +54,7 @@
   <button id="snap">Capture</button>
   <button id="stop">Stop</button>
   <label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="useWorker" checked> Background thread</label>
+  <label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="follow" checked> Follow between frames</label>
 </div>
 <div id="status" style="font-size:13px;color:var(--ink2)">Starting…</div>
 <div class="bar"><i id="prog"></i></div>
@@ -76,6 +77,8 @@
   <div class="stat"><b id="sRes">—</b><span>camera resolution</span></div>
   <div class="stat"><b id="sUi">—</b><span>screen frames/s (smoothness)</span></div>
   <div class="stat"><b id="sCap">—</b><span>capture, ms</span></div>
+  <div class="stat"><b id="sTrack">—</b><span>frame follows, frames/s</span></div>
+  <div class="stat"><b id="sTrackMs">—</b><span>follow, ms per frame</span></div>
 </div>
 <div id="log"></div>
 
@@ -86,6 +89,7 @@ const ORT_DIR = new URLSearchParams(location.search).get('ort') === '130' ? 'ort
 document.write('<script src="/scan-lab/' + ORT_DIR + '/ort.all.min.js"><\/script>');
 </script>
 <script src="/scan-lab/scan-core.js"></script>
+<script src="/scan-lab/track.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const log = t => { $('log').textContent = t + '\n' + $('log').textContent; };
@@ -275,6 +279,7 @@ requestAnimationFrame(animate);
 async function runOnce(src, w, h, el) {
   const isVideo = el.tagName === 'VIDEO';
   const my = ++seq;
+  const t0 = performance.now();  // when this frame was taken: the answer is carried forward from here
   const input = isVideo ? await frameInput(src, w, h) : { rgba: smallRGBA(src, w, h) };
   if (!input) return;  // the video had no frame (being hidden or stopped)
   let { res: raw, ms } = await engine.detect('live', input);
@@ -282,6 +287,7 @@ async function runOnce(src, w, h, el) {
   if (!isVideo && raw.pts.some(p => !p) && engine.hasCap()) ({ res: raw, ms } = await engine.detect('cap', { rgba: smallRGBA(src, w, h) }));
   if (isVideo && (!running || my < applied || $('video').hidden)) return;  // a later frame already answered, or a capture / photo began
   applied = my;
+  if (isVideo && $('follow').checked && !raw.pts.some(p => !p)) raw = { ...raw, pts: Track.since(t0, raw.pts) };
   const res = isVideo ? smoothen(raw) : raw;
   times.push(ms); if (times.length > 20) times.shift();
   const now = performance.now(); frames.push(now); while (frames.length && now - frames[0] > 2000) frames.shift();
@@ -337,6 +343,30 @@ async function showShot() {
   $('hint').textContent = 'Shown in ' + ms + ' ms; ' + (moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms' + turnNote() + ' — Retake for another';
 }
 
+// On every camera frame the frame follows the document (track.js) between the model's answers.
+const followTimes = [], followMs = [];
+let following = false;
+function followLoop() {
+  const v = $('video');
+  if (!running || v.hidden) { following = false; Track.reset(); return; }
+  const next = () => v.requestVideoFrameCallback ? v.requestVideoFrameCallback(followLoop) : requestAnimationFrame(followLoop);
+  if (!$('follow').checked || !target) { Track.reset(); next(); return; }
+  const t = performance.now();
+  Track.step(v, target.pts).then(r => {
+    if (r && target && running) {
+      target = { ...target, pts: r.pts };
+      if (smooth) smooth = r.apply(smooth);
+      if (shown) shown = r.apply(shown);
+      if (lastRes && !lastRes.pts.some(p => !p)) lastRes = { ...lastRes, pts: r.apply(lastRes.pts) };
+      if (r.moved > 0.004) steadySince = performance.now();  // the phone or the document moves: not still
+      const now = performance.now(); followTimes.push(now); while (followTimes.length && now - followTimes[0] > 1000) followTimes.shift();
+      followMs.push(now - t); if (followMs.length > 30) followMs.shift();
+      $('sTrack').textContent = followTimes.length; $('sTrackMs').textContent = Math.round(followMs.reduce((a, b) => a + b, 0) / followMs.length);
+    }
+  }).catch(e => log('Follow: ' + (e && e.message || e))).finally(next);
+}
+function startFollow() { if (!following) { following = true; Track.reset(); followLoop(); } }
+
 // Up to engine.size frames are worked on at once, sent evenly spaced.
 function loop() {
   if (!running) return;
@@ -358,10 +388,10 @@ $('startCam').onclick = async () => {
     if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
     const v = $('video'); v.srcObject = stream; v.hidden = false; $('still').hidden = true; await v.play();
     $('sRes').textContent = v.videoWidth + '×' + v.videoHeight;
-    running = true; loop();
+    running = true; loop(); startFollow();
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
-$('retake').onclick = () => { shotId++; $('shot').hidden = true; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('retake').onclick = () => { shotId++; $('shot').hidden = true; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 $('file').onchange = async e => {
