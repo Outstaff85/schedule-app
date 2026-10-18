@@ -2657,8 +2657,6 @@ function saveMapPick(){
   if(__mapPickDone) __mapPickDone({lat, lng, radius, mapsUrl:'https://www.google.com/maps?q='+lat+','+lng});
   closeModal('mapPickOverlay');
 }
-// "25.2k" for the figures in the user form.
-function fmtMoneyShort(v){ v=Math.round(v||0); return Math.abs(v)>=10000?(Math.round(v/100)/10)+'k':v.toLocaleString('en-US'); }
 
 // Highlights every caption-labelled filter that has a choice made.
 function markActiveFilters(){
