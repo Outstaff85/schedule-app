@@ -396,6 +396,10 @@
 			].forEach((k) => {
 				if (data[k] !== void 0) upd[k] = k === "clientId" ? data[k] || null : data[k];
 			});
+			if (data.ts) {
+				const when = new Date(data.ts);
+				if (!isNaN(when.getTime())) upd.ts = F.Timestamp.fromDate(when);
+			}
 			await F.updateDoc(F.doc(db, "tenants", t, "punches", String(data.id)), upd);
 			return { ok: true };
 		}
@@ -568,10 +572,19 @@
 				const [h, mi] = String(time).split(":").map(Number);
 				return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), h || 0, mi || 0).toISOString();
 			};
+			const ddmmyyyy = (d) => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
 			const batch = F.writeBatch(db);
 			(b.rows || []).forEach((r, i) => {
+				const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
 				[["in", r.inTime], ["out", r.outTime]].forEach(([type, time]) => {
 					if (!time) return;
+					let ts = tsFor(r.date, time), date = r.date;
+					if (type === "out" && inTs && ts <= inTs) {
+						const next = new Date(ts);
+						next.setDate(next.getDate() + 1);
+						ts = next.toISOString();
+						date = ddmmyyyy(next);
+					}
 					const id = "imp-" + batchId + "-" + i + "-" + type;
 					batch.set(F.doc(db, "tenants", t, "punches", id), punchDoc({
 						id,
@@ -579,8 +592,8 @@
 						workerName: names[r.workerId] || "",
 						type,
 						time,
-						date: r.date,
-						ts: tsFor(r.date, time),
+						date,
+						ts,
 						clientId: r.clientId || "",
 						notes: note,
 						gpsWarnings: []

@@ -21,7 +21,7 @@ An HR manager's login inside one firm: it works with the workers assigned to it.
 | Tabs | its sections; never Today or Admin | same |
 | Pay | never the full Accounting tab; with the Accounting section (off by default) a reduced one (`hrPayOnly()`) — Salary for the workers whose `hrId` is its uid, read-only, with a "My commission" column (hours × its `commissionRate`; a worker paid by the day: days × its `commissionDayRate` when set, `commissionFor`), the Bank column and the pay window of the same workers, read-only — with "Edit own workers' pay" (`payEdit`, which also needs Workers or Schedule, the sections the rules let it write workers with) it edits those workers' pay and bank in the pay modal (`canEditPay(w)`: `w.hrId` is its uid). The rules enforce it too (Enforcement below); no other Accounting section, no export | same (still only the workers with its `hrId`) |
 
-No HR, of either kind, can change a worker's `hrId` — only the owner (`tenant_admin`) or a super-admin assigns.
+No HR, of either kind, and no staff login can change a worker's `hrId` — only the owner (`tenant_admin`) or a super-admin assigns (`firestore.rules`: a staff write keeps the stored `hrId`, and creates a worker without one).
 
 ## Who does what
 

@@ -7,7 +7,7 @@
 // client signs the approved month with a finger (`sign`, a PDF kept with its
 // documents). The
 // data comes only from the `hours` function (`call`); this screen never reads
-// Firestore. The old pages' copy is hours-review.js.
+// Firestore. (It replaced the old pages' hours-review.js, now removed.)
 import * as React from 'react';
 import { IconAlertTriangle, IconCheck, IconChecks, IconChevronLeft, IconChevronRight, IconCircleCheck, IconClock, IconFileSpreadsheet, IconPencil, IconSignature } from '@tabler/icons-react';
 import { toast } from 'sonner';

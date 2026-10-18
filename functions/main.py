@@ -1,4 +1,4 @@
-"""Fills form101_fillable.pdf with worker/employer data and returns the PDF as
+"""Fills assets/form101_fillable.pdf with worker/employer data and returns the PDF as
 base64 JSON. Python + PyMuPDF port of the client-side aiFillForm101() in
 schedule-manager.html — see that function's comments for the *why* behind each
 field's rect/size/quirk; this file mirrors it 1:1 unless noted otherwise.

@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // Firebase Storage rules — Form 101 PDFs, scan sidecars and worker documents
-// (contract, visa, work permit) under tenants/{tenantId}/... (FIRESTORE_PLAN.md).
+// (contract, visa, work permit) under tenants/{tenantId}/... (docs/backend.md).
 // Same identities as firestore.rules (custom-token claims from `login`):
 // manager-side logins of the firm read, tenant_admin or staff/hr with the
 // 'workers' permission write (saveWorkerFile's requirePermission gate), a
@@ -34,10 +34,18 @@ service firebase.storage {
     match /tenants/{t}/{path=**} {
       allow read: if manager(t)
         || (hrMine(t) && resource.metadata != null && resource.metadata.hrId == request.auth.uid);
+    }
+    // Browsers write only worker files. Everything else under a tenant (the
+    // client's signed month PDFs, written by the hours function) is
+    // server-only — the Admin SDK isn't bound by these rules.
+    match /tenants/{t}/workers/{w}/{path=**} {
       allow delete: if workersWriter(t) && (role() != 'hr' || hrAll(t));
       // 25 MB per file is far above a Form 101 PDF or a phone photo.
+      // An own-workers hr writes only files stamped with its uid, and never
+      // replaces a file stamped by someone else.
       allow create, update: if workersWriter(t) && request.resource.size < 25 * 1024 * 1024
-        && (!hrMine(t) || (request.resource.metadata != null && request.resource.metadata.hrId == request.auth.uid));
+        && (!hrMine(t) || (request.resource.metadata != null && request.resource.metadata.hrId == request.auth.uid
+          && (resource == null || (resource.metadata != null && resource.metadata.hrId == request.auth.uid))));
     }
   }
 }

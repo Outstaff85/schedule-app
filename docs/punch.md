@@ -31,13 +31,13 @@ The function hands out only this worker and their sites, and accepts punches for
 
 ## URL parameters and the site
 
-- `t` / `token` → `URL_TOKEN` (personal link).
+- `t` / `token` → `URL_TOKEN` (personal link), remembered in `localStorage.punchToken`; an installed app (display-mode standalone — the manifest's `start_url` has no `?t=`) opened without one uses the remembered token.
 - Legacy long links can carry `lat`, `lng`, `r` (radius) and `site`; then `_urlHasGeo` is true and the URL geofence is kept.
 - `localStorage.punchClockSite` (set by an admin on the same device) gives a site and a worker list, but is **ignored on a personal link** (`_siteEff = null` when there is a token).
 - `SITE = {name, object, lat, lng, radius (default 100), clientId}`. Coordinates use `??`, so a real `0` stays a coordinate.
 - **`resolveSiteFromWorker(w)`** (token link without URL geo): the first of the worker's clients that has coordinates becomes the site; if none has coordinates, the first client gives the name only (no geofence).
-- **Several objects:** when the worker has more than one client and the URL gave no coordinates, `decideObjectOrPunch()` shows `showObjectPicker()` (labels: "Choose a site", "geofence · N m" / "no geofence"). `pickObject(clientId)` sets `SITE` from that client and locks it (`_geoLocked`), so the background refresh does not re-resolve it. If the client list is not loaded yet (cache fast path), `goToPunchDirect()` loads it first. The picker is an overlay on the punch screen (`#objectPicker`, the store's `picker`).
-- `siteLabel()` = client name, plus ` · object` when set; with no name it shows "Work Site" in the chosen language.
+- **Several objects:** when the worker has more than one client and the URL gave no coordinates, `decideObjectOrPunch()` opens the `ObjectPicker` sheet (`PunchScreen.tsx`; labels: "Choose a site", "geofence · N m" / "no geofence"). `pickObject(clientId)` sets `SITE` from that client and locks it (`_geoLocked`), so the background refresh does not re-resolve it. If the client list is not loaded yet (cache fast path), `goToPunchDirect()` loads it first. The picker is an overlay on the punch screen (`#objectPicker`, the store's `picker`).
+- The site's label = client name, plus ` · object` when set; with no name it shows "Work Site" in the chosen language.
 
 ## Startup (`init()`)
 
@@ -68,7 +68,7 @@ Constants: `GPS_MAX_ACCURACY` = 150 m, `GPS_REQUEST_MS` = 800 ms, `GPS_MAX_SPEED
 - **The site has no coordinates → "Location check skipped" and the punch is allowed.**
 - Otherwise one `getCurrentPosition` (high accuracy, 15 s timeout, no cached position). `analyseGps()` warns on: accuracy 0 (fake GPS), accuracy over 150 m, an impossible speed since the previous reading (within 5 min), a device speed over 55 m/s, altitude 0 with accuracy under 10 m. A reply faster than 800 ms is "too fast" (suspicious).
 - The punch is allowed (`locOk`) only when the distance (`haversine`) ≤ `SITE.radius`, the accuracy is between 0 and 150 m, and nothing is suspicious. The chip says why not: "Nm from site (max R m)", "Weak GPS", "Suspicious GPS: …", "GPS denied", "GPS error".
-- The result is kept (`lastGps` in `core.ts`) for the punch.
+- The result is kept (`lastGps` in `core.ts`, with the time it was read) for the punch. A site with coordinates needs a reading under a minute old (`GPS_FRESH_MS`): an older one is read again (toast "Checking your location again — punch in a moment") instead of punching; after each punch `lastGps` is cleared and read again, and the location is re-read when the tab becomes visible.
 
 The button: "Not on site" when `!locOk` (the ring's track only, no hold); otherwise "Punch out" (red) if the worker's last punch is IN, else "Punch in" (green), each with "hold to punch" (`nextType()`).
 
@@ -82,9 +82,9 @@ The button: "Not on site" when `!locOk` (the ring's track only, no hold); otherw
 
 ## Offline queue
 
-- `gsSavePunch()` queues the punch (`localStorage.punchQueue`, `QUEUE_KEY`) when offline, on a network error, or when the reply has `error` (a refusal comes back as `{error}`, so the reply is checked, not just the HTTP status).
+- `gsSavePunch()` queues the punch (`localStorage.punchQueue`, `QUEUE_KEY`) when offline, on a network error, a 5xx or an unreadable reply (`sendPunch()`). A refusal (HTTP 200 with `{error}`: a link that no longer works, not this worker's punch) is never queued — a retry can't succeed — and shows the toast "Punch not recorded: …"; the punch stays in the local history.
 - `queueEntry()` stamps the entry with its `workerToken`, so a later flush posts to the right firm.
-- `flushQueue()` runs on `online` and at startup (`startQueue()`, which also shows the badge of a queue left from before), one punch at a time, keeps the failed ones; `_flushingQueue` stops two runs from double-posting. The badge "Offline — N punches queued" (`#offlineBadge`, the store's `queued`) shows until the queue is empty, then the toast "Synced N offline punches".
+- `flushQueue()` runs on `online` and at startup (`startQueue()`, which also shows the badge of a queue left from before), one punch at a time, keeps the ones to retry (and anything queued while it was sending); `_flushingQueue` stops two runs from double-posting. The badge "Offline — N punches queued" (`#offlineBadge`, the store's `queued`) shows until the queue is empty, then the toast "Synced N offline punches".
 - **Opening without a connection:** the service worker serves the page and its built files from its cache (network-first, every same-origin file it fetched is kept — the page has no lazy chunks, so one online open caches all of it), and the worker comes from `schedMgr_v1`; `tests/e2e/main.test.js` opens the page offline, punches into the queue and checks the send after the connection returns.
 - Re-sending is harmless: the `punch` function writes the punch under its own id (`set`), so a duplicate is the same document.
 

@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Firestore security rules — see FIRESTORE_PLAN.md for the data model.
+// Firestore security rules — see docs/backend.md for the data model.
 //
 // Sign-in is a custom token from the `login` Cloud Function, whose claims
 // carry who the caller is:
@@ -104,10 +104,11 @@ service cloud.firestore {
 
       match /workers/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
-        allow create: if (scheduleWriter(t) && staffNewPayOk(t))
+        // Only the owner (or super-admin) assigns a worker to an hr (docs/hr.md).
+        allow create: if (scheduleWriter(t) && staffNewPayOk(t) && (isAdmin(t) || newHr() == null))
           || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()) && hrNewPayOk(t))
           || (hrMine(t) && hrWorkers(t) && newHr() == uid() && hrNewPayOk(t));
-        allow update: if (scheduleWriter(t) && staffPayOk(t))
+        allow update: if (scheduleWriter(t) && staffPayOk(t) && (isAdmin(t) || newHr() == oldHr()))
           || (hrAll(t) && hrWorkers(t) && newHr() == oldHr() && hrPayOk(t))
           || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid() && hrPayOk(t));
         allow delete: if scheduleWriter(t)

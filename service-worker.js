@@ -68,7 +68,8 @@ self.addEventListener('fetch', e => {
       caches.match(req, { ignoreSearch: true }).then(r => {
         if (r) return r;
         if (isNav) {
-          const page = url.pathname.indexOf('worker-punch') !== -1 ? './worker-punch.html'
+          // workers open /punch?t=… (the Hosting rewrite), not worker-punch.html
+          const page = (/^\/punch(\/|$)/.test(url.pathname) || url.pathname.indexOf('worker-punch') !== -1) ? './worker-punch.html'
             : url.pathname.indexOf('supplier') !== -1 ? './supplier-portal.html'
             : url.pathname.indexOf('client') !== -1 ? './client-portal.html'
             : './schedule-manager.html';

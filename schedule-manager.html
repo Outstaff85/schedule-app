@@ -865,7 +865,7 @@ const DAYS_HE  = ['א',  'ב',  'ג',  'ד',  'ה',  'ו',  'ש' ];
 let weekStart        = getSundayOfWeek(new Date());
 let selectedClientId = null;
 let currentTab       = 'schedule';
-let editingWorkerIdx = null;
+let editingWorkerId = null; // the worker the window edits, by id (a reorder or delete can't shift it)
 let editingClientId  = null;
 let editingSupplierId = null;
 
@@ -1792,7 +1792,7 @@ function blankWorkerDefaults(){
 // these live globals directly (autoUploadWithRetry), unlike an edit-save
 // (which goes through the sidecar-based regenerateWorkerDoc() instead).
 function openAddWorker(){
-  editingWorkerIdx=null;
+  editingWorkerId=null;
   window.__wDraft=null;
   window.__aiScanImage=null;
   window.__aiPacketOtherPages=[];
@@ -1800,7 +1800,7 @@ function openAddWorker(){
   window.__wCapturedSigPng=undefined;
   showWorkerModal(blankWorkerDefaults());
 }
-function openEditWorker(wi){ editingWorkerIdx=wi; window.__wDraft=null; showWorkerModal(workers[wi]); }
+function openEditWorker(wi){ const w=workers[wi]; if(!w) return; editingWorkerId=w.id; window.__wDraft=null; showWorkerModal(w); }
 // Form 101 fields a document scan fills: the worker field, its input in the
 // worker modal, the page it is printed on (front or ספח), its Hebrew label
 // and, for digits and dates, the zoomed re-read kind (verifyField).
@@ -1818,7 +1818,7 @@ const SCAN_FIND_FIELDS={
 // when it belongs to this worker (a new worker from a scan: w null), else the
 // Storage sidecar saved with their Form 101 (cached per file).
 const __scanPagesCache={};
-function workerScanLive(w){ return !!window.__aiScanImage&&(w?window.__aiRescannedWorkerId===w.id:editingWorkerIdx===null); }
+function workerScanLive(w){ return !!window.__aiScanImage&&(w?window.__aiRescannedWorkerId===w.id:editingWorkerId===null); }
 function workerHasScanPages(w){ return workerScanLive(w)||!!(w&&w.assetsFileId); }
 async function workerScanPages(w){
   if(workerScanLive(w)) return {front:window.__aiScanImage,others:(window.__aiPacketOtherPages||[]).filter(p=>p&&p.b64)};
@@ -1889,7 +1889,7 @@ async function rescanFromWorkerModal(){
   warmCloudFunctions(SCAN_WARM_URLS());
   try{ await ensureScanPipelineLoaded(); }
   catch(e){ window.__wDraft=null; showToast(tr('Could not load the scan module — check the connection')); return; }
-  const wid=editingWorkerIdx!==null&&workers[editingWorkerIdx]?workers[editingWorkerIdx].id:null;
+  const wid=editingWorkerId!==null&&workers.some(x=>x.id===editingWorkerId)?editingWorkerId:null;
   const sameSession=(window.__aiScanPageThumbs||[]).length&&window.__aiScanImage&&(wid===null||window.__aiRescannedWorkerId===wid);
   window.__aiRescanWorkerId=wid;
   if(sameSession){
@@ -1905,7 +1905,7 @@ async function autoFindMissingScanFields(){ if(window.ManagerIsland) await windo
 function wOwnRate(w){ return Payroll.wOwnRate(w); }
 
 // The worker window (stage 6c-2) is drawn in React into #workerModal
-// (src/manager/WorkerEditor.tsx); editingWorkerIdx says which worker it edits
+// (src/manager/WorkerEditor.tsx); editingWorkerId says which worker it edits
 // (null: a new one — the scan pipeline sets it too). It has no Save button: a
 // tap outside saves it (saveWorker auto).
 function showWorkerModal(w){
@@ -1913,7 +1913,7 @@ function showWorkerModal(w){
   if(!window.ManagerIsland) return;
   const wov=document.getElementById('workerOverlay');
   wov.__onUserClose=()=>saveWorker({auto:true});
-  window.ManagerIsland.openEditor(w, editingWorkerIdx!==null&&workers[editingWorkerIdx]?workers[editingWorkerIdx].id:null);
+  window.ManagerIsland.openEditor(w, editingWorkerId!==null&&workers.some(x=>x.id===editingWorkerId)?editingWorkerId:null);
   wov.classList.add('open');
 }
 // A tick of a client / supplier login in its window (stage 6d, React —
@@ -2409,8 +2409,7 @@ function addManualPunch(entry){
   gsSavePunch(entry);
   closeModal('manualPunchOverlay');
   showToast(tr('Punch saved — {0} {1} at {2}',{0:entry.workerName,1:entry.type.toUpperCase(),2:entry.time}));
-  if(currentTab==='dashboard') renderDashboard();
-  if(currentTab==='admin') renderAdmin();
+  render(); // the open tab (Clients, Accounting, Today, Admin…) shows the new punch
 }
 
 
@@ -2551,7 +2550,7 @@ function exportExcel(){
     ws2['!cols']=[{wch:18},{wch:10},{wch:8},{wch:10},{wch:28},{wch:20}];
     XLSX.utils.book_append_sheet(wb,ws2,'Statistics');
 
-    const fname='Schedule_'+weekStart.toISOString().slice(0,10)+'.xlsx';
+    const fname='Schedule_'+localYMD(weekStart)+'.xlsx';
     XLSX.writeFile(wb,fname);
     showToast(tr('Excel exported!'));
   } catch(e){ showToast(tr('Export failed: {0}',{0:(e.message)})); }
@@ -2621,7 +2620,7 @@ function exportJSON(){
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download='schedule_'+weekStart.toISOString().slice(0,10)+'.json';
+  a.href=url; a.download='schedule_'+localYMD(weekStart)+'.json';
   a.click(); URL.revokeObjectURL(url);
   showToast(tr('JSON exported!'));
 }
@@ -4012,6 +4011,13 @@ function savePunchEdit(id, ed){
   const idx = log.findIndex(x=>String(x.id)===String(id));
   if(idx<0) return;
   log[idx].type = ed.type;
+  // ts is what pay and the live sync use (time is rebuilt from it), so a new
+  // time moves ts too — same local day, the edited hour and minute.
+  const tm = /^(\d{1,2}):(\d{2})$/.exec(ed.time||''), when = new Date(log[idx].ts);
+  if(tm && ed.time !== log[idx].time && !isNaN(when.getTime())){
+    when.setHours(Number(tm[1]), Number(tm[2]), 0, 0);
+    log[idx].ts = when.toISOString();
+  }
   log[idx].time = ed.time;
   if(ed.site==='__custom__'){
     // unchanged custom text kept from before — clientId stays null
@@ -4065,7 +4071,7 @@ function exportPunchCSV(){
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download='punch-log-'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+  a.href=url; a.download='punch-log-'+localYMD(new Date())+'.csv'; a.click();
   URL.revokeObjectURL(url);
   showToast(tr('CSV exported!'));
 }
@@ -4466,8 +4472,7 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // sidecar — there's no open modal to read a live pad from in that case.
     // getSignaturePng() already returns a data: URL, so the base64 payload
     // is just the part after the comma.
-    const sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
-    if(sigPng) payload.signaturePngBase64=sigPng.split(',')[1];
+    let sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
 
     // Regenerating reads the scan image back from presetAssets (the Storage
     // sidecar loaded by regenerateWorkerDoc()) instead of window.__aiScanImage
@@ -4495,13 +4500,17 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
     // Carrying the old sidecar's extraPages forward here (only when this
     // session captured none itself) preserves them across a rescan that's
     // only meant to refresh the front card.
-    if(!isRegen&&!otherPagesToUse.length&&targetWorker&&targetWorker.assetsFileId){
+    // The same goes for the signature: a rescan with no new signature keeps
+    // the one the worker already gave.
+    if(!isRegen&&(!otherPagesToUse.length||!sigPng)&&targetWorker&&targetWorker.assetsFileId){
       try{
         const oldResp=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets',...gsAuth(),fileId:targetWorker.assetsFileId})});
         const oldJson=await oldResp.json();
-        if(oldJson&&oldJson.ok&&Array.isArray(oldJson.extraPages)&&oldJson.extraPages.length) otherPagesToUse=oldJson.extraPages;
+        if(oldJson&&oldJson.ok&&!otherPagesToUse.length&&Array.isArray(oldJson.extraPages)&&oldJson.extraPages.length) otherPagesToUse=oldJson.extraPages;
+        if(oldJson&&oldJson.ok&&!sigPng&&oldJson.sigPng) sigPng=oldJson.sigPng;
       }catch(e){}
     }
+    if(sigPng) payload.signaturePngBase64=sigPng.split(',')[1];
     const extraPages=[];
     if(scanImage) extraPages.push({b64:scanImage.b64,mediaType:scanImage.mediaType,caption:'Document scan'});
     for(const p of otherPagesToUse) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
@@ -4633,9 +4642,13 @@ async function aiFillForm101(isId,mode,workerId,btnEl,presetAssets){
 // connection) before leaving the "no document" badge (docUploadFailed) for
 // the manager to notice and retry manually via "Rescan".
 async function autoUploadWithRetry(isId,workerId){
+  // aiFillForm101's finally clears the extra pages and the captured
+  // signature — the retry gets them back so it builds the same PDF.
+  const keep={pages:window.__aiPacketOtherPages, sig:window.__wCapturedSigPng};
   let ok=await aiFillForm101(isId,'upload',workerId,null);
   if(!ok){
     await new Promise(r=>setTimeout(r,1500));
+    window.__aiPacketOtherPages=keep.pages; window.__wCapturedSigPng=keep.sig;
     ok=await aiFillForm101(isId,'upload',workerId,null);
   }
   return ok;

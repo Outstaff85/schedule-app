@@ -153,6 +153,11 @@ def _save_punch(db, tid, w, data):
     if old.exists and (old.to_dict() or {}).get("workerId") != w.id:
         return {"error": "Bad punch id"}  # never overwrite someone else's punch
     doc = {k: data.get(k) for k in PUNCH_FIELDS if data.get(k) is not None}
+    # A punch is filed only under one of the worker's own clients — never
+    # another client of the firm (its hours review, signed month, billing).
+    if "clientId" in doc and str(doc["clientId"]) not in set(str(c) for c in ((w.to_dict() or {}).get("clientIds") or [])):
+        doc.pop("clientId", None)
+        doc.pop("site", None)
     doc["type"] = str(data.get("type")).lower()
     doc["gpsWarnings"] = [_clip(x, 200) for x in (data.get("gpsWarnings") or [])][:20]
     ts = _to_dt(data.get("ts")) or datetime.now(timezone.utc)
