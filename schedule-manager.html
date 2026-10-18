@@ -2350,42 +2350,6 @@ function showWorkerModal(w){
   window.ManagerIsland.openEditor(w, editingWorkerIdx!==null&&workers[editingWorkerIdx]?workers[editingWorkerIdx].id:null);
   wov.classList.add('open');
 }
-// ── Editors as section plates (redesign stage 4, docs/app-core.md → Editors) ──
-// An editor's body is a stack of <section class="og-sec"> plates: an icon, a
-// title and a one-line summary of what is filled in; the bar and icon green
-// when complete, amber when a field is missing (.scan-missing, or an empty
-// .need), red when the section is marked urgent (data-state). A tap on the
-// head opens or closes a section. The fields stay in the page while closed,
-// so every save reads them as before. ogSecOpen opens a section and
-// ogSecSummary draws its summary.
-function ogSecOpen(sec){ if(sec && !sec.classList.contains('open')){ sec.classList.add('open'); ogSecSummary(sec); } }
-function ogSecSummary(sec){
-  const hidden=el=>{ for(let p=el.parentElement; p && p!==sec; p=p.parentElement) if(p.style && p.style.display==='none') return true; return false; };
-  const vals=[]; let missing=false;
-  sec.querySelectorAll('.og-sec-b input, .og-sec-b select, .og-sec-b textarea').forEach(f=>{
-    if(f.type==='hidden'||f.type==='file'||f.type==='range'||f.type==='password'||hidden(f)) return;
-    let v='';
-    if(f.tagName==='SELECT'){ const o=f.options[f.selectedIndex]; v=f.value!==''&&o?o.text.trim():''; if(/^—/.test(v)) v=''; }
-    else if(f.type==='checkbox'){ if(f.checked&&f.closest('label.check-chip')){ const t=f.closest('label.check-chip').querySelector('.chip-text span'); v=t?t.textContent.trim():''; } }
-    else v=String(f.value||'').trim();
-    if(f.classList.contains('scan-missing') || (f.classList.contains('need') && !v)) missing=true;
-    if(v && vals.length<3) vals.push(v.length>32?v.slice(0,30)+'…':v);
-  });
-  const st=sec.dataset.state, sum=sec.dataset.summary;
-  const c = st==='red' ? 'var(--bad)' : (st==='amber'||missing) ? 'var(--warn)' : (st==='green'||vals.length) ? 'var(--ok)' : 'var(--neutral)';
-  sec.style.setProperty('--c', c);
-  const s=sec.querySelector('.og-sec-s'); if(s) s.textContent = sum || vals.join(' · ') || tr('Not filled in');
-  // A badge before the chevron: data-badge="red|1", "amber|Sign" (mockup 04).
-  let bd=sec.querySelector(':scope>.og-sec-h>.og-sec-badge');
-  if(sec.dataset.badge){
-    const [k,t]=sec.dataset.badge.split('|');
-    if(!bd){ bd=document.createElement('span'); sec.querySelector(':scope>.og-sec-h>.og-sec-chev').before(bd); }
-    bd.className='og-sec-badge '+k; bd.innerHTML=`<i class="ti ${k==='red'?'ti-alert-triangle':'ti-alert-circle'}"></i>${esc(t)}`;
-  } else if(bd) bd.remove();
-  return missing;
-}
-// A field asked to focus (a save that found it empty) opens its section first.
-(()=>{ const f=HTMLElement.prototype.focus; HTMLElement.prototype.focus=function(o){ const sec=this.closest&&this.closest('.og-sec:not(.open)'); if(sec) ogSecOpen(sec); return f.call(this,o); }; })();
 // A tick of a client / supplier login in its window (stage 6d, React —
 // src/manager/logins.tsx): saved at once (updateUser — the user signs in again
 // with the new rights), and the users cache follows. False when it failed.
