@@ -3851,7 +3851,6 @@ function hrColor(id){
   let h=0; for(const ch of String(id||'')) h=(h*31+ch.charCodeAt(0))>>>0;
   return CLIENT_COLORS[h%CLIENT_COLORS.length];
 }
-function hrWorkerCount(id){ return workers.filter(w => w.hrId===id).length; }
 // Sets the HR of these workers (null = none), saves, and moves their punches.
 async function assignWorkersToHr(ids, hrId){
   const changed = [];
