@@ -38,6 +38,16 @@ jobs:
           cp package/dist/ort.all.min.js package/dist/*.wasm package/dist/ort-wasm-simd-threaded*.mjs dist/scan-test/ort/
           cp scan-test/index.html dist/scan-test/
           ls -la dist/scan-test dist/scan-test/ort
+      - name: Cross-origin isolation for /scan-test only (multithreaded WASM)
+        run: |
+          python - <<'PY'
+          import json
+          c = json.load(open('firebase.json'))
+          h = [{"key": "Cross-Origin-Opener-Policy", "value": "same-origin"},
+               {"key": "Cross-Origin-Embedder-Policy", "value": "require-corp"}]
+          c["hosting"]["headers"] += [{"source": "/scan-test", "headers": h}, {"source": "/scan-test/**", "headers": h}]
+          json.dump(c, open('firebase.json', 'w'), indent=2)
+          PY
       - id: deploy
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:

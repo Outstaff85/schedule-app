@@ -79,7 +79,9 @@ window.addEventListener('error', e => log('Page error: ' + e.message));
 window.addEventListener('unhandledrejection', e => log('Error: ' + (e.reason && e.reason.message || e.reason)));
 if (typeof ort === 'undefined') { document.addEventListener('DOMContentLoaded', () => log('ONNX Runtime did not load (ort.all.min.js)')); }
 ort.env.wasm.wasmPaths = location.origin + '/scan-test/ort/';
-ort.env.wasm.numThreads = 1;
+// Several CPU threads need a cross-origin isolated page (COOP/COEP headers on /scan-test).
+const THREADS = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+ort.env.wasm.numThreads = THREADS;
 
 let smooth = null, steadySince = 0, lastRes = null;
 const STEADY_MS = 2000, MOVE = 0.02;
@@ -135,7 +137,7 @@ async function ensureSession() {
   try {
     const a = await openSession(live, want); session = a.s;
     capSession = cap ? (await openSession(cap, want)).s : session;
-    $('sBackend').textContent = a.ep === 'webgpu' ? 'GPU' : 'CPU';
+    $('sBackend').textContent = a.ep === 'webgpu' ? 'GPU' : 'CPU ×' + THREADS;
     log('Live model ' + live + (cap ? ', capture model ' + cap : '') + ' on ' + a.ep);
   } catch (e) {
     $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw e;
@@ -322,6 +324,7 @@ $('file').onchange = async e => {
 };
 $('model').onchange = $('backend').onchange = async () => { const was = running; running = false; await ensureSession().catch(() => {}); if (was) { running = true; loop(); } };
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
+log('CPU threads: ' + THREADS + (self.crossOriginIsolated ? '' : ' (page not isolated)') + ' of ' + (navigator.hardwareConcurrency || '?'));
 // The model is fetched as soon as the page opens; the camera button waits for it.
 ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
 </script>
