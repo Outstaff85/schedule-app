@@ -135,7 +135,6 @@ Not paged: chips and form rows being edited (selected clients, children), and pr
   - it debounces 800 ms, then writes the cache, sets `UNSAVED_KEY()` and calls `gsSave(getDataObj())`; the flag is cleared on success.
 - **`gsSave(data)`:** refuses a payload with no workers and no clients; otherwise `backend.saveSchedule()`, which writes only the changed documents (two managers editing different workers never overwrite each other). Toasts: "Saved" / "Save failed — kept on this device".
 - **Shortcut:** Ctrl/Cmd+S saves.
-- **Unused:** `exportDataBackup()` / `importDataBackup()` (JSON file backup) have no UI caller.
 
 Punches have their own path (`gsLoadPunchLog`, `mergeRemotePunches`, month windows) — see [admin.md](admin.md) → Punch log.
 
