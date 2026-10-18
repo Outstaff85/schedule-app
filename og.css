@@ -219,7 +219,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .t3-line>.n{min-width:0;}
 .t3-line .n small{font-size:13px;color:var(--ink-2);margin-top:1px;}
 .t3-line .r{font:500 14px 'DM Mono',ui-monospace,monospace;color:var(--fig);}
-/* The ⋮ popover: glass, a tail pointing at its button, Delete last in soft red. */
 /* Swipe left: Edit and Delete behind the plate. */
 .sw{position:relative;margin-bottom:8px;border-radius:16px;overflow:hidden;transition:max-height .3s,margin .3s,opacity .3s;}
 .sw>.t3-line{margin-bottom:0;touch-action:pan-y;}
