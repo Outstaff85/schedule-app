@@ -2357,10 +2357,8 @@ function showWorkerModal(w){
 // when complete, amber when a field is missing (.scan-missing, or an empty
 // .need), red when the section is marked urgent (data-state). A tap on the
 // head opens or closes a section. The fields stay in the page while closed,
-// so every save reads them as before. ogSections(root, openKey) draws the
-// summaries, opens openKey (or every section with something missing), and
-// turns each select[data-seg] (2–4 choices) into a segmented switch.
-function ogSecToggle(h){ const sec=h.closest('.og-sec'); sec.classList.toggle('open'); ogSecSummary(sec); }
+// so every save reads them as before. ogSecOpen opens a section and
+// ogSecSummary draws its summary.
 function ogSecOpen(sec){ if(sec && !sec.classList.contains('open')){ sec.classList.add('open'); ogSecSummary(sec); } }
 function ogSecSummary(sec){
   const hidden=el=>{ for(let p=el.parentElement; p && p!==sec; p=p.parentElement) if(p.style && p.style.display==='none') return true; return false; };
