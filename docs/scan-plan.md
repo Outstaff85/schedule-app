@@ -36,7 +36,10 @@ Status: **planned** — no stage started. Each stage is merged only with the own
 
 - On the first tap of Scan the fp16 model (42 MB) starts downloading in the background over **any network** (no Wi-Fi needed), with the progress shown ("Downloading the model: X / 42 MB"); **the first time, scanning is enabled only once the download is finished**; then it comes from the cache. Android: Background Fetch; iOS: a resumable download.
 - The model runs on the phone's GPU (WebGPU) where available, else on the CPU (WASM); on the phone the model runs one frame at a time (the GPU queue is serial — parallel runs would only cost memory).
-- A live frame over the camera like CamScanner, autocapture when the frame is steady.
+- A live frame over the camera like CamScanner: the light model (5 MB) draws the frame on every camera frame and the drawn frame glides toward it on every screen frame; at capture the frozen frame goes once through the accurate model for the exact corners; both models are warmed up at load (the first GPU run compiles its shaders).
+- Autocapture when the green frame has held still for 2 s (a countdown shown).
+- The phone model is stored as fp16 weights with fp32 math (`Cast` in front of each weight): a plain fp16 conversion gives zeros on WebGPU.
+- Multithreaded CPU (WASM threads) needs the page cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`); on the manager page this can break the sign-in popup and cross-origin fonts/images, so it is turned on there only after a separate check and with the owner's OK.
 - The test page `scan-test/` and its workflow `.github/workflows/scan-test-preview.yml` (a Firebase preview channel) are temporary and are removed before any PR into `main`.
 
 ### S3 — reading in TypeScript
