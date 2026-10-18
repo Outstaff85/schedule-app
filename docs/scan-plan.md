@@ -35,14 +35,16 @@ Status: **planned** — no stage started. Each stage is merged only with the own
 
 ### S2b — camera with a live frame
 
-- On the first tap of Scan the fp16 model (42 MB) starts downloading in the background over **any network** (no Wi-Fi needed), with the progress shown ("Downloading the model: X / 42 MB"); **the first time, scanning is enabled only once the download is finished**; then it comes from the cache. Android: Background Fetch; iOS: a resumable download.
-- The model runs on the phone's GPU (WebGPU) where available, else on the CPU (WASM); on the phone the model runs one frame at a time (the GPU queue is serial — parallel runs would only cost memory).
-- A live frame over the camera like CamScanner: the light model (5 MB) draws the frame on every camera frame and the drawn frame glides toward it on every screen frame; at capture the shot is shown at once, straightened by the live frame, and the accurate model then refines the corners in the background and replaces it if they moved; both models are warmed up at load (the first GPU run compiles its shaders).
-- A thin frame with no corner dots: red while searching, green once it sits on the document's edges; autocapture when the green frame has held still for 1.5 s (a countdown shown).
-- The models and the warp run in a background thread (Web Worker); the page only draws the camera picture and the frame, so the frame never stutters while the model works.
-- **GPU self-check:** after loading, each model is run on the GPU on a drawn card with known corners; when the GPU gets it wrong (seen on a real Android phone: the GPU ran, the corners were wrong), that model runs on the CPU instead.
-- The phone model is stored as fp16 weights with fp32 math (`Cast` in front of each weight): a plain fp16 conversion gives zeros on WebGPU.
-- Multithreaded CPU (WASM threads) needs the page cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`); on the manager page this can break the sign-in popup and cross-origin fonts/images, so it is turned on there only after a separate check and with the owner's OK.
+Proven on the owner's Android phone with the test page (`scan-test/`, 2026-10-18): live frame 13 frames/s, the screen at 60 frames/s, the shot shown in 0.18 s.
+
+- **Models on the phone:** the light DocAligner model (5 MB) for the live frame, the accurate one (42 MB, fp16 weights with fp32 math — a plain fp16 conversion gives zeros on WebGPU) for the shot. On the first tap of Scan both download in the background over any network, with the progress shown; **the first time, scanning is enabled only once they are ready**; then they come from the cache (Android: Background Fetch; iOS: a resumable download). Both are warmed up at load.
+- **Where they run** — tried in this order, each way dropped if it fails or stays silent for 25 s, the way that worked remembered on the device:
+  1. the live model on the **GPU** (WebGPU, ONNX Runtime 1.30) in two background threads, the accurate model on the **CPU** (ONNX Runtime 1.22) in its own background thread;
+  2. the live model on the CPU in several single-thread background threads (half the cores, at most 3), frames handed to them in turn, plus the accurate model's thread.
+  Before the GPU is used, each model is run on a drawn card with known corners in both memory layouts (NCHW / NHWC); a GPU that gets it wrong is not used (seen on the owner's phone: the GPU ran the light model right only in NCHW with 1.30, and never the accurate one). CPU threads inside a background thread hang on Android Chrome, so the CPU uses several single-thread background threads instead; no cross-origin isolation headers are needed.
+- **Frames:** each camera frame is scaled to 256×256 on the GPU (`createImageBitmap`) and handed to a background thread as is — no full-size copy in the page.
+- **The frame on screen:** a thin line, no corner dots; red while searching, green once it has sat on the document's edges for 0.25 s; it glides toward the latest result on every screen frame. **Autocapture** when the green frame has held still for 1.5 s (a countdown shown); a Capture button too.
+- **The shot** is shown at once, straightened by the live frame; the accurate model then refines the corners in the background and replaces the shot if they moved.
 - The test page `scan-test/` and its workflow `.github/workflows/scan-test-preview.yml` (a Firebase preview channel) are temporary and are removed before any PR into `main`.
 
 ### S3 — reading in TypeScript
