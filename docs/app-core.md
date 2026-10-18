@@ -28,7 +28,7 @@ The manager app's skeleton: the page layout, global state, tabs and rendering, t
 
 ## Global state
 
-`workers`, `clients`, `suppliers` (the data; the in-code defaults are demo data, replaced on load), `weekStart` (Sunday of the shown week), `selectedClientId` (Schedule filter), `currentTab`, `editingWorkerIdx` / `editingClientId` / `editingSupplierId`, the selected colors.
+`workers`, `clients`, `suppliers` (the data; the in-code defaults are demo data, replaced on load), `weekStart` (Sunday of the shown week), `selectedClientId` (Schedule filter), `currentTab`, `editingWorkerIdx` / `editingClientId` / `editingSupplierId`.
 
 Shared helpers:
 - `uid()`, `genToken()`;
