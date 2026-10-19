@@ -284,7 +284,7 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
   };
   // The scan's training examples (S6): every page the server found — a corrected one with
   // its copy and the user's corners, a page whose kind was changed with a copy of the page
-  // and both kinds, the others only counted.
+  // and both kinds, one in five right pages with both copies, the others only counted.
   const examples = async (list: Item[]): Promise<Example[]> => Promise.all(list.flatMap(x => x.pages).filter(p => p.modelQuad).map(async p => {
     const kindChanged = !!p.kindModel && !!p.kind && p.kind !== p.kindModel;
     const keepRight = !p.fixedPart && p.src && p.part && rightSeen++ % 5 === 0;
@@ -294,7 +294,8 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
       ...(p.fixedPart && p.copy ? { image: p.copy } : {}),
       ...(rightCopy ? { image: rightCopy, keep: true } : {}),
       ...(p.kindModel ? { kindModel: p.kindModel, kindFixed: p.kind || p.kindModel } : {}),
-      ...(kindChanged ? { pageImage: await pageCopy(p.b64, p.mediaType).catch(() => undefined) } : {}),
+      // a changed kind, and a sampled right page, carry a copy of the page for the page-kind model
+      ...(kindChanged || (rightCopy && p.kindModel) ? { pageImage: await pageCopy(p.b64, p.mediaType).catch(() => undefined) } : {}),
     };
   }));
   // Examples a scan could not send (no network) go out when the window opens again.

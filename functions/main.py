@@ -963,7 +963,8 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             if claims.get("role") != "superadmin":
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
             stats = (stats_ref.get().to_dict() or {})
-            return _json({"ok": True, "stats": stats, "due": int(stats.get("newSince") or 0) >= feedback.RETRAIN_AT})
+            return _json({"ok": True, "stats": stats, "due": int(stats.get("newSince") or 0) >= feedback.RETRAIN_AT,
+                          "kinds": feedback.kind_counts(stats), "kindsDue": feedback.kinds_due(stats)})
         examples = payload.get("examples")
         if not isinstance(examples, list) or not examples:
             return _json({"error": "no examples"}, 400)
@@ -971,6 +972,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         bucket = None
         kept = right = bad = fixes = 0
         moved_sum = 0.0
+        kinds = {}
         for raw in examples[:feedback.MAX_EXAMPLES]:
             ex, why = feedback.check(raw)
             if not ex:
@@ -991,14 +993,18 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             if ex["pageImage"] is not None:
                 page_path = feedback.image_path(now, ref.id, "-page")
                 bucket.blob(page_path).upload_from_string(ex["pageImage"], content_type="image/jpeg")
+                kinds[ex["kindFixed"]] = kinds.get(ex["kindFixed"], 0) + 1
             ref.set(feedback.record(ex, claims.get("tenantId"), now, path, page_path))
             kept += 1
             fixes += feedback.correction(ex)
             moved_sum += ex["moved"]
         # newSince counts the corrections only: they make a retraining due, the kept right pages do not
-        stats_ref.set({"newSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
-                       "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum),
-                       "updatedAt": now}, merge=True)
+        # kindsSince: the page copies of each kind (by the kind the user left), for the page-kind model
+        update = {"newSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
+                  "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum), "updatedAt": now}
+        if kinds:  # an empty map under merge would wipe the counts
+            update["kindsSince"] = {k: firestore.Increment(n) for k, n in kinds.items()}
+        stats_ref.set(update, merge=True)
         return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
     except Exception as e:
         return _json({"error": str(e)}, 500)

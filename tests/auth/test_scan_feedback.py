@@ -95,3 +95,20 @@ def test_one_in_five_right_pages_is_kept_with_its_copy_but_is_no_correction():
     assert not e["right"] and not feedback.kept(e)
     now = datetime.datetime(2026, 10, 18, tzinfo=datetime.timezone.utc)
     assert feedback.record(e, "t", now, None)["right"] is False
+
+
+def test_a_sampled_right_page_also_keeps_its_page_copy_for_the_kind_model():
+    e, why = feedback.check(ex(keep=True, kindModel="passport", kindFixed="passport", pageImage=JPG))
+    assert why is None and e["right"] and e["pageImage"] and not feedback.correction(e)
+    e, why = feedback.check(ex(keep=True, kindModel="passport", pageImage="bad"))
+    assert why is None and e["right"] and e["pageImage"] is None  # the page copy is optional here
+    e, _ = feedback.check(ex(image=None, kindModel="passport", kindFixed="passport", pageImage=JPG))
+    assert e["pageImage"] is None and not feedback.kept(e)  # only a sampled page keeps it
+
+
+def test_the_kind_model_is_due_when_every_kind_has_enough_copies():
+    assert feedback.kind_counts({})["sefach"] == 0 and not feedback.kinds_due({})
+    full = {k: feedback.KIND_AT for k in feedback.KINDS_TRAINED}
+    assert feedback.kinds_due({"kindsSince": full})
+    assert not feedback.kinds_due({"kindsSince": dict(full, id_back=feedback.KIND_AT - 1)})
+    assert "other" not in feedback.KINDS_TRAINED

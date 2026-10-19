@@ -76,7 +76,11 @@ export async function sendFeedback(examples: Example[] = []): Promise<void> {
 }
 
 /** The scanner's training counts — a super-admin's (the bell's "time to retrain"). */
-export async function trainingStats(): Promise<{ due: boolean; newSince: number } | null> {
-  try { const j = await post(SCAN_FEEDBACK_FN_URL, { action: 'stats' }); return { due: !!j.due, newSince: Number(j.stats?.newSince || 0) }; }
+export type TrainingStats = { due: boolean; newSince: number; kindsDue: boolean; kinds: Record<string, number> };
+export async function trainingStats(): Promise<TrainingStats | null> {
+  try {
+    const j = await post(SCAN_FEEDBACK_FN_URL, { action: 'stats' });
+    return { due: !!j.due, newSince: Number(j.stats?.newSince || 0), kindsDue: !!j.kindsDue, kinds: j.kinds || {} };
+  }
   catch { return null; }
 }

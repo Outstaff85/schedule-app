@@ -1311,6 +1311,8 @@
   "Corrected": "תוקן",
   "Time to retrain the scanner": "הגיע הזמן לאמן מחדש את הסורק",
   "{0} corrected pages since the last training — run /scan-train on the PC": "{0} עמודים תוקנו מאז האימון האחרון — הריצו את ‎/scan-train במחשב",
+  "Enough pages for the page-kind model": "נאספו מספיק עמודים למודל סוגי העמודים",
+  "At least {0} pages of each kind — the page-kind model can be trained": "לפחות {0} עמודים מכל סוג — אפשר לאמן את מודל סוגי העמודים",
   "ID card": "תעודת זהות",
   "ID card back": "גב תעודת הזהות",
   "Appendix (ספח)": "ספח",

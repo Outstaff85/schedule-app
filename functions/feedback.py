@@ -12,9 +12,11 @@ MAX_EXAMPLES = 20          # per request
 MAX_IMAGE_BYTES = 80_000   # a 256×256 JPEG
 MOVED_MIN = 0.005          # corners moved less than this: the model was right (counted, not kept)
 RETRAIN_AT = 200           # new kept examples that make the retraining due
+KIND_AT = 100              # page copies of each kind that make the first page-kind model due
 KEEP_DAYS = 365
 SOURCES = ("model", "phone", "more", "photo", "whole")
 KINDS = ("id_front", "id_back", "sefach", "passport", "contract", "other")
+KINDS_TRAINED = KINDS[:5]  # the kinds the page-kind model must have enough of ("other" is rare by design)
 
 
 def _corners(v):
@@ -77,6 +79,8 @@ def check(example):
         page_image = _jpeg(example.get("pageImage"))
         if page_image is None:
             return None, "a changed kind needs a small JPEG of the page"
+    elif kind_model and keep_right:  # a sampled right page also teaches the kind model; its copy is optional
+        page_image = _jpeg(example.get("pageImage"))
     return {"image": image, "cornersModel": model, "cornersFixed": fixed, "source": source, "model": version,
             "moved": shift, "kindModel": kind_model, "kindFixed": kind_fixed, "pageImage": page_image, "right": keep_right}, None
 
@@ -89,7 +93,19 @@ def kept(ex):
 
 def correction(ex):
     """Whether the example corrects the model (counts toward retraining); a kept right one does not."""
-    return ex["moved"] >= MOVED_MIN or ex["pageImage"] is not None
+    return ex["moved"] >= MOVED_MIN or (ex["kindModel"] is not None and ex["kindFixed"] != ex["kindModel"])
+
+
+def kind_counts(stats):
+    """The page copies of each kind since the last page-kind training (stats.kindsSince)."""
+    got = stats.get("kindsSince") if isinstance(stats.get("kindsSince"), dict) else {}
+    return {k: int(got.get(k) or 0) for k in KINDS}
+
+
+def kinds_due(stats):
+    """Whether the page-kind model can be trained: KIND_AT copies of every trained kind."""
+    counts = kind_counts(stats)
+    return all(counts[k] >= KIND_AT for k in KINDS_TRAINED)
 
 
 def record(ex, tenant_id, now, path, page_path=None):
