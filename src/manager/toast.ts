@@ -4,8 +4,8 @@
 // else done. Any toast text goes through tr(): a server message in the
 // dictionary shows translated. A toast that reads as an error is also sent
 // to the error log (Admin → Errors), as the page's other errors are.
-// The page's modules import it; window.showToast is the same function for
-// scan-pipeline.js, a plain script.
+// The page's modules import it; window.showToast is the same function (the
+// browser tests call it).
 import { tr } from './logic/i18n';
 import { reportError } from './data/telemetry';
 

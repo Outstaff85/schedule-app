@@ -51,7 +51,7 @@ export async function uploadWorkerFile(bodyObj: Rec, onProgress?: (sent: number,
 }
 
 // The data-call dispatcher. Every fetch(API_URL…) call of the page (and of
-// scan-pipeline.js) is answered by firestore-backend.js handleAction() —
+// the scanner and the scan process, src/scan/, src/scan-process/) is answered by firestore-backend.js handleAction() —
 // Firestore, Storage, or the users_admin / ai_read functions it calls — and
 // comes back as a JSON Response, so the call sites read it like any reply.
 // A reply with the exact "session expired" text (the functions refused the

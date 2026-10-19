@@ -171,8 +171,9 @@ How a feature that sends several AI requests is built, on both ends. Follow it f
 
 | Where | Sent in parallel |
 |---|---|
-| `processAllPendingPages` (`scan-pipeline.js`) | Phase 1: `aiDetectAlign` + `preprocess_scan` for every queued page (`Promise.all`); the early `aiReadDoc` of the first page as cropped, alongside Phase 1; the ספח `aiReadSefach` (`prefetchSefachFrom`) while the front page's digits are re-checked; the zoom batches (`aiVerifyFields`), one per page |
-| `findScanFields` (`schedule-manager.html`) | one `aiFindField` batch per page |
+| the scanner (`src/scan/`) | `preprocess_scan` `find` for every shot or page (at most 4 in flight); `aiDetectAlign` for every cut page |
+| the scan process (`readPages`, `src/scan-process/read.ts`) | `aiDetectAlign` for every page with no face and no kind; page 1's `aiReadDoc` as soon as it is upright; the following pages' `aiReadSefach` (two halves each, `prefetchFrom`) while page 1's digits are re-checked; the zoom batches (`aiVerifyFields`), one per page |
+| `findScanFields` (`src/manager/page/worker-window.ts`) | one `aiVerifyFields` zoom batch per page after the one `aiFindField` |
 | hours import | `aiReadHoursTable` per page of every file |
 | uploads | `fileToUploadPages` / `fileForStorage` and `uploadWorkerFile` per file |
 
@@ -201,7 +202,7 @@ Conditions for `concurrency` > 1: requests run in threads of one process, so a h
 - `scan_feedback` — the scanner's training examples and their counts (512 MiB, `cpu=1`, `concurrency=20`; [scan.md](scan.md) → Training examples): writes Firestore `scanTraining` / `scanTrainingStats` and Storage `training/scan/`, which no client rule opens.
 - `preprocess_scan` — contrast/sharpness enhancement and the blur check ([scan.md](scan.md)). Its classical-CV auto-crop (`_find_document_quad` / `_warp_quad`) is defined but dormant. With `"find": true` it finds the documents on the whole photo instead — corners, several documents, photos on a white page, upright turn — with the scanner's ONNX models read from Storage (`functions/docfind.py`; [scan.md](scan.md) → Server-side finding). Declared with 2 GiB, `cpu=2`, `concurrency=2`, `max_instances=10`, 60 s (parallel pages; it keeps no per-request state).
 
-Both answer `{"ping":true}` at once (warm-up, no sign-in needed) and parse the body with `force=True`. Every other call must carry `Authorization: Bearer <Firebase ID token>` of a manager-side login (`superadmin`, `tenant_admin`, `staff`, `hr`): `functions/gate.py` (`check()`, the token verified with `verify_id_token(check_revoked=True)`) answers 401 for a missing, invalid or revoked token and 403 for any other role (supplier, client); `tests/auth/test_scan_gate.py` checks it. The callers send the token from `idToken()` of `firestore-backend.js` (`preAlignScan` in `scan-pipeline.js`, the Form 101 build in `src/manager/page/scan.ts`). `functions/venv` must exist before `firebase deploy --only functions` from a local machine (`python -m venv venv && pip install -r requirements.txt`); CI builds its own. `functions/assets/` holds the PDF template and font the function uses.
+Both answer `{"ping":true}` at once (warm-up, no sign-in needed) and parse the body with `force=True`. Every other call must carry `Authorization: Bearer <Firebase ID token>` of a manager-side login (`superadmin`, `tenant_admin`, `staff`, `hr`): `functions/gate.py` (`check()`, the token verified with `verify_id_token(check_revoked=True)`) answers 401 for a missing, invalid or revoked token and 403 for any other role (supplier, client); `tests/auth/test_scan_gate.py` checks it. The callers send the token from `idToken()` of `firestore-backend.js` (the scanner's `findPages` / `cutPage` in `src/scan/server.ts`, the Form 101 build in `src/manager/page/scan.ts`). `functions/venv` must exist before `firebase deploy --only functions` from a local machine (`python -m venv venv && pip install -r requirements.txt`); CI builds its own. `functions/assets/` holds the PDF template and font the function uses.
 
 ## Security rules
 

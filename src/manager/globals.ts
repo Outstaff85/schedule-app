@@ -15,7 +15,7 @@
 // layer's events" block).
 //
 // This entry hands the page the data layer under the names the page's code
-// (and scan-pipeline.js, and the browser tests) already call, as window
+// (and the browser tests) already call, as window
 // properties: the functions, the data as read / write accessors (workers,
 // clients, suppliers, __dataReady), and the state the page reads as
 // read-only accessors. React migration stage 8b (docs/react-migration-plan.md);
@@ -85,7 +85,7 @@ Object.assign(w, {
   DOC_STORE: wk.DOC_STORE, workerDocId: wk.workerDocId, workerAddress: wk.workerAddress, isActiveWorker: wk.isActiveWorker,
   workerExpiryStatus: wk.workerExpiryStatus, WORKER_DOC_TYPES: wk.WORKER_DOC_TYPES, parseDocDate: wk.parseDocDate,
   workerDocExpiries: wk.workerDocExpiries, workerDocStatus: wk.workerDocStatus,
-  // upload preparation (logic/uploads.ts; scan-pipeline.js calls _loadPdfJs)
+  // upload preparation (logic/uploads.ts)
   UPLOAD_MAX_DIM: up.UPLOAD_MAX_DIM, downscaleForUpload: up.downscaleForUpload, _loadPdfJs: up.loadPdfJs, isPdfFile: up.isPdfFile,
   fileToUploadPages: up.fileToUploadPages, fileForStorage: up.fileForStorage, filesToUploadPages: up.filesToUploadPages,
   // the functions the page calls directly, and their warm-up (logic/functions.ts)

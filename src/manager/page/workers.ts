@@ -4,7 +4,7 @@
 // code in the same order — page/entry.ts imports them in that order), typed
 // (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
 // reachable under their old global names through the window accessors below
-// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId } from './dom';
 import { getPunchLog } from '../data/punches';
@@ -56,7 +56,7 @@ export function workerToday(w?: any, todayLog?: any){
   return {k:''};
 }
 export function workerSiteName(w?: any){ const c=(w.clientIds||[]).map((id?: any)=>clients.find((x?: any)=>x.id===id)).filter(Boolean)[0]; return c?c.name:''; }
-// A worker's notices, urgent (red) first: a failed upload, the ID / passport
+// A worker's notices, urgent (red) first: a failed upload (Form 101, or the scanned contract), the ID / passport
 // or a document (visa, permit, contract file) expired or expiring, missing
 // documents, the contract ending, no punch on today's shift. Each has a short
 // word (its chip), a title and a detail line (the notices sheet) and, with the
@@ -69,6 +69,9 @@ export function workerNotices(w?: any, today?: any){
   const rescan=can?{label:tr('Upload'), icon:'ti-scan', fn:go(()=>rescanFromWorkerCard(idx()))}:null;
   const renew=can?{label:tr('Renew'), icon:'ti-refresh', fn:go(()=>openWorkerDocUpload(id))}:null;
   if(st.failed) out.push({lvl:'red', icon:'ti-cloud-off', word:tr('Upload failed'), title:tr('Upload failed'), detail:tr('Last upload to {0} failed',{0:DOC_STORE}), act:rescan});
+  // the scanned contract could not be saved (saveScanContract): until a contract document is added
+  if(w.contractUploadFailed) out.push({lvl:'red', icon:'ti-file-alert', word:tr('Contract'), title:tr('Contract not saved'), detail:tr('The scanned contract could not be saved — add it from Add document'),
+    act:can?{label:tr('Add document'), icon:'ti-upload', fn:go(()=>openWorkerDocUpload(id))}:null});
   if(st.expiry){ const bad=st.expiry.level==='error'; out.push({lvl:bad?'red':'amber', icon:'ti-id', word:bad?tr('ID expired'):tr('ID {n}d',{n:days(st.expiry.date)}), title:tr('ID / Passport'), detail:st.expiry.text, act:rescan}); }
   st.docExpiries.forEach((x?: any)=>{ const bad=x.level==='error', label=tr(WORKER_DOC_TYPES[x.doc.type]||'Document');
     out.push({lvl:bad?'red':'amber', icon:'ti-id-badge-2', word:bad?tr('{0} expired',{0:label}):tr('{0} {n}d',{0:label,n:days(x.date)}), title:label, detail:x.text, act:renew}); });

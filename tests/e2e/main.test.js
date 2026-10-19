@@ -587,8 +587,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(rs.scanOpen && rs.given === 'Typed' && rs.city === 'Haifa' && rs.phone === 'P-123' && rs.rescanned && rs.draft === null && rs.card, 'scan again from the worker modal keeps typed values, fills empty ones; card has the button');
   // The scan window (src/scan/): photos picked from the device go to preprocess_scan whole ("find",
-  // the sign-in token); the documents it returns become the pages; Done hands them to the reading,
-  // already cut and upright (no AI alignment for a page with a face).
+  // the sign-in token); the documents it returns become the pages; Done reads them in the same
+  // window (src/scan-process/: the ID card's full read, no AI alignment for a page with a kind) and
+  // opens the worker window with what was read; the page set to Contract becomes the contract.
   const JPG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDpKKKKAP/Z';
   const findCalls = [], cutCalls = [], feedbackCalls = [];
   const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
@@ -601,11 +602,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     findCalls.push({find: body.find, auth: /^Bearer ./.test(r.request().headers().authorization || ''), image: !!body.image});
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, size: [8, 8], pages: [page(0, QUAD), page(-1, QUAD)]})});
   });
-  // Haiku's page kinds (aiDetectAlign): the first page an ID card, the second a ספח
+  // Haiku's page kinds (aiDetectAlign): the first page an ID card, the second a ספח; the ID card's read (aiReadDoc)
   let kindCalls = 0;
+  const readCalls = [];
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
     const body = JSON.parse(r.request().postData() || '{}');
+    if (body.action === 'aiReadDoc') {
+      readCalls.push(body.action);
+      return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({parsed: {type: 'israeli_id', given: 'Scanned', surname: 'Person', idNo: '1234567 8 2',
+        dob: '1.2.1990', sex: 'M', address: 'Herzl', houseNumber: '5', city: 'Haifa'}})});
+    }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: kindCalls === 1 ? 'id_front' : 'sefach', rotate: 0}})});
@@ -615,7 +622,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     feedbackCalls.push(JSON.parse(r.request().postData() || '{}'));
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, kept: 1, right: 1})});
   });
-  await p.evaluate(() => { window.__scanDone = null; window.__realProcess = window.processAllPendingPages; window.processAllPendingPages = () => { window.__scanDone = window.__pendingScanPages.map(x => ({ready: x.ready, upright: x.upright})); window.__scanKinds = window.__pendingScanPages.map(x => x.kind).join(','); }; window.__scanGoing = startNewScan(); });
+  await p.evaluate(() => { window.__scanGoing = startNewScan(); });
   await p.waitForSelector('[data-testid="scanner"]');
   await p.setInputFiles('[data-testid="scan-files"] input', {name: 'id.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(JPG, 'base64')});
   await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 2, null, {timeout: 15000}).catch(() => {});
@@ -640,10 +647,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const r = {pages: document.querySelectorAll('[data-testid="scan-page"]').length, done: document.querySelector('[data-testid="scan-done"]').textContent};
     document.querySelector('[data-testid="scan-done"]').click();
     await window.__scanGoing;
-    r.reading = document.getElementById('aiScanOverlay').classList.contains('open');
-    r.queued = window.__scanDone;
-    r.kinds = window.__scanKinds;
-    closeModal('aiScanOverlay'); window.processAllPendingPages = window.__realProcess; window.__pendingScanPages = [];
+    r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]') && !document.querySelector('[data-testid="scan-reading"]'), 4000);
+    r.worker = document.getElementById('workerOverlay').classList.contains('open');
+    r.given = T.val('wGiven'); r.docId = T.val('wDocId'); r.city = T.val('wCity');
+    r.front = !!window.__aiScanImage;
+    r.kinds = ['front', ...(window.__aiPacketOtherPages || []).map(x => x.kind + (x.contract ? ':contract' : ''))].join(',');
+    closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     return r;
   });
   await p.waitForTimeout(500);
@@ -651,11 +660,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(cutCalls.length === 1 && cutCalls[0][0][0] > 0.1 && cutCalls[0][1][0] === 0.9 && feedbackCalls.length === 1 && feedbackCalls[0].action === 'add' && ex.length === 2
     && ex[0].image && JSON.stringify(ex[0].cornersFixed) !== JSON.stringify(ex[0].cornersModel) && ex[1].image && ex[1].keep === true && !ex[0].keep && JSON.stringify(ex[1].cornersFixed) === JSON.stringify(ex[1].cornersModel)
     && ex[0].kindModel === 'id_front' && ex[0].kindFixed === 'id_front' && !ex[0].pageImage && ex[1].kindModel === 'sefach' && ex[1].kindFixed === 'contract' && ex[1].pageImage
-    && kinds0 === 'id_front,sefach' && /\(1\)/.test(otherDone) && scw.kinds === 'id_front,contract',
+    && kinds0 === 'id_front,sefach' && /\(1\)/.test(otherDone) && scw.kinds === 'front,contract:contract',
     'scan window corners and kinds: a page tapped, a corner dragged, Apply cuts it again by them; each page shows Haiku\'s kind, Other is not saved, a changed kind goes to the reading; Done sends the training examples — the corrected page with its copy, the changed kind with a copy of the page, the first page the model got right kept with its copy (one in five) ' + JSON.stringify({kinds0, otherDone, kinds: scw.kinds, cutCalls, ex: ex.map(e => ({fixed: e.cornersFixed, model: e.cornersModel, image: !!e.image, keep: e.keep, km: e.kindModel, kf: e.kindFixed, pi: !!e.pageImage}))}));
-  ok(scw.pages === 2 && /2/.test(scw.done) && findCalls.length === 1 && findCalls[0].find === true && findCalls[0].auth && findCalls[0].image && scw.reading
-    && JSON.stringify(scw.queued) === JSON.stringify([{ready: true, upright: true}, {ready: true, upright: true}]),
-    'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done hands them to the reading, turned and with their kinds (no AI alignment there) ' + JSON.stringify({scw, findCalls}));
+  ok(scw.pages === 2 && /2/.test(scw.done) && findCalls.length === 1 && findCalls[0].find === true && findCalls[0].auth && findCalls[0].image
+    && scw.closed && scw.worker && scw.front && scw.given === 'Scanned' && scw.docId === '123456782' && scw.city === 'Haifa' && readCalls.length === 1 && kindCalls === 2,
+    'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done reads them in the window (one full read of the ID card, no AI alignment again) and opens the worker window with what was read ' + JSON.stringify({scw, findCalls, readCalls, kindCalls}));
   await p.unroute(/cloudfunctions\.net\/preprocess_scan$/); await p.unroute(/cloudfunctions\.net\/scan_feedback$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
   // The contract pages of a scan become one PDF, a page per photo (src/scan/pdf.ts).
   const cpdf = await p.evaluate(async jpg => {
@@ -665,6 +674,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(jpg), c => c.charCodeAt(0))))};
   }, JPG);
   ok(cpdf.head === '%PDF-1.4' && cpdf.pages === 2 && cpdf.count && cpdf.images === 2 && cpdf.eof && cpdf.size === '{"h":8,"w":8}', 'scan contract: its pages become one PDF, a page per photo ' + JSON.stringify(cpdf));
+  // A scanned contract that could not be saved marks the worker until a contract document is added.
+  const cfail = await p.evaluate(() => {
+    const w = workers[1]; w.contractUploadFailed = true;
+    const n = workerNotices(w).find(x => x.title === 'Contract not saved');
+    const r = {notice: !!n && n.lvl === 'red' && !!n.act, bar: workerBarColor(w, workerNotices(w))};
+    ManagerBridge.addDocs(w.id, [{id: 'dc1', type: 'contract', name: 'c.pdf', fileId: 'f', url: 'u', mediaType: 'application/pdf', uploadedAt: new Date().toISOString(), expiry: ''}]);
+    r.cleared = !w.contractUploadFailed && !workerNotices(w).some(x => x.title === 'Contract not saved');
+    w.docs = (w.docs || []).filter(d => d.id !== 'dc1'); render();
+    return r;
+  });
+  ok(cfail.notice && cfail.bar === 'var(--bad)' && cfail.cleared, 'scan contract not saved: a red notice on the worker until a contract document is added ' + JSON.stringify(cfail));
   // Field search: the card's missing rows and the modal's marked fields search the saved scan
   const fs = await p.evaluate(async () => {
     const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'SCAN', scanMediaType:'image/jpeg', sigPng:null, extraPages:[{b64:'SEF', mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
@@ -703,14 +723,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(fs.marked && fs.hint && fs.cleared, 'modal: empty scan field marked; not found shows a hint; typing clears the mark');
   // A field whose zoomed re-read disagreed is framed "check this" until edited
   const uc = await p.evaluate(() => {
-    window.__aiPageParsed = [{type:'israeli_id', given:'Avi', city:'חיפה', __uncertain:['city']}];
     window.__aiRescanWorkerId = workers[1].id;
-    openWorkerModalFromScan({type:'israeli_id', given:'Avi', city:'חיפה', __uncertain:['city']});
+    openWorkerModalFromScan({type:'israeli_id', given:'Avi', city:'חיפה', __uncertain:['city']}, [{type:'israeli_id', given:'Avi', city:'חיפה', __uncertain:['city']}]);
     const r = {marked: T.scan('wCity') === 'check' && !!T.hint('city'), given: T.scan('wGiven') === 'check'};
     T.fill('wCity', 'Haifa');
     return T.tick().then(() => {
       r.cleared = !T.scan('wCity') && !T.hint('city');
-      closeModal('workerOverlay'); window.__aiRescannedWorkerId = null; window.__aiPageParsed = [];
+      closeModal('workerOverlay'); window.__aiRescannedWorkerId = null;
       return r;
     });
   });
@@ -718,8 +737,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Second pass right after a scan: empty fields are searched for on their own
   await srv('/aicalls');
   const af = await p.evaluate(async () => {
-    await ensureScanPipelineLoaded();
-    window.__aiRescanWorkerId = null; window.__aiPageParsed = [];
+    window.__aiRescanWorkerId = null;
     window.__aiScanImage = {b64:'FRONT', mediaType:'image/jpeg'}; window.__aiPacketOtherPages = [{b64:'SEF', mediaType:'image/jpeg'}];
     openWorkerModalFromScan({type:'israeli_id', given:'Neo', surname:'Test', dob:'01/01/1990', sex:'M'});
     await T.until(() => T.val('wCity') && T.hint('address'));
@@ -1537,23 +1555,6 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {short, long, locked: getComputedStyle(document.body).overflow};
   });
   ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
-  // A drag on the scan crop editor (and the avatar crop) moves the photo, never the sheet.
-  const crop = await p.evaluate(async () => {
-    await ensureScanPipelineLoaded();
-    const png = document.createElement('canvas'); png.width = 300; png.height = 200; png.getContext('2d').fillRect(0, 0, 300, 200);
-    document.getElementById('aiScanOverlay').classList.add('open');
-    renderScanQuadEditor(png.toDataURL('image/png').split(',')[1], 'image/png', {tl:{x:.1,y:.1}, tr:{x:.9,y:.1}, br:{x:.9,y:.9}, bl:{x:.1,y:.9}});
-    await new Promise(r => setTimeout(r, 1500));
-    const m = document.querySelector('#aiScanOverlay > .modal'), wrap = document.getElementById('scanEditWrap'), r = wrap.getBoundingClientRect(), x = r.left + 60, y = r.top + 30;
-    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: wrap, clientX: x, clientY: y + dy}); wrap.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
-    let moved = false;
-    t('touchstart', 0); for (let d = 10; d <= 200; d += 20){ t('touchmove', d); if(m.style.transform) moved = true; } t('touchend', 200);
-    await new Promise(r => setTimeout(r, 400));
-    const res = {noSwipe: wrap.classList.contains('no-swipe'), moved, open: document.getElementById('aiScanOverlay').classList.contains('open'), touch: getComputedStyle(wrap).touchAction};
-    document.getElementById('aiScanOverlay').classList.remove('open'); document.getElementById('aiScanStage').innerHTML = '';
-    return res;
-  });
-  ok(crop.noSwipe && !crop.moved && crop.open && crop.touch === 'none', 'phone: a drag on the scan crop editor does not move or close the sheet ' + JSON.stringify(crop));
   await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);

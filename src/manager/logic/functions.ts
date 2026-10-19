@@ -4,11 +4,11 @@
 // "Enhance (server)"), so a {"ping":true} call wakes them while the user is
 // still photographing or filling the form; the functions answer a ping at
 // once without doing any work. At most once per URL per 4 minutes. The
-// results are kept in fnWarm for the scan timing (scan-pipeline.js reads __fnWarm).
+// results are kept in fnWarm.
 
 // The server-side Form 101 PDF builder (Python + PyMuPDF; functions/main.py).
 export const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
-// Scan preprocessing (OpenCV geometry + Pillow contrast / sharpness; scan-pipeline.js preAlignScan()).
+// The scanner's server: finding, cutting and enhancing the documents on a photo (src/scan/server.ts).
 export const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 // The scanner's training examples and their counts (docs/scan-plan.md → S6).
 export const SCAN_FEEDBACK_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/scan_feedback';

@@ -65,14 +65,24 @@ function canvasOf(src: CanvasImageSource, w: number, h: number, max: number) {
   return c;
 }
 
-export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pages: ScannedPage[]) => void; onClose: () => void }) {
+/** read: the scan process run on Done (src/scan-process/) — the window shows its progress
+ * and closes when it succeeds; an error text keeps the window open with the pages. */
+export type ReadFn = (pages: ScannedPage[], progress: (label: string, pct: number) => void) => Promise<string | null>;
+
+export function Scanner({ open, onDone, onClose, initial, read }: {
+  open: boolean; onDone: (pages: ScannedPage[]) => void; onClose: () => void;
+  /** pages already scanned (this session's, for "Scan again"): shown first */
+  initial?: ScannedPage[]; read?: ReadFn;
+}) {
   const video = React.useRef<HTMLVideoElement>(null);
   const overlay = React.useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = React.useState(tr('Preparing the scanner…'));
   const [ready, setReady] = React.useState(false);
   const [camera, setCamera] = React.useState<'off' | 'on' | 'denied'>('off');
   const [hint, setHint] = React.useState('');
-  const [items, setItems] = React.useState<Item[]>([]);
+  const [items, setItems] = React.useState<Item[]>(() => (initial && initial.length
+    ? [{ id: 0, pending: false, pages: initial.map(p => ({ ...p, uid: ++nextUid, kindModel: null })) }] : []));
+  const [reading, setReading] = React.useState<{ label: string; pct: number } | null>(null);
   const [finishing, setFinishing] = React.useState(false);
   const [edit, setEdit] = React.useState<{ id: number; k: number } | null>(null);
   const [cutting, setCutting] = React.useState(false);
@@ -317,11 +327,25 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
           while (itemsRef.current.some(x => x.pending || x.pages.some(p => p.kindPending))) await new Promise(r => setTimeout(r, 100));
           const list = itemsRef.current;
           void examples(list).then(sendFeedback); // in the background, queued when offline
-          onDone(list.flatMap(x => x.pages).filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind }) => ({ b64, mediaType, turn, blurry, kind })));
+          const out = list.flatMap(x => x.pages).filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind }) => ({ b64, mediaType, turn, blurry, kind }));
+          if (read) {
+            setReading({ label: tr('Reading the pages…'), pct: 2 });
+            let err: string | null;
+            try { err = await read(out, (label, pct) => setReading({ label, pct })); }
+            catch (e) { err = tr('The pages could not be read: {0}', { 0: (e as Error)?.message || String(e) }); }
+            if (err) { setReading(null); setFinishing(false); setHint(err); return; }
+          }
+          onDone(out);
         }}>
         {finishing || pending ? <IconLoader2 className="size-[18px] animate-spin" /> : null}
         {tr('Done ({0})', { 0: kept.length })}
       </Button>}>
+      {reading ? (
+        <div className="flex flex-col gap-3 px-4 py-6 sm:px-0" data-testid="scan-reading">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconLoader2 className="size-[18px] animate-spin" />{reading.label}</div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-plate"><div className="h-full rounded-full bg-ok transition-[width]" style={{ width: reading.pct + '%' }} /></div>
+        </div>
+      ) : (
       <div className="flex flex-col gap-3 px-4 pb-2 sm:px-0" data-testid="scanner">
         <div className="relative overflow-hidden rounded-lg bg-black" data-vaul-no-drag hidden={camera !== 'on'}>
           <video ref={video} playsInline muted className="block h-auto w-full" />
@@ -359,6 +383,7 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
                     {p.fixedPart && <IconCheck aria-label={tr('Corrected')} className="absolute left-1.5 top-1.5 size-4 rounded-full bg-ok text-background" />}
                     <div className="absolute inset-x-1 bottom-1 flex flex-col items-start gap-0.5">
                       {p.kind === 'other' && <span className="rounded-md bg-background/70 px-1.5 text-[11px]">{tr('Not saved')}</span>}
+                      {p.blurry && p.kind !== 'other' && <span className="rounded-md bg-background/70 px-1.5 text-[11px] text-warn" data-testid="scan-blurry">{tr('Blurry — take it again')}</span>}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button type="button" data-testid="scan-kind" className="max-w-full truncate rounded-md bg-background/80 px-1.5 py-0.5 text-[11px]" disabled={p.kindPending}>
@@ -384,6 +409,7 @@ export function Scanner({ open, onDone, onClose }: { open: boolean; onDone: (pag
           </div>
         )}
       </div>
+      )}
     </Window>
   );
 }

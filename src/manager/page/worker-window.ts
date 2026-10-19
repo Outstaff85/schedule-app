@@ -4,7 +4,7 @@
 // code in the same order — page/entry.ts imports them in that order), typed
 // (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
 // reachable under their old global names through the window accessors below
-// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId } from './dom';
 import { DAYS } from '../logic/schedule';
@@ -18,6 +18,9 @@ import { autoSave } from '../data/store';
 import { genToken } from '../data/ids';
 import { render } from './render';
 import { openNewScan } from './scan';
+import { verifierFor } from '../../scan-process/ai';
+import { normDate, normDigits } from '../../scan-process/ids';
+import { resetScan } from '../../scan-process/session';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
   "blankWorkerDefaults": {get: () => blankWorkerDefaults, configurable: true},
@@ -64,9 +67,7 @@ function blankWorkerDefaults(){
 export function openAddWorker(){
   editingWorkerId=null;
   window.__wDraft=null;
-  window.__aiScanImage=null;
-  window.__aiPacketOtherPages=[];
-  window.__aiAvatarB64=null;
+  resetScan();
   window.__wCapturedSigPng=undefined;
   showWorkerModal(blankWorkerDefaults());
 }
@@ -107,7 +108,6 @@ async function workerScanPages(w?: any){
 export async function findScanFields(w?: any,keys?: any,docType?: any){
   const pages=await workerScanPages(w);
   if(!pages||!keys.length) return null;
-  await ensureScanPipelineLoaded();
   // The fields' own page first: ספח pages for the address, else the front.
   const sefachFirst=keys.every((k?: any)=>SCAN_FIND_FIELDS[k].page==='sefach');
   const list=(sefachFirst?[...pages.others,pages.front]:[pages.front,...pages.others]).filter(Boolean).slice(0,4);
@@ -128,7 +128,7 @@ export async function findScanFields(w?: any,keys?: any,docType?: any){
   const norm=(x?: any)=>String(x||'').replace(/[\s.\/-]/g,'').toUpperCase();
   await Promise.all([...zoom].map(async([pi,jobs]: any)=>{
     try{
-      const vals=await verifyFieldsBatch(jobs,list[pi].b64,list[pi].mediaType);
+      const vals=await verifierFor({b64:list[pi].b64,mediaType:list[pi].mediaType})(jobs);
       for(const jb of jobs){
         const z=String(vals[jb.field]||'').replace(/\s+/g,' ').trim();
         if(z){ out[jb.field].unsure=norm(z)!==norm(out[jb.field].value); out[jb.field].value=z; }
@@ -137,9 +137,9 @@ export async function findScanFields(w?: any,keys?: any,docType?: any){
   }));
   for(const k of keys){
     let v=out[k].value;
-    if(k==='docId'&&docType!=='passport') v=_normScanDigits(v);
+    if(k==='docId'&&docType!=='passport') v=normDigits(v);
     else if(k==='docId') v=v.replace(/\s/g,'').toUpperCase();
-    if(k==='docDob') v=_normScanDate(v)||v;
+    if(k==='docDob') v=normDate(v)||v;
     if(k==='docSex') v=/^[mז]/i.test(v)?'M':/^[fנ]/i.test(v)?'F':'';
     if(k==='houseNumber') v=v.replace(/\s/g,'');
     out[k].value=v;
@@ -148,24 +148,20 @@ export async function findScanFields(w?: any,keys?: any,docType?: any){
 }
 // "Scan again" from inside the worker window, without losing what is on the
 // form: the window (React, src/manager/WorkerEditor.tsx) is kept as a draft
-// (window.__wDraft) and the scan opens over it — on its review screen when the
-// window came from a scan still in memory (replace or add a page there),
-// otherwise as a new scan of this worker. When the scan finishes,
-// openWorkerModalFromScan() (scan-pipeline.js) opens the window again and
+// (window.__wDraft) and the scanner opens over it — with this session's pages
+// already in it when the window came from a scan still in memory (add, remove
+// or re-cut a page there; only the changed pages are read again), otherwise
+// as a new scan of this worker. When the reading finishes,
+// openWorkerModalFromScan() (./scan.ts) opens the window again and
 // applyWorkerDraft() puts the draft back: a field that had a value keeps it,
 // an empty one takes the new scan's value.
 export async function rescanFromWorkerModal(){
   window.__wDraft=window.ManagerIsland?window.ManagerIsland.editorDraft():null;
   warmCloudFunctions(SCAN_WARM_URLS());
-  try{ await ensureScanPipelineLoaded(); }
-  catch(e: any){ window.__wDraft=null; showToast(tr('Could not load the scan module — check the connection')); return; }
   const wid=editingWorkerId!==null&&workers.some((x?: any)=>x.id===editingWorkerId)?editingWorkerId:null;
-  const sameSession=(window.__aiScanPageThumbs||[]).length&&window.__aiScanImage&&(wid===null||window.__aiRescannedWorkerId===wid);
+  const sameSession=!!window.__aiScanImage&&(wid===null||window.__aiRescannedWorkerId===wid);
   window.__aiRescanWorkerId=wid;
-  if(sameSession){
-    byId('aiScanOverlay').classList.add('open');
-    renderScanPagesPrompt();
-  } else await openNewScan();
+  await openNewScan(sameSession);
 }
 function applyWorkerDraft(){ if(window.ManagerIsland) window.ManagerIsland.applyDraft(); else window.__wDraft=null; }
 // Second pass right after a scan: every field the scan left empty is searched

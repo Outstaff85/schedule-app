@@ -2,7 +2,7 @@
 
 The approved plan for the new document scanner: automatic edge detection, a live frame in the camera, two documents in one photo split into two pages, a queue for multi-page uploads, all of it on the new stack (`src/scan/`). The current scanner is described in docs/scan.md; it stays in place until stage S4 and is deleted only in S5, with the owner's permission.
 
-Status: **S1 done** (the sign-in check, the server's document finding, the `detectAlign` prompt without corners, the MRZ checks). **S2 + S2b done** (owner, 2026-10-18: the whole lab scanner goes in, the old one is left as it is until it is switched off): the scan window `src/scan/` (docs/scan.md → The scan window) — the lab's live frame, autocapture and upright turn on the phone, the server's cut, photos and PDFs — is what Scan opens; its pages go to the old reading (`scan-pipeline.js`) as ready pages, which skips the old alignment and asks Haiku only for a page with no face. Left: S3 (the reading in TypeScript), S5, S7 (the page-kind model — collecting). Each stage is merged only with the owner's OK.
+Status: **S1 done** (the sign-in check, the server's document finding, the `detectAlign` prompt without corners, the MRZ checks). **S2 + S2b done** (owner, 2026-10-18: the whole lab scanner goes in, the old one is left as it is until it is switched off): the scan window `src/scan/` (docs/scan.md → The scan window) — the lab's live frame, autocapture and upright turn on the phone, the server's cut, photos and PDFs — is what Scan opens. **S3, S4, S5 done** (owner, 2026-10-19: "do everything from S3"): the reading is `src/scan-process/` (docs/scan.md → Reading), proven equal to the old one by `tests/scan/compare.test.mjs`; it runs in the scan window on Done; `scan-pipeline.js`, its scan window, corner editor and queue / review screens are gone. Left: S7 (the page-kind model — collecting). Each stage is merged only with the owner's OK.
 
 ## Models (chosen after tests on the owner's photos)
 
@@ -104,19 +104,20 @@ Replaces Haiku's page kind and upright turn (`aiDetectAlign`) with the firm's ow
 - **Training:** a step of `/scan-train` (the same skill, the owner's PC): 6 classes (`id_front`, `id_back`, `sefach`, `passport`, `contract`, `other`), ImageNet weights fine-tuned on the page copies; the upright turn is learned for free by turning the copies 90°/180°/270° (the copies are stored upright). The exam pages (the same id rule as the corners) are read by the new models and by Haiku (its answers are in the records): published only when the models beat Haiku there. The publish resets `kindsSince`.
 - **Handed over like the corners:** the models go into the same `models/scan/v<N>/`; the lab first (a kind readout added to `/scan-lab/`), the site (phone and server, one version) only when the owner says it is better.
 
-### S3 — reading in TypeScript
+### S3 — reading in TypeScript — done (2026-10-19)
 
-- Port the reading, digit verification and page merging from `scan-pipeline.js` to TS with equivalence tests; the Hebrew strings hardcoded in `scan-pipeline.js` go through `tr()`.
-- `aiDetectAlign` loses the corners from its prompt (the model gives them now); `functions-auth/ai_prompts.json` and `tests/auth/ai_golden.json` change together.
-- Fine deskew and the exact ratios of ID cards and passports.
+- The reading, the zoomed re-reads, the check digits, the name pick and the page merging are `src/scan-process/` (`read.ts`, `verify.ts`, `merge.ts`, `names.ts`, `ids.ts`, `ai.ts`, `crop.ts`, `worker.ts`, `session.ts`), typed; every text through `tr()` (the old Hebrew progress texts are now the Hebrew dictionary's). `tests/scan/compare.test.mjs` runs the old code (`tests/scan/legacy.js`, frozen) and the new on 600 generated scans: the same record, stored pages and worker fields, never more AI calls. Each page's reads are kept by its image for the session, so Scan again reads only what changed.
+- `aiDetectAlign` without corners — done in S1.
+- Fine deskew: `refine_edges` on the server (S1). Exact proportions: a cut whose sides come within 5.5 % of an ID card's (ID-1), a passport page's (ID-3) or A4's is set to it (`docfind.exact_size`, docs/scan.md → Server-side finding).
 
-### S4 — switch
+### S4 — switch — done
 
-- The new window is the default; the old one is disabled but kept.
+- The scan window is what every scan opens (S2); the reading runs inside it on Done, with its progress.
 
-### S5 — delete the old scanner
+### S5 — delete the old scanner — done (owner, 2026-10-19)
 
-- Only after the owner's checks and explicit permission: `scan-pipeline.js` and the page's scan window.
+- Removed: `scan-pipeline.js` (its frozen copy stays only as the test's `tests/scan/legacy.js`), the page's `#aiScanOverlay` with its queue and review screens, the corner editor, the client-side alignment and tightening (`autoPreAlignScan`, `refineQuadCorners`, `finalTightenPass`), the photo twin for zoomed crops, the "ספח only" and multi-file paths, their CSS and loader (`ensureScanPipelineLoaded`). What they did is now the scanner's (the server's cut, the corners, the kinds, adding / removing pages) or the scan process's. A blurry page is marked in the window instead of stopping the reading. `preprocess_scan` still answers the old enhance-only request for an app left open since before.
+- With it: a scanned contract that could not be saved marks the worker (`contractUploadFailed`, a red notice until a contract document is added; docs/scan.md → Contracts).
 
 ## Expected time
 

@@ -121,3 +121,21 @@ def test_turns_are_clockwise_quarter_turns():
     img[0, 0] = 255
     one = docfind.turned(img, 1)
     assert one.shape[:2] == (20, 10) and one[0, -1].max() == 255
+
+
+def test_a_cut_takes_the_documents_exact_proportion_when_close():
+    # a card foreshortened to 400 × 240 (1.67) → ID-1 (1.585); a passport page → ID-3; A4 → A4
+    assert docfind.exact_size(400, 240) == (400, 252)
+    assert docfind.exact_size(240, 400) == (252, 400)
+    assert docfind.exact_size(710, 480) == (710, 500)
+    assert docfind.exact_size(1000, 1400) == (990, 1400)
+    # far from every document's proportion (a 4:3 photo, a square): kept as measured
+    assert docfind.exact_size(800, 600) == (800, 600)
+    assert docfind.exact_size(500, 500) == (500, 500)
+
+
+def test_a_whole_picture_keeps_its_own_size():
+    img = np.zeros((300, 470, 3), np.uint8)  # 1.567, close to ID-1, but kept whole
+    full = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], np.float64)
+    assert docfind.warp(img, full, exact=False).shape[:2] == (300, 470)
+    assert docfind.warp(img, full).shape[:2] == (296, 470)

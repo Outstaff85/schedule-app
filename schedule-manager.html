@@ -244,7 +244,7 @@
     .btn { min-height: 36px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   }
 
-  /* ── Loading spinner + progress bar (AI scan, Form 101 generation) ── */
+  /* ── Loading spinner (Form 101 generation, uploads) ── */
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spin { display: inline-block; animation: spin 0.8s linear infinite; }
   /* Admin in the template (variant 3): a line wraps its text when the whole
@@ -254,22 +254,6 @@
   .t3-ib:hover{color:var(--text)}
   .t3-line.off{opacity:.6}
   .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
-  @keyframes barSlide { 0% { left: -40%; } 100% { left: 100%; } }
-  .progress-bar { position: relative; width: 100%; height: 4px; border-radius: 2px;
-    background: var(--bg3); overflow: hidden; margin-top: 10px; }
-  .progress-bar::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 100%;
-    background: var(--accent); border-radius: 2px; animation: barSlide 1.1s ease-in-out infinite; }
-  /* Determinate variant (real 0%→100%, not the sliding indeterminate one
-     above) — used where we actually know a fraction, e.g. page i of N in
-     processAllPendingPages(). The fill is a plain width-styled child div. */
-  .progress-bar-real { position: relative; width: 100%; height: 4px; border-radius: 2px;
-    background: var(--bg3); overflow: hidden; margin-top: 10px; }
-  .progress-bar-real > div { height: 100%; background: var(--accent); border-radius: 2px;
-    transition: width 0.25s ease; }
-
-  /* ── Scan corner (quad) editor ── */
-  .quad-handle { fill: var(--accent); stroke: #fff; stroke-width: 2; cursor: grab; touch-action: none; }
-  .quad-handle:active { cursor: grabbing; }
   .contract-notice{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:8px 12px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600}
   .contract-notice.over{background:var(--red-bg);border-color:rgba(248,113,113,0.35);color:var(--red)}
   .contract-notice span{flex:1}
@@ -352,7 +336,6 @@
   @media (prefers-reduced-motion:reduce){.gic *,.og-bell i,.og-bell-n{animation:none !important}}
   .seg button.on::after{content:'';position:absolute;left:30%;right:30%;bottom:2px;height:2px;border-radius:2px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
   .gbtn.nact{height:32px;padding:0 10px;font-size:12px;border-radius:12px;flex:none}
-  .quad-side-handle { stroke: #fff; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
 
 /* Hebrew has no capitals: no letter-spacing (made for spaced-out uppercase Latin). */
 html[lang="he"] *{letter-spacing:normal !important;}
@@ -369,7 +352,7 @@ body:has(.overlay.open){overflow:hidden}
   /* Odinson Glass form fields (mockup 04, owner 2026-10-13): every field in a
      window is a soft rounded glass box — 38px tall, 12px corners, a faint fill
      and hairline, a cyan focus ring; selects carry a thin chevron; labels are
-     small and muted (the map picker, the scan window). */
+     small and muted (the map picker). */
   .modal .field label:not(.check-chip):not([style]){font-size:14px;font-weight:500;color:#8b90a0;margin:0 4px 4px}
   .modal .field input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),.modal .field select,.modal .field textarea{
     height:38px;padding:0 12px;border-radius:12px;border:1px solid rgba(var(--tint),.12);background-color:rgba(var(--tint),.05);color:var(--text);font-size:14px;
@@ -504,14 +487,6 @@ body:has(.overlay.open){overflow:hidden}
 </div>
 <div class="overlay" id="workerOverlay">
   <div class="modal" id="workerModal" style="width:680px"></div>
-</div>
-<div class="overlay" id="aiScanOverlay">
-  <div class="modal" style="width:680px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div class="modal-title" style="margin-bottom:0"><i class="ti ti-sparkles" style="color:var(--green)"></i> <span data-i18n>Scan passport</span></div>
-    </div>
-    <div id="aiScanStage"></div>
-  </div>
 </div>
 <div class="overlay" id="workerCardOverlay">
   <div class="modal" id="workerCardModal" style="width:440px"></div>
