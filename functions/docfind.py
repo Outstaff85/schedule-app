@@ -16,6 +16,8 @@ with the accurate model in full precision:
 Pure numpy / OpenCV / ONNX Runtime: the sessions are passed in, so the tests run
 it with the real models or with stand-ins.
 """
+from functools import cmp_to_key
+
 import numpy as np
 import cv2
 
@@ -228,11 +230,13 @@ def find_next(models, img, found):
 # ---------- photos on a white page ----------
 
 def photos_on_page(img):
-    """The photos on a white page as boxes (x0, y0, x1, y1) in pixels, top to bottom:
-    every band of rows where most of the page is not white, at least 12 % high; inside
-    each, the longest run of columns mostly not white gives its sides. None when the
-    picture is (nearly) one photo already. A band mostly dark (a screenshot's bar) is not
-    a photo; a picture whose rest is not mostly white is not a white page (none)."""
+    """The photos and printed documents on a white page as boxes (x0, y0, x1, y1) in pixels,
+    in reading order: every band of rows where most of the page is not white, at least 12 %
+    high; inside each, every run of columns mostly not white and a quarter of the page wide
+    gives a photo's sides; then the blocks of ink (ink_blocks: a ספח, a black-and-white copy)
+    not already in a photo. None when the picture is (nearly) one photo already. A band mostly
+    dark (a screenshot's bar) is not a photo; a picture whose rest is not mostly white is not a
+    white page (none). The phone's copy: src/scan/find.ts photosOnPage."""
     H, W = img.shape[:2]
     sc = 300 / max(W, H)
     w, h = max(1, round(W * sc)), max(1, round(H * sc))
@@ -269,6 +273,13 @@ def photos_on_page(img):
                 continue
             out.append(((run[1] - run[0]) * (y1 - y0) / (w * h),
                         (int(run[0] / sc), int(y0 / sc), min(W, int(np.ceil(run[1] / sc))), min(H, int(np.ceil(y1 / sc))))))
+    for b in ink_blocks(small):
+        if any(_overlap(_small_box(box, sc), b) > 0.5 for _, box in out):
+            continue
+        x0, y0, x1, y1 = b
+        out.append(((x1 - x0) * (y1 - y0) / (w * h),
+                    (int(x0 / sc), int(y0 / sc), min(W, int(np.ceil(x1 / sc))), min(H, int(np.ceil(y1 / sc))))))
+    out.sort(key=cmp_to_key(_reading_order))
     if not out or (len(out) == 1 and out[0][0] > 0.9):
         return []
     # a white page: what lies outside the photos is mostly white (a photo of a white
@@ -280,6 +291,49 @@ def photos_on_page(img):
     if rest.sum() and mid[rest].mean() > REST_BUSY:
         return []
     return [box for _, box in out]
+
+
+def _small_box(box, sc):
+    x0, y0, x1, y1 = box
+    return (x0 * sc, y0 * sc, x1 * sc, y1 * sc)
+
+
+def _overlap(a, b):
+    """Of two boxes, the share of the smaller one that lies in both."""
+    iw, ih = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
+    if iw <= 0 or ih <= 0:
+        return 0.0
+    return iw * ih / min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+
+
+def _reading_order(a, b):
+    """Side by side (sharing most of their height) left to right, else top to bottom."""
+    (_, (ax0, ay0, _, ay1)), (_, (bx0, by0, _, by1)) = a, b
+    share = min(ay1, by1) - max(ay0, by0)
+    return ax0 - bx0 if share > 0.5 * min(ay1 - ay0, by1 - by0) else ay0 - by0
+
+
+def ink_blocks(small):
+    """On a mostly white page (at least half of it paper), the blocks of ink — the dark strokes
+    joined by a closing of 2 % of the page — each at least a 20th of the page and at most nine
+    tenths of it: the printed documents on it, as boxes on the small picture. The phone's copy:
+    src/scan/find.ts inkBlocks."""
+    h, w = small.shape[:2]
+    m = small.min(axis=2)
+    if (m >= 225).mean() < 0.5:
+        return []
+    r = max(2, round(0.02 * max(w, h)))
+    grown = cv2.dilate((m < 160).astype(np.uint8), np.ones((2 * r + 1, 2 * r + 1), np.uint8))
+    n, _, st, _ = cv2.connectedComponentsWithStats(grown)
+    out = []
+    for j in range(1, n):
+        x, y, bw, bh = (int(v) for v in st[j, :4])
+        x0, y0 = min(x + bw - 1, x + r), min(y + bh - 1, y + r)        # back to the ink's own edges
+        x1, y1 = max(x0, x + bw - r), max(y0, y + bh - r)
+        bw, bh = x1 - x0, y1 - y0
+        if 0.05 * w * h <= bw * bh <= 0.9 * w * h and bw >= 0.15 * w and bh >= 0.1 * h:
+            out.append((x0, y0, x1, y1))
+    return out
 
 
 def _inside(q, box, shape, n=64):
@@ -425,7 +479,10 @@ def find_documents(img, model, face=None, hint=None, doctype=None):
         # a document the model sees on the whole picture, outside the photos found:
         # a plain photo after all (a white sheet on a table), not a page of photos
         pts, conf = detect(model, img)
-        if good_quad(pts, conf, img.shape) and not any(_inside(pts, box, img.shape) for box in boxes):
+        # (a frame around two or more of them is the sheet they are printed on: they stay apart)
+        holds = sum(cv2.pointPolygonTest((pts * [img.shape[1], img.shape[0]]).astype(np.float32), ((b[0] + b[2]) / 2, (b[1] + b[3]) / 2), False) >= 0
+                    for b in boxes) if pts is not None else 0
+        if good_quad(pts, conf, img.shape) and not any(_inside(pts, box, img.shape) for box in boxes) and holds < 2:
             boxes = []
     parts = [(img[y0:y1, x0:x1], (x0, y0, x1, y1)) for x0, y0, x1, y1 in boxes] or [(img, None)]
     pages = []

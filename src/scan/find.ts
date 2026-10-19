@@ -132,6 +132,19 @@ export function photosOnPage(c: HTMLCanvasElement): number[][] {
         box: [Math.floor(x0 / sc), Math.floor(y0 / sc), Math.min(W, Math.ceil(x / sc)), Math.min(H, Math.ceil(y1 / sc))] });
     }
   }
+  // printed documents on a white page (a ספח, a black-and-white copy of a card or a passport):
+  // blocks of ink, beside the photos found
+  for (const at of inkBlocks(d, w, h)) {
+    if (out.some(o => overlap(o.at, at) > 0.5)) continue;
+    const [x0, y0, x1, y1] = at;
+    out.push({ area: (x1 - x0) * (y1 - y0) / (w * h), at,
+      box: [Math.floor(x0 / sc), Math.floor(y0 / sc), Math.min(W, Math.ceil(x1 / sc)), Math.min(H, Math.ceil(y1 / sc))] });
+  }
+  // in reading order: side by side (sharing most of their height) left to right, else top to bottom
+  out.sort((a, b) => {
+    const share = Math.min(a.at[3], b.at[3]) - Math.max(a.at[1], b.at[1]);
+    return share > 0.5 * Math.min(a.at[3] - a.at[1], b.at[3] - b.at[1]) ? a.at[0] - b.at[0] : a.at[1] - b.at[1];
+  });
   if (!out.length || (out.length === 1 && out[0].area > 0.9)) return [];
   // a white page: what lies outside the photos is mostly white (a sheet on a dark table is not one)
   let rest = 0, restBusy = 0;
@@ -141,6 +154,60 @@ export function photosOnPage(c: HTMLCanvasElement): number[][] {
   }
   if (rest && restBusy / rest > 0.12) return [];
   return out.map(o => o.box);
+}
+
+/** Of two boxes, the share of the smaller one that lies in both. */
+function overlap(a: number[], b: number[]) {
+  const iw = Math.min(a[2], b[2]) - Math.max(a[0], b[0]), ih = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (iw <= 0 || ih <= 0) return 0;
+  return (iw * ih) / Math.min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]));
+}
+/** On a mostly white page (≥ half its pixels paper), the blocks of ink — the dark strokes joined
+ * by a closing of 2 % of the page — each a 20th of the page at least and at most nine tenths of
+ * it: the printed documents on it. rgba: the page at its small size (w×h). */
+export function inkBlocks(d: Uint8ClampedArray, w: number, h: number): number[][] {
+  let paper = 0;
+  const ink = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const m = Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]);
+    if (m >= 225) paper++;
+    ink[i] = m < 160 ? 1 : 0;
+  }
+  if (paper < 0.5 * w * h) return [];
+  const r = Math.max(2, Math.round(0.02 * Math.max(w, h)));
+  // a square dilation, rows then columns
+  const rows = new Uint8Array(w * h), grown = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    let last = -1e9;
+    for (let x = 0; x < w; x++) { if (ink[y * w + x]) last = x; if (x - last <= r) rows[y * w + x] = 1; }
+    last = 1e9;
+    for (let x = w - 1; x >= 0; x--) { if (ink[y * w + x]) last = x; if (last - x <= r) rows[y * w + x] = 1; }
+  }
+  for (let x = 0; x < w; x++) {
+    let last = -1e9;
+    for (let y = 0; y < h; y++) { if (rows[y * w + x]) last = y; if (y - last <= r) grown[y * w + x] = 1; }
+    last = 1e9;
+    for (let y = h - 1; y >= 0; y--) { if (rows[y * w + x]) last = y; if (last - y <= r) grown[y * w + x] = 1; }
+  }
+  const seen = new Uint8Array(w * h), out: number[][] = [];
+  for (let i = 0; i < w * h; i++) {
+    if (!grown[i] || seen[i]) continue;
+    let x0 = w, y0 = h, x1 = 0, y1 = 0;
+    const stack = [i]; seen[i] = 1;
+    while (stack.length) {
+      const j = stack.pop()!, x = j % w, y = (j / w) | 0;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (const k of [j - 1, j + 1, j - w, j + w]) {
+        if (k < 0 || k >= w * h || seen[k] || !grown[k] || (Math.abs((k % w) - x) > 1)) continue;
+        seen[k] = 1; stack.push(k);
+      }
+    }
+    // back to the ink's own edges (the closing grew them by r)
+    const bx0 = Math.min(x1, x0 + r), by0 = Math.min(y1, y0 + r), bx1 = Math.max(bx0, x1 - r + 1), by1 = Math.max(by0, y1 - r + 1);
+    const bw = bx1 - bx0, bh = by1 - by0;
+    if (bw * bh >= 0.05 * w * h && bw * bh <= 0.9 * w * h && bw >= 0.15 * w && bh >= 0.1 * h) out.push([bx0, by0, bx1, by1]);
+  }
+  return out;
 }
 
 /** Whether most (70 %) of the quad (0..1) lies inside the box (pixels of a w×h picture). */
@@ -181,7 +248,9 @@ export async function findHere(ex: Exact, live: Live | null, pic: HTMLCanvasElem
     // a document the model sees on the whole picture outside the photos found: a plain photo after
     // all (a white sheet on a table, a white ספח beside a photo), not a page of photos
     const q = good(await ex.detect(small(pic)));
-    if (q && !boxes.some(b => inside(q, b, pic.width, pic.height))) boxes = [];
+    // (a frame around two or more of them is the sheet they are printed on: they stay apart)
+    const holds = (b: number[]) => inQuad(q!, (b[0] + b[2]) / 2 / pic.width, (b[1] + b[3]) / 2 / pic.height);
+    if (q && !boxes.some(b => inside(q, b, pic.width, pic.height)) && boxes.filter(holds).length < 2) boxes = [];
   }
   const parts = boxes.length
     ? boxes.map(([x0, y0, x1, y1]) => { const c = canvas(x1 - x0, y1 - y0); c.getContext('2d')!.drawImage(pic, x0, y0, x1 - x0, y1 - y0, 0, 0, x1 - x0, y1 - y0); return { c, box: [x0, y0, x1, y1] as number[] | null }; })
