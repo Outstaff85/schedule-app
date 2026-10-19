@@ -7,12 +7,13 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { adoptLanguage } from '@/lib/i18n';
 import { Scanner, type ReadFn, type ScannedPage } from './Scanner';
 import { imagesToPdf, jpegSize } from './pdf';
+import { bridge, hasBridge } from '../manager/bridge';
 
 let root: Root | null = null;
 let seq = 0;
 
 export function openScanner(opts: { initial?: ScannedPage[]; read?: ReadFn } = {}): Promise<ScannedPage[] | null> {
-  const api = window.ManagerBridge;
+  const api = hasBridge() ? bridge() : null;
   if (api) adoptLanguage(api.lang(), api.dict());
   if (!root) {
     const el = document.createElement('div');

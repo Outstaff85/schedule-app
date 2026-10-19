@@ -733,6 +733,9 @@ export async function initFirestoreBackend() {
     // The hours-review ticks of this login (claim hp: hours, approve,
     // dispute, fix, schedule, export — functions-auth/core.py HOUR_PERMS).
     hourPerms: async (): Promise<string[]> => { const h = (await myClaims()).hp; return Array.isArray(h) ? h : []; },
+    // What a staff / HR login may change (claim ed: editSchedule, editWorkers,
+    // editPunches); null when the token has none (a login made before: all).
+    editPerms: async (): Promise<string[] | null> => { const v = (await myClaims()).ed; return Array.isArray(v) ? v : null; },
     // A supplier login's portal tabs (claim ss; none in the token = all).
     supplierSections: async (): Promise<string[]> => { const v = (await myClaims()).ss; return Array.isArray(v) ? v : ['dashboard', 'workers', 'hours']; },
     signOut: (): Promise<void> => { if (punchUnsub) punchUnsub(); claimsFor = null; claims = {}; return authMod.signOut(auth); },

@@ -14,14 +14,11 @@ import { getPunchLog, savePunchLog } from '../data/punches';
 import { renderSuppliersPage } from './workers';
 import { render } from './render';
 import { showToast } from '../toast';
+import { island } from '../bridge';
 Object.defineProperties(window, {
   "openAddSupplier": {get: () => openAddSupplier, configurable: true},
   "openEditSupplier": {get: () => openEditSupplier, configurable: true},
-  "showSupplierModal": {get: () => showSupplierModal, configurable: true},
-  "commitSupplier": {get: () => commitSupplier, configurable: true},
-  "deleteSuppliersNow": {get: () => deleteSuppliersNow, configurable: true},
   "openManualPunch": {get: () => openManualPunch, configurable: true},
-  "addManualPunch": {get: () => addManualPunch, configurable: true},
 });
 
 // --- Suppliers ----------------------------------------------------------------
@@ -32,10 +29,10 @@ Object.defineProperties(window, {
 export function openAddSupplier(){ editingSupplierId=null; showSupplierModal({name:'',color:CLIENT_COLORS[suppliers.length%CLIENT_COLORS.length],phone:'',bank:'',bankBranch:'',accountNumber:'',companyNumber:''}); }
 export function openEditSupplier(sid?: any){ const s=suppliers.find((x?: any)=>x.id===sid); if(!s) return; editingSupplierId=sid; showSupplierModal(s); }
 function showSupplierModal(s?: any){
-  if(!window.ManagerIsland) return;
+  if(!island()) return;
   const ov=byId('supplierOverlay'), id=editingSupplierId;
   ov.__reopen=id?()=>openEditSupplier(id):null;
-  window.ManagerIsland.openSupplier(JSON.parse(JSON.stringify(s)), id);
+  island()!.openSupplier(JSON.parse(JSON.stringify(s)), id);
   ov.classList.add('open');
 }
 export function commitSupplier(id?: any, fields?: any){
@@ -62,8 +59,8 @@ export function deleteSuppliersNow(ids?: any){
 // The manual punch (React — src/manager/ManualPunch.tsx): this client's
 // workers (or every active one), IN / OUT, date, time, a note.
 export function openManualPunch(cid?: any){
-  if(!clients.some((x?: any)=>x.id===cid)||!window.ManagerIsland) return;
-  window.ManagerIsland.openManualPunch(cid);
+  if(!clients.some((x?: any)=>x.id===cid)||!island()) return;
+  island()!.openManualPunch(cid);
   byId('manualPunchOverlay').classList.add('open');
 }
 // The punch entered: into the local punch log and to Firestore (gsSavePunch).

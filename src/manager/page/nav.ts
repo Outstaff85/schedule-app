@@ -10,7 +10,6 @@ import { byId, qsa } from './dom';
 import { NAV_TAB_PERMISSION, hasPermission, homeTab, tabAllowed } from '../logic/access';
 import { setFrame } from '../frame';
 Object.defineProperties(window, {
-  "applyNavPermissions": {get: () => applyNavPermissions, configurable: true},
   "switchTab": {get: () => switchTab, configurable: true},
 });
 

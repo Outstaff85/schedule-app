@@ -21,5 +21,6 @@ import './admin';
 import './bridge';
 import './toast';
 import './scan';
+import './form101';
 import './init';
 import '../main';

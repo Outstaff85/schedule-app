@@ -7,6 +7,7 @@
 // (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { loadNotifReads, refreshBell, renderCrumb, renderGreeting } from './header';
+import { island } from '../bridge';
 Object.defineProperties(window, {
   "render": {get: () => render, configurable: true},
 });
@@ -34,7 +35,7 @@ export function render(){
   refreshBell(); loadNotifReads();
   renderGreeting(); renderCrumb();
   // The worker windows that are open (the card, the notices, the worker window) read their data again.
-  if(window.ManagerIsland) window.ManagerIsland.refreshWindows();
+  if(island()) island()!.refreshWindows();
 }
 
 // The workers' requests (loadShiftRequests, decideShiftRequest), the site

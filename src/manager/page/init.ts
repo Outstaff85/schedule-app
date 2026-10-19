@@ -23,22 +23,6 @@ import { renderAccounting } from './bridge';
 import { showToast } from '../toast';
 import { setFrame } from '../frame';
 Object.defineProperties(window, {
-  "_origConsoleError": {get: () => _origConsoleError, configurable: true},
-  "_origConsoleWarn": {get: () => _origConsoleWarn, configurable: true},
-  "_consoleArgsText": {get: () => _consoleArgsText, configurable: true},
-  "SDK_RECONNECT_NOISE_RE": {get: () => SDK_RECONNECT_NOISE_RE, configurable: true},
-  "MAPS_MARKER_NOTICE_RE": {get: () => MAPS_MARKER_NOTICE_RE, configurable: true},
-  "_mapsNoticeSeenToday": {get: () => _mapsNoticeSeenToday, configurable: true},
-  "_consoleNoise": {get: () => _consoleNoise, configurable: true},
-  "watchErrorLine": {get: () => watchErrorLine, configurable: true},
-  "VAPID_PUBLIC_KEY": {get: () => VAPID_PUBLIC_KEY, configurable: true},
-  "PUSH_ENABLED": {get: () => PUSH_ENABLED, configurable: true},
-  "urlB64ToUint8": {get: () => urlB64ToUint8, configurable: true},
-  "subscribeToPush": {get: () => subscribeToPush, configurable: true},
-  "checkPushStatus": {get: () => checkPushStatus, configurable: true},
-  "_installPrompt": {get: () => _installPrompt, set: (v?: any) => { _installPrompt = v; }, configurable: true},
-  "_isStandalone": {get: () => _isStandalone, configurable: true},
-  "ensureInstallButton": {get: () => ensureInstallButton, configurable: true},
   "installApp": {get: () => installApp, configurable: true},
 });
 
@@ -103,6 +87,12 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons
       const s = getSession(); if(!s || JSON.stringify(hp) === JSON.stringify(s.hourPerms || [])) return;
       saveSession(Object.assign(s, {hourPerms: hp})); applyNavPermissions();
       if(currentTab === 'accounting') renderAccounting();
+    }).catch(()=>{});
+    // What a staff / HR login may change, as the ID token has it now (a
+    // template change ends the session; until then the token is the truth).
+    if(isHrSession() || (getSession() || {} as any).role === 'staff') loadFirestoreBackend().then((b?: any) => b.editPerms()).then((ed?: any) => {
+      const s = getSession(); if(!s || JSON.stringify(ed) === JSON.stringify(s.editPerms ?? null)) return;
+      saveSession(Object.assign(s, {editPerms: ed})); render();
     }).catch(()=>{});
     // Wake users_admin (firm profile, users, files) so its first real call
     // doesn't wait for a cold start.

@@ -148,6 +148,9 @@ def claims_for(user):
     else:
         perms_list = list(perms)
     claims = {"role": role, "perms": perms_list}
+    if role in ("staff", "hr") and isinstance(user.get("editPerms"), list):
+        # ed: what it may change (shifts, workers, punches); none stored = all
+        claims["ed"] = _edit_perms(user.get("editPerms"))
     if role == "hr":
         # own: this HR sees and edits only the workers whose hrId is its uid
         # (firestore.rules / storage.rules / files.py read it).
@@ -265,6 +268,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "supplierId": user.get("supplierId") or None,
         "clientId": claims.get("clientId"),
         "hourPerms": claims.get("hp", []),
+        "editPerms": claims.get("ed", list(EDIT_PERMS)) if claims["role"] in ("staff", "hr") else None,
         "ownOnly": claims.get("own", False),
         "showPay": claims.get("pay", False),
         "commissionRate": claims.get("hrc", 0),
@@ -350,6 +354,7 @@ def list_users(db, caller):
             "commissionRate": _rate(d.get("commissionRate")) if _norm_role(d.get("role")) == "hr" else None,
             "commissionDayRate": _rate(d.get("commissionDayRate")) if _norm_role(d.get("role")) == "hr" else None,
             "templateId": d.get("templateId") or None,
+            "editPerms": _edit_perms(d.get("editPerms")) if _norm_role(d.get("role")) in ("staff", "hr") else None,
         })
     return {"users": users}
 
@@ -483,6 +488,8 @@ def create_tenant_user(db, caller, body):
         user["commissionDayRate"] = _rate(body.get("commissionDayRate"))
     if role in ("hr", "supplier"):
         user["showPay"] = body.get("showPay") is not False
+    if role in ("staff", "hr") and isinstance(body.get("editPerms"), list):
+        user["editPerms"] = _edit_perms(body.get("editPerms"))
     if role in HOUR_ROLES:
         hp = body.get("hourPerms")
         user["hourPerms"] = _hour_perms(hp) if isinstance(hp, list) else list(HOUR_DEFAULT)
@@ -561,6 +568,8 @@ def update_user(db, caller, body, revoke):
             upd["permissions"] = list(p) if isinstance(p, list) else ("" if p == "" else "*")
     if "hourPerms" in body:
         upd["hourPerms"] = _hour_perms(body.get("hourPerms")) if role in HOUR_ROLES else []
+    if "editPerms" in body and role in ("staff", "hr"):
+        upd["editPerms"] = _edit_perms(body.get("editPerms"))
     if "supplierSections" in body and role == "supplier":
         upd["supplierSections"] = _supplier_sections(body.get("supplierSections"))
     if "clientId" in body:
@@ -588,6 +597,7 @@ def update_user(db, caller, body, revoke):
                "commissionRate": _rate(data.get("commissionRate")),
                "commissionDayRate": _rate(data.get("commissionDayRate"))}
     current["templateId"] = data.get("templateId")
+    current["editPerms"] = data.get("editPerms")
     upd = {k: v for k, v in upd.items() if v != current[k]}
     if upd.get("role") == "hr":  # a new HR always gets its ownOnly flag stored
         upd["ownOnly"] = body.get("ownOnly") is not False
@@ -650,7 +660,11 @@ def delete_user(db, caller, body, revoke):
 # those whose rights changed. Deleting a template leaves its logins' rights as
 # they are, without a template.
 
-TEMPLATE_RIGHTS = ("permissions", "hourPerms", "supplierSections", "ownOnly", "showPay")
+TEMPLATE_RIGHTS = ("permissions", "editPerms", "hourPerms", "supplierSections", "ownOnly", "showPay")
+# What a staff / HR login may change in the sections it sees (users.editPerms
+# → claim ed; firestore.rules): the shifts, the worker records, the punches.
+# A login with none stored (made before them) may change all three.
+EDIT_PERMS = ("editSchedule", "editWorkers", "editPunches")
 # The sections a staff / HR template may tick (payEdit: HR only).
 TEMPLATE_SECTIONS = ("schedule", "workers", "clients", "suppliers", "accounting", "payEdit", "exports")
 E_PICK_TEMPLATE = "Pick a template"
@@ -676,6 +690,7 @@ def _template_rights(role, v):
     if role in ("staff", "hr"):
         p = v.get("permissions")
         out["permissions"] = [s for s in TEMPLATE_SECTIONS if isinstance(p, list) and s in p and (s != "payEdit" or role == "hr")]
+        out["editPerms"] = _edit_perms(v.get("editPerms"))
     else:
         out["permissions"] = ""
     if role in HOUR_ROLES:
@@ -687,6 +702,10 @@ def _template_rights(role, v):
     if role in ("hr", "supplier"):
         out["showPay"] = v.get("showPay") is not False
     return out
+
+
+def _edit_perms(v):
+    return [p for p in EDIT_PERMS if p in v] if isinstance(v, list) else list(EDIT_PERMS)
 
 
 def _template_out(snap):

@@ -853,6 +853,10 @@
 				const h = (await myClaims()).hp;
 				return Array.isArray(h) ? h : [];
 			},
+			editPerms: async () => {
+				const v = (await myClaims()).ed;
+				return Array.isArray(v) ? v : null;
+			},
 			supplierSections: async () => {
 				const v = (await myClaims()).ss;
 				return Array.isArray(v) ? v : [

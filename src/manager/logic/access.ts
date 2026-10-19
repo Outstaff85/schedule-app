@@ -18,6 +18,18 @@ export function hasPermission(section: string): boolean {
 // Users / Errors / Timings for the owner and the super-admin, gated by role)
 // rides on 'workers'. 'dashboard' (Today) is never gated.
 export const NAV_TAB_PERMISSION: Record<string, string> = { schedule: 'schedule', workers: 'workers', clients: 'clients', suppliers: 'suppliers', admin: 'workers', accounting: 'accounting' };
+/**
+ * What a staff / HR login may change in the sections it sees — editSchedule
+ * (shifts), editWorkers (worker records), editPunches (punches) — from its
+ * permission template (users.editPerms → session.editPerms, claim ed); none
+ * in the session (a login made before the ticks) or another role: all.
+ */
+export function canChange(k: 'editSchedule' | 'editWorkers' | 'editPunches'): boolean {
+  const s = getSession();
+  if (!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
+  const e = s.editPerms;
+  return !Array.isArray(e) || e.indexOf(k) !== -1;
+}
 export function isHrSession(): boolean { const s = getSession(); return !!s && s.role === 'hr'; }
 export function isFirmAdminSession(): boolean { const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
 // An HR login (docs/hr.md) gets only the tabs of its sections: never Today

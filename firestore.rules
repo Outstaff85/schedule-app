@@ -11,6 +11,9 @@ rules_version = '2';
 //   supplierId  only for role 'supplier'
 //   clientId    only for role 'client' (the client portal goes through a function too)
 //   hp        hr / supplier / client: its hours-review ticks (read by the hours function only)
+//   ed        staff / hr on a permission template: what it may change —
+//             editSchedule (shifts), editWorkers (worker records),
+//             editPunches (punches); absent = all three (a login made before)
 //
 // These rules mirror the Apps Script checks they replace:
 //   - a firm sees only its own data, a superadmin sees every firm;
@@ -55,6 +58,15 @@ service cloud.firestore {
         && (('*' in request.auth.token.perms) || (section in request.auth.token.perms));
     }
     function uid() { return request.auth.uid; }
+    // The edit ticks (claim ed): absent = everything, as before them.
+    function mayEd(k) { return !('ed' in request.auth.token) || (k in request.auth.token.ed); }
+    // A worker update: with Edit workers anything but the shifts (those too
+    // with Edit shifts); with only Edit shifts nothing but the shifts.
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function workerEdOk() {
+      return (mayEd('editWorkers') && (mayEd('editSchedule') || !changed().hasAny(['schedule', 'dateShifts'])))
+        || (mayEd('editSchedule') && changed().hasOnly(['schedule', 'dateShifts', 'sortIndex']));
+    }
     function oldHr() { return resource.data.get('hrId', null); }
     function newHr() { return request.resource.data.get('hrId', null); }
     // Manager-side logins of the firm that see all of its data (never a
@@ -105,15 +117,15 @@ service cloud.firestore {
       match /workers/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
         // Only the owner (or super-admin) assigns a worker to an hr (docs/hr.md).
-        allow create: if (scheduleWriter(t) && staffNewPayOk(t) && (isAdmin(t) || newHr() == null))
+        allow create: if mayEd('editWorkers') && ((scheduleWriter(t) && staffNewPayOk(t) && (isAdmin(t) || newHr() == null))
           || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()) && hrNewPayOk(t))
-          || (hrMine(t) && hrWorkers(t) && newHr() == uid() && hrNewPayOk(t));
-        allow update: if (scheduleWriter(t) && staffPayOk(t) && (isAdmin(t) || newHr() == oldHr()))
+          || (hrMine(t) && hrWorkers(t) && newHr() == uid() && hrNewPayOk(t)));
+        allow update: if workerEdOk() && ((scheduleWriter(t) && staffPayOk(t) && (isAdmin(t) || newHr() == oldHr()))
           || (hrAll(t) && hrWorkers(t) && newHr() == oldHr() && hrPayOk(t))
-          || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid() && hrPayOk(t));
-        allow delete: if scheduleWriter(t)
+          || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid() && hrPayOk(t)));
+        allow delete: if mayEd('editWorkers') && (scheduleWriter(t)
           || (hrAll(t) && hrWorkers(t))
-          || (hrMine(t) && hrWorkers(t) && oldHr() == uid());
+          || (hrMine(t) && hrWorkers(t) && oldHr() == uid()));
       }
       match /clients/{id} {
         allow read: if manager(t) || isHr(t);
@@ -135,12 +147,15 @@ service cloud.firestore {
         allow write: if scheduleWriter(t) || (hrAll(t) && hrCan(t, 'schedule'));
       }
       match /punches/{id} {
-        allow read, create, update, delete: if manager(t);
+        allow read: if manager(t);
+        // Written (a manual punch, an edit, a delete) only with Edit punches.
+        allow create, update, delete: if manager(t) && mayEd('editPunches');
         // An own-workers hr: the punches stamped with its uid (hrId is set by
         // the punch function, manual punches and approved hours).
-        allow read, delete: if hrMine(t) && oldHr() == uid();
-        allow create: if hrMine(t) && newHr() == uid();
-        allow update: if hrMine(t) && oldHr() == uid() && newHr() == uid();
+        allow read: if hrMine(t) && oldHr() == uid();
+        allow delete: if hrMine(t) && oldHr() == uid() && mayEd('editPunches');
+        allow create: if hrMine(t) && newHr() == uid() && mayEd('editPunches');
+        allow update: if hrMine(t) && oldHr() == uid() && newHr() == uid() && mayEd('editPunches');
       }
       // Hours reviews of client, supplier and HR logins (the `hours` function
       // writes them; managers read them in Accounting). Never written directly.

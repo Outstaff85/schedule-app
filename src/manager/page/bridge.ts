@@ -11,7 +11,7 @@ import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts,
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
-import { hasPermission, hrHourReview, hrPayOnly, isFirmAdminSession, isHrSession } from '../logic/access';
+import { canChange, hasPermission, hrHourReview, hrPayOnly, isFirmAdminSession, isHrSession } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { autoSave, latestHoursBatch } from '../data/store';
@@ -35,11 +35,10 @@ import { closeModal } from './windows';
 import { logout, pingLogin, signIn, switchToTenant } from './wiring';
 import { cacheTenantProfile, editMyName, setTheme } from './gate';
 import { showToast } from '../toast';
+import { bridge, island, provideBridge } from '../bridge';
 Object.defineProperties(window, {
   "renderDashboard": {get: () => renderDashboard, configurable: true},
   "renderSchedulePage": {get: () => renderSchedulePage, configurable: true},
-  "workerHeadOf": {get: () => workerHeadOf, configurable: true},
-  "docExpiryMap": {get: () => docExpiryMap, configurable: true},
   "accPeriod": {get: () => accPeriod, set: (v?: any) => { accPeriod = v; }, configurable: true},
   "__accOpenSeq": {get: () => __accOpenSeq, set: (v?: any) => { __accOpenSeq = v; }, configurable: true},
   "accData": {get: () => accData, configurable: true},
@@ -49,29 +48,14 @@ Object.defineProperties(window, {
   "hourApprovalSummary": {get: () => hourApprovalSummary, configurable: true},
   "renderAccounting": {get: () => renderAccounting, configurable: true},
   "setAccTab": {get: () => setAccTab, configurable: true},
-  "HOURS_REVIEW_FN_URL": {get: () => HOURS_REVIEW_FN_URL, configurable: true},
-  "hoursCall": {get: () => hoursCall, configurable: true},
-  "HOUR_APPROVALS_TTL": {get: () => HOUR_APPROVALS_TTL, configurable: true},
   "__hourApprovalsCache": {get: () => __hourApprovalsCache, set: (v?: any) => { __hourApprovalsCache = v; }, configurable: true},
   "hourApprovalsOf": {get: () => hourApprovalsOf, configurable: true},
-  "openSignedHours": {get: () => openSignedHours, configurable: true},
-  "bulkHoursBatches": {get: () => bulkHoursBatches, configurable: true},
-  "approveHoursBatch": {get: () => approveHoursBatch, configurable: true},
   "rejectHoursBatch": {get: () => rejectHoursBatch, configurable: true},
   "canEditPay": {get: () => canEditPay, configurable: true},
-  "openWorkerCardById": {get: () => openWorkerCardById, configurable: true},
-  "payWindowAllowed": {get: () => payWindowAllowed, configurable: true},
   "openPayModal": {get: () => openPayModal, configurable: true},
   "latestOf": {get: () => latestOf, configurable: true},
-  "workerClientName": {get: () => workerClientName, configurable: true},
-  "punchSite": {get: () => punchSite, configurable: true},
   "renderAdmin": {get: () => renderAdmin, configurable: true},
-  "loadEarlierPunchMonth": {get: () => loadEarlierPunchMonth, configurable: true},
-  "savePunchEdit": {get: () => savePunchEdit, configurable: true},
-  "deletePunchesNow": {get: () => deletePunchesNow, configurable: true},
   "exportPunchCSV": {get: () => exportPunchCSV, configurable: true},
-  "punchMonthKey": {get: () => punchMonthKey, configurable: true},
-  "clearPunchMonths": {get: () => clearPunchMonths, configurable: true},
 });
 
 // ── Odinson Glass list pieces (docs/redesign.md → Plates) ──
@@ -81,7 +65,7 @@ Object.defineProperties(window, {
 // it to draw (render() and switchTab() call it as before).
 function renderDashboard(){
   renderGreeting();
-  if(window.ManagerIsland) window.ManagerIsland.renderToday();
+  if(island()) island()!.renderToday();
 }
 // ── Schedule (stage 6b): drawn in React — src/manager/Schedule.tsx. The week
 // (weekStart), the site filter (selectedClientId)
@@ -90,10 +74,10 @@ function renderDashboard(){
 // requests (at most once a minute).
 function renderSchedulePage(){
   loadShiftRequests();
-  if(window.ManagerIsland) window.ManagerIsland.renderSchedule();
+  if(island()) island()!.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') window.ManagerIsland!.renderFirmsScreen(); renderCrumb(); });
-window.ManagerBridge={
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') island()!.renderFirmsScreen(); renderCrumb(); });
+provideBridge({
   lang:()=>currentLang(),
   dict:()=>currentDict(),
   // ── The frame (stage 8e-1, src/manager/Frame.tsx) ──
@@ -123,7 +107,7 @@ window.ManagerBridge={
           notices:workerNotices(w,td).map((n?: any)=>({lvl:n.lvl, word:n.word, title:n.title}))}; }),
       suppliers:suppliers.map((x?: any)=>({id:x.id, name:x.name||'', color:x.color||''})),
       log:log.map((e?: any)=>({...e, site:punchSite(e)})),
-      canAddWorker:hasPermission('workers'),
+      canAddWorker:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
   openWorker:(id?: any)=>openWorkerCardById(id),
@@ -141,7 +125,7 @@ window.ManagerBridge={
         schedule:[0,1,2,3,4,5,6].map((i?: any)=>(w.schedule||[])[i]||off), dateShifts:w.dateShifts||{}})),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||''})),
       requests:__shiftReqs,
-      canEdit:hasPermission('schedule'), canExport:hasPermission('exports'), canAddWorker:hasPermission('workers'),
+      canEdit:hasPermission('schedule')&&canChange('editSchedule'), canExport:hasPermission('exports'), canAddWorker:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
   setWeek:(ymd?: any)=>{ weekStart=getSundayOfWeek(new Date(ymd+'T00:00')); render(); },
@@ -191,7 +175,7 @@ window.ManagerBridge={
           contract:ex?{overdue:ex.level==='overdue', deadline:ex.deadline.toLocaleDateString('en-GB')}:null, canPay:!!canEditPay(w)}; }),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||'', object:c.object||''})),
       suppliers:suppliers.map((x?: any)=>({id:x.id, name:x.name||'', color:x.color||''})),
-      canEdit:hasPermission('workers'),
+      canEdit:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
   scanNew:()=>startNewScan(),
@@ -210,7 +194,7 @@ window.ManagerBridge={
     const byClient=salaryEntriesFor('month').byClient||{};
     const waiting=new Set((__hoursBatches||[]).filter((b?: any)=>b.status==='pending').flatMap((b?: any)=>(b.entries||[]).map((e?: any)=>e.clientId)));
     const empty=(v?: any)=>v==null||v==='';
-    return {ready:__dataReady, canEdit:hasPermission('clients'),
+    return {ready:__dataReady, canEdit:hasPermission('clients'), canPunch:canChange('editPunches'),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||'', address:c.address||'', object:c.object||'',
         workers:workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length, monthHours:(byClient[c.id]||{}).hours||0,
         noRate:empty(c.billRate)&&empty(c.defaultHourlyRate)&&!c.fixedBillRate&&!c.dailyBillRate, waiting:waiting.has(c.id)}))};
@@ -290,9 +274,9 @@ window.ManagerBridge={
   admin(){
     const s=(getSession()||{} as any), isAdminRole=s.role==='superadmin'||s.role==='tenant_admin', from=__punchLoadedFrom;
     return {
-      ready:__dataReady, pane:__adminPane, panes:adminPanes(), canClear:isAdminRole,
+      ready:__dataReady, pane:__adminPane, panes:adminPanes(), canClear:isAdminRole, canEditPunches:canChange('editPunches'),
       firmIncomplete:isAdminRole&&firmProfileMissing().length>0,
-      log:__adminPane==='punchlog'?window.ManagerBridge!.punchLog():[],
+      log:__adminPane==='punchlog'?bridge().punchLog():[],
       workers:workers.map((w?: any)=>({id:w.id, name:w.name||'', clientIds:w.clientIds||[]})),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||'', address:c.address||''})),
       loadedFrom:from&&from>ALL_PUNCHES_FROM?from.toLocaleDateString('en-GB'):null,
@@ -351,7 +335,7 @@ window.ManagerBridge={
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', object:c.object||''})), hrNames}; },
   hrMonthCommission:(uid?: any,rate?: any,dayRate?: any)=>Object.values((salaryEntriesFor('month').byWorker)||{}).reduce((t?: any,e?: any)=>{ const wc=workers.find((w?: any)=>w.id===e.workerId); return wc&&wc.hrId===uid?t+commissionFor(wc,e,rate,dayRate):t; },0),
   assignWorkers:async(kind?: any,ids?: any,key?: any)=>{ const n=kind==='supplier'?assignWorkersToSupplier(ids,key):await assignWorkersToHr(ids,key); prefetchAdminUsers(); return n; },
-  openAssign:(team?: any)=>{ if(!window.ManagerIsland) return; window.ManagerIsland.openAssign(team); byId('hrAssignOverlay').classList.add('open'); },
+  openAssign:(team?: any)=>{ if(!island()) return; island()!.openAssign(team); byId('hrAssignOverlay').classList.add('open'); },
   userSaved:(id?: any,orig?: any,role?: any,name?: any)=>userSaved(id,orig,role,name),
   exportAs:(k?: any)=>{ ({excel:exportExcel, pdf:exportPDF, json:exportJSON} as Record<string, () => void>)[k](); },
   toast:(t?: any,ms?: any)=>showToast(t,ms),
@@ -363,7 +347,7 @@ window.ManagerBridge={
     const w=workers.find((x?: any)=>x.id===id); if(!w) return null;
     const head=workerHeadOf(w), st=workerDocStatus(w), ex=workerExpiryStatus(w), sh=shiftOn(w,new Date()), b=latestHoursBatch(w.id);
     const sup=suppliers.find((s?: any)=>s.id===w.supplierId);
-    return {...head, w:JSON.parse(JSON.stringify(w)), canEdit:hasPermission('workers'), canPay:!!canEditPay(w), canExport:hasPermission('exports'),
+    return {...head, w:JSON.parse(JSON.stringify(w)), canEdit:hasPermission('workers')&&canChange('editWorkers'), canPay:!!canEditPay(w), canExport:hasPermission('exports'),
       isFirmAdmin:isFirmAdminSession(), hr:w.hrId?{name:hrNameOf(w.hrId), color:hrColor(w.hrId)}:null,
       clients:(w.clientIds||[]).map((cid?: any)=>clients.find((x?: any)=>x.id===cid)).filter(Boolean).map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||''})),
       supplier:sup?{name:sup.name||'', color:sup.color||''}:null,
@@ -465,7 +449,7 @@ window.ManagerBridge={
   // An own-workers HR reads only its own batches (the rules).
   async loadPendingHours(){ return ((await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadPendingHours',...gsAuth()})})).json()).batches)||[]; },
   async exportHours(id?: any,y?: any,m?: any,format?: any){ await ensurePunchesSince(new Date(y,m,0)); exportShiftsDetail(id,y,m,format); },
-};
+});
 // The head of the worker card, the notices sheet and the worker window: the
 // plate's colour, site, today's punch, the month's hours and the notices with
 // their actions (by rights).
@@ -493,8 +477,8 @@ function salaryEntriesFor(period?: any){ return window.ManagerAcc ? window.Manag
 function commissionFor(w?: any, e?: any, hourRate?: any, dayRate?: any){ return window.ManagerAcc!.commissionFor(w, e, hourRate, dayRate); }
 function supplierCommission(w?: any, e?: any, sid?: any){ return window.ManagerAcc!.supplierCommission(w, e, sid); }
 function hourApprovalSummary(doc?: any, month?: any){ return window.ManagerAcc!.hourApprovalSummary(accData(), doc, month); }
-export function renderAccounting(){ if(window.ManagerIsland) window.ManagerIsland.renderAccounting(); }
-function setAccTab(k?: any){ if(window.ManagerIsland) window.ManagerIsland.setAccTab(k); renderCrumb(); }
+export function renderAccounting(){ if(island()) island()!.renderAccounting(); }
+function setAccTab(k?: any){ if(island()) island()!.setAccTab(k); renderCrumb(); }
 
 // The hours function (the HR's Hours approval, the owner's approvals list and fixes).
 const HOURS_REVIEW_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
@@ -584,8 +568,8 @@ function canEditPay(w?: any){
 function openWorkerCardById(wid?: any){ const i=workers.findIndex((w?: any)=>w.id===wid); if(i>=0) openWorkerCard(i); }
 function payWindowAllowed(w?: any){ return !!w && (canEditPay(w) || (hrPayOnly() && w.hrId===((getSession()||{} as any)).uid)); }
 function openPayModal(wid?: any){
-  const w=workers.find((x?: any)=>x.id===wid); if(!payWindowAllowed(w) || !window.ManagerIsland) return;
-  window.ManagerIsland.openPay(wid);
+  const w=workers.find((x?: any)=>x.id===wid); if(!payWindowAllowed(w) || !island()) return;
+  island()!.openPay(wid);
   byId('payOverlay').classList.add('open');
 }
 
@@ -619,7 +603,7 @@ function punchSite(e?: any){
 // drawn in React — src/manager/Admin.tsx, the root #adminRoot. The punches
 // (getPunchLog), their saves, Export CSV and Clear Log's server call stay
 // here; window.ManagerBridge.admin() and its actions below hand them over.
-function renderAdmin(){ if(window.ManagerIsland) window.ManagerIsland.renderAdmin(); }
+function renderAdmin(){ if(island()) island()!.renderAdmin(); }
 // "Load earlier month": to the 1st of the month already partly loaded, or the month before it.
 function loadEarlierPunchMonth(){
   const f=__punchLoadedFrom||punchWindowStart();

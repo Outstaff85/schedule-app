@@ -26,6 +26,7 @@ import { initials } from './worker-head';
 import { Logins } from './logins';
 import { deleteLater } from './Clients';
 import { hoursShort } from './today';
+import { canChange } from './logic/access';
 import {
   billMain, billOf, clientFormOf, clientRecordOf, margin, moneyShort, parseMapsUrl, rateNum, setBillMain, setPayUnit, setRateMode,
   type Bill, type ClientForm,
@@ -147,7 +148,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
     <div data-testid="client-editor" data-edit={editId || ''} className="grid gap-2">
       <EditorHead color={c.color || 'var(--neutral)'} name={c.name || (editing ? tr('Edit client') : tr('New client'))} sub={sub}
         menu={editing ? [
-          { label: tr('Manual punch'), icon: <IconClock />, run: () => api.punchFromClient(editId!) },
+          ...(canChange('editPunches') ? [{ label: tr('Manual punch'), icon: <IconClock />, run: () => api.punchFromClient(editId!) }] : []),
           ...(info.canDelete ? [{ label: tr('Delete'), icon: <IconTrash />, danger: true, run: () => { api.deleteFromEditor('client', editId!); deleteLater('clients', editId!, c.name || '', api); } }] : []),
         ] : undefined} />
 

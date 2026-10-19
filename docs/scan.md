@@ -7,7 +7,6 @@ The worker window that the scan opens is in [workers.md](workers.md); the PDF bu
 ## Entry points (`src/manager/page/scan.ts`)
 
 - **`startNewScan()`** — the "Scan passport" button.
-- **`rescanWorkerDoc(workerId)`** — a scan tagged to an existing worker; sets `window.__aiRescanWorkerId`.
 - **`rescanFromWorkerModal()`** (`worker-window.ts`) / **`rescanFromWorkerCard(wi)`** — "Scan / Rescan" in the worker window and card, keeping the window's form as a draft (`ManagerIsland.editorDraft()`, the React window — [workers.md](workers.md)). When the window came from a scan still in memory (`__aiScanImage`, the same worker), the scanner opens with this session's pages already in it (Scan again below).
 
 Each warms the Cloud Functions (`warmCloudFunctions(SCAN_WARM_URLS())` — `{"ping":true}` to `preprocess_scan`, `fill_form_101` and `ai_read`; at most once per URL every 4 min) and calls **`openNewScan(sameSession?)`**: `openScanner({initial, read})` (`src/scan/open.tsx`) with the scan process as its `read`; once the pages are read, `openWorkerModalFromScan(record, reads)`. A new scan (`sameSession` false) first forgets the last one (`resetScan()`, `src/scan-process/session.ts`); so does New worker (`openAddWorker`).

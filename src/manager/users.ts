@@ -24,9 +24,14 @@ export type UserRow = {
   showPay?: boolean;
   commissionRate?: number;
   commissionDayRate?: number;
+  /** staff / hr: what it may change (editSchedule, editWorkers, editPunches) */
+  editPerms?: string[] | null;
   /** the permission template its rights come from; none: a login made before templates */
   templateId?: string | null;
 };
+
+// What a login without its edit ticks may change: everything (templates.ts EDIT_PERMS).
+const ALL_EDITS = ['editSchedule', 'editWorkers', 'editPunches'];
 
 export type FormRole = 'staff' | 'hr' | 'supplier' | 'client';
 
@@ -63,6 +68,8 @@ export type UserForm = {
   password: string;
   /** staff / hr sections, payEdit included */
   perms: string[];
+  /** staff / hr: what it may change (shown from the template) */
+  edits: string[];
   supplierId: string;
   clientId: string;
   supSections: string[];
@@ -83,7 +90,7 @@ export type Choices = { suppliers: { id: string }[]; clients: { id: string }[]; 
 
 /** A new login's form: Staff, nothing ticked, Only own workers and Sees own workers' pay on. */
 export function newForm(): UserForm {
-  return { role: 'staff', fullName: '', phone: '', username: '', password: '', perms: [], supplierId: '', clientId: '', supSections: [], hourPerms: [], ownOnly: true, showPay: true, commission: '', commissionDay: '', templateId: '' };
+  return { role: 'staff', fullName: '', phone: '', username: '', password: '', perms: [], edits: [...ALL_EDITS], supplierId: '', clientId: '', supSections: [], hourPerms: [], ownOnly: true, showPay: true, commission: '', commissionDay: '', templateId: '' };
 }
 
 /** A saved login's form (the owner's row edits only the name, phone and password). */
@@ -92,6 +99,7 @@ export function formOf(u: UserRow, ch: Choices): UserForm {
   const perms = role === 'supplier' || role === 'client' ? [] : u.permissions === '*' ? PERMISSION_SECTIONS.slice() : Array.isArray(u.permissions) ? u.permissions.slice() : [];
   return {
     role, fullName: u.fullName || '', phone: u.phone || '', username: u.username || '', password: '', perms,
+    edits: Array.isArray(u.editPerms) ? u.editPerms.slice() : [...ALL_EDITS],
     supplierId: role === 'supplier' ? (u.supplierId || ch.suppliers[0]?.id || '') : (ch.suppliers[0]?.id || ''),
     clientId: role === 'client' ? (u.clientId || ch.clients[0]?.id || '') : (ch.clients[0]?.id || ''),
     supSections: Array.isArray(u.supplierSections) ? u.supplierSections.slice() : SUPPLIER_SECTIONS.slice(),
