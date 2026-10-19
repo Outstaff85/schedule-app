@@ -81,6 +81,11 @@ export interface PunchState {
   /** the location pill: its colour and its text (an English key and its values, translated when drawn) */
   loc: { cls: 'loading' | 'ok' | 'warn'; t: string; p?: Record<string, string | number> };
   locOk: boolean;
+  /** why GPS gives nothing (docs/punch.md → GPS off or blocked): the app has no permission
+   * ('denied'), the phone's location is off ('off'), the browser has no GPS ('none'); null when it works */
+  gpsBlock: 'denied' | 'off' | 'none' | null;
+  /** the "Turn on GPS" sheet is open */
+  gpsHelp: boolean;
   /** the button's face after a punch (the check, ~1.6 s) */
   done: 'in' | 'out' | null;
   result: { type: 'in' | 'out'; text: string } | null;
@@ -96,7 +101,7 @@ export interface PunchState {
 }
 let st: PunchState = {
   screen: 'none', invalid: null, picker: null, worker: null,
-  loc: { cls: 'loading', t: 'Checking location...' }, locOk: false,
+  loc: { cls: 'loading', t: 'Checking location...' }, locOk: false, gpsBlock: null, gpsHelp: false,
   done: null, result: null, schedChanged: false, queued: 0, wx: null, tileHours: '—', requests: null, colleagues: [], rev: 0,
 };
 const subs = new Set<() => void>();
@@ -366,12 +371,31 @@ function analyseGps(pos: GeolocationPosition) {
   _lastGpsPos = { lat, lng, ts };
   return { lat, lng, acc, suspicious: warnings.length > 0, warnings };
 }
+// GPS off or blocked (docs/punch.md → GPS off or blocked): the page checks by itself — the
+// browser's permission for the page (Permissions API, when there is one: a refusal is known
+// at once, and a change made in the settings re-reads the location by itself) and the reply
+// of a reading (denied / position unavailable). The punch button then says "Turn on GPS",
+// and a tap opens the sheet with the steps and its button.
+let _permWatch = false;
+async function gpsPermission(): Promise<PermissionState | null> {
+  try {
+    const p = await navigator.permissions?.query({ name: 'geolocation' as PermissionName });
+    if (!p) return null;
+    if (!_permWatch) { _permWatch = true; p.onchange = () => { if (st.worker && st.screen === 'punch') getLocation(); }; }
+    return p.state;
+  } catch { return null; }
+}
+const blocked = (gpsBlock: 'denied' | 'off' | 'none') => set({
+  gpsBlock, locOk: false,
+  loc: { cls: 'warn', t: gpsBlock === 'denied' ? 'GPS is blocked for this app' : gpsBlock === 'off' ? 'GPS is off on this phone' : 'GPS not available' },
+});
 /** One GPS reading → the location pill and whether a punch is allowed (locOk). */
-export function getLocation() {
+export async function getLocation() {
   set({ loc: { cls: 'loading', t: 'Checking GPS...' }, locOk: false });
-  if (!navigator.geolocation) { set({ loc: { cls: 'warn', t: 'GPS not available' } }); return; }
   // A site without coordinates: the check is skipped and the punch allowed.
-  if (SITE.lat == null || SITE.lng == null) { set({ loc: { cls: 'ok', t: 'Location check skipped' }, locOk: true }); return; }
+  if (SITE.lat == null || SITE.lng == null) { set({ loc: { cls: 'ok', t: 'Location check skipped' }, locOk: true, gpsBlock: null, gpsHelp: false }); return; }
+  if (!navigator.geolocation) { blocked('none'); return; }
+  if ((await gpsPermission()) === 'denied') { blocked('denied'); return; }
   const t0 = Date.now();
   navigator.geolocation.getCurrentPosition(pos => {
     const elapsed = Date.now() - t0, a = analyseGps(pos);
@@ -379,14 +403,25 @@ export function getLocation() {
     const tooFast = elapsed < GPS_REQUEST_MS;
     const distOk = dist <= SITE.radius, accOk = a.acc > 0 && a.acc <= GPS_MAX_ACCURACY;
     lastGps = { lat: a.lat, lng: a.lng, accuracy: a.acc, dist, suspicious: a.suspicious || tooFast, warnings: tooFast ? ['Response in ' + elapsed + 'ms (too fast)'].concat(a.warnings) : a.warnings, elapsed, at: Date.now() };
+    set({ gpsBlock: null, gpsHelp: false });
     if (!distOk) set({ locOk: false, loc: { cls: 'warn', t: '{0}m from site (max {1}m)', p: { 0: dist, 1: SITE.radius } } });
     else if (!accOk) set({ locOk: false, loc: { cls: 'warn', t: 'Weak GPS (±{0}m) — go outside', p: { 0: Math.round(a.acc) } } });
     else if (a.suspicious || tooFast) set({ locOk: false, loc: { cls: 'warn', t: 'Suspicious GPS: {0}', p: { 0: tooFast ? tr('instant response') : a.warnings[0] } } });
     else set({ locOk: true, loc: { cls: 'ok', t: 'On site · {0}m · ±{1}m', p: { 0: dist, 1: Math.round(a.acc) } } });
   }, err => {
-    set({ locOk: false, loc: { cls: 'warn', t: err.code === 1 ? 'GPS denied — enable in settings' : 'GPS error — go outside' } });
+    // 1: no permission (or, on an iPhone, Location Services off); 2: the phone's location is off; 3: no fix in time
+    if (err.code === 1) blocked('denied');
+    else if (err.code === 2) blocked('off');
+    else set({ gpsBlock: null, locOk: false, loc: { cls: 'warn', t: 'GPS error — go outside' } });
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
+/** The sheet's "Turn on GPS": asks for the location again, from the tap — the browser then asks
+ * for the permission when it may still ask, and Chrome on Android offers to turn the phone's
+ * location on; a page can't switch GPS on itself, so a refusal kept by the browser is undone in
+ * the settings (the sheet's steps), after which the page sees it by itself. */
+export function enableGps() { void getLocation(); }
+export const openGpsHelp = () => set({ gpsHelp: true });
+export const closeGpsHelp = () => set({ gpsHelp: false });
 
 // ── A punch ──
 /** IN or OUT: the opposite of the worker's last punch across all days (an overnight shift closes correctly). */
@@ -515,7 +550,8 @@ export function locText(l: PunchState['loc']): string {
     case 'Weak GPS (±{0}m) — go outside': return tr('Weak GPS (±{0}m) — go outside', p);
     case 'Suspicious GPS: {0}': return tr('Suspicious GPS: {0}', p);
     case 'On site · {0}m · ±{1}m': return tr('On site · {0}m · ±{1}m', p);
-    case 'GPS denied — enable in settings': return tr('GPS denied — enable in settings');
+    case 'GPS is blocked for this app': return tr('GPS is blocked for this app');
+    case 'GPS is off on this phone': return tr('GPS is off on this phone');
     case 'GPS error — go outside': return tr('GPS error — go outside');
     default: return l.t;
   }
