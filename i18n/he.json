@@ -1340,7 +1340,17 @@
   "GPS is off on this phone": "ה-GPS כבוי בטלפון",
   "Settings → Privacy & Security → Location Services → on.": "הגדרות ← פרטיות ואבטחה ← שירותי מיקום ← הפעלה.",
   "Swipe down from the top of the screen and tap Location.": "החליקו מטה מראש המסך והקישו על מיקום.",
-  "In Safari tap aA → Website Settings → Location → Allow.": "ב-Safari הקישו על aA ← הגדרות אתר ← מיקום ← אפשר.",
-  "Tap the lock next to the address → Permissions → Location → Allow.": "הקישו על המנעול ליד הכתובת ← הרשאות ← מיקום ← אפשר.",
-  "The browser blocked location for this app.": "הדפדפן חסם את המיקום עבור האפליקציה הזו."
+  "Settings → Apps → Safari → Location → Ask or Allow.": "הגדרות ← אפליקציות ← Safari ← מיקום ← שאל או אפשר.",
+  "Hold the app icon → App info → Permissions → Location → Allow.": "לחצו לחיצה ארוכה על סמל האפליקציה ← פרטי אפליקציה ← הרשאות ← מיקום ← אפשר.",
+  "Tap the icon left of the address → Permissions → Location → Allow.": "הקישו על הסמל משמאל לכתובת ← הרשאות ← מיקום ← אפשר.",
+  "Come back here: the app sees it by itself.": "חזרו לכאן: האפליקציה תזהה זאת בעצמה.",
+  "Your location is checked only when you punch, to confirm you are at your site.": "המיקום נבדק רק בעת החתמת שעון, כדי לוודא שאתם באתר העבודה.",
+  "Location is not allowed for this app.": "הגישה למיקום אינה מאושרת לאפליקציה זו.",
+  "Allow GPS": "אפשר GPS",
+  "Ask again": "בקש שוב",
+  "Try again": "נסה שוב",
+  "When the phone asks, tap Allow.": "כשהטלפון ישאל, הקישו על אפשר.",
+  "Tap Ask again and choose Allow. If the phone does not ask:": "הקישו על בקש שוב ובחרו אפשר. אם הטלפון לא שואל:",
+  "Tap Ask again and choose Allow. Or:": "הקישו על בקש שוב ובחרו אפשר. או:",
+  "Allow GPS to punch": "אפשרו GPS כדי להחתים שעון"
 }

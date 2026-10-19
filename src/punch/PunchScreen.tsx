@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { tr, useI18n } from '@/lib/i18n';
 import { LanguageButton } from '@/components/shared/language';
 import { ThemeButton } from '@/components/shared/theme-switch';
-import { closeGpsHelp, doPunch, enableGps, loadWeather, locText, nextType, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
+import { closeGpsHelp, doPunch, enableGps, reopenForGps, loadWeather, locText, nextType, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
 import { greetingHtml, partOfDay } from '@/lib/greeting';
 import { nextShiftText, refreshTileHours } from './figures';
 import { MARK_SVG } from './mark';
@@ -73,23 +73,44 @@ export function PunchScreen({ hidden }: { hidden: boolean }) {
   );
 }
 
-// GPS off or blocked (docs/punch.md): the short hint, opened only when the browser refused the
-// tap's request (a "Block" it keeps, or the location left off): what to do on this phone in a
-// line, and "Turn on GPS" to ask again. It closes by itself once a reading comes.
+// GPS (docs/punch.md → GPS off or blocked): on the first entry the window says GPS is needed and
+// its button asks; after a refusal the same window gives the steps for this phone (iPhone or
+// Android, the browser or the installed app) and the way to ask again where there is one — on an
+// iPhone Safari asks anew when the page opens again, on Android a question only closed is asked
+// again at once, a "Don't allow" is undone in the settings. It closes by itself once a reading comes.
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 function GpsSheet() {
   const s = usePunch();
-  const ios = isIos();
-  const hint = s.gpsBlock === 'none' ? tr('Open the link in Chrome (Android) or Safari (iPhone).')
-    : s.gpsBlock === 'off' ? (ios ? tr('Settings → Privacy & Security → Location Services → on.') : tr('Swipe down from the top of the screen and tap Location.'))
-    : (ios ? tr('In Safari tap aA → Website Settings → Location → Allow.') : tr('Tap the lock next to the address → Permissions → Location → Allow.'));
-  const why = s.gpsBlock === 'denied' ? tr('The browser blocked location for this app.') : s.gpsBlock === 'off' ? tr('Location (GPS) is turned off on this phone.') : tr('This browser cannot give your location.');
+  const ios = isIos(), loading = s.loc.cls === 'loading', b = s.gpsBlock;
+  const steps: string[] = b === 'none' ? [tr('Open the link in Chrome (Android) or Safari (iPhone).')]
+    : b === 'off' ? (ios ? [tr('Settings → Privacy & Security → Location Services → on.')] : [tr('Swipe down from the top of the screen and tap Location.')])
+    : b === 'denied' ? (ios ? [tr('Settings → Privacy & Security → Location Services → on.'), tr('Settings → Apps → Safari → Location → Ask or Allow.')]
+      : [isInstalled() ? tr('Hold the app icon → App info → Permissions → Location → Allow.') : tr('Tap the icon left of the address → Permissions → Location → Allow.'),
+        tr('Come back here: the app sees it by itself.')])
+    : [];
+  const title = b === 'ask' ? tr('GPS is needed to punch') : tr('Turn on GPS to punch');
+  const why = b === 'ask' ? tr('Your location is checked only when you punch, to confirm you are at your site.')
+    : b === 'denied' ? tr('Location is not allowed for this app.') : b === 'off' ? tr('Location (GPS) is turned off on this phone.') : tr('This browser cannot give your location.');
+  const btn = (label: string, onClick: () => void, testid: string) => (
+    <Button variant="primary" data-testid={testid} disabled={loading} onClick={onClick}>
+      <IconCurrentLocation className="size-[18px]" />{loading ? tr('Checking GPS...') : label}
+    </Button>
+  );
+  const footer = b === 'ask' ? btn(tr('Allow GPS'), enableGps, 'gps-enable')
+    : b === 'denied' && ios ? btn(tr('Ask again'), reopenForGps, 'gps-reopen')
+    : b === 'denied' ? btn(s.gpsCanAsk ? tr('Ask again') : tr('Try again'), enableGps, 'gps-enable')
+    : b === 'off' ? btn(tr('Turn on GPS'), enableGps, 'gps-enable')
+    : null;
   return (
-    <Window open={s.gpsHelp && !!s.gpsBlock} onOpenChange={o => { if (!o) closeGpsHelp(); }} title={tr('Turn on GPS to punch')} description={why}
-      footer={s.gpsBlock !== 'none' && <Button variant="primary" data-testid="gps-enable" disabled={s.loc.cls === 'loading'} onClick={enableGps}>
-        <IconCurrentLocation className="size-[18px]" />{s.loc.cls === 'loading' ? tr('Checking GPS...') : tr('Turn on GPS')}
-      </Button>}>
-      <p className="px-4 pb-3 text-sm sm:px-0" data-testid="gps-steps">{hint}</p>
+    <Window open={s.gpsHelp && !!b} onOpenChange={o => { if (!o) closeGpsHelp(); }} title={title} description={why} footer={footer}>
+      <div className="px-4 pb-3 text-sm sm:px-0" data-testid="gps-steps" data-kind={b || ''}>
+        {b === 'ask' ? <p>{tr('When the phone asks, tap Allow.')}</p>
+          : <>
+            {b === 'denied' && (ios || s.gpsCanAsk) && <p className="mb-2 text-muted-foreground">{ios ? tr('Tap Ask again and choose Allow. If the phone does not ask:') : tr('Tap Ask again and choose Allow. Or:')}</p>}
+            {steps.length > 1 ? <ol className="list-decimal space-y-1 ps-5">{steps.map(t => <li key={t}>{t}</li>)}</ol> : <p>{steps[0]}</p>}
+          </>}
+      </div>
     </Window>
   );
 }
@@ -169,7 +190,7 @@ function PunchButton() {
         onKeyUp={e => { if (e.key === 'Enter' || e.key === ' ') end(); }}
       >
         {s.done ? <svg className="pp-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-          : gps ? <><span className="btn-icon"><IconCurrentLocation className="ti" /></span><span className="btn-label">{tr('Turn on GPS')}</span><span className="btn-sub">{tr('GPS is needed to punch')}</span></>
+          : gps ? <><span className="btn-icon"><IconCurrentLocation className="ti" /></span><span className="btn-label">{s.gpsBlock === 'ask' ? tr('Allow GPS') : tr('Turn on GPS')}</span><span className="btn-sub">{tr('GPS is needed to punch')}</span></>
           : !s.locOk ? <><span className="btn-icon"><IconMapPinOff className="ti" /></span><span className="btn-label">{tr('Not on site')}</span><span className="btn-sub">{tr('Go to your site to punch')}</span></>
           : <><span className="btn-label"><i className="pp-dot" />{type === 'out' ? tr('Punch out') : tr('Punch in')}</span><span className="btn-sub">{tr('hold to punch')}</span></>}
       </button>
