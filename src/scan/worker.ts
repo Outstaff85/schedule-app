@@ -3,12 +3,12 @@
 // frame on the page never wait. The site's own copy of the scanner lab's
 // scan-worker.js; ONNX Runtime comes from /scan/<dir>/ (1.22 for the CPU, 1.30 for the GPU).
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { BASE, S, detectRGBA, fetchModel, openSession, upright, warpRGBA, type Pt } from './core';
+import { BASE, S, detectRGBA, fetchModel, kindModelOn, openSession, upright, warpRGBA, withKind, type Pt } from './core';
 
 declare const ort: any;
 declare function importScripts(...urls: string[]): void;
 
-let live: any = null, face: any = null, loaded = '';
+let live: any = null, face: any = null, kind: any = null, loaded = '';
 const say = (type: string, extra: Record<string, unknown>, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage({ type, ...extra }, transfer);
 
 self.onmessage = async ({ data: m }: MessageEvent) => {
@@ -20,6 +20,8 @@ self.onmessage = async ({ data: m }: MessageEvent) => {
       const a = await openSession(m.live, m.want, onStatus, onLog);
       live = a.sess;
       if (m.face) face = await ort.InferenceSession.create(await fetchModel('yunet.onnx', () => {}), { executionProviders: ['wasm'] });
+      // the page-kind model (S7) next to the face finder, only when the site's version has one
+      if (m.face && await kindModelOn()) { try { kind = await ort.InferenceSession.create(await fetchModel('kind.onnx', () => {}), { executionProviders: ['wasm'] }); } catch { kind = null; } }
       say('reply', { id: m.id, ep: a.ep });
     } else if (m.type === 'detect') {
       const t = performance.now();
@@ -31,7 +33,7 @@ self.onmessage = async ({ data: m }: MessageEvent) => {
       const res = await detectRGBA(live, rgba);
       say('reply', { id: m.id, res, ms: performance.now() - t });
     } else if (m.type === 'warp') {
-      const out = await upright(m.upright ? face : null, warpRGBA(new Uint8ClampedArray(m.rgba), m.w, m.h, m.pts as Pt[]));
+      const out = await withKind(m.upright ? kind : null, await upright(m.upright ? face : null, warpRGBA(new Uint8ClampedArray(m.rgba), m.w, m.h, m.pts as Pt[])));
       say('reply', { id: m.id, out: { ...out, data: out.data.buffer } }, [out.data.buffer as ArrayBuffer]);
     }
   } catch (e) { say('reply', { id: m.id, error: String((e as Error)?.message || e) }); }

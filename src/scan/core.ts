@@ -16,7 +16,8 @@ const CACHE = 'scan-models';
 export type Pt = [number, number];
 export type Detection = { pts: (Pt | null)[]; conf: number };
 export type Status = (text: string, frac?: number) => void;
-export type Warped = { data: Uint8ClampedArray; width: number; height: number; turn: number; turnError?: string };
+export type KindRead = { kind?: string; kindConf?: number; kindTurn?: number; kindTurnConf?: number; kindSure?: boolean };
+export type Warped = { data: Uint8ClampedArray; width: number; height: number; turn: number; turnError?: string } & KindRead;
 
 // A model kept in the browser's cache is used only while it is still the file on
 // the server (same ETag; one small HEAD request) — a changed model is downloaded
@@ -212,4 +213,36 @@ export async function upright(faceSess: any, out: { data: Uint8ClampedArray; wid
   } catch (e) {
     return { ...out, turn: -2, turnError: String((e as Error)?.message || e) };
   }
+}
+
+// The firm's page-kind model on the phone (docs/scan-plan.md → S7), once the site's model
+// version has one (/scan/models.json says so; /scan/kind.onnx): input "img" [1, 3, 256,
+// 256] RGB 0..1, the page stretched to the square; outputs "kind" [1, 6] and "turn" [1, 4]
+// (the clockwise turn the page needs). The same rule as the server's (functions/docfind.py
+// with_kind — duplicated on purpose): a page with no face is set upright when the model is
+// sure of the turn; kindSure says no Haiku is needed.
+export const KINDS = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
+const KIND_SURE = 0.9;
+export async function kindModelOn(): Promise<boolean> {
+  try { const r = await fetch(BASE + 'models.json', { cache: 'no-cache' }); return r.ok && !!(await r.json()).kind; } catch { return false; }
+}
+export async function withKind(sess: any, out: Warped): Promise<Warped> {
+  if (!sess) return out;
+  try {
+    const c = new OffscreenCanvas(out.width, out.height);
+    c.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(out.data.buffer as ArrayBuffer), out.width, out.height), 0, 0);
+    const sq = new OffscreenCanvas(S, S), g = sq.getContext('2d', { willReadFrequently: true })!;
+    g.drawImage(c, 0, 0, S, S);
+    const d = g.getImageData(0, 0, S, S).data, n = S * S, f = new Float32Array(3 * n);
+    for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+    const r = await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, S, S]) });
+    const kp = Array.from(r.kind.data as Float32Array), tp = Array.from(r.turn.data as Float32Array);
+    const k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
+    let res: Warped = { ...out, kind: KINDS[k], kindConf: kp[k], kindTurn: 90 * t, kindTurnConf: tp[t] };
+    if (out.turn < 0 && tp[t] >= KIND_SURE) {
+      const tc = turned(c, t), td = tc.getContext('2d')!.getImageData(0, 0, tc.width, tc.height);
+      res = { ...res, data: td.data, width: tc.width, height: tc.height, turn: t, kindTurn: 0 };
+    }
+    return { ...res, kindSure: kp[k] >= KIND_SURE && (res.turn >= 0 || tp[t] >= KIND_SURE) };
+  } catch { return out; } // a failing kind model never spoils the shot
 }

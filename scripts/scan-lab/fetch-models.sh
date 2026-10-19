@@ -38,6 +38,13 @@ get yunet640.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/ma
 # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.
 [ -s "$CACHE/sa24_w16.onnx" ] || python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/sa24_w16.onnx"
 cp "$CACHE/lite.onnx" "$CACHE/sa24_w16.onnx" "$OUT/" && cp "$CACHE/yunet_any.onnx" "$OUT/yunet.onnx"
+# The page-kind model (docs/scan-plan.md → S7): only once this version has one
+# (kind-lite.onnx in Storage); models.json tells the lab whether it is there.
+KIND=false
+if { [ -s "$CACHE/kind-lite.onnx" ] || { [ -n "$STORE" ] && python "$HERE/model_store.py" get kind-lite.onnx "$CACHE/kind-lite.onnx"; }; }; then
+  cp "$CACHE/kind-lite.onnx" "$OUT/kind.onnx"; KIND=true
+fi
+printf '{"version":"%s","kind":%s}\n' "$SCAN_MODELS_VERSION" "$KIND" > "$OUT/models.json"
 # The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).

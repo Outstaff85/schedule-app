@@ -308,6 +308,30 @@ async function runOnce(src, w, h, el) {
 // Freeze the frame, take the exact corners from the accurate model, straighten.
 // The shot is shown at once, straightened by the live frame; the accurate model
 // then refines the corners in the background and replaces it if they moved.
+// The page-kind model (docs/scan-plan.md → S7), when this lab's model version has one
+// (/scan-lab/models.json): its answer on every shot — the kind, how sure, and the turn the
+// page needs — so a trained version is tried here before the site gets it.
+let kindSess = null;
+const KIND_NAMES = { id_front: 'ID card', id_back: 'ID card back', sefach: 'Appendix (ספח)', passport: 'Passport', contract: 'Contract', other: 'Other' };
+(async () => {
+  try {
+    const r = await fetch('/scan-lab/models.json', { cache: 'no-cache' });
+    if (r.ok && (await r.json()).kind) { kindSess = await ort.InferenceSession.create(await fetchModel('kind.onnx', () => {}), { executionProviders: ['wasm'] }); log('Page-kind model loaded'); }
+  } catch (e) { log('Page-kind model: ' + (e && e.message || e)); }
+})();
+async function kindNote(canvas) {
+  if (!kindSess || !canvas) return '';
+  try {
+    const sq = document.createElement('canvas'); sq.width = 256; sq.height = 256;
+    const g = sq.getContext('2d', { willReadFrequently: true }); g.drawImage(canvas, 0, 0, 256, 256);
+    const d = g.getImageData(0, 0, 256, 256).data, n = 256 * 256, f = new Float32Array(3 * n);
+    for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+    const t0 = performance.now(), r = await kindSess.run({ [kindSess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, 256, 256]) });
+    const kp = Array.from(r.kind.data), tp = Array.from(r.turn.data), k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
+    const names = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
+    return '; kind: ' + KIND_NAMES[names[k]] + ' ' + Math.round(kp[k] * 100) + '%, needs ' + t * 90 + '° (' + Math.round(tp[t] * 100) + '%), ' + Math.round(performance.now() - t0) + ' ms';
+  } catch (e) { return '; the page-kind model failed: ' + (e && e.message || e); }
+}
 let shotId = 0, lastTurn = -1, pageMore = false;  // pageMore: a later photo of the same page — its pages join the list
 const turnNote = () => lastTurn === -2 ? '; the face finder failed (see the log), not turned' : lastTurn > 0 ? '; turned ' + lastTurn * 90 + '° by the face' : lastTurn === 0 ? '; upright by the face' : '; no face to set it upright';
 async function showShot() {
@@ -332,6 +356,7 @@ async function takeShot() {
     if (id !== shotId) return false;
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+    put.canvas = oc;
     const url = oc.toDataURL('image/jpeg', 0.9);
     if (!pageMore) $('shotImg').src = url;
     else { if (!put.el) { put.el = new Image(); put.el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(put.el); } put.el.src = url; }
@@ -340,9 +365,10 @@ async function takeShot() {
   const livePts = lastRes.pts;
   if (!(await put(livePts))) return;
   const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
+  const kn = await kindNote(put.canvas);
   $('shot').hidden = false; $('shot').scrollIntoView({ behavior: 'smooth' });
   const refine = engine.hasCap();
-  $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + turnNote() + (refine ? ' — refining the corners…' : ' — Retake for another');
+  $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + turnNote() + kn + (refine ? ' — refining the corners…' : ' — Retake for another');
   if (!refine) return;
   while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
   const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });
@@ -356,7 +382,7 @@ async function takeShot() {
     first = exact.pts; target = { pts: exact.pts, ok: true }; shown = exact.pts.map(p => p.slice());
     if (!isVideo) drawPts(shown, true, img);
   }
-  const note = 'Shown in ' + ms + ' ms; ' + (!confirmed ? 'the accurate model did not confirm the corners' : moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms' + turnNote();
+  const note = 'Shown in ' + ms + ' ms; ' + (!confirmed ? 'the accurate model did not confirm the corners' : moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms' + turnNote() + kn;
   $('hint').textContent = note + ' — looking for more documents…';
   const s0 = performance.now(); $('shot2note').textContent = 'Looking for more documents on this photo…';
   // More documents on the same photo (a passport, its ספח, a card…): up to 4 in all.

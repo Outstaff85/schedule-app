@@ -74,6 +74,7 @@ def check(example):
             return None, "the image is not a small JPEG"
     kind_model = example.get("kindModel") if example.get("kindModel") in KINDS else None
     kind_fixed = example.get("kindFixed") if example.get("kindFixed") in KINDS else kind_model
+    kind_by = "model" if example.get("kindBy") == "model" else "haiku"  # who gave kindModel (S7)
     page_image = None
     if kind_model and kind_fixed != kind_model:
         page_image = _jpeg(example.get("pageImage"))
@@ -82,7 +83,7 @@ def check(example):
     elif kind_model and keep_right:  # a sampled right page also teaches the kind model; its copy is optional
         page_image = _jpeg(example.get("pageImage"))
     return {"image": image, "cornersModel": model, "cornersFixed": fixed, "source": source, "model": version,
-            "moved": shift, "kindModel": kind_model, "kindFixed": kind_fixed, "pageImage": page_image, "right": keep_right}, None
+            "moved": shift, "kindModel": kind_model, "kindFixed": kind_fixed, "kindBy": kind_by, "pageImage": page_image, "right": keep_right}, None
 
 
 def kept(ex):
@@ -113,7 +114,7 @@ def record(ex, tenant_id, now, path, page_path=None):
     path: the corners' copy (None when only the kind was changed); page_path: the page's."""
     return {"cornersModel": ex["cornersModel"], "cornersFixed": ex["cornersFixed"], "moved": ex["moved"],
             "source": ex["source"], "model": ex["model"], "tenantId": tenant_id or "", "image": path,
-            "kindModel": ex["kindModel"], "kindFixed": ex["kindFixed"], "pageImage": page_path, "right": ex["right"],
+            "kindModel": ex["kindModel"], "kindFixed": ex["kindFixed"], "kindBy": ex.get("kindBy", "haiku"), "pageImage": page_path, "right": ex["right"],
             "createdAt": now, "deleteAt": now + datetime.timedelta(days=KEEP_DAYS)}
 
 

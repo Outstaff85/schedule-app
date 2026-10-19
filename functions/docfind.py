@@ -369,7 +369,45 @@ def face_turn(sess, img):
 
 # ---------- the whole photo ----------
 
-def find_documents(img, model, face=None, hint=None):
+# ---------- the page kind (docs/scan-plan.md → S7) ----------
+# The firm's own page-kind model, once one is trained (models/scan/<version>/kind.onnx):
+# input "img" [1, 3, 256, 256], RGB 0..1, the page stretched to the square (as the
+# training copies are); outputs "kind" [1, 6] (KINDS, probabilities) and "turn" [1, 4]
+# (the clockwise turn the page needs: 0, 90, 180, 270°). A page it is sure of
+# (KIND_SURE on both) needs no Haiku.
+KINDS = ("id_front", "id_back", "sefach", "passport", "contract", "other")
+KS = 256
+KIND_SURE = 0.9
+
+
+def kind_of(sess, img):
+    """The page's kind and the turn it needs, with how sure the model is."""
+    x = cv2.cvtColor(cv2.resize(img, (KS, KS), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB).astype(np.float32) / 255
+    out = dict(zip([o.name for o in sess.get_outputs()], sess.run(None, {sess.get_inputs()[0].name: x.transpose(2, 0, 1)[None]})))
+    kp, tp = np.asarray(out["kind"], np.float64).reshape(-1), np.asarray(out["turn"], np.float64).reshape(-1)
+    k, t = int(kp.argmax()), int(tp.argmax())
+    return {"kind": KINDS[k], "kindConf": round(float(kp[k]), 4), "kindTurn": 90 * t, "kindTurnConf": round(float(tp[t]), 4)}
+
+
+def with_kind(sess, page, turn):
+    """(page, turn, kind fields): the kind read; a page with no face (turn < 0) is set
+    upright by the kind model when it is sure of the turn (turn then ≥ 0). Nothing changes when there is no model or
+    it fails."""
+    if sess is None:
+        return page, turn, {}
+    try:
+        kd = kind_of(sess, page)
+    except Exception:
+        return page, turn, {}
+    if turn < 0 and kd["kindTurnConf"] >= KIND_SURE:  # sure of the turn (0 too: already upright)
+        turn = kd["kindTurn"] // 90
+        page = turned(page, turn)
+        kd["kindTurn"] = 0
+    kd["kindSure"] = kd["kindConf"] >= KIND_SURE and (turn >= 0 or kd["kindTurnConf"] >= KIND_SURE)
+    return page, turn, kd
+
+
+def find_documents(img, model, face=None, hint=None, kind=None):
     """The pages on a photo: [{"quad", "box", "source", "turn", "image"}], in order.
 
     img: BGR; model: the corner model's session, or a list (accurate, light); face: the face finder's (None: no turn);
@@ -415,5 +453,6 @@ def find_documents(img, model, face=None, hint=None):
                     turn = -2
                 if turn > 0:
                     page = turned(page, turn)
-            pages.append({"quad": q.tolist(), "box": box, "source": src, "turn": turn, "image": page})
+            page, turn, kd = with_kind(kind, page, turn)
+            pages.append({"quad": q.tolist(), "box": box, "source": src, "turn": turn, "image": page, **kd})
     return pages
