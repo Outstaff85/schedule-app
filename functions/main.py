@@ -27,6 +27,7 @@ from bidi.algorithm import get_display
 import firebase_admin
 from firebase_admin import auth as fb_auth
 from firebase_functions import https_fn, options
+from firebase_functions.params import SecretParam
 
 import datastore
 import docfind
@@ -769,6 +770,11 @@ def _hint_corners(value):
     return np.clip(q, 0, 1)
 
 
+# The server's Hugging Face token, in Secret Manager (docs/hf-plan.md → H1): it may only write to
+# the private bucket; scan_feedback gets it as the environment variable datastore.py reads.
+HF_DATA_TOKEN = SecretParam("HF_DATA_TOKEN")
+
+
 # How the document type model is used (Admin → Scanner, docs/hf-plan.md → The way a model replaces
 # the AI): "off" — not run; "shadow" — run beside Haiku, its answer only recorded (doctypeShadow),
 # never trusted; "mixed" — a page it is sure of needs no Haiku. scanSettings/current.doctypeMode,
@@ -928,6 +934,7 @@ def _scan_document(payload, claims, db, stats_ref, storage):
     cpu=1,
     concurrency=20,
     timeout_sec=60,
+    secrets=[HF_DATA_TOKEN],  # write-only to the private training-data bucket (datastore.py)
 )
 def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     """The scanner's training examples (feedback.py; docs/scan-plan.md → S6).
@@ -993,9 +1000,11 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
                 doctypes[ex["doctypeFixed"]] = doctypes.get(ex["doctypeFixed"], 0) + 1
             stored = dict(zip([f[0].split("/", 1)[0] for f in files], datastore.put(files, fb)))
             rec = feedback.record(ex, claims.get("tenantId"), now, stored.get("edges"), stored.get("doctype"))
-            if datastore.on_hf():  # the record goes beside its copies; nothing about the example stays in Firebase
+            if all(not str(p or "").startswith("training/") for p in (rec.get("image"), rec.get("pageImage"))) and datastore.on_hf():
+                # the copies went to the bucket: the record goes beside them; nothing about the example stays in Firebase
                 rec.pop("deleteAt", None)
-                datastore.put([(f"records/{now:%Y-%m}/{ref.id}.json", datastore.as_json({"id": ref.id, **rec}))])
+                if datastore.put([(f"records/{now:%Y-%m}/{ref.id}.json", datastore.as_json({"id": ref.id, **rec}))], fb)[0].startswith("training/"):
+                    ref.set(rec)  # the bucket refused the record: it stays in Firestore with its copies' paths
             else:
                 ref.set(rec)
             kept += 1

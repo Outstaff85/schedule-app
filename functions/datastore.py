@@ -37,9 +37,14 @@ def put(files, fb_bucket=None):
     if not files:
         return []
     if on_hf():
-        from huggingface_hub import HfApi
-        HfApi(token=token()).batch_bucket_files(BUCKET, add=[(data, path) for path, data in files])
-        return [path for path, _ in files]
+        try:
+            from huggingface_hub import HfApi
+            HfApi(token=token()).batch_bucket_files(BUCKET, add=[(data, path) for path, data in files])
+            return [path for path, _ in files]
+        except Exception as e:  # the bucket out of reach: kept in Firebase instead of lost (moved later)
+            print(f"training data: the Hugging Face bucket refused ({type(e).__name__}: {e}); kept in Firebase")
+            if fb_bucket is None:
+                raise
     b = fb_bucket()
     out = []
     for path, data in files:
