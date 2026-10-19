@@ -46,7 +46,7 @@ Unchanged throughout: the worker punch page (`/punch`), the `supplier` and `hour
 
 - Global permission templates, linked to their logins, edited only by the super-admin; Put them on templates; Full access among the defaults (PR #293).
 - The edit ticks (Edit shifts, Edit workers, Edit / delete punches) enforced by the rules, and Who gets what (PR #294).
-- The logins' entry points, checked by the browser tests: the user window in Admin → Users; New client login in the client window and New portal login in the supplier window (the role, the client / supplier and the role's template set; the login listed back in that window); Add workers for an HR's or a supplier's own workers. A worker has no login: its access is the punch link (the worker window's Access section).
+- **One place for logins** (owner, 2026-10-19): every login is made and changed only in Admin → Users (the user window, its template); the client and supplier windows have no login section any more. Add workers there gives an HR or a supplier its own workers. A worker has no login: its access is the punch link (the worker window's Access section).
 
 ## Not planned now
 

@@ -425,8 +425,6 @@ export type ManagerBridge = WorkerBridge & {
   deleteFromEditor(kind: 'client' | 'supplier', id: string): void;
   /** the map picker over the client window (`openMapPicker`); `onPick` gets the place chosen */
   pickPlace(start: { lat: number | null; lng: number | null; addr: string; radius: number }, onPick: (p: { lat: number; lng: number; radius: number; mapsUrl: string }) => void): void;
-  /** "New client login" / "New portal login": the user form with the role and the client / supplier set */
-  newLogin(role: 'client' | 'supplier', id: string): void;
   /** the client of a manual punch and the workers it offers (assigned to this client, else every active one) */
   punchInfo(clientId: string): { client: { id: string; name: string }; workers: { id: string; name: string }[] } | null;
   /** adds the punch to the local log and sends it (`gsSavePunch`) */
@@ -752,18 +750,7 @@ export type SupplierRecord = {
   [k: string]: unknown;
 };
 
-/** A client / supplier login from the owner's users cache, with the ticks its editor shows. */
-export type LoginRow = { id: string; name: string; username: string; hourPerms?: string[]; supplierSections?: string[]; showPay?: boolean; templateId?: string | null };
-export type LoginsInfo = {
-  logins: LoginRow[];
-  /** the owner / super-admin: New login */
-  canEdit: boolean;
-  /** `HOUR_PERM_LABELS`, `HOUR_DEFAULT` */
-  hourLabels: Record<string, string>;
-  hourDefault: string[];
-};
-
-export type ClientInfo = LoginsInfo & {
+export type ClientInfo = {
   /** active workers at the client, this month's hours and billed sum there (0 for a new one) */
   workers: number;
   monthHours: number;
@@ -777,7 +764,7 @@ export type ClientInfo = LoginsInfo & {
   shabbatMult: number;
 };
 
-export type SupplierInfo = LoginsInfo & {
+export type SupplierInfo = {
   workers: { id: string; name: string; active: boolean; hours: number }[];
   /** this month's commission payable (`supplierMonthPayable`) */
   payable: number;

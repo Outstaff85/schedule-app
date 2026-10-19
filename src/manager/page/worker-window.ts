@@ -12,8 +12,6 @@ import { API_URL, gsDeleteWorkerDoc } from '../data/api';
 import { gsAuth } from '../data/session';
 import { FORM101_FN_URL, SCAN_WARM_URLS, warmCloudFunctions } from '../logic/functions';
 import { tr } from '../logic/i18n';
-import { HOUR_DEFAULT, HOUR_PERM_LABELS, activeTenantIdForAdmin, loadAdminCache } from '../logic/admin';
-import { isFirmAdminSession } from '../logic/access';
 import { autoSave } from '../data/store';
 import { genToken } from '../data/ids';
 import { render } from './render';
@@ -166,24 +164,11 @@ function showWorkerModal(w?: any){
   island()!.openEditor(w, editingWorkerId!==null&&workers.some((x?: any)=>x.id===editingWorkerId)?editingWorkerId:null);
   wov.classList.add('open');
 }
-// "New client login" / "New portal login" from an editor: the user form with
-// the role and the client / supplier already set (the client window is saved
-// first, as on a tap outside; closing the user form brings it back).
-export function newLoginFor(role?: any, id?: any){
-  if(role==='client') saveClient({auto:true}); else closeModal('supplierOverlay');
-  openCreateUserForm({role, id});
-}
 // This month's commission payable to a supplier (the same figure as Accounting → Payable by supplier).
 export function supplierMonthPayable(sp?: any){
   let payable=0;
   Object.values(salaryEntriesFor('month').byWorker||{}).forEach((e?: any)=>{ const wc=workers.find((w?: any)=>w.id===e.workerId); if(wc&&wc.supplierId===sp.id) payable+=supplierCommission(wc,e,sp.id); });
   return payable;
-}
-// The login rows a client / supplier window shows (the owner's users cache).
-export function loginsInfo(role?: any, id?: any){
-  const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter((u?: any)=>u.role===role&&id&&(role==='client'?u.clientId:u.supplierId)===id);
-  return {logins:users.map((u?: any)=>({id:u.id, name:u.fullName||u.username||'', username:u.username||'', hourPerms:u.hourPerms, supplierSections:u.supplierSections, showPay:u.showPay, templateId:u.templateId||null})),
-    canEdit:isFirmAdminSession(), hourLabels:HOUR_PERM_LABELS, hourDefault:HOUR_DEFAULT};
 }
 
 // The worker window saves itself when it is closed by a tap outside

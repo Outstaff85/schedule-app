@@ -1348,7 +1348,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
+  ok(ed.client.join() === 'client,place,rates' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
   const gp = await p.evaluate(async () => {
@@ -1362,53 +1362,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     openEditSupplier('s-1'); await wait(150);
     const m = document.getElementById('supplierModal');
     r.payable = /commission/.test(m.querySelector('[data-sec="commission"]').textContent);
-    r.newLogin = !!m.querySelector('[data-sec="portal"] [data-testid="new-login"]');
-    // a login's portal tabs are its template's: shown, not changed here; the login without a template says so
-    const cb = () => m.querySelector('[data-field="supplierSections"][data-key="dashboard"]');
-    r.tick = !!cb() && cb().disabled && cb().dataset.state === 'checked';
-    r.saved = await T.until(() => /No template/.test((m.querySelector('[data-testid="login-template"]') || {}).textContent || ''), 5000);
+    // its logins are made in Admin → Users only: no login section, no New login button here
+    r.noLogins = !m.querySelector('[data-sec="portal"]') && !m.querySelector('[data-testid="new-login"]');
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
   ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
-  ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs shown read-only (the template\'s) ' + JSON.stringify(gp));
-  // "New client login" / "New portal login" in the client and supplier windows: the user window opens with the role,
-  // the client / supplier and the role's template set; the saved login is listed back in that window, on its template.
-  const nl = await p.evaluate(async () => {
-    const out = {};
-    const userWin = () => document.getElementById('userFormModal'), userOpen = () => document.getElementById('userFormOverlay').classList.contains('open');
-    const make = async (open, modalId, username, password) => {
-      const r = {};
-      open(); await T.tick(200);
-      document.querySelector('#' + modalId + ' [data-testid="new-login"]').click(); await T.tick(300);
-      const u = userWin();
-      r.open = userOpen(); r.role = (u.querySelector('[data-testid="user-window"]') || {dataset: {}}).dataset.role;
-      await T.until(() => /\S/.test((u.querySelector('[data-testid="user-template"]') || {}).innerText || ''), 5000);
-      r.tpl = u.querySelector('[data-testid="user-template"]').innerText.trim();
-      const pick = u.querySelector('[data-testid="user-client"], [data-testid="user-supplier"]');
-      r.owner = pick ? pick.innerText.trim() : '';
-      T.fill('uUsername', username); T.fill('uPassword', password); await T.tick(50);
-      u.querySelector('[data-testid="user-save"]').click();
-      r.closed = await T.until(() => !userOpen(), 15000);
-      return r;
-    };
-    out.client = await make(() => openEditClient('c1'), 'clientModal', 'site.one', 'site-pass-11');
-    for(let i = 0; i < 3; i++){ await T.tick(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
-    out.supplier = await make(() => openEditSupplier('s-1'), 'supplierModal', 'agency.two', 'agency-pass-2');
-    for(let i = 0; i < 3; i++){ await T.tick(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
-    const users = (await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'listUsers'})})).json()).users;
-    const u1 = users.find(x => x.username === 'site.one'), u2 = users.find(x => x.username === 'agency.two');
-    out.stored = [u1 && u1.role, u1 && u1.clientId, u1 && u1.templateId, u2 && u2.role, u2 && u2.supplierId, u2 && u2.templateId].join();
-    await T.until(() => (loadAdminCache('users_' + activeTenantIdForAdmin()) || []).some(x => x.username === 'agency.two'), 8000);
-    openEditSupplier('s-1'); await T.tick(250);
-    out.listed = [...document.querySelectorAll('#supplierModal [data-testid="login"]')].map(x => x.innerText.replace(/\s+/g, ' ')).join(' | ');
-    for(let i = 0; i < 3; i++){ await T.tick(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
-    return out;
-  });
-  ok(nl.client.open && nl.client.role === 'client' && nl.client.tpl === 'Client' && /Site A/.test(nl.client.owner) && nl.client.closed
-     && nl.supplier.open && nl.supplier.role === 'supplier' && nl.supplier.tpl === 'Supplier' && /Agency/.test(nl.supplier.owner) && nl.supplier.closed
-     && nl.stored === 'client,c1,client,supplier,s-1,supplier' && /agency\.two/.test(nl.listed) && /Rights follow Supplier/.test(nl.listed),
-    'client / supplier window: New login opens the user window with the role, its client / supplier and template; the login is saved and listed back ' + JSON.stringify(nl));
+  ok(gp.payable && gp.noLogins, 'supplier editor: commission payable this month; no login section (logins are made in Admin → Users) ' + JSON.stringify(gp));
   // Stage 13: the supplier's own commission rate, set in the supplier window by the owner (per hour / per day, applies from).
   const scom = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};

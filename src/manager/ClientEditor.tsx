@@ -3,8 +3,9 @@
 // · Xh this month", a ⋮ with Manual punch and Delete), then section plates in
 // the owner's fixed order — Client, Place (address, site, radius, the small map
 // that opens the map picker, a pasted Google Maps link), Rates (worker pay and
-// what the client pays, by the hour / by the day, by law / fixed, the margin)
-// and Hours approval (its client logins and their ticks). A tap outside saves
+// what the client pays, by the hour / by the day, by law / fixed, the margin).
+// Its logins are made in Admin → Users only (owner, 2026-10-19); the head
+// shows the hours batches of this client waiting for review. A tap outside saves
 // it (the page's overlay → saveClient auto); the Save button too. Billing never
 // changes a worker's pay.
 import * as React from 'react';
@@ -23,7 +24,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { ClientInfo, ClientRecord, ManagerBridge } from './bridge';
 import { initials } from './worker-head';
-import { Logins } from './logins';
 import { deleteLater } from './Clients';
 import { hoursShort } from './today';
 import { canChange } from './logic/access';
@@ -139,14 +139,14 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
   };
   const billSum = daily ? bill.dailyBillRate : main;
   const ratesSum = [worker != null ? tr('₪{0} worker', { 0: worker }) : '', billSum != null ? tr('₪{0} client', { 0: billSum }) : '', daily ? tr('daily') : tr('hourly')].filter(Boolean).join(' · ');
-  const logins = info.logins.map(u => u.name || u.username);
   const sub = editing
     ? [info.workers === 1 ? tr('1 worker{1}', { 1: '' }) : tr('{0} workers{1}', { 0: info.workers, 1: '' }), tr('{0} this month', { 0: hoursShort(info.monthHours) })].join(' · ')
     : [c.object, c.address].filter(Boolean).join(' · ');
 
   return (
     <div data-testid="client-editor" data-edit={editId || ''} className="grid gap-2">
-      <EditorHead color={c.color || 'var(--neutral)'} name={c.name || (editing ? tr('Edit client') : tr('New client'))} sub={sub}
+      <EditorHead color={c.color || 'var(--neutral)'} name={c.name || (editing ? tr('Edit client') : tr('New client'))}
+        sub={<>{sub}{info.waiting ? <> <Badge variant="warn" data-testid="client-waiting-n">{tr('{0} waiting', { 0: info.waiting })}</Badge></> : null}</>}
         menu={editing ? [
           ...(canChange('editPunches') ? [{ label: tr('Manual punch'), icon: <IconClock />, run: () => api.punchFromClient(editId!) }] : []),
           ...(info.canDelete ? [{ label: tr('Delete'), icon: <IconTrash />, danger: true, run: () => { api.deleteFromEditor('client', editId!); deleteLater('clients', editId!, c.name || '', api); } }] : []),
@@ -256,15 +256,6 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="approval" data-sec="approval" color={logins.length ? 'var(--ok)' : 'var(--neutral)'}>
-          <AccordionTrigger icon={<IconCircleCheck />} summary={logins.length ? logins.join(', ') : tr('No client login yet.')}
-            badge={info.waiting ? <Badge variant="warn" data-testid="client-waiting-n">{tr('{0} waiting', { 0: info.waiting })}</Badge> : undefined}>
-            {tr('Hours approval')}
-          </AccordionTrigger>
-          <AccordionContent forceMount hidden={!open.includes('approval')}>
-            <Logins role="client" ownerId={editId} info={info} api={api} />
-          </AccordionContent>
-        </AccordionItem>
       </Accordion>
 
       <Button variant="primary" className="og-save justify-self-stretch" data-testid="client-save" onClick={() => save({})}><IconCheck />{tr('Save')}</Button>
