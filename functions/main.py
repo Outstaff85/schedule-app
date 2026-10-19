@@ -769,6 +769,40 @@ def _hint_corners(value):
     return np.clip(q, 0, 1)
 
 
+# How the document type model is used (Admin → Scanner, docs/hf-plan.md → The way a model replaces
+# the AI): "off" — not run; "shadow" — run beside Haiku, its answer only recorded (doctypeShadow),
+# never trusted; "mixed" — a page it is sure of needs no Haiku. scanSettings/current.doctypeMode,
+# read at most once a minute; shadow until the super-admin moves it on.
+DOCTYPE_MODES = ("off", "shadow", "mixed")
+_settings = {"at": 0.0, "doctypeMode": "shadow"}
+
+
+def doctype_mode():
+    import time
+    if time.time() - _settings["at"] > 60:
+        try:
+            from firebase_admin import firestore
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app()
+            d = firestore.client().collection("scanSettings").document("current").get().to_dict() or {}
+            _settings["doctypeMode"] = d.get("doctypeMode") if d.get("doctypeMode") in DOCTYPE_MODES else "shadow"
+        except Exception:
+            pass  # the last mode read stays
+        _settings["at"] = time.time()
+    return _settings["doctypeMode"]
+
+
+def _with_shadow(page, out, mode, sess):
+    """In shadow mode the model's answer on the page, only for the record (doctypeShadow)."""
+    if mode == "shadow" and sess is not None:
+        try:
+            kd = docfind.doctype_of(sess, page)
+            out.update({"doctypeShadow": kd["doctype"], "doctypeShadowConf": kd["doctypeConf"]})
+        except Exception:
+            pass
+    return out
+
+
 def find_scan_pages(image_bytes, hint=None):
     """The documents on a photo, each cut flat, turned upright, enhanced and checked
     for blur (docfind.find_documents; docs/scan.md → Server-side finding)."""
@@ -777,8 +811,9 @@ def find_scan_pages(image_bytes, hint=None):
         return {"ok": False, "reason": "decode_failed"}
     img = _resize_max_dim(img, FIND_MAX_DIM)
     corners, face = _scan_models()
+    mode, sess = doctype_mode(), _doctype_model()
     pages = []
-    for p in docfind.find_documents(img, corners, face, hint, _doctype_model()):
+    for p in docfind.find_documents(img, corners, face, hint, sess if mode == "mixed" else None):
         page = _enhance_contrast_sharpness(_resize_max_dim(p["image"], MAX_WORK_DIM))
         blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
         ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
@@ -795,6 +830,7 @@ def find_scan_pages(image_bytes, hint=None):
             "mediaType": "image/jpeg",
             **{k: p[k] for k in ("doctype", "doctypeConf", "doctypeTurn", "doctypeTurnConf", "doctypeSure") if k in p},
         })
+        _with_shadow(p["image"], pages[-1], mode, sess)
     return {"ok": True, "pages": pages, "size": [img.shape[1], img.shape[0]]}
 
 
@@ -824,10 +860,12 @@ def cut_scan_page(image_bytes, quad):
         turn = -2
     if turn > 0:
         page = docfind.turned(page, turn)
-    page, turn, kd = docfind.with_doctype(_doctype_model(), page, turn)
+    mode, sess = doctype_mode(), _doctype_model()
+    page, turn, kd = docfind.with_doctype(sess if mode == "mixed" else None, page, turn)
     out = _page_out(page, quad, turn)
     if out:
         out.update(kd)
+        _with_shadow(page, out, mode, sess)
     return {"ok": True, "pages": [out] if out else [], "size": [img.shape[1], img.shape[0]]}
 
 
@@ -842,6 +880,27 @@ def collects_documents(db, tenant_id):
         return False
     snap = db.collection("tenants").document(tenant_id).collection("settings").document("scan").get()
     return (snap.to_dict() or {}).get("collectDocuments") is not False
+
+
+def _scan_settings(payload, db):
+    """Admin → Scanner (a super-admin): {"action": "settings"} → the document type model's mode and
+    every firm's full-document collection; {"action": "setSettings", "doctypeMode"?, "collect"?: {tenantId: bool}}."""
+    ref = db.collection("scanSettings").document("current")
+    if payload.get("action") == "setSettings":
+        mode = payload.get("doctypeMode")
+        if mode is not None:
+            if mode not in DOCTYPE_MODES:
+                return _json({"error": "unknown mode"}, 400)
+            ref.set({"doctypeMode": mode}, merge=True)
+            _settings["at"] = 0.0
+        for tid, on in (payload.get("collect") or {}).items():
+            if isinstance(tid, str) and tid and isinstance(on, bool):
+                db.collection("tenants").document(tid).collection("settings").document("scan").set({"collectDocuments": on}, merge=True)
+    cur = ref.get().to_dict() or {}
+    collect = {}
+    for t in db.collection("tenants").stream():
+        collect[t.id] = collects_documents(db, t.id)
+    return _json({"ok": True, "doctypeMode": cur.get("doctypeMode") if cur.get("doctypeMode") in DOCTYPE_MODES else "shadow", "collect": collect})
 
 
 def _scan_document(payload, claims, db, stats_ref, storage):
@@ -892,6 +951,10 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         from firebase_admin import firestore, storage
         db = firestore.client()
         stats_ref = db.collection("scanTrainingStats").document("current")
+        if payload.get("action") in ("settings", "setSettings"):
+            if claims.get("role") != "superadmin":
+                return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
+            return _scan_settings(payload, db)
         if payload.get("action") == "stats":
             if claims.get("role") != "superadmin":
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
@@ -908,7 +971,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         fb = lambda: bucket[0] if bucket else (bucket.append(_model_bucket(storage)) or bucket[0])
         kept = right = bad = fixes = 0
         moved_sum = 0.0
-        doctypes = {}
+        doctypes, shadow = {}, {}
         for raw in examples[:feedback.MAX_EXAMPLES]:
             ex, why = feedback.check(raw)
             if not ex:
@@ -916,6 +979,8 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
                 continue
             if not feedback.correction(ex):
                 right += 1
+            for k, n in feedback.shadow_counts(ex).items():
+                shadow[k] = shadow.get(k, 0) + n
             if not feedback.kept(ex):
                 continue
             ex["model"] = MODEL_PREFIX.rstrip("/").rsplit("/", 1)[-1]  # the version that found these corners
@@ -942,6 +1007,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
                   "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum), "updatedAt": now}
         if doctypes:  # an empty map under merge would wipe the counts
             update["doctypesSince"] = {k: firestore.Increment(n) for k, n in doctypes.items()}
+        update.update({k: firestore.Increment(n) for k, n in shadow.items()})
         stats_ref.set(update, merge=True)
         return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
     except Exception as e:

@@ -86,7 +86,9 @@ def check(example):
     elif doctype_model and keep_right:  # a sampled right page also teaches the document type model; its copy is optional
         page_image = _jpeg(example.get("pageImage"))
     return {"image": image, "edgesModel": model, "edgesFixed": fixed, "source": source, "model": version,
-            "moved": shift, "doctypeModel": doctype_model, "doctypeFixed": doctype_fixed, "doctypeBy": doctype_by, "pageImage": page_image, "right": keep_right}, None
+            "moved": shift, "doctypeModel": doctype_model, "doctypeFixed": doctype_fixed, "doctypeBy": doctype_by, "pageImage": page_image, "right": keep_right,
+            # the document type model's answer in shadow mode (Admin → Scanner): only compared, never trusted
+            "doctypeShadow": example.get("doctypeShadow") if example.get("doctypeShadow") in DOCTYPES else None}, None
 
 
 def kept(ex):
@@ -104,6 +106,15 @@ def edges_since(stats):
     """The corrections since the last document edges training (stats.edgesSince; newSince
     is its name before H0, added until a training resets both)."""
     return int(stats.get("edgesSince") or 0) + int(stats.get("newSince") or 0)
+
+
+def shadow_counts(ex):
+    """What a page tells about the document type model in shadow: (pages, the model right,
+    Haiku right) — right meaning the type the user left; nothing when it has no shadow answer."""
+    if ex.get("doctypeShadow") is None or ex.get("doctypeFixed") is None:
+        return {}
+    return {"shadowPages": 1, "shadowModelRight": int(ex["doctypeShadow"] == ex["doctypeFixed"]),
+            "shadowHaikuRight": int(ex.get("doctypeBy") == "haiku" and ex.get("doctypeModel") == ex["doctypeFixed"])}
 
 
 def doctype_counts(stats):
@@ -125,6 +136,7 @@ def record(ex, tenant_id, now, path, page_path=None):
     return {"edgesModel": ex["edgesModel"], "edgesFixed": ex["edgesFixed"], "moved": ex["moved"],
             "source": ex["source"], "model": ex["model"], "tenantId": tenant_id or "", "image": path,
             "doctypeModel": ex["doctypeModel"], "doctypeFixed": ex["doctypeFixed"], "doctypeBy": ex.get("doctypeBy", "haiku"), "pageImage": page_path, "right": ex["right"],
+            "doctypeShadow": ex.get("doctypeShadow"),
             "createdAt": now, "deleteAt": now + datetime.timedelta(days=KEEP_DAYS)}
 
 

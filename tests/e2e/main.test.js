@@ -1840,6 +1840,39 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.legacy, 'edit ticks: without them Schedule, Workers and punches only read; a login made before them changes all ' + JSON.stringify(vo));
   ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule',
     'boss: Users lists the permission templates with New template and Put them on templates; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB}));
+  // Admin → Scanner (docs/hf-plan.md): the training figures, the versions, the document type model's mode
+  // (Off / Shadow / Mixed) and the per-firm switch of the full-document collection — all through scan_feedback.
+  const sfCalls = [];
+  const SFCORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
+  let sfSet = {doctypeMode: 'shadow', collect: {'tenant-one': true}};
+  await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:SFCORS});
+    const b = JSON.parse(r.request().postData() || '{}'); sfCalls.push(b);
+    if (b.action === 'stats') return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, due: false, edgesSince: 42, doctypesDue: false,
+      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8}})});
+    if (b.action === 'setSettings') { if (b.doctypeMode) sfSet.doctypeMode = b.doctypeMode; Object.assign(sfSet.collect, b.collect || {}); }
+    return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, ...sfSet})});
+  });
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('scanner'); });
+  const sa = {shown: await waitFor(p, () => !!document.querySelector('#adminRoot [data-testid="scan-collect"] [data-firm="tenant-one"]'), 10000)};
+  Object.assign(sa, await p.evaluate(() => {
+    const root = document.querySelector('#adminRoot [data-testid="scan-admin"]');
+    return {figs: [...root.querySelectorAll('[data-slot="figures"] b')].map(b => b.textContent).join(','),
+      mode: (root.querySelector('[data-testid="scan-doctype-mode"] [data-state="on"]') || {dataset: {}}).dataset.v,
+      shadow: root.querySelector('[data-testid="scan-shadow"]').textContent,
+      on: root.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state')};
+  }));
+  await p.screenshot({path: SP + '/scan-admin.png'});
+  await p.click('#adminRoot [data-testid="scan-doctype-mode"] [data-v="mixed"]');
+  await p.click('#adminRoot [data-testid="scan-collect"] [data-firm="tenant-one"]');
+  sa.after = await waitFor(p, () => { const r = document.querySelector('#adminRoot [data-testid="scan-admin"]');
+    return (r.querySelector('[data-testid="scan-doctype-mode"] [data-state="on"]') || {dataset: {}}).dataset.v === 'mixed'
+      && r.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state') === 'unchecked'; }, 8000);
+  sa.sent = sfCalls.filter(c => c.action === 'setSettings').map(c => JSON.stringify(c.doctypeMode || c.collect)).join(' ');
+  await p.unroute(/cloudfunctions\.net\/scan_feedback$/);
+  ok(sa.shown && sa.figs === '42/200,5/100,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && sa.on === 'checked'
+    && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
+    'Admin → Scanner: the figures, the shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
     const items = [];

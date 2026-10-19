@@ -159,3 +159,12 @@ def test_a_full_document_is_refused_without_pages_or_saved_fields():
     assert feedback.check_document(doc(pages=[{"b64": "bm90IGpwZWc="}]))[1] == "a page is not a JPEG"
     assert feedback.check_document(doc(saved={}))[1] == "nothing saved"
     assert feedback.check_document(doc(pages=[{"b64": DOC_JPG}] * 7))[1] == "no pages"
+
+
+def test_a_shadow_answer_is_kept_and_counted_against_haiku():
+    e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="sefach", doctypeShadow="sefach"))
+    assert e["doctypeShadow"] == "sefach" and feedback.shadow_counts(e) == {"shadowPages": 1, "shadowModelRight": 1, "shadowHaikuRight": 1}
+    e, _ = feedback.check(ex(image=None, pageImage=JPG, doctypeModel="sefach", doctypeFixed="contract", doctypeShadow="contract"))
+    assert feedback.shadow_counts(e) == {"shadowPages": 1, "shadowModelRight": 1, "shadowHaikuRight": 0}
+    e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="sefach", doctypeShadow="bogus"))
+    assert e["doctypeShadow"] is None and feedback.shadow_counts(e) == {}

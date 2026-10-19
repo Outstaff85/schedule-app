@@ -26,7 +26,7 @@ export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry
 // Each page also has its kind: Haiku's (doctypeModel) and the one shown, which a tap can change.
 type Page = ScannedPage & {
   uid: number; src?: string; part?: [number, number, number, number]; modelQuad?: Pt[]; quad?: Pt[]; source?: string; fixedPart?: Pt[]; copy?: string;
-  doctypeModel?: Doctype | null; doctypePending?: boolean; aiRotate?: number; doctypeBy?: 'haiku' | 'model';
+  doctypeModel?: Doctype | null; doctypePending?: boolean; aiRotate?: number; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: string;
 };
 let nextUid = 0;
 // One in five pages the model got right is kept too, with its copy, so the training
@@ -48,7 +48,7 @@ function fromServer(f: ServerPage, size: FindResult['size'], src: string): Page 
   const [W, H] = size, b = f.box;
   const part: [number, number, number, number] = b ? [b[0] / W, b[1] / H, b[2] / W, b[3] / H] : [0, 0, 1, 1];
   const quad = f.quad.map(([x, y]) => [part[0] + x * (part[2] - part[0]), part[1] + y * (part[3] - part[1])] as Pt);
-  const page: Page = { uid: ++nextUid, b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry, src, part, modelQuad: f.quad, quad, source: f.source, doctypePending: true };
+  const page: Page = { uid: ++nextUid, b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry, src, part, modelQuad: f.quad, quad, source: f.source, doctypePending: true, ...(f.doctypeShadow ? { doctypeShadow: f.doctypeShadow } : {}) };
   return withModelDoctype(page, f.doctypeSure ? f.doctype : undefined);
 }
 // A page the firm's document type model is sure of (the server's, or the phone's; S7) needs no Haiku.
@@ -310,6 +310,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       ...(p.fixedPart && p.copy ? { image: p.copy } : {}),
       ...(rightCopy ? { image: rightCopy, keep: true } : {}),
       ...(p.doctypeModel ? { doctypeModel: p.doctypeModel, doctypeFixed: p.kind || p.doctypeModel, doctypeBy: p.doctypeBy || 'haiku' } : {}),
+      ...(p.doctypeShadow ? { doctypeShadow: p.doctypeShadow } : {}),
       // a changed kind, and a sampled right page, carry a copy of the page for the document type model
       ...(kindChanged || (rightCopy && p.doctypeModel) ? { pageImage: await pageCopy(p.b64, p.mediaType).catch(() => undefined) } : {}),
     };

@@ -111,7 +111,7 @@ function scanEdgesNotice(){
   if(!(__scanTrain&&__scanTrain.due)) return null;
   const n=__scanTrain.edgesSince;
   return {id:'scan-train:'+Math.floor(n/100), lvl:'blue', icon:'ti-scan', title:tr('Time to retrain the document edges model'),
-    detail:tr('{0} corrected pages since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0)};
+    detail:tr('{0} corrected pages since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0), open:openScanAdmin};
 }
 // The document type model's notice (docs/scan-plan.md → S7): every document type has
 // enough page copies (scan_feedback's doctypesDue, read with the notice above).
@@ -119,8 +119,10 @@ function scanDoctypeNotice(){
   if((getSession()||{} as any).role!=='superadmin'||!(__scanTrain&&__scanTrain.doctypesDue)) return null;
   const n=Math.min(...['id_front','id_back','sefach','passport','contract'].map(k=>Number(__scanTrain.doctypes[k]||0)));
   return {id:'scan-doctypes', lvl:'blue', icon:'ti-scan', title:tr('Enough pages to train the document type model'),
-    detail:tr('At least {0} pages of each document type — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0)};
+    detail:tr('At least {0} pages of each document type — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0), open:openScanAdmin};
 }
+// A scanner notice opens Admin → Scanner (docs/hf-plan.md → Admin → Scanner and the bell).
+function openScanAdmin(){ switchTab('admin'); (window as any).switchAdminPane?.('scanner'); }
 // ── WhatsApp reminder (redesign stage 11a, docs/admin.md → Firms): a "no
 // punch" notice gets a WhatsApp button next to Call. It opens wa.me with the
 // worker's phone in international form and the firm's template filled in
