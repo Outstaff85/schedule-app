@@ -110,7 +110,7 @@ Finished plans and retired files are kept in `archive/` (not deployed): `archive
 - **Service worker:** when `service-worker.js` changes, bump its `CACHE` version (now `schedule-mgr-v134`), or clients keep stale files.
 - **What Hosting serves:** `firebase.json` → `hosting.public` is `dist`; only `npm run build` fills it, and `scripts/static-files.mjs` decides which files are copied in as they are (the manager page and its files) — it must keep out `functions/`, `functions-auth/`, `tests/`, `docs/`, `src/`, `*.md`, the rules files, the config files and every dot file (`tests/build/check.js` fails otherwise). The Hosting `ignore` list keeps `functions/**` (otherwise the venv is uploaded publicly), `functions-auth/**`, `tests/**`, `docs/**`, `*.md` and the rules files as a second guard.
 - **Models and training data on Hugging Face** (owner, 2026-10-19; docs/hf-plan.md): the scanner's models live in the **public** repo `OutStaff/scanner-models` (a tag per version, files named by what they do — `edges*`, `doctype*`, `face`); the server reads its version from a Storage mirror the functions' deploy fills (`scripts/scan/mirror.py`). Training data (photos of documents, read fields) goes **only** to the **private** bucket `OutStaff/scanner-data` — never to a public repo. The owner's HF token stays on the owner's PC; the server's token may only write to the bucket.
-- **Secrets** live in Secret Manager (`ANTHROPIC_API_KEY`, `OPENWEATHER_API_KEY`) — never in the repo, never asked for in chat.
+- **Secrets** live in Secret Manager (`ANTHROPIC_API_KEY`, `OPENWEATHER_API_KEY`, `HF_DATA_TOKEN`) — never in the repo, never asked for in chat.
 
 ## Keeping the docs true
 

@@ -36,7 +36,7 @@ On **Done**, every page the server found is sent in the background to the functi
 
 ## 2. Where it is kept
 
-`scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`, the files through `functions/datastore.py`; a manager login's ID token). **Where the files go** (docs/hf-plan.md → H7): the **private** Hugging Face bucket `OutStaff/scanner-data` once the server has its token (the secret `HF_DATA_TOKEN` in the function's environment — it may only write there; never public), else Firebase as before:
+`scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`, the files through `functions/datastore.py`; a manager login's ID token). **Where the files go** (docs/hf-plan.md → H7): the **private** Hugging Face bucket `OutStaff/scanner-data` (the secret `HF_DATA_TOKEN`, declared on `scan_feedback` — a token that may only write there; never public); a write the bucket refuses (out of reach, no token) goes to Firebase instead, as before H7, so nothing is lost:
 
 | | the private bucket | Firebase (until the token is there, and what is not moved yet) |
 |---|---|---|

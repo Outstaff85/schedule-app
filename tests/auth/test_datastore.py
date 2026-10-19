@@ -47,3 +47,19 @@ def test_with_the_token_the_files_go_to_the_private_bucket(monkeypatch):
     monkeypatch.setenv("HF_DATA_TOKEN", "t")
     got = datastore.put([("edges/2026-10/a.jpg", b"1")], lambda: (_ for _ in ()).throw(AssertionError("no Firebase")))
     assert got == ["edges/2026-10/a.jpg"] and sent == [("token", "t"), ("OutStaff/scanner-data", [("edges/2026-10/a.jpg", b"1")])]
+
+
+def test_a_bucket_that_refuses_leaves_the_files_in_firebase(monkeypatch):
+    import sys
+    import types
+
+    class Api:
+        def __init__(self, token):
+            pass
+
+        def batch_bucket_files(self, bucket_id, add):
+            raise RuntimeError("no such bucket")
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(HfApi=Api))
+    monkeypatch.setenv("HF_DATA_TOKEN", "t")
+    b = Bucket()
+    assert datastore.put([("edges/2026-10/a.jpg", b"1")], lambda: b) == ["training/scan/2026-10/a.jpg"] and b.files
