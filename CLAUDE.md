@@ -28,6 +28,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/scan.md](docs/scan.md) | the scan: the scan window (`src/scan/`), the scan process (`src/scan-process/`: AI reads, zoomed re-reads, check digits, page merging, into the worker window), the scan entry points, contracts, the server's finding |
 | [docs/scan-plan.md](docs/scan-plan.md) | the approved scanner rebuild (edge detection models, live camera frame, two documents per photo, the parallel upload queue), stage by stage, with its status |
 | [docs/scan-training.md](docs/scan-training.md) | the scanner's training end to end: what the site collects (`scan_feedback`), where it is kept (12 months), `/scan-train` on the owner's PC (`scripts/scan-train/`), the model versions (lab first, then the site) |
+| [docs/hf-plan.md](docs/hf-plan.md) | the approved move of the scanner's models (public `OutStaff/scanner-models`) and training data (private bucket `OutStaff/scanner-data`) to Hugging Face, the server's Firebase mirror, the models' UI names, Admin → Scanner, and the field reader model that may replace the AI — stage by stage, with its status |
 | [docs/form101.md](docs/form101.md) | `aiFillForm101()`, `fill_form_101` (`functions/main.py`), storing the PDF and sidecar |
 | [docs/form101-field-map.md](docs/form101-field-map.md) | **any** Form 101 field rect or the PDF template — keep this map in sync with `functions/main.py` |
 | [docs/punch.md](docs/punch.md) | `worker-punch.html` / `src/punch/` (the React punch page: worker link, GPS checks, offline queue) |
