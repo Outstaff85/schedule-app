@@ -171,7 +171,7 @@ How a feature that sends several AI requests is built, on both ends. Follow it f
 
 | Where | Sent in parallel |
 |---|---|
-| the scanner (`src/scan/`) | `preprocess_scan` `find` for every shot or page (at most 4 in flight); `aiDetectAlign` for every cut page |
+| the scanner (`src/scan/`) | `preprocess_scan` `find` for every shot or page (at most 4 in flight); `aiDetectAlign` for every cut page the page-kind model is not sure of (S7) |
 | the scan process (`readPages`, `src/scan-process/read.ts`) | `aiDetectAlign` for every page with no face and no kind; page 1's `aiReadDoc` as soon as it is upright; the following pages' `aiReadSefach` (two halves each, `prefetchFrom`) while page 1's digits are re-checked; the zoom batches (`aiVerifyFields`), one per page |
 | `findScanFields` (`src/manager/page/worker-window.ts`) | one `aiVerifyFields` zoom batch per page after the one `aiFindField` |
 | hours import | `aiReadHoursTable` per page of every file |
