@@ -121,6 +121,7 @@ function notifList(){
     out.push({id:t+'hours:'+b.batchId, lvl:'blue', icon:'ti-clock-hour-4', title:tr('Hours waiting for approval'), detail:[b.fileName,b.uploadedBy].filter(Boolean).join(' · '), at:Date.parse(b.uploadedAt)||dayStart, open:()=>switchTab('accounting')}); });
   __notifApprovals.forEach((a?: any)=>out.push(Object.assign({lvl:'green', icon:'ti-circle-check', open:()=>switchTab('accounting')}, a)));
   const tr6=scanTrainingNotice(); if(tr6) out.push(tr6);
+  const tr7=scanKindsNotice(); if(tr7) out.push(tr7);
   return out.sort((a?: any,b?: any)=>b.at-a.at);
 }
 // The scanner's "time to retrain" notice (docs/scan-plan.md → S6), the super-admin's
@@ -129,11 +130,19 @@ function notifList(){
 let __scanTrain: any=null, __scanTrainAt=0;
 function scanTrainingNotice(){
   if((getSession()||{} as any).role!=='superadmin') return null;
-  if(Date.now()-__scanTrainAt>6*3600e3){ __scanTrainAt=Date.now(); trainingStats().then(r=>{ __scanTrain=r; if(r&&r.due) refreshBell(); }); }
+  if(Date.now()-__scanTrainAt>6*3600e3){ __scanTrainAt=Date.now(); trainingStats().then(r=>{ __scanTrain=r; if(r&&(r.due||r.kindsDue)) refreshBell(); }); }
   if(!(__scanTrain&&__scanTrain.due)) return null;
   const n=__scanTrain.newSince;
   return {id:'scan-train:'+Math.floor(n/100), lvl:'blue', icon:'ti-scan', title:tr('Time to retrain the scanner'),
     detail:tr('{0} corrected pages since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0)};
+}
+// The page-kind model's notice (docs/scan-plan.md → Page-kind model): every kind has
+// enough page copies (scan_feedback's kindsDue, read with the notice above).
+function scanKindsNotice(){
+  if((getSession()||{} as any).role!=='superadmin'||!(__scanTrain&&__scanTrain.kindsDue)) return null;
+  const n=Math.min(...['id_front','id_back','sefach','passport','contract'].map(k=>Number(__scanTrain.kinds[k]||0)));
+  return {id:'scan-kinds', lvl:'blue', icon:'ti-scan', title:tr('Enough pages for the page-kind model'),
+    detail:tr('At least {0} pages of each kind — the page-kind model can be trained',{0:n}), at:new Date().setHours(0,0,0,0)};
 }
 // ── WhatsApp reminder (redesign stage 11a, docs/admin.md → Firms): a "no
 // punch" notice gets a WhatsApp button next to Call. It opens wa.me with the
