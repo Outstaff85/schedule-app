@@ -154,7 +154,8 @@ export function firmSaved(mode?: any, tenantId?: any, profile?: any){
 function setupAdminPaneBar(){
   const s = getSession();
   if(!s) return;
-  switchAdminPane(__adminPane);
+  // every entry to the tab shows the tiles (a section kept from before left no way to the others on a phone)
+  switchAdminPane(null);
   if(s.role === 'superadmin' || s.role === 'tenant_admin') prefetchAdminUsers();
 }
 // Loads the Users list in the background as soon as the Admin tab opens, so

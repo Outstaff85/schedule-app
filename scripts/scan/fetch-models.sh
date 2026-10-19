@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export SCAN_MODELS_VERSION="$(cat "$HERE/models-version")"
 OUT="$1"; CACHE=/tmp/scan-models/$SCAN_MODELS_VERSION
 mkdir -p "$OUT/ort" "$OUT/ort130" "$CACHE"
-pip install -q onnx google-cloud-storage
+pip install -q onnx numpy google-cloud-storage
 STORE=""
 if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py" ping; then STORE=1; else echo "Firebase Storage not reachable: the authors' links are used"; fi
 # The models' home (docs/hf-plan.md): the public Hugging Face repo, one tag per version, the
@@ -44,12 +44,16 @@ get() {
   [ -z "$STORE" ] || python "$HERE/model_store.py" put "$CACHE/$1" "$1"
 }
 drive() { echo "https://drive.usercontent.google.com/download?id=$1&export=download&confirm=t"; }
-# DocAligner, the light model (lcnet100, Apache-2.0): the live frame. The accurate model runs on the server.
+# DocAligner, the light model (lcnet100, Apache-2.0): the live frame.
 get lite.onnx "$(drive 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a)"
+# DocAligner, the accurate model (fastvit_sa24, Apache-2.0): a shot's and a picked photo's documents,
+# on the phone as in the lab — fp16 weights, fp32 math (a plain fp16 conversion gives zeros on WebGPU).
+get sa24.onnx "$(drive 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl)"
+[ -s "$CACHE/edges-w16.onnx" ] || python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/edges-w16.onnx"
 # The face finder that sets a shot upright (YuNet, MIT, OpenCV zoo), its input size freed to run at 320.
 get yunet640.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
 [ -s "$CACHE/yunet_any.onnx" ] || python "$HERE/yunet_dyn.py" "$CACHE/yunet640.onnx" "$CACHE/yunet_any.onnx"
-cp "$CACHE/lite.onnx" "$OUT/" && cp "$CACHE/yunet_any.onnx" "$OUT/yunet.onnx"
+cp "$CACHE/lite.onnx" "$CACHE/edges-w16.onnx" "$OUT/" && cp "$CACHE/yunet_any.onnx" "$OUT/yunet.onnx"
 # The phone's document type model (docs/scan-plan.md → S7): only once this version has one
 # (doctype-lite.onnx in Storage); models.json tells the scanner whether it is there.
 DOCTYPE=false

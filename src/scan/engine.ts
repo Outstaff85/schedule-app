@@ -1,7 +1,10 @@
 // The scanner's on-device part (docs/scan-plan.md → S2b): background threads
 // (worker.ts over core.ts — the site's own copy of what the scanner lab proved on
 // the owner's phone) run the light document edges model on the camera frames and cut +
-// turn the shot upright by the face. The accurate model runs on the server.
+// turn the shot upright by the face. Its own thread holds the accurate model (fp16 weights —
+// the lab's "capture" thread, docs/scan.md → The scan window), which finds the exact corners of
+// a shot or a picked photo and the other documents on it (find.ts), cuts them and turns them
+// upright; the server only when the phone cannot.
 import { S, type Detection, type Pt } from './core';
 
 export { S };
@@ -13,6 +16,7 @@ type Reply = { id: number; error?: string; ep?: string; res?: Detection; ms?: nu
 type Status = (text: string, frac?: number) => void;
 
 const LIVE = 'lite.onnx';
+const EXACT = 'edges-w16.onnx'; // the accurate model, fp16 weights with fp32 math (scripts/scan/w16.py)
 const CPU_ORT = 'ort', GPU_ORT = 'ort130'; // 1.22 is smoother on the CPU; 1.30 runs the GPU right where 1.22 gave zeros
 
 /** One background thread of the lab (scan-worker.js). */
@@ -33,7 +37,7 @@ function workerThread(dir: string, onStatus: Status) {
     const id = ++n; waiting.set(id, { resolve, reject }); w.postMessage({ ...msg, id }, transfer);
   });
   return {
-    async load(want: string, face: boolean) { return (await call({ type: 'load', ort: dir, live: LIVE, want, threads: 1, face })).ep || want; },
+    async load(want: string, face: boolean, model = LIVE) { return (await call({ type: 'load', ort: dir, live: model, want, threads: 1, face })).ep || want; },
     async detect(input: FrameInput) {
       const m = 'bitmap' in input ? await call({ type: 'detect', which: 'live', bitmap: input.bitmap }, [input.bitmap])
         : await call({ type: 'detect', which: 'live', rgba: input.rgba.buffer }, [input.rgba.buffer as ArrayBuffer]);
@@ -53,6 +57,30 @@ export type Engine = {
   warp(rgba: Uint8ClampedArray, w: number, h: number, pts: Pt[]): Promise<Warped>;
   stop(): void;
 };
+
+/** The accurate model's thread (CPU, one thread, with the face finder and the document type
+ * model): one at a time, in the order asked. */
+export type Exact = {
+  detect(rgba: Uint8ClampedArray): Promise<Detection>;
+  warp(rgba: Uint8ClampedArray, w: number, h: number, pts: Pt[]): Promise<Warped>;
+};
+let exact: Promise<Exact | null> | null = null;
+/** Started when the scan window opens, beside the live frame's threads and never waiting for
+ * them (a picked photo needs only this one); null when this device cannot start it — the
+ * server then finds the documents. */
+export function startExact(): Promise<Exact | null> {
+  if (exact) return exact;
+  const t = workerThread(CPU_ORT, () => {});
+  exact = t.load('wasm', true, EXACT).then(() => {
+    let queue: Promise<unknown> = Promise.resolve();
+    const one = <T,>(run: () => Promise<T>): Promise<T> => { const r = queue.then(run); queue = r.catch(() => null); return r; };
+    return {
+      detect: (rgba: Uint8ClampedArray) => one(async () => (await t.detect({ rgba })).res),
+      warp: (rgba: Uint8ClampedArray, w: number, h: number, pts: Pt[]) => one(() => t.warp(rgba, w, h, pts)),
+    };
+  }, () => { t.stop(); return null; });
+  return exact;
+}
 
 /** Several single-thread background threads: frames go to them in turn; the first also
  * holds the face finder and does the warps. */

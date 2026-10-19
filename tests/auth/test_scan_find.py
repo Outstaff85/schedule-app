@@ -123,6 +123,29 @@ def test_two_photos_side_by_side_on_a_white_page():
     assert len(boxes) == 2 and boxes[0][0] < 100 and boxes[1][0] > 760
 
 
+def _printed(page, x0, y0, x1, y1):
+    """A printed white document (a ספח): lines of text with a thin frame, no photo."""
+    cv2.rectangle(page, (x0, y0), (x1, y1), (120, 120, 120), 2)
+    for y in range(y0 + 40, y1 - 30, 36):
+        cv2.line(page, (x0 + 40, y), (x0 + 40 + (x1 - x0 - 80) * (2 + y % 3) // 4, y), (40, 40, 40), 4)
+
+
+def test_a_printed_document_beside_a_photo_on_a_white_page():
+    page = np.full((1000, 1400, 3), 252, np.uint8)
+    page[200:700, 80:620] = (90, 120, 150)      # a passport's photo page
+    _printed(page, 760, 120, 1340, 900)          # its ספח beside it, printed on white
+    boxes = docfind.photos_on_page(page)
+    assert len(boxes) == 2 and boxes[0][0] < 100 and boxes[1][0] > 740
+
+
+def test_a_black_and_white_copy_of_two_documents():
+    page = np.full((1600, 1100, 3), 252, np.uint8)
+    _printed(page, 100, 80, 1000, 600)           # a copy of a card, on top
+    _printed(page, 100, 760, 1000, 1500)         # the ספח below
+    boxes = docfind.photos_on_page(page)
+    assert len(boxes) == 2 and boxes[0][1] < boxes[1][1]
+
+
 def test_a_camera_shot_is_never_cut_as_a_white_page():
     page = np.full((1000, 1400, 3), 255, np.uint8)
     page[200:700, 80:620] = (90, 120, 150)
