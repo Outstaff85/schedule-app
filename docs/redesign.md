@@ -37,7 +37,7 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - **Fixed structure (the owner, 2026-10-12 — keep it in this order):**
   - Worker editor: header (avatar in the color of the worst status, full name, "Site · In 07:58 · 182h", notice chips like "Visa 21d" / "Passport copy", scan button, ⋮); sections **Person** (Hebrew Form 101 labels in pairs: שם פרטי / שם משפחה, מספר ת.ז./דרכון / תוקף ת.ז./דרכון, מין as a switch זכר / נקבה, מצב משפחתי / קופת חולים as selects, תאריך לידה / טלפון) → **Address** → **Work** (client, supplier, HR, start date) → **Documents** (a plate per document with Renew / Upload) → **Form 101** → **Access**; "Saves itself when you close the window".
   - Client editor: **Client** → **Place** (address, branch, GPS radius with a small map) → **Rates** (Hourly / Daily switch, worker and client rate, OT, Shabbat, margin figures) → **Hours approval** (ticks); Save.
-  - Supplier editor: **Company** → **Commission** (per hour / per day, month figures) → **Portal login** (username, password, what it sees as ticks) → **Workers** (mini plates with hours); Save.
+  - Supplier editor: **Company** → **Commission** (per hour / per day, month figures) → **Workers** (mini plates with hours); Save.
   - HR / user editor: **Person & login** (+ Role switch Staff / HR / Supplier / Client) → **Sections** (tiles) → **Hours** (ticks, Only own workers) → **HR commission** → **Own workers**; Save.
   - Worker list: header "Workers 24" + glass "New" + ⋮; tabs Active / Vacation / Pending; section label "WORKERS" with its count; worker plates as above (full name, chips, site · punch, green hours, ⋮). Mockups: docs/design/02 and 04.
 

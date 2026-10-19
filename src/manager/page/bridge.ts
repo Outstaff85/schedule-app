@@ -25,7 +25,7 @@ import { reportError } from '../data/telemetry';
 import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
 import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNotices, openWorkerCard, openWorkerDocUpload, parseHoursExcelFile, parseHoursImagePage, renderClientsPage, renderSuppliersPage, renderWorkersPage, rescanFromWorkerCard, setWorkersStatus, todayPunchLog, workerBarColor, workerNotices, workerSiteName, workerToday } from './workers';
 import { switchTab } from './nav';
-import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, loginsInfo, newLoginFor, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
+import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
 import { render } from './render';
 import { setLanguage } from './language';
 import { closeEditorUnsaved, commitClient, deleteClientsNow, openAddClient, openEditClient, openMapPicker, punchFromClientModal, workersMonthHours } from './clients';
@@ -214,14 +214,14 @@ provideBridge({
   deleteSuppliers:(ids?: any)=>deleteSuppliersNow(ids.filter((id?: any)=>suppliers.some((s?: any)=>s.id===id))),
   clientInfo(id?: any){
     const c=id?clients.find((x?: any)=>x.id===id):null, e: any=c?((salaryEntriesFor('month').byClient||{})[c.id]||{}):{};
-    return {...loginsInfo('client', c?c.id:null),
+    return {
       workers:c?workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length:0, monthHours:e.hours||0, billed:e.total||0,
       waiting:c?(__hoursBatches||[]).filter((b?: any)=>b.status==='pending'&&(b.entries||[]).some((x?: any)=>x.clientId===c.id)).length:0,
       canDelete:hasPermission('clients'), otMult:PAY_RULES.otMult, shabbatMult:PAY_RULES.shabbatMult};
   },
   supplierInfo(id?: any){
     const sp=id?suppliers.find((x?: any)=>x.id===id):null, hours=workersMonthHours();
-    return {...loginsInfo('supplier', sp?sp.id:null),
+    return {
       workers:sp?workers.filter((w?: any)=>w.supplierId===sp.id).map((w?: any)=>({id:w.id, name:w.name||'', active:isActiveWorker(w), hours:hours[w.id]||0})):[],
       payable:sp?supplierMonthPayable(sp):0, canRate:isFirmAdminSession(), canDelete:hasPermission('suppliers'), defaultRate:window.ManagerAcc!.SUPPLIER_DEFAULT_RATE};
   },
@@ -230,7 +230,6 @@ provideBridge({
   punchFromClient:()=>punchFromClientModal(),
   deleteFromEditor:(kind?: any)=>closeEditorUnsaved(kind==='client'?'clientOverlay':'supplierOverlay'),
   pickPlace:(start?: any,onPick?: any)=>openMapPicker(start,onPick),
-  newLogin:(role?: any,id?: any)=>newLoginFor(role,id),
   punchInfo(cid?: any){
     const c=clients.find((x?: any)=>x.id===cid); if(!c) return null;
     const mine=workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(cid));

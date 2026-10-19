@@ -36,6 +36,7 @@ The backend is **Firestore + Firebase Storage + Cloud Functions**, and nothing e
 | [docs/client-portal.md](docs/client-portal.md) | `client-portal.html` / `src/client/` (the React client portal) and the client login |
 | [docs/hours-review.md](docs/hours-review.md) | `src/hours-review/`, the `hours` function (`functions-auth/hours.py`), the hours ticks (`hourPerms`), `hourApprovals`, Accounting → Hours approvals |
 | [docs/backend.md](docs/backend.md) | `firestore-backend.js`, `functions-auth/*` (login, users/firms, punch link, supplier portal, AI reads + prompts), `functions/`, the Firestore data model, `firestore.rules`/`storage.rules`/indexes, tests, CI deploys, deploy troubleshooting |
+| [docs/permissions-plan.md](docs/permissions-plan.md) | the approved plan for a login's rights: one flat list of rights, templates only (only the super-admin and the firm's admin choose them), the Commission and Hours tabs, the supplier and client inside the manager app — stage by stage, with its status |
 | [docs/translations.md](docs/translations.md) | any UI text: `tr()` / `data-i18n`, the dictionaries `i18n/<lang>.json`, the header Language button and its sheet, the check script, adding a language |
 | [docs/tests.md](docs/tests.md) | any test: the suites (dictionaries, icons, rules, functions, browser `tests/e2e/`), how to run them, the CI run on every PR, adding a check |
 | [docs/history.md](docs/history.md) | why things are the way they are: reverted approaches, debugging trails, fixed incidents |

@@ -3,11 +3,11 @@
 // this month", a ⋮ with Delete), then section plates in the owner's fixed
 // order — Company, and for a saved supplier Commission (this month's hours,
 // the commission payable and its workers; the owner / super-admin sets its own
-// rate per hour / per day from a date), Portal login (its logins and their
-// ticks) and Workers — and one Save. A tap outside closes it without saving.
+// rate per hour / per day from a date) and Workers — and one Save; its logins
+// are made in Admin → Users only (owner, 2026-10-19). A tap outside closes it without saving.
 // The supplier's rate changes only its commission, never a worker's pay.
 import * as React from 'react';
-import { IconCheck, IconCoin, IconKey, IconTrash, IconTruckDelivery, IconUsersGroup } from '@tabler/icons-react';
+import { IconCheck, IconCoin, IconTrash, IconTruckDelivery, IconUsersGroup } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,6 @@ import { localYMD } from '@/lib/payroll';
 import type { CommissionEntry, ManagerBridge, SupplierInfo, SupplierRecord } from './bridge';
 import { hoursShort } from './today';
 import { fmtDMY } from './worker';
-import { Logins } from './logins';
 import { deleteLater } from './Clients';
 import { EditorHead, Field, MiniFigs, RateInput } from './ClientEditor';
 import { commissionFromForm, moneyShort, rateOn, supplierFormOf, supplierRecordOf, type SupplierForm } from './clients';
@@ -61,7 +60,6 @@ export function SupplierEditor({ props, info, api }: { props: SupplierProps; inf
   const hours = info.workers.reduce((t, w) => t + w.hours, 0);
   const n = info.workers.length;
   const workersText = n === 1 ? tr('1 worker{1}', { 1: '' }) : tr('{0} workers{1}', { 0: n, 1: '' });
-  const logins = info.logins.map(u => u.username);
 
   return (
     <div data-testid="supplier-editor" data-edit={editId || ''} className="grid gap-2">
@@ -116,13 +114,6 @@ export function SupplierEditor({ props, info, api }: { props: SupplierProps; inf
               )}
               {hist.length > 1 && <div className="text-[13px] text-ink-2" data-testid="supplier-rate-hist">{hist.slice(1, 4).map(x => rateText(x) + (x.from ? ' ' + tr('from {0}', { 0: fmtDMY(x.from) }) : '')).join(' · ')}</div>}
               <div className="text-[13px] text-ink-2">{tr('Empty = ₪{0} per hour. A worker\'s own commission in Accounting wins over this rate.', { 0: info.defaultRate })}</div>
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="portal" data-sec="portal" color={logins.length ? 'var(--ok)' : 'var(--neutral)'}>
-            <AccordionTrigger icon={<IconKey />} summary={logins.length ? logins.join(', ') : tr('No portal login yet.')}>{tr('Portal login')}</AccordionTrigger>
-            <AccordionContent forceMount hidden={!open.includes('portal')}>
-              <Logins role="supplier" ownerId={editId} info={info} api={api} />
             </AccordionContent>
           </AccordionItem>
 

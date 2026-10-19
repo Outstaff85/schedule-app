@@ -300,13 +300,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     more().click(); await new Promise(r => setTimeout(r, 400));
     const win = () => document.querySelector('[data-testid=window]');
     const sheet = !!win(), items = win() ? [...win().querySelectorAll('button span.flex-1')].map(b => b.textContent.trim()) : [];
+    // the sheet lies over the bottom bar (the bar never covers its last item): at the bar's middle the sheet is on top
+    // (the open sheet turns the page's pointer events off; turned back on for the look, the topmost element is hit)
+    const pe = document.body.style.pointerEvents; document.body.style.pointerEvents = 'auto';
+    const barHit = document.elementFromPoint(innerWidth / 2, innerHeight - 20); document.body.style.pointerEvents = pe;
+    const onTop = !!win() && !!barHit && win().contains(barHit);
     if(win()) win().querySelectorAll('button span.flex-1')[0].closest('button').click(); await new Promise(r => setTimeout(r, 400));
-    const r = {shown, fixed, todayColor, sheet, items, tab: currentTab, moreOn: more().getAttribute('aria-current') === 'page', closed: !win() || win().dataset.state === 'closed'};
+    const r = {shown, fixed, todayColor, sheet, items, onTop, tab: currentTab, moreOn: more().getAttribute('aria-current') === 'page', closed: !win() || win().dataset.state === 'closed'};
     switchTab('dashboard'); await new Promise(r => setTimeout(r, 200)); r.moreOff = more().getAttribute('aria-current') !== 'page';
     return r;
   });
-  ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
-    'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin ' + JSON.stringify(bb));
+  ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.onTop && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
+    'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin, all of them above the bar ' + JSON.stringify(bb));
   // Schedule (stage 6b: React, src/manager/Schedule.tsx): a plate per worker with its week; a tap opens its 7 days, a day opens the shift window.
   const W0 = await p.evaluate(async () => {
     const w0 = workers.find(w => isActiveWorker(w)); window.__keepSched = JSON.stringify(w0.schedule || []);
@@ -1358,7 +1363,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,place,rates,approval' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,portal,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
+  ok(ed.client.join() === 'client,place,rates' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
   const gp = await p.evaluate(async () => {
@@ -1372,16 +1377,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     openEditSupplier('s-1'); await wait(150);
     const m = document.getElementById('supplierModal');
     r.payable = /commission/.test(m.querySelector('[data-sec="commission"]').textContent);
-    r.newLogin = !!m.querySelector('[data-sec="portal"] [data-testid="new-login"]');
-    // a login's portal tabs are its template's: shown, not changed here; the login without a template says so
-    const cb = () => m.querySelector('[data-field="supplierSections"][data-key="dashboard"]');
-    r.tick = !!cb() && cb().disabled && cb().dataset.state === 'checked';
-    r.saved = await T.until(() => /No template/.test((m.querySelector('[data-testid="login-template"]') || {}).textContent || ''), 5000);
+    // its logins are made in Admin → Users only: no login section, no New login button here
+    r.noLogins = !m.querySelector('[data-sec="portal"]') && !m.querySelector('[data-testid="new-login"]');
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
   ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
-  ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs shown read-only (the template\'s) ' + JSON.stringify(gp));
+  ok(gp.payable && gp.noLogins, 'supplier editor: commission payable this month; no login section (logins are made in Admin → Users) ' + JSON.stringify(gp));
   // Stage 13: the supplier's own commission rate, set in the supplier window by the owner (per hour / per day, applies from).
   const scom = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
