@@ -11,7 +11,7 @@ import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts,
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
-import { canChange, hasPermission, hrHourReview, hrPayOnly, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
+import { canChange, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { autoSave, latestHoursBatch } from '../data/store';
@@ -78,7 +78,7 @@ function renderSchedulePage(){
   loadShiftRequests();
   if(island()) island()!.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(currentTab==='accounting') renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') island()!.renderFirmsScreen(); renderCrumb(); });
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(isAccTab(currentTab)) renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') island()!.renderFirmsScreen(); renderCrumb(); });
 provideBridge({
   lang:()=>currentLang(),
   dict:()=>currentDict(),
@@ -239,10 +239,10 @@ provideBridge({
   // ── Accounting (stage 6e): the tab and the pay window are React; the
   // period, the data, the server calls and the saves stay here.
   accounting(){
-    const s=(getSession()||{} as any), payOnly=hrPayOnly(), review=hrHourReview(), firmAdmin=isFirmAdminSession();
+    const s=(getSession()||{} as any), payOnly=hrPayOnly(), firmAdmin=isFirmAdminSession();
     const batches=(__hoursBatches||[]);
     return {
-      ready:__dataReady, period:accPeriod, locale:uiLocale(), payOnly, review, reviewOnly:isHrSession()&&!hasPermission('accounting'),
+      ready:__dataReady, period:accPeriod, locale:uiLocale(), payOnly,
       me:{uid:s.uid||'', commissionRate:Number(s.commissionRate)||0, commissionDayRate:Number(s.commissionDayRate)||0},
       canExport:hasPermission('exports'), canApprove:firmAdmin,
       canPay:Object.fromEntries(workers.map((w?: any)=>[w.id, !!canEditPay(w)])),
@@ -479,7 +479,11 @@ function salaryEntriesFor(period?: any){ return window.ManagerAcc ? window.Manag
 function commissionFor(w?: any, e?: any, hourRate?: any, dayRate?: any){ return window.ManagerAcc!.commissionFor(w, e, hourRate, dayRate); }
 function supplierCommission(w?: any, e?: any, sid?: any){ return window.ManagerAcc!.supplierCommission(w, e, sid); }
 function hourApprovalSummary(doc?: any, month?: any){ return window.ManagerAcc!.hourApprovalSummary(accData(), doc, month); }
-export function renderAccounting(){ if(island()) island()!.renderAccounting(); }
+// The Accounting tab, or an HR's Commission or Hours tab (the same data), whichever is open.
+export function renderAccounting(){
+  const i=island(); if(!i) return;
+  if(currentTab==='commission') i.renderCommission(); else if(currentTab==='hours') i.renderHours(); else i.renderAccounting();
+}
 function setAccTab(k?: any){ if(island()) island()!.setAccTab(k); renderCrumb(); }
 
 // The hours function (the HR's Hours approval, the owner's approvals list and fixes).

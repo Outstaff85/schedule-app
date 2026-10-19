@@ -13,7 +13,7 @@ import { markFirstContent, markFreshContent } from '../data/telemetry';
 import { API_URL } from '../data/api';
 import { tr } from '../logic/i18n';
 import { workerDocId } from '../logic/workers';
-import { isFirmAdminSession } from '../logic/access';
+import { isAccTab, isFirmAdminSession } from '../logic/access';
 import { cacheTenantProfile, renderAccountControl } from './gate';
 import { closeModal } from './windows';
 import { renderWorkersPage } from './workers';
@@ -179,7 +179,7 @@ export function prefetchAdminUsers(){
       // The HR names on the worker tiles come from this list.
       if(currentTab==='workers' && workers.some((w?: any)=>w.hrId)) renderWorkersPage();
       // ...and the HR commissions in Accounting → Payable by HR.
-      if(currentTab==='accounting' && workers.some((w?: any)=>w.hrId)) renderAccounting();
+      if(isAccTab(currentTab) && workers.some((w?: any)=>w.hrId)) renderAccounting();
       // ...and the HR field of a worker window already open.
       if(island()) island()!.refreshWindows();
     } else { __usersErr=(json&&json.error)||'Load failed'; if(currentTab==='admin') renderAdmin(); }

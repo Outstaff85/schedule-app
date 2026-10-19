@@ -573,12 +573,8 @@ export type AccountingSnapshot = {
   period: string;
   /** `uiLocale()`: the month names of the period list */
   locale: string;
-  /** an HR with the Accounting section: its own workers' Salary only, with its commission (`hrPayOnly`) */
+  /** an HR with the Accounting section (its Commission tab): its own workers' Salary only, with its commission (`hrPayOnly`) */
   payOnly: boolean;
-  /** an HR with an hours tick: Hours approval (the shared React screen) on top (`hrHourReview`) */
-  review: boolean;
-  /** an HR with an hours tick but no Accounting section: Hours approval only */
-  reviewOnly: boolean;
   me: { uid: string; commissionRate: number; commissionDayRate: number };
   /** the `exports` section */
   canExport: boolean;
@@ -816,6 +812,9 @@ export type ManagerIsland = {
   mapPickAt(lat: number, lng: number): void;
   // ── Accounting (stage 6e) ──
   renderAccounting(): void;
+  /** an HR's Commission tab (the Accounting tab's Salary for its own workers) and Hours tab (the hours review) */
+  renderCommission(): void;
+  renderHours(): void;
   /** Salary / Billing / Approvals / Alerts */
   setAccTab(tab: string): void;
   /** the pay window, drawn into the page's #payModal */

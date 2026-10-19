@@ -122,9 +122,6 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
   }, [snap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!snap.ready) return <Loading />;
-  const review = snap.review ? <div className="mb-6 max-w-[760px]" id="accSecReview" data-testid="acc-review"><HoursReview call={api.hoursCall as never} /></div> : null;
-  if (snap.reviewOnly) return <div data-testid="accounting" data-view="review">{review}</div>;
-
   const simple = snap.payOnly;
   const shown: AccTab = simple ? 'salary' : tab;
   const figs = accFigures(calc.entries);
@@ -134,7 +131,6 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
 
   return (
     <div data-testid="accounting" data-tab={shown} data-view={simple ? 'pay' : 'full'}>
-      {review}
       <div className="mb-3 flex items-center gap-1.5" data-testid="acc-period-nav">
         <Button size="icon" aria-label={tr('Earlier')} title={tr('Earlier')} data-testid="acc-earlier" onClick={() => step(-1)}><IconChevronLeft /></Button>
         <Select value={snap.period} onValueChange={p => void api.setPeriod(p)}>
@@ -182,6 +178,11 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
       {exporting && <ExportWindow snap={snap} api={api} onClose={() => setExporting(false)} />}
     </div>
   );
+}
+
+/** An HR's Hours tab: its workers' days to approve, dispute or fix (the shared hours review, src/hours-review/). */
+export function HoursTab({ api }: { api: ManagerBridge }) {
+  return <div className="max-w-[760px]" id="accSecReview" data-testid="acc-review"><HoursReview call={api.hoursCall as never} /></div>;
 }
 
 // ── Salary ──

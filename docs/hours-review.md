@@ -49,7 +49,7 @@ Where it runs:
 
 - **Client portal** — the whole page, the React screen ([client-portal.md](client-portal.md)).
 - **Supplier portal** — the **Approvals** tab, the React screen (`HoursReview`, [supplier-portal.md](supplier-portal.md)), shown with an hours or schedule tick.
-- **Manager app, an HR login** — Accounting → `#accSecReview` (the React `HoursReview` over the page's `hoursCall`, `ManagerBridge.hoursCall`), shown with an hours or schedule tick (`hrHourReview()`); such an HR gets the Accounting tab for it even without the Accounting section, and then sees only this part.
+- **Manager app, an HR login** — its **Hours** tab (`#hoursRoot` → `HoursTab`, `#accSecReview`: the React `HoursReview` over the page's `hoursCall`, `ManagerBridge.hoursCall`), shown with an hours or schedule tick (`hrHourReview()`).
 
 ## Accounting → Hours approvals (the owner)
 

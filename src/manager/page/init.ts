@@ -10,7 +10,7 @@ import { byId, qs } from './dom';
 import { reportError } from '../data/telemetry';
 import { loadI18n, storedLanguage, tr } from '../logic/i18n';
 import { autoSave, loadData } from '../data/store';
-import { homeTab, isHrSession } from '../logic/access';
+import { homeTab, isAccTab, isHrSession } from '../logic/access';
 import { loadFirestoreBackend } from '../data/api';
 import { getSession, saveSession } from '../data/session';
 import { USERS_ADMIN_FN_URL, warmCloudFunctions } from '../logic/functions';
@@ -86,7 +86,7 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons
     if(isHrSession()) loadFirestoreBackend().then((b?: any) => b.hourPerms()).then((hp?: any) => {
       const s = getSession(); if(!s || JSON.stringify(hp) === JSON.stringify(s.hourPerms || [])) return;
       saveSession(Object.assign(s, {hourPerms: hp})); applyNavPermissions();
-      if(currentTab === 'accounting') renderAccounting();
+      if(isAccTab(currentTab)) renderAccounting();
     }).catch(()=>{});
     // What a staff / HR login may change, as the ID token has it now (a
     // template change ends the session; until then the token is the truth).

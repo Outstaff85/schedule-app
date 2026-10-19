@@ -475,6 +475,17 @@ body:has(.overlay.open){overflow:hidden}
       <div id="accountingRoot" data-island></div>
     </div>
 
+    <!-- Commission and Hours (permissions plan, stage 2; an HR login): its
+         own workers' pay and commission (the Accounting tab's Salary for its
+         workers, src/manager/Accounting.tsx) and the hours review
+         (src/hours-review/), drawn through renderCommission() / renderHours(). -->
+    <div class="page-section" id="sectionCommission">
+      <div id="commissionRoot" data-island></div>
+    </div>
+    <div class="page-section" id="sectionHours">
+      <div id="hoursRoot" data-island></div>
+    </div>
+
   </div>
 
 <!-- Modals -->
