@@ -72,10 +72,9 @@ The rows come from `salaryEntriesFor(d, period)` → `{byWorker, byClient, byDay
   4. **Pay** per shift = `shiftPayFor(h, worker, isSat, clientId of the shift's first punch, date, seen)`; a daily-paid worker's days set by hand for the period replace the counted ones (days × daily rate).
   5. **Travel** = `travelPay(w, days, months)`: `w.travelAllowance` ₪ × days worked (`daysUsed`) + `w.travelMonthly` ₪ once for each calendar month with a day worked. Travel is never part of the wage.
   6. For a worker with a supplier, `e.supCom` sums the supplier's own commission shift by shift (`supplierShiftCommission(sp.commission, h, date, e.supDays)`).
-  7. In parallel, `byClient[clientId]` sums hours and `clientBillPay()` for shifts that have a `clientId`, and `byDay` the hours per day (the chart).
+  7. In parallel, `byClient[clientId]` sums hours and `clientBillPay()` for shifts that have a `clientId`, and `byDay` the hours per day.
 - **Rows: only the workers with shifts in the period.** The search icon opens a field (focused); it narrows the rows and the totals with them (`searchRows`); Billing and Alerts always use every row.
 - **Totals** (`Figures`, above the table): Hours, Pay, Travel ₪, Total Pay (= pay + travel), an HR's My commission (`salaryTotals`).
-- **Chart:** the period's hours by day — by month for All Time over more than two months — a bar chart (`ui/chart`, Recharts); display only.
 - **Table** (`DataTable`): Worker (⚠ with the warnings when there are punches to check; the name opens the worker card), Hours, Regular / OT / Shabbat, Days, Rate (the own rate ₪/h or ₪/day; grey "client ₪x/h" when the client's applies — the client the worker had most hours at, `rateShown`; amber "set a daily rate" / "no rate"), Pay, Travel ₪, Total Pay (an HR's My commission), and the totals row; a column head sorts; 10 rows and Show more. A tap opens the row's details in a window (the hours split, Days with "punches: N" when set by hand, Rate, Pay, Travel, Bank — amber "no bank details" — an HR's commission, **Open card** and **Pay**); a double click opens the pay window. On a phone the rows are plates: a tap opens the details under the plate, a long press the pay window.
 - **Select** (not for an HR): a Select button over the table, a tick column, the bulk bar's **Excel** / **PDF** export only the ticked workers' shifts.
 
