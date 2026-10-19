@@ -43,10 +43,11 @@ import {
 } from './users';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EDIT_LABELS, loadTemplates, rightsMatrix, rightsOf, templateBody, templateForm, templatesFor, templateSummary, useTemplates, type PermTemplate, type TemplateForm } from './templates';
+import { island } from './bridge';
 
 // Logins deleted here and still inside their Undo time: left out of the list.
 const hiddenUsers = new Set<string>();
-const redrawUsers = () => window.ManagerIsland?.renderAdmin();
+const redrawUsers = () => island()?.renderAdmin();
 
 /** The login goes behind the Undo snack, then `deleteUser`. */
 function deleteLater(ids: string[], label: string, api: ManagerBridge) {

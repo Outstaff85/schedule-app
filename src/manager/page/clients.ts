@@ -14,17 +14,12 @@ import { getPunchLog } from '../data/punches';
 import { getWorkerMonthShifts } from '../logic/exports';
 import { render } from './render';
 import { showToast } from '../toast';
+import { island } from '../bridge';
 Object.defineProperties(window, {
   "openAddClient": {get: () => openAddClient, configurable: true},
   "openEditClient": {get: () => openEditClient, configurable: true},
-  "showClientModal": {get: () => showClientModal, configurable: true},
   "saveClient": {get: () => saveClient, configurable: true},
-  "commitClient": {get: () => commitClient, configurable: true},
-  "closeEditorUnsaved": {get: () => closeEditorUnsaved, configurable: true},
   "punchFromClientModal": {get: () => punchFromClientModal, configurable: true},
-  "deleteClientsNow": {get: () => deleteClientsNow, configurable: true},
-  "openMapPicker": {get: () => openMapPicker, configurable: true},
-  "workersMonthHours": {get: () => workersMonthHours, configurable: true},
 });
 
 // --- Clients (stage 6d) ----------------------------------------------------------
@@ -35,15 +30,15 @@ Object.defineProperties(window, {
 export function openAddClient(){ editingClientId=null; showClientModal({name:'',color:CLIENT_COLORS[clients.length%CLIENT_COLORS.length],address:''}); }
 export function openEditClient(cid?: any){ const c=clients.find((x?: any)=>x.id===cid); if(!c) return; editingClientId=cid; showClientModal(c); }
 function showClientModal(c?: any){
-  if(!window.ManagerIsland) return;
+  if(!island()) return;
   const cov=byId('clientOverlay'), id=editingClientId;
   cov.__onUserClose=()=>saveClient({auto:true});
   // Coming back to it (from the manual punch or the user form) draws it again from the saved record.
   cov.__reopen=id?()=>openEditClient(id):null;
-  window.ManagerIsland.openClient(JSON.parse(JSON.stringify(c)), id);
+  island()!.openClient(JSON.parse(JSON.stringify(c)), id);
   cov.classList.add('open');
 }
-function saveClient(opts?: any){ if(window.ManagerIsland) window.ManagerIsland.saveClient(opts||{}); }
+function saveClient(opts?: any){ if(island()) island()!.saveClient(opts||{}); }
 // The window's record: stored in place (unless nothing changed) or added; saved.
 export function commitClient(id?: any, fields?: any){
   if(id){
@@ -83,8 +78,8 @@ export function deleteClientsNow(ids?: any){
 // (ManagerBridge.pickPlace) over the window; the place picked goes back
 // through onPick (lat, lng, radius and a maps link).
 export function openMapPicker(start?: any, onPick?: any){
-  if(!window.ManagerIsland) return;
-  window.ManagerIsland.openMapPicker({start: start||null, onPick: onPick||null, close: ()=>closeModal('mapPickOverlay')});
+  if(!island()) return;
+  island()!.openMapPicker({start: start||null, onPick: onPick||null, close: ()=>closeModal('mapPickOverlay')});
   byId('mapPickOverlay').classList.add('open');
 }
 

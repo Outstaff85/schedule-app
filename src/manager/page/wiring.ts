@@ -16,16 +16,8 @@ import { render } from './render';
 import { refreshBell } from './header';
 import { showToast } from '../toast';
 import { setFrame } from '../frame';
+import { island } from '../bridge';
 Object.defineProperties(window, {
-  "setSaveStatus": {get: () => setSaveStatus, configurable: true},
-  "updateHoursBadge": {get: () => updateHoursBadge, configurable: true},
-  "LOGIN_FN_URL": {get: () => LOGIN_FN_URL, configurable: true},
-  "goToSupplierPortal": {get: () => goToSupplierPortal, configurable: true},
-  "goToClientPortal": {get: () => goToClientPortal, configurable: true},
-  "logout": {get: () => logout, configurable: true},
-  "signIn": {get: () => signIn, configurable: true},
-  "pingLogin": {get: () => pingLogin, configurable: true},
-  "switchToTenant": {get: () => switchToTenant, configurable: true},
   "backToFirmsList": {get: () => backToFirmsList, configurable: true},
 });
 
@@ -53,7 +45,7 @@ ManagerData.on('data', ()=>render());
 // day could keep showing a stale "Changed after approval".
 ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); else if(currentTab==='accounting') renderAccounting(); else if(currentTab==='admin') renderAdmin(); });
 // An open worker card shows the worker's latest hours batch live.
-ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(window.ManagerIsland) window.ManagerIsland.refreshWindows(); if(currentTab==='accounting') renderAccounting(); });
+ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(island()) island()!.refreshWindows(); if(currentTab==='accounting') renderAccounting(); });
 ManagerData.on('save', (s?: any)=>setSaveStatus(s));
 ManagerData.on('notice', ({msg, ms}: any)=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
 ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());

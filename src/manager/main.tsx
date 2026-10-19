@@ -22,7 +22,7 @@ import type * as Acc from './accounting';
 import { LanguageScope, adoptLanguage } from '@/lib/i18n';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { UndoHost } from '@/components/shared/undo';
-import { bridge, type ManagerBridge } from './bridge';
+import { bridge, hasBridge, provideIsland, type ManagerBridge } from './bridge';
 import { Frame } from './Frame';
 import { SignIn } from './SignIn';
 import { useFrame } from './frame';
@@ -83,7 +83,7 @@ function island<S>(rootId: string, read: (b: ManagerBridge) => S, draw: (snap: S
   }
   return () => {
     const el = document.getElementById(rootId);
-    if (!el || !window.ManagerBridge) return;
+    if (!el || !hasBridge()) return;
     adoptLanguage(bridge().lang(), bridge().dict());
     version++;
     flushSync(() => {
@@ -122,7 +122,7 @@ function windowRoot<P>(modalId: string, draw: (p: P, api: ManagerBridge) => Reac
   }
   const bump = () => {
     const el = document.getElementById(modalId);
-    if (!el || !window.ManagerBridge) return;
+    if (!el || !hasBridge()) return;
     adoptLanguage(bridge().lang(), bridge().dict());
     version++;
     flushSync(() => {
@@ -175,7 +175,7 @@ createRoot(undoRoot).render(<StrictMode><UndoHost /></StrictMode>);
 // bottom bar, drawn once (synchronously, so the page's sections and the
 // Language button are in it before the page goes on); it follows frame.ts.
 const frameEl = document.getElementById('frameRoot');
-if (frameEl && window.ManagerBridge) {
+if (frameEl && hasBridge()) {
   const frameRoot = createRoot(frameEl);
   flushSync(() => frameRoot.render(<StrictMode><TooltipProvider><Frame api={bridge()} /></TooltipProvider></StrictMode>));
 }
@@ -188,12 +188,12 @@ function SignInRoot({ screen }: { screen: HTMLElement }) {
   return <LanguageScope lang={f.lang}><SignIn api={api} screen={screen} /></LanguageScope>;
 }
 const loginEl = document.getElementById('loginScreen');
-if (loginEl && window.ManagerBridge) {
+if (loginEl && hasBridge()) {
   const loginRoot = createRoot(loginEl);
   flushSync(() => loginRoot.render(<StrictMode><TooltipProvider><SignInRoot screen={loginEl} /></TooltipProvider></StrictMode>));
 }
 
-window.ManagerIsland = {
+provideIsland({
   renderToday, renderSchedule, renderWorkers, renderClients, renderSuppliers,
   openCard: id => card.show({ id, seq: ++seq }),
   openNotices: id => notices.show({ id }),
@@ -225,7 +225,7 @@ window.ManagerIsland = {
   openFirm: () => firmWin.show({ seq: ++seq }),
   openUser: (u, preset) => userWin.show({ u, preset, seq: ++seq }),
   openAssign: team => assignWin.show({ team, seq: ++seq }),
-};
+});
 // The Accounting figures for the page's other callers (the client and supplier
 // windows, the user form's HR commission, the bell's approvals): its one-line
 // wrappers call these (src/manager/accounting.ts is the one copy); the browser

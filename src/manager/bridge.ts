@@ -852,8 +852,18 @@ declare global {
   }
 }
 
+// The page and its React pieces reach each other through these two, not
+// through window (React migration 8f): the page gives its bridge once
+// (page/bridge.ts), main.tsx its island. window.ManagerBridge /
+// window.ManagerIsland stay set for the browser tests only.
+let theBridge: ManagerBridge | undefined;
+let theIsland: ManagerIsland | undefined;
+export function provideBridge(b: ManagerBridge): void { theBridge = b; window.ManagerBridge = b; }
+export function provideIsland(i: ManagerIsland): void { theIsland = i; window.ManagerIsland = i; }
+export const hasBridge = (): boolean => !!theBridge;
 export function bridge(): ManagerBridge {
-  const b = window.ManagerBridge;
-  if (!b) throw new Error('ManagerBridge missing');
-  return b;
+  if (!theBridge) throw new Error('ManagerBridge missing');
+  return theBridge;
 }
+/** The React pieces' entry points, once main.tsx has run (undefined before). */
+export const island = (): ManagerIsland | undefined => theIsland;

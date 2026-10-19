@@ -19,6 +19,7 @@ import { undoDelete } from '@/components/shared/undo';
 import type { ClientRow, ClientsSnapshot, ManagerBridge, SupplierRow, SuppliersSnapshot } from './bridge';
 import { Line } from './pieces';
 import { hoursShort } from './today';
+import { island } from './bridge';
 
 // Deleted here and still inside their Undo time: left out of the list.
 const hiddenClients = new Set<string>();
@@ -27,7 +28,7 @@ const hiddenSuppliers = new Set<string>();
 /** Delete from a window's ⋮ (the window already closed unsaved): the plate goes behind the Undo snack, the record when its time is up. */
 export function deleteLater(kind: 'clients' | 'suppliers', id: string, name: string, api: ManagerBridge) {
   const hidden = kind === 'clients' ? hiddenClients : hiddenSuppliers;
-  const redraw = () => (kind === 'clients' ? window.ManagerIsland?.renderClients() : window.ManagerIsland?.renderSuppliers());
+  const redraw = () => (kind === 'clients' ? island()?.renderClients() : island()?.renderSuppliers());
   hidden.add(id); redraw();
   undoDelete(name,
     () => { hidden.delete(id); if (kind === 'clients') api.deleteClients([id]); else api.deleteSuppliers([id]); },

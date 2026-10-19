@@ -29,10 +29,11 @@ import type { AdminSnapshot, FirmProfile, ManagerBridge } from './bridge';
 import { Field } from './ClientEditor';
 import { useTapOpen } from './Clients';
 import { Line } from './pieces';
+import { island } from './bridge';
 
 // Firms deleted here and still inside their Undo time: left out of the list.
 const hiddenFirms = new Set<string>();
-const redrawFirms = () => { window.ManagerIsland?.renderAdmin(); window.ManagerIsland?.renderFirmsScreen(); };
+const redrawFirms = () => { island()?.renderAdmin(); island()?.renderFirmsScreen(); };
 
 /** The Firms section: an owner's own firm, or a super-admin's toolbar and list. */
 export function FirmsPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {

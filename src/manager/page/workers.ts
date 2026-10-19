@@ -20,23 +20,18 @@ import { openEditWorker, rescanFromWorkerModal } from './worker-window';
 import { loadFirmMessages, noPunchActs } from './header';
 import { render } from './render';
 import { showToast } from '../toast';
+import { island } from '../bridge';
 Object.defineProperties(window, {
   "todayPunchLog": {get: () => todayPunchLog, configurable: true},
   "workerToday": {get: () => workerToday, configurable: true},
   "workerSiteName": {get: () => workerSiteName, configurable: true},
   "workerNotices": {get: () => workerNotices, configurable: true},
   "workerBarColor": {get: () => workerBarColor, configurable: true},
-  "setWorkersStatus": {get: () => setWorkersStatus, configurable: true},
   "openNotices": {get: () => openNotices, configurable: true},
   "renderWorkersPage": {get: () => renderWorkersPage, configurable: true},
   "openWorkerCard": {get: () => openWorkerCard, configurable: true},
-  "editFromWorkerCard": {get: () => editFromWorkerCard, configurable: true},
-  "rescanFromWorkerCard": {get: () => rescanFromWorkerCard, configurable: true},
-  "openWorkerDocUpload": {get: () => openWorkerDocUpload, configurable: true},
   "openHoursImportModal": {get: () => openHoursImportModal, configurable: true},
   "parseHoursExcelFile": {get: () => parseHoursExcelFile, configurable: true},
-  "parseHoursImagePage": {get: () => parseHoursImagePage, configurable: true},
-  "openHoursExportModal": {get: () => openHoursExportModal, configurable: true},
   "renderClientsPage": {get: () => renderClientsPage, configurable: true},
   "renderSuppliersPage": {get: () => renderSuppliersPage, configurable: true},
 });
@@ -99,15 +94,15 @@ export function setWorkersStatus(ids?: any, v?: any){
 // src/manager/worker-windows.tsx): who, a plate per notice with its action,
 // and "Open worker card".
 export function openNotices(wid?: any){
-  if(!workers.some((x?: any)=>x.id===wid)||!window.ManagerIsland) return;
-  window.ManagerIsland.openNotices(wid);
+  if(!workers.some((x?: any)=>x.id===wid)||!island()) return;
+  island()!.openNotices(wid);
   byId('noticesOverlay').classList.add('open');
   loadFirmMessages();
 }
 // ── Workers (stage 6c-1): the list is drawn in React — src/manager/Workers.tsx.
 // The page keeps the data; the tab reads it through window.ManagerBridge.workers().
 export function renderWorkersPage(){
-  if(window.ManagerIsland) window.ManagerIsland.renderWorkers();
+  if(island()) island()!.renderWorkers();
 }
 
 // The worker card (stage 6c-2): drawn in React into #workerCardModal
@@ -115,10 +110,10 @@ export function renderWorkersPage(){
 // was closed) draws it again from the current data, by id — nothing when the
 // worker is gone; the open pane (Info / Docs / Hours) is kept.
 export function openWorkerCard(wi?: any){
-  const w=workers[wi]; if(!w||!window.ManagerIsland) return;
+  const w=workers[wi]; if(!w||!island()) return;
   const ov=byId('workerCardOverlay');
   ov.__reopen=()=>{ const i=workers.findIndex((x?: any)=>x.id===w.id); if(i>=0) openWorkerCard(i); };
-  window.ManagerIsland.openCard(w.id);
+  island()!.openCard(w.id);
   ov.classList.add('open');
 }
 
@@ -140,8 +135,8 @@ export function rescanFromWorkerCard(wi?: any){
 // expiry. Expiry reminders flow through workerDocStatus() (badges, the
 // "expiring" filter) and the Today tab's expiry cards.
 export function openWorkerDocUpload(workerId?: any){
-  if(!workers.some((x?: any)=>x.id===workerId)||!window.ManagerIsland) return;
-  window.ManagerIsland.openDocUpload(workerId);
+  if(!workers.some((x?: any)=>x.id===workerId)||!island()) return;
+  island()!.openDocUpload(workerId);
   byId('workerDocOverlay').classList.add('open');
 }
 
@@ -157,8 +152,8 @@ export function openWorkerDocUpload(workerId?: any){
 // The window is React (src/manager/worker-windows.tsx); the file reading
 // below and the server calls are the page's (window.ManagerBridge).
 export function openHoursImportModal(workerId?: any){
-  if(!workers.some((x?: any)=>x.id===workerId)||!window.ManagerIsland) return;
-  window.ManagerIsland.openHoursImport(workerId);
+  if(!workers.some((x?: any)=>x.id===workerId)||!island()) return;
+  island()!.openHoursImport(workerId);
   byId('hoursImportOverlay').classList.add('open');
 }
 // Fixed template: a header row containing Date/In/Out (or the same three words in Russian),
@@ -213,12 +208,12 @@ export async function parseHoursImagePage(pg?: any){
 // Detail-mode export for one worker (exportShiftsDetail): the month picker is
 // React (src/manager/worker-windows.tsx).
 export function openHoursExportModal(workerId?: any){
-  if(!workers.some((x?: any)=>x.id===workerId)||!window.ManagerIsland) return;
-  window.ManagerIsland.openHoursExport(workerId);
+  if(!workers.some((x?: any)=>x.id===workerId)||!island()) return;
+  island()!.openHoursExport(workerId);
   byId('hoursExportOverlay').classList.add('open');
 }
 
 // The Clients and Suppliers tabs (stage 6d): drawn in React — src/manager/
 // Clients.tsx; the page keeps the data and the deletes.
-export function renderClientsPage(){ if(window.ManagerIsland) window.ManagerIsland.renderClients(); }
-export function renderSuppliersPage(){ if(window.ManagerIsland) window.ManagerIsland.renderSuppliers(); }
+export function renderClientsPage(){ if(island()) island()!.renderClients(); }
+export function renderSuppliersPage(){ if(island()) island()!.renderSuppliers(); }
