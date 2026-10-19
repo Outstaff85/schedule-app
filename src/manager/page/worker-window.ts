@@ -12,7 +12,7 @@ import { API_URL, gsDeleteWorkerDoc } from '../data/api';
 import { gsAuth } from '../data/session';
 import { FORM101_FN_URL, SCAN_WARM_URLS, warmCloudFunctions } from '../logic/functions';
 import { tr } from '../logic/i18n';
-import { HOUR_DEFAULT, HOUR_PERM_LABELS, activeTenantIdForAdmin, loadAdminCache, saveAdminCache } from '../logic/admin';
+import { HOUR_DEFAULT, HOUR_PERM_LABELS, activeTenantIdForAdmin, loadAdminCache } from '../logic/admin';
 import { isFirmAdminSession } from '../logic/access';
 import { autoSave } from '../data/store';
 import { genToken } from '../data/ids';
@@ -36,7 +36,6 @@ Object.defineProperties(window, {
   "applyWorkerDraft": {get: () => applyWorkerDraft, configurable: true},
   "autoFindMissingScanFields": {get: () => autoFindMissingScanFields, configurable: true},
   "showWorkerModal": {get: () => showWorkerModal, configurable: true},
-  "saveLoginField": {get: () => saveLoginField, configurable: true},
   "newLoginFor": {get: () => newLoginFor, configurable: true},
   "supplierMonthPayable": {get: () => supplierMonthPayable, configurable: true},
   "loginsInfo": {get: () => loginsInfo, configurable: true},
@@ -180,19 +179,6 @@ function showWorkerModal(w?: any){
   window.ManagerIsland.openEditor(w, editingWorkerId!==null&&workers.some((x?: any)=>x.id===editingWorkerId)?editingWorkerId:null);
   wov.classList.add('open');
 }
-// A tick of a client / supplier login in its window (stage 6d, React —
-// src/manager/logins.tsx): saved at once (updateUser — the user signs in again
-// with the new rights), and the users cache follows. False when it failed.
-export async function saveLoginField(uid?: any, field?: any, values?: any){
-  try{
-    const json=await (await fetch(API_URL,{method:'POST', body:JSON.stringify({action:'updateUser', ...gsAuth(), id:uid, [field]:values})})).json();
-    if(!json||json.error){ showToast(tr((json&&json.error)||'Save failed')); return false; }
-    const key='users_'+activeTenantIdForAdmin(), list=loadAdminCache(key)||[], u=list.find((x?: any)=>x.id===uid);
-    if(u){ u[field]=values; saveAdminCache(key,list); }
-    showToast(tr('Saved'));
-    return true;
-  }catch(e: any){ showToast(tr('Network error')); return false; }
-}
 // "New client login" / "New portal login" from an editor: the user form with
 // the role and the client / supplier already set (the client window is saved
 // first, as on a tap outside; closing the user form brings it back).
@@ -209,7 +195,7 @@ export function supplierMonthPayable(sp?: any){
 // The login rows a client / supplier window shows (the owner's users cache).
 export function loginsInfo(role?: any, id?: any){
   const users=(loadAdminCache('users_'+activeTenantIdForAdmin())||[]).filter((u?: any)=>u.role===role&&id&&(role==='client'?u.clientId:u.supplierId)===id);
-  return {logins:users.map((u?: any)=>({id:u.id, name:u.fullName||u.username||'', username:u.username||'', hourPerms:u.hourPerms, supplierSections:u.supplierSections, showPay:u.showPay})),
+  return {logins:users.map((u?: any)=>({id:u.id, name:u.fullName||u.username||'', username:u.username||'', hourPerms:u.hourPerms, supplierSections:u.supplierSections, showPay:u.showPay, templateId:u.templateId||null})),
     canEdit:isFirmAdminSession(), hourLabels:HOUR_PERM_LABELS, hourDefault:HOUR_DEFAULT};
 }
 

@@ -6,7 +6,8 @@ Every function takes the Firestore client and returns a plain dict — either
 the result or {"error": "..."} — for the actions login, createUser (a new
 firm), listUsers, createTenantUser, updateUser, resetUserPassword,
 deleteUser, updateMyName, updateMyLanguage, updateMyTheme, checkWorkerDoc, listTenants, setTenantActive,
-deleteTenant, updateTenant and loadTenantProfile, with the error texts the app shows.
+deleteTenant, updateTenant, loadTenantProfile, listTemplates, saveTemplate and
+deleteTemplate, with the error texts the app shows.
 
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
@@ -17,7 +18,11 @@ users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
                       (the UI language the person last picked: en/he/ru), theme
                       (the look last picked in the account menu: dark/light/system); an 'hr' user also
                       ownOnly (sees only the workers whose
-                      hrId is theirs — see firestore.rules)
+                      hrId is theirs — see firestore.rules); templateId (the
+                      permission template its rights are copied from)
+  permTemplates/{id}  name, role, permissions, hourPerms, supplierSections,
+                      ownOnly, showPay, updatedAt — one set for every firm,
+                      only a superadmin edits it (saveTemplate)
   authSecrets/{uid}   algo, salt, hash, failCount, lastFailAt
   usernames/{name}    {uid} — makes a username unique: the batch that
                       creates a user create()s this doc and fails as a whole
@@ -344,6 +349,7 @@ def list_users(db, caller):
             "showPay": d.get("showPay") is not False if _norm_role(d.get("role")) in ("hr", "supplier") else None,
             "commissionRate": _rate(d.get("commissionRate")) if _norm_role(d.get("role")) == "hr" else None,
             "commissionDayRate": _rate(d.get("commissionDayRate")) if _norm_role(d.get("role")) == "hr" else None,
+            "templateId": d.get("templateId") or None,
         })
     return {"users": users}
 
@@ -445,6 +451,12 @@ def create_tenant_user(db, caller, body):
         return {"error": "A client login needs a client"}
     if role == "hr" and not str(body.get("fullName") or "").strip():
         return {"error": "An HR login needs a name"}
+    tpl = None
+    if body.get("templateId"):
+        tpl, err = _load_template(db, body.get("templateId"), role)
+        if err:
+            return {"error": err}
+        body = dict(body, **tpl["rights"])
     perms = body.get("permissions")
     if role == "supplier":
         perms = ""
@@ -474,6 +486,8 @@ def create_tenant_user(db, caller, body):
     if role in HOUR_ROLES:
         hp = body.get("hourPerms")
         user["hourPerms"] = _hour_perms(hp) if isinstance(hp, list) else list(HOUR_DEFAULT)
+    if tpl:
+        user["templateId"] = tpl["id"]
     uid, err = _new_user_batch(db, username, user, password)
     if err:
         return {"error": err}
@@ -496,14 +510,29 @@ def update_user(db, caller, body, revoke):
         return {"error": err}
     role = _norm_role(data.get("role"))
     if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "clientId", "hourPerms", "active", "ownOnly", "role",
-                                                       "showPay", "commissionRate", "commissionDayRate")):
+                                                       "showPay", "commissionRate", "commissionDayRate", "templateId")):
         return {"error": E_ADMIN_TARGET}
     upd = {}
+    # A login on a template takes its rights from the template only: a new
+    # templateId copies them in (and may change the role to the template's);
+    # without one, the rights the body sends are dropped.
+    tpl = None
+    if body.get("templateId"):
+        tpl, err = _load_template(db, body.get("templateId"), body.get("role") or role)
+        if err:
+            return {"error": err}
+        body = dict({k: v for k, v in body.items() if k not in TEMPLATE_RIGHTS}, **tpl["rights"])
+        if tpl["id"] != data.get("templateId"):
+            upd["templateId"] = tpl["id"]
+    elif data.get("templateId"):
+        body = {k: v for k, v in body.items() if k not in TEMPLATE_RIGHTS}
     # A login may move between staff, hr, supplier and client (never to an admin role).
     new_role = body.get("role") or role
     if new_role != role:
         if new_role not in ROLES_SUB:
             return {"error": E_ROLE}
+        if data.get("templateId") and not tpl:
+            return {"error": E_PICK_TEMPLATE}
         if new_role == "supplier" and not (body.get("supplierId") or data.get("supplierId")):
             return {"error": "A supplier login needs a supplier"}
         if new_role == "client" and not (body.get("clientId") or data.get("clientId")):
@@ -558,6 +587,7 @@ def update_user(db, caller, body, revoke):
                "ownOnly": data.get("ownOnly") is not False, "showPay": data.get("showPay") is not False,
                "commissionRate": _rate(data.get("commissionRate")),
                "commissionDayRate": _rate(data.get("commissionDayRate"))}
+    current["templateId"] = data.get("templateId")
     upd = {k: v for k, v in upd.items() if v != current[k]}
     if upd.get("role") == "hr":  # a new HR always gets its ownOnly flag stored
         upd["ownOnly"] = body.get("ownOnly") is not False
@@ -609,6 +639,173 @@ def delete_user(db, caller, body, revoke):
     batch.commit()
     revoke(ref.id, delete=True)
     return {"ok": True}
+
+
+# ── Permission templates (listTemplates / saveTemplate / deleteTemplate) ───
+# One set of templates for every firm (owner, 2026-10-19): only a superadmin
+# edits them, every firm's owner picks them for its logins. A login on a
+# template has the template's rights copied into its users doc (so login,
+# the rules and the functions read them as before); saving a template copies
+# them again into every login on it, in every firm, and ends the sessions of
+# those whose rights changed. Deleting a template leaves its logins' rights as
+# they are, without a template.
+
+TEMPLATE_RIGHTS = ("permissions", "hourPerms", "supplierSections", "ownOnly", "showPay")
+# The sections a staff / HR template may tick (payEdit: HR only).
+TEMPLATE_SECTIONS = ("schedule", "workers", "clients", "suppliers", "accounting", "payEdit", "exports")
+E_PICK_TEMPLATE = "Pick a template"
+E_TEMPLATE_NOT_FOUND = "Template not found"
+E_TEMPLATE_ROLE = "The template is for another role"
+# The templates written the first time the list is read (the demo's, on the
+# rights the app has today).
+DEFAULT_TEMPLATES = (
+    ("dispatcher", "Dispatcher", "staff", {"permissions": ["schedule", "workers"]}),
+    ("accountant", "Accountant", "staff", {"permissions": ["workers", "accounting", "exports"]}),
+    ("hr", "HR", "hr", {"permissions": ["schedule", "workers"], "hourPerms": list(HOUR_DEFAULT), "ownOnly": True, "showPay": True}),
+    ("supplier", "Supplier", "supplier", {"supplierSections": list(SUPPLIER_SECTIONS), "hourPerms": list(HOUR_DEFAULT), "showPay": True}),
+    ("client", "Client", "client", {"hourPerms": list(HOUR_DEFAULT)}),
+)
+
+
+def _template_rights(role, v):
+    """The rights a template gives a login of this role, as the users doc keeps them."""
+    v = v or {}
+    out = {}
+    if role in ("staff", "hr"):
+        p = v.get("permissions")
+        out["permissions"] = [s for s in TEMPLATE_SECTIONS if isinstance(p, list) and s in p and (s != "payEdit" or role == "hr")]
+    else:
+        out["permissions"] = ""
+    if role in HOUR_ROLES:
+        out["hourPerms"] = _hour_perms(v.get("hourPerms"))
+    if role == "supplier":
+        out["supplierSections"] = _supplier_sections(v.get("supplierSections") if isinstance(v.get("supplierSections"), list) else [])
+    if role == "hr":
+        out["ownOnly"] = v.get("ownOnly") is not False
+    if role in ("hr", "supplier"):
+        out["showPay"] = v.get("showPay") is not False
+    return out
+
+
+def _template_out(snap):
+    d = snap.to_dict() or {}
+    role = _norm_role(d.get("role"))
+    return dict({"id": snap.id, "name": d.get("name") or "", "role": role}, **_template_rights(role, d))
+
+
+def _seed_templates(db):
+    col = db.collection("permTemplates")
+    for tid, name, role, rights in DEFAULT_TEMPLATES:
+        try:
+            col.document(tid).create(dict({"name": name, "role": role, "updatedAt": _now_iso()}, **_template_rights(role, rights)))
+        except Exception as e:  # another caller seeded it first
+            if "already exists" not in str(e).lower() and type(e).__name__ != "Conflict":
+                raise
+
+
+def _load_template(db, tid, role):
+    """({"id", "rights"}, None) for a template a login of this role may use, or (None, error)."""
+    snap = db.collection("permTemplates").document(str(tid)).get()
+    if not snap.exists:
+        return None, E_TEMPLATE_NOT_FOUND
+    t = _template_out(snap)
+    if t["role"] != _norm_role(role):
+        return None, E_TEMPLATE_ROLE
+    return {"id": snap.id, "rights": {k: t[k] for k in TEMPLATE_RIGHTS if k in t}}, None
+
+
+def list_templates(db, caller):
+    """Every template (seeded on the first read), with how many logins use
+    it: in every firm for a superadmin, in its own firm for an owner."""
+    if not _can_manage(caller):
+        return {"error": E_NO_RIGHTS}
+    snaps = list(db.collection("permTemplates").stream())
+    if not snaps:
+        _seed_templates(db)
+        snaps = list(db.collection("permTemplates").stream())
+    q = db.collection("users")
+    if not _is_super(caller):
+        q = q.where(filter=FieldFilter("tenantId", "==", caller.get("tenantId")))
+    counts = {}
+    for u in q.stream():
+        t = (u.to_dict() or {}).get("templateId")
+        if t:
+            counts[t] = counts.get(t, 0) + 1
+    out = [dict(_template_out(s), count=counts.get(s.id, 0)) for s in snaps]
+    order = {r: i for i, r in enumerate(ROLES_SUB)}
+    out.sort(key=lambda t: (order.get(t["role"], 9), t["name"].lower()))
+    return {"templates": out}
+
+
+def _template_users(db, tid):
+    return list(db.collection("users").where(filter=FieldFilter("templateId", "==", tid)).stream())
+
+
+def save_template(db, caller, body, revoke):
+    """A new template (no id) or a changed one; the rights go to every login on it."""
+    if not _is_super(caller):
+        return {"error": E_NO_RIGHTS}
+    name = str(body.get("name") or "").strip()[:60]
+    if not name:
+        return {"error": "Give the template a name"}
+    role = _norm_role(body.get("role"))
+    if role not in ROLES_SUB:
+        return {"error": E_ROLE}
+    col = db.collection("permTemplates")
+    tid = str(body.get("id") or "")
+    for s in col.stream():
+        if s.id != tid and str((s.to_dict() or {}).get("name") or "").strip().lower() == name.lower():
+            return {"error": "A template with this name already exists"}
+    on = []
+    if tid:
+        snap = col.document(tid).get()
+        if not snap.exists:
+            return {"error": E_TEMPLATE_NOT_FOUND}
+        on = _template_users(db, tid)
+        if on and _norm_role((snap.to_dict() or {}).get("role")) != role:
+            return {"error": "Logins use this template: its role can't change"}
+    else:
+        tid = "t" + uuid.uuid4().hex[:12]
+    rights = _template_rights(role, body)
+    col.document(tid).set(dict({"name": name, "role": role, "updatedAt": _now_iso()}, **rights))
+    changed = []
+    batch, n = db.batch(), 0
+    for u in on:
+        d = u.to_dict() or {}
+        upd = {k: v for k, v in rights.items() if d.get(k) != v}
+        if not upd:
+            continue
+        batch.update(u.reference, upd)
+        changed.append(u.id)
+        n += 1
+        if n % 400 == 0:
+            batch.commit()
+            batch = db.batch()
+    if n % 400:
+        batch.commit()
+    for uid in changed:
+        revoke(uid)  # the new rights are baked into the next sign-in
+    return {"ok": True, "id": tid, "updated": len(changed)}
+
+
+def delete_template(db, caller, body, revoke):
+    """The template goes; its logins keep their rights, now without a template."""
+    if not _is_super(caller):
+        return {"error": E_NO_RIGHTS}
+    tid = str(body.get("id") or "")
+    ref = db.collection("permTemplates").document(tid)
+    if not tid or not ref.get().exists:
+        return {"error": E_TEMPLATE_NOT_FOUND}
+    on = _template_users(db, tid)
+    batch = db.batch()
+    for i, u in enumerate(on):
+        batch.update(u.reference, {"templateId": firestore.DELETE_FIELD})
+        if (i + 1) % 400 == 0:
+            batch.commit()
+            batch = db.batch()
+    batch.delete(ref)
+    batch.commit()
+    return {"ok": True, "unlinked": len(on)}
 
 
 # ── Firms (listTenants / setTenantActive / deleteTenant /
@@ -797,6 +994,9 @@ ACTIONS = {
     "updateMyName": lambda db, c, b, r: update_my_name(db, c, b),
     "updateMyLanguage": lambda db, c, b, r: update_my_language(db, c, b),
     "updateMyTheme": lambda db, c, b, r: update_my_theme(db, c, b),
+    "listTemplates": lambda db, c, b, r: list_templates(db, c),
+    "saveTemplate": save_template,
+    "deleteTemplate": delete_template,
 }
 
 

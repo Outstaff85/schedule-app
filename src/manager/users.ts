@@ -1,8 +1,9 @@
 // The Users section's rules (docs/admin.md → Users pane, docs/hr.md): the
 // roles, their colours and labels, the user form's fields and what a role
 // change does to them, and the requests a save sends (createTenantUser /
-// resetUserPassword / updateUser — functions-auth/core.py). The same rules as
-// the page's former user form (stage 6f-2 moved it here).
+// resetUserPassword / updateUser — functions-auth/core.py). A login's rights
+// come from its permission template (templates.ts): the form picks one and
+// never sends ticks of its own.
 
 /** A login as `listUsers` returns it. */
 export type UserRow = {
@@ -23,6 +24,8 @@ export type UserRow = {
   showPay?: boolean;
   commissionRate?: number;
   commissionDayRate?: number;
+  /** the permission template its rights come from; none: a login made before templates */
+  templateId?: string | null;
 };
 
 export type FormRole = 'staff' | 'hr' | 'supplier' | 'client';
@@ -68,17 +71,19 @@ export type UserForm = {
   showPay: boolean;
   commission: string;
   commissionDay: string;
+  /** the permission template picked ('' = none yet) */
+  templateId: string;
 };
 
 const FORM_ROLES: FormRole[] = ['staff', 'hr', 'supplier', 'client'];
 const asRole = (r: string): FormRole => (FORM_ROLES.includes(r as FormRole) ? (r as FormRole) : 'staff');
 
-/** The supplier / client the form picks when it has none: the first one (as the old select did). */
-export type Choices = { suppliers: { id: string }[]; clients: { id: string }[] };
+/** The supplier / client the form picks when it has none: the first one (as the old select did); the templates a role change picks from. */
+export type Choices = { suppliers: { id: string }[]; clients: { id: string }[]; templates?: { id: string; role: string }[] };
 
 /** A new login's form: Staff, nothing ticked, Only own workers and Sees own workers' pay on. */
 export function newForm(): UserForm {
-  return { role: 'staff', fullName: '', phone: '', username: '', password: '', perms: [], supplierId: '', clientId: '', supSections: [], hourPerms: [], ownOnly: true, showPay: true, commission: '', commissionDay: '' };
+  return { role: 'staff', fullName: '', phone: '', username: '', password: '', perms: [], supplierId: '', clientId: '', supSections: [], hourPerms: [], ownOnly: true, showPay: true, commission: '', commissionDay: '', templateId: '' };
 }
 
 /** A saved login's form (the owner's row edits only the name, phone and password). */
@@ -95,18 +100,19 @@ export function formOf(u: UserRow, ch: Choices): UserForm {
     showPay: u.showPay !== false,
     commission: u.commissionRate ? String(u.commissionRate) : '',
     commissionDay: u.commissionDayRate ? String(u.commissionDayRate) : '',
+    templateId: u.templateId || '',
   };
 }
 
 /**
- * The role picked in the form: a supplier gets its portal tabs (all, when none
- * is ticked) and the first supplier, a client the first client, a review login
- * the default hours ticks (when none is ticked); only an HR may untick "Only
- * own workers" and keep payEdit; a new HR (or one with no section) starts with
- * Workers only.
+ * The role picked in the form: the role's first template, a supplier the
+ * first supplier, a client the first client (and the old rules for the ticks
+ * shown until a template is picked: a supplier all its portal tabs, a review
+ * login the default hours ticks, only an HR "Only own workers" off and
+ * payEdit, a new HR Workers only).
  */
 export function withRole(f: UserForm, role: FormRole, editing: boolean, ch: Choices): UserForm {
-  const n: UserForm = { ...f, role };
+  const n: UserForm = { ...f, role, templateId: (ch.templates || []).find(t => t.role === role)?.id || '' };
   if (role === 'supplier') {
     n.supplierId = ch.suppliers[0]?.id || '';
     if (!n.supSections.length) n.supSections = SUPPLIER_SECTIONS.slice();
@@ -129,28 +135,25 @@ export function formParts(role: FormRole, editing: boolean, adminRow: boolean) {
   };
 }
 
-/** The fields every save sends: name and phone, and the rights of an HR (own-only, commission) or a supplier (pay). */
+/** The fields every save sends: name and phone, and an HR's commission (its own, not the template's). */
 function personOf(f: UserForm): Record<string, unknown> {
   const out: Record<string, unknown> = { fullName: f.fullName.trim(), phone: f.phone.trim() };
-  if (f.role === 'hr') { out.ownOnly = f.ownOnly; out.commissionRate = parseFloat(f.commission) || 0; out.commissionDayRate = parseFloat(f.commissionDay) || 0; }
-  if (f.role === 'supplier') out.showPay = f.showPay;
+  if (f.role === 'hr') { out.commissionRate = parseFloat(f.commission) || 0; out.commissionDayRate = parseFloat(f.commissionDay) || 0; }
   return out;
 }
 
-/** Who gets what: a supplier its supplier and tabs, a client its client, staff and HR their sections; a review login its hours ticks. */
+/** Whose workers: a supplier its supplier, a client its client; the rights come from the template. */
 function accessOf(f: UserForm): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if (f.role === 'supplier') { out.supplierId = f.supplierId; out.supplierSections = SUPPLIER_SECTIONS.filter(s => f.supSections.includes(s)); }
+  if (f.role === 'supplier') out.supplierId = f.supplierId;
   else if (f.role === 'client') out.clientId = f.clientId;
-  else out.permissions = ORDER.filter(p => f.perms.includes(p));
-  if (HOUR_ROLES.includes(f.role)) out.hourPerms = Object.keys(HOUR_PERM_LABELS).filter(p => f.hourPerms.includes(p));
+  if (f.templateId) out.templateId = f.templateId;
   return out;
 }
-// The order of the old form's tiles (the order the sections were sent in).
-const ORDER = ['schedule', 'workers', 'clients', 'suppliers', 'accounting', 'payEdit', 'exports'];
 
-/** The form's first problem, or '' (checked before anything is sent). */
-export function formProblem(f: UserForm, editing: boolean): string {
+/** The form's first problem, or '' (checked before anything is sent); `role0` the saved login's role (the owner's row takes no template). */
+export function formProblem(f: UserForm, editing: boolean, role0?: string): string {
+  if (!f.templateId && (!editing || (f.role !== role0 && !isAdminRole(role0 || '')))) return 'Pick a template';
   if (f.role === 'client' && !f.clientId) return 'Pick the client';
   if (f.role === 'hr' && !f.fullName.trim()) return 'Full name required for an HR login';
   if (!editing && (!f.username.trim() || !f.password)) return 'Username and password required';

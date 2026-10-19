@@ -423,8 +423,6 @@ export type ManagerBridge = WorkerBridge & {
   deleteFromEditor(kind: 'client' | 'supplier', id: string): void;
   /** the map picker over the client window (`openMapPicker`); `onPick` gets the place chosen */
   pickPlace(start: { lat: number | null; lng: number | null; addr: string; radius: number }, onPick: (p: { lat: number; lng: number; radius: number; mapsUrl: string }) => void): void;
-  /** a login's ticks saved at once (`updateUser`); false when the save failed (the toast is the page's) */
-  saveLogin(uid: string, field: 'hourPerms' | 'supplierSections' | 'showPay', value: string[] | boolean): Promise<boolean>;
   /** "New client login" / "New portal login": the user form with the role and the client / supplier set */
   newLogin(role: 'client' | 'supplier', id: string): void;
   /** the client of a manual punch and the workers it offers (assigned to this client, else every active one) */
@@ -749,10 +747,10 @@ export type SupplierRecord = {
 };
 
 /** A client / supplier login from the owner's users cache, with the ticks its editor shows. */
-export type LoginRow = { id: string; name: string; username: string; hourPerms?: string[]; supplierSections?: string[]; showPay?: boolean };
+export type LoginRow = { id: string; name: string; username: string; hourPerms?: string[]; supplierSections?: string[]; showPay?: boolean; templateId?: string | null };
 export type LoginsInfo = {
   logins: LoginRow[];
-  /** the owner / super-admin: ticks and New login */
+  /** the owner / super-admin: New login */
   canEdit: boolean;
   /** `HOUR_PERM_LABELS`, `HOUR_DEFAULT` */
   hourLabels: Record<string, string>;

@@ -25,7 +25,7 @@ import { reportError } from '../data/telemetry';
 import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
 import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNotices, openWorkerCard, openWorkerDocUpload, parseHoursExcelFile, parseHoursImagePage, renderClientsPage, renderSuppliersPage, renderWorkersPage, rescanFromWorkerCard, setWorkersStatus, todayPunchLog, workerBarColor, workerNotices, workerSiteName, workerToday } from './workers';
 import { switchTab } from './nav';
-import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, loginsInfo, newLoginFor, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, saveLoginField, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
+import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, loginsInfo, newLoginFor, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
 import { render } from './render';
 import { setLanguage } from './language';
 import { closeEditorUnsaved, commitClient, deleteClientsNow, openAddClient, openEditClient, openMapPicker, punchFromClientModal, workersMonthHours } from './clients';
@@ -244,7 +244,6 @@ window.ManagerBridge={
   punchFromClient:()=>punchFromClientModal(),
   deleteFromEditor:(kind?: any)=>closeEditorUnsaved(kind==='client'?'clientOverlay':'supplierOverlay'),
   pickPlace:(start?: any,onPick?: any)=>openMapPicker(start,onPick),
-  saveLogin:(uid?: any,field?: any,value?: any)=>saveLoginField(uid,field,value),
   newLogin:(role?: any,id?: any)=>newLoginFor(role,id),
   punchInfo(cid?: any){
     const c=clients.find((x?: any)=>x.id===cid); if(!c) return null;

@@ -63,7 +63,8 @@ const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_r
 const AI_ACTIONS = ['aiReadDoc','aiReadSefach','aiDetectAlign','aiVerifyField','aiVerifyFields','aiReadHoursTable','aiFindField'];
 // Actions answered by the users_admin function.
 const FUNCTION_ACTIONS = ['listTenants','setTenantActive','deleteTenant','createUser','updateTenant',
-  'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','checkWorkerDoc','updateMyName','updateMyLanguage','updateMyTheme'];
+  'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','checkWorkerDoc','updateMyName','updateMyLanguage','updateMyTheme',
+  'listTemplates','saveTemplate','deleteTemplate'];
 // File uploads, straight to Storage.
 const UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
 // Reading/deleting a file in Storage (its id is the object path) goes

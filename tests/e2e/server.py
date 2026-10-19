@@ -37,6 +37,13 @@ def seed():
     t1, t2 = DB.collection('tenants').document(T1), DB.collection('tenants').document(T2)
     t1.set({'companyName': 'Firm One', 'phone': '0501234567', 'deductionsFileNumber': '012345678', 'street': 'Herzl', 'streetNumber': '1', 'city': 'Haifa'})
     t2.set({'companyName': 'Firm Two', 'phone': '0507654321', 'deductionsFileNumber': '87654321', 'street': 'Bialik', 'streetNumber': '2', 'city': 'Tel Aviv'})
+    # The permission templates: the defaults, and three more the HR checks put logins on.
+    import core
+    core._seed_templates(DB)
+    for tid, name, role, rights in (('hrpay', 'HR with pay', 'hr', {'permissions': ['workers', 'accounting'], 'hourPerms': core.HOUR_DEFAULT}),
+                                    ('hrpayedit', 'HR pay edit', 'hr', {'permissions': ['workers', 'accounting', 'payEdit'], 'hourPerms': core.HOUR_DEFAULT}),
+                                    ('staffworkers', 'Workers only', 'staff', {'permissions': ['workers']})):
+        DB.collection('permTemplates').document(tid).set(dict({'name': name, 'role': role}, **core._template_rights(role, rights)))
     seed_legacy('u-admin1', 'owner1', 'owner-pass-1', role='tenant_admin', tenantId=T1, permissions='*')
     seed_legacy('u-sup1', 'sup1', 'sup-pass-11', role='supplier', tenantId=T1, permissions='', supplierId='s-1', hourPerms=['hours', 'approve', 'export'])
     seed_legacy('u-super', 'boss', 'boss-pass-1', role='superadmin', tenantId=None, permissions='*')

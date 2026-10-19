@@ -569,3 +569,86 @@ def test_hour_review_ticks_for_client_supplier_and_hr():
     assert DB.collection("users").document(r["userId"]).get().to_dict().get("clientId") is None
     users = {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}
     assert users[r2["userId"]]["clientId"] == "c2" and users[r3["userId"]]["hourPerms"] == ["hours", "fix"]
+
+
+# ── Permission templates (one set for every firm; only a superadmin edits) ──
+
+def test_templates_seeded_and_listed():
+    assert core.list_templates(DB, STAFF1)["error"] == core.E_NO_RIGHTS
+    ts = core.list_templates(DB, ADMIN1)["templates"]
+    assert [t["id"] for t in ts] == ["accountant", "dispatcher", "supplier", "hr", "client"]
+    by = {t["id"]: t for t in ts}
+    assert by["dispatcher"]["permissions"] == ["schedule", "workers"] and by["dispatcher"]["count"] == 0
+    assert by["hr"]["ownOnly"] is True and by["hr"]["hourPerms"] == core.HOUR_DEFAULT
+    assert by["supplier"]["supplierSections"] == list(core.SUPPLIER_SECTIONS) and by["supplier"]["permissions"] == ""
+    # Read again: no second seed.
+    assert len(core.list_templates(DB, SUPER)["templates"]) == 5
+    # Only a superadmin writes them.
+    assert core.save_template(DB, ADMIN1, {"name": "X", "role": "staff"}, Revokes())["error"] == core.E_NO_RIGHTS
+    assert core.delete_template(DB, ADMIN1, {"id": "hr"}, Revokes())["error"] == core.E_NO_RIGHTS
+
+
+def test_template_rights_go_to_every_login_in_every_firm():
+    core.list_templates(DB, SUPER)
+    # A new staff template; staff never keeps payEdit.
+    r = core.save_template(DB, SUPER, {"name": "Shift manager", "role": "staff", "permissions": ["schedule", "payEdit", "bogus"]}, Revokes())
+    tid = r["id"]
+    t = DB.collection("permTemplates").document(tid).get().to_dict()
+    assert t["permissions"] == ["schedule"] and t["role"] == "staff"
+    assert core.save_template(DB, SUPER, {"name": "shift MANAGER", "role": "staff"}, Revokes())["error"].startswith("A template")
+    # Logins on it in two firms: the rights come from the template, whatever the body sends.
+    a = core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "sm1", "password": "sm-pass-11", "templateId": tid, "permissions": ["accounting"]})
+    b = core.create_tenant_user(DB, ADMIN2, {"role": "staff", "username": "sm2", "password": "sm-pass-22", "templateId": tid})
+    ua = DB.collection("users").document(a["userId"]).get().to_dict()
+    assert ua["permissions"] == ["schedule"] and ua["templateId"] == tid
+    assert core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "h0", "password": "hr-pass-00", "fullName": "H", "templateId": tid})["error"] == core.E_TEMPLATE_ROLE
+    assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "h1", "password": "hr-pass-01", "templateId": "nope"})["error"] == core.E_TEMPLATE_NOT_FOUND
+    # The firm's owner can't hand-edit a linked login's rights.
+    rv = Revokes()
+    assert core.update_user(DB, ADMIN1, {"id": a["userId"], "permissions": ["accounting"], "fullName": "Sam"}, rv)["ok"] and not rv
+    assert DB.collection("users").document(a["userId"]).get().to_dict()["permissions"] == ["schedule"]
+    # The counts: every firm for the superadmin, its own for an owner.
+    assert {t["id"]: t["count"] for t in core.list_templates(DB, SUPER)["templates"]}[tid] == 2
+    assert {t["id"]: t["count"] for t in core.list_templates(DB, ADMIN1)["templates"]}[tid] == 1
+    # A change reaches both logins and ends their sessions; a login already equal is left alone.
+    rv = Revokes()
+    out = core.save_template(DB, SUPER, {"id": tid, "name": "Shift manager", "role": "staff", "permissions": ["schedule", "workers"]}, rv)
+    assert out["updated"] == 2 and sorted(u for u, _ in rv) == sorted([a["userId"], b["userId"]])
+    assert id_token_claims(core.login(DB, "sm2", "sm-pass-22", mint)["token"])["perms"] == ["schedule", "workers"]
+    rv = Revokes()
+    assert core.save_template(DB, SUPER, {"id": tid, "name": "Shift manager", "role": "staff", "permissions": ["schedule", "workers"]}, rv)["updated"] == 0 and not rv
+    # Its role is fixed while logins use it.
+    assert "role" in core.save_template(DB, SUPER, {"id": tid, "name": "Shift manager", "role": "hr"}, Revokes())["error"]
+    # A role change of a linked login needs a template of the new role.
+    assert core.update_user(DB, ADMIN1, {"id": a["userId"], "role": "client", "clientId": "c1"}, Revokes())["error"] == core.E_PICK_TEMPLATE
+    rv = Revokes()
+    assert core.update_user(DB, ADMIN1, {"id": a["userId"], "role": "client", "clientId": "c1", "templateId": "client"}, rv)["ok"] and rv
+    uc = DB.collection("users").document(a["userId"]).get().to_dict()
+    assert uc["role"] == "client" and uc["templateId"] == "client" and uc["hourPerms"] == core.HOUR_DEFAULT and uc["permissions"] == ""
+    # Deleting the template keeps its logins' rights, without a template.
+    d = core.delete_template(DB, SUPER, {"id": tid}, Revokes())
+    assert d["unlinked"] == 1
+    ub = DB.collection("users").document(b["userId"]).get().to_dict()
+    assert "templateId" not in ub and ub["permissions"] == ["schedule", "workers"]
+    assert not DB.collection("permTemplates").document(tid).get().exists
+
+
+def test_hr_template_and_legacy_login():
+    core.list_templates(DB, SUPER)
+    h = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hrt", "password": "hr-pass-11", "fullName": "Hr T", "templateId": "hr", "ownOnly": False})
+    c = id_token_claims(core.login(DB, "hrt", "hr-pass-11", mint)["token"])
+    assert c["own"] is True and c["perms"] == ["schedule", "workers"] and c["hp"] == core.HOUR_DEFAULT
+    # The HR template sees every worker: the HR logins follow.
+    rv = Revokes()
+    core.save_template(DB, SUPER, {"id": "hr", "name": "HR", "role": "hr", "permissions": ["workers", "payEdit"], "ownOnly": False, "showPay": False, "hourPerms": ["hours"]}, rv)
+    c = id_token_claims(core.login(DB, "hrt", "hr-pass-11", mint)["token"])
+    assert c["own"] is False and c["pay"] is False and c["perms"] == ["workers", "payEdit"] and c["hp"] == ["hours"]
+    # A login made before templates keeps its hand-set rights and may be linked later.
+    rv = Revokes()
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "permissions": ["accounting"]}, rv)["ok"] and rv
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "templateId": "dispatcher"}, Revokes())["ok"]
+    u = DB.collection("users").document("u-staff1").get().to_dict()
+    assert u["templateId"] == "dispatcher" and u["permissions"] == ["schedule", "workers"]
+    assert {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}["u-staff1"]["templateId"] == "dispatcher"
+    # An owner's row never takes a template.
+    assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "templateId": "dispatcher"}, Revokes())["error"] == core.E_ADMIN_TARGET
