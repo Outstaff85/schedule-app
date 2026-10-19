@@ -1389,5 +1389,8 @@
   "When the phone asks, tap Allow.": "כשהטלפון ישאל, הקישו על אפשר.",
   "Tap Ask again and choose Allow. If the phone does not ask:": "הקישו על בקש שוב ובחרו אפשר. אם הטלפון לא שואל:",
   "Tap Ask again and choose Allow. Or:": "הקישו על בקש שוב ובחרו אפשר. או:",
-  "Allow GPS to punch": "אפשרו GPS כדי להחתים שעון"
+  "Allow GPS to punch": "אפשרו GPS כדי להחתים שעון",
+  "{0} logins put on templates · {1} sign in again with the new rights": "{0} משתמשים שויכו לתבניות · {1} יתחברו מחדש עם ההרשאות החדשות",
+  "{0} logins in all firms have no template yet.": "ל-{0} משתמשים בכל החברות אין עדיין תבנית.",
+  "Put them on templates": "שייכו אותם לתבניות"
 }

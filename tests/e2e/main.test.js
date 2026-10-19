@@ -1791,7 +1791,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => { switchTab('admin'); switchAdminPane('users'); });
   await p.waitForSelector('#adminRoot [data-testid="template-row"][data-tid="client"]');
   const tpA = await p.evaluate(() => ({rows: [...document.querySelectorAll('#adminRoot [data-testid="template-row"]')].map(x => x.dataset.tid).join(),
-    newBtn: !!document.querySelector('#adminRoot [data-testid="template-new"]')}));
+    newBtn: !!document.querySelector('#adminRoot [data-testid="template-new"]'), link: !!document.querySelector('#adminRoot [data-testid="templates-link"]')}));
   await p.click('#adminRoot [data-testid="template-row"][data-tid="client"]');
   await p.waitForSelector('[data-testid="template-window"]');
   await (await p.$('#adminRoot [data-testid="templates"]')).screenshot({path: SP + '/templates.png'}).catch(()=>{});
@@ -1806,8 +1806,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await fetch(API_URL, {method: 'POST', body: JSON.stringify(Object.assign({action: 'saveTemplate'}, t, {hourPerms: t.hourPerms.filter(h => h !== 'schedule')}))});
     return r;
   });
-  ok(tpA.newBtn && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule',
-    'boss: Users lists the permission templates with New template; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB}));
+  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule',
+    'boss: Users lists the permission templates with New template and Put them on templates; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB}));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
     const items = [];

@@ -35,7 +35,8 @@
 		"updateMyTheme",
 		"listTemplates",
 		"saveTemplate",
-		"deleteTemplate"
+		"deleteTemplate",
+		"linkToTemplates"
 	];
 	var UPLOAD_ACTIONS = [
 		"saveWorkerDoc",

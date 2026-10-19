@@ -186,8 +186,19 @@ const hiddenTpls = new Set<string>();
 
 /** The permission templates above the logins: every firm's one set; a super-admin creates, edits (a tap) and deletes them, an owner reads them. */
 function TemplatesSection({ isSuper, api }: { isSuper: boolean; api: ManagerBridge }) {
-  const { list, error } = useTemplates();
+  const { list, error, unlinked } = useTemplates();
   const [open, setOpen] = React.useState<PermTemplate | 'new' | null>(null);
+  const [linking, setLinking] = React.useState(false);
+  // Every login made before templates (every firm) onto the closest template of its role.
+  const linkAll = async () => {
+    setLinking(true);
+    try {
+      const j = await api.adminCall({ action: 'linkToTemplates' });
+      if (!j || j.error) { api.toast(tr(String(j?.error || '')) || tr('Save failed')); return; }
+      api.toast(tr('{0} logins put on templates · {1} sign in again with the new rights', { 0: Number(j.linked) || 0, 1: Number(j.changed) || 0 }));
+      await Promise.all([loadTemplates(api.adminCall), api.loadUsers()]);
+    } finally { setLinking(false); }
+  };
   const [, redraw] = React.useReducer((n: number) => n + 1, 0);
   const shown = (list || []).filter(t => !hiddenTpls.has(t.id));
   const remove = (t: PermTemplate) => {
@@ -201,6 +212,12 @@ function TemplatesSection({ isSuper, api }: { isSuper: boolean; api: ManagerBrid
     <Section data-testid="templates" label={<span className="inline-flex items-center gap-1.5"><IconTemplate className="size-4" />{tr('Templates')}</span>} count={shown.length}
       tools={isSuper ? <Button variant="primary" size="sm" className="og-new" data-testid="template-new" onClick={() => setOpen('new')}><IconPlus className="size-4" />{tr('New template')}</Button> : undefined}>
       <p className="mb-2 text-xs text-ink-3">{tr(isSuper ? 'The same templates in every firm: a change reaches every login on it.' : 'A login gets its rights from a template. Only the super-admin changes the templates.')}</p>
+      {isSuper && unlinked > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] text-warn" data-testid="templates-unlinked">
+          <span>{tr('{0} logins in all firms have no template yet.', { 0: unlinked })}</span>
+          <Button size="sm" data-testid="templates-link" disabled={linking} onClick={() => void linkAll()}><IconTemplate className="size-4" />{tr('Put them on templates')}</Button>
+        </div>
+      )}
       {list === null ? (error ? <p className="text-[13px] text-bad" data-testid="templates-error">{tr(error)}</p> : <Skeleton className="h-[62px]" />)
         : <PagedList items={shown} columns render={t => (
           <Plate key={t.id} data-testid="template-row" data-tid={t.id} data-role={t.role} className="mb-1.5" color={roleColor(t.role)}

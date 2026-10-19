@@ -652,3 +652,30 @@ def test_hr_template_and_legacy_login():
     assert {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}["u-staff1"]["templateId"] == "dispatcher"
     # An owner's row never takes a template.
     assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "templateId": "dispatcher"}, Revokes())["error"] == core.E_ADMIN_TARGET
+
+
+def test_link_every_login_to_a_template():
+    core.list_templates(DB, SUPER)
+    seed_legacy("u-hr1", "hrx", "hr-pass-11", role="hr", tenantId=T1, permissions=["workers", "payEdit"], ownOnly=False, fullName="H")
+    seed_legacy("u-st2", "st2", "st-pass-22", role="staff", tenantId=T2, permissions=["workers", "accounting"])
+    seed_legacy("u-cl1", "cl1", "cl-pass-11", role="client", tenantId=T2, permissions="", clientId="c1")
+    assert core.list_templates(DB, SUPER)["unlinked"] == 5
+    assert core.list_templates(DB, ADMIN2)["unlinked"] == 2
+    assert core.link_to_templates(DB, ADMIN1, {}, Revokes())["error"] == core.E_NO_RIGHTS
+    rv = Revokes()
+    out = core.link_to_templates(DB, SUPER, {}, rv)
+    assert out["linked"] == 5 and out["skipped"] == 0
+    get = lambda uid: DB.collection("users").document(uid).get().to_dict()
+    # staff1 (Schedule, Workers) is the Dispatcher exactly: linked, rights unchanged, no new sign-in.
+    assert get("u-staff1")["templateId"] == "dispatcher" and "u-staff1" not in [u for u, _ in rv]
+    # st2 (Workers, Accounting) is closest to the Accountant; the HR goes on the HR template; the client on Client.
+    assert get("u-st2")["templateId"] == "accountant" and get("u-st2")["permissions"] == ["workers", "accounting", "exports"]
+    h = get("u-hr1")
+    assert h["templateId"] == "hr" and h["ownOnly"] is True and h["permissions"] == ["schedule", "workers"]
+    assert get("u-cl1")["templateId"] == "client" and get("u-cl1")["hourPerms"] == core.HOUR_DEFAULT
+    assert get("u-sup1")["templateId"] == "supplier"
+    assert sorted(u for u, _ in rv) == sorted(["u-st2", "u-hr1"]) and out["changed"] == 2
+    # Owners and the superadmin are left alone; a second run finds nothing.
+    assert "templateId" not in get("u-admin1") and "templateId" not in get("u-super")
+    assert core.link_to_templates(DB, SUPER, {}, Revokes())["linked"] == 0
+    assert core.list_templates(DB, SUPER)["unlinked"] == 0

@@ -7,7 +7,7 @@ the result or {"error": "..."} — for the actions login, createUser (a new
 firm), listUsers, createTenantUser, updateUser, resetUserPassword,
 deleteUser, updateMyName, updateMyLanguage, updateMyTheme, checkWorkerDoc, listTenants, setTenantActive,
 deleteTenant, updateTenant, loadTenantProfile, listTemplates, saveTemplate and
-deleteTemplate, with the error texts the app shows.
+deleteTemplate, linkToTemplates, with the error texts the app shows.
 
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
@@ -726,15 +726,18 @@ def list_templates(db, caller):
     q = db.collection("users")
     if not _is_super(caller):
         q = q.where(filter=FieldFilter("tenantId", "==", caller.get("tenantId")))
-    counts = {}
+    counts, unlinked = {}, 0
     for u in q.stream():
-        t = (u.to_dict() or {}).get("templateId")
+        d = u.to_dict() or {}
+        t = d.get("templateId")
         if t:
             counts[t] = counts.get(t, 0) + 1
+        elif _norm_role(d.get("role")) in ROLES_SUB:
+            unlinked += 1
     out = [dict(_template_out(s), count=counts.get(s.id, 0)) for s in snaps]
     order = {r: i for i, r in enumerate(ROLES_SUB)}
     out.sort(key=lambda t: (order.get(t["role"], 9), t["name"].lower()))
-    return {"templates": out}
+    return {"templates": out, "unlinked": unlinked}
 
 
 def _template_users(db, tid):
@@ -786,6 +789,71 @@ def save_template(db, caller, body, revoke):
     for uid in changed:
         revoke(uid)  # the new rights are baked into the next sign-in
     return {"ok": True, "id": tid, "updated": len(changed)}
+
+
+def _rights_now(role, d):
+    """A login's rights as they are stored, in a template's shape ('*' = every section)."""
+    v = dict(d)
+    if role in ("staff", "hr") and v.get("permissions") in (None, "", "*"):
+        v["permissions"] = [s for s in TEMPLATE_SECTIONS if s != "payEdit"]
+    if role in HOUR_ROLES:
+        v["hourPerms"] = _stored_hour_perms(d)
+    if role == "supplier" and not isinstance(v.get("supplierSections"), list):
+        v["supplierSections"] = list(SUPPLIER_SECTIONS)  # none stored = every tab
+    return _template_rights(role, v)
+
+
+def _closest_template(role, now, tpls):
+    """The template giving exactly these rights, else the one of the role
+    sharing the most sections (the fewest extra on a tie), else its first."""
+    mine = [t for t in tpls if t["role"] == role]
+    if not mine:
+        return None
+    for t in mine:
+        if all(t.get(k) == v for k, v in now.items()):
+            return t
+    have = set(now.get("permissions") or [])
+    return max(mine, key=lambda t: (len(have & set(t.get("permissions") or [])), -len(set(t.get("permissions") or []) - have)))
+
+
+def link_to_templates(db, caller, body, revoke):
+    """Puts every login without a template (every firm) on the closest
+    template of its role; its rights become the template's, and the logins
+    whose rights changed sign in again."""
+    if not _is_super(caller):
+        return {"error": E_NO_RIGHTS}
+    if not list(db.collection("permTemplates").limit(1).stream()):
+        _seed_templates(db)
+    tpls = [_template_out(s) for s in db.collection("permTemplates").stream()]
+    order = {r: i for i, r in enumerate(ROLES_SUB)}
+    tpls.sort(key=lambda t: (order.get(t["role"], 9), t["name"].lower()))
+    linked, changed, skipped = 0, [], 0
+    batch, n = db.batch(), 0
+    for u in db.collection("users").stream():
+        d = u.to_dict() or {}
+        role = _norm_role(d.get("role"))
+        if d.get("templateId") or role not in ROLES_SUB:
+            continue
+        now = _rights_now(role, d)
+        t = _closest_template(role, now, tpls)
+        if not t:
+            skipped += 1
+            continue
+        rights = {k: t[k] for k in TEMPLATE_RIGHTS if k in t}
+        upd = dict({k: v for k, v in rights.items() if d.get(k) != v}, templateId=t["id"])
+        batch.update(u.reference, upd)
+        linked += 1
+        if any(now.get(k) != v for k, v in rights.items()):
+            changed.append(u.id)
+        n += 1
+        if n % 400 == 0:
+            batch.commit()
+            batch = db.batch()
+    if n % 400:
+        batch.commit()
+    for uid in changed:
+        revoke(uid)
+    return {"ok": True, "linked": linked, "changed": len(changed), "skipped": skipped}
 
 
 def delete_template(db, caller, body, revoke):
@@ -997,6 +1065,7 @@ ACTIONS = {
     "listTemplates": lambda db, c, b, r: list_templates(db, c),
     "saveTemplate": save_template,
     "deleteTemplate": delete_template,
+    "linkToTemplates": link_to_templates,
 }
 
 

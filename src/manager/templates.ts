@@ -22,9 +22,10 @@ export type PermTemplate = {
 };
 
 type Call = (body: Record<string, unknown>) => Promise<Record<string, unknown>>;
-type State = { list: PermTemplate[] | null; error: string };
+/** `unlinked`: the logins on no template yet (every firm for a super-admin, the own firm for an owner). */
+type State = { list: PermTemplate[] | null; unlinked: number; error: string };
 
-let state: State = { list: null, error: '' };
+let state: State = { list: null, unlinked: 0, error: '' };
 let pending: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const set = (s: Partial<State>) => { state = { ...state, ...s }; listeners.forEach(fn => fn()); };
@@ -34,7 +35,7 @@ export function loadTemplates(call: Call): Promise<void> {
   if (pending) return pending;
   pending = call({ action: 'listTemplates' })
     .then(j => {
-      if (j && Array.isArray(j.templates)) set({ list: j.templates as PermTemplate[], error: '' });
+      if (j && Array.isArray(j.templates)) set({ list: j.templates as PermTemplate[], unlinked: Number(j.unlinked) || 0, error: '' });
       else set({ error: String(j?.error || 'Load failed') });
     })
     .catch(() => set({ error: 'Network error' }))
