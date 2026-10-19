@@ -14,7 +14,7 @@ Status: **approved, not started** — the owner says when to start. Each stage i
 - **Who can read the data:** only the owner's token on the owner's PC (`H:\hf\home`). The server's token (Secret Manager) may only **write** to the bucket.
 - **The AI stays** (Sonnet reads the fields, Haiku gives the kind and turn of pages without a face) until the firm's own model is proven no worse; each step only on the owner's yes, each one undone by one setting.
 - **Training on the owner's PC** (it has an NVIDIA card), with pretrained weights from HF.
-- **Legal:** the full-document collection (H8a) is approved by the owner; the legal check and the notice to the workers are the owner's. Its switch is per firm and off by default.
+- **Legal:** the full-document collection (H8a) is approved by the owner; the legal check and the notice to the workers are the owner's. Its switch is per firm and **on by default for every firm** (owner, 2026-10-19); the super-admin can turn it off for a firm.
 
 ## Names the users see
 
@@ -42,7 +42,7 @@ The bell's notices become "Time to retrain the document edges model" and "Enough
  Firestore: workers, punches, the bell's counters — unchanged
 ```
 
-- **Collecting:** Done in the scan window → the small copies (H7); Save of the worker window after a scan → the full pages and fields (H8a, per-firm switch). `scan_feedback` writes them straight to the bucket; the bell's counters stay in Firestore.
+- **Collecting:** Done in the scan window → the small copies (H7); Save of the worker window after a scan → the full pages and fields (H8a, on for every firm unless turned off). `scan_feedback` writes them straight to the bucket; the bell's counters stay in Firestore.
 - **Training:** the bell says it is due → `/scan-train` on the PC: download from the bucket, train on HF's pretrained weights, exam against the current model and the AI → the owner's yes → a new tag in `scanner-models` → the lab names it.
 - **Delivery:** the lab and the site download their version from HF at deploy (no key); the server's deploy copies it to the Firebase mirror. Lab first, then the site, as now.
 - **Reading:** the AI as now; a trained model goes through shadow → mixed → without AI (below).
@@ -55,7 +55,7 @@ Every step is the owner's call, from the bell and **Admin → Scanner**; "Bring 
 
 ## Admin → Scanner and the bell (super-admin only)
 
-- **Admin → Scanner** (new tile): for each model (document edges, document type, field reader) its step (collect → train → lab → shadow → mixed → without AI), the examples collected, the last exam report, the shadow's figures (days, % agreeing with what the user saved, vs the AI); the buttons **Turn on shadow**, **Turn on mixed mode**, **Turn off the AI**, **Bring the AI back** — each asks to confirm and changes a server setting at once, without a deploy; the per-firm switch of the full-document collection; the bucket's size.
+- **Admin → Scanner** (new tile): for each model (document edges, document type, field reader) its step (collect → train → lab → shadow → mixed → without AI), the examples collected, the last exam report, the shadow's figures (days, % agreeing with what the user saved, vs the AI); the buttons **Turn on shadow**, **Turn on mixed mode**, **Turn off the AI**, **Bring the AI back** — each asks to confirm and changes a server setting at once, without a deploy; the per-firm switch of the full-document collection (on by default); the bucket's size.
 - **The bell** tells each step and opens the right place: "Enough pages to train the document type model" (→ run `/scan-train` on the PC), "Trained and passed its exam — try it in the lab" (→ Admin → Scanner lab), "N days in shadow: the model X %, the AI Y %" (→ Admin → Scanner), "The AI is needed in only Z % of scans" (→ Admin → Scanner).
 - Training never starts from the app: it needs the PC's NVIDIA card and the owner's HF token.
 
@@ -82,7 +82,7 @@ Tests for the HF paths (stubbed), docs/scan-training.md, docs/scan-plan.md, docs
 ### H7 — the small copies into the bucket
 `scan_feedback` writes the small copies (256×256, the corners and kinds) straight to the bucket; the existing ones are moved once from Firebase; no time limit; the delete-on-request script (one worker, one firm).
 
-### H8a — collecting full documents (per-firm switch, off by default)
+### H8a — collecting full documents (on by default for every firm; a per-firm switch to turn it off)
 On Save of the worker window after a scan: every cut, straightened page as the AI read it (ID card both sides, ספח, passport), the document and page types, each field as Sonnet read it, as the zoomed re-read read it, and as the user saved it (which fields were corrected). Not collected: the raw camera photo, contracts, Form 101, the worker's other fields (rates, phone). The scan is tied to the save through `src/scan-process/session.ts`.
 
 ### H8b — passports and check digits without AI (shadow first)
