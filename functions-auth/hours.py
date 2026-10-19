@@ -8,7 +8,7 @@ Who sees what (the "scope", from the ID token, never from the request):
             worker of the firm when its "only own workers" is off (claim own)
 Never a wage, a rate, a supplier, GPS, notes, documents or a punch-link token.
 
-Ticks (users.hourPerms → claim hp, HOUR_PERMS in core.py): hours (see the
+Ticks (the flat rights, claim rt → core.caller_rights; hour_ticks maps them to HOUR_PERMS): hours (see the
 shifts), approve (a day or the month), dispute (a day, with a comment), fix
 (propose the right in / out for a day — applied only when a manager accepts
 it), schedule (the planned shifts), export (the page's Excel button).
@@ -49,7 +49,12 @@ from zoneinfo import ZoneInfo
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from core import HOUR_PERMS  # noqa: F401 — the ticks this module checks
+from core import HOUR_OF, HOUR_PERMS  # noqa: F401 — the ticks this module checks
+
+
+def hour_ticks(rights):
+    """The hours ticks (hours, approve, dispute, fix, schedule, export) of a login's flat rights."""
+    return {h for h, k in HOUR_OF if k in rights}
 
 TZ = ZoneInfo("Asia/Jerusalem")
 PUNCH_FIELDS = ("id", "workerId", "type", "time", "date")
@@ -102,8 +107,7 @@ def scope_of(caller):
 
 def _is_manager(caller):
     role = caller.get("role")
-    perms = caller.get("perms") or []
-    return role in ("tenant_admin", "superadmin") or (role == "staff" and ("*" in perms or "accounting" in perms))
+    return role in ("tenant_admin", "superadmin") or (role == "staff" and "accounting" in (caller.get("rights") or set()))
 
 
 def _scope_workers(t_ref, kind, owner, own):
@@ -282,7 +286,7 @@ def hours_action(db, caller, body, bucket=None):
     kind, owner = scope_of(caller)
     if not kind:
         return {"error": E_ROLE}
-    perms = set(caller.get("hp") or [])
+    perms = hour_ticks(caller.get("rights") or set())
     own = caller.get("own") is not False
     start = _month_start(body.get("month"))
     if start is None:
