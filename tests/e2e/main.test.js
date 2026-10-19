@@ -947,7 +947,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     figs: [...document.querySelectorAll('#adminRoot [data-slot="figures"] button span:first-of-type')].map(x => x.textContent).join()})));
   // Entering the tab again (Admin in the menu) brings the tiles back: no section is kept from before.
   at.back = await p.evaluate(async () => { switchTab('dashboard'); switchTab('admin'); await new Promise(r => setTimeout(r, 100));
-    return __adminPane === null && !!document.querySelector('#adminRoot [data-testid="admin-tiles"]'); });
+    const back = __adminPane === null && !!document.querySelector('#adminRoot [data-testid="admin-tiles"]');
+    switchAdminPane('punchlog'); await new Promise(r => setTimeout(r, 250)); // the checks below go on in the Punch Log
+    return back; });
   // A super-admin also gets the Scanner lab tile (it opens /scan-lab/ in a new tab).
   ok(at.tiles === 'punchlog,firms,users' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
     'admin: three tiles while no section is chosen (and the Scanner and the Scanner lab for a super-admin), a tile opens its section, the breadcrumb "Admin › Punch Log", the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
