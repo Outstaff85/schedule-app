@@ -9,6 +9,7 @@
 import { loadNotifReads, refreshBell, renderCrumb, renderGreeting } from './header';
 import { island } from '../bridge';
 import { isAccTab } from '../logic/access';
+import { portalInfo } from './nav';
 Object.defineProperties(window, {
   "render": {get: () => render, configurable: true},
 });
@@ -17,6 +18,8 @@ Object.defineProperties(window, {
 
 // --- Render -------------------------------------------------------------------
 export function render(){
+  // A supplier or client login: only its portal screens (nav.ts) — no firm data here.
+  if(portalInfo()){ island()?.renderPortal(); renderCrumb(); return; }
   if(currentTab==='schedule')   renderSchedulePage();
   // render() only ever refreshed the Schedule tab's own pieces above — every
   // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by

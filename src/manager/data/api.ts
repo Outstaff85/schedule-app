@@ -20,13 +20,18 @@ export const API_URL = 'api://app';
 let fsBackend: Promise<FirestoreBackend> | null = null;
 export function loadFirestoreBackend(): Promise<FirestoreBackend> {
   if (fsBackend) return fsBackend;
-  fsBackend = new Promise<FirestoreBackend>((resolve, reject) => {
+  // One load per page: the portal screens a supplier or client sees in this
+  // page (src/manager/Portal.tsx) load it through src/lib/backend.ts — the
+  // same promise, kept on window (initFirestoreBackend may run only once).
+  if (window.__fsBackendLoad) return (fsBackend = window.__fsBackendLoad);
+  fsBackend = window.__fsBackendLoad = new Promise<FirestoreBackend>((resolve, reject) => {
     const el = document.createElement('script');
     el.src = 'firestore-backend.js';
     el.onload = () => window.initFirestoreBackend!().then(resolve, reject);
     el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
     document.head.appendChild(el);
-  }).catch(e => { fsBackend = null; throw e; });
+  }).catch(e => { fsBackend = null; window.__fsBackendLoad = undefined; throw e; });
+  window.__fsBackendLoad = fsBackend;
   return fsBackend;
 }
 

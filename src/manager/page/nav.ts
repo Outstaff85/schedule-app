@@ -9,6 +9,7 @@
 import { byId, qsa } from './dom';
 import { NAV_TABS, hasPermission, homeTab, isAccTab, tabAllowed } from '../logic/access';
 import { setFrame } from '../frame';
+import { island } from '../bridge';
 Object.defineProperties(window, {
   "switchTab": {get: () => switchTab, configurable: true},
 });
@@ -28,9 +29,23 @@ export function applyNavPermissions(){
   if(currentTab && !tabAllowed(currentTab)) switchTab(homeTab());
 }
 
+// A supplier or client login (permissions plan, stage 3): its role and name
+// while it uses the app (set by the gate, startPortal); its every tab is drawn
+// into the one portal section (src/manager/Portal.tsx), never the firm's tabs.
+let __portal: {role: 'supplier'|'client', username: string} | null = null;
+export function setPortal(p: {role: 'supplier'|'client', username: string} | null){ __portal = p; }
+export function portalInfo(){ return __portal ? {...__portal, tab: currentTab} : null; }
+
 export function switchTab(tab?: any){
   currentTab=tab;
   setFrame({tab});
+  if(__portal){
+    NAV_TABS.forEach((t?: any)=>byId('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.remove('visible'));
+    byId('sectionPortal')?.classList.add('visible');
+    island()?.renderPortal();
+    document.body.dataset.tab=tab;
+    return;
+  }
   NAV_TABS.forEach((t?: any)=>{
     byId('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('visible',tab===t);
   });

@@ -24,7 +24,7 @@ import { fileForStorage, fileToUploadPages } from '../logic/uploads';
 import { reportError } from '../data/telemetry';
 import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
 import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNotices, openWorkerCard, openWorkerDocUpload, parseHoursExcelFile, parseHoursImagePage, renderClientsPage, renderSuppliersPage, renderWorkersPage, rescanFromWorkerCard, setWorkersStatus, todayPunchLog, workerBarColor, workerNotices, workerSiteName, workerToday } from './workers';
-import { switchTab } from './nav';
+import { portalInfo, switchTab } from './nav';
 import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
 import { render } from './render';
 import { setLanguage } from './language';
@@ -89,6 +89,7 @@ provideBridge({
   installApp:()=>{ window.installApp(); },
   signOut:()=>{ logout(); },
   saveTheme:(t?: any)=>setTheme(t),
+  portal:()=>portalInfo(),
   setLanguage:(l?: any)=>{ setLanguage(l); },
   bellItems:()=>bellItems(),
   openNotif:(id?: any)=>openNotif(id),
@@ -481,7 +482,7 @@ function supplierCommission(w?: any, e?: any, sid?: any){ return window.ManagerA
 function hourApprovalSummary(doc?: any, month?: any){ return window.ManagerAcc!.hourApprovalSummary(accData(), doc, month); }
 // The Accounting tab, or an HR's Commission or Hours tab (the same data), whichever is open.
 export function renderAccounting(){
-  const i=island(); if(!i) return;
+  const i=island(); if(!i || portalInfo()) return; // a supplier's or client's tabs are its portal screens (nav.ts)
   if(currentTab==='commission') i.renderCommission(); else if(currentTab==='hours') i.renderHours(); else i.renderAccounting();
 }
 function setAccTab(k?: any){ if(island()) island()!.setAccTab(k); renderCrumb(); }
