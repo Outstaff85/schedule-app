@@ -1355,19 +1355,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const m = document.getElementById('supplierModal');
     r.payable = /commission/.test(m.querySelector('[data-sec="commission"]').textContent);
     r.newLogin = !!m.querySelector('[data-sec="portal"] [data-testid="new-login"]');
-    // a portal tab tick is saved at once (updateUser) and the users cache follows
+    // a login's portal tabs are its template's: shown, not changed here; the login without a template says so
     const cb = () => m.querySelector('[data-field="supplierSections"][data-key="dashboard"]');
-    const u = () => loadAdminCache('users_' + activeTenantIdForAdmin()).find(x => x.username === 'sup1');
-    const has = () => (u().supplierSections || ['dashboard']).includes('dashboard');
-    r.tick = !!cb() && !cb().disabled;
-    if(cb()){ const was = cb().dataset.state === 'checked'; cb().click();
-      r.saved = await T.until(() => has() === !was, 5000) && (cb().dataset.state === 'checked') === !was;
-      cb().click(); await T.until(() => has() === was, 5000); }
+    r.tick = !!cb() && cb().disabled && cb().dataset.state === 'checked';
+    r.saved = await T.until(() => /No template/.test((m.querySelector('[data-testid="login-template"]') || {}).textContent || ''), 5000);
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
   ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
-  ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs ticked and saved at once ' + JSON.stringify(gp));
+  ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs shown read-only (the template\'s) ' + JSON.stringify(gp));
   // Stage 13: the supplier's own commission rate, set in the supplier window by the owner (per hour / per day, applies from).
   const scom = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -1791,6 +1787,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sum = await p.evaluate(() => [...document.querySelectorAll('#adminRoot [data-testid="payable-row"]')].map(r => r.innerText.replace(/\s+/g, ' ')).join(' | '));
   ok(/Firm Two Hours \(this week\): 2\.0h ₪200/.test(sum), 'summary: Firm Two pays 2h × its own client rate 100 = ₪200 ' + sum);
   ok(await p.evaluate(() => clients.length === 2 && clients[0].id === 'c1'), 'summary: the loaded firm\'s clients are back');
+  // Permission templates: the super-admin's Users section lists the one set of every firm; it creates and edits them.
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('users'); });
+  await p.waitForSelector('#adminRoot [data-testid="template-row"][data-tid="client"]');
+  const tpA = await p.evaluate(() => ({rows: [...document.querySelectorAll('#adminRoot [data-testid="template-row"]')].map(x => x.dataset.tid).join(),
+    newBtn: !!document.querySelector('#adminRoot [data-testid="template-new"]'), link: !!document.querySelector('#adminRoot [data-testid="templates-link"]')}));
+  await p.click('#adminRoot [data-testid="template-row"][data-tid="client"]');
+  await p.waitForSelector('[data-testid="template-window"]');
+  await (await p.$('#adminRoot [data-testid="templates"]')).screenshot({path: SP + '/templates.png'}).catch(()=>{});
+  await (await p.$('[data-testid="window"]')).screenshot({path: SP + '/template-window.png'}).catch(()=>{});
+  await p.click('[data-testid="template-window"] [data-testid="user-hours"] [data-k="schedule"]');
+  await p.click('[data-testid="template-save"]');
+  const tpB = await p.evaluate(async () => {
+    const r = {closed: await T.until(() => !document.querySelector('[data-testid="template-window"]'), 8000)};
+    const j = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'listTemplates'})})).json();
+    r.hours = j.templates.find(t => t.id === 'client').hourPerms.join();
+    const t = j.templates.find(t => t.id === 'client');
+    await fetch(API_URL, {method: 'POST', body: JSON.stringify(Object.assign({action: 'saveTemplate'}, t, {hourPerms: t.hourPerms.filter(h => h !== 'schedule')}))});
+    return r;
+  });
+  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule',
+    'boss: Users lists the permission templates with New template and Put them on templates; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB}));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
     const items = [];
@@ -2180,14 +2197,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     for(const r of ['staff', 'hr', 'supplier', 'client']){
       document.querySelector('#userFormModal [data-testid="user-role"] [data-v="' + r + '"]').click(); await T.tick(50);
       const own = document.querySelector('#userFormModal button[data-testid="user-own-only"]');
+      await T.until(() => /\S/.test(document.querySelector('#userFormModal [data-testid="user-template"]').innerText), 3000);
       out[r] = {hours: !!document.querySelector('#userFormModal [data-sec="hours"]'), own: !!own,
+        tpl: document.querySelector('#userFormModal [data-testid="user-template"]').innerText.trim(),
         locked: !!own && own.disabled && own.dataset.state === 'checked', ticks: tiles('user-hours'),
         secs: document.querySelector('#userFormModal [data-testid="user-sup-sections"]') ? tiles('user-sup-sections') : null};
     }
     closeModal('userFormOverlay'); return out;
   });
-  ok(!uf.staff.hours && !uf.staff.own && uf.hr.hours && uf.hr.own && !uf.hr.locked && uf.supplier.hours && uf.supplier.locked && uf.client.hours && uf.client.locked && uf.client.ticks === 'hours,approve,dispute,fix' && uf.supplier.secs === 'dashboard,workers,hours' && uf.client.secs === null,
-    'user form: one Hours block for HR / supplier / client, own-only locked for supplier and client ' + JSON.stringify(uf));
+  ok(!uf.staff.hours && !uf.staff.own && uf.hr.hours && uf.hr.own && uf.hr.locked && uf.supplier.hours && uf.supplier.locked && uf.client.hours && uf.client.locked && uf.client.ticks === 'hours,approve,dispute,fix' && uf.supplier.secs === 'dashboard,workers,hours' && uf.client.secs === null
+      && uf.staff.tpl === 'Accountant' && uf.hr.tpl === 'HR' && uf.supplier.tpl === 'Supplier' && uf.client.tpl === 'Client',
+    'user form: each role starts on its first template, its ticks shown read-only; one Hours block for HR / supplier / client ' + JSON.stringify(uf));
   await q.evaluate(async () => { openCreateUserForm(); await T.tick(100); document.querySelector('#userFormModal [data-testid="user-role"] [data-v="supplier"]').click(); });
   await sleep(150);
   await (await q.$('#userFormOverlay .modal')).screenshot({path: SP + '/user-form-supplier.png'}).catch(()=>{});

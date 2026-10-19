@@ -32,7 +32,11 @@
 		"checkWorkerDoc",
 		"updateMyName",
 		"updateMyLanguage",
-		"updateMyTheme"
+		"updateMyTheme",
+		"listTemplates",
+		"saveTemplate",
+		"deleteTemplate",
+		"linkToTemplates"
 	];
 	var UPLOAD_ACTIONS = [
 		"saveWorkerDoc",

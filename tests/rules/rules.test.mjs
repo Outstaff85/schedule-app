@@ -198,6 +198,13 @@ test('the weather cache: written and read by the weather function only', async (
   }
 });
 
+test('the permission templates: read and written by the users_admin function only', async () => {
+  for (const r of ['superadmin', 'ownerA', 'staffAll', 'supplierA', 'anon']) {
+    await assertFails(getDoc(doc(db(r), 'permTemplates', 'hr')));
+    await assertFails(setDoc(doc(db(r), 'permTemplates', 'hr'), { name: 'HR', role: 'hr' }));
+  }
+});
+
 test('telemetry: any signed-in caller appends, only superadmin reads and deletes (Reset)', async () => {
   await assertSucceeds(addDoc(collection(db('staffNone'), 'errors'), { message: 'x' }));
   await assertSucceeds(addDoc(collection(db('supplierA'), 'timings'), { kind: 'open' }));

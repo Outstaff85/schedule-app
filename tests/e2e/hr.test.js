@@ -75,6 +75,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   };
 
   const reload = async p => { await p.reload(); await sleep(300); };
+  // The user window's "Rights come from": a template picked by its name.
+  const pickTemplate = async (p, name) => {
+    const sel = '#userFormModal [data-testid="user-template"]';
+    if (!(await p.isVisible(sel))) await p.click('#userFormModal [data-sec="sections"] [data-slot="accordion-trigger"]');
+    await p.click(sel);
+    await p.click('[role="option"]:has-text("' + name + '")'); await sleep(100);
+  };
 
   // ── Owner creates an HR login and assigns Dana (w2) to it ──
   let ctx = await newCtx(); let p = await page(ctx);
@@ -91,17 +98,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     T.fill('uUsername', 'hr1'); T.fill('uPassword', 'hr-pass-111');
     T.fill('uFullName', 'Rina HR'); T.fill('uPhone', '0521112233');
     r.showPayTile = !!T.q('[data-testid="user-show-pay"]'); T.fill('uCommission', '4');
-    T.tile('user-perms', 'accounting').click(); await T.tick(50); // the reduced pay view (a React draw before the next step)
-    // hours review: a new HR starts with the default ticks (Hours, Approve, Dispute, Fix)
-    r.ticks = T.ticked('user-hours');
+    // hours review: a new HR starts on the HR template, with the default ticks (Hours, Approve, Dispute, Fix)
+    r.ticks = T.ticked('user-hours'); r.tpl = T.q('[data-testid="user-template"]').innerText.trim();
+    return r;
+  });
+  // The template with Accounting (the reduced pay view): picked in the window's Rights come from.
+  await pickTemplate(p, 'HR with pay');
+  Object.assign(made, await p.evaluate(async () => {
+    const r = {perms2: T.ticked('user-perms')};
     await T.save();
     await T.until(() => [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')].some(x => x.innerText.includes('Rina HR')), 9000);
     const row = [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')].find(x => x.innerText.includes('Rina HR'));
     r.listed = row ? row.innerText : document.querySelector('#adminRoot').innerText;
     return r;
-  });
-  ok(made.hrFields && made.perms === 'workers' && made.own && !made.showPayTile && made.ticks === 'hours,approve,dispute,fix', 'owner: HR form shows name/phone, Workers only, own-only on ' + JSON.stringify(made).slice(0, 160));
-  ok(/Rina HR HR\s*\nlogin: hr1 · 0521112233\n.*0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, worker count ' + JSON.stringify(made.listed));
+  }));
+  ok(!made.hrFields && made.tpl === 'HR' && made.perms === 'schedule,workers' && made.own && made.showPayTile && made.ticks === 'hours,approve,dispute,fix' && made.perms2 === 'workers,accounting',
+    'owner: HR form shows name/phone and starts on the HR template (its ticks read-only, own-only on); another template picked ' + JSON.stringify(made).slice(0, 220));
+  ok(/Rina HR HR\s*\nlogin: hr1 · 0521112233\nHR with pay\n.*0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, its template, worker count ' + JSON.stringify(made.listed));
   const me = await p.evaluate(async () => {
     const before = document.querySelector('[data-testid=account-btn]').innerText;
     window.prompt = () => 'Avi Owner';
@@ -245,16 +258,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {rate: r1, bank: r2, other: r3};
   });
   ok(nope.rate === false && nope.bank === false && nope.other === true, 'hr: without "Edit own workers\' pay" the server refuses a rate or bank change, other edits save ' + JSON.stringify(nope));
-  // The owner ticks "Edit own workers' pay"; the HR signs in again.
+  // The owner puts the HR on a template with "Edit own workers' pay"; the HR signs in again.
   const tick = await p.evaluate(async (id) => {
     await openEditUserForm(id); await T.tick(150);
-    const chip = T.tile('user-perms', 'payEdit'); const r = {shown: !!chip};
-    if(chip) chip.click(); await T.tick(50);
+    const chip = T.tile('user-perms', 'payEdit'); return {shown: !!chip, off: !!chip && chip.disabled && chip.dataset.state !== 'checked'};
+  }, hrUid);
+  await pickTemplate(p, 'HR pay edit');
+  Object.assign(tick, await p.evaluate(async () => {
+    const r = {on: T.tile('user-perms', 'payEdit').dataset.state === 'checked'};
     await T.save();
     r.closed = !document.getElementById('userFormOverlay').classList.contains('open');
     return r;
-  }, hrUid);
-  ok(tick.shown && tick.closed, 'owner: ticks "Edit own workers\' pay" for the HR ' + JSON.stringify(tick));
+  }));
+  ok(tick.shown && tick.off && tick.on && tick.closed, 'owner: puts the HR on a template with "Edit own workers\' pay" ' + JSON.stringify(tick));
   await hctx.close(); hctx = await newCtx(); h = await page(hctx);
   await login(h, BASE + 'schedule-manager.html', 'hr1', 'hr-pass-222');
   await h.waitForNavigation().catch(()=>{});
@@ -357,14 +373,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await openEditUserForm(sup.id); await T.tick(150);
     r.enabled = !!T.q('[data-testid="user-role"]');
     T.role('staff'); await T.tick(50);
-    if(T.ticked('user-perms') !== 'workers') T.tile('user-perms', 'workers').click(); await T.tick(50);
+    return r;
+  });
+  await pickTemplate(p, 'Workers only');
+  Object.assign(rc, await p.evaluate(async () => {
+    const r = {};
+    const sup = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.role==='supplier');
     await T.save();
     r.err = T.err();
     const u2 = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.id===sup.id);
-    r.role = u2.role; r.perms = u2.permissions;
+    r.role = u2.role; r.perms = u2.permissions; r.tpl = u2.templateId;
     return r;
-  });
-  ok(rc.enabled && !rc.err && rc.role === 'staff' && JSON.stringify(rc.perms) === '["workers"]', 'owner: changes a supplier login to staff in the user form ' + JSON.stringify(rc));
+  }));
+  ok(rc.enabled && !rc.err && rc.role === 'staff' && JSON.stringify(rc.perms) === '["workers"]' && rc.tpl === 'staffworkers', 'owner: changes a supplier login to staff in the user form, on a staff template ' + JSON.stringify(rc));
   const sc = await p.evaluate(async () => {
     const up = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'', sigPng:'data:image/png;base64,QUJD', fileNameBase:'sig'}, () => {});
     const back = await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets', fileId: up.id})})).json();
@@ -398,6 +419,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await reload(h);
   ok(await waitFor(h, () => typeof workers !== 'undefined' && workers.length === 1 && workers[0].name === 'New Hire'), 'hr: an unassigned worker is gone from its view');
   ok(await waitFor(h, () => getPunchLog().every(e => e.workerId !== 'w2')), 'hr: and so are its punches');
+  // The firm's owner reads the permission templates: no New template, no Save, the fields off.
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('users'); });
+  await p.waitForSelector('#adminRoot [data-testid="template-row"][data-tid="hr"]');
+  await p.click('#adminRoot [data-testid="template-row"][data-tid="hr"]');
+  await p.waitForSelector('[data-testid="template-window"]');
+  const ro = await p.evaluate(() => ({newBtn: !!document.querySelector('#adminRoot [data-testid="template-new"]'), save: !!document.querySelector('[data-testid="template-save"]'),
+    name: document.getElementById('tplName').disabled, tick: document.querySelector('[data-testid="template-window"] [data-testid="user-perms"] [data-k="workers"]').disabled,
+    count: document.querySelector('#adminRoot [data-testid="template-row"][data-tid="hrpayedit"]').innerText}));
+  await p.keyboard.press('Escape');
+  ok(!ro.newBtn && !ro.save && ro.name && ro.tick && /1 login/.test(ro.count), 'owner: the permission templates read-only, with the firm\'s logins on each ' + JSON.stringify(ro));
   ok(h.errs.length === 0 && p.errs.length === 0, 'no page errors ' + h.errs.concat(p.errs).join(' | '));
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');

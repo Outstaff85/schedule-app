@@ -7,7 +7,7 @@ An HR manager's login inside one firm: it works with the workers assigned to it.
 - **Ownership = `workers/{id}.hrId`** — the uid of the HR login the worker belongs to, or absent (no HR). One worker has at most one HR. Workers created before HR existed have none until the owner assigns them.
 - **Punches carry a copy: `punches/{id}.hrId`** — the worker's HR when the punch was written. Firestore rules can't look up the worker for every punch in a query, so the punch holds the field the rules (and the HR's query) filter on. A reassignment rewrites it (below).
 - **Pending hours batches** are owned by `createdBy` (the uploader's uid), as for every role.
-- **The login:** `users/{uid}` with `role:'hr'`, `permissions` (sections, default `['workers']`), `fullName` (required), `phone`, `ownOnly` (default true). Login puts into the custom token the claims `role`, `tenantId`, `perms` and `own` (= `ownOnly`); the reply also gives `ownOnly`, `fullName`, kept in the app session.
+- **The login:** `users/{uid}` with `role:'hr'`, `permissions` (sections), `fullName` (required), `phone`, `ownOnly` — the sections, `ownOnly`, `showPay` and the hours ticks copied from its permission template (`templateId`; the default HR template: Schedule, Workers, own-only on — [admin.md](admin.md) → Users pane). Login puts into the custom token the claims `role`, `tenantId`, `perms` and `own` (= `ownOnly`); the reply also gives `ownOnly`, `fullName`, kept in the app session.
 
 ## Two kinds of HR
 
@@ -25,7 +25,7 @@ No HR, of either kind, and no staff login can change a worker's `hrId` — only 
 
 ## Who does what
 
-- **Create / edit the HR:** Admin → Users (owner, super-admin) → `createTenantUser` / `updateUser` (`functions-auth/core.py`). Only a real change of sections or of `ownOnly` ends the HR's sessions (new claims on the next login) — the server compares them with what is stored; name and phone never do.
+- **Create / edit the HR:** Admin → Users (owner, super-admin) → `createTenantUser` / `updateUser` (`functions-auth/core.py`). The rights come from the template (a super-admin's change of the template reaches every HR on it); only a real change of sections or of `ownOnly` ends the HR's sessions (new claims on the next login) — the server compares them with what is stored; name and phone never do.
 - **The owner's order is kept:** an own-workers HR sees only part of the list, so its saves keep each worker's stored `sortIndex` (`storedPos` in `firestore-backend.js`); a worker it adds goes to the end.
 - **Duplicate check on edit too:** changing an existing worker's document number is checked across the firm the same way (`checkWorkerDoc` with `workerId`).
 - **Assign workers:** the HR's card in Users (its worker list with Unassign, "Add workers" bulk picker) or the worker modal's HR field. Both go through `assignWorkersToHr(ids, hrId)` in `schedule-manager.html`: sets `hrId` on the workers, `autoSave()`, then `setPunchesHr` (`firestore-backend.js`, owner / super-admin only) rewrites `hrId` on every punch and every day-off / shift-offer request (`shiftRequests`) of those workers, 8 workers at a time — so the new HR sees the history and the old one loses it.
