@@ -23,9 +23,15 @@ function walk(dir, base = '') {
   const old = staticFiles(ROOT);
   for (const f of ['service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
-  // The new pages are built by Vite, never copied: /next, the client portal (stage 3), the supplier portal (stage 4) and the punch page (stage 5).
-  for (const [f, src] of [['client-portal.html', 'src/client/'], ['supplier-portal.html', 'src/supplier/'], ['worker-punch.html', 'src/punch/'], ['schedule-manager.html', 'src/manager/page/']])
+  // The new pages are built by Vite, never copied: /next, the punch page and the manager app.
+  for (const [f, src] of [['worker-punch.html', 'src/punch/'], ['schedule-manager.html', 'src/manager/page/']])
     if (old.includes(f)) errs.push(`${f} is a Vite entry (${src}): it must not be in the copied list`);
+  // /supplier and /client (permissions plan, stage 4): small static pages that only send to the manager app.
+  for (const f of ['client-portal.html', 'supplier-portal.html']) {
+    if (!old.includes(f)) errs.push(`${f} (a page that sends to the manager app) is not in the copied list`);
+    const h = fs.existsSync(path.join(DIST, f)) ? fs.readFileSync(path.join(DIST, f), 'utf8') : '';
+    if (!/location\.replace\('\/schedule-manager\.html'\)/.test(h) || /type="module"/.test(h)) errs.push(`dist/${f} must only send to /schedule-manager.html`);
+  }
   for (const f of old) {
     const to = path.join(DIST, f);
     if (!fs.existsSync(to)) errs.push(`dist/${f} missing`);
@@ -34,7 +40,7 @@ function walk(dir, base = '') {
   const built = walk(DIST);
   const never = /^(functions|functions-auth|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
   for (const f of built) if (never.test(f)) errs.push(`dist/${f} must never be served`);
-  for (const [page, what] of [['next/index.html', 'the /next page'], ['client-portal.html', 'the client portal'], ['supplier-portal.html', 'the supplier portal'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app']]) {
+  for (const [page, what] of [['next/index.html', 'the /next page'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app']]) {
     const file = path.join(DIST, page);
     if (!fs.existsSync(file)) { errs.push(`dist/${page} missing (${what})`); continue; }
     const html = fs.readFileSync(file, 'utf8');

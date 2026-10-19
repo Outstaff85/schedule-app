@@ -2,23 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#10141f">
-  <script>/* The theme before the first draw (docs/redesign.md → Light theme; src/lib/theme.ts): Dark by default, Light, or System — the device's setting. */try{var t=localStorage.getItem('uiTheme');if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){}</script>
-  <title>Client Portal</title>
-  <link rel="icon" href="/icon-192.png" type="image/png">
-  <!-- The client portal (/client) — a page of the new stack (docs/client-portal.md,
-       docs/build.md): built by Vite from src/client/. The same og.css and fonts as
-       every page; Vite bundles them into this page's CSS. -->
-  <link rel="stylesheet" href="/fonts/fonts.css">
-  <link rel="stylesheet" href="/og.css">
-  <script>
-    // One login for every role: without this portal's kept session the one login page (the manager app's) opens at once.
-    try{ if(!localStorage.getItem('clientPortal_session')) location.replace('schedule-manager.html'); }catch(e){}
-  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Odinson</title>
+  <!-- /client — a small page kept for bookmarks and installed apps: a client works
+       in the manager app (docs/permissions-plan.md → stages 3–4); this page
+       only sends there. A session kept by the old portal is taken over by
+       the manager page's gate (adoptPortalSession, src/manager/page/gate.ts). -->
+  <script>location.replace('/schedule-manager.html');</script>
+  <meta http-equiv="refresh" content="0; url=/schedule-manager.html">
 </head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/client/main.tsx"></script>
-</body>
+<body><a href="/schedule-manager.html">Odinson</a></body>
 </html>
