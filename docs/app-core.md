@@ -147,6 +147,7 @@ Punches have their own path (`gsLoadPunchLog`, `mergeRemotePunches`, month windo
 - **Timings:** `reportTiming(kind, totalMs, details)` adds `device`. Kinds:
   - `login` / `open` — `markFirstContent()` / `markFreshContent(screen)`, once per page;
   - `scan` / `scanFiles` — [scan.md](scan.md);
+  - `scanFind` — each finding of a shot or picked page: `where` (`phone` / `server`), `shot`, `pages`, `sources` ([scan.md](scan.md));
   - `form101` — every Form 101 build (`aiFillForm101`): the build time and what the form carried, as flags and counts only (`regen`, `docType`, `spouse`, `spouseNames`, `children`, `marital`, `extraPages`) — no personal data;
   - `gs:<action>` — slow calls.
 - **Sending:** both go into a queue (`queueTelemetry`). `flushTelemetry()` sends it as one `logBatch` through the dispatcher: first 8 s after load, then every 5 s, and on page hide. It becomes Firestore `errors` / `timings` documents (one batch write); before the Firebase sign-in it is dropped.
