@@ -16,7 +16,8 @@ export function hasPermission(section: string): boolean {
 }
 // The section that gates each nav tab. 'admin' (the punch log, plus Firms /
 // Users / Errors / Timings for the owner and the super-admin, gated by role)
-// rides on 'workers'. 'dashboard' (Today) is never gated.
+// rides on 'workers'. 'dashboard' (Today) is never gated — except for a staff
+// login on the flat rights, where Today and Punch log are their own ticks.
 export const NAV_TAB_PERMISSION: Record<string, string> = { schedule: 'schedule', workers: 'workers', clients: 'clients', suppliers: 'suppliers', admin: 'workers', accounting: 'accounting' };
 /**
  * What a staff / HR login may change in the sections it sees — editSchedule
@@ -29,6 +30,21 @@ export function canChange(k: 'editSchedule' | 'editWorkers' | 'editPunches'): bo
   if (!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
   const e = s.editPerms;
   return !Array.isArray(e) || e.indexOf(k) !== -1;
+}
+/**
+ * A staff login on the flat rights (users.rights → session.rights,
+ * docs/permissions-plan.md): Today and the Punch log are their own ticks, and
+ * a worker's pay changes only with Edit pay. A session from before them (no
+ * rights): Today always, the Punch log with Workers, pay with Accounting.
+ */
+function staffRights(): string[] | null {
+  const s = getSession();
+  return s && s.role === 'staff' && Array.isArray(s.rights) ? s.rights : null;
+}
+/** A staff login may change a worker's pay (Edit pay; before the flat rights: Accounting). */
+export function staffPayEdit(): boolean {
+  const r = staffRights();
+  return r ? r.includes('editPay') : hasPermission('accounting');
 }
 export function isHrSession(): boolean { const s = getSession(); return !!s && s.role === 'hr'; }
 export function isFirmAdminSession(): boolean { const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
@@ -51,13 +67,16 @@ export function hrHourReview(): boolean {
 }
 export function tabAllowed(tab: string): boolean {
   if (isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
+  const r = staffRights();
+  if (r && tab === 'dashboard') return r.includes('today');
+  if (r && tab === 'admin') return r.includes('punchlog');
   if (tab === 'accounting' && hrHourReview()) return true;
   return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
 }
 /** The tab a login opens on. */
 export function homeTab(): string {
-  if (!isHrSession()) return 'dashboard';
-  return ['workers', 'schedule', 'clients', 'suppliers', 'accounting'].find(tabAllowed) || 'workers';
+  if (!isHrSession() && tabAllowed('dashboard')) return 'dashboard';
+  return ['workers', 'schedule', 'clients', 'suppliers', 'accounting', 'admin'].find(tabAllowed) || 'workers';
 }
 // Phone bottom bar: the tabs that sit under More (CSS .ttab.in-more).
 export const MORE_TABS = ['clients', 'suppliers', 'admin'];

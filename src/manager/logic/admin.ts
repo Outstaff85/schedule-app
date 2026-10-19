@@ -67,12 +67,9 @@ export function activeTenantIdForAdmin(): string | null {
   if (!s) return null;
   return (s.role === 'superadmin' ? s.viewingTenantId : s.tenantId) || null;
 }
-// How a login's role reads (through tr()) — the header's account menu — and
-// the hours-review ticks (users.hourPerms, functions-auth/core.py HOUR_PERMS;
-// a new HR, supplier or client login starts with HOUR_DEFAULT) — the client
-// and supplier windows' login ticks (loginsInfo): one copy, the React Users
-// section's (src/manager/users.ts).
-export { ROLE_LABELS as USER_ROLE_LABELS, HOUR_DEFAULT, HOUR_PERM_LABELS } from '../users';
+// How a login's role reads (through tr()) — the header's account menu: one
+// copy, the React Users section's (src/manager/users.ts).
+export { ROLE_LABELS as USER_ROLE_LABELS } from '../users';
 
 // ── HR logins and their workers (docs/hr.md) ──
 // Each HR gets a steady colour from the client palette (picked by its uid),

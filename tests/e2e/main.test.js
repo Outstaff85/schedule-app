@@ -1352,18 +1352,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     openAddSupplier(); await wait(100); r.supplier = rsecs('supplierModal'); r.supSave = !!document.querySelector('#supplierModal [data-testid="supplier-save"]');
     r.supNameAmber = document.querySelector('#supplierModal [data-sec="supplier"]').style.getPropertyValue('--c').trim(); closeModal('supplierOverlay');
     openEditSupplier(suppliers[0].id); await wait(100); r.supplierEdit = rsecs('supplierModal').map(x => x.replace('*', '')).join(); closeModal('supplierOverlay'); await wait(150);
-    // the user window is React (stage 6f-2): the Role is a ToggleGroup, the section plates Accordion items
-    openCreateUserForm(); await wait(100); document.querySelector('#userFormModal [data-testid="user-role"] [data-v="hr"]').click(); await wait(50);
-    r.userHr = rsecs('userFormModal').map(x => x.replace('*', '')).join(); r.roleSeg = document.querySelector('#userFormModal [data-testid="user-role"] [data-v="hr"]').dataset.state === 'on';
-    closeModal('userFormOverlay'); await wait(150);
-    openCreateUserForm(); await wait(100); r.user = rsecs('userFormModal'); closeModal('userFormOverlay');
+    // the user window is React (stage 6f-2): the section plates Accordion items; no role switch (the template says the role)
+    openCreateUserForm(); await wait(100); r.user = rsecs('userFormModal'); r.noRole = !document.querySelector('#userFormModal [data-testid="user-role"]'); closeModal('userFormOverlay');
     // closing one window brings back the one it was opened over: close them all
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
   ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,place,rates' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.userHr === 'person,sections,hours,commission' && ed.roleSeg,
+  ok(ed.client.join() === 'client,place,rates' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.noRole,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
   const gp = await p.evaluate(async () => {
@@ -1816,14 +1813,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="template-window"]');
   await (await p.$('#adminRoot [data-testid="templates"]')).screenshot({path: SP + '/templates.png'}).catch(()=>{});
   await (await p.$('[data-testid="window"]')).screenshot({path: SP + '/template-window.png'}).catch(()=>{});
-  await p.click('[data-testid="template-window"] [data-testid="user-hours"] [data-k="schedule"]');
+  const capd = await p.evaluate(() => { const t = k => document.querySelector('[data-testid="template-window"] [data-k="' + k + '"]');
+    return {clients: t('clients').disabled && t('clients').dataset.cap === 'no', pay: t('seePay').disabled, hours: !t('hours').disabled}; });
+  await p.click('[data-testid="template-window"] [data-testid="rights-tabs"] [data-k="schedule"]');
   await p.click('[data-testid="template-save"]');
   const tpB = await p.evaluate(async () => {
     const r = {closed: await T.until(() => !document.querySelector('[data-testid="template-window"]'), 8000)};
     const j = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'listTemplates'})})).json();
     r.hours = j.templates.find(t => t.id === 'client').hourPerms.join();
     const t = j.templates.find(t => t.id === 'client');
-    await fetch(API_URL, {method: 'POST', body: JSON.stringify(Object.assign({action: 'saveTemplate'}, t, {hourPerms: t.hourPerms.filter(h => h !== 'schedule')}))});
+    r.rights = t.rights.join();
+    await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'saveTemplate', id: t.id, name: t.name, role: t.role, rights: t.rights.filter(k => k !== 'schedule')})});
     return r;
   });
   // "Who gets what": every tick down the side, the templates side by side.
@@ -1834,9 +1834,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const head = [...document.querySelectorAll('#adminRoot [data-testid="rights-table"] thead th')].map(x => x.textContent.trim());
     const row = l => rows.find(x => x.dataset.label === l), col = n => head.findIndex(h => h.includes(n));
     const cell = (l, n) => row(l).children[col(n)].textContent.trim();
-    return {n: rows.length, shifts: cell('Edit shifts', 'Dispatcher'), sup: cell('Edit shifts', 'Supplier'), ownHr: cell('Only own workers', 'HR with pay'), portal: cell('Dashboard', 'Supplier')};
+    return {n: rows.length, shifts: cell('Edit shifts', 'Dispatcher'), sup: cell('Edit shifts', 'Supplier'), ownHr: cell('Only own workers', 'HR with pay'), today: cell('Today', 'Supplier'),
+      hrToday: cell('Today', 'HR with pay'), com: cell('Commission', 'HR with pay'), pay: cell('Edit pay', 'Accountant'), payD: cell('Edit pay', 'Dispatcher')};
   });
-  ok(rmx.n === 21 && rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.portal === "✓", "boss: Who gets what — the ticks by template " + JSON.stringify(rmx));
+  ok(rmx.n === 19 && rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.today === "✓" && rmx.hrToday === "" && rmx.com === "✓" && rmx.pay === "✓" && rmx.payD === "—",
+    "boss: Who gets what — the flat ticks by template (blank: never for that role) " + JSON.stringify(rmx));
   // A staff login on a template without its edit ticks: the Schedule, Workers, card and punch log only read.
   const vo = await p.evaluate(() => {
     const keep = JSON.stringify(getSession()), s = JSON.parse(keep), B = ManagerBridge;
@@ -1850,8 +1852,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.legacy, 'edit ticks: without them Schedule, Workers and punches only read; a login made before them changes all ' + JSON.stringify(vo));
-  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule',
-    'boss: Users lists the permission templates with New template and Put them on templates; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB}));
+  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule' && /schedule,hours/.test(tpB.rights) && capd.clients && capd.pay && capd.hours,
+    'boss: Users lists the permission templates with New template and Put them on templates; a client template greys Clients and pay; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB, capd}));
   // Admin → Scanner (docs/hf-plan.md): the training figures, the versions, the document type model's mode
   // (Off / Shadow / Mixed) and the per-firm switch of the full-document collection — all through scan_feedback.
   const sfCalls = [];
@@ -2267,25 +2269,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   }, {sel: clientRow, uid: lsA.uid});
   ok(lsA.plate && lsPop === 'Edit,Delete' && ls.gone && ls.snack && ls.back && delCalls === 0, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete takes it behind the Undo snack, Undo brings it back ' + JSON.stringify({lsPop, ls, delCalls}));
   ok(ls.ownerNoBox && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), Select all, a tap unticks, ✕ ends ' + JSON.stringify(ls));
-  // The user form: one Hours block for HR / supplier / client; "Only own workers" locked on for a supplier and a client.
-  const uf = await q.evaluate(async () => {
-    openCreateUserForm(); await T.tick(100); const out = {};
-    const tiles = id => [...document.querySelectorAll('#userFormModal [data-testid="' + id + '"] [data-k]')].filter(x => x.getAttribute('data-state') === 'checked').map(x => x.dataset.k).join(',');
-    for(const r of ['staff', 'hr', 'supplier', 'client']){
-      document.querySelector('#userFormModal [data-testid="user-role"] [data-v="' + r + '"]').click(); await T.tick(50);
-      const own = document.querySelector('#userFormModal button[data-testid="user-own-only"]');
-      await T.until(() => /\S/.test(document.querySelector('#userFormModal [data-testid="user-template"]').innerText), 3000);
-      out[r] = {hours: !!document.querySelector('#userFormModal [data-sec="hours"]'), own: !!own,
-        tpl: document.querySelector('#userFormModal [data-testid="user-template"]').innerText.trim(),
-        locked: !!own && own.disabled && own.dataset.state === 'checked', ticks: tiles('user-hours'),
-        secs: document.querySelector('#userFormModal [data-testid="user-sup-sections"]') ? tiles('user-sup-sections') : null};
-    }
-    closeModal('userFormOverlay'); return out;
-  });
-  ok(!uf.staff.hours && !uf.staff.own && uf.hr.hours && uf.hr.own && uf.hr.locked && uf.supplier.hours && uf.supplier.locked && uf.client.hours && uf.client.locked && uf.client.ticks === 'hours,approve,dispute,fix' && uf.supplier.secs === 'dashboard,workers,hours' && uf.client.secs === null
-      && uf.staff.tpl === 'Accountant' && uf.hr.tpl === 'HR' && uf.supplier.tpl === 'Supplier' && uf.client.tpl === 'Client',
-    'user form: each role starts on its first template, its ticks shown read-only; one Hours block for HR / supplier / client ' + JSON.stringify(uf));
-  await q.evaluate(async () => { openCreateUserForm(); await T.tick(100); document.querySelector('#userFormModal [data-testid="user-role"] [data-v="supplier"]').click(); });
+  // The user form: the template picked says the role and shows its flat ticks read-only; "Only own workers" locked on for a supplier and a client.
+  await q.evaluate(async () => { openCreateUserForm(); await T.tick(100); document.querySelector('#userFormModal [data-sec="sections"] [data-slot="accordion-trigger"]').click(); await T.tick(50); });
+  const uf = {};
+  for (const tid of ['accountant', 'hr', 'supplier', 'client']) {
+    await q.click('#userFormModal [data-testid="user-template"]'); await q.click('[role="option"][data-tid="' + tid + '"]'); await sleep(150);
+    uf[tid] = await q.evaluate(() => {
+      const tiles = id => [...document.querySelectorAll('#userFormModal [data-testid="' + id + '"] [data-k]')].filter(x => x.getAttribute('data-state') === 'checked').map(x => x.dataset.k).join(',');
+      const own = document.querySelector('#userFormModal button[data-testid="rights-own"]');
+      return {role: document.querySelector('#userFormModal [data-testid="user-window"]').dataset.role, tabs: tiles('rights-tabs'), shown: tiles('rights-shown'),
+        locked: !!own && own.disabled && own.dataset.state === 'checked', ro: [...document.querySelectorAll('#userFormModal [data-testid="rights-tiles"] [data-k]')].every(x => x.disabled),
+        commission: !!document.querySelector('#userFormModal [data-sec="commission"]'), supplier: !!document.getElementById('uSupplier'), client: !!document.getElementById('uClient')};
+    });
+  }
+  ok(uf.accountant.role === 'staff' && uf.accountant.tabs === 'today,workers,accounting,punchlog' && !uf.accountant.locked && uf.accountant.ro
+      && uf.hr.role === 'hr' && uf.hr.locked && uf.hr.commission && uf.hr.shown === 'seePay'
+      && uf.supplier.role === 'supplier' && uf.supplier.locked && uf.supplier.supplier && uf.supplier.tabs === 'today,workers,commission,hours'
+      && uf.client.role === 'client' && uf.client.locked && uf.client.client && uf.client.tabs === 'hours' && uf.client.shown === '',
+    'user form: the template picked sets the role and shows its flat ticks read-only ' + JSON.stringify(uf));
   await sleep(150);
   await (await q.$('#userFormOverlay .modal')).screenshot({path: SP + '/user-form-supplier.png'}).catch(()=>{});
   await q.evaluate(() => closeModal('userFormOverlay'));
