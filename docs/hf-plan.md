@@ -18,7 +18,7 @@ Status: **approved, not started** — the owner says when to start. Each stage i
 
 ## Names the users see
 
-The models are named by what they do, in every UI text (bell, Admin → Scanner, the lab, the `/scan-train` reports, the docs); the file names in the code (`kind.onnx`, `sa24.onnx`, …) stay.
+The models are named by what they do, in every UI text (bell, Admin → Scanner, the lab, the `/scan-train` reports, the docs) — and in the code too (H0, owner 2026-10-19): **`doctype`** for the document type model (not `docType`, the worker's ID / passport field), **`edges`** for the document edges model.
 
 | Does | UI name | Was called |
 |---|---|---|
@@ -60,6 +60,14 @@ Every step is the owner's call, from the bell and **Admin → Scanner**; "Bring 
 - Training never starts from the app: it needs the PC's NVIDIA card and the owner's HF token.
 
 ## Stages
+
+### H0 — the code says what the models do (first, before the move)
+Rename where the word means the model or its data — not where it means something else (a quad's geometric corners, a zoomed re-read's field kind such as `digits9`):
+- **kind → doctype:** `withKind` / `with_kind` → `withDoctype` / `with_doctype`, `_kind_model` → `_doctype_model`, `kind_of` → `doctype_of`, `KIND_MODELS` → `DOCTYPE_MODELS`, `pull_kinds.py` / `train_kinds.py` / `exam_kinds.py` → `*_doctypes.py`, `report_kinds.json` → `report_doctypes.json`, `--force-kinds` → `--force-doctypes`; the records' `kindModel` / `kindFixed` / `kindBy` → `doctypeModel` / `doctypeFixed` / `doctypeBy`, the counters `kindsSince` / `kindsDue` / `kinds` → `doctypesSince` / `doctypesDue` / `doctypes`.
+- **corners → edges:** the records' `cornersModel` / `cornersFixed` → `edgesModel` / `edgesFixed`, the counter `newSince` → `edgesSince`, the training scripts' and notices' corner-model names (`scanTrainingNotice` → `scanEdgesNotice`, …).
+- **Model files** get their new names when they move to HF (H2): `sa24.onnx` / `lite.onnx` → `edges.onnx` / `edges-lite.onnx`, `kind.onnx` / `kind-lite.onnx` → `doctype.onnx` / `doctype-lite.onnx` (none trained yet).
+- **Stored data:** a one-time script renames the fields of the records already collected (`scanTraining`, a few days' worth) and of `scanTrainingStats/current`.
+- The UI texts get the new names (Document edges model, Document type model) through the dictionaries; tests, docs and `ai_golden.json` (if a prompt name changes) follow.
 
 ### H1 — accounts and keys (the owner, with instructions)
 Create `OutStaff/scanner-models` (public model repo) and `OutStaff/scanner-data` (private bucket); a server token that may only write to the bucket, put into Secret Manager (`HF_DATA_TOKEN`) by the owner — never in the repo or the chat. Done already: the owner's Full-access token on the PC (`H:\hf`, `HF_HOME=H:\hf\home`), the HF connector in the sessions, the cloud environment's network (`huggingface.co`, `*.hf.co`).
