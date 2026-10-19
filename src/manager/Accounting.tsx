@@ -8,14 +8,13 @@
 // are the page's (ManagerBridge).
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconBuildingBank, IconBuildingStore, IconCalendarDollar, IconCash, IconCashOff, IconChartBar, IconCheck,
+  IconAlertTriangle, IconBuildingBank, IconBuildingStore, IconCalendarDollar, IconCash, IconCashOff, IconCheck,
   IconChevronLeft, IconChevronRight, IconCircleCheck, IconCircleX, IconClock, IconClockExclamation, IconDownload, IconFileCheck,
   IconFileSpreadsheet, IconFileText, IconFileTypePdf, IconInfoCircle, IconPencil, IconReceiptOff, IconReportMoney, IconSearch,
   IconSignature, IconTruckDelivery, IconUserDollar, IconUserShield, IconX,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { localYMD } from '@/lib/payroll';
 import { useIsPhone } from '@/hooks/use-phone';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,7 +22,6 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable, type DataColumn } from '@/components/ui/data-table';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, Recharts, type ChartConfig } from '@/components/ui/chart';
 import { Plate } from '@/components/shared/plate';
 import { Figures, Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
@@ -163,7 +161,7 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
           ))}
         </div>
       )}
-      {shown === 'salary' && <SalaryTab snap={snap} api={api} d={calc.d} entries={calc.entries} byDay={calc.res.byDay} onHelp={setHelp} onExport={() => setExporting(true)} />}
+      {shown === 'salary' && <SalaryTab snap={snap} api={api} d={calc.d} entries={calc.entries} onHelp={setHelp} onExport={() => setExporting(true)} />}
       {shown === 'billing' && <BillingTab snap={snap} api={api} d={calc.d} entries={calc.entries} byClient={calc.res.byClient} onHelp={setHelp} onDetail={setDetail} />}
       {shown === 'approvals' && <ApprovalsTab snap={snap} api={api} d={calc.d} onHelp={setHelp} />}
       {shown === 'alerts' && <AlertsTab alerts={calc.alerts} api={api} />}
@@ -187,8 +185,8 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
 }
 
 // ── Salary ──
-function SalaryTab({ snap, api, d, entries, byDay, onHelp, onExport }: {
-  snap: AccountingSnapshot; api: ManagerBridge; d: AccData; entries: SalaryEntry[]; byDay: Record<string, number>; onHelp: (k: string) => void; onExport: () => void;
+function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
+  snap: AccountingSnapshot; api: ManagerBridge; d: AccData; entries: SalaryEntry[]; onHelp: (k: string) => void; onExport: () => void;
 }) {
   const phone = useIsPhone();
   const [q, setQ] = React.useState(keptQ.q);
@@ -299,7 +297,6 @@ function SalaryTab({ snap, api, d, entries, byDay, onHelp, onExport }: {
             { key: 'g', label: tr('Total Pay'), value: money2(tot.total) },
             ...(payOnly ? [{ key: 'c', label: tr('My commission'), value: '₪' + rows.reduce((t, e) => t + myCom(e), 0).toFixed(0) }] : []),
           ]} /></div>
-          <HoursChart byDay={byDay} period={snap.period} entries={entries} />
           {!payOnly && <div className="mb-2 flex" data-testid="sal-select"><SelectHead sel={sel} /></div>}
           <DataTable data-testid="sal-table" columns={columns} data={rows} rowId={e => String(e.workerId)} footer={footer} card={plate}
             empty={<div className="py-4 text-center text-[13px] text-ink-2">{tr('No workers found')}</div>}
@@ -316,43 +313,6 @@ function SalaryTab({ snap, api, d, entries, byDay, onHelp, onExport }: {
         </SelectBar>
       )}
     </div>
-  );
-}
-
-/** The period's hours by day (a month or a week), or by month (All Time, a long span): a bar chart (Recharts). */
-function HoursChart({ byDay, period, entries }: { byDay: Record<string, number>; period: string; entries: SalaryEntry[] }) {
-  const data = React.useMemo(() => {
-    const days = Object.keys(byDay).sort();
-    if (!days.length) return [];
-    const span = (Date.parse(days[days.length - 1]) - Date.parse(days[0])) / 864e5;
-    if (period === 'all' && span > 62) {
-      const by: Record<string, number> = {};
-      days.forEach(k => { by[k.slice(0, 7)] = (by[k.slice(0, 7)] || 0) + byDay[k]; });
-      return Object.keys(by).sort().map(k => ({ key: k, label: new Date(k + '-01T12:00').toLocaleDateString(uiLocale(), { month: 'short', year: '2-digit' }), hours: Math.round(by[k] * 10) / 10 }));
-    }
-    // Every day of the span, an empty one at 0, so the gaps show.
-    const out: { key: string; label: string; hours: number }[] = [];
-    for (let t = new Date(days[0] + 'T12:00'); localYMD(t) <= days[days.length - 1]; t.setDate(t.getDate() + 1)) {
-      const k = localYMD(t);
-      out.push({ key: k, label: t.toLocaleDateString(uiLocale(), { day: 'numeric', month: 'short' }), hours: Math.round((byDay[k] || 0) * 10) / 10 });
-    }
-    return out;
-  }, [byDay, period]);
-  if (data.length < 2 || !entries.length) return null;
-  const config: ChartConfig = { hours: { label: tr('Hours'), color: 'var(--info)' } };
-  const byMonth = data[0].key.length === 7;
-  return (
-    <Section label={tr(byMonth ? 'Hours by month' : 'Hours by day')} icon={<IconChartBar className="size-4" />} data-testid="acc-chart">
-      <ChartContainer config={config} className="aspect-auto h-[150px] w-full">
-        <Recharts.BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-          <Recharts.CartesianGrid vertical={false} />
-          <Recharts.XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
-          <Recharts.YAxis tickLine={false} axisLine={false} width={44} allowDecimals={false} />
-          <ChartTooltip cursor content={<ChartTooltipContent formatter={v => tr('{h}h', { h: String(v) })} />} />
-          <Recharts.Bar dataKey="hours" fill="var(--color-hours)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
-        </Recharts.BarChart>
-      </ChartContainer>
-    </Section>
   );
 }
 
