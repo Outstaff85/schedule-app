@@ -82,7 +82,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     });
     return ctx;
   }
-  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept()); return p; };
+  // the scan window's frame (/scan/, the lab's page) runs without its engine here: CI fetches no models
+  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => { if (!/\/scan\//.test(e.stack || '')) p.errs.push(e.message); }); p.on('dialog', d => d.accept()); return p; };
   const waitFor = async (p, fn, ms=10000) => { const end = Date.now()+ms; while (Date.now() < end) { try { if (await p.evaluate(fn)) return true; } catch (e) {} await sleep(150); } return false; };
   const login = async (p, url, u, pw) => {
     await p.goto(url);
