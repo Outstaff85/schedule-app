@@ -154,7 +154,7 @@ Shown in Admin → Errors / Timings ([admin.md](admin.md)).
 
 ## PWA
 
-- **Service worker:** `service-worker.js` (cache `schedule-mgr-vNNN` — bump the number on every deploy that changes the app).
+- **Service worker:** `service-worker.js` (cache `schedule-mgr-vNNN` — bump the number on every deploy that changes the app). It leaves `/scan/` and `/scan-lab/` (the scanners' ONNX Runtime and models, tens of MB) to the browser's own cache, which revalidates them by ETag instead of downloading them on every page load, and on an update it deletes only its own old caches (`schedule-mgr-*`) — the scanners' model caches (`scan-models`, `scan-lab-models`) stay.
   - Network-first, with `cache:'no-store'`; the cache is only the offline fallback.
   - It never touches POSTs or other origins (Firebase, Cloud Functions, CDNs).
   - `.woff2` font files are the exception: cache first (they never change under the same URL).

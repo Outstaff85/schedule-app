@@ -12,6 +12,7 @@ import { Window } from '@/components/shared/window';
 import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { filesToUploadPages } from '@/manager/logic/uploads';
+import { reportError } from '@/manager/data/telemetry';
 import { frameInput, startEngine, type Detection, type Engine, type Pt } from './engine';
 import { loadTracker, type Tracker } from './track';
 import { cutPage, findPages, sendFeedback, type Example, type FindResult, type ServerPage } from './server';
@@ -249,7 +250,8 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       const found = await findPages(sent, pts);
       const got = found.pages.map(f => fromServer(f, found.size, dataUrl(sent)));
       setItem(id, { pending: false, pages: got }); classify(got);
-    } catch {
+    } catch (e) {
+      reportError('scan: the server could not find the documents on a shot — ' + ((e as Error)?.message || e), 'scan');
       const p = await local; // the server could not be reached: the phone's own cut is kept
       if (p) { const pg = { ...p, doctypePending: !p.doctypeModel }; setItem(id, { pending: false, pages: [pg] }); classify([pg]); }
       else setItem(id, { pending: false, pages: [], note: tr('This shot could not be cut — take it again') });
@@ -272,7 +274,8 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
         const found = await findPages(p.b64);
         const got = found.pages.map(f => fromServer(f, found.size, dataUrl(p.b64, p.mediaType)));
         setItem(ids[i], { pending: false, pages: got }); classify(got);
-      } catch {
+      } catch (e) {
+        reportError('scan: the server could not find the documents on a picked page — ' + ((e as Error)?.message || e), 'scan');
         const whole: Page = { uid: ++nextUid, b64: p.b64, mediaType: p.mediaType, turn: -1, blurry: false, doctypePending: true };
         setItem(ids[i], { pending: false, pages: [whole] }); classify([whole]);
       }
