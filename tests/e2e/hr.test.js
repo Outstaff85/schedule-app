@@ -59,6 +59,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       // A real-looking geolocation reply: not instant (the page flags < 800 ms).
       const pos = {coords:{latitude:32.0, longitude:34.8, accuracy:10, speed:null, altitude:null}, timestamp:Date.now()};
       Object.defineProperty(navigator, 'geolocation', {value:{getCurrentPosition:(ok)=>setTimeout(()=>ok(Object.assign({}, pos, {timestamp:Date.now()})), 900)}});
+      // The location permission: given (a worker who allowed GPS before); localStorage gpsPerm changes it.
+      const pq = navigator.permissions && navigator.permissions.query.bind(navigator.permissions);
+      if (pq) navigator.permissions.query = d => d && d.name === 'geolocation' ? Promise.resolve({state: localStorage.getItem('gpsPerm') || 'granted', onchange: null}) : pq(d);
     });
     return ctx;
   }

@@ -5,13 +5,15 @@
 // only the top bar stays and the message is a glass card under it.
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconBuilding, IconBuildingStore, IconCalendarEvent, IconCalendarWeek, IconClockHour4, IconLink, IconLinkOff,
+  IconAlertTriangle, IconBuilding, IconBuildingStore, IconCalendarEvent, IconCalendarWeek, IconClockHour4, IconCurrentLocation, IconLink, IconLinkOff,
   IconMapPin, IconMapPinOff, IconWifiOff,
 } from '@tabler/icons-react';
+import { Window } from '@/components/shared/window';
+import { Button } from '@/components/ui/button';
 import { tr, useI18n } from '@/lib/i18n';
 import { LanguageButton } from '@/components/shared/language';
 import { ThemeButton } from '@/components/shared/theme-switch';
-import { doPunch, loadWeather, locText, nextType, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
+import { closeGpsHelp, doPunch, enableGps, reopenForGps, loadWeather, locText, nextType, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
 import { greetingHtml, partOfDay } from '@/lib/greeting';
 import { nextShiftText, refreshTileHours } from './figures';
 import { MARK_SVG } from './mark';
@@ -57,11 +59,59 @@ export function PunchScreen({ hidden }: { hidden: boolean }) {
         <IconCalendarEvent className="ti" /><span>{tr('Your schedule was updated')}</span><span className="go"><span>{tr('View')}</span> ›</span>
       </div>
       <div className={'loc-chip ' + s.loc.cls} id="locChip"><span className="loc-dot" /><span>{locText(s.loc)}</span></div>
+      {s.gpsBlock && (
+        <button type="button" className="gps-notice" data-testid="gps-notice" onClick={enableGps}>
+          <IconCurrentLocation className="ti" /><span>{tr('To punch, turn on GPS')}</span><span className="go">{tr('Turn on')} ›</span>
+        </button>
+      )}
       <PunchButton />
       <div className={s.result ? 'pp-result show ' + s.result.type : 'pp-result'} id="punchResult">{s.result ? s.result.text : ''}</div>
       <Tiles />
       {s.picker && <ObjectPicker objs={s.picker} name={s.worker?.name || ''} />}
+      <GpsSheet />
     </div>
+  );
+}
+
+// GPS (docs/punch.md → GPS off or blocked): on the first entry the window says GPS is needed and
+// its button asks; after a refusal the same window gives the steps for this phone (iPhone or
+// Android, the browser or the installed app) and the way to ask again where there is one — on an
+// iPhone Safari asks anew when the page opens again, on Android a question only closed is asked
+// again at once, a "Don't allow" is undone in the settings. It closes by itself once a reading comes.
+const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+function GpsSheet() {
+  const s = usePunch();
+  const ios = isIos(), loading = s.loc.cls === 'loading', b = s.gpsBlock;
+  const steps: string[] = b === 'none' ? [tr('Open the link in Chrome (Android) or Safari (iPhone).')]
+    : b === 'off' ? (ios ? [tr('Settings → Privacy & Security → Location Services → on.')] : [tr('Swipe down from the top of the screen and tap Location.')])
+    : b === 'denied' ? (ios ? [tr('Settings → Privacy & Security → Location Services → on.'), tr('Settings → Apps → Safari → Location → Ask or Allow.')]
+      : [isInstalled() ? tr('Hold the app icon → App info → Permissions → Location → Allow.') : tr('Tap the icon left of the address → Permissions → Location → Allow.'),
+        tr('Come back here: the app sees it by itself.')])
+    : [];
+  const title = b === 'ask' ? tr('GPS is needed to punch') : tr('Turn on GPS to punch');
+  const why = b === 'ask' ? tr('Your location is checked only when you punch, to confirm you are at your site.')
+    : b === 'denied' ? tr('Location is not allowed for this app.') : b === 'off' ? tr('Location (GPS) is turned off on this phone.') : tr('This browser cannot give your location.');
+  const btn = (label: string, onClick: () => void, testid: string) => (
+    <Button variant="primary" data-testid={testid} disabled={loading} onClick={onClick}>
+      <IconCurrentLocation className="size-[18px]" />{loading ? tr('Checking GPS...') : label}
+    </Button>
+  );
+  const footer = b === 'ask' ? btn(tr('Allow GPS'), enableGps, 'gps-enable')
+    : b === 'denied' && ios ? btn(tr('Ask again'), reopenForGps, 'gps-reopen')
+    : b === 'denied' ? btn(s.gpsCanAsk ? tr('Ask again') : tr('Try again'), enableGps, 'gps-enable')
+    : b === 'off' ? btn(tr('Turn on GPS'), enableGps, 'gps-enable')
+    : null;
+  return (
+    <Window open={s.gpsHelp && !!b} onOpenChange={o => { if (!o) closeGpsHelp(); }} title={title} description={why} footer={footer}>
+      <div className="px-4 pb-3 text-sm sm:px-0" data-testid="gps-steps" data-kind={b || ''}>
+        {b === 'ask' ? <p>{tr('When the phone asks, tap Allow.')}</p>
+          : <>
+            {b === 'denied' && (ios || s.gpsCanAsk) && <p className="mb-2 text-muted-foreground">{ios ? tr('Tap Ask again and choose Allow. If the phone does not ask:') : tr('Tap Ask again and choose Allow. Or:')}</p>}
+            {steps.length > 1 ? <ol className="list-decimal space-y-1 ps-5">{steps.map(t => <li key={t}>{t}</li>)}</ol> : <p>{steps[0]}</p>}
+          </>}
+      </div>
+    </Window>
   );
 }
 
@@ -91,6 +141,7 @@ function PunchButton() {
 
   const start = (e: React.PointerEvent | React.KeyboardEvent) => {
     const btn = ref.current;
+    if (s.gpsBlock && !s.done) { e.preventDefault(); enableGps(); return; } // GPS off or blocked: the tap asks for it at once
     if (!btn || !can || hold.current) return;
     e.preventDefault();
     try { if ('pointerId' in e && e.pointerId != null) btn.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
@@ -118,7 +169,8 @@ function PunchButton() {
     return () => btn.removeEventListener('touchstart', stop);
   }, []);
 
-  const cls = s.done ? 'done ' + s.done : !s.locOk ? 'disabled' : type;
+  const gps = !!s.gpsBlock && !s.done;
+  const cls = s.done ? 'done ' + s.done : gps ? 'disabled gps' : !s.locOk ? 'disabled' : type;
   return (
     <div className="punch-btn-wrap">
       <button
@@ -126,7 +178,7 @@ function PunchButton() {
         type="button"
         id="bigPunchBtn"
         data-testid="punch-btn"
-        data-state={s.done ? 'done' : !s.locOk ? 'off' : type}
+        data-state={s.done ? 'done' : gps ? 'gps' : !s.locOk ? 'off' : type}
         className={'big-punch-btn ' + cls + (holding ? ' holding' : '') + (rollback ? ' rollback' : '')}
         onContextMenu={e => e.preventDefault()}
         onPointerDown={start}
@@ -138,6 +190,7 @@ function PunchButton() {
         onKeyUp={e => { if (e.key === 'Enter' || e.key === ' ') end(); }}
       >
         {s.done ? <svg className="pp-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+          : gps ? <><span className="btn-icon"><IconCurrentLocation className="ti" /></span><span className="btn-label">{s.gpsBlock === 'ask' ? tr('Allow GPS') : tr('Turn on GPS')}</span><span className="btn-sub">{tr('GPS is needed to punch')}</span></>
           : !s.locOk ? <><span className="btn-icon"><IconMapPinOff className="ti" /></span><span className="btn-label">{tr('Not on site')}</span><span className="btn-sub">{tr('Go to your site to punch')}</span></>
           : <><span className="btn-label"><i className="pp-dot" />{type === 'out' ? tr('Punch out') : tr('Punch in')}</span><span className="btn-sub">{tr('hold to punch')}</span></>}
       </button>
