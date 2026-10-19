@@ -946,8 +946,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     crumb: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim(),
     figs: [...document.querySelectorAll('#adminRoot [data-slot="figures"] button span:first-of-type')].map(x => x.textContent).join()})));
   // A super-admin also gets the Scanner lab tile (it opens /scan-lab/ in a new tab).
-  ok(at.tiles === 'punchlog,firms,users' + (at.superadmin ? ',scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total',
-    'admin: three tiles while no section is chosen (and the Scanner lab for a super-admin), a tile opens its section, the breadcrumb "Admin › Punch Log", the figures ' + JSON.stringify(at));
+  ok(at.tiles === 'punchlog,firms,users' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total',
+    'admin: three tiles while no section is chosen (and the Scanner and the Scanner lab for a super-admin), a tile opens its section, the breadcrumb "Admin › Punch Log", the figures ' + JSON.stringify(at));
   // The filters: Radix selects — the date list is newest day first; the client filter uses the punch's own clientId.
   const pickFilter = async (k, label) => {
     await p.click(PL + ' [data-testid="punch-filter-' + k + '"]'); await p.waitForSelector('[role="option"]');

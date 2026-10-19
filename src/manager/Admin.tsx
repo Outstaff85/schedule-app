@@ -58,8 +58,9 @@ const SUBTITLES: Record<AdminPane, string> = {
   timings: 'How long login, app open and scans take (real devices, every firm)',
   scanner: "The scanner's own models: their training, how they are used, the documents collected",
 };
-/** The large tiles while no section is chosen (the UI audit): the three sections an owner uses. */
-const TILES: AdminPane[] = ['punchlog', 'firms', 'users'];
+/** The large tiles while no section is chosen (the UI audit): the three sections an owner uses, and
+ * the super-admin's Scanner (its bell notices open it too). */
+const TILES: AdminPane[] = ['punchlog', 'firms', 'users', 'scanner'];
 
 // The filters and the view stay while the app is open (the tab is drawn again on every render()).
 let keptFilters: LogFilters = NO_FILTERS;
@@ -83,7 +84,7 @@ export function Admin({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }
         <div className="grid gap-x-3 min-[701px]:grid-cols-3" data-testid="admin-tiles">
           {PANES.filter(p => TILES.includes(p.k) && snap.panes.includes(p.k)).map(p => (
             <Plate key={p.k} data-testid="admin-tile" data-k={p.k} size="lg" className="mb-2" icon={p.icon}
-              color={p.k === 'firms' && snap.firmIncomplete ? 'var(--warn)' : p.k === 'punchlog' ? 'var(--info)' : p.k === 'firms' ? 'var(--ok)' : 'var(--accent)'}
+              color={p.k === 'firms' && snap.firmIncomplete ? 'var(--warn)' : p.k === 'punchlog' || p.k === 'scanner' ? 'var(--info)' : p.k === 'firms' ? 'var(--ok)' : 'var(--accent)'}
               title={tr(p.label)} sub={<span className="block whitespace-normal">{tr(SUBTITLES[p.k])}</span>}
               onOpen={() => api.setAdminPane(p.k)} />
           ))}
