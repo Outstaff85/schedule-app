@@ -11,7 +11,7 @@ import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts,
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
-import { hasPermission, hrHourReview, hrPayOnly, isFirmAdminSession, isHrSession } from '../logic/access';
+import { canChange, hasPermission, hrHourReview, hrPayOnly, isFirmAdminSession, isHrSession } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { autoSave, latestHoursBatch } from '../data/store';
@@ -123,7 +123,7 @@ window.ManagerBridge={
           notices:workerNotices(w,td).map((n?: any)=>({lvl:n.lvl, word:n.word, title:n.title}))}; }),
       suppliers:suppliers.map((x?: any)=>({id:x.id, name:x.name||'', color:x.color||''})),
       log:log.map((e?: any)=>({...e, site:punchSite(e)})),
-      canAddWorker:hasPermission('workers'),
+      canAddWorker:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
   openWorker:(id?: any)=>openWorkerCardById(id),
@@ -141,7 +141,7 @@ window.ManagerBridge={
         schedule:[0,1,2,3,4,5,6].map((i?: any)=>(w.schedule||[])[i]||off), dateShifts:w.dateShifts||{}})),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||''})),
       requests:__shiftReqs,
-      canEdit:hasPermission('schedule'), canExport:hasPermission('exports'), canAddWorker:hasPermission('workers'),
+      canEdit:hasPermission('schedule')&&canChange('editSchedule'), canExport:hasPermission('exports'), canAddWorker:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
   setWeek:(ymd?: any)=>{ weekStart=getSundayOfWeek(new Date(ymd+'T00:00')); render(); },
@@ -191,7 +191,7 @@ window.ManagerBridge={
           contract:ex?{overdue:ex.level==='overdue', deadline:ex.deadline.toLocaleDateString('en-GB')}:null, canPay:!!canEditPay(w)}; }),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||'', object:c.object||''})),
       suppliers:suppliers.map((x?: any)=>({id:x.id, name:x.name||'', color:x.color||''})),
-      canEdit:hasPermission('workers'),
+      canEdit:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
   scanNew:()=>startNewScan(),
@@ -210,7 +210,7 @@ window.ManagerBridge={
     const byClient=salaryEntriesFor('month').byClient||{};
     const waiting=new Set((__hoursBatches||[]).filter((b?: any)=>b.status==='pending').flatMap((b?: any)=>(b.entries||[]).map((e?: any)=>e.clientId)));
     const empty=(v?: any)=>v==null||v==='';
-    return {ready:__dataReady, canEdit:hasPermission('clients'),
+    return {ready:__dataReady, canEdit:hasPermission('clients'), canPunch:canChange('editPunches'),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||'', address:c.address||'', object:c.object||'',
         workers:workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length, monthHours:(byClient[c.id]||{}).hours||0,
         noRate:empty(c.billRate)&&empty(c.defaultHourlyRate)&&!c.fixedBillRate&&!c.dailyBillRate, waiting:waiting.has(c.id)}))};
@@ -290,7 +290,7 @@ window.ManagerBridge={
   admin(){
     const s=(getSession()||{} as any), isAdminRole=s.role==='superadmin'||s.role==='tenant_admin', from=__punchLoadedFrom;
     return {
-      ready:__dataReady, pane:__adminPane, panes:adminPanes(), canClear:isAdminRole,
+      ready:__dataReady, pane:__adminPane, panes:adminPanes(), canClear:isAdminRole, canEditPunches:canChange('editPunches'),
       firmIncomplete:isAdminRole&&firmProfileMissing().length>0,
       log:__adminPane==='punchlog'?window.ManagerBridge!.punchLog():[],
       workers:workers.map((w?: any)=>({id:w.id, name:w.name||'', clientIds:w.clientIds||[]})),
@@ -363,7 +363,7 @@ window.ManagerBridge={
     const w=workers.find((x?: any)=>x.id===id); if(!w) return null;
     const head=workerHeadOf(w), st=workerDocStatus(w), ex=workerExpiryStatus(w), sh=shiftOn(w,new Date()), b=latestHoursBatch(w.id);
     const sup=suppliers.find((s?: any)=>s.id===w.supplierId);
-    return {...head, w:JSON.parse(JSON.stringify(w)), canEdit:hasPermission('workers'), canPay:!!canEditPay(w), canExport:hasPermission('exports'),
+    return {...head, w:JSON.parse(JSON.stringify(w)), canEdit:hasPermission('workers')&&canChange('editWorkers'), canPay:!!canEditPay(w), canExport:hasPermission('exports'),
       isFirmAdmin:isFirmAdminSession(), hr:w.hrId?{name:hrNameOf(w.hrId), color:hrColor(w.hrId)}:null,
       clients:(w.clientIds||[]).map((cid?: any)=>clients.find((x?: any)=>x.id===cid)).filter(Boolean).map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||''})),
       supplier:sup?{name:sup.name||'', color:sup.color||''}:null,

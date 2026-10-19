@@ -1392,5 +1392,20 @@
   "Allow GPS to punch": "אפשרו GPS כדי להחתים שעון",
   "{0} logins put on templates · {1} sign in again with the new rights": "{0} משתמשים שויכו לתבניות · {1} יתחברו מחדש עם ההרשאות החדשות",
   "{0} logins in all firms have no template yet.": "ל-{0} משתמשים בכל החברות אין עדיין תבנית.",
-  "Put them on templates": "שייכו אותם לתבניות"
+  "Put them on templates": "שייכו אותם לתבניות",
+  "Changes": "שינויים",
+  "Who gets what": "מי מקבל מה",
+  "Tick": "הרשאה",
+  "Owner": "בעלים",
+  "changes everything": "משנה הכול",
+  "Edits {0}": "שינויים {0}",
+  "view only": "צפייה בלבד",
+  "Edit shifts": "עריכת משמרות",
+  "Edit workers": "עריכת עובדים",
+  "Edit / delete punches": "עריכה / מחיקה של החתמות",
+  "Shifts in Schedule; off: it only sees them": "משמרות בסידור; כבוי: רק צופה בהן",
+  "Add, edit and delete workers; off: it only reads them": "הוספה, עריכה ומחיקה של עובדים; כבוי: רק קורא אותם",
+  "Manual punches, edits and deletes in the punch log": "החתמות ידניות, עריכות ומחיקות ביומן ההחתמות",
+  "Portal tabs": "לשוניות פורטל",
+  "Scope": "היקף"
 }

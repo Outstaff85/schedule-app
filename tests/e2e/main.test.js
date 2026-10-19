@@ -1806,6 +1806,30 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await fetch(API_URL, {method: 'POST', body: JSON.stringify(Object.assign({action: 'saveTemplate'}, t, {hourPerms: t.hourPerms.filter(h => h !== 'schedule')}))});
     return r;
   });
+  // "Who gets what": every tick down the side, the templates side by side.
+  await p.click('#adminRoot [data-testid="rights-table"] button[aria-expanded]');
+  const rmx = await p.evaluate(async () => {
+    await T.until(() => document.querySelectorAll('#adminRoot [data-testid="rights-row"]').length > 0, 3000);
+    const rows = [...document.querySelectorAll('#adminRoot [data-testid="rights-row"]')];
+    const head = [...document.querySelectorAll('#adminRoot [data-testid="rights-table"] thead th')].map(x => x.textContent.trim());
+    const row = l => rows.find(x => x.dataset.label === l), col = n => head.findIndex(h => h.includes(n));
+    const cell = (l, n) => row(l).children[col(n)].textContent.trim();
+    return {n: rows.length, shifts: cell('Edit shifts', 'Dispatcher'), sup: cell('Edit shifts', 'Supplier'), ownHr: cell('Only own workers', 'HR with pay'), portal: cell('Dashboard', 'Supplier')};
+  });
+  ok(rmx.n === 21 && rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.portal === "✓", "boss: Who gets what — the ticks by template " + JSON.stringify(rmx));
+  // A staff login on a template without its edit ticks: the Schedule, Workers, card and punch log only read.
+  const vo = await p.evaluate(() => {
+    const keep = JSON.stringify(getSession()), s = JSON.parse(keep), B = ManagerBridge;
+    saveSession(Object.assign({}, s, {role: 'staff', permissions: '*', editPerms: []}));
+    const r = {sched: B.schedule().canEdit, workers: B.workers().canEdit, add: B.today().canAddWorker, punches: B.admin().canEditPunches, punch: B.clients().canPunch};
+    saveSession(Object.assign({}, s, {role: 'staff', permissions: '*', editPerms: ['editSchedule']}));
+    r.schedOnly = B.schedule().canEdit && !B.workers().canEdit;
+    saveSession(Object.assign({}, s, {role: 'staff', permissions: '*'}));
+    r.legacy = B.schedule().canEdit && B.workers().canEdit && B.admin().canEditPunches;
+    saveSession(JSON.parse(keep));
+    return r;
+  });
+  ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.legacy, 'edit ticks: without them Schedule, Workers and punches only read; a login made before them changes all ' + JSON.stringify(vo));
   ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule',
     'boss: Users lists the permission templates with New template and Put them on templates; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB}));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes

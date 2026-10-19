@@ -14,7 +14,7 @@
 import * as React from 'react';
 import {
   IconCalendar, IconCash, IconCheck, IconCircleCheck, IconClock, IconCoin, IconHome, IconLayoutGrid, IconPencil, IconPin, IconPlus, IconTrash,
-  IconTruckDelivery, IconUpload, IconUser, IconUserPlus, IconUsers, IconUsersGroup, IconWallet, IconAlertTriangle, IconLock, IconTemplate,
+  IconTruckDelivery, IconUpload, IconUser, IconUserPlus, IconUsers, IconUsersGroup, IconWallet, IconAlertTriangle, IconLock, IconTemplate, IconCalendarEvent, IconUserEdit, IconClockEdit, IconTable,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -41,7 +41,8 @@ import {
   createBody, formOf, formParts, formProblem, HOUR_PERM_LABELS, HOUR_ROLES, isAdminRole, newForm, ROLE_LABELS, roleColor, sortUsers, UNSELECTABLE,
   updateBody, withRole, type FormRole, type UserForm, type UserRow,
 } from './users';
-import { loadTemplates, rightsOf, templateBody, templateForm, templatesFor, templateSummary, useTemplates, type PermTemplate, type TemplateForm } from './templates';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EDIT_LABELS, loadTemplates, rightsMatrix, rightsOf, templateBody, templateForm, templatesFor, templateSummary, useTemplates, type PermTemplate, type TemplateForm } from './templates';
 
 // Logins deleted here and still inside their Undo time: left out of the list.
 const hiddenUsers = new Set<string>();
@@ -136,10 +137,15 @@ const HOUR_TILES: { k: string; hint: string; icon: React.ReactNode }[] = [
   { k: 'schedule', hint: "Its workers' planned shifts", icon: <IconCalendar /> },
   { k: 'export', hint: 'Hours to Excel', icon: <IconUpload /> },
 ];
+const EDIT_TILES: { k: string; hint: string; icon: React.ReactNode }[] = [
+  { k: 'editSchedule', hint: 'Shifts in Schedule; off: it only sees them', icon: <IconCalendarEvent /> },
+  { k: 'editWorkers', hint: 'Add, edit and delete workers; off: it only reads them', icon: <IconUserEdit /> },
+  { k: 'editPunches', hint: 'Manual punches, edits and deletes in the punch log', icon: <IconClockEdit /> },
+];
 const tileLabel = (icon: React.ReactNode, label: string) => <span className="inline-flex items-center gap-1.5 [&_svg]:size-4">{icon}{label}</span>;
 const flip = (list: string[], k: string) => (list.includes(k) ? list.filter(x => x !== k) : [...list, k]);
 
-type Rights = { perms: string[]; hourPerms: string[]; supSections: string[]; ownOnly: boolean; showPay: boolean };
+type Rights = { perms: string[]; edits: string[]; hourPerms: string[]; supSections: string[]; ownOnly: boolean; showPay: boolean };
 
 /** A role's ticks: the sections (staff / HR) or portal tabs (supplier), or the hours ticks with Only own workers and the pay tick; read-only without `onChange`. */
 function RightsTiles({ part, role, r, onChange }: { part: 'sections' | 'hours'; role: FormRole; r: Rights; onChange?: (p: Partial<Rights>) => void }) {
@@ -152,13 +158,22 @@ function RightsTiles({ part, role, r, onChange }: { part: 'sections' | 'hours'; 
     );
     if (role !== 'staff' && role !== 'hr') return null;
     return (
-      <CheckGrid data-testid="user-perms">
-        {SECTION_TILES.filter(t => t.k !== 'payEdit' || role === 'hr').map(t => (
-          <CheckTile key={t.k} data-k={t.k} disabled={ro} label={tileLabel(t.icon, tr(t.label))}
-            hint={t.k === 'accounting' && role === 'hr' ? tr("Own workers' pay and commission only") : tr(t.hint)}
-            checked={r.perms.includes(t.k)} onCheckedChange={() => put({ perms: flip(r.perms, t.k) })} />
-        ))}
-      </CheckGrid>
+      <>
+        <CheckGrid data-testid="user-perms">
+          {SECTION_TILES.filter(t => t.k !== 'payEdit' || role === 'hr').map(t => (
+            <CheckTile key={t.k} data-k={t.k} disabled={ro} label={tileLabel(t.icon, tr(t.label))}
+              hint={t.k === 'accounting' && role === 'hr' ? tr("Own workers' pay and commission only") : tr(t.hint)}
+              checked={r.perms.includes(t.k)} onCheckedChange={() => put({ perms: flip(r.perms, t.k) })} />
+          ))}
+        </CheckGrid>
+        <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-2">{tr('Changes')}</p>
+        <CheckGrid data-testid="user-edits">
+          {EDIT_TILES.map(t => (
+            <CheckTile key={t.k} data-k={t.k} disabled={ro} label={tileLabel(t.icon, tr(EDIT_LABELS[t.k]))} hint={tr(t.hint)}
+              checked={r.edits.includes(t.k)} onCheckedChange={() => put({ edits: flip(r.edits, t.k) })} />
+          ))}
+        </CheckGrid>
+      </>
     );
   }
   if (!HOUR_ROLES.includes(role)) return null;
@@ -226,6 +241,43 @@ function TemplatesSection({ isSuper, api }: { isSuper: boolean; api: ManagerBrid
             onOpen={() => setOpen(t)} onDelete={isSuper ? () => remove(t) : undefined} />
         )} empty={<Empty><EmptyMedia><IconTemplate /></EmptyMedia><EmptyTitle>{tr('No templates yet.')}</EmptyTitle></Empty>} />}
       {open && <TemplateWindow t={open === 'new' ? null : open} isSuper={isSuper} api={api} onClose={() => setOpen(null)} />}
+      {shown.length > 0 && <RightsTable list={shown} />}
+    </Section>
+  );
+}
+
+/** "Who gets what": every tick down the side, the templates side by side (folded until opened). */
+function RightsTable({ list }: { list: PermTemplate[] }) {
+  const [folded, setFolded] = React.useState(true);
+  const rows = rightsMatrix(list);
+  return (
+    <Section className="mt-2" data-testid="rights-table" folded={folded} onFold={() => setFolded(f => !f)}
+      label={<span className="inline-flex items-center gap-1.5"><IconTable className="size-4" />{tr('Who gets what')}</span>}>
+      <div className="overflow-x-auto rounded-lg border border-white/12">
+          <Table className="min-w-[620px] text-[12.5px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="sticky left-0 bg-plate">{tr('Tick')}</TableHead>
+                <TableHead className="text-center">{tr('Owner')}</TableHead>
+                {list.map(t => <TableHead key={t.id} className="text-center whitespace-nowrap"><span style={{ color: roleColor(t.role) }}>●</span> {t.name}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r, i) => (
+                <React.Fragment key={r.group + r.label}>
+                  {(i === 0 || rows[i - 1].group !== r.group) && (
+                    <TableRow><TableCell colSpan={list.length + 2} className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{tr(r.group)}</TableCell></TableRow>
+                  )}
+                  <TableRow data-testid="rights-row" data-label={r.label}>
+                    <TableCell className="sticky left-0 bg-plate whitespace-nowrap">{tr(r.label)}</TableCell>
+                    <TableCell className="text-center text-ok">✓</TableCell>
+                    {r.cells.map((c, j) => <TableCell key={j} className={cn('text-center', c ? 'font-bold text-ok' : 'text-ink-3')}>{c === null ? '' : c ? '✓' : '—'}</TableCell>)}
+                  </TableRow>
+                </React.Fragment>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
     </Section>
   );
 }

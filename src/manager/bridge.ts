@@ -93,7 +93,7 @@ export type ScheduleSnapshot = {
   clients: { id: string; name: string; color?: string }[];
   /** the workers' requests from today on (`loadShiftRequests`) */
   requests: ShiftRequest[];
-  /** the login has the `schedule` section: edit shifts, confirm requests, copy weeks */
+  /** the login has the `schedule` section and Edit shifts: edit shifts, confirm requests, copy weeks */
   canEdit: boolean;
   /** the `exports` section */
   canExport: boolean;
@@ -140,7 +140,7 @@ export type WorkersSnapshot = {
   workers: WorkerRow[];
   clients: { id: string; name: string; color?: string; object?: string }[];
   suppliers: { id: string; name: string; color?: string }[];
-  /** the `workers` section: add, edit, delete, status, punch link, Select */
+  /** the `workers` section and Edit workers: add, edit, delete, status, punch link, Select */
   canEdit: boolean;
 };
 
@@ -220,7 +220,7 @@ export type HoursBatchStatus = { status: 'pending' | 'approved' | 'rejected'; wh
 
 export type CardSnapshot = WorkerHead & {
   w: WorkerRecord;
-  /** the `workers` section: status, edit, scan, documents, hours, punch link */
+  /** the `workers` section and Edit workers: status, edit, scan, documents, hours, punch link */
   canEdit: boolean;
   canPay: boolean;
   /** the `exports` section */
@@ -634,6 +634,8 @@ export type AdminSnapshot = {
   panes: AdminPane[];
   /** Clear Log: an owner / super-admin (the server's gate too) */
   canClear: boolean;
+  /** Edit punches (the login's template): a punch opens its edit window, Delete, Select */
+  canEditPunches: boolean;
   /** the firm's profile misses a Form 101 field (the Firms tile shows it, as the tab's icon does) */
   firmIncomplete: boolean;
   /** the cached punches while the Punch Log section is open (empty otherwise) */
@@ -686,6 +688,8 @@ export type ClientsSnapshot = {
   clients: ClientRow[];
   /** the `clients` section: Delete, Select */
   canEdit: boolean;
+  /** Edit punches: the Manual punch action */
+  canPunch: boolean;
 };
 
 /** A supplier on the Suppliers tab. */

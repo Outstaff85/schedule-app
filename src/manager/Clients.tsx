@@ -112,7 +112,7 @@ export function Clients({ snap, api }: { snap: ClientsSnapshot; api: ManagerBrid
   if (!snap.ready) return <Loading id="clients-loading" />;
   const can = snap.canEdit;
   const plate = (c: ClientRow, sel: { on: boolean; picked: boolean; toggle: () => void }, remove: (ids: string[]) => void) => {
-    const actions: PlateAction[] = [{ label: tr('Manual punch'), icon: <IconClock />, onSelect: () => api.manualPunch(c.id) }];
+    const actions: PlateAction[] = snap.canPunch ? [{ label: tr('Manual punch'), icon: <IconClock />, onSelect: () => api.manualPunch(c.id) }] : [];
     return (
       <Plate key={c.id} data-testid="client-plate" data-cid={c.id} className="mb-1.5" color={c.color || 'var(--neutral)'}
         title={<span title={c.name} data-testid="client-name">{c.name}</span>}

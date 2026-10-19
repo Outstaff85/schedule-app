@@ -116,6 +116,7 @@ export async function signIn(username?: any, password?: any): Promise<string | n
     ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
     showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
     hourPerms: Array.isArray(fb.hourPerms) ? fb.hourPerms : [],
+    editPerms: Array.isArray(fb.editPerms) ? fb.editPerms : null,
     commissionDayRate: Number(fb.commissionDayRate) || 0,
     viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
   });

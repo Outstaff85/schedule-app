@@ -426,9 +426,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="template-window"]');
   const ro = await p.evaluate(() => ({newBtn: !!document.querySelector('#adminRoot [data-testid="template-new"]'), save: !!document.querySelector('[data-testid="template-save"]'),
     name: document.getElementById('tplName').disabled, tick: document.querySelector('[data-testid="template-window"] [data-testid="user-perms"] [data-k="workers"]').disabled,
+    edits: [...document.querySelectorAll('[data-testid="template-window"] [data-testid="user-edits"] [data-k]')].filter(x => x.dataset.state === 'checked').map(x => x.dataset.k).join(),
     count: document.querySelector('#adminRoot [data-testid="template-row"][data-tid="hrpayedit"]').innerText}));
   await p.keyboard.press('Escape');
-  ok(!ro.newBtn && !ro.save && ro.name && ro.tick && /1 login/.test(ro.count), 'owner: the permission templates read-only, with the firm\'s logins on each ' + JSON.stringify(ro));
+  ok(!ro.newBtn && !ro.save && ro.name && ro.tick && ro.edits === 'editSchedule,editWorkers,editPunches' && /1 login/.test(ro.count), 'owner: the permission templates read-only, with the firm\'s logins on each ' + JSON.stringify(ro));
   ok(h.errs.length === 0 && p.errs.length === 0, 'no page errors ' + h.errs.concat(p.errs).join(' | '));
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');

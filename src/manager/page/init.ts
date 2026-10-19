@@ -104,6 +104,12 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons
       saveSession(Object.assign(s, {hourPerms: hp})); applyNavPermissions();
       if(currentTab === 'accounting') renderAccounting();
     }).catch(()=>{});
+    // What a staff / HR login may change, as the ID token has it now (a
+    // template change ends the session; until then the token is the truth).
+    if(isHrSession() || (getSession() || {} as any).role === 'staff') loadFirestoreBackend().then((b?: any) => b.editPerms()).then((ed?: any) => {
+      const s = getSession(); if(!s || JSON.stringify(ed) === JSON.stringify(s.editPerms ?? null)) return;
+      saveSession(Object.assign(s, {editPerms: ed})); render();
+    }).catch(()=>{});
     // Wake users_admin (firm profile, users, files) so its first real call
     // doesn't wait for a cold start.
     warmCloudFunctions([USERS_ADMIN_FN_URL]);
