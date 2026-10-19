@@ -130,3 +130,62 @@ def record(ex, tenant_id, now, path, page_path=None):
 
 def image_path(now, doc_id, suffix=""):
     return f"training/scan/{now:%Y-%m}/{doc_id}{suffix}.jpg"
+
+
+# ---------- full documents for the field reader model (docs/hf-plan.md → H8a) ----------
+# On the save of the worker window after a scan: the scan's pages as the AI read them, the
+# AI's read, and what the user saved — the right answer, and where the AI was wrong.
+DOC_MAX_PAGES = 6
+DOC_MAX_PAGE_BYTES = 3_000_000
+DOC_MAX_READ_BYTES = 200_000
+# the worker fields a document fills (src/scan-process/worker.ts workerFields)
+DOC_FIELDS = ("docType", "docGiven", "docSurname", "docId", "docDob", "docSex", "docExpiry", "address", "houseNumber", "city",
+              "maritalStatus", "docChildren", "children", "spouseGiven", "spouseSurname", "spouseId")
+
+
+def _doc_jpeg(v):
+    try:
+        b = base64.b64decode(str(v or ""), validate=True)
+    except Exception:
+        return None
+    return b if b.startswith(b"\xff\xd8") and len(b) <= DOC_MAX_PAGE_BYTES else None
+
+
+def _fields(v):
+    if not isinstance(v, dict):
+        return {}
+    return {k: v[k] for k in DOC_FIELDS if k in v and v[k] not in (None, "")}
+
+
+def check_document(p):
+    """(the document cleaned, None) or (None, why it is refused)."""
+    import json
+    pages = p.get("pages")
+    if not isinstance(pages, list) or not pages or len(pages) > DOC_MAX_PAGES:
+        return None, "no pages"
+    out = []
+    for pg in pages:
+        data = _doc_jpeg(pg.get("b64") if isinstance(pg, dict) else None)
+        if data is None:
+            return None, "a page is not a JPEG"
+        dt = pg.get("doctype") if pg.get("doctype") in DOCTYPES else None
+        out.append({"image": data, "doctype": dt, "primary": pg.get("primary") is True})
+    read = p.get("read") if isinstance(p.get("read"), dict) else {}
+    if len(json.dumps(read, default=str)) > DOC_MAX_READ_BYTES:
+        return None, "the read is too large"
+    reads = [r for r in (p.get("reads") or []) if isinstance(r, dict)][:DOC_MAX_PAGES]
+    if len(json.dumps(reads, default=str)) > DOC_MAX_READ_BYTES:
+        return None, "the reads are too large"
+    scanned, saved = _fields(p.get("scanned")), _fields(p.get("saved"))
+    if not saved:
+        return None, "nothing saved"
+    corrected = sorted(k for k in set(scanned) | set(saved) if str(scanned.get(k, "")) != str(saved.get(k, "")))
+    return {"pages": out, "read": read, "reads": reads, "scanned": scanned, "saved": saved, "corrected": corrected,
+            "workerId": str(p.get("workerId") or "")[:64]}, None
+
+
+def document_record(doc, tenant_id, now, doc_id, page_paths):
+    """The record kept beside a document's pages."""
+    return {"id": doc_id, "tenantId": tenant_id or "", "workerId": doc["workerId"], "createdAt": now,
+            "pages": [{"path": path, "doctype": pg["doctype"], "primary": pg["primary"]} for path, pg in zip(page_paths, doc["pages"])],
+            "read": doc["read"], "reads": doc["reads"], "scanned": doc["scanned"], "saved": doc["saved"], "corrected": doc["corrected"]}

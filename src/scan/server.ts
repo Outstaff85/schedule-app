@@ -81,6 +81,17 @@ export async function sendFeedback(examples: Example[] = []): Promise<void> {
   finally { sending = false; }
 }
 
+/** A full document for the field reader model (docs/hf-plan.md → H8a): the scan's pages, the AI's
+ * read, the fields the scan filled and the fields the user saved. Sent once, in the background, on
+ * the save of the worker window; the server keeps it when the firm collects documents. Never throws. */
+export type ScanDocument = {
+  workerId: string; pages: { b64: string; mediaType: string; doctype: string | null; primary: boolean }[];
+  read: Record<string, unknown>; reads: (Record<string, unknown> | null)[]; scanned: Record<string, unknown>; saved: Record<string, unknown>;
+};
+export async function sendScanDocument(doc: ScanDocument): Promise<void> {
+  try { await post(SCAN_FEEDBACK_FN_URL, { action: 'document', ...doc }); } catch { /* offline or refused: this one is not collected */ }
+}
+
 /** The scanner's training counts — a super-admin's (the bell's "time to retrain"). */
 export type TrainingStats = { due: boolean; edgesSince: number; doctypesDue: boolean; doctypes: Record<string, number> };
 export async function trainingStats(): Promise<TrainingStats | null> {

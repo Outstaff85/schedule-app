@@ -135,3 +135,27 @@ def test_the_counters_before_h0_are_added():
     assert feedback.edges_since(st) == 210
     c = feedback.doctype_counts(st)
     assert c["sefach"] == 110 and c["passport"] == 5 and c["other"] == 0
+
+
+DOC_JPG = JPG
+
+
+def doc(**kw):
+    return dict({"workerId": "w1", "pages": [{"b64": DOC_JPG, "doctype": "id_front", "primary": True}, {"b64": DOC_JPG, "doctype": "sefach"}],
+                 "read": {"given": "Dana", "fieldBoxes": {"given": [0.1, 0.1, 0.3, 0.2]}}, "reads": [{"city": "Haifa"}],
+                 "scanned": {"docGiven": "Dana", "docSurname": "Levi", "city": "Hifa"}, "saved": {"docGiven": "Dana", "docSurname": "Levi", "city": "Haifa", "phone": "050"}}, **kw)
+
+
+def test_a_full_document_keeps_its_pages_reads_and_the_fields_corrected():
+    d, why = feedback.check_document(doc())
+    assert why is None and len(d["pages"]) == 2 and d["pages"][0]["primary"] and d["pages"][1]["doctype"] == "sefach"
+    assert d["corrected"] == ["city"] and "phone" not in d["saved"] and d["read"]["fieldBoxes"] and d["workerId"] == "w1"
+    rec = feedback.document_record(d, "t1", "now", "x", ["p1", "p2"])
+    assert rec["pages"][1] == {"path": "p2", "doctype": "sefach", "primary": False} and rec["tenantId"] == "t1" and "image" not in rec["pages"][0]
+
+
+def test_a_full_document_is_refused_without_pages_or_saved_fields():
+    assert feedback.check_document(doc(pages=[]))[1] == "no pages"
+    assert feedback.check_document(doc(pages=[{"b64": "bm90IGpwZWc="}]))[1] == "a page is not a JPEG"
+    assert feedback.check_document(doc(saved={}))[1] == "nothing saved"
+    assert feedback.check_document(doc(pages=[{"b64": DOC_JPG}] * 7))[1] == "no pages"

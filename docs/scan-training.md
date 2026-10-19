@@ -9,7 +9,7 @@ The whole training of the scanner in one place: where the examples come from, wh
 ```
  site (src/scan/)            Storage / Firestore              owner's PC                 Hugging Face                 lab (/scan-lab/)   site
  users correct corners  ──►  training/scan/, scanTraining ──► /scan-train: pull, train,  ──► OutStaff/scanner-models ──► tried on the ──► set for the site
- and document types          (kept 12 months)                 exam, publish (on "yes")       tag v<N>, set for the lab   phone           when better
+ and document types          (or the private HF bucket)       exam, publish (on "yes")       tag v<N>, set for the lab   phone           when better
 ```
 
 - **The site's scanner** is the only source of examples: real scans by the firms' users. The lab collects nothing (no login, no data).
@@ -36,17 +36,28 @@ On **Done**, every page the server found is sent in the background to the functi
 
 ## 2. Where it is kept
 
-`scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`; a manager login's ID token):
+`scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`, the files through `functions/datastore.py`; a manager login's ID token). **Where the files go** (docs/hf-plan.md → H7): the **private** Hugging Face bucket `OutStaff/scanner-data` once the server has its token (the secret `HF_DATA_TOKEN` in the function's environment — it may only write there; never public), else Firebase as before:
 
-- the copies → Storage `training/scan/<YYYY-MM>/<id>.jpg` (corners) and `<id>-page.jpg` (kind);
-- the record → Firestore `scanTraining/<id>`: `edgesModel`, `edgesFixed`, `moved`, `doctypeModel`, `doctypeFixed`, `doctypeBy` (who gave `doctypeModel`: `haiku` or `model`), `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
+| | the private bucket | Firebase (until the token is there, and what is not moved yet) |
+|---|---|---|
+| the edges copy | `edges/<YYYY-MM>/<id>.jpg` | Storage `training/scan/<YYYY-MM>/<id>.jpg` |
+| the page copy | `doctype/<YYYY-MM>/<id>.jpg` | Storage `training/scan/<YYYY-MM>/<id>-page.jpg` |
+| the record | `records/<YYYY-MM>/<id>.json` | Firestore `scanTraining/<id>` |
+| a full document (H8a) | `documents/<tenant>/<YYYY-MM>/<id>/page-<n>.jpg`, `record.json` | Storage `training/documents/…` |
+
+What is in Firebase moves to the bucket once with `scripts/scan-train/move_data_to_hf.py --apply` (it creates the bucket private and refuses a public one); the pulls read both until then.
+
+- the copies → (above);
+- the record → `edgesModel`, `edgesFixed`, `moved`, `doctypeModel`, `doctypeFixed`, `doctypeBy` (who gave `doctypeModel`: `haiku` or `model`), `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
 - the counts → Firestore `scanTrainingStats/current`: `edgesSince` (corrections since the last training — the kept right pages do not count), `kept`, `right`, `movedSum`, `doctypesSince` (the page copies of each kind, by the kind the user left — for the document type model), and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
 
 **Names (docs/hf-plan.md → H0, 2026-10-19):** the fields say which model they teach — `edges*` the document edges model, `doctype*` the document type model. Before H0 they were `cornersModel` / `cornersFixed`, `kindModel` / `kindFixed` / `kindBy`, `newSince`, `kindsSince`, `lastKindsTrainedAt` / `lastKindsReport`. Until `scripts/scan-train/rename_fields.py --apply` has run once on the owner's PC, the old names are still read: `scan_feedback` takes an example under either name (a phone with the old app, a queued example), the counters add the old one to the new (`feedback.edges_since`, `feedback.doctype_counts`), the pulls map an old record (`common.named`), and a publish clears the old counters.
 
-**Privacy:** no client can read or write any of it (no Firestore or Storage rule opens them); only `scan_feedback` writes, only `/scan-train` on the owner's PC (the owner's own Google account) reads. Every firm's corrections are used, with no switch (owner, 2026-10-18).
+**Full documents for the field reader model (H8a, owner 2026-10-19):** on the save of the worker window after a scan (a new worker, or a rescanned one — `saveWorker` → `ManagerBridge.sendScanDocument`, `scanDocument` in `src/scan-process/session.ts`, `sendScanDocument` in `src/scan/server.ts`), the scan goes to `scan_feedback` (`action: "document"`): the document's own pages as the AI read them (not a contract, not an "Other" page; the primary marked), each page's document type, the AI's read with its `fieldBoxes` (where each field is) and the other pages' reads, the fields the scan filled (`scanned`, `workerFields`) and the fields saved (`saved`) — `corrected` lists where they differ, the AI's mistakes. Never the worker's other fields (rates, phone). **On for every firm by default**; the super-admin turns it off for a firm (`tenants/<id>/settings/scan.collectDocuments: false`, `collects_documents`). The counts: `documentsSince`, `documents`, `fieldsCorrected`. Kept without a time limit; the legal check and the notice to the workers are the owner's.
 
-**12 months:** each record has `deleteAt` = +365 days and Firestore deletes it (the TTL policy in `firestore.indexes.json`); the copies under `training/` are deleted after 365 days by a Storage lifecycle rule (`scripts/scan/storage_lifecycle.py`, set by the rules deploy; it needs Storage Admin on the deploy's service account — the deploy warns if it could not set it).
+**Privacy:** no client can read or write any of it (no Firestore or Storage rule opens them, the bucket is private); only `scan_feedback` writes, only `/scan-train` on the owner's PC (the owner's own Google account and HF token) reads. Every firm's corrections are used, with no switch (owner, 2026-10-18). **Deleting on request:** `scripts/scan-train/delete_data.py --firm <tenantId>` or `--worker <workerId>` (`--apply`) deletes every example of a firm or a worker's full documents, from the bucket (for real: no history) and from Firebase.
+
+**Time limit:** none in the bucket (owner, 2026-10-19 — the delete-on-request script instead). In Firebase, until moved: each record has `deleteAt` = +365 days and Firestore deletes it (the TTL policy in `firestore.indexes.json`); the copies under `training/` are deleted after 365 days by a Storage lifecycle rule (`scripts/scan/storage_lifecycle.py`, set by the rules deploy; it needs Storage Admin on the deploy's service account — the deploy warns if it could not set it).
 
 ## 3. When to train
 
@@ -97,6 +108,8 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 | corner editor, page kinds, sending the examples | `src/scan/Corners.tsx`, `src/scan/doctype.ts`, `src/scan/Scanner.tsx`, `src/scan/server.ts` |
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
 | the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`) |
+| the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
+| full documents (H8a) | `src/scan-process/session.ts` (`scanDocument`), `src/scan/server.ts` (`sendScanDocument`), `src/manager/worker-save.ts`, `functions/feedback.py` (`check_document`, `document_record`), `functions/main.py` (`_scan_document`, `collects_documents`) |
 | the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh`, `scripts/scan/mirror.py` |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
 | training | `scripts/scan-train/` (corners: `pull.py`, `train.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |

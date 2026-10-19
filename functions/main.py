@@ -28,6 +28,7 @@ import firebase_admin
 from firebase_admin import auth as fb_auth
 from firebase_functions import https_fn, options
 
+import datastore
 import docfind
 import feedback
 import gate
@@ -834,18 +835,50 @@ def _json(obj, status=200):
     return https_fn.Response(json.dumps(obj, default=str), status=status, mimetype="application/json")
 
 
+def collects_documents(db, tenant_id):
+    """Whether a firm's full documents are collected (docs/hf-plan.md → H8a): on unless the
+    super-admin turned it off (tenants/<id>/settings/scan.collectDocuments == false)."""
+    if not tenant_id:
+        return False
+    snap = db.collection("tenants").document(tenant_id).collection("settings").document("scan").get()
+    return (snap.to_dict() or {}).get("collectDocuments") is not False
+
+
+def _scan_document(payload, claims, db, stats_ref, storage):
+    """A full document with the fields the user saved (H8a): kept when the firm collects them."""
+    from firebase_admin import firestore
+    tenant = claims.get("tenantId") or ""
+    if not collects_documents(db, tenant):
+        return _json({"ok": True, "kept": False, "why": "off for this firm"})
+    doc, why = feedback.check_document(payload)
+    if not doc:
+        return _json({"error": why}, 400)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    doc_id = db.collection("scanTraining").document().id
+    base = f"documents/{tenant}/{now:%Y-%m}/{doc_id}"
+    paths = datastore.put([(f"{base}/page-{i + 1}.jpg", pg["image"]) for i, pg in enumerate(doc["pages"])], lambda: _model_bucket(storage))
+    datastore.put([(f"{base}/record.json", datastore.as_json(feedback.document_record(doc, tenant, now, doc_id, paths)))], lambda: _model_bucket(storage))
+    stats_ref.set({"documentsSince": firestore.Increment(1), "documents": firestore.Increment(1),
+                   "fieldsCorrected": firestore.Increment(len(doc["corrected"])), "updatedAt": now}, merge=True)
+    return _json({"ok": True, "kept": True})
+
+
 @https_fn.on_request(
     cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
     memory=options.MemoryOption.MB_512,
     cpu=1,
     concurrency=20,
-    timeout_sec=30,
+    timeout_sec=60,
 )
 def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     """The scanner's training examples (feedback.py; docs/scan-plan.md → S6).
     {"action": "add", "examples": [...]} from the scan window's Done (any manager
     login): pages whose corners the user moved are kept, the rest only counted.
-    {"action": "stats"} (a super-admin): the counts, and whether retraining is due."""
+    {"action": "document", "pages", "read", "reads", "scanned", "saved", "workerId"} from the
+    save of the worker window after a scan: a full document for the field reader model (H8a).
+    {"action": "stats"} (a super-admin): the counts, and whether retraining is due.
+    The files go to the private Hugging Face bucket once the server has its token, else to
+    Firebase Storage training/ (datastore.py)."""
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
     try:
@@ -865,11 +898,14 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             stats = (stats_ref.get().to_dict() or {})
             return _json({"ok": True, "stats": stats, "due": feedback.edges_since(stats) >= feedback.RETRAIN_AT, "edgesSince": feedback.edges_since(stats),
                           "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats)})
+        if payload.get("action") == "document":
+            return _scan_document(payload, claims, db, stats_ref, storage)
         examples = payload.get("examples")
         if not isinstance(examples, list) or not examples:
             return _json({"error": "no examples"}, 400)
         now = datetime.datetime.now(datetime.timezone.utc)
-        bucket = None
+        bucket = []
+        fb = lambda: bucket[0] if bucket else (bucket.append(_model_bucket(storage)) or bucket[0])
         kept = right = bad = fixes = 0
         moved_sum = 0.0
         doctypes = {}
@@ -882,19 +918,21 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
                 right += 1
             if not feedback.kept(ex):
                 continue
-            if bucket is None:
-                bucket = _model_bucket(storage)
             ex["model"] = MODEL_PREFIX.rstrip("/").rsplit("/", 1)[-1]  # the version that found these corners
             ref = db.collection("scanTraining").document()
-            path = page_path = None
+            files = []
             if ex["image"] is not None:
-                path = feedback.image_path(now, ref.id)
-                bucket.blob(path).upload_from_string(ex["image"], content_type="image/jpeg")
+                files.append((f"edges/{now:%Y-%m}/{ref.id}.jpg", ex["image"]))
             if ex["pageImage"] is not None:
-                page_path = feedback.image_path(now, ref.id, "-page")
-                bucket.blob(page_path).upload_from_string(ex["pageImage"], content_type="image/jpeg")
+                files.append((f"doctype/{now:%Y-%m}/{ref.id}.jpg", ex["pageImage"]))
                 doctypes[ex["doctypeFixed"]] = doctypes.get(ex["doctypeFixed"], 0) + 1
-            ref.set(feedback.record(ex, claims.get("tenantId"), now, path, page_path))
+            stored = dict(zip([f[0].split("/", 1)[0] for f in files], datastore.put(files, fb)))
+            rec = feedback.record(ex, claims.get("tenantId"), now, stored.get("edges"), stored.get("doctype"))
+            if datastore.on_hf():  # the record goes beside its copies; nothing about the example stays in Firebase
+                rec.pop("deleteAt", None)
+                datastore.put([(f"records/{now:%Y-%m}/{ref.id}.json", datastore.as_json({"id": ref.id, **rec}))])
+            else:
+                ref.set(rec)
             kept += 1
             fixes += feedback.correction(ex)
             moved_sum += ex["moved"]

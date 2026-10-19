@@ -7,10 +7,12 @@ import { detectDoctype, rotateImage } from '@/scan/doctype';
 import { reportTiming } from '@/manager/data/telemetry';
 import { extraPageReader, readDoc, verifierFor, verifyOneFor } from './ai';
 import { readPages, type Cache, type Deps, type InPage, type OutPage } from './read';
+import { workerFields } from './worker';
 import type { Rec } from './types';
 
 let cache: Cache = new Map();
 let last: OutPage[] = [];
+let lastRead: { record: Rec; reads: (Rec | null)[] } | null = null;
 
 const deps = (progress: (label: string, pct: number) => void): Deps => ({
   readDoc, extraPageReader, verifierFor, verifyOneFor, progress,
@@ -29,6 +31,7 @@ export async function readScan(pages: InPage[], progress: (label: string, pct: n
   const res = await readPages(pages, deps(progress), cache);
   if (!res.record) return null;
   last = res.pages;
+  lastRead = { record: res.record, reads: res.pages.filter(p => !p.primary).map(p => p.read) };
   const front = res.pages.find(p => p.primary)!;
   window.__aiScanImage = { b64: front.b64, mediaType: front.mediaType };
   window.__aiPacketOtherPages = res.pages.filter(p => !p.primary).map(p => ({ b64: p.b64, mediaType: p.mediaType, kind: p.kind, contract: p.contract }));
@@ -43,7 +46,19 @@ export function sessionPages(): { b64: string; mediaType: string; kind: string |
 
 /** A new scan: the reads of the last one are forgotten. */
 export function resetScan(): void {
-  cache = new Map(); last = [];
+  cache = new Map(); last = []; lastRead = null;
   window.__aiScanImage = null;
   window.__aiPacketOtherPages = [];
+}
+
+/** This session's scan as a full document for the field reader model (docs/hf-plan.md → H8a):
+ * its pages, the AI's read, the fields the scan filled and the ones saved; null when no scan is in memory. */
+export function scanDocument(saved: Rec): { pages: { b64: string; mediaType: string; doctype: string | null; primary: boolean }[];
+  read: Rec; reads: (Rec | null)[]; scanned: Rec; saved: Rec } | null {
+  if (!lastRead || !window.__aiScanImage) return null;
+  // the document's own pages only: a contract (or a page that is no document) is not collected
+  const pages = [...last.filter(p => p.primary), ...last.filter(p => !p.primary && !p.contract && p.kind !== 'contract' && p.kind !== 'other')]
+    .map(p => ({ b64: p.b64, mediaType: p.mediaType, doctype: p.kind, primary: !!p.primary }));
+  // the reads keep their fieldBoxes: where each field is on the page is what a field reader learns from too
+  return { pages, read: lastRead.record, reads: lastRead.reads, scanned: workerFields(lastRead.record, lastRead.reads), saved };
 }

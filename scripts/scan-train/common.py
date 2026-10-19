@@ -14,6 +14,7 @@ BUCKETS = ["schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORK = pathlib.Path.home() / ".scan-train"            # examples, models, report — deleted by publish/clean
 REPO = "OutStaff/scanner-models"                       # the models' home on Hugging Face (public)
+DATA = "OutStaff/scanner-data"                         # the training data on Hugging Face (a PRIVATE bucket, docs/hf-plan.md → H7)
 MODELS = ("edges-lite.onnx", "edges.onnx")            # the document edges models trained (the face finder is not)
 KEEP = ("face.onnx",)                                 # carried to a new version as it is
 # a model file's name in a version not moved to Hugging Face yet (Storage), by its name today
@@ -92,6 +93,38 @@ def model_path(version, name):
                 return p
         raise SystemExit(f"{name} of {version} is neither on Hugging Face ({REPO}) nor in Storage")
     return p
+
+
+def data_records(prefix="records/"):
+    """The training records in the private bucket (docs/hf-plan.md → H7): [(id, record)], each
+    record with today's names and its copies' bucket paths; [] while the bucket is not there."""
+    import tempfile
+    from huggingface_hub import HfApi
+    api = HfApi()
+    try:
+        files = [f.path for f in api.list_bucket_tree(DATA, prefix=prefix, recursive=True) if f.path.endswith(".json")]
+    except Exception:
+        return []
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        api.download_bucket_files(DATA, [(f, f"{tmp}/{i}.json") for i, f in enumerate(files)])
+        for i, f in enumerate(files):
+            try:
+                r = json.loads(pathlib.Path(f"{tmp}/{i}.json").read_text())
+            except Exception:
+                continue
+            out.append((r.get("id") or pathlib.Path(f).stem, {**named(r), "_path": f}))
+    return out
+
+
+def data_file(path, dest):
+    """A file of the private bucket to this PC; False when it is not there."""
+    from huggingface_hub import HfApi
+    try:
+        HfApi().download_bucket_files(DATA, [(path, str(dest))], raise_on_missing_files=True)
+        return True
+    except Exception:
+        return False
 
 
 def read_json(p):

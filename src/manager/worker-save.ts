@@ -77,6 +77,7 @@ export async function saveWorker(api: ManagerBridge, o: {
     const justRescanned = api.rescannedId() === editId;
     api.setRescanned(null);
     if (justRescanned) {
+      api.sendScanDocument(editId, fields); // the scan with what the user saved, for the field reader model (H8a)
       o.progress(tr('Building the PDF, please do not close…'), 0);
       await api.uploadForm101(isId, editId, sig ?? undefined);
       close();
@@ -95,6 +96,7 @@ export async function saveWorker(api: ManagerBridge, o: {
   // stays open with the progress until the Form 101 is built and uploaded.
   const rec: WorkerRecord = { id: api.newId(), ...fields, token: api.genToken(), createdAt: new Date().toISOString() } as WorkerRecord;
   api.addRecord(rec, hrPicked);
+  if (api.liveScan()) api.sendScanDocument(rec.id, fields); // the scan with what the user saved, for the field reader model (H8a)
   api.toast(tr('{0} added!', { 0: name }));
   o.progress(tr('Building the PDF, please do not close…'), 0);
   await api.uploadForm101(rec.docType !== 'passport', rec.id, sig);

@@ -655,10 +655,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.given = T.val('wGiven'); r.docId = T.val('wDocId'); r.city = T.val('wCity');
     r.front = !!window.__aiScanImage;
     r.kinds = ['front', ...(window.__aiPacketOtherPages || []).map(x => x.kind + (x.contract ? ':contract' : ''))].join(',');
+    // the save after a scan sends the document with what was saved (docs/hf-plan.md → H8a)
+    ManagerBridge.sendScanDocument('w-test', {docType: 'israeli_id', docGiven: 'Scanned', docSurname: 'Persson', docId: '123456782'});
     closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     return r;
   });
   await p.waitForTimeout(500);
+  const docCall = feedbackCalls.find(c => c.action === 'document') || {};
+  ok(docCall.workerId === 'w-test' && (docCall.pages || []).length === 1 && docCall.pages[0].primary && docCall.pages[0].doctype === 'id_front' && docCall.pages[0].b64
+    && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',
+    'scan, the save after it: the document goes to scan_feedback (H8a) — its own pages (not the contract), the AI\'s read, the fields the scan filled and the ones saved '
+    + JSON.stringify({workerId: docCall.workerId, pages: (docCall.pages || []).map(x => x.doctype + (x.primary ? '*' : '')), scanned: docCall.scanned, saved: docCall.saved}));
+  feedbackCalls.splice(feedbackCalls.indexOf(docCall), docCall.action ? 1 : 0);
   const ex = (feedbackCalls[0] && feedbackCalls[0].examples) || [];
   ok(cutCalls.length === 1 && cutCalls[0][0][0] > 0.1 && cutCalls[0][1][0] === 0.9 && feedbackCalls.length === 1 && feedbackCalls[0].action === 'add' && ex.length === 2
     && ex[0].image && JSON.stringify(ex[0].edgesFixed) !== JSON.stringify(ex[0].edgesModel) && ex[1].image && ex[1].keep === true && !ex[0].keep && JSON.stringify(ex[1].edgesFixed) === JSON.stringify(ex[1].edgesModel)
