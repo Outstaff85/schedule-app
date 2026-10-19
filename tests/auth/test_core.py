@@ -682,3 +682,22 @@ def test_link_every_login_to_a_template():
     assert "templateId" not in get("u-admin1") and "templateId" not in get("u-super")
     assert core.link_to_templates(DB, SUPER, {}, Revokes())["linked"] == 0
     assert core.list_templates(DB, SUPER)["unlinked"] == 0
+
+
+def test_edit_ticks_follow_the_template():
+    core.list_templates(DB, SUPER)
+    by = {t["id"]: t for t in core.list_templates(DB, SUPER)["templates"]}
+    # The defaults may change all three (what every login could before the ticks); a supplier template has none.
+    assert by["dispatcher"]["editPerms"] == list(core.EDIT_PERMS) and "editPerms" not in by["supplier"]
+    r = core.save_template(DB, SUPER, {"name": "Viewer", "role": "staff", "permissions": ["schedule", "workers"], "editPerms": ["editSchedule", "bogus"]}, Revokes())
+    u = core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "view1", "password": "view-pass-1", "templateId": r["id"]})
+    out = core.login(DB, "view1", "view-pass-1", mint)
+    assert id_token_claims(out["token"])["ed"] == ["editSchedule"] and out["editPerms"] == ["editSchedule"]
+    # A login made before the ticks has no ed claim (everything allowed) and reads as all three.
+    out = core.login(DB, "staff1", "staff-pass-1", mint)
+    assert "ed" not in id_token_claims(out["token"]) and out["editPerms"] == list(core.EDIT_PERMS)
+    # Unticking a template's edit reaches its logins.
+    rv = Revokes()
+    assert core.save_template(DB, SUPER, {"id": r["id"], "name": "Viewer", "role": "staff", "permissions": ["schedule", "workers"], "editPerms": []}, rv)["updated"] == 1
+    assert id_token_claims(core.login(DB, "view1", "view-pass-1", mint)["token"])["ed"] == []
+    assert {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}[u["userId"]]["editPerms"] == []

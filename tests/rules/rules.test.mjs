@@ -27,6 +27,12 @@ const who = {
   hrAll:        { uid: 'u-hrAll', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: false } },
   hrOwnPay:     { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers', 'accounting', 'payEdit'], own: true } },
   hrOwnB:       { uid: 'u-hrOwnB', claims: { role: 'hr', tenantId: B, perms: ['workers'], own: true } },
+  // On a permission template: what they may change (claim ed).
+  staffShifts:  { uid: 'u-stShifts', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editSchedule'] } },
+  staffRecords: { uid: 'u-stRec', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editWorkers'] } },
+  staffView:    { uid: 'u-stView', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: [] } },
+  staffEdAll:   { uid: 'u-stEdAll', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editSchedule', 'editWorkers', 'editPunches'] } },
+  hrOwnView:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true, ed: ['editWorkers'] } },
 };
 const db = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).firestore();
 const st = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).storage();
@@ -422,4 +428,40 @@ test('shiftRequests: the punch function writes; managers read; a schedule writer
   await assertFails(updateDoc(r('hrOwn', 'u1'), { hrId: 'u-hrOwn2' }));
   await assertFails(updateDoc(r('ownerA', 'u1'), { hrId: 'u-hrAll', status: 'gone' }));
   await assertFails(updateDoc(r('ownerB', 'u1'), { hrId: 'x' }));
+});
+
+test('the edit ticks (claim ed): shifts, worker records and punches', async () => {
+  const w = r => doc(db(r), 'tenants', A, 'workers', 'w1');
+  const shifts = { name: 'Worker', hourlyRate: 40, supplierId: 's1', schedule: [{ type: 'work', start: '08:00', end: '16:00' }] };
+  const phone = Object.assign({}, shifts, { phone: '0501' }); // the shifts below are those of the first write
+  // Only Edit shifts: the shifts, nothing else; no new or deleted worker.
+  await assertSucceeds(setDoc(w('staffShifts'), shifts));
+  await assertFails(setDoc(w('staffShifts'), Object.assign({}, shifts, { phone: '0501' })));
+  await assertFails(setDoc(doc(db('staffShifts'), 'tenants', A, 'workers', 'wn'), { name: 'New' }));
+  await assertFails(deleteDoc(w('staffShifts')));
+  // Only Edit workers: the record, not the shifts.
+  await assertSucceeds(setDoc(w('staffRecords'), phone));
+  await assertFails(setDoc(w('staffRecords'), Object.assign({}, phone, { schedule: [] })));
+  await assertSucceeds(setDoc(doc(db('staffRecords'), 'tenants', A, 'workers', 'wn'), { name: 'New' }));
+  // No edit tick: reads only.
+  await assertSucceeds(getDoc(w('staffView')));
+  await assertFails(setDoc(w('staffView'), phone));
+  await assertFails(setDoc(w('staffView'), shifts));
+  // All three, or no ed claim at all (a login made before the ticks): everything, as before.
+  await assertSucceeds(setDoc(w('staffEdAll'), Object.assign({}, shifts, { phone: '1' })));
+  await assertSucceeds(setDoc(w('staffAll'), Object.assign({}, shifts, { phone: '2' })));
+  // Punches: written only with Edit punches.
+  const p = r => doc(db(r), 'tenants', A, 'punches', 'p1');
+  await assertSucceeds(getDoc(p('staffView')));
+  await assertFails(updateDoc(p('staffView'), { notes: 'x' }));
+  await assertFails(deleteDoc(p('staffRecords')));
+  await assertFails(setDoc(doc(db('staffShifts'), 'tenants', A, 'punches', 'pn'), { workerId: 'w1', type: 'in' }));
+  await assertSucceeds(updateDoc(p('staffEdAll'), { notes: 'y' }));
+  await assertSucceeds(updateDoc(p('staffAll'), { notes: 'z' }));
+  // An own-workers HR without Edit punches: reads its punch, can't change it.
+  const hp = doc(db('hrOwnView'), 'tenants', A, 'punches', 'p2');
+  await assertSucceeds(getDoc(hp));
+  await assertFails(updateDoc(hp, { notes: 'x' }));
+  await assertFails(deleteDoc(hp));
+  await assertSucceeds(updateDoc(doc(db('hrOwn'), 'tenants', A, 'punches', 'p2'), { notes: 'ok' }));
 });

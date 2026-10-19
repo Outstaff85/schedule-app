@@ -137,7 +137,8 @@ function PunchLog({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
   const [, redraw] = React.useReducer((n: number) => n + 1, 0);
   const setFilter = (k: keyof LogFilters, v: string) => { keptFilters = { ...keptFilters, [k]: v === 'all' ? '' : v }; setF(keptFilters); };
   const setView = (v: string) => { if (v !== 'log' && v !== 'clients') return; keptView = v; setViewState(v); };
-  const tap = useTapOpen(id => { const e = snap.log.find(x => String(x.id) === id); if (e) setEditing(e); });
+  // Without Edit punches (the login's template) the punches only read.
+  const tap = useTapOpen(id => { const e = snap.log.find(x => String(x.id) === id); if (e && snap.canEditPunches) setEditing(e); });
 
   const log = React.useMemo(() => snap.log.filter(e => !hidden.has(String(e.id))), [snap.log, hidden.size]); // eslint-disable-line react-hooks/exhaustive-deps
   const choices = React.useMemo(() => filterChoices(log), [log]);
@@ -170,7 +171,7 @@ function PunchLog({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
         sub={<PunchSub e={e} />}
         right={small ? undefined : <span className="text-ink" data-testid="punch-time">{e.time || '--'}</span>}
         {...tap(id)}
-        onDelete={() => remove([id])}
+        onDelete={snap.canEditPunches ? () => remove([id]) : undefined}
         selecting={!small && sel.on} selected={sel.picked.has(id)} onToggle={() => sel.toggle(id)} />
     );
   };
@@ -212,7 +213,7 @@ function PunchLog({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
             {filterSelect('date', tr('Date'), tr('All dates'), choices.dates.map(d => ({ v: d, l: d })))}
             {filterSelect('type', tr('Type'), tr('All types'), [{ v: 'in', l: tr('Punch IN') }, { v: 'out', l: tr('Punch OUT') }])}
           </div>
-          {rows.length > 0 && <div className="mb-2 flex" data-testid="punch-select"><SelectHead sel={sel} /></div>}
+          {rows.length > 0 && snap.canEditPunches && <div className="mb-2 flex" data-testid="punch-select"><SelectHead sel={sel} /></div>}
           <PagedList key={[f.worker, f.client, f.date, f.type].join('|')} items={rows} columns render={e => plate(e)}
             empty={<Empty data-testid="punch-empty"><EmptyMedia><IconClipboardText /></EmptyMedia><EmptyTitle>{tr('No punch records found')}</EmptyTitle></Empty>} />
           {snap.loadedFrom && (

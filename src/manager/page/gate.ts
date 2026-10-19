@@ -14,14 +14,10 @@ import { API_URL } from '../data/api';
 import { goToClientPortal, goToSupplierPortal } from './wiring';
 import { showToast } from '../toast';
 import { setFrame } from '../frame';
+import { island } from '../bridge';
 Object.defineProperties(window, {
-  "cacheTenantProfile": {get: () => cacheTenantProfile, configurable: true},
   "gateApp": {get: () => gateApp, configurable: true},
   "renderAccountControl": {get: () => renderAccountControl, configurable: true},
-  "THEME_BAR": {get: () => THEME_BAR, configurable: true},
-  "storedTheme": {get: () => storedTheme, configurable: true},
-  "resolveTheme": {get: () => resolveTheme, configurable: true},
-  "applyTheme": {get: () => applyTheme, configurable: true},
   "setTheme": {get: () => setTheme, configurable: true},
   "editMyName": {get: () => editMyName, configurable: true},
 });
@@ -68,7 +64,7 @@ export function gateApp(runInitApp?: any){
     setFrame({screen:'firms'});
     byId('firmsScreen').style.display = 'block';
     // the React list loads the firms when it is drawn (now, or when the React pieces mount)
-    if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen();
+    if(island()) island()!.renderFirmsScreen();
     return;
   }
   setFrame({screen:'app'});

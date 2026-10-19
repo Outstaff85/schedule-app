@@ -11,10 +11,6 @@ import { tr } from '../logic/i18n';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
   "showToast": {get: () => showToast, configurable: true}, // src/manager/toast.ts
-  "startVersionWatch": {get: () => startVersionWatch, configurable: true},
-  "showNewVersionBar": {get: () => showNewVersionBar, configurable: true},
-  "AVATAR_SIZE": {get: () => AVATAR_SIZE, configurable: true},
-  "grayscaleCanvas": {get: () => grayscaleCanvas, configurable: true},
 });
 
 // ── New version check (2026-10-04; the same code in schedule-manager.html,
@@ -60,13 +56,3 @@ function showNewVersionBar(){
 }
 startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js']);
 
-const AVATAR_SIZE=160; // confirmAvatarCrop() below (manual crop editor)
-// Worker avatars are black and white (per user request 2026-10-04): the
-// portrait is turned to grey on the AVATAR_SIZE canvas it was cut onto, in
-// the manual crop editor (confirmAvatarCrop). Pixel math, so it works on every browser.
-function grayscaleCanvas(cv?: any){
-  const ctx=cv.getContext('2d'), im=ctx.getImageData(0,0,cv.width,cv.height), d=im.data;
-  for(let i=0;i<d.length;i+=4){ const y=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]); d[i]=d[i+1]=d[i+2]=y; }
-  ctx.putImageData(im,0,0);
-  return cv;
-}

@@ -9,11 +9,6 @@
 import { byId, qs } from './dom';
 Object.defineProperties(window, {
   "closeModal": {get: () => closeModal, configurable: true},
-  "_overlayDownOn": {get: () => _overlayDownOn, set: (v?: any) => { _overlayDownOn = v; }, configurable: true},
-  "MODAL_CHAIN_MS": {get: () => MODAL_CHAIN_MS, configurable: true},
-  "__lastModalClose": {get: () => __lastModalClose, set: (v?: any) => { __lastModalClose = v; }, configurable: true},
-  "__reopeningModal": {get: () => __reopeningModal, set: (v?: any) => { __reopeningModal = v; }, configurable: true},
-  "reopenModal": {get: () => reopenModal, configurable: true},
 });
 
 // --- Modal close --------------------------------------------------------------

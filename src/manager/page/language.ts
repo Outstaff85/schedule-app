@@ -14,12 +14,10 @@ import { esc } from '../logic/util';
 import { workerExpiryStatus } from '../logic/workers';
 import { tabAllowed } from '../logic/access';
 import { setFrame } from '../frame';
+import { island } from '../bridge';
 Object.defineProperties(window, {
-  "applyI18n": {get: () => applyI18n, configurable: true},
   "setLanguage": {get: () => setLanguage, configurable: true},
-  "syncLangButtons": {get: () => syncLangButtons, configurable: true},
   "cardTables": {get: () => cardTables, configurable: true},
-  "redrawForLanguage": {get: () => redrawForLanguage, configurable: true},
   "showContractNotice": {get: () => showContractNotice, configurable: true},
   "closeContractNotice": {get: () => closeContractNotice, configurable: true},
 });
@@ -93,7 +91,7 @@ function redrawForLanguage(){
   applyI18n();
   syncLangButtons();
   // the sign-in screen follows the frame's language (syncLangButtons); the Firms screen is drawn again
-  try{ if(byId('firmsScreen')?.style.display === 'block' && window.ManagerIsland) window.ManagerIsland.renderFirmsScreen(); }catch(e: any){}
+  try{ if(byId('firmsScreen')?.style.display === 'block' && island()) island()!.renderFirmsScreen(); }catch(e: any){}
   try{ const s = getSession(); if(s) renderAccountControl(s); }catch(e: any){}
   try{ if(typeof render === 'function') render(); }catch(e: any){}
   try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e: any){}

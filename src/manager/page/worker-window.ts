@@ -22,30 +22,17 @@ import { verifierFor } from '../../scan-process/ai';
 import { normDate, normDigits } from '../../scan-process/ids';
 import { resetScan } from '../../scan-process/session';
 import { showToast } from '../toast';
+import { island } from '../bridge';
 Object.defineProperties(window, {
   "blankWorkerDefaults": {get: () => blankWorkerDefaults, configurable: true},
   "openAddWorker": {get: () => openAddWorker, configurable: true},
   "openEditWorker": {get: () => openEditWorker, configurable: true},
-  "SCAN_FIND_FIELDS": {get: () => SCAN_FIND_FIELDS, configurable: true},
-  "__scanPagesCache": {get: () => __scanPagesCache, configurable: true},
-  "workerScanLive": {get: () => workerScanLive, configurable: true},
-  "workerHasScanPages": {get: () => workerHasScanPages, configurable: true},
-  "workerScanPages": {get: () => workerScanPages, configurable: true},
-  "findScanFields": {get: () => findScanFields, configurable: true},
   "rescanFromWorkerModal": {get: () => rescanFromWorkerModal, configurable: true},
   "applyWorkerDraft": {get: () => applyWorkerDraft, configurable: true},
   "autoFindMissingScanFields": {get: () => autoFindMissingScanFields, configurable: true},
   "showWorkerModal": {get: () => showWorkerModal, configurable: true},
-  "newLoginFor": {get: () => newLoginFor, configurable: true},
   "supplierMonthPayable": {get: () => supplierMonthPayable, configurable: true},
-  "loginsInfo": {get: () => loginsInfo, configurable: true},
   "saveWorker": {get: () => saveWorker, configurable: true},
-  "renderWorkerUploadProgress": {get: () => renderWorkerUploadProgress, configurable: true},
-  "setWorkerStatus": {get: () => setWorkerStatus, configurable: true},
-  "regenerateWorkerToken": {get: () => regenerateWorkerToken, configurable: true},
-  "buildPunchLink": {get: () => buildPunchLink, configurable: true},
-  "copyWorkerLink": {get: () => copyWorkerLink, configurable: true},
-  "deleteWorkerNow": {get: () => deleteWorkerNow, configurable: true},
 });
 
 // --- Worker Modal -------------------------------------------------------------
@@ -155,17 +142,17 @@ export async function findScanFields(w?: any,keys?: any,docType?: any){
 // applyWorkerDraft() puts the draft back: a field that had a value keeps it,
 // an empty one takes the new scan's value.
 export async function rescanFromWorkerModal(){
-  window.__wDraft=window.ManagerIsland?window.ManagerIsland.editorDraft():null;
+  window.__wDraft=island()?island()!.editorDraft():null;
   warmCloudFunctions(SCAN_WARM_URLS());
   const wid=editingWorkerId!==null&&workers.some((x?: any)=>x.id===editingWorkerId)?editingWorkerId:null;
   const sameSession=!!window.__aiScanImage&&(wid===null||window.__aiRescannedWorkerId===wid);
   window.__aiRescanWorkerId=wid;
   await openNewScan(sameSession);
 }
-function applyWorkerDraft(){ if(window.ManagerIsland) window.ManagerIsland.applyDraft(); else window.__wDraft=null; }
+function applyWorkerDraft(){ if(island()) island()!.applyDraft(); else window.__wDraft=null; }
 // Second pass right after a scan: every field the scan left empty is searched
 // for in one request (the window's own search, src/manager/WorkerEditor.tsx).
-async function autoFindMissingScanFields(){ if(window.ManagerIsland) await window.ManagerIsland.findMissing(); }
+async function autoFindMissingScanFields(){ if(island()) await island()!.findMissing(); }
 
 // The worker window (stage 6c-2) is drawn in React into #workerModal
 // (src/manager/WorkerEditor.tsx); editingWorkerId says which worker it edits
@@ -173,10 +160,10 @@ async function autoFindMissingScanFields(){ if(window.ManagerIsland) await windo
 // tap outside saves it (saveWorker auto).
 function showWorkerModal(w?: any){
   warmCloudFunctions([FORM101_FN_URL]); // saving builds the Form 101
-  if(!window.ManagerIsland) return;
+  if(!island()) return;
   const wov=byId('workerOverlay');
   wov.__onUserClose=()=>saveWorker({auto:true});
-  window.ManagerIsland.openEditor(w, editingWorkerId!==null&&workers.some((x?: any)=>x.id===editingWorkerId)?editingWorkerId:null);
+  island()!.openEditor(w, editingWorkerId!==null&&workers.some((x?: any)=>x.id===editingWorkerId)?editingWorkerId:null);
   wov.classList.add('open');
 }
 // "New client login" / "New portal login" from an editor: the user form with
@@ -204,13 +191,13 @@ export function loginsInfo(role?: any, id?: any){
 // save at a time.
 let __saveWorkerBusy=false;
 async function saveWorker(opts?: any){
-  if(__saveWorkerBusy||!window.ManagerIsland) return;
+  if(__saveWorkerBusy||!island()) return;
   __saveWorkerBusy=true;
-  try{ return await window.ManagerIsland.saveWorker(opts||{}); } finally{ __saveWorkerBusy=false; }
+  try{ return await island()!.saveWorker(opts||{}); } finally{ __saveWorkerBusy=false; }
 }
 // The window's progress while a new (or just rescanned) worker's Form 101 is
 // built and uploaded (aiFillForm101 advances it at its two phases).
-export function renderWorkerUploadProgress(label?: any,pct?: any){ if(window.ManagerIsland) window.ManagerIsland.uploadProgress(label,pct); }
+export function renderWorkerUploadProgress(label?: any,pct?: any){ if(island()) island()!.uploadProgress(label,pct); }
 
 // Worker status: three pills in the worker card's header; a tap saves at once.
 export function setWorkerStatus(wi?: any, v?: any){

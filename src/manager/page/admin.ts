@@ -19,45 +19,20 @@ import { closeModal } from './windows';
 import { renderWorkersPage } from './workers';
 import { renderCrumb } from './header';
 import { showToast } from '../toast';
+import { island } from '../bridge';
 Object.defineProperties(window, {
   "__firmsCache": {get: () => __firmsCache, set: (v?: any) => { __firmsCache = v; }, configurable: true},
-  "renderFirmsViews": {get: () => renderFirmsViews, configurable: true},
-  "__firmsErr": {get: () => __firmsErr, set: (v?: any) => { __firmsErr = v; }, configurable: true},
-  "__firmsLoaded": {get: () => __firmsLoaded, set: (v?: any) => { __firmsLoaded = v; }, configurable: true},
-  "loadFirms": {get: () => loadFirms, configurable: true},
-  "firmsRows": {get: () => firmsRows, configurable: true},
   "setTenantsActive": {get: () => setTenantsActive, configurable: true},
   "deleteTenantsNow": {get: () => deleteTenantsNow, configurable: true},
-  "__profileFetchedAt": {get: () => __profileFetchedAt, set: (v?: any) => { __profileFetchedAt = v; }, configurable: true},
   "refreshTenantProfile": {get: () => refreshTenantProfile, configurable: true},
-  "__firmWin": {get: () => __firmWin, set: (v?: any) => { __firmWin = v; }, configurable: true},
-  "showFirmWindow": {get: () => showFirmWindow, configurable: true},
   "openCreateFirmForm": {get: () => openCreateFirmForm, configurable: true},
-  "openEditFirmForm": {get: () => openEditFirmForm, configurable: true},
   "openMyFirmForm": {get: () => openMyFirmForm, configurable: true},
-  "firmSaved": {get: () => firmSaved, configurable: true},
   "setupAdminPaneBar": {get: () => setupAdminPaneBar, configurable: true},
-  "__usersFetch": {get: () => __usersFetch, set: (v?: any) => { __usersFetch = v; }, configurable: true},
-  "__usersErr": {get: () => __usersErr, set: (v?: any) => { __usersErr = v; }, configurable: true},
-  "fetchAdminUsers": {get: () => fetchAdminUsers, configurable: true},
-  "prefetchAdminUsers": {get: () => prefetchAdminUsers, configurable: true},
   "__adminPane": {get: () => __adminPane, set: (v?: any) => { __adminPane = v; }, configurable: true},
   "switchAdminPane": {get: () => switchAdminPane, configurable: true},
-  "showUserWindow": {get: () => showUserWindow, configurable: true},
   "openCreateUserForm": {get: () => openCreateUserForm, configurable: true},
   "openEditUserForm": {get: () => openEditUserForm, configurable: true},
-  "userSaved": {get: () => userSaved, configurable: true},
-  "adminTeam": {get: () => adminTeam, configurable: true},
-  "deleteUsersNow": {get: () => deleteUsersNow, configurable: true},
-  "__hrUsersLoaded": {get: () => __hrUsersLoaded, set: (v?: any) => { __hrUsersLoaded = v; }, configurable: true},
-  "ensureHrUsers": {get: () => ensureHrUsers, configurable: true},
   "hrUsers": {get: () => hrUsers, configurable: true},
-  "hrNameOf": {get: () => hrNameOf, configurable: true},
-  "__logPeriod": {get: () => __logPeriod, configurable: true},
-  "__logErr": {get: () => __logErr, configurable: true},
-  "loadLogPane": {get: () => loadLogPane, configurable: true},
-  "logPaneSnapshot": {get: () => logPaneSnapshot, configurable: true},
-  "resetLogs": {get: () => resetLogs, configurable: true},
 });
 
 // ── Admin → Firms, Users, Errors, Timings (stage 6f-2) ────────────────────
@@ -67,7 +42,7 @@ Object.defineProperties(window, {
 // handed over through window.ManagerBridge (its Admin part below).
 export let __firmsCache: any = [];
 // The Admin tab and the landing screen draw again (whichever is shown).
-function renderFirmsViews(){ renderAdmin(); if(window.ManagerIsland) window.ManagerIsland.renderFirmsScreen(); }
+function renderFirmsViews(){ renderAdmin(); if(island()) island()!.renderFirmsScreen(); }
 export let __firmsErr='', __firmsLoaded=false;
 // A super-admin's firms: the cached list first, then listTenants. An owner's
 // own firm: the session's profile, then a fresh read.
@@ -136,10 +111,10 @@ export async function refreshTenantProfile(maxAgeMs?: any){
 // login fills in its Form 101 employer data itself). __firmWin is what it edits.
 export let __firmWin: any=null;
 function showFirmWindow(mode?: any, tenantId?: any, profile?: any){
-  if(!window.ManagerIsland) return;
+  if(!island()) return;
   const s=getSession(), on=!!tenantId&&tenantId===(s&&(s.viewingTenantId||s.tenantId));
   __firmWin={mode, tenantId:tenantId||null, profile:profile||{}, wa:on};
-  window.ManagerIsland.openFirm();
+  island()!.openFirm();
   byId('editFirmOverlay').classList.add('open');
 }
 export function openCreateFirmForm(){ showFirmWindow('create', null, {}); }
@@ -206,7 +181,7 @@ export function prefetchAdminUsers(){
       // ...and the HR commissions in Accounting → Payable by HR.
       if(currentTab==='accounting' && workers.some((w?: any)=>w.hrId)) renderAccounting();
       // ...and the HR field of a worker window already open.
-      if(window.ManagerIsland) window.ManagerIsland.refreshWindows();
+      if(island()) island()!.refreshWindows();
     } else { __usersErr=(json&&json.error)||'Load failed'; if(currentTab==='admin') renderAdmin(); }
   }).catch(()=>{ __usersErr='Network error'; if(currentTab==='admin') renderAdmin(); });
 }
@@ -224,8 +199,8 @@ export function switchAdminPane(pane?: any){
 // Users section drew (its cache; the server only when the row isn't there),
 // or a new one.
 function showUserWindow(u?: any, preset?: any){
-  if(!window.ManagerIsland) return;
-  window.ManagerIsland.openUser(u, preset);
+  if(!island()) return;
+  island()!.openUser(u, preset);
   byId('userFormOverlay').classList.add('open');
 }
 export function openCreateUserForm(preset?: any){ showUserWindow(null, preset); }
