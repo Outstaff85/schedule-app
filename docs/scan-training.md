@@ -110,9 +110,9 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 | the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`) |
 | the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
 | full documents (H8a) | `src/scan-process/session.ts` (`scanDocument`), `src/scan/server.ts` (`sendScanDocument`), `src/manager/worker-save.ts`, `functions/feedback.py` (`check_document`, `document_record`), `functions/main.py` (`_scan_document`, `collects_documents`) |
-| the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh`, `scripts/scan/mirror.py` |
+| the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh` |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
 | training | `scripts/scan-train/` (corners: `pull.py`, `train.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
-| the document type models at work | `functions/docfind.py` (`doctype_of`, `with_doctype`), `functions/main.py` (`_doctype_model`), `src/scan/core.ts` (`withDoctype`), `src/scan/worker.ts`, `src/scan/Scanner.tsx` (`withModelDoctype`), `scan-lab/index.html` (`doctypeNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
+| the document type models at work | `scan-lab/index.html` (`doctypeNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
 | tests | `tests/auth/test_scan_feedback.py`, the browser test "scan window corners and kinds" (`tests/e2e/main.test.js`) |

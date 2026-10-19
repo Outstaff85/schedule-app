@@ -7,7 +7,6 @@ on:
       - 'functions/**'
       - 'functions-auth/**'
       - 'tests/auth/**'
-      - 'scripts/scan/mirror.py'
       - '.github/workflows/deploy-functions.yml'
   workflow_dispatch: {}
 
@@ -56,20 +55,11 @@ jobs:
       - name: Test login and user management on the emulators
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest numpy opencv-python-headless
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest
           firebase emulators:exec --only firestore,auth --project demo-schedule "$RUNNER_TEMP/testvenv/bin/python -m pytest tests/auth -q"
 
       - name: Write service account credentials
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
-
-      # The server's scan models from Hugging Face into its Storage mirror (docs/hf-plan.md → H4):
-      # a version not on Hugging Face yet leaves Storage as it is.
-      - name: Mirror the server's scan models
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
-        run: |
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q google-cloud-storage
-          "$RUNNER_TEMP/testvenv/bin/python" scripts/scan/mirror.py
 
       - name: Deploy Cloud Functions
         id: deploy
@@ -108,7 +98,7 @@ jobs:
 
           Common causes for this specific workflow (new as of 2026-09-21):
           - The \`FIREBASE_SERVICE_ACCOUNT\` secret (used for Hosting deploys) may lack the IAM roles Cloud Functions 2nd-gen deploys need on the runtime service account (\`schedule-odinson@appspot.gserviceaccount.com\`) — most commonly just **Service Account User** (\`iam.serviceAccounts.ActAs\`), confirmed as the cause on the first real run (2026-09-21). Grant it at GCP Console → IAM, project \`schedule-odinson\` (grant access ON the \`schedule-odinson@appspot.gserviceaccount.com\` service account itself, not the project-level IAM page).
-          - A dependency in \`functions/requirements.txt\` (e.g. \`opencv-python-headless\`) may have failed to build for the runtime Python version.
+          - A dependency in \`functions/requirements.txt\` (e.g. \`pymupdf\`) may have failed to build for the runtime Python version.
           - The declared runtime (\`python312\` in \`firebase.json\`) may need bumping if Cloud Functions deprecates it.
 
           Check the run log first — it will say which of these it is."

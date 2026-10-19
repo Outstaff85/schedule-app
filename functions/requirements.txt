@@ -2,8 +2,5 @@ firebase-functions
 firebase-admin
 pymupdf
 python-bidi
-opencv-python-headless
 Pillow
-numpy
-onnxruntime
 huggingface_hub>=1.0  # the private training-data bucket (datastore.py), once the server has its token
