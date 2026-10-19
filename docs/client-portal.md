@@ -1,5 +1,7 @@
 # Client portal (`client-portal.html`)
 
+**Inside the manager app since 2026-10-19** (docs/permissions-plan.md → stage 3): a client signs in on the one login page and stays in the manager app, in the same frame, with one tab, **Hours**: `src/manager/Portal.tsx` draws `HoursReview` (its client named on top, `sign={signer}`) over the `hours` function into the page's `#sectionPortal`. The gate (`startPortal`, `src/manager/page/gate.ts`) loads no firm data for it, so the page reads nothing from Firestore; it writes this portal's session key, checks the Firebase sign-in, and Sign out (the account menu) ends both sessions. `client-portal.html` (`/client`) only sends to the manager app (`src/client/main.tsx`); a session kept here is taken over by the manager page's gate (`adoptPortalSession`). What a client receives is unchanged (below).
+
 A client of the firm (a site where its workers work) signs in with its own login and reviews its workers' hours there. Routed at `/client`. A separate page like the supplier portal, for the same reason: a client must never see wages, rates, suppliers, GPS or documents, and Firestore rules can't hide fields — so the page never reads Firestore; everything comes from the `hours` Cloud Function and is drawn by the shared hours screen, `src/hours-review/` ([hours-review.md](hours-review.md) — the ticks, the function, the per-day approve / dispute / fix, the owner's side).
 
 ## Logins

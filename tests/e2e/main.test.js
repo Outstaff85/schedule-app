@@ -1945,13 +1945,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(p.errs.length === 0, 'boss: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
-  // ── A supplier signing in on the main site is taken to its portal ──
-  // The supplier portal is a React page (src/supplier/, stage 4): the checks read its DOM and the supplier function's replies.
+  // ── A supplier stays in the manager app (permissions plan, stage 3): its portal's screens in the frame ──
+  // The screens are the portal's React code (src/supplier/, drawn by src/manager/Portal.tsx): the checks read their DOM and the supplier function's replies.
   const supReady = () => !!document.querySelector('[data-testid="supplier-portal"][data-ready="1"]');
   ctx = await newCtx(); p = await page(ctx);
+  // Nothing reads Firestore for a supplier: every request to the Firestore emulator is counted.
+  const fsReqs = []; p.on('request', r => { if (/:8080\//.test(r.url())) fsReqs.push(r.url()); });
   await login(p, BASE + 'schedule-manager.html', 'sup1', 'sup-pass-11');
-  ok(await waitFor(p, () => /supplier-portal\.html/.test(location.href) && !!document.querySelector('[data-testid="supplier-portal"][data-ready="1"]'), 15000), 'supplier: a login on the main site lands in the supplier portal, signed in');
-  ok(await p.evaluate(() => !localStorage.getItem('schedMgr_session')), 'supplier: no manager-app session is left behind');
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && !!document.querySelector('[data-testid="supplier-portal"][data-ready="1"]'), 15000), 'supplier: a login on the main site stays in the manager app, its portal screens drawn');
+  await sleep(1500);
+  const sm = await p.evaluate(() => ({role: (getSession() || {}).role, workers: typeof workers === 'undefined' ? -1 : workers.length,
+    tabs: [...document.querySelectorAll('[data-testid="shell-menu"] button')].map(b => b.innerText.trim()).join()}));
+  ok(sm.role === 'supplier' && sm.workers === 0 && sm.tabs === 'Today,Workers,Commission,Hours' && fsReqs.length === 0,
+    'supplier: the same frame with its own tabs (Today, Workers, Commission, Hours), no firm data loaded, not one Firestore request ' + JSON.stringify({sm, fs: fsReqs.slice(0, 3)}));
   await ctx.close();
 
   // ── Supplier portal ──
@@ -1971,19 +1977,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await login(p, BASE + 'supplier-portal.html', 'sup1', 'sup-pass-11');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, supReady, 15000), 'supplier: the portal loads');
-  const tabTo = async label => { await p.click(`[data-testid="shell-tabs"] button:has-text("${label}")`); await sleep(250); };
+  // the frame's side menu: Today (the dashboard), Workers, Commission (its hours and pay), Hours (the review)
+  const tabTo = async label => { await p.click(`[data-testid="shell-menu"] button:has-text("${label}")`); await sleep(250); };
   const sched = () => JSON.parse((supReplies.filter(x => x.action === 'loadSchedule').pop() || {text: '{}'}).text);
   const s0 = sched();
   ok((s0.workers || []).length === 1 && s0.workers[0].name === 'Avi Cohen' && !('token' in s0.workers[0]) && !('docUrl' in s0.workers[0]) && s0.workers[0].hourlyRate === 50 && s0.showPay === true
     && !JSON.stringify(s0.clients).includes('billRate') && !supReplies.some(x => /tok-|billRate|gpsAccuracy|"lat"/.test(x.text)), 'supplier: own worker only; no token or file link; sees pay by default (own rate), never client billing or GPS');
-  const s_sp0 = await p.evaluate(() => ({old: typeof Payroll !== 'undefined' || typeof myWorkers !== 'undefined' || typeof hoursReviewMount !== 'undefined', mark: !!document.querySelector('header [data-testid="brand-mark"]'),
-    tabs: [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim()).join()}));
-  ok(!s_sp0.old && s_sp0.mark && s_sp0.tabs === 'Dashboard,My Workers,My Hours,Approvals', 'supplier portal: a React page (no old globals), the brand in the title bar, its tabs (Approvals with an hours tick) ' + JSON.stringify(s_sp0));
+  const s_sp0 = await p.evaluate(() => ({tabs: [...document.querySelectorAll('[data-testid="shell-menu"] button')].map(b => b.innerText.trim()).join()}));
+  ok(s_sp0.tabs === 'Today,Workers,Commission,Hours', 'supplier: its tabs in the manager frame (Hours with an hours tick) ' + JSON.stringify(s_sp0));
   // Dashboard: figures (on site, my workers, punches today) and today's punches.
   const db = await p.evaluate(() => ({figs: document.querySelectorAll('[data-testid="dashboard"] [data-slot="figures"] > button').length, text: document.querySelector('[data-testid="dashboard"]').innerText}));
   ok(db.figs === 3 && /My workers/i.test(db.text) && /Today's log/i.test(db.text), 'supplier dashboard: three figures and today\'s log ' + JSON.stringify(db));
   // My Hours → Pay (a Data Table on a computer): Avi 8h × own rate 50 = ₪400, commission 8 × 5 = ₪40.
-  await tabTo('My Hours');
+  await tabTo('Commission');
   const payRow = () => p.evaluate(() => { const t = document.querySelector('[data-testid="pay-table"]'); return t ? t.innerText.replace(/\s+/g, ' ') : ''; });
   const pt = await payRow();
   ok(/Avi Cohen 8\.0 1 ₪50\/h ₪400 ₪40/.test(pt) && /Total 8\.0 1 ₪400 ₪40/.test(pt) && await p.evaluate(() => !!document.querySelector('[data-testid="pay-table"] [data-slot="data-table"][data-kind="table"]')),
@@ -1992,11 +1998,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await p.evaluate(() => !!document.querySelector('[data-testid="pay-table"] th[aria-sort]')), 'supplier pay: a tap on a column head sorts by it');
   // A daily-paid worker with a ₪/day commission (the reply rewritten): the commission is ₪/day × days.
   supTweak = j => { Object.assign(j.workers[0], {payMode: 'daily', supplierDayRate: 90}); };
-  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('My Hours');
+  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('Commission');
   const ptd = await payRow();
   supTweak = null;
   ok(/Avi Cohen 8\.0 1 ₪50\/day ₪50 ₪90/.test(ptd), 'supplier pay: a daily worker — pay by the day, commission ₪/day × days ' + JSON.stringify(ptd));
-  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('My Hours');
+  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('Commission');
   // A timesheet file fills the picked worker's shifts; other workers' rows are left out.
   const XLSXn = require('xlsx');
   const s_wb = XLSXn.utils.book_new();
@@ -2025,7 +2031,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await p.waitForSelector('[data-slot="calendar"], .rdp-root', {timeout: 5000}).then(() => true).catch(() => false), 'supplier: a shift\'s date is picked in the Date Picker');
   await p.keyboard.press('Escape'); await p.click('[data-send-row] button[aria-label="Remove"]');
   // My Workers: the edit form (React Hook Form + Zod) — the given name is required; a save goes through the supplier function.
-  await tabTo('My Workers');
+  await tabTo('Workers');
   const plateOf = id => `[data-worker-id="${id}"]`;
   await p.click(plateOf('w1') + ' .og-plate b');
   await p.waitForSelector('[data-testid="worker-form"]');
@@ -2065,13 +2071,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   s_sel.notYet = supReplies.filter(x => x.action === 'supplierDeleteWorker').length === 0;
   await sleep(5600);
   for (let i = 0; i < 40 && supReplies.filter(x => x.action === 'supplierDeleteWorker').length < 2; i++) await sleep(150);
-  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('My Workers');
+  await p.reload(); await waitFor(p, supReady, 15000); await tabTo('Workers');
   s_sel.deleted = !(await p.$(plateOf(wt2))) && !(await p.$(plateOf(wt3))) && !!(await p.$(plateOf(wt1)));
   ok(s_sel.count === '2 selected' && s_sel.noEditor && s_sel.barGone && /2 workers deleted/.test(s_sel.snack) && s_sel.notYet && s_sel.deleted, 'supplier lists: Select two, Delete → Undo snack, deleted on the server only after 5 s ' + JSON.stringify(s_sel));
   await p.click(plateOf(wt1) + ' button[aria-label="Actions"]'); await p.click('[role="menuitem"]:has-text("Delete")');
   await sleep(5600); for (let i = 0; i < 40 && supReplies.filter(x => x.action === 'supplierDeleteWorker').length < 3; i++) await sleep(150);
   // Hours approval tab (hours ticks hours, approve, export): only its own workers; no dispute / fix; the month approved at once.
-  await tabTo('Approvals');
+  await tabTo('Hours');
   const hrvReadyS = () => !!document.querySelector('[data-testid="hours-review"][data-ready="1"]') && document.querySelectorAll('[data-day-key]').length >= 1;
   ok(await waitFor(p, hrvReadyS, 15000), 'supplier: the hours review loads');
   const sKey = await p.evaluate(() => [...document.querySelectorAll('[data-day-key]')].map(d => d.dataset.dayKey).find(k => k.startsWith('w1|')));
@@ -2084,17 +2090,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   s_sr.status = await p.evaluate(() => document.querySelector('[data-testid="hours-status"]').innerText);
   ok(s_sr.names === 'Avi Cohen' && s_sr.acts === 'Approve this day' && /Every day approved/.test(s_sr.status), 'supplier: reviews only its own workers, no dispute / fix without those ticks, approves the month ' + JSON.stringify(s_sr));
   // The language: English by default; the header Language button switches the portal to Hebrew; a reload keeps it.
-  await tabTo('My Hours');
+  await tabTo('Commission');
   const nLoadsS = supReplies.filter(x => x.action === 'loadSchedule').length;
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
   const sl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he', 10000)};
   // the page is redrawn in the new language: wait for its tabs to be back before reading them
-  await waitFor(p, () => ([...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[2] || '') === 'השעות שלי', 5000);
-  sl.tab = await p.evaluate(() => [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[2]);
+  const heCom = await p.evaluate(() => I18N['Commission']);
+  await p.waitForFunction(h => ([...document.querySelectorAll('[data-testid="shell-menu"] button')].map(b => b.innerText.trim())[2] || '') === h, heCom, {timeout: 5000}).catch(() => {});
+  sl.tab = await p.evaluate(() => [...document.querySelectorAll('[data-testid="shell-menu"] button')].map(b => b.innerText.trim())[2]); sl.want = heCom;
   sl.stayed = await p.evaluate(() => document.querySelector('[data-testid="supplier-portal"]').dataset.tab); sl.loads = supReplies.filter(x => x.action === 'loadSchedule').length - nLoadsS;
-  ok(sl.he && sl.tab === 'השעות שלי' && sl.stayed === 'hours' && sl.loads === 0, 'supplier: the header Language button switches the portal to Hebrew in place — the tab and the data stay ' + JSON.stringify(sl));
+  ok(sl.he && sl.tab === sl.want && sl.stayed === 'hours' && sl.loads === 0, 'supplier: the header Language button switches the portal to Hebrew in place — the tab and the data stay ' + JSON.stringify(sl));
   await p.reload();
-  ok(await waitFor(p, () => document.documentElement.lang === 'he' && [...document.querySelectorAll('[data-testid="shell-tabs"] button')].map(b => b.innerText.trim())[0] === 'לוח בקרה', 15000), 'supplier: a reopened portal keeps the chosen language');
+  ok(await waitFor(p, () => document.documentElement.lang === 'he' && [...document.querySelectorAll('[data-testid="shell-menu"] button')].map(b => b.innerText.trim())[0] === I18N['Today'], 15000), 'supplier: a reopened app keeps the chosen language');
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("English")');
   await waitFor(p, () => document.documentElement.lang === 'en', 10000);
   // The theme: the account menu of the portal carries the switch; Light and back to Dark.
@@ -2110,10 +2117,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(stl.look === 'light' && stl.stored === 'light' && stl.kept && stl.dark, 'supplier: the account menu\'s theme switch turns the light theme on (kept after a reload) and back to Dark ' + JSON.stringify(stl));
   // A phone: the bottom bar; the pay table becomes plates; the worker window opens from the bottom.
   await p.setViewportSize({width: 390, height: 844}); await sleep(300);
-  await p.click('nav button:has-text("My Hours")').catch(() => {}); await sleep(300);
+  await p.click('nav.og-bar button:has-text("Commission")').catch(() => {}); await sleep(300);
   const s_ph = {cards: await p.evaluate(() => !!document.querySelector('[data-testid="pay-table"] [data-slot="data-table"][data-kind="cards"]')),
     plate: await p.evaluate(() => ((document.querySelector('[data-pay-row="w1"]') || {}).innerText || '').replace(/\s+/g, ' '))};
-  await p.click('nav button:has-text("My Workers")').catch(() => {}); await sleep(300);
+  await p.click('nav.og-bar button:has-text("Workers")').catch(() => {}); await sleep(300);
   await p.click(plateOf('w1') + ' .og-plate b'); await p.waitForSelector('[data-testid="worker-form"]');
   s_ph.sheet = await p.evaluate(() => document.querySelector('[data-testid="window"]').dataset.kind);
   await p.screenshot({path: SP + '/supplier-portal-phone.png'}).catch(()=>{});
@@ -2123,9 +2130,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // The account menu: the name, "Supplier", Sign out.
   await p.click('[data-testid="account-btn"]'); await p.waitForSelector('[data-testid="account-menu"]');
   const am = await p.evaluate(() => document.querySelector('[data-testid="account-menu"]').innerText);
-  ok(/sup1/.test(am) && /Supplier/.test(am) && /Sign out/.test(am), 'supplier portal: the account menu holds the name and Sign out ' + JSON.stringify(am));
+  ok(/sup1/.test(am) && /supplier/i.test(am) && /Sign out/.test(am), 'supplier: the account menu holds the name and Sign out ' + JSON.stringify(am));
   await p.click('[role="menuitem"]:has-text("Sign out")');
-  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && !localStorage.getItem('supplierPortal_session'), 15000), 'supplier portal: Sign out opens the one login page');
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('supplierPortal_session') && !localStorage.getItem('schedMgr_session'), 15000), 'supplier: Sign out opens the one login page');
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
@@ -2143,14 +2150,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const menuOf = async key => { await p.click(dayOf(key) + ' button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]'); return p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(m => m.innerText.trim())); };
   const pick = async label => { await p.click(`[role="menuitem"]:has-text("${label}")`); await sleep(200); };
   const tapOutside = async () => { await p.mouse.click(8, 400); await sleep(300); };
-  const cp = await p.evaluate(() => ({text: document.body.innerText, workers: [...document.querySelectorAll('[data-slot="section"] .og-label > span:first-child')].map(b => b.textContent),
-    old: typeof Payroll !== 'undefined' || typeof hoursReviewMount !== 'undefined' || typeof __hrv !== 'undefined', mark: !!document.querySelector('header [data-testid="brand-mark"]'),
-    sub: (document.querySelector('[data-testid="brand-sub"]') || {}).textContent || '', plate: !!document.querySelector('[data-day-key] .og-plate')}));
+  const cp = await p.evaluate(() => ({text: document.querySelector('[data-testid="client-portal"]').innerText, workers: [...document.querySelectorAll('[data-slot="section"] .og-label > span:first-child')].map(b => b.textContent),
+    inApp: /schedule-manager/.test(location.pathname), workersLoaded: typeof workers === 'undefined' ? -1 : workers.length,
+    tabs: [...document.querySelectorAll('[data-testid="shell-menu"] button')].map(b => b.innerText.trim()).join(), plate: !!document.querySelector('[data-day-key] .og-plate')}));
   const avi = await p.evaluate(() => [...document.querySelectorAll('[data-day-key]')].map(d => d.dataset.dayKey).find(k => k.startsWith('w1|')));
   const acts = await menuOf(avi); await p.keyboard.press('Escape'); await sleep(150);
   ok(cp.workers.includes('Avi Cohen') && acts.join() === 'Approve this day,Dispute this day,Propose a fix' && hoursReplies.length >= 1 && !/₪|Agency|hourlyRate|billRate|gpsAccuracy|"dist"|tok-|supplier|docUrl|0501/i.test(cp.text + hoursReplies.join('')),
     'client: only hours of its workers, per-day approve / dispute / fix under ⋮ — no money, supplier, GPS, files or tokens ' + JSON.stringify({workers: cp.workers, acts, replies: hoursReplies.length}));
-  ok(!cp.old && cp.mark && /Site B/.test(cp.sub) && cp.plate, 'client portal: a React page (no old globals), the brand with its client in the title bar, days as plates ' + JSON.stringify({old: cp.old, mark: cp.mark, sub: cp.sub, plate: cp.plate}));
+  ok(cp.inApp && cp.workersLoaded === 0 && cp.tabs === 'Hours' && /Site B/.test(cp.text) && cp.plate, 'client: in the manager app with one tab, Hours (its client named on top), no firm data, days as plates ' + JSON.stringify({inApp: cp.inApp, w: cp.workersLoaded, tabs: cp.tabs, plate: cp.plate}));
   // Select mode: Select shows the tick boxes, a tap ticks a day, the glass bar approves the ticked days.
   await p.click('[data-testid="hours-review"] button:has-text("Select")');
   await p.click(dayOf(avi) + ' .og-plate b');
@@ -2292,7 +2299,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await q.evaluate(() => closeModal('userFormOverlay'));
   // A kept login opens the portal at once: the login screen never shows on a reload.
   await p.reload({waitUntil: 'domcontentloaded'});
-  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: a reload with a kept login stays in the portal');
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: a reload with a kept login stays in its Hours tab');
   // The language: the Language button switches the portal to Hebrew in place — the month stays loaded (no new load).
   // The reload's own hours reply can still land after data-ready (its body is read asynchronously), so the count is
   // taken once it has stayed the same for 1 s (at most 5 s), not straight away.
@@ -2302,11 +2309,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   }
   const nLoads = hoursReplies.length;
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("עברית")');
-  const cl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he' && /פורטל/.test(document.querySelector('header').innerText), 10000)};
+  const cl = {he: await waitFor(p, () => document.documentElement.lang === 'he' && localStorage.getItem('uiLang') === 'he' && document.querySelector('[data-testid="shell-menu"] button').innerText.trim() === I18N['Hours'], 10000)};
   cl.days = await p.evaluate(() => document.querySelectorAll('[data-day-key]').length); cl.loads = hoursReplies.length - nLoads;
   cl.ltr = await p.evaluate(() => getComputedStyle(document.body).direction);
   await p.click('header [data-testid="lang-btn"]'); await p.click('[data-testid="lang-list"] .lang-li:has-text("English")');
-  cl.en = await waitFor(p, () => document.documentElement.lang === 'en' && /Client Portal/.test(document.querySelector('header').innerText), 10000);
+  cl.en = await waitFor(p, () => document.documentElement.lang === 'en' && document.querySelector('[data-testid="shell-menu"] button').innerText.trim() === 'Hours', 10000);
   ok(cl.he && cl.days >= 1 && cl.loads === 0 && cl.ltr === 'ltr' && cl.en, 'client portal: the Language button switches to Hebrew and back in place, the month stays, left to right ' + JSON.stringify(cl));
   await p.screenshot({path: SP + '/client-portal-hours.png', fullPage: true}).catch(()=>{});
   ok(p.errs.length === 0 && q.errs.length === 0, 'client portal: no page errors ' + p.errs.concat(q.errs).join(' | '));
@@ -2317,7 +2324,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await waitFor(p, () => !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000);
   await p.click('[data-testid="account-btn"]'); await p.waitForSelector('[data-testid="account-menu"]');
   const menu = await p.evaluate(() => ({text: document.querySelector('[data-testid="account-menu"]').innerText, lang: !document.querySelector('[data-testid="account-menu"] [data-testid="lang-btn"]') && !!document.querySelector('header [data-testid="lang-btn"] + [data-testid="account-btn"]')}));
-  ok(menu.lang && /client1/.test(menu.text) && /Client/.test(menu.text) && /Sign out/.test(menu.text), 'client portal: the account menu holds the name and Sign out, the Language button beside it ' + JSON.stringify(menu));
+  ok(menu.lang && /Site B manager/.test(menu.text) && /client/i.test(menu.text) && /Sign out/.test(menu.text), 'client: the account menu holds the person\'s name, the role and Sign out, the Language button beside it ' + JSON.stringify(menu));
   // A phone: the dispute window opens from the bottom (a sheet).
   await p.keyboard.press('Escape'); await p.setViewportSize({width: 390, height: 800}); await sleep(300);
   const k2 = await p.evaluate(() => [...document.querySelectorAll('[data-day-key]')].map(d => d.dataset.dayKey).find(k => k.startsWith('w1|')));
@@ -2328,15 +2335,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(sheet === 'sheet', 'client portal: on a phone a window opens from the bottom ' + sheet);
   await p.click('[data-testid="account-btn"]'); await p.waitForSelector('[data-testid="account-menu"]');
   await p.click('[role="menuitem"]:has-text("Sign out")');
-  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client portal: Sign out opens the one login page');
-  // The portals have no login of their own: opened without a session they send to the one login page.
-  await p.goto(BASE + 'supplier-portal.html');
-  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname), 10000), 'portals: no session → the manager app\'s login page');
-  await ctx.close();
-  // A client login on the main site goes to its portal.
-  ctx = await newCtx(); p = await page(ctx);
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('clientPortal_session'), 15000), 'client: Sign out opens the one login page');
+  // The old portal pages only send to the manager app.
+  for (const pg of ['supplier-portal.html', 'client-portal.html']) {
+    await p.goto(BASE + pg);
+    ok(await waitFor(p, () => /schedule-manager/.test(location.pathname), 10000), 'portals: ' + pg + ' sends to the manager app');
+  }
+  // A session kept by an old portal page is taken over by the manager app (bookmarks, installed apps).
   await login(p, BASE + 'schedule-manager.html', 'client1', 'client-pass-1');
-  ok(await waitFor(p, () => /client-portal/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: a client login on the main site is taken to its portal');
+  await waitFor(p, () => !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000);
+  await p.evaluate(() => { localStorage.removeItem('schedMgr_session'); });
+  await p.goto(BASE + 'client-portal.html');
+  ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: an old portal session opens the manager app signed in');
   await ctx.close();
 
   // ── Worker punch page without a personal link: a message, no worker picker ──

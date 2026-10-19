@@ -7,11 +7,13 @@
 // (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId, qsa } from './dom';
-import { getSession, saveSession } from '../data/session';
+import { clearSession, getSession, saveSession } from '../data/session';
+import { loadFirestoreBackend } from '../data/api';
+import { PORTAL_SESSION_KEYS, isPortalRole, portalTabs } from '../portal';
+import { setPortal, switchTab } from './nav';
 import { USER_ROLE_LABELS, activeTenantProfile, firmProfileMissing } from '../logic/admin';
 import { tr } from '../logic/i18n';
 import { API_URL } from '../data/api';
-import { goToClientPortal, goToSupplierPortal } from './wiring';
 import { showToast } from '../toast';
 import { setFrame } from '../frame';
 import { island } from '../bridge';
@@ -51,9 +53,8 @@ export function cacheTenantProfile(tenantId?: any, profile?: any){
 //     the normal app — runInitApp() runs the pre-existing init sequence.
 // Called once at startup in place of the old unconditional init block.
 export function gateApp(runInitApp?: any){
-  let s = getSession();
-  if(s && s.role === 'supplier'){ goToSupplierPortal(s); return; }
-  if(s && s.role === 'client'){ goToClientPortal(s); return; }
+  let s = getSession() || adoptPortalSession();
+  if(s && isPortalRole(s.role)){ void startPortal(s); return; }
   if(!s){
     // The sign-in screen (React, src/manager/SignIn.tsx) wakes the login function itself.
     setFrame({screen:'login'});
@@ -73,6 +74,42 @@ export function gateApp(runInitApp?: any){
   // A fresh firm profile for this device's Form 101s (see refreshTenantProfile),
   // once the Firebase sign-in has had time to come back.
   setTimeout(() => refreshTenantProfile(0), 4000);
+}
+
+// A supplier or client login stays here (permissions plan, stage 3): the same
+// frame with its own tabs (portalTabs: a supplier's portal tabs, claim ss, and
+// the hours review with an hours tick, claim hp; a client: Hours), each drawn
+// with the portal's screens through the supplier / hours functions. No firm
+// data is loaded for it (runInitApp never runs) and nothing reads Firestore.
+// The portal screens' own code reads its session key (PORTAL_SESSION_KEYS);
+// a Firebase sign-in that is gone or another user's sends to the sign-in.
+async function startPortal(s?: any){
+  try{ localStorage.setItem(PORTAL_SESSION_KEYS[s.role], JSON.stringify({uid:s.uid, role:s.role, tenantId:s.tenantId, supplierId:s.supplierId, clientId:s.clientId, username:s.username})); }catch(e: any){}
+  setFrame({screen:'app'});
+  renderAccountControl(s);
+  let ss = ['dashboard','workers','hours'], hp: string[] = Array.isArray(s.hourPerms) ? s.hourPerms : [];
+  try{
+    const b = await loadFirestoreBackend();
+    const u = b.currentUser();
+    if(!u || u.uid !== s.uid){ clearPortalSessions(); clearSession(); location.reload(); return; }
+    [ss, hp] = await Promise.all([s.role === 'supplier' ? b.supplierSections().catch(() => ss) : Promise.resolve(ss), b.hourPerms().catch(() => hp)]);
+  }catch(e: any){ /* offline: the session's ticks */ }
+  setPortal({role: s.role, username: s.fullName || s.username || ''});
+  const tabs = portalTabs(s.role, ss, hp);
+  setFrame({tabs});
+  switchTab(tabs[0] || 'hours');
+}
+export function clearPortalSessions(){ Object.values(PORTAL_SESSION_KEYS).forEach(k => { try{ localStorage.removeItem(k); }catch(e: any){} }); }
+// A login kept by the old portal pages (/supplier, /client — now they send
+// here): its session becomes this page's.
+function adoptPortalSession(){
+  for(const role of Object.keys(PORTAL_SESSION_KEYS)){
+    try{
+      const p = JSON.parse(localStorage.getItem(PORTAL_SESSION_KEYS[role]) || 'null');
+      if(p && p.uid && p.role === role){ saveSession(p); return getSession(); }
+    }catch(e: any){}
+  }
+  return null;
 }
 
 // The account in the title bar: who's logged in, and for a super-admin the

@@ -18,6 +18,7 @@ import { showToast } from '../toast';
 import { setFrame } from '../frame';
 import { island } from '../bridge';
 import { isAccTab } from '../logic/access';
+import { clearPortalSessions } from './gate';
 Object.defineProperties(window, {
   "backToFirmsList": {get: () => backToFirmsList, configurable: true},
 });
@@ -57,23 +58,10 @@ function updateHoursBadge(){ setFrame({counts:{accounting:pendingHoursCount()}})
 
 export const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 
-// A supplier never uses this app: its login is written as the supplier
-// portal's session (supplier-portal.html, key supplierPortal_session) and the
-// page moves to /supplier, already signed in.
-export function goToSupplierPortal(u?: any){
-  try{ localStorage.setItem('supplierPortal_session', JSON.stringify({uid:u.uid, role:'supplier', tenantId:u.tenantId, supplierId:u.supplierId, username:u.username})); }catch(e: any){}
-  clearSession();
-  location.replace('supplier-portal.html');
-}
-// A client login uses the client portal (client-portal.html), handed over the same way.
-export function goToClientPortal(u?: any){
-  try{ localStorage.setItem('clientPortal_session', JSON.stringify({uid:u.uid, role:'client', tenantId:u.tenantId, clientId:u.clientId, username:u.username})); }catch(e: any){}
-  clearSession();
-  location.replace('client-portal.html');
-}
+// Sign out: this page's session (and a supplier's or client's portal session, gate.ts) and the Firebase sign-in end.
 export async function logout(){
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e: any){}
-  clearAdminCaches(); clearSession();
+  clearAdminCaches(); clearSession(); clearPortalSessions();
   try{ await (await loadFirestoreBackend()).signOut(); }catch(e: any){}
   location.reload();
 }
@@ -100,12 +88,10 @@ export async function signIn(username?: any, password?: any): Promise<string | n
   if(fb.theme) setTheme(fb.theme, {save:false});
   // A supplier login belongs in the supplier portal: hand the session over
   // (same origin, same Firebase sign-in) and go there.
-  if(fb.role === 'supplier'){ goToSupplierPortal(fb); return null; }
-  if(fb.role === 'client'){ goToClientPortal(fb); return null; }
   try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e: any){}
   saveSession({
     uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
-    permissions: fb.permissions, supplierId: fb.supplierId,
+    permissions: fb.permissions, supplierId: fb.supplierId, clientId: fb.clientId || null,
     ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
     showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
     hourPerms: Array.isArray(fb.hourPerms) ? fb.hourPerms : [],

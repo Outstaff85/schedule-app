@@ -38,6 +38,7 @@ import { SupplierEditor, type SupplierProps } from './SupplierEditor';
 import { ManualPunch } from './ManualPunch';
 import { MapPicker, mapPicker, type MapPickProps } from './MapPicker';
 import { Accounting, HoursTab, setKeptTab } from './Accounting';
+import { PortalView } from './Portal';
 import { PayWindow } from './PayWindow';
 import { Admin } from './Admin';
 import { FirmsScreen, FirmWindow } from './Firms';
@@ -105,6 +106,8 @@ const renderAccounting = island('accountingRoot', b => b.accounting(), (s, api) 
 // An HR's Commission tab: the Accounting tab in its pay view (payOnly); its Hours tab: the hours review.
 const renderCommission = island('commissionRoot', b => b.accounting(), (s, api) => <div data-testid="commission"><Accounting snap={s} api={api} /></div>);
 const renderHours = island('hoursRoot', () => ({}), (_s, api) => <HoursTab api={api} />);
+// A supplier or client login (stage 3): its portal's screens in the frame.
+const renderPortal = island('portalRoot', b => b.portal(), (s, api) => (s ? <PortalView role={s.role} tab={s.tab} username={s.username} onSignOut={() => api.signOut()} /> : null));
 const renderAdmin = island('adminRoot', b => b.admin(), (s, api) => <Admin snap={s} api={api} />);
 const renderFirmsScreen = island('firmsScreenRoot', b => b.admin(), (s, api) => <FirmsScreen snap={s} api={api} />);
 
@@ -223,6 +226,7 @@ provideIsland({
   renderAccounting,
   renderCommission,
   renderHours,
+  renderPortal,
   setAccTab: k => { setKeptTab(k); renderAccounting(); },
   openPay: id => payWin.show({ id, seq: ++seq }),
   renderAdmin,

@@ -346,6 +346,8 @@ export type ManagerBridge = WorkerBridge & {
   installApp(): void;
   signOut(): void;
   saveTheme(theme: string): void;
+  /** a supplier or client login (stage 3, Portal.tsx): its role, the open tab, its name; null for every other login */
+  portal(): { role: 'supplier' | 'client'; tab: string; username: string } | null;
   /** switches the page's language (`setLanguage`: the dictionaries, the account, a redraw) */
   setLanguage(lang: string): void;
   // ── The bell's list (stage 8e-4, BellPanel.tsx) ──
@@ -815,6 +817,8 @@ export type ManagerIsland = {
   /** an HR's Commission tab (the Accounting tab's Salary for its own workers) and Hours tab (the hours review) */
   renderCommission(): void;
   renderHours(): void;
+  /** a supplier's or client's open tab (Portal.tsx) */
+  renderPortal(): void;
   /** Salary / Billing / Approvals / Alerts */
   setAccTab(tab: string): void;
   /** the pay window, drawn into the page's #payModal */

@@ -8,15 +8,20 @@ export type Backend = FirestoreBackend;
 
 let loading: Promise<Backend> | null = null;
 
+declare global { interface Window { __fsBackendLoad?: Promise<Backend> } }
+
 export function loadBackend(): Promise<Backend> {
   if (loading) return loading;
+  // One load per page (the manager page's loadFirestoreBackend keeps the same promise on window).
+  if (window.__fsBackendLoad) return (loading = window.__fsBackendLoad);
   loading = new Promise<Backend>((resolve, reject) => {
     const el = document.createElement('script');
     el.src = '/firestore-backend.js';
     el.onload = () => window.initFirestoreBackend!().then(resolve, reject);
     el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
     document.head.appendChild(el);
-  }).catch(e => { loading = null; throw e; });
+  }).catch(e => { loading = null; window.__fsBackendLoad = undefined; throw e; });
+  window.__fsBackendLoad = loading;
   return loading;
 }
 
