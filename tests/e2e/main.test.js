@@ -281,6 +281,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       shortDate: getComputedStyle(document.querySelector('[data-testid=shell-date] > span:last-child')).display !== 'none' && getComputedStyle(document.querySelector('[data-testid=shell-date] > span:first-child')).display === 'none',
       noMenu: !document.querySelector('[data-testid=shell-menu]') && box('[data-testid=shell-bar]').bottom > innerHeight - 2}; });
   await p.screenshot({path: SP + '/t3-today.png'}).catch(()=>{});
+  // A long list on a phone scrolls to its end above the bottom bar: the page keeps room for the bar under its last row.
+  const endGap = await p.evaluate(async () => {
+    const keep = workers.slice(); for (let i = 0; i < 12; i++) workers.push({...workers[0], id: 'tall' + i, name: 'Tall ' + i});
+    switchTab('workers'); await new Promise(r => setTimeout(r, 600)); window.scrollTo(0, 1e6); await new Promise(r => setTimeout(r, 300));
+    const rows = [...document.querySelectorAll('#workersRoot .og-plate')], bar = document.querySelector('[data-testid=shell-bar]').getBoundingClientRect();
+    const r = {rows: rows.length, lastBottom: Math.round(rows[rows.length - 1].getBoundingClientRect().bottom), barTop: Math.round(bar.top)};
+    workers.length = 0; workers.push(...keep); window.scrollTo(0, 0); switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
+    return r;
+  });
+  ok(endGap.rows >= 10 && endGap.lastBottom <= endGap.barTop, 'phone: a long list scrolls to its last row above the bottom bar ' + JSON.stringify(endGap));
   // The phone bottom bar (variant 11): Today, Schedule, Workers, Accounting, More; More opens a sheet with the other tabs.
   const bb = await p.evaluate(async () => {
     const btns = () => [...document.querySelectorAll('[data-testid=shell-bar] > button')], more = () => btns()[btns().length - 1];

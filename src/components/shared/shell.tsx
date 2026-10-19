@@ -179,7 +179,8 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
             </nav>
           )}
           {!phone && aside && <aside data-testid="shell-aside" className={cn('w-[290px] shrink-0 overflow-y-auto py-4', rtl ? 'border-l border-white/8' : 'border-r border-white/8')}>{aside}</aside>}
-          <main className={cn('min-w-0 flex-1 px-6 py-5 max-[700px]:px-3 max-[700px]:py-3', phone && sections.length > 0 && 'pb-[calc(84px+env(safe-area-inset-bottom,0px))]')}>
+          {/* the room under the content for the bottom bar: with the max-[700px] variant too, or that variant's py-3 (a later rule) wins on a phone and the last rows stay under the bar */}
+          <main className={cn('min-w-0 flex-1 px-6 py-5 max-[700px]:px-3 max-[700px]:py-3', phone && sections.length > 0 && 'pb-[calc(84px+env(safe-area-inset-bottom,0px))] max-[700px]:pb-[calc(84px+env(safe-area-inset-bottom,0px))]')}>
             <div key={steady ? undefined : active} className={cn('mx-auto w-full max-w-[1200px]', !steady && 'animate-in fade-in duration-150 motion-reduce:animate-none')}>{children}</div>
           </main>
         </div>
