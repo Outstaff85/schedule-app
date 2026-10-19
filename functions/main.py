@@ -684,8 +684,9 @@ def _model_bucket(storage):
     for name in MODEL_BUCKETS:
         try:
             b = storage.bucket(name)
-            if b.exists():
-                return b
+            # listing needs only the objects' read right (exists() also needs storage.buckets.get)
+            next(iter(b.list_blobs(max_results=1)), None)
+            return b
         except Exception as e:  # not this project's bucket name
             last = e
     raise RuntimeError(f"no Storage bucket reachable: {last}")

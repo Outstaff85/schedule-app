@@ -99,7 +99,43 @@ def test_nothing_found_keeps_the_whole_picture():
 def test_the_accurate_model_first_then_the_light_one():
     sure, unsure = Model(), Model(sure=False)
     pages = docfind.find_documents(photo((200, 150, 600, 400)), [unsure, sure])
-    assert unsure.calls >= 1 and sure.calls == 1 and pages[0]["source"] == "model"
+    assert unsure.calls >= 1 and sure.calls >= 1 and len(pages) == 1 and pages[0]["source"] == "model"
+
+
+class Blind(Model):
+    """Sees only the first document it is shown (an accurate model that misses the second)."""
+    def run(self, name, feeds):
+        out = super().run(name, feeds)
+        return out if self.calls == 1 else [np.zeros((1, 4, docfind.HM, docfind.HM), np.float32)]
+
+
+def test_the_second_document_by_the_light_model_when_the_accurate_one_misses_it():
+    # as in the scanner lab: the painted photo with the accurate model, then the light one
+    pages = docfind.find_documents(photo((60, 100, 360, 300), (440, 260, 760, 480)), [Blind(), Model()])
+    assert [p["source"] for p in pages] == ["model", "more"]
+
+
+def test_two_photos_side_by_side_on_a_white_page():
+    page = np.full((1000, 1400, 3), 255, np.uint8)
+    page[200:700, 80:620] = (90, 120, 150)      # a passport
+    page[200:700, 780:1320] = (60, 140, 90)     # its ספח beside it
+    boxes = docfind.photos_on_page(page)
+    assert len(boxes) == 2 and boxes[0][0] < 100 and boxes[1][0] > 760
+
+
+def test_a_camera_shot_is_never_cut_as_a_white_page():
+    page = np.full((1000, 1400, 3), 255, np.uint8)
+    page[200:700, 80:620] = (90, 120, 150)
+    calls = []
+    real = docfind.photos_on_page
+    docfind.photos_on_page = lambda img: calls.append(1) or real(img)
+    try:
+        docfind.find_documents(page, Model(sure=False), hint=[[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]])
+        assert calls == []
+        docfind.find_documents(page, Model(sure=False))
+        assert calls == [1]
+    finally:
+        docfind.photos_on_page = real
 
 
 def test_photos_on_a_white_page_and_not_the_dark_bar():

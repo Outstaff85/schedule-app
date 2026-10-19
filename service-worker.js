@@ -3,7 +3,7 @@
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
-const CACHE = 'schedule-mgr-v135';
+const CACHE = 'schedule-mgr-v136';
 // The punch page's manifest is built by Vite under a hashed name in /assets/
 // (not listed here: addAll fails on a missing file); like the pages' built
 // files, it is kept on its first fetch.
@@ -29,7 +29,8 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      // only this worker's old copies: the scanners keep their models in their own caches
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k.startsWith('schedule-mgr')).map(k => caches.delete(k))))
       .then(() => self.clients.claim())  // take control of open pages at once
   );
 });
@@ -39,6 +40,11 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;                               // never touch POSTs
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;                // 3rd-party (fonts/CDN): let the browser handle it
+
+  // The scanners' engine and models (tens of MB): left to the browser's own cache, which
+  // asks the server whether they changed (no-cache + ETag → 304) instead of downloading
+  // them again on every page load; the models are kept by the scanners themselves.
+  if (/^\/scan(-lab)?\//.test(url.pathname)) return;
 
   const isNav = req.mode === 'navigate';
 

@@ -178,15 +178,17 @@ def detect_padded(sess, img, col=None):
     return np.clip((pts * [w + 2 * pad, h + 2 * pad] - pad) / [w, h], 0, 1), conf
 
 
-def find_next(sess, img, found):
+def find_next(models, img, found):
     """The next document's corners (0..1) on the photo, or None: the found ones painted
     over in the background's colour, then a 10 % margin of that colour around the photo
-    (a document cut off by the photo's edge then lies whole inside), then the widest
-    strips left beside the first. A frame overlapping a found one by over 30 % is that
-    one again."""
+    (a document cut off by the photo's edge then lies whole inside) — each with the
+    accurate model, then the light one, as the scanner lab does —, then the widest strips
+    left beside the first (the accurate model only). A frame overlapping a found one by
+    over 30 % is that one again. models: a session, or a list (accurate, light)."""
+    models = list(models) if isinstance(models, (list, tuple)) else [models]
     h, w = img.shape[:2]
 
-    def try_on(src, back):
+    def try_on(src, back, sess):
         pts, conf = detect(sess, src)
         q = back(pts) if good_quad(pts, conf) else None
         if q is None or not good_quad(q, conf, img.shape):
@@ -199,13 +201,15 @@ def find_next(sess, img, found):
         c = q.mean(0)
         poly = (q + (q - c) * 0.04) * [w, h]
         cv2.fillPoly(painted, [np.round(poly).astype(np.int32)], col)
-    q = try_on(painted, lambda p: p)
-    if q is not None:
-        return q
-    pts, conf = detect_padded(sess, painted, col)
-    q = pts if good_quad(pts, conf, img.shape) and all(quad_iou(pts, f) <= 0.3 for f in found) else None
-    if q is not None:
-        return q
+    for sess in models:
+        q = try_on(painted, lambda p: p, sess)
+        if q is not None:
+            return q
+    for sess in models:
+        pts, conf = detect_padded(sess, painted, col)
+        q = pts if good_quad(pts, conf, img.shape) and all(quad_iou(pts, f) <= 0.3 for f in found) else None
+        if q is not None:
+            return q
     q1 = found[0]
     x0, y0 = q1.min(0)
     x1, y1 = q1.max(0)
@@ -215,7 +219,7 @@ def find_next(sess, img, found):
         X0, Y0, X1, Y1 = round(a * w), round(b * h), round(c2 * w), round(d2 * h)
         if X1 - X0 < 16 or Y1 - Y0 < 16:
             continue
-        q = try_on(painted[Y0:Y1, X0:X1], lambda p, a=a, b=b, c2=c2, d2=d2: np.stack([a + p[:, 0] * (c2 - a), b + p[:, 1] * (d2 - b)], 1))
+        q = try_on(painted[Y0:Y1, X0:X1], lambda p, a=a, b=b, c2=c2, d2=d2: np.stack([a + p[:, 0] * (c2 - a), b + p[:, 1] * (d2 - b)], 1), models[0])
         if q is not None:
             return q
     return None
@@ -248,7 +252,8 @@ def photos_on_page(img):
         if y1 - y0 < 0.12 * h:
             continue
         cols = busy[y0:y1].mean(0) > 0.6
-        run, x = None, 0
+        # every wide run of columns: two photos side by side in one band are two photos
+        runs, x = [], 0
         while x < w:
             if not cols[x]:
                 x += 1
@@ -256,15 +261,14 @@ def photos_on_page(img):
             x0 = x
             while x < w and cols[x]:
                 x += 1
-            if not run or x - x0 > run[1] - run[0]:
-                run = (x0, x)
-        if not run or run[1] - run[0] < 0.25 * w:
-            continue
-        # a phone's or browser's bar in a screenshot: mostly dark, not a photo
-        if (small[y0:y1, run[0]:run[1]].max(axis=2) < 60).mean() > 0.5:
-            continue
-        out.append(((run[1] - run[0]) * (y1 - y0) / (w * h),
-                    (int(run[0] / sc), int(y0 / sc), min(W, int(np.ceil(run[1] / sc))), min(H, int(np.ceil(y1 / sc))))))
+            if x - x0 >= 0.25 * w:
+                runs.append((x0, x))
+        for run in runs:
+            # a phone's or browser's bar in a screenshot: mostly dark, not a photo
+            if (small[y0:y1, run[0]:run[1]].max(axis=2) < 60).mean() > 0.5:
+                continue
+            out.append(((run[1] - run[0]) * (y1 - y0) / (w * h),
+                        (int(run[0] / sc), int(y0 / sc), min(W, int(np.ceil(run[1] / sc))), min(H, int(np.ceil(y1 / sc))))))
     if not out or (len(out) == 1 and out[0][0] > 0.9):
         return []
     # a white page: what lies outside the photos is mostly white (a photo of a white
@@ -414,7 +418,9 @@ def find_documents(img, model, face=None, hint=None, doctype=None):
     hint: the phone's live corners (0..1) of the first document, kept when the model does
     not confirm its own. quad is in 0..1 of its photo (box: the photo's place on the
     page, None for the whole picture); source says where the corners came from."""
-    boxes = photos_on_page(img)
+    # a camera shot (the phone's live corners with it) is one photo, as in the scanner lab: only
+    # a picked file can be a white page of photos (a form's page, a PDF, a screenshot)
+    boxes = photos_on_page(img) if hint is None else []
     if boxes:
         # a document the model sees on the whole picture, outside the photos found:
         # a plain photo after all (a white sheet on a table), not a page of photos
@@ -437,8 +443,7 @@ def find_documents(img, model, face=None, hint=None, doctype=None):
         found = [first]
         sources = [source]
         while len(found) < MAX_DOCS:
-            # the light model finds false second documents: the split is the accurate model's
-            q = find_next(model[0] if isinstance(model, (list, tuple)) else model, part, found)
+            q = find_next(model, part, found)
             if q is None:
                 break
             found.append(refine_edges(part, q))
