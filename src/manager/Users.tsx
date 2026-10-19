@@ -6,15 +6,14 @@
 // what it reaches and its hours ticks; a tap edits, ⋮ / swipe (Edit, Delete
 // through the Undo snack), Select (every login but the owner's). The user
 // window (drawn into the page's #userFormModal) is section plates — Person &
-// login (the Role as a switch), Sections (whose workers and the template; its
-// ticks shown, never edited here), Hours, HR commission, Own workers — and one
-// Save; "Add workers" (#hrAssignModal) picks an HR's or a supplier's workers.
+// login, Rights (the template, which says the role; whose workers; its flat
+// ticks shown, never edited here), HR commission, Own workers — and one Save; "Add workers" (#hrAssignModal) picks an HR's or a supplier's workers.
 // The requests and their rules are in users.ts; the saves of workers (hrId /
 // supplierId) and the server calls go through the page (ManagerBridge).
 import * as React from 'react';
 import {
   IconCalendar, IconCash, IconCheck, IconCircleCheck, IconClock, IconCoin, IconHome, IconLayoutGrid, IconPencil, IconPin, IconPlus, IconTrash,
-  IconTruckDelivery, IconUpload, IconUser, IconUserPlus, IconUsers, IconUsersGroup, IconWallet, IconAlertTriangle, IconLock, IconTemplate, IconCalendarEvent, IconUserEdit, IconClockEdit, IconTable,
+  IconTruckDelivery, IconUpload, IconUser, IconUserPlus, IconUsers, IconUsersGroup, IconWallet, IconAlertTriangle, IconLock, IconTemplate, IconCalendarEvent, IconUserEdit, IconClockEdit, IconTable, IconList, IconEye,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -38,13 +37,19 @@ import { EditorHead, Field, RateInput } from './ClientEditor';
 import { useTapOpen } from './Clients';
 import { moneyShort } from './clients';
 import {
-  createBody, formOf, formParts, formProblem, HOUR_PERM_LABELS, HOUR_ROLES, isAdminRole, newForm, ROLE_LABELS, roleColor, sortUsers, UNSELECTABLE,
-  updateBody, withRole, type FormRole, type UserForm, type UserRow,
+  createBody, formOf, formParts, formProblem, isAdminRole, newForm, ROLE_LABELS, roleColor, sortUsers, UNSELECTABLE,
+  updateBody, withTemplate, type FormRole, type UserForm, type UserRow,
 } from './users';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { EDIT_LABELS, loadTemplates, rightsMatrix, rightsOf, templateBody, templateForm, templatesFor, templateSummary, useTemplates, type PermTemplate, type TemplateForm } from './templates';
+import {
+  capReason, loadTemplates, ownOf, RIGHT_ACTIONS, RIGHT_CAPS, RIGHT_HINTS, RIGHT_LABELS, RIGHT_SHOWN, RIGHT_TABS, rightsMatrix, rightsOf, templateBody, templateForm,
+  templateSummary, useTemplates, type PermTemplate, type TemplateForm,
+} from './templates';
 import { island } from './bridge';
 
+// The hours ticks among the flat rights, and the old hourPerms names of them.
+const HOUR_RIGHTS = ['hours', 'approveHours', 'disputeHours', 'fixHours'];
+const HOUR_RIGHT_OF: Record<string, string> = { hours: 'hours', approve: 'approveHours', dispute: 'disputeHours', fix: 'fixHours' };
 // Logins deleted here and still inside their Undo time: left out of the list.
 const hiddenUsers = new Set<string>();
 const redrawUsers = () => island()?.renderAdmin();
@@ -78,12 +83,15 @@ export function UsersPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   };
   const row = (u: UserRow) => {
     const sup = u.role === 'supplier' ? snap.suppliers.find(s => s.id === u.supplierId) : null;
-    const perms = u.role !== 'staff' && u.role !== 'hr' ? '' : u.permissions === '*' ? tr('Full access') : Array.isArray(u.permissions) ? u.permissions.join(', ') : '—';
+    const perms = u.role !== 'staff' && u.role !== 'hr' ? '' : Array.isArray(u.rights) ? u.rights.filter(k => RIGHT_TABS.includes(k)).map(k => tr(RIGHT_LABELS[k])).join(', ')
+      : u.permissions === '*' ? tr('Full access') : Array.isArray(u.permissions) ? u.permissions.join(', ') : '—';
     const count = u.role === 'hr' ? snap.team.filter(w => w.hrId === u.id).length : u.role === 'supplier' && u.supplierId ? snap.team.filter(w => w.supplierId === u.supplierId).length : null;
     const team = count == null ? '' : workersText(count) + (u.role === 'hr' && u.ownOnly === false ? ' · ' + tr('sees all workers') : '');
     const what = u.role === 'supplier' ? (sup ? sup.name : '—') : u.role === 'client' ? (snap.clients.find(c => c.id === u.clientId)?.name || '—') : perms;
     const name = u.fullName || u.username || '?', col = roleColor(u.role);
-    const ticks = HOUR_ROLES.includes(u.role) && (u.hourPerms || []).length ? u.hourPerms!.map(p => tr(HOUR_PERM_LABELS[p] || p)).join(', ') : '';
+    // the hours ticks: from the flat rights (a login made before them: its hourPerms)
+    const hourKeys = Array.isArray(u.rights) ? u.rights.filter(k => HOUR_RIGHTS.includes(k)) : (u.hourPerms || []).map(h => HOUR_RIGHT_OF[h]).filter(Boolean);
+    const ticks = u.role !== 'staff' && !isAdminRole(u.role) ? hourKeys.map(k => tr(RIGHT_LABELS[k])).join(', ') : '';
     const tpl = isAdminRole(u.role) ? null : (tpls.list || []).find(t => t.id === u.templateId);
     const selectable = !UNSELECTABLE.includes(u.role);
     return (
@@ -116,81 +124,46 @@ export function UsersPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   );
 }
 
-const SECTION_TILES: { k: string; label: string; hint: string; icon: React.ReactNode }[] = [
-  { k: 'schedule', label: 'Schedule', hint: 'Schedule tab', icon: <IconCalendar /> },
-  { k: 'workers', label: 'Workers', hint: 'Workers tab', icon: <IconUsersGroup /> },
-  { k: 'clients', label: 'Clients', hint: 'Clients tab', icon: <IconUsers /> },
-  { k: 'suppliers', label: 'Suppliers', hint: 'Suppliers tab', icon: <IconTruckDelivery /> },
-  { k: 'accounting', label: 'Accounting', hint: 'Accounting tab', icon: <IconCash /> },
-  { k: 'payEdit', label: "Edit own workers' pay", hint: 'Rate, travel, bank of its own workers (with Accounting)', icon: <IconWallet /> },
-  { k: 'exports', label: 'Export', hint: 'Export button', icon: <IconUpload /> },
-];
-const SUP_TILES: { k: string; label: string; hint: string; icon: React.ReactNode }[] = [
-  { k: 'dashboard', label: 'Dashboard', hint: "Who is on site, today's punches", icon: <IconHome /> },
-  { k: 'workers', label: 'My Workers', hint: 'Add and edit its workers', icon: <IconUsersGroup /> },
-  { k: 'hours', label: 'My Hours', hint: 'Exports, pay, hours sent for approval', icon: <IconClock /> },
-];
-const HOUR_TILES: { k: string; hint: string; icon: React.ReactNode }[] = [
-  { k: 'hours', hint: 'In / out of its workers', icon: <IconClock /> },
-  { k: 'approve', hint: 'A day or the whole month', icon: <IconCircleCheck /> },
-  { k: 'dispute', hint: 'Disputes a day with a comment', icon: <IconAlertTriangle /> },
-  { k: 'fix', hint: 'Proposes the right in / out; the firm accepts it', icon: <IconPencil /> },
-  { k: 'schedule', hint: "Its workers' planned shifts", icon: <IconCalendar /> },
-  { k: 'export', hint: 'Hours to Excel', icon: <IconUpload /> },
-];
-const EDIT_TILES: { k: string; hint: string; icon: React.ReactNode }[] = [
-  { k: 'editSchedule', hint: 'Shifts in Schedule; off: it only sees them', icon: <IconCalendarEvent /> },
-  { k: 'editWorkers', hint: 'Add, edit and delete workers; off: it only reads them', icon: <IconUserEdit /> },
-  { k: 'editPunches', hint: 'Manual punches, edits and deletes in the punch log', icon: <IconClockEdit /> },
-];
+const RIGHT_ICONS: Record<string, React.ReactNode> = {
+  today: <IconHome />, schedule: <IconCalendar />, workers: <IconUsersGroup />, clients: <IconUsers />, suppliers: <IconTruckDelivery />, accounting: <IconCash />,
+  punchlog: <IconList />, commission: <IconCoin />, hours: <IconClock />,
+  editSchedule: <IconCalendarEvent />, editWorkers: <IconUserEdit />, editPunches: <IconClockEdit />, editPay: <IconWallet />, export: <IconUpload />,
+  approveHours: <IconCircleCheck />, disputeHours: <IconAlertTriangle />, fixHours: <IconPencil />, seePay: <IconEye />,
+};
 const tileLabel = (icon: React.ReactNode, label: string) => <span className="inline-flex items-center gap-1.5 [&_svg]:size-4">{icon}{label}</span>;
 const flip = (list: string[], k: string) => (list.includes(k) ? list.filter(x => x !== k) : [...list, k]);
+const RIGHT_GROUPS: { id: string; label: string; keys: string[] }[] = [
+  { id: 'tabs', label: 'Tabs', keys: RIGHT_TABS }, { id: 'actions', label: 'Actions', keys: RIGHT_ACTIONS }, { id: 'shown', label: 'Shown', keys: RIGHT_SHOWN },
+];
 
-type Rights = { perms: string[]; edits: string[]; hourPerms: string[]; supSections: string[]; ownOnly: boolean; showPay: boolean };
-
-/** A role's ticks: the sections (staff / HR) or portal tabs (supplier), or the hours ticks with Only own workers and the pay tick; read-only without `onChange`. */
-function RightsTiles({ part, role, r, onChange }: { part: 'sections' | 'hours'; role: FormRole; r: Rights; onChange?: (p: Partial<Rights>) => void }) {
-  const ro = !onChange, put = (p: Partial<Rights>) => onChange?.(p);
-  if (part === 'sections') {
-    if (role === 'supplier') return (
-      <CheckGrid data-testid="user-sup-sections">
-        {SUP_TILES.map(t => <CheckTile key={t.k} data-k={t.k} disabled={ro} label={tileLabel(t.icon, tr(t.label))} hint={tr(t.hint)} checked={r.supSections.includes(t.k)} onCheckedChange={() => put({ supSections: flip(r.supSections, t.k) })} />)}
-      </CheckGrid>
-    );
-    if (role !== 'staff' && role !== 'hr') return null;
-    return (
-      <>
-        <CheckGrid data-testid="user-perms">
-          {SECTION_TILES.filter(t => t.k !== 'payEdit' || role === 'hr').map(t => (
-            <CheckTile key={t.k} data-k={t.k} disabled={ro} label={tileLabel(t.icon, tr(t.label))}
-              hint={t.k === 'accounting' && role === 'hr' ? tr("Own workers' pay and commission only") : tr(t.hint)}
-              checked={r.perms.includes(t.k)} onCheckedChange={() => put({ perms: flip(r.perms, t.k) })} />
-          ))}
-        </CheckGrid>
-        <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-2">{tr('Changes')}</p>
-        <CheckGrid data-testid="user-edits">
-          {EDIT_TILES.map(t => (
-            <CheckTile key={t.k} data-k={t.k} disabled={ro} label={tileLabel(t.icon, tr(EDIT_LABELS[t.k]))} hint={tr(t.hint)}
-              checked={r.edits.includes(t.k)} onCheckedChange={() => put({ edits: flip(r.edits, t.k) })} />
-          ))}
-        </CheckGrid>
-      </>
-    );
-  }
-  if (!HOUR_ROLES.includes(role)) return null;
+/**
+ * The flat rights of a role's template, in three groups (tabs, actions, what
+ * is shown) and whose workers: a tick the role can never have is greyed with
+ * the reason; read-only without `onChange`.
+ */
+function RightsTiles({ role, rights, ownOnly, onChange }: { role: FormRole; rights: string[]; ownOnly: boolean; onChange?: (p: { rights?: string[]; ownOnly?: boolean }) => void }) {
+  const ro = !onChange;
   return (
-    <>
-      <CheckGrid data-testid="user-hours">
-        {HOUR_TILES.map(t => <CheckTile key={t.k} data-k={t.k} disabled={ro} label={tileLabel(t.icon, tr(HOUR_PERM_LABELS[t.k]))} hint={tr(t.hint)} checked={r.hourPerms.includes(t.k)} onCheckedChange={() => put({ hourPerms: flip(r.hourPerms, t.k) })} />)}
-      </CheckGrid>
+    <div className="grid gap-1.5" data-testid="rights-tiles">
+      {RIGHT_GROUPS.map(g => (
+        <React.Fragment key={g.id}>
+          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-2">{tr(g.label)}</p>
+          <CheckGrid data-testid={'rights-' + g.id}>
+            {g.keys.map(k => {
+              const why = capReason(role, k);
+              return <CheckTile key={k} data-k={k} data-cap={why ? 'no' : 'yes'} disabled={ro || !!why} label={tileLabel(RIGHT_ICONS[k], tr(RIGHT_LABELS[k]))}
+                hint={why ? tr(why) : tr(RIGHT_HINTS[k])} checked={!why && rights.includes(k)} onCheckedChange={() => onChange?.({ rights: flip(rights, k) })} />;
+            })}
+          </CheckGrid>
+        </React.Fragment>
+      ))}
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-2">{tr('Whose workers')}</p>
+      <CheckTile wide data-testid="rights-own" label={tr('Only own workers')} disabled={ro || role !== 'hr'} checked={role === 'staff' ? false : role === 'hr' ? ownOnly : true}
+        onCheckedChange={c => onChange?.({ ownOnly: c === true })}
+        hint={role === 'supplier' ? tr("Only this supplier's workers — always.") : role === 'client' ? tr('Only the workers at this client — always.')
+          : role === 'staff' ? tr("Every worker of the firm — always.") : tr('Sees only the workers assigned to this HR. Unchecked: every worker of the firm.')} />
       {role === 'client' && <p className="text-[11px] text-ink-3">{tr('Never sees pay, rates, suppliers, GPS or documents.')}</p>}
-      <CheckTile wide data-testid="user-own-only" label={tr('Only own workers')} disabled={ro || role !== 'hr'} checked={role === 'hr' ? r.ownOnly : true} onCheckedChange={c => put({ ownOnly: c === true })}
-        hint={role === 'supplier' ? tr("Only this supplier's workers — always.") : role === 'client' ? tr('Only the workers at this client — always.') : tr('Sees only the workers assigned to this HR. Unchecked: every worker of the firm.')} />
-      {(role === 'supplier' || role === 'hr') && (
-        <CheckTile wide data-testid="user-show-pay" label={tr("Sees own workers' pay")} disabled={ro} checked={r.showPay} onCheckedChange={c => put({ showPay: c === true })}
-          hint={tr("Their hours, rate and pay, and this login's commission. Nothing else of Accounting.")} />
-      )}
-    </>
+    </div>
   );
 }
 
@@ -312,13 +285,12 @@ function TemplateWindow({ t, isSuper, api, onClose }: { t: PermTemplate | null; 
         <Field label={tr('Template name')} htmlFor="tplName"><Input id="tplName" autoComplete="off" maxLength={60} disabled={ro} value={f.name} onChange={e => put({ name: e.target.value })} /></Field>
         <Field label={tr('For role')} htmlFor="tplRole">
           <ToggleGroup id="tplRole" data-testid="template-role" type="single" value={f.role} disabled={ro || used}
-            onValueChange={v => { if (v) put({ role: v as FormRole, ownOnly: v === 'hr' ? f.ownOnly : true }); }}>
+            onValueChange={v => { if (v) put({ role: v as FormRole, ownOnly: v === 'hr' ? f.ownOnly : true, rights: f.rights.filter(k => RIGHT_CAPS[v as FormRole].includes(k)) }); }}>
             {ROLE_CHOICES.map(r => <ToggleGroupItem key={r} value={r} data-v={r} className="flex-1">{roleName(r)}</ToggleGroupItem>)}
           </ToggleGroup>
         </Field>
         {used && isSuper && <p className="text-[11px] text-ink-3">{tr('Logins use this template: its role stays.')}</p>}
-        <RightsTiles part="sections" role={f.role} r={f} onChange={ro ? undefined : put} />
-        <RightsTiles part="hours" role={f.role} r={f} onChange={ro ? undefined : put} />
+        <RightsTiles role={f.role} rights={f.rights} ownOnly={f.ownOnly} onChange={ro ? undefined : put} />
         {isSuper && used && <p className="text-[12px] text-ink-2">{tr('A change applies to every login on it, in every firm; they sign in again.')}</p>}
         {!isSuper && <p className="text-[12px] text-ink-2">{tr('Only the super-admin changes the templates.')}</p>}
         <p className="min-h-[1.2em] text-[13px] text-bad" data-testid="template-error">{err}</p>
@@ -340,25 +312,20 @@ export function UserWindow({ props, info, api }: { props: UserProps; info: UserW
   const [f, setF] = React.useState<UserForm>(() => {
     if (u) return formOf(u, ch);
     let n = newForm();
-    if (props.preset) {
-      n = withRole(n, props.preset.role, false, ch);
-      n = props.preset.role === 'client' ? { ...n, clientId: props.preset.id } : { ...n, supplierId: props.preset.id };
-    }
+    if (props.preset) n = props.preset.role === 'client' ? { ...n, role: 'client', clientId: props.preset.id } : { ...n, role: 'supplier', supplierId: props.preset.id };
     return n;
   });
   const [open, setOpen] = React.useState<string[]>(['person']);
   const [err, setErr] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const set = <K extends keyof UserForm>(k: K, v: UserForm[K]) => setF(c => ({ ...c, [k]: v }));
-  // A new login (or one whose role changed) starts on its role's first template, once the list is in.
+  // A new login starts on the first template of its role (Staff, or the preset's), once the list is in.
   React.useEffect(() => {
-    if (adminRow || f.templateId || !tpls.list || (editing && f.role === u!.role)) return;
-    const first = templatesFor(tpls.list, f.role)[0];
-    if (first) set('templateId', first.id);
-  }, [tpls.list, f.role]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (adminRow || editing || f.templateId || !tpls.list) return;
+    const first = tpls.list.find(t => t.role === f.role);
+    if (first) setF(c => withTemplate(c, first, ch));
+  }, [tpls.list]); // eslint-disable-line react-hooks/exhaustive-deps
   const tpl = (tpls.list || []).find(t => t.id === f.templateId) || null;
-  // The ticks shown: the template's; a login made before templates shows its own until one is picked.
-  const shown = tpl ? { ...f, ...rightsOf(tpl) } : f;
   const parts = formParts(f.role, editing, adminRow);
   const role0 = adminRow ? u!.role : f.role, col = roleColor(role0);
 
@@ -379,11 +346,8 @@ export function UserWindow({ props, info, api }: { props: UserProps; info: UserW
     if (f.role === 'hr' && editing) comSum += ' · ' + tr('{0} this month', { 0: '₪' + moneyShort(api.hrMonthCommission(u!.id, rate, dayRate)) });
   }
 
-  const pickRole = (v: string) => {
-    if (!v || v === f.role) return;
-    // back to the saved role: the saved template again
-    setF(c => { const n = withRole(c, v as FormRole, editing, ch); return editing && v === u!.role ? { ...n, templateId: u!.templateId || '' } : n; });
-  };
+  // A template picked: the login takes its role and its rights.
+  const pickTemplate = (id: string) => { const t = (tpls.list || []).find(x => x.id === id); if (t) setF(c => withTemplate(c, t, ch)); };
   const save = async () => {
     setErr('');
     const bad = formProblem(f, editing, u?.role);
@@ -408,11 +372,8 @@ export function UserWindow({ props, info, api }: { props: UserProps; info: UserW
   };
 
   const sumOf = (vals: (string | false | undefined)[]) => vals.filter(Boolean).join(' · ');
-  const tickNames = (list: string[], labels: Record<string, string>) => list.map(k => tr(labels[k] || k)).join(', ');
-  const secLabels = Object.fromEntries(SECTION_TILES.map(t => [t.k, t.label]));
-  const supLabels = Object.fromEntries(SUP_TILES.map(t => [t.k, t.label]));
-  const roleChoices = ROLE_CHOICES;
-  const choices = templatesFor(tpls.list, f.role);
+  const choices = tpls.list || [];
+  const tabNames = tpl ? rightsOf(tpl).filter(k => RIGHT_TABS.includes(k)).map(k => tr(RIGHT_LABELS[k])).join(', ') : '';
 
   return (
     <div data-testid="user-window" data-edit={u?.id || ''} data-role={f.role} className="grid gap-2">
@@ -431,21 +392,22 @@ export function UserWindow({ props, info, api }: { props: UserProps; info: UserW
               <Field label={tr('Username')} htmlFor="uUsername"><Input id="uUsername" autoComplete="off" disabled={editing} value={f.username} onChange={e => set('username', e.target.value)} /></Field>
               <Field label={editing ? tr('New password (empty = keep)') : tr('Password (min. 8)')} htmlFor="uPassword"><Input id="uPassword" type="password" autoComplete="new-password" value={f.password} onChange={e => set('password', e.target.value)} /></Field>
             </FieldRow>
-            {!adminRow && (
-              <Field label={tr('Role')} htmlFor="uRole">
-                <ToggleGroup id="uRole" data-testid="user-role" type="single" value={f.role} onValueChange={pickRole}>
-                  {roleChoices.map(r => <ToggleGroupItem key={r} value={r} data-v={r} className="flex-1">{roleName(r)}</ToggleGroupItem>)}
-                </ToggleGroup>
-              </Field>
-            )}
           </AccordionContent>
         </AccordionItem>
 
-        {parts.sections && (
+        {parts.rights && (
           <AccordionItem value="sections" data-sec="sections" color={col}>
-            <AccordionTrigger icon={<IconLayoutGrid />} summary={sumOf([parts.supplier ? info.suppliers.find(s => s.id === f.supplierId)?.name : parts.client ? info.clients.find(c => c.id === f.clientId)?.name : '',
-              tpl ? tpl.name : tr('No template'), parts.supplier ? tickNames(shown.supSections, supLabels) : parts.client ? '' : tickNames(shown.perms, secLabels)])}>{tr('Sections')}</AccordionTrigger>
+            <AccordionTrigger icon={<IconLayoutGrid />} summary={sumOf([tpl ? tpl.name : tr('No template'), parts.supplier ? info.suppliers.find(s => s.id === f.supplierId)?.name
+              : parts.client ? info.clients.find(c => c.id === f.clientId)?.name : '', tabNames])}>{tr('Rights')}</AccordionTrigger>
             <AccordionContent forceMount hidden={!open.includes('sections')} className="grid gap-2.5">
+              <Field label={tr('Rights come from')} htmlFor="uTemplate">
+                <Select value={f.templateId || undefined} onValueChange={pickTemplate}>
+                  <SelectTrigger id="uTemplate" className="w-full" data-testid="user-template">
+                    <SelectValue placeholder={tpls.list === null ? (tpls.error ? tr(tpls.error) : tr('Loading…')) : editing ? tr('No template (rights set before templates)') : tr('Pick a template')} />
+                  </SelectTrigger>
+                  <SelectContent>{choices.map(t => <SelectItem key={t.id} value={t.id} data-tid={t.id}>{t.name} · {roleName(t.role)}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
               {parts.supplier && (
                 <Field label={tr('Supplier')} htmlFor="uSupplier">
                   <Select value={f.supplierId} onValueChange={v => set('supplierId', v)}>
@@ -462,26 +424,9 @@ export function UserWindow({ props, info, api }: { props: UserProps; info: UserW
                   </Select>
                 </Field>
               )}
-              <Field label={tr('Rights come from')} htmlFor="uTemplate">
-                <Select value={f.templateId || undefined} onValueChange={v => set('templateId', v)}>
-                  <SelectTrigger id="uTemplate" className="w-full" data-testid="user-template">
-                    <SelectValue placeholder={tpls.list === null ? (tpls.error ? tr(tpls.error) : tr('Loading…')) : editing && f.role === u!.role ? tr('No template (rights set before templates)') : tr('Pick a template')} />
-                  </SelectTrigger>
-                  <SelectContent>{choices.map(t => <SelectItem key={t.id} value={t.id} data-tid={t.id}>{t.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
               <p className="flex items-center gap-1.5 text-[12px] text-ink-2" data-testid="user-template-note"><IconLock className="size-3.5 shrink-0" />
-                {tpl ? tr('Rights follow {0}; only the super-admin changes the template.', { 0: tpl.name }) : tr('Pick a template: the rights come from it.')}</p>
-              <RightsTiles part="sections" role={f.role} r={shown} />
-            </AccordionContent>
-          </AccordionItem>
-        )}
-
-        {parts.hours && (
-          <AccordionItem value="hours" data-sec="hours" color={col}>
-            <AccordionTrigger icon={<IconClock />} summary={tickNames(shown.hourPerms, HOUR_PERM_LABELS) || tr('Not filled in')}>{tr('Hours')}</AccordionTrigger>
-            <AccordionContent forceMount hidden={!open.includes('hours')} className="grid gap-2.5">
-              <RightsTiles part="hours" role={f.role} r={shown} />
+                {tpl ? tr('Role and rights follow {0}; only the super-admin changes the template.', { 0: tpl.name }) : tr('Pick a template: the role and rights come from it.')}</p>
+              {tpl && <RightsTiles role={tpl.role} rights={rightsOf(tpl)} ownOnly={ownOf(tpl)} />}
             </AccordionContent>
           </AccordionItem>
         )}

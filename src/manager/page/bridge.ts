@@ -11,7 +11,7 @@ import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts,
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
-import { canChange, hasPermission, hrHourReview, hrPayOnly, isFirmAdminSession, isHrSession } from '../logic/access';
+import { canChange, hasPermission, hrHourReview, hrPayOnly, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { autoSave, latestHoursBatch } from '../data/store';
@@ -555,7 +555,8 @@ async function rejectHoursBatch(batchId?: any){
 
 // ── Pay window (openPayModal; Accounting → Salary and the worker card) ────
 // The one place a worker's money is set, drawn in React (src/manager/PayWindow.tsx).
-// The firm owner, a super-admin and staff with Accounting edit; an HR (its
+// The firm owner, a super-admin and staff with Edit pay (before the flat
+// rights: with Accounting) edit; an HR (its
 // reduced Accounting) sees its own workers' pay window read-only, and edits
 // it too with "Edit own workers' pay" (permission payEdit) — its own workers
 // only (w.hrId is its uid).
@@ -565,7 +566,7 @@ function canEditPay(w?: any){
   if(s.role==='tenant_admin'||s.role==='superadmin') return true;
   // (the rules let an HR write a worker only with Workers or Schedule)
   if(s.role==='hr') return hrPayOnly() && hasPermission('payEdit') && (hasPermission('workers')||hasPermission('schedule')) && (!w || w.hrId===s.uid);
-  return s.role==='staff' && hasPermission('accounting');
+  return s.role==='staff' && staffPayEdit();
 }
 function openWorkerCardById(wid?: any){ const i=workers.findIndex((w?: any)=>w.id===wid); if(i>=0) openWorkerCard(i); }
 function payWindowAllowed(w?: any){ return !!w && (canEditPay(w) || (hrPayOnly() && w.hrId===((getSession()||{} as any)).uid)); }

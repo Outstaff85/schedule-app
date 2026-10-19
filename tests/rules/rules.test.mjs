@@ -33,6 +33,9 @@ const who = {
   staffView:    { uid: 'u-stView', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: [] } },
   staffEdAll:   { uid: 'u-stEdAll', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editSchedule', 'editWorkers', 'editPunches'] } },
   hrOwnView:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true, ed: ['editWorkers'] } },
+  // On the flat rights (claim r): a staff login changes pay only with payEdit (Edit pay).
+  staffFlatAcc: { uid: 'u-stFA', claims: { role: 'staff', tenantId: A, perms: ['today', 'schedule', 'accounting'], r: true } },
+  staffFlatPay: { uid: 'u-stFP', claims: { role: 'staff', tenantId: A, perms: ['today', 'schedule', 'accounting', 'payEdit'], r: true } },
 };
 const db = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).firestore();
 const st = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).storage();
@@ -244,7 +247,7 @@ test('hr own-workers: reads and writes only workers with its hrId, never reassig
   await assertFails(getDoc(doc(db('hrOwnB'), 'tenants', A, 'workers', 'w2')));
 });
 
-test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only with accounting', async () => {
+test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only with Edit pay (accounting before the flat rights)', async () => {
   const h = db('hrOwn');
   for (const f of [{ hourlyRate: 45 }, { regRate: 45 }, { otRate: 60 }, { shabbatRate: 70 }, { payMode: 'daily' },
     { travelAllowance: 20 }, { travelMonthly: 150 }, { bank: 'X' }, { bankBranch: '1' }, { bankAccountNumber: '9' },
@@ -274,6 +277,11 @@ test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only w
   await assertFails(updateDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrOwn' }));
   await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'n10'), { name: 'New', hrId: 'u-hrOwn' }));
   await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrOwn' }));
+  // on the flat rights: Accounting alone no longer changes pay, Edit pay does
+  await assertFails(updateDoc(doc(db('staffFlatAcc'), 'tenants', A, 'workers', 'w3'), { hourlyRate: 43 }));
+  await assertFails(setDoc(doc(db('staffFlatAcc'), 'tenants', A, 'workers', 'n8'), { name: 'New', hourlyRate: 30 }));
+  await assertSucceeds(updateDoc(doc(db('staffFlatAcc'), 'tenants', A, 'workers', 'w3'), { phone: '054' }));
+  await assertSucceeds(updateDoc(doc(db('staffFlatPay'), 'tenants', A, 'workers', 'w3'), { hourlyRate: 43 }));
 });
 
 test('hr own-workers: punches and pending hours of its own workers only', async () => {

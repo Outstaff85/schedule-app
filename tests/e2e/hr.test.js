@@ -39,11 +39,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       // The worker windows are React (stage 6c-2): a field is filled as a person types (the input event).
       window.T = {
         tick: (ms = 0) => new Promise(r => setTimeout(r, ms)),
-        // the user window (React, stage 6f-2): a tile's tick box, the role switch, Save and its error line
+        // the user window (React, stage 6f-2): a tile's tick box, Save and its error line
         q: sel => document.querySelector('#userFormModal ' + sel),
         tile: (group, k) => document.querySelector('#userFormModal [data-testid="' + group + '"] [data-k="' + k + '"]'),
         ticked: group => [...document.querySelectorAll('#userFormModal [data-testid="' + group + '"] [data-k]')].filter(x => x.dataset.state === 'checked').map(x => x.dataset.k).join(','),
-        role: r => document.querySelector('#userFormModal [data-testid="user-role"] [data-v="' + r + '"]').click(),
         // Save: the click, then the save running (the button off), then the window closed or the button back with its error
         // (React draws after a microtask: a test ticks before it clicks Save, so Save sees the last change)
         async save(){ const open = () => document.getElementById('userFormOverlay').classList.contains('open'), btn = () => document.querySelector('#userFormModal [data-testid="user-save"]');
@@ -75,12 +74,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   };
 
   const reload = async p => { await p.reload(); await sleep(300); };
-  // The user window's "Rights come from": a template picked by its name.
-  const pickTemplate = async (p, name) => {
+  // The user window's "Rights come from": a template picked by its id (it also sets the role).
+  const pickTemplate = async (p, tid) => {
     const sel = '#userFormModal [data-testid="user-template"]';
     if (!(await p.isVisible(sel))) await p.click('#userFormModal [data-sec="sections"] [data-slot="accordion-trigger"]');
     await p.click(sel);
-    await p.click('[role="option"]:has-text("' + name + '")'); await sleep(100);
+    await p.click('[role="option"][data-tid="' + tid + '"]'); await sleep(150);
   };
 
   // ── Owner creates an HR login and assigns Dana (w2) to it ──
@@ -92,28 +91,35 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     workers[0].docId = '000000018'; await gsSave(getDataObj());
     switchTab('admin'); switchAdminPane('users');
     openCreateUserForm(); await T.tick(100);
-    T.role('hr'); await T.tick(50);
-    const own = T.q('button[data-testid="user-own-only"]');
-    const r = {hrFields: !!own && !own.disabled, perms: T.ticked('user-perms'), own: !!own && own.dataset.state === 'checked'};
+    // a new login has no role switch: it starts on the first template (Staff); the template says the role
+    await T.until(() => !/Loading/.test(T.q('[data-testid="user-template"]').innerText) && /\S/.test(T.q('[data-testid="user-template"]').innerText));
+    return {noRole: !T.q('[data-testid="user-role"]'), first: T.q('[data-testid="user-template"]').innerText.trim(), commission0: !!document.getElementById('uCommission')};
+  });
+  await pickTemplate(p, 'hr');
+  Object.assign(made, await p.evaluate(async () => {
+    const own = T.q('button[data-testid="rights-own"]');
+    const r = {role: T.q('[data-testid="user-window"]').dataset.role, tabs: T.ticked('rights-tabs'), own: !!own && own.disabled && own.dataset.state === 'checked',
+      shown: T.ticked('rights-shown'), acts: T.ticked('rights-actions'), tpl: T.q('[data-testid="user-template"]').innerText.trim(),
+      // a tick an HR can never have is greyed with its reason
+      today: T.tile('rights-tabs', 'today').dataset.cap + '|' + T.tile('rights-tabs', 'today').disabled};
     T.fill('uUsername', 'hr1'); T.fill('uPassword', 'hr-pass-111');
     T.fill('uFullName', 'Rina HR'); T.fill('uPhone', '0521112233');
-    r.showPayTile = !!T.q('[data-testid="user-show-pay"]'); T.fill('uCommission', '4');
-    // hours review: a new HR starts on the HR template, with the default ticks (Hours, Approve, Dispute, Fix)
-    r.ticks = T.ticked('user-hours'); r.tpl = T.q('[data-testid="user-template"]').innerText.trim();
+    T.fill('uCommission', '4');
     return r;
-  });
-  // The template with Accounting (the reduced pay view): picked in the window's Rights come from.
-  await pickTemplate(p, 'HR with pay');
+  }));
+  // The template with Commission (the reduced pay view): picked in the window's Rights come from.
+  await pickTemplate(p, 'hrpay');
   Object.assign(made, await p.evaluate(async () => {
-    const r = {perms2: T.ticked('user-perms')};
+    const r = {tabs2: T.ticked('rights-tabs')};
     await T.save();
     await T.until(() => [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')].some(x => x.innerText.includes('Rina HR')), 9000);
     const row = [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')].find(x => x.innerText.includes('Rina HR'));
     r.listed = row ? row.innerText : document.querySelector('#adminRoot').innerText;
     return r;
   }));
-  ok(!made.hrFields && made.tpl === 'HR' && made.perms === 'schedule,workers' && made.own && made.showPayTile && made.ticks === 'hours,approve,dispute,fix' && made.perms2 === 'workers,accounting',
-    'owner: HR form shows name/phone and starts on the HR template (its ticks read-only, own-only on); another template picked ' + JSON.stringify(made).slice(0, 220));
+  ok(made.noRole && /Accountant/.test(made.first) && !made.commission0 && made.role === 'hr' && /^HR · HR$/.test(made.tpl) && made.tabs === 'schedule,workers,hours' && made.own
+    && made.shown === 'seePay' && made.acts === 'editSchedule,editWorkers,editPunches,approveHours,disputeHours,fixHours' && made.today === 'no|true' && made.tabs2 === 'workers,commission,hours',
+    'owner: no role switch — the HR template makes it an HR (its flat ticks read-only, own-only on, Today greyed); another template picked ' + JSON.stringify(made).slice(0, 320));
   ok(/Rina HR HR\s*\nlogin: hr1 · 0521112233\nHR with pay\n.*0 workers/.test(made.listed), 'owner: user row: name first, login and phone below, its template, worker count ' + JSON.stringify(made.listed));
   const me = await p.evaluate(async () => {
     const before = document.querySelector('[data-testid=account-btn]').innerText;
@@ -149,7 +155,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     closeModal('workerCardOverlay');
     return r;
   });
-  ok(asg.cardWorkers && !asg.roleLocked && asg.choices === 2, 'owner: HR card has the workers list and the add-workers picker');
+  ok(asg.cardWorkers && asg.roleLocked && asg.choices === 2, 'owner: HR card has the workers list and the add-workers picker (no role switch: the template says the role)');
   ok(asg.dana === asg.hr && /Dana Levi/.test(asg.inCard), 'owner: bulk assign sets hrId and lists the worker in the HR card');
   ok(asg.punchHr.length === 2 && asg.punchHr.every(h => h === asg.hr) && asg.otherHr.every(h => h === null), 'owner: assigned worker\'s past punches carry the HR, others not ' + JSON.stringify(asg.punchHr));
   ok(asg.select === asg.hr && asg.cardLine, 'owner: worker modal HR select and card show the HR');
@@ -261,16 +267,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // The owner puts the HR on a template with "Edit own workers' pay"; the HR signs in again.
   const tick = await p.evaluate(async (id) => {
     await openEditUserForm(id); await T.tick(150);
-    const chip = T.tile('user-perms', 'payEdit'); return {shown: !!chip, off: !!chip && chip.disabled && chip.dataset.state !== 'checked'};
+    const chip = T.tile('rights-actions', 'editPay'); return {shown: !!chip, off: !!chip && chip.disabled && chip.dataset.state !== 'checked'};
   }, hrUid);
-  await pickTemplate(p, 'HR pay edit');
+  await pickTemplate(p, 'hrpayedit');
   Object.assign(tick, await p.evaluate(async () => {
-    const r = {on: T.tile('user-perms', 'payEdit').dataset.state === 'checked'};
+    const r = {on: T.tile('rights-actions', 'editPay').dataset.state === 'checked'};
     await T.save();
     r.closed = !document.getElementById('userFormOverlay').classList.contains('open');
     return r;
   }));
-  ok(tick.shown && tick.off && tick.on && tick.closed, 'owner: puts the HR on a template with "Edit own workers\' pay" ' + JSON.stringify(tick));
+  ok(tick.shown && tick.off && tick.on && tick.closed, 'owner: puts the HR on a template with Edit pay ' + JSON.stringify(tick));
   await hctx.close(); hctx = await newCtx(); h = await page(hctx);
   await login(h, BASE + 'schedule-manager.html', 'hr1', 'hr-pass-222');
   await h.waitForNavigation().catch(()=>{});
@@ -351,7 +357,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const own = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.role==='tenant_admin');
     await T.tick(300);
     await openEditUserForm(own.id); await T.tick(150);
-    r.ownerRoleHidden = !T.q('[data-testid="user-role"]') && !T.q('[data-testid="user-perms"]') && !T.q('[data-sec="sections"]');
+    r.ownerRoleHidden = !T.q('[data-testid="user-template"]') && !T.q('[data-testid="rights-tiles"]') && !T.q('[data-sec="sections"]');
     T.fill('uFullName', 'Avi Boss');
     await T.save();
     r.ownerErr = T.err();
@@ -371,11 +377,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const r = {};
     const sup = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.role==='supplier');
     await openEditUserForm(sup.id); await T.tick(150);
-    r.enabled = !!T.q('[data-testid="user-role"]');
-    T.role('staff'); await T.tick(50);
+    r.enabled = !T.q('[data-testid="user-role"]') && T.q('[data-testid="user-window"]').dataset.role === 'supplier';
     return r;
   });
-  await pickTemplate(p, 'Workers only');
+  // a staff template makes the supplier login a staff one
+  await pickTemplate(p, 'staffworkers');
   Object.assign(rc, await p.evaluate(async () => {
     const r = {};
     const sup = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.role==='supplier');
@@ -385,7 +391,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.role = u2.role; r.perms = u2.permissions; r.tpl = u2.templateId;
     return r;
   }));
-  ok(rc.enabled && !rc.err && rc.role === 'staff' && JSON.stringify(rc.perms) === '["workers"]' && rc.tpl === 'staffworkers', 'owner: changes a supplier login to staff in the user form, on a staff template ' + JSON.stringify(rc));
+  ok(rc.enabled && !rc.err && rc.role === 'staff' && JSON.stringify(rc.perms) === '["today","workers","punchlog"]' && rc.tpl === 'staffworkers', 'owner: a staff template turns a supplier login into staff ' + JSON.stringify(rc));
   const sc = await p.evaluate(async () => {
     const up = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'', sigPng:'data:image/png;base64,QUJD', fileNameBase:'sig'}, () => {});
     const back = await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets', fileId: up.id})})).json();
@@ -425,11 +431,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('#adminRoot [data-testid="template-row"][data-tid="hr"]');
   await p.waitForSelector('[data-testid="template-window"]');
   const ro = await p.evaluate(() => ({newBtn: !!document.querySelector('#adminRoot [data-testid="template-new"]'), save: !!document.querySelector('[data-testid="template-save"]'),
-    name: document.getElementById('tplName').disabled, tick: document.querySelector('[data-testid="template-window"] [data-testid="user-perms"] [data-k="workers"]').disabled,
-    edits: [...document.querySelectorAll('[data-testid="template-window"] [data-testid="user-edits"] [data-k]')].filter(x => x.dataset.state === 'checked').map(x => x.dataset.k).join(),
+    name: document.getElementById('tplName').disabled, tick: document.querySelector('[data-testid="template-window"] [data-testid="rights-tabs"] [data-k="workers"]').disabled,
+    edits: [...document.querySelectorAll('[data-testid="template-window"] [data-testid="rights-actions"] [data-k]')].filter(x => x.dataset.state === 'checked').map(x => x.dataset.k).join(),
     count: document.querySelector('#adminRoot [data-testid="template-row"][data-tid="hrpayedit"]').innerText}));
   await p.keyboard.press('Escape');
-  ok(!ro.newBtn && !ro.save && ro.name && ro.tick && ro.edits === 'editSchedule,editWorkers,editPunches' && /1 login/.test(ro.count), 'owner: the permission templates read-only, with the firm\'s logins on each ' + JSON.stringify(ro));
+  ok(!ro.newBtn && !ro.save && ro.name && ro.tick && ro.edits === 'editSchedule,editWorkers,editPunches,approveHours,disputeHours,fixHours' && /1 login/.test(ro.count), 'owner: the permission templates read-only, with the firm\'s logins on each ' + JSON.stringify(ro));
   ok(h.errs.length === 0 && p.errs.length === 0, 'no page errors ' + h.errs.concat(p.errs).join(' | '));
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');

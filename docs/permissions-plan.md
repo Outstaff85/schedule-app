@@ -18,7 +18,7 @@ Today · Schedule · Workers · Clients · Suppliers · Accounting · Punch log 
 Edit shifts · Edit workers · Edit / delete punches · Edit pay · Export · Approve hours · Dispute hours · Fix hours
 
 **What is shown:**
-See workers' pay (rates and pay) · See own commission
+See workers' pay (rates and pay). Its own commission is what the Commission tab shows, so it needs no tick of its own.
 
 **Whose workers** (one choice per template, not a tick):
 all of the firm's · assigned to this login · its supplier's · at its client's site
@@ -35,7 +35,7 @@ With them an HR no longer needs the reduced Accounting (`hrPayOnly`): Accounting
 
 Each stage is its own PR, merged only with the owner's OK.
 
-1. **The flat list of rights** — the server's rights and claims, the Firestore rules' checks, the template window and Who gets what on the new list; the role becomes part of the template. Every login's and template's current rights are converted one to one, so nothing changes on the day it ships; the super-admin then sets the ticks once in each template. — *to do*
+1. **The flat list of rights** — the server's rights and claims, the Firestore rules' checks, the template window and Who gets what on the new list; the role becomes part of the template. Every login's and template's current rights are converted one to one, so nothing changes on the day it ships; the super-admin then sets the ticks once in each template. — *done* (2026-10-19). How it is built: [admin.md](admin.md) → Permission templates. Templates and logins keep `rights` (the flat list) and the old fields worked out from it (`_legacy_of` in `functions-auth/core.py`), which the claims, the rules and the functions still read; a template saved before gets its `rights` on the next read (`_flat_of`, one to one). In the app, a staff login's Today and Punch log are their own ticks and its pay edits need Edit pay (the rules too: `payEdit`, claim `r`). Until stage 2, an HR's Commission tick still opens its reduced Accounting, and Whose workers for a supplier / client is fixed (its own). The user window has no role switch: the template picked says the role.
 2. **The Commission and Hours tabs** in the manager app; an HR moves to them, its reduced Accounting goes. — *to do*
 3. **The supplier and the client inside the manager app** — after the sign-in a supplier or client stays in the manager app with the same frame, its tabs from the new list (a supplier: Today as its dashboard, Workers, Commission, Hours; a client: Hours), its data still only through the `supplier` / `hours` functions (no direct Firestore read; a browser check proves it); `/supplier` and `/client` send to the manager app. No Firestore rule changes. — *to do*
 4. **Cleanup** — the portals' pages and entries removed; `/supplier` and `/client` stay as small redirect pages (bookmarks, installed apps); docs and tests. — *to do*

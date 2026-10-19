@@ -104,7 +104,7 @@ Object.assign(w, {
   FIRMS_CACHE_KEY: adm.FIRMS_CACHE_KEY, ADMIN_CACHE_PREFIX: adm.ADMIN_CACHE_PREFIX, saveAdminCache: adm.saveAdminCache, loadAdminCache: adm.loadAdminCache,
   clearAdminCaches: adm.clearAdminCaches, saveFirmsCache: adm.saveFirmsCache, loadFirmsCache: adm.loadFirmsCache,
   adminPanes: adm.adminPanes, activeTenantIdForAdmin: adm.activeTenantIdForAdmin, USER_ROLE_LABELS: adm.USER_ROLE_LABELS,
-  HOUR_DEFAULT: adm.HOUR_DEFAULT, HOUR_PERM_LABELS: adm.HOUR_PERM_LABELS, hrColor: adm.hrColor,
+  hrColor: adm.hrColor,
   assignWorkersToHr: adm.assignWorkersToHr, assignWorkersToSupplier: adm.assignWorkersToSupplier,
   fetchForTenant: adm.fetchForTenant, firmsPayableRows: adm.firmsPayableRows,
   logPeriodOptions: adm.logPeriodOptions, logPeriodRange: adm.logPeriodRange, logPeriodQuery: adm.logPeriodQuery,
