@@ -1,6 +1,6 @@
 ---
 name: scan-train
-description: Retrain the scanner on the owner's PC from what the site collected — the corner models (docs/scan-plan.md → S6) and the page-kind models (S7) — download the examples, train, exam against the old models / Haiku, and on the owner's yes publish a new model version to the lab. Run when the bell says "Time to retrain the scanner" or "Enough pages for the page-kind model".
+description: Retrain the scanner on the owner's PC from what the site collected — the document edges models (docs/scan-plan.md → S6) and the document type models (S7) — download the examples, train, exam against the old models / Haiku, and on the owner's yes publish a new model version to the lab. Run when the bell says "Time to retrain the document edges model" or "Enough pages to train the document type model".
 ---
 
 # /scan-train — retrain the scanner (owner's PC)
@@ -10,8 +10,8 @@ The whole process (what is collected, where it is kept, why each step): docs/sca
 The site collects every page whose corners a user corrected (`scan_feedback`, Firestore `scanTraining`, Storage `training/scan/`). This skill turns them into a new model version. **The lab learns first, the site follows**: a new version is only ever given to the lab here; the site gets it later, after the owner tried it in the lab (step 7). Talk to the owner in Russian.
 
 Two kinds of training, run one or both (the bell says which is due):
-- **Corners** (S6, "Time to retrain the scanner") — steps 2–4.
-- **Page kinds** (S7, "Enough pages for the page-kind model") — step 4b.
+- **Corners** (S6, "Time to retrain the document edges model") — steps 2–4.
+- **Document types** (S7, "Enough pages to train the document type model") — step 4b.
 Both end in the same step 5: one new version holds whatever was trained; the rest is carried over.
 
 ## 1. Check the PC
@@ -30,18 +30,18 @@ Both end in the same step 5: one new version holds whatever was trained; the res
 ## 4. Exam
 `python scripts/scan-train/exam.py` — the pages never trained on, old models vs new: mean corner error, share within 2 %, share not found. Show the owner this report in plain words (before → after). If it says "NO — do not publish", say so and recommend `clean.py`.
 
-## 4b. Page kinds (S7)
-1. `python scripts/scan-train/pull_kinds.py` — the page copies with their kinds; prints how many per kind. A kind with fewer than ~80 to train on: say it is early, ask whether to go on.
-2. `python scripts/scan-train/train_kinds.py` — the phone's model (EfficientNet-Lite0, `kind-lite.onnx`) and the server's (Lite2, `kind.onnx`), from ImageNet weights (downloaded once by timm). ~10–20 min on the 4070. The loss must go down.
-3. `python scripts/scan-train/exam_kinds.py` — the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and **the site's way** (the model where sure, Haiku elsewhere) against **Haiku alone**. Show the owner this in plain words.
-4. When it says a model is worse, it prints the next size up (owner, 2026-10-19: Lite0 → Lite1 → Lite2… until the result is right): run that `train_kinds.py --only phone --phone tf_efficientnet_lite1` (or `--only server --server …`), then `exam_kinds.py` again. At Lite4 and still worse: more page copies are needed — `clean.py`, and wait for the bell.
+## 4b. Document types (S7)
+1. `python scripts/scan-train/pull_doctypes.py` — the page copies with their kinds; prints how many per kind. A kind with fewer than ~80 to train on: say it is early, ask whether to go on.
+2. `python scripts/scan-train/train_doctypes.py` — the phone's model (EfficientNet-Lite0, `doctype-lite.onnx`) and the server's (Lite2, `doctype.onnx`), from ImageNet weights (downloaded once by timm). ~10–20 min on the 4070. The loss must go down.
+3. `python scripts/scan-train/exam_doctypes.py` — the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and **the site's way** (the model where sure, Haiku elsewhere) against **Haiku alone**. Show the owner this in plain words.
+4. When it says a model is worse, it prints the next size up (owner, 2026-10-19: Lite0 → Lite1 → Lite2… until the result is right): run that `train_doctypes.py --only phone --phone tf_efficientnet_lite1` (or `--only server --server …`), then `exam_doctypes.py` again. At Lite4 and still worse: more page copies are needed — `clean.py`, and wait for the bell.
 
 ## 5. The owner decides
-- **Yes** → `python scripts/scan-train/publish.py`: the new models become `models/scan/v<N>/` in Storage (with the reports; every model not retrained is carried over from the lab's version), the bell's counters are reset (`newSince` after the corners, `kindsSince` after the kinds), `scripts/scan-lab/models-version` names `v<N>`, the copies on the PC are deleted. Page-kind models whose exam said "not worth publishing" are left out unless the owner explicitly says to publish them anyway (`--force-kinds`).
+- **Yes** → `python scripts/scan-train/publish.py`: the new models become `models/scan/v<N>/` in Storage (with the reports; every model not retrained is carried over from the lab's version), the bell's counters are reset (`edgesSince` after the corners, `doctypesSince` after the kinds), `scripts/scan-lab/models-version` names `v<N>`, the copies on the PC are deleted. Document type models whose exam said "not worth publishing" are left out unless the owner explicitly says to publish them anyway (`--force-doctypes`).
 - **No** → `python scripts/scan-train/clean.py` (deletes the copies; nothing changes in Storage).
 
 ## 6. Give the new version to the lab
-Commit `scripts/scan-lab/models-version` on the work branch and deploy it the usual way (CLAUDE.md → Git workflow: Tests workflow, PR, merge with the owner's OK). The lab (`/scan-lab/`, Admin → Scanner lab) then runs `v<N>`; the owner tries it on the phone — with page-kind models in the version, every shot also shows the kind, how sure, and the turn it needs.
+Commit `scripts/scan-lab/models-version` on the work branch and deploy it the usual way (CLAUDE.md → Git workflow: Tests workflow, PR, merge with the owner's OK). The lab (`/scan-lab/`, Admin → Scanner lab) then runs `v<N>`; the owner tries it on the phone — with document type models in the version, every shot also shows the kind, how sure, and the turn it needs.
 
 ## 7. Later — give it to the site (only when the owner says the lab is better)
-Set the same version in **both** `scripts/scan/models-version` (the phone's models) and `functions/scan_models_version.txt` (the server's; a test keeps them equal), then deploy. The page-kind models switch on by themselves when the version has them: the deploy puts `kind-lite.onnx` on the site (`/scan/models.json` says so) and `preprocess_scan` reads `kind.onnx`; a page they are sure of needs no Haiku. Rolling back = the previous version in the same files.
+Set the same version in **both** `scripts/scan/models-version` (the phone's models) and `functions/scan_models_version.txt` (the server's; a test keeps them equal), then deploy. The document type models switch on by themselves when the version has them: the deploy puts `doctype-lite.onnx` on the site (`/scan/models.json` says so) and `preprocess_scan` reads `doctype.onnx`; a page they are sure of needs no Haiku. Rolling back = the previous version in the same files.

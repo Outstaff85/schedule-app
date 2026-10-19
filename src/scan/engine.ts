@@ -1,12 +1,12 @@
 // The scanner's on-device part (docs/scan-plan.md → S2b): background threads
 // (worker.ts over core.ts — the site's own copy of what the scanner lab proved on
-// the owner's phone) run the light corner model on the camera frames and cut +
+// the owner's phone) run the light document edges model on the camera frames and cut +
 // turn the shot upright by the face. The accurate model runs on the server.
 import { S, type Detection, type Pt } from './core';
 
 export { S };
 export type { Pt, Detection };
-export type Warped = { data: ArrayBuffer; width: number; height: number; turn: number; turnError?: string; kind?: string; kindSure?: boolean };
+export type Warped = { data: ArrayBuffer; width: number; height: number; turn: number; turnError?: string; doctype?: string; doctypeSure?: boolean };
 export type FrameInput = { bitmap: ImageBitmap } | { rgba: Uint8ClampedArray };
 
 type Reply = { id: number; error?: string; ep?: string; res?: Detection; ms?: number; out?: Warped };

@@ -3,7 +3,7 @@
 // opens the scanner with these pages already in it; Done reads only what changed (the
 // reads are kept by the pages' images). The page's Form 101 reads the stored pages from
 // window.__aiScanImage (the primary) and window.__aiPacketOtherPages (the rest).
-import { detectKind, rotateImage } from '@/scan/kind';
+import { detectDoctype, rotateImage } from '@/scan/doctype';
 import { reportTiming } from '@/manager/data/telemetry';
 import { extraPageReader, readDoc, verifierFor, verifyOneFor } from './ai';
 import { readPages, type Cache, type Deps, type InPage, type OutPage } from './read';
@@ -15,7 +15,7 @@ let last: OutPage[] = [];
 const deps = (progress: (label: string, pct: number) => void): Deps => ({
   readDoc, extraPageReader, verifierFor, verifyOneFor, progress,
   detect: async img => {
-    const { kind, rotate } = await detectKind(img.b64, img.mediaType);
+    const { kind, rotate } = await detectDoctype(img.b64, img.mediaType);
     if (!rotate) return { kind, img };
     try { return { kind, img: { b64: await rotateImage(img.b64, img.mediaType, rotate), mediaType: 'image/jpeg' } }; }
     catch { return { kind, img }; }

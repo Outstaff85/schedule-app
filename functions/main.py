@@ -689,7 +689,7 @@ def _model_bucket(storage):
 
 
 def _scan_models():
-    """(corner models [accurate, light], face finder) — ONNX Runtime sessions."""
+    """(document edges models [accurate, light], face finder) — ONNX Runtime sessions."""
     with _models_lock:
         if not _models:
             import onnxruntime as ort
@@ -714,23 +714,23 @@ def _scan_models():
     return _models["corners"], _models["face"]
 
 
-def _kind_model():
-    """The page-kind model of the site's version (models/scan/<version>/kind.onnx), or None
+def _doctype_model():
+    """The document type model of the site's version (models/scan/<version>/doctype.onnx), or None
     while no version has one (docs/scan-plan.md → S7) — looked for once per instance."""
     with _models_lock:
-        if "kind" not in _models:
-            _models["kind"] = None
+        if "doctype" not in _models:
+            _models["doctype"] = None
             try:
                 import onnxruntime as ort
                 from firebase_admin import storage
-                blob = _model_bucket(storage).blob(MODEL_PREFIX + "kind.onnx")
+                blob = _model_bucket(storage).blob(MODEL_PREFIX + "doctype.onnx")
                 if blob.exists():
                     opts = ort.SessionOptions()
                     opts.intra_op_num_threads = 2
-                    _models["kind"] = ort.InferenceSession(blob.download_as_bytes(), opts, providers=["CPUExecutionProvider"])
+                    _models["doctype"] = ort.InferenceSession(blob.download_as_bytes(), opts, providers=["CPUExecutionProvider"])
             except Exception:
-                pass  # no kind model: the pages go to Haiku as before
-    return _models["kind"]
+                pass  # no document type model: the pages go to Haiku as before
+    return _models["doctype"]
 
 
 def _hint_corners(value):
@@ -753,7 +753,7 @@ def find_scan_pages(image_bytes, hint=None):
     img = _resize_max_dim(img, FIND_MAX_DIM)
     corners, face = _scan_models()
     pages = []
-    for p in docfind.find_documents(img, corners, face, hint, _kind_model()):
+    for p in docfind.find_documents(img, corners, face, hint, _doctype_model()):
         page = _enhance_contrast_sharpness(_resize_max_dim(p["image"], MAX_WORK_DIM))
         blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
         ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
@@ -768,7 +768,7 @@ def find_scan_pages(image_bytes, hint=None):
             "blurVariance": blur,
             "imageBase64": base64.b64encode(buf.tobytes()).decode(),
             "mediaType": "image/jpeg",
-            **{k: p[k] for k in ("kind", "kindConf", "kindTurn", "kindTurnConf", "kindSure") if k in p},
+            **{k: p[k] for k in ("doctype", "doctypeConf", "doctypeTurn", "doctypeTurnConf", "doctypeSure") if k in p},
         })
     return {"ok": True, "pages": pages, "size": [img.shape[1], img.shape[0]]}
 
@@ -799,7 +799,7 @@ def cut_scan_page(image_bytes, quad):
         turn = -2
     if turn > 0:
         page = docfind.turned(page, turn)
-    page, turn, kd = docfind.with_kind(_kind_model(), page, turn)
+    page, turn, kd = docfind.with_doctype(_doctype_model(), page, turn)
     out = _page_out(page, quad, turn)
     if out:
         out.update(kd)
@@ -839,8 +839,8 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             if claims.get("role") != "superadmin":
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
             stats = (stats_ref.get().to_dict() or {})
-            return _json({"ok": True, "stats": stats, "due": int(stats.get("newSince") or 0) >= feedback.RETRAIN_AT,
-                          "kinds": feedback.kind_counts(stats), "kindsDue": feedback.kinds_due(stats)})
+            return _json({"ok": True, "stats": stats, "due": feedback.edges_since(stats) >= feedback.RETRAIN_AT, "edgesSince": feedback.edges_since(stats),
+                          "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats)})
         examples = payload.get("examples")
         if not isinstance(examples, list) or not examples:
             return _json({"error": "no examples"}, 400)
@@ -848,7 +848,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         bucket = None
         kept = right = bad = fixes = 0
         moved_sum = 0.0
-        kinds = {}
+        doctypes = {}
         for raw in examples[:feedback.MAX_EXAMPLES]:
             ex, why = feedback.check(raw)
             if not ex:
@@ -869,17 +869,17 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             if ex["pageImage"] is not None:
                 page_path = feedback.image_path(now, ref.id, "-page")
                 bucket.blob(page_path).upload_from_string(ex["pageImage"], content_type="image/jpeg")
-                kinds[ex["kindFixed"]] = kinds.get(ex["kindFixed"], 0) + 1
+                doctypes[ex["doctypeFixed"]] = doctypes.get(ex["doctypeFixed"], 0) + 1
             ref.set(feedback.record(ex, claims.get("tenantId"), now, path, page_path))
             kept += 1
             fixes += feedback.correction(ex)
             moved_sum += ex["moved"]
-        # newSince counts the corrections only: they make a retraining due, the kept right pages do not
-        # kindsSince: the page copies of each kind (by the kind the user left), for the page-kind model
-        update = {"newSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
+        # edgesSince counts the corrections only: they make a retraining due, the kept right pages do not
+        # doctypesSince: the page copies of each document type (by the type the user left), for the document type model
+        update = {"edgesSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
                   "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum), "updatedAt": now}
-        if kinds:  # an empty map under merge would wipe the counts
-            update["kindsSince"] = {k: firestore.Increment(n) for k, n in kinds.items()}
+        if doctypes:  # an empty map under merge would wipe the counts
+            update["doctypesSince"] = {k: firestore.Increment(n) for k, n in doctypes.items()}
         stats_ref.set(update, merge=True)
         return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
     except Exception as e:

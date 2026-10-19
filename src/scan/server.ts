@@ -11,8 +11,8 @@ import type { Pt } from './engine';
 export type ServerPage = {
   quad: Pt[]; box: number[] | null; source: string; turn: number;
   blurry: boolean; imageBase64: string; mediaType: string;
-  /** the firm's page-kind model's answer, once a version has one (S7); kindSure: no Haiku needed */
-  kind?: string; kindConf?: number; kindSure?: boolean;
+  /** the firm's document type model's answer, once a version has one (S7); doctypeSure: no Haiku needed */
+  doctype?: string; doctypeConf?: number; doctypeSure?: boolean;
 };
 export type FindResult = { pages: ServerPage[]; size: [number, number] };
 
@@ -56,9 +56,9 @@ export function cutPage(b64: string, quad: Pt[]): Promise<ServerPage> {
 
 // ── the training examples (docs/scan-plan.md → S6) ──
 export type Example = {
-  image?: string; cornersModel: Pt[]; cornersFixed: Pt[]; source: string; model: string; kindModel?: string; kindFixed?: string; pageImage?: string; keep?: boolean;
-  /** who gave kindModel: Haiku, or the firm's page-kind model (S7) */
-  kindBy?: 'haiku' | 'model';
+  image?: string; edgesModel: Pt[]; edgesFixed: Pt[]; source: string; model: string; doctypeModel?: string; doctypeFixed?: string; pageImage?: string; keep?: boolean;
+  /** who gave doctypeModel: Haiku, or the firm's document type model (S7) */
+  doctypeBy?: 'haiku' | 'model';
 };
 const QUEUE_KEY = 'scanFeedbackQueue', QUEUE_MAX = 60;
 const readQueue = (): Example[] => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };
@@ -82,11 +82,11 @@ export async function sendFeedback(examples: Example[] = []): Promise<void> {
 }
 
 /** The scanner's training counts — a super-admin's (the bell's "time to retrain"). */
-export type TrainingStats = { due: boolean; newSince: number; kindsDue: boolean; kinds: Record<string, number> };
+export type TrainingStats = { due: boolean; edgesSince: number; doctypesDue: boolean; doctypes: Record<string, number> };
 export async function trainingStats(): Promise<TrainingStats | null> {
   try {
     const j = await post(SCAN_FEEDBACK_FN_URL, { action: 'stats' });
-    return { due: !!j.due, newSince: Number(j.stats?.newSince || 0), kindsDue: !!j.kindsDue, kinds: j.kinds || {} };
+    return { due: !!j.due, edgesSince: Number(j.edgesSince ?? j.stats?.edgesSince ?? 0), doctypesDue: !!j.doctypesDue, doctypes: j.doctypes || {} };
   }
   catch { return null; }
 }

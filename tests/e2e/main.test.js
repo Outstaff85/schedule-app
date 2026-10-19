@@ -661,10 +661,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForTimeout(500);
   const ex = (feedbackCalls[0] && feedbackCalls[0].examples) || [];
   ok(cutCalls.length === 1 && cutCalls[0][0][0] > 0.1 && cutCalls[0][1][0] === 0.9 && feedbackCalls.length === 1 && feedbackCalls[0].action === 'add' && ex.length === 2
-    && ex[0].image && JSON.stringify(ex[0].cornersFixed) !== JSON.stringify(ex[0].cornersModel) && ex[1].image && ex[1].keep === true && !ex[0].keep && JSON.stringify(ex[1].cornersFixed) === JSON.stringify(ex[1].cornersModel)
-    && ex[0].kindModel === 'id_front' && ex[0].kindFixed === 'id_front' && !ex[0].pageImage && ex[1].kindModel === 'sefach' && ex[1].kindFixed === 'contract' && ex[1].pageImage
+    && ex[0].image && JSON.stringify(ex[0].edgesFixed) !== JSON.stringify(ex[0].edgesModel) && ex[1].image && ex[1].keep === true && !ex[0].keep && JSON.stringify(ex[1].edgesFixed) === JSON.stringify(ex[1].edgesModel)
+    && ex[0].doctypeModel === 'id_front' && ex[0].doctypeFixed === 'id_front' && !ex[0].pageImage && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && ex[1].pageImage
     && kinds0 === 'id_front,sefach' && /\(1\)/.test(otherDone) && scw.kinds === 'front,contract:contract',
-    'scan window corners and kinds: a page tapped, a corner dragged, Apply cuts it again by them; each page shows Haiku\'s kind, Other is not saved, a changed kind goes to the reading; Done sends the training examples — the corrected page with its copy, the changed kind with a copy of the page, the first page the model got right kept with its copy (one in five) ' + JSON.stringify({kinds0, otherDone, kinds: scw.kinds, cutCalls, ex: ex.map(e => ({fixed: e.cornersFixed, model: e.cornersModel, image: !!e.image, keep: e.keep, km: e.kindModel, kf: e.kindFixed, pi: !!e.pageImage}))}));
+    'scan window corners and kinds: a page tapped, a corner dragged, Apply cuts it again by them; each page shows Haiku\'s kind, Other is not saved, a changed kind goes to the reading; Done sends the training examples — the corrected page with its copy, the changed kind with a copy of the page, the first page the model got right kept with its copy (one in five) ' + JSON.stringify({kinds0, otherDone, kinds: scw.kinds, cutCalls, ex: ex.map(e => ({fixed: e.edgesFixed, model: e.edgesModel, image: !!e.image, keep: e.keep, km: e.doctypeModel, kf: e.doctypeFixed, pi: !!e.pageImage}))}));
   ok(scw.pages === 2 && /2/.test(scw.done) && findCalls.length === 1 && findCalls[0].find === true && findCalls[0].auth && findCalls[0].image
     && scw.closed && scw.worker && scw.front && scw.given === 'Scanned' && scw.docId === '123456782' && scw.city === 'Haifa' && readCalls.length === 1 && kindCalls === 2,
     'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done reads them in the window (one full read of the ID card, no AI alignment again) and opens the worker window with what was read ' + JSON.stringify({scw, findCalls, readCalls, kindCalls}));
@@ -677,11 +677,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(jpg), c => c.charCodeAt(0))))};
   }, JPG);
   ok(cpdf.head === '%PDF-1.4' && cpdf.pages === 2 && cpdf.count && cpdf.images === 2 && cpdf.eof && cpdf.size === '{"h":8,"w":8}', 'scan contract: its pages become one PDF, a page per photo ' + JSON.stringify(cpdf));
-  // S7: a page the firm's page-kind model is sure of (the server's kindSure) asks Haiku nothing.
+  // S7: a page the firm's document type model is sure of (the server's doctypeSure) asks Haiku nothing.
   let s7Kind = 0;
   await p.route(/cloudfunctions\.net\/preprocess_scan$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
-    const page = (kind, sure) => ({quad: QUAD, box: null, source: 'model', turn: 0, blurry: false, imageBase64: JPG, mediaType: 'image/jpeg', kind, kindConf: sure ? 0.97 : 0.5, kindSure: sure});
+    const page = (kind, sure) => ({quad: QUAD, box: null, source: 'model', turn: 0, blurry: false, imageBase64: JPG, mediaType: 'image/jpeg', doctype: kind, doctypeConf: sure ? 0.97 : 0.5, doctypeSure: sure});
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, size: [8, 8], pages: [page('passport', true), page('sefach', false)]})});
   });
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
@@ -701,7 +701,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   await p.unroute(/cloudfunctions\.net\/preprocess_scan$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
-  ok(s7.kinds === 'passport,contract' && s7Kind === 1, 'scan window, page-kind model: a page it is sure of keeps its kind and asks Haiku nothing; the unsure one goes to Haiku ' + JSON.stringify({s7, s7Kind}));
+  ok(s7.kinds === 'passport,contract' && s7Kind === 1, 'scan window, document type model: a page it is sure of keeps its kind and asks Haiku nothing; the unsure one goes to Haiku ' + JSON.stringify({s7, s7Kind}));
   // A scanned contract that could not be saved marks the worker until a contract document is added.
   const cfail = await p.evaluate(() => {
     const w = workers[1]; w.contractUploadFailed = true;

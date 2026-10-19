@@ -2,7 +2,7 @@
 
 The approved plan (owner, 2026-10-19) for moving everything about the scanner's models, AI and training to Hugging Face, and for the firm's own **field reader model** that may one day replace the AI reading. The scanner itself is described in docs/scan.md, its rebuild in docs/scan-plan.md, its training in docs/scan-training.md.
 
-Status: **approved, not started** — the owner says when to start. Each stage is merged only with the owner's OK.
+Status: **started** (owner, 2026-10-19: "start, and merge the whole plan once all the tests are green"). **H0 done** — the code and the stored fields say what the models do; `rename_fields.py --apply` is the owner's one run (until then both names are read). H1 waits for the owner (the repo, the bucket, the server's token).
 
 ## Decisions (owner, 2026-10-19)
 

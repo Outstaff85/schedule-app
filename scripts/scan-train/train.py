@@ -1,4 +1,4 @@
-"""Step 2 of /scan-train: the light and the accurate corner models (DocAligner, as the
+"""Step 2 of /scan-train: the light and the accurate document edges models (DocAligner, as the
 lab uses them now — scripts/scan-lab/models-version) are fine-tuned on the examples:
 the ONNX model is turned into PyTorch (onnx2torch; checked to give the same answer),
 taught to put each corner's heatmap peak where the user put the corner, and exported

@@ -35,13 +35,13 @@ get lite.onnx "$(drive 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a)"
 get yunet640.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
 [ -s "$CACHE/yunet_any.onnx" ] || python "$HERE/yunet_dyn.py" "$CACHE/yunet640.onnx" "$CACHE/yunet_any.onnx"
 cp "$CACHE/lite.onnx" "$OUT/" && cp "$CACHE/yunet_any.onnx" "$OUT/yunet.onnx"
-# The phone's page-kind model (docs/scan-plan.md → S7): only once this version has one
-# (kind-lite.onnx in Storage); models.json tells the scanner whether it is there.
-KIND=false
-if { [ -s "$CACHE/kind-lite.onnx" ] || { [ -n "$STORE" ] && python "$HERE/model_store.py" get kind-lite.onnx "$CACHE/kind-lite.onnx"; }; }; then
-  cp "$CACHE/kind-lite.onnx" "$OUT/kind.onnx"; KIND=true
+# The phone's document type model (docs/scan-plan.md → S7): only once this version has one
+# (doctype-lite.onnx in Storage); models.json tells the scanner whether it is there.
+DOCTYPE=false
+if { [ -s "$CACHE/doctype-lite.onnx" ] || { [ -n "$STORE" ] && python "$HERE/model_store.py" get doctype-lite.onnx "$CACHE/doctype-lite.onnx"; }; }; then
+  cp "$CACHE/doctype-lite.onnx" "$OUT/doctype.onnx"; DOCTYPE=true
 fi
-printf '{"version":"%s","kind":%s}\n' "$SCAN_MODELS_VERSION" "$KIND" > "$OUT/models.json"
+printf '{"version":"%s","doctype":%s}\n' "$SCAN_MODELS_VERSION" "$DOCTYPE" > "$OUT/models.json"
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).
 T="$(mktemp -d)"

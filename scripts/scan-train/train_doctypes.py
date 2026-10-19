@@ -1,15 +1,15 @@
-"""Page kinds, step 2 (docs/scan-plan.md → S7; /scan-train): the phone's and the server's
-page-kind models are trained on the page copies — an ImageNet EfficientNet-Lite (timm)
-with two heads: the kind (6) and the clockwise turn the page needs (4). The turn is
+"""Document types, step 2 (docs/scan-plan.md → S7; /scan-train): the phone's and the server's
+document type models are trained on the page copies — an ImageNet EfficientNet-Lite (timm)
+with two heads: the document type (6) and the clockwise turn the page needs (4). The turn is
 learned for free: every copy is stored upright and is shown turned by a random quarter
 turn, with the turn back as its answer. The ImageNet normalization is inside the model, so
-it takes the page as RGB 0..1 like the corner models. Exported to ONNX (input "img"
-[1,3,256,256]; outputs "kind", "turn" — probabilities) and checked to answer like the
-trained model. Writes ~/.scan-train/new/kind-lite.onnx and kind.onnx.
+it takes the page as RGB 0..1 like the document edges models. Exported to ONNX (input "img"
+[1,3,256,256]; outputs "doctype", "turn" — probabilities) and checked to answer like the
+trained model. Writes ~/.scan-train/new/doctype-lite.onnx and doctype.onnx.
 
-  python train_kinds.py                                    # both, the default sizes
-  python train_kinds.py --phone tf_efficientnet_lite1     # the next size up for the phone
-  python train_kinds.py --only server
+  python train_doctypes.py                                    # both, the default sizes
+  python train_doctypes.py --phone tf_efficientnet_lite1     # the next size up for the phone
+  python train_doctypes.py --only server
 """
 import argparse
 import random
@@ -22,13 +22,13 @@ import timm
 import torch
 from torch import nn
 
-from common import KIND_MODELS, KIND_SIZES, KINDS, WORK, read_json, write_json
+from common import DOCTYPE_MODELS, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
 
 S = 256
-EPOCHS = {"kind-lite.onnx": 20, "kind.onnx": 16}
+EPOCHS = {"doctype-lite.onnx": 20, "doctype.onnx": 16}
 
 
-class KindNet(nn.Module):
+class DoctypeNet(nn.Module):
     def __init__(self, arch, pretrained=True):
         super().__init__()
         self.body = timm.create_model(arch, pretrained=pretrained, num_classes=0)
@@ -36,12 +36,12 @@ class KindNet(nn.Module):
         self.register_buffer("mean", torch.tensor(cfg.get("mean", (0.485, 0.456, 0.406))).view(1, 3, 1, 1))
         self.register_buffer("std", torch.tensor(cfg.get("std", (0.229, 0.224, 0.225))).view(1, 3, 1, 1))
         n = self.body.num_features
-        self.kind = nn.Linear(n, len(KINDS))
+        self.doctype = nn.Linear(n, len(DOCTYPES))
         self.turn = nn.Linear(n, 4)
 
     def logits(self, x):
         f = self.body((x - self.mean) / self.std)
-        return self.kind(f), self.turn(f)
+        return self.doctype(f), self.turn(f)
 
     def forward(self, x):  # what the ONNX file answers: probabilities
         k, t = self.logits(x)
@@ -55,7 +55,7 @@ def load(examples):
         if img is None:
             continue
         X.append(cv2.cvtColor(cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB))
-        Y.append(KINDS.index(e["kind"]))
+        Y.append(DOCTYPES.index(e["doctype"]))
     return X, Y
 
 
@@ -81,9 +81,9 @@ def batch(X, Y, idx, augment):
 
 
 def train_one(name, arch, X, Y, epochs, dev, pretrained=True):
-    net = KindNet(arch, pretrained).to(dev)
+    net = DoctypeNet(arch, pretrained).to(dev)
     counts = Counter(Y)
-    weights = torch.tensor([1 / np.sqrt(max(1, counts.get(i, 0))) for i in range(len(KINDS))], dtype=torch.float32)
+    weights = torch.tensor([1 / np.sqrt(max(1, counts.get(i, 0))) for i in range(len(DOCTYPES))], dtype=torch.float32)
     ce_kind, ce_turn = nn.CrossEntropyLoss(weight=(weights / weights.mean()).to(dev)), nn.CrossEntropyLoss()
     opt = torch.optim.AdamW(net.parameters(), 3e-4, weight_decay=1e-4)
     steps = epochs * ((len(X) + 31) // 32)
@@ -106,7 +106,7 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True):
     probe = torch.rand(1, 3, S, S)
     with torch.no_grad():
         want = [o.numpy() for o in net(probe)]
-    torch.onnx.export(net, probe, str(dst), input_names=["img"], output_names=["kind", "turn"], opset_version=17, dynamo=False)
+    torch.onnx.export(net, probe, str(dst), input_names=["img"], output_names=["doctype", "turn"], opset_version=17, dynamo=False)
     got = ort.InferenceSession(str(dst)).run(None, {"img": probe.numpy()})
     assert all(np.abs(g - w).max() < 1e-3 for g, w in zip(got, want)), "the exported model does not answer like the trained one"
     print(f"  {name} → {dst}")
@@ -114,26 +114,26 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phone", default=KIND_MODELS["kind-lite.onnx"], choices=KIND_SIZES, help="the phone's model size")
-    ap.add_argument("--server", default=KIND_MODELS["kind.onnx"], choices=KIND_SIZES, help="the server's model size")
+    ap.add_argument("--phone", default=DOCTYPE_MODELS["doctype-lite.onnx"], choices=DOCTYPE_SIZES, help="the phone's model size")
+    ap.add_argument("--server", default=DOCTYPE_MODELS["doctype.onnx"], choices=DOCTYPE_SIZES, help="the server's model size")
     ap.add_argument("--only", choices=("phone", "server"))
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
     ap.add_argument("--scratch", action="store_true", help="random weights, no download — only to test the steps, never for a model to publish")
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
-    ex = [e for e in read_json(WORK / "kinds.json") if not e["exam"]]
+    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]]
     if not ex:
-        raise SystemExit("no page copies to train on — run pull_kinds.py first")
+        raise SystemExit("no page copies to train on — run pull_doctypes.py first")
     X, Y = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} page copies, on {dev}")
-    jobs = {"kind-lite.onnx": a.phone, "kind.onnx": a.server}
+    jobs = {"doctype-lite.onnx": a.phone, "doctype.onnx": a.server}
     if a.only:
-        jobs = {k: v for k, v in jobs.items() if (k == "kind-lite.onnx") == (a.only == "phone")}
+        jobs = {k: v for k, v in jobs.items() if (k == "doctype-lite.onnx") == (a.only == "phone")}
     for name, arch in jobs.items():
         train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch)
-    prev = read_json(WORK / "new" / "kinds-arch.json") if (WORK / "new" / "kinds-arch.json").exists() else {}
-    write_json(WORK / "new" / "kinds-arch.json", {**prev, **jobs})
+    prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
+    write_json(WORK / "new" / "doctypes-arch.json", {**prev, **jobs})
 
 
 if __name__ == "__main__":

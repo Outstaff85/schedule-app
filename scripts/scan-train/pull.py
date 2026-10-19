@@ -4,7 +4,7 @@ chosen by its id, so always the same ones — is kept apart as the exam and neve
 trained on. Writes ~/.scan-train/examples.json."""
 import hashlib
 
-from common import WORK, bucket, db, write_json
+from common import WORK, bucket, db, named, write_json
 
 
 def is_exam(doc_id):
@@ -15,16 +15,16 @@ def main():
     b, out = bucket(), []
     (WORK / "img").mkdir(parents=True, exist_ok=True)
     for snap in db().collection("scanTraining").stream():
-        r = snap.to_dict()
+        r = named(snap.to_dict())
         if not r.get("image"):
-            continue  # only its kind was changed: for the page-kind model, not the corners
+            continue  # only its document type was changed: for the document type model, not the edges
         path = WORK / "img" / f"{snap.id}.jpg"
         if not path.exists():
             blob = b.blob(r["image"])
             if not blob.exists():
                 continue  # deleted after 12 months
             blob.download_to_filename(str(path))
-        out.append({"id": snap.id, "file": str(path), "model": r["cornersModel"], "fixed": r["cornersFixed"],
+        out.append({"id": snap.id, "file": str(path), "model": r["edgesModel"], "fixed": r["edgesFixed"],
                     "moved": r.get("moved", 0), "exam": is_exam(snap.id)})
     write_json(WORK / "examples.json", out)
     n_exam = sum(e["exam"] for e in out)

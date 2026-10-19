@@ -29,18 +29,20 @@ On **Done**, every page the server found is sent in the background to the functi
 |---|---|---|
 | corners moved (≥ 0.5 % of the photo) | both corners + a 256×256 copy of the part of the photo the model looked at | yes |
 | kind changed | both kinds + a 256×256 copy of the page | yes |
-| neither — one page in five (`rightSeen`) | its corners and kinds + the same 256×256 copy, marked `keep`, and a 256×256 copy of the page | yes, as "the model was right" (`right: true`) — so the training also learns what the model already does well and does not forget it, and the page-kind model gets pages of every kind, not only Haiku's mistakes |
+| neither — one page in five (`rightSeen`) | its corners and kinds + the same 256×256 copy, marked `keep`, and a 256×256 copy of the page | yes, as "the model was right" (`right: true`) — so the training also learns what the model already does well and does not forget it, and the document type model gets pages of every kind, not only Haiku's mistakes |
 | neither — the other four | the corners and kinds only | no — only counted |
 
-**What the corner model learns from** is the photo as the model saw it — before it was cut, straightened or enhanced — scaled to 256×256, which is exactly the model's input: the copy, where the model put the corners on it, and where they really are. The cut page is not needed for the corners; it is used only for the page kind, which a future kind model reads on cut pages. Never the full photo; only small copies.
+**What the document edges model learns from** is the photo as the model saw it — before it was cut, straightened or enhanced — scaled to 256×256, which is exactly the model's input: the copy, where the model put the corners on it, and where they really are. The cut page is not needed for the corners; it is used only for the page kind, which a future kind model reads on cut pages. Never the full photo; only small copies.
 
 ## 2. Where it is kept
 
 `scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`; a manager login's ID token):
 
 - the copies → Storage `training/scan/<YYYY-MM>/<id>.jpg` (corners) and `<id>-page.jpg` (kind);
-- the record → Firestore `scanTraining/<id>`: `cornersModel`, `cornersFixed`, `moved`, `kindModel`, `kindFixed`, `kindBy` (who gave `kindModel`: `haiku` or `model`), `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
-- the counts → Firestore `scanTrainingStats/current`: `newSince` (corrections since the last training — the kept right pages do not count), `kept`, `right`, `movedSum`, `kindsSince` (the page copies of each kind, by the kind the user left — for the page-kind model), and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
+- the record → Firestore `scanTraining/<id>`: `edgesModel`, `edgesFixed`, `moved`, `doctypeModel`, `doctypeFixed`, `doctypeBy` (who gave `doctypeModel`: `haiku` or `model`), `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
+- the counts → Firestore `scanTrainingStats/current`: `edgesSince` (corrections since the last training — the kept right pages do not count), `kept`, `right`, `movedSum`, `doctypesSince` (the page copies of each kind, by the kind the user left — for the document type model), and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
+
+**Names (docs/hf-plan.md → H0, 2026-10-19):** the fields say which model they teach — `edges*` the document edges model, `doctype*` the document type model. Before H0 they were `cornersModel` / `cornersFixed`, `kindModel` / `kindFixed` / `kindBy`, `newSince`, `kindsSince`, `lastKindsTrainedAt` / `lastKindsReport`. Until `scripts/scan-train/rename_fields.py --apply` has run once on the owner's PC, the old names are still read: `scan_feedback` takes an example under either name (a phone with the old app, a queued example), the counters add the old one to the new (`feedback.edges_since`, `feedback.doctype_counts`), the pulls map an old record (`common.named`), and a publish clears the old counters.
 
 **Privacy:** no client can read or write any of it (no Firestore or Storage rule opens them); only `scan_feedback` writes, only `/scan-train` on the owner's PC (the owner's own Google account) reads. Every firm's corrections are used, with no switch (owner, 2026-10-18).
 
@@ -48,7 +50,7 @@ On **Done**, every page the server found is sent in the background to the functi
 
 ## 3. When to train
 
-When **200** new corrections are kept, the super-admin's bell shows **Time to retrain the scanner** (the server counts; the app asks `scan_feedback` `{"action":"stats"}` at most every 6 hours). When every page kind but "Other" has **100** page copies (`kindsSince`, `feedback.KIND_AT`), it shows **Enough pages for the page-kind model** (`kindsDue`). Nothing trains by itself.
+When **200** new corrections are kept, the super-admin's bell shows **Time to retrain the scanner** (the server counts; the app asks `scan_feedback` `{"action":"stats"}` at most every 6 hours). When every page kind but "Other" has **100** page copies (`doctypesSince`, `feedback.DOCTYPE_AT`), it shows **Enough pages for the document type model** (`doctypesDue`). Nothing trains by itself.
 
 ## 4. How a model is trained (`/scan-train` on the owner's PC)
 
@@ -65,11 +67,11 @@ The skill `.claude/skills/scan-train/SKILL.md`, run in Claude Code on the owner'
 
 ### The page kinds (S7)
 
-When the bell says **Enough pages for the page-kind model** (every kind but "Other" has 100 page copies), `/scan-train` runs its page-kind steps:
-1. **`pull_kinds.py`** — every kept page copy with the kind the user left (and the one Haiku or the model gave); the same one in seven is the exam.
-2. **`train_kinds.py`** — two models from ImageNet weights (timm): the phone's (EfficientNet-Lite0, `kind-lite.onnx`) and the server's (Lite2, `kind.onnx`), each with two answers: the kind (6) and the turn the page needs (4) — the turn learned by showing every upright copy at a random quarter turn. Exported to ONNX and checked.
-3. **`exam_kinds.py`** — on the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and the site's way (the model where sure, Haiku elsewhere) against Haiku alone. A worse model → the next size up (Lite1, Lite2… — owner, 2026-10-19), trained and examined again.
-4. **The owner decides** — `publish.py` puts the models into the next version beside the corner models (the counter `kindsSince` reset), or `clean.py`.
+When the bell says **Enough pages for the document type model** (every kind but "Other" has 100 page copies), `/scan-train` runs its page-kind steps:
+1. **`pull_doctypes.py`** — every kept page copy with the kind the user left (and the one Haiku or the model gave); the same one in seven is the exam.
+2. **`train_doctypes.py`** — two models from ImageNet weights (timm): the phone's (EfficientNet-Lite0, `doctype-lite.onnx`) and the server's (Lite2, `doctype.onnx`), each with two answers: the kind (6) and the turn the page needs (4) — the turn learned by showing every upright copy at a random quarter turn. Exported to ONNX and checked.
+3. **`exam_doctypes.py`** — on the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and the site's way (the model where sure, Haiku elsewhere) against Haiku alone. A worse model → the next size up (Lite1, Lite2… — owner, 2026-10-19), trained and examined again.
+4. **The owner decides** — `publish.py` puts the models into the next version beside the document edges models (the counter `doctypesSince` reset), or `clean.py`.
 
 The models switch on by themselves once their version is set (the lab first, then the site): a page the model is sure of needs no Haiku.
 
@@ -92,11 +94,11 @@ At deploy each copy's `fetch-models.sh` takes its version from Storage; only `ba
 
 | What | Where |
 |---|---|
-| corner editor, page kinds, sending the examples | `src/scan/Corners.tsx`, `src/scan/kind.ts`, `src/scan/Scanner.tsx`, `src/scan/server.ts` |
+| corner editor, page kinds, sending the examples | `src/scan/Corners.tsx`, `src/scan/doctype.ts`, `src/scan/Scanner.tsx`, `src/scan/server.ts` |
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
-| the bell's notices | `src/manager/page/header.ts` (`scanTrainingNotice`, `scanKindsNotice`) |
+| the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`) |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
-| training | `scripts/scan-train/` (corners: `pull.py`, `train.py`, `exam.py`; page kinds: `pull_kinds.py`, `train_kinds.py`, `exam_kinds.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
-| the page-kind models at work | `functions/docfind.py` (`kind_of`, `with_kind`), `functions/main.py` (`_kind_model`), `src/scan/core.ts` (`withKind`), `src/scan/worker.ts`, `src/scan/Scanner.tsx` (`withModelKind`), `scan-lab/index.html` (`kindNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
+| training | `scripts/scan-train/` (corners: `pull.py`, `train.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
+| the document type models at work | `functions/docfind.py` (`doctype_of`, `with_doctype`), `functions/main.py` (`_doctype_model`), `src/scan/core.ts` (`withDoctype`), `src/scan/worker.ts`, `src/scan/Scanner.tsx` (`withModelDoctype`), `scan-lab/index.html` (`doctypeNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
 | tests | `tests/auth/test_scan_feedback.py`, the browser test "scan window corners and kinds" (`tests/e2e/main.test.js`) |
