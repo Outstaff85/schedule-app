@@ -10,7 +10,7 @@ import * as React from 'react';
 import {
   IconAlertCircle, IconAlertTriangle, IconBuildingSkyscraper, IconClipboardText, IconDownload, IconEdit, IconHistory, IconMapPin,
   IconStopwatch, IconTrash, IconUsers,
-  IconScan,
+  IconAdjustmentsHorizontal, IconFlask,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -47,7 +47,7 @@ const PANES: { k: AdminPane; label: string; icon: React.ReactNode }[] = [
   { k: 'users', label: 'Users', icon: <IconUsers /> },
   { k: 'errors', label: 'Errors', icon: <IconAlertCircle /> },
   { k: 'timings', label: 'Timings', icon: <IconStopwatch /> },
-  { k: 'scanner', label: 'Scanner', icon: <IconScan /> },
+  { k: 'scanner', label: 'Scanner', icon: <IconAdjustmentsHorizontal /> },
 ];
 /** The line under the tabs: what the open section is for (through tr()). */
 const SUBTITLES: Record<AdminPane, string> = {
@@ -84,13 +84,13 @@ export function Admin({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }
         <div className="grid gap-x-3 min-[701px]:grid-cols-3" data-testid="admin-tiles">
           {PANES.filter(p => TILES.includes(p.k) && snap.panes.includes(p.k)).map(p => (
             <Plate key={p.k} data-testid="admin-tile" data-k={p.k} size="lg" className="mb-2" icon={p.icon}
-              color={p.k === 'firms' && snap.firmIncomplete ? 'var(--warn)' : p.k === 'punchlog' || p.k === 'scanner' ? 'var(--info)' : p.k === 'firms' ? 'var(--ok)' : 'var(--accent)'}
+              color={p.k === 'firms' && snap.firmIncomplete ? 'var(--warn)' : p.k === 'punchlog' ? 'var(--info)' : p.k === 'firms' ? 'var(--ok)' : 'var(--accent)'}
               title={tr(p.label)} sub={<span className="block whitespace-normal">{tr(SUBTITLES[p.k])}</span>}
               onOpen={() => api.setAdminPane(p.k)} />
           ))}
           {/* The scanner lab (docs/scan-plan.md → Scanner lab): a super-admin's tool, like Errors and Timings. */}
           {snap.panes.includes('timings') && (
-            <Plate data-testid="admin-tile" data-k="scanlab" size="lg" className="mb-2" icon={<IconScan />} color="var(--info)"
+            <Plate data-testid="admin-tile" data-k="scanlab" size="lg" className="mb-2" icon={<IconFlask />} color="var(--info)"
               title={tr('Scanner lab')} sub={<span className="block whitespace-normal">{tr("Try the scanner's models on this device: the live frame, the shot and the upright turn")}</span>}
               onOpen={() => window.open('/scan-lab/', '_blank', 'noopener')} />
           )}
