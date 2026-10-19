@@ -576,13 +576,13 @@ def test_hour_review_ticks_for_client_supplier_and_hr():
 def test_templates_seeded_and_listed():
     assert core.list_templates(DB, STAFF1)["error"] == core.E_NO_RIGHTS
     ts = core.list_templates(DB, ADMIN1)["templates"]
-    assert [t["id"] for t in ts] == ["accountant", "dispatcher", "supplier", "hr", "client"]
+    assert [t["id"] for t in ts] == ["accountant", "dispatcher", "full", "supplier", "hr", "client"]
     by = {t["id"]: t for t in ts}
     assert by["dispatcher"]["permissions"] == ["schedule", "workers"] and by["dispatcher"]["count"] == 0
     assert by["hr"]["ownOnly"] is True and by["hr"]["hourPerms"] == core.HOUR_DEFAULT
     assert by["supplier"]["supplierSections"] == list(core.SUPPLIER_SECTIONS) and by["supplier"]["permissions"] == ""
     # Read again: no second seed.
-    assert len(core.list_templates(DB, SUPER)["templates"]) == 5
+    assert len(core.list_templates(DB, SUPER)["templates"]) == 6
     # Only a superadmin writes them.
     assert core.save_template(DB, ADMIN1, {"name": "X", "role": "staff"}, Revokes())["error"] == core.E_NO_RIGHTS
     assert core.delete_template(DB, ADMIN1, {"id": "hr"}, Revokes())["error"] == core.E_NO_RIGHTS
@@ -659,12 +659,13 @@ def test_link_every_login_to_a_template():
     seed_legacy("u-hr1", "hrx", "hr-pass-11", role="hr", tenantId=T1, permissions=["workers", "payEdit"], ownOnly=False, fullName="H")
     seed_legacy("u-st2", "st2", "st-pass-22", role="staff", tenantId=T2, permissions=["workers", "accounting"])
     seed_legacy("u-cl1", "cl1", "cl-pass-11", role="client", tenantId=T2, permissions="", clientId="c1")
-    assert core.list_templates(DB, SUPER)["unlinked"] == 5
-    assert core.list_templates(DB, ADMIN2)["unlinked"] == 2
+    seed_legacy("u-all", "all1", "all-pass-11", role="staff", tenantId=T2, permissions="*")
+    assert core.list_templates(DB, SUPER)["unlinked"] == 6
+    assert core.list_templates(DB, ADMIN2)["unlinked"] == 3
     assert core.link_to_templates(DB, ADMIN1, {}, Revokes())["error"] == core.E_NO_RIGHTS
     rv = Revokes()
     out = core.link_to_templates(DB, SUPER, {}, rv)
-    assert out["linked"] == 5 and out["skipped"] == 0
+    assert out["linked"] == 6 and out["skipped"] == 0
     get = lambda uid: DB.collection("users").document(uid).get().to_dict()
     # staff1 (Schedule, Workers) is the Dispatcher exactly: linked, rights unchanged, no new sign-in.
     assert get("u-staff1")["templateId"] == "dispatcher" and "u-staff1" not in [u for u, _ in rv]
@@ -674,6 +675,8 @@ def test_link_every_login_to_a_template():
     assert h["templateId"] == "hr" and h["ownOnly"] is True and h["permissions"] == ["schedule", "workers"]
     assert get("u-cl1")["templateId"] == "client" and get("u-cl1")["hourPerms"] == core.HOUR_DEFAULT
     assert get("u-sup1")["templateId"] == "supplier"
+    # A staff login with every section ('*') goes on Full access, its sections all kept.
+    assert get("u-all")["templateId"] == "full" and len(get("u-all")["permissions"]) == 6
     assert sorted(u for u, _ in rv) == sorted(["u-st2", "u-hr1"]) and out["changed"] == 2
     # Owners and the superadmin are left alone; a second run finds nothing.
     assert "templateId" not in get("u-admin1") and "templateId" not in get("u-super")

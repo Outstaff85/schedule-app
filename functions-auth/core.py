@@ -657,8 +657,10 @@ E_PICK_TEMPLATE = "Pick a template"
 E_TEMPLATE_NOT_FOUND = "Template not found"
 E_TEMPLATE_ROLE = "The template is for another role"
 # The templates written the first time the list is read (the demo's, on the
-# rights the app has today).
+# rights the app has today, and Full access: what a staff login with every
+# section — permissions '*' — had, so linking it changes nothing).
 DEFAULT_TEMPLATES = (
+    ("full", "Full access", "staff", {"permissions": ["schedule", "workers", "clients", "suppliers", "accounting", "exports"]}),
     ("dispatcher", "Dispatcher", "staff", {"permissions": ["schedule", "workers"]}),
     ("accountant", "Accountant", "staff", {"permissions": ["workers", "accounting", "exports"]}),
     ("hr", "HR", "hr", {"permissions": ["schedule", "workers"], "hourPerms": list(HOUR_DEFAULT), "ownOnly": True, "showPay": True}),
