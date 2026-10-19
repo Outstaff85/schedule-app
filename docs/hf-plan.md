@@ -2,7 +2,7 @@
 
 The approved plan (owner, 2026-10-19) for moving everything about the scanner's models, AI and training to Hugging Face, and for the firm's own **field reader model** that may one day replace the AI reading. The scanner itself is described in docs/scan.md, its rebuild in docs/scan-plan.md, its training in docs/scan-training.md.
 
-Status: **started** (owner, 2026-10-19: "start, and merge the whole plan once all the tests are green"). **H0 done** — the code and the stored fields say what the models do; `rename_fields.py --apply` is the owner's one run (until then both names are read). H1 waits for the owner (the repo, the bucket, the server's token).
+Status: **started** (owner, 2026-10-19: "start, and merge the whole plan once all the tests are green"). **H0 done** — the code and the stored fields say what the models do; `rename_fields.py --apply` is the owner's one run (until then both names are read). **H2–H6 code done**: the deploys take a version from Hugging Face when it is there (else from Storage, as before), the functions' deploy keeps the server's Storage mirror, `preprocess_scan` warms up, `/scan-train` publishes to Hugging Face; `move_to_hf.py --apply` (H2) is the owner's one run once H1 is done. **Waiting for the owner (H1):** the repo `OutStaff/scanner-models` (created by the first `move_to_hf.py` / `publish.py` run), the private bucket `OutStaff/scanner-data`, and the server's token in Secret Manager.
 
 ## Decisions (owner, 2026-10-19)
 

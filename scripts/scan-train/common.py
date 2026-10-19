@@ -1,7 +1,8 @@
-"""Shared by the scanner's training scripts (docs/scan-plan.md → S6): the project's
-Storage bucket and Firestore, under the owner's own Google account (Application
-Default Credentials: `gcloud auth application-default login`, once), the model
-versions, and the work folder on the PC (deleted after the run)."""
+"""Shared by the scanner's training scripts (docs/scan-plan.md → S6, docs/hf-plan.md): the
+project's Storage bucket and Firestore, under the owner's own Google account (Application
+Default Credentials: `gcloud auth application-default login`, once); the models' home, the
+public Hugging Face repo REPO (one tag per version; publishing uses the owner's HF token on
+the PC, `hf auth login`); the model versions, and the work folder on the PC (deleted after the run)."""
 import json
 import pathlib
 import re
@@ -12,8 +13,11 @@ PROJECT = "schedule-odinson"
 BUCKETS = ["schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com"]
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORK = pathlib.Path.home() / ".scan-train"            # examples, models, report — deleted by publish/clean
-MODELS = ("lite.onnx", "sa24.onnx")                   # the document edges models trained (the face finder is not)
-KEEP = ("yunet640.onnx",)                             # carried to a new version as it is
+REPO = "OutStaff/scanner-models"                       # the models' home on Hugging Face (public)
+MODELS = ("edges-lite.onnx", "edges.onnx")            # the document edges models trained (the face finder is not)
+KEEP = ("face.onnx",)                                 # carried to a new version as it is
+# a model file's name in a version not moved to Hugging Face yet (Storage), by its name today
+OLD_FILES = {"edges.onnx": "sa24.onnx", "edges-lite.onnx": "lite.onnx", "face.onnx": "yunet640.onnx"}
 # The document type models (docs/scan-plan.md → S7): the phone's (EfficientNet-Lite0; the next
 # size up while the exam shows it short) and the server's (a larger one). Input "img"
 # [1,3,256,256] RGB 0..1; outputs "doctype" [1,6] and "turn" [1,4] (functions/docfind.py doctype_of).
@@ -51,20 +55,42 @@ def version_of(copy):
     return (ROOT / "scripts" / copy / "models-version").read_text().strip()
 
 
-def next_version(b):
-    """v<N>: one more than the highest version stored under models/scan/."""
-    nums = [int(m.group(1)) for blob in b.list_blobs(prefix="models/scan/") for m in [re.match(r"models/scan/v(\d+)/", blob.name)] if m]
+def hf_versions():
+    """The versions on Hugging Face (the repo's tags); [] when the repo is not there yet."""
+    from huggingface_hub import HfApi
+    try:
+        return [t.name for t in HfApi().list_repo_refs(REPO).tags]
+    except Exception:
+        return []
+
+
+def next_version(b=None):
+    """v<N>: one more than the highest version on Hugging Face or still in Storage."""
+    names = hf_versions()
+    if b is not None:
+        names += [m.group(1) for blob in b.list_blobs(prefix="models/scan/") for m in [re.match(r"models/scan/(v\d+)/", blob.name)] if m]
+    nums = [int(n[1:]) for n in names if re.fullmatch(r"v\d+", n)]
     return f"v{max(nums, default=1) + 1}"
 
 
 def model_path(version, name):
+    """A model of a version on this PC: from Hugging Face, else (a version not moved yet) from Storage."""
     p = WORK / "models" / version / name
     if not p.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
-        blob = bucket().blob(f"models/scan/{version}/{name}")
-        if not blob.exists():
-            raise SystemExit(f"models/scan/{version}/{name} is not in Storage")
-        blob.download_to_filename(str(p))
+        try:
+            from huggingface_hub import hf_hub_download
+            src = hf_hub_download(REPO, name, revision=version)
+            p.write_bytes(pathlib.Path(src).read_bytes())
+            return p
+        except Exception:
+            pass
+        for n in (name, OLD_FILES.get(name)):
+            blob = bucket().blob(f"models/scan/{version}/{n}") if n else None
+            if blob is not None and blob.exists():
+                blob.download_to_filename(str(p))
+                return p
+        raise SystemExit(f"{name} of {version} is neither on Hugging Face ({REPO}) nor in Storage")
     return p
 
 

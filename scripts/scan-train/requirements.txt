@@ -9,3 +9,4 @@ numpy
 opencv-python-headless
 google-cloud-storage
 google-cloud-firestore
+huggingface_hub

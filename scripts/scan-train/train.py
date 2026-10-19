@@ -17,8 +17,8 @@ import torch
 from common import MODELS, WORK, model_path, read_json, version_of
 
 S, H, SIGMA = 256, 128, 2.4  # the spread of the models' own corner spots (measured)
-EPOCHS = {"lite.onnx": 24, "sa24.onnx": 12}
-LR = {"lite.onnx": 3e-5, "sa24.onnx": 1e-5}  # gentle: few examples, a model already good
+EPOCHS = {"edges-lite.onnx": 24, "edges.onnx": 12}
+LR = {"edges-lite.onnx": 3e-5, "edges.onnx": 1e-5}  # gentle: few examples, a model already good
 FLIP = [1, 0, 3, 2]  # a mirrored page: top-left ↔ top-right, bottom-right ↔ bottom-left
 
 

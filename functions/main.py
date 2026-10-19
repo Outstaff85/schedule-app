@@ -14,6 +14,7 @@ import base64
 import datetime
 import io
 import json
+import os
 import pathlib
 import re
 import threading
@@ -688,30 +689,38 @@ def _model_bucket(storage):
     raise RuntimeError(f"no Storage bucket reachable: {last}")
 
 
+# A model file's name by what it does (docs/hf-plan.md → H0) and the name it had in a
+# version not yet moved to Hugging Face (its mirror in Storage still holds the old one).
+MODEL_FILES = {"edges.onnx": "sa24.onnx", "edges-lite.onnx": "lite.onnx", "face.onnx": "yunet640.onnx"}
+
+
+def _model_bytes(bucket, name):
+    """A model file of the site's version from the Storage mirror, under its name or its old one; None when absent."""
+    for n in (name, MODEL_FILES.get(name)):
+        if n:
+            blob = bucket.blob(MODEL_PREFIX + n)
+            if blob.exists():
+                return blob.download_as_bytes()
+    return None
+
+
 def _scan_models():
     """(document edges models [accurate, light], face finder) — ONNX Runtime sessions."""
     with _models_lock:
-        if not _models:
+        if not _models.get("edges"):
             import onnxruntime as ort
             from firebase_admin import storage
-            if not firebase_admin._apps:
-                firebase_admin.initialize_app()
-            last = None
-            for name in MODEL_BUCKETS:
-                try:
-                    bucket = storage.bucket(name)
-                    raw = {m: bucket.blob(MODEL_PREFIX + m).download_as_bytes() for m in ("sa24.onnx", "lite.onnx", "yunet640.onnx")}
-                    break
-                except Exception as e:  # not this project's bucket name
-                    last = e
-            else:
-                raise RuntimeError(f"scan models not reachable: {last}")
+            bucket = _model_bucket(storage)
+            raw = {m: _model_bytes(bucket, m) for m in ("edges.onnx", "edges-lite.onnx", "face.onnx")}
+            missing = [m for m, v in raw.items() if v is None]
+            if missing:
+                raise RuntimeError(f"scan models not in {MODEL_PREFIX}: {', '.join(missing)}")
             opts = ort.SessionOptions()
             opts.intra_op_num_threads = 2
             new = lambda m: ort.InferenceSession(raw[m], opts, providers=["CPUExecutionProvider"])
-            _models["corners"] = [new("sa24.onnx"), new("lite.onnx")]
-            _models["face"] = new("yunet640.onnx")
-    return _models["corners"], _models["face"]
+            _models["face"] = new("face.onnx")
+            _models["edges"] = [new("edges.onnx"), new("edges-lite.onnx")]
+    return _models["edges"], _models["face"]
 
 
 def _doctype_model():
@@ -723,14 +732,29 @@ def _doctype_model():
             try:
                 import onnxruntime as ort
                 from firebase_admin import storage
-                blob = _model_bucket(storage).blob(MODEL_PREFIX + "doctype.onnx")
-                if blob.exists():
+                raw = _model_bytes(_model_bucket(storage), "doctype.onnx")
+                if raw:
                     opts = ort.SessionOptions()
                     opts.intra_op_num_threads = 2
-                    _models["doctype"] = ort.InferenceSession(blob.download_as_bytes(), opts, providers=["CPUExecutionProvider"])
+                    _models["doctype"] = ort.InferenceSession(raw, opts, providers=["CPUExecutionProvider"])
             except Exception:
                 pass  # no document type model: the pages go to Haiku as before
     return _models["doctype"]
+
+
+def _warm_up():
+    """Load the scanner's models when the instance starts, before its first scan (docs/hf-plan.md → H4);
+    a failure here is retried by the first scan."""
+    try:
+        _scan_models()
+        _doctype_model()
+    except Exception as e:
+        print(f"scan models warm-up failed: {e}")
+
+
+# Only in the running preprocess_scan instance — never while the deploy reads this file.
+if os.environ.get("K_SERVICE") and os.environ.get("FUNCTION_TARGET") == "preprocess_scan":
+    threading.Thread(target=_warm_up, daemon=True).start()
 
 
 def _hint_corners(value):
