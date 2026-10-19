@@ -6,7 +6,7 @@
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 // The files that still draw `ti-*` icons (the React pages import theirs from @tabler/icons-react).
-const FILES = ['schedule-manager.html', ...fs.readdirSync(path.join(ROOT, 'src/manager/page')).filter(f => f.endsWith('.ts')).map(f => 'src/manager/page/' + f), 'scan-pipeline.js'];
+const FILES = ['schedule-manager.html', ...fs.readdirSync(path.join(ROOT, 'src/manager/page')).filter(f => f.endsWith('.ts')).map(f => 'src/manager/page/' + f)];
 const css = fs.readFileSync(path.join(ROOT, 'icons', 'tabler-icons.css'), 'utf8');
 const have = new Set([...css.matchAll(/\.ti-([a-z0-9-]+):before/g)].map(m => m[1]));
 const missing = new Set();

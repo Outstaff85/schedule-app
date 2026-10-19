@@ -351,7 +351,6 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
             <FieldRow>
               {text('docId', { label: 'מספר ת.ז./דרכון', placeholder: 'ת.ז. / דרכון', hint: <>
                 {w.idChecksumOk === false && <Hint><IconAlertTriangle className="inline size-3" /> {tr('The number failed the check digit test — check it by hand')}</Hint>}
-                {w.idMismatch && <Hint><IconAlertTriangle className="inline size-3" /> {tr('The number on the appendix does not match the front — check it by hand')}</Hint>}
               </> })}
               {text('docExpiry', { label: 'תוקף ת.ז./דרכון', placeholder: tr('DD/MM/YYYY') })}
             </FieldRow>

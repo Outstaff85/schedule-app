@@ -34,7 +34,7 @@ export function downscaleForUpload(b64: string, mediaType: string): Promise<Uplo
     img.src = 'data:' + mediaType + ';base64,' + b64;
   });
 }
-// pdf.js from the CDN, once (the global pdfjsLib; scan-pipeline.js uses it too).
+// pdf.js from the CDN, once (the global pdfjsLib).
 let pdfjsLoading: Promise<void> | null = null;
 export function loadPdfJs(): Promise<void> {
   if ((window as any).pdfjsLib) return Promise.resolve();
@@ -79,8 +79,7 @@ export async function fileToUploadPages(file: File): Promise<UploadPage[]> {
   }
   const raw = {b64: await readFileB64(file), mediaType: file.type || 'image/jpeg'};
   const d = await downscaleForUpload(raw.b64, raw.mediaType);
-  // orig: the photo before shrinking, only when it was shrunk — the scan
-  // crops its zoomed field re-reads from it (scan-pipeline.js _hiFieldCrop).
+  // orig: the photo before shrinking, only when it was shrunk.
   return [{b64: d.b64, mediaType: d.mediaType, text: '', fileName: file.name || '', orig: d.b64 !== raw.b64 ? raw : null}];
 }
 // One file prepared for STORAGE (kept as a single file, unlike the per-page

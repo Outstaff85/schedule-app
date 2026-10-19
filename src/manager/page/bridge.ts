@@ -4,7 +4,7 @@
 // code in the same order — page/entry.ts imports them in that order), typed
 // (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
 // reachable under their old global names through the window accessors below
-// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId } from './dom';
 import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts, shiftOn, workerTotalHours } from '../logic/schedule';
@@ -450,7 +450,7 @@ window.ManagerBridge={
   newId:()=>uid(),
   fileForStorage:(f?: any)=>fileForStorage(f),
   uploadWorkerFile:(body?: any,onProgress?: any)=>uploadWorkerFile({...body,...gsAuth()},onProgress),
-  addDocs(wid?: any,docs?: any){ const w=workers.find((x?: any)=>x.id===wid); if(w&&docs.length){ w.docs=[...(w.docs||[]),...docs]; autoSave(); render(); } },
+  addDocs(wid?: any,docs?: any){ const w=workers.find((x?: any)=>x.id===wid); if(w&&docs.length){ w.docs=[...(w.docs||[]),...docs]; if(docs.some((d?: any)=>d.type==='contract')) delete w.contractUploadFailed; autoSave(); render(); } },
   reportError:(msg?: any,where?: any)=>reportError(msg,where,''),
   hoursInfo(id?: any){
     const w=workers.find((x?: any)=>x.id===id); if(!w) return null;

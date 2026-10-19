@@ -4,7 +4,7 @@
 // code in the same order — page/entry.ts imports them in that order), typed
 // (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
 // reachable under their old global names through the window accessors below
-// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId, qs } from './dom';
 Object.defineProperties(window, {
@@ -40,7 +40,7 @@ document.addEventListener('click',(e?: any)=>{
 // with a swipe down on it (user request 2026-10-11) — the same way as a tap
 // outside (__onUserClose, else closeModal). Only when the sheet and anything
 // scrolled under the finger are at their top, never from a field, a map,
-// a canvas or a .no-swipe surface (the scan crop editor, the avatar crop —
+// a canvas or a .no-swipe surface (the avatar crop —
 // a drag there moves the photo, not the sheet); while it is open the page behind does not scroll (CSS). The
 // same code is in the manager app and both portals.
 (function(){

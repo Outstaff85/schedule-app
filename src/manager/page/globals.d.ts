@@ -6,14 +6,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export {};
 declare global {
-  // scan-pipeline.js and Google Maps (loaded on demand)
+  // Google Maps (loaded on demand)
   var installApp: any;
-  var openAiScan: any;
-  var processAllPendingPages: any;
-  var verifyFieldsBatch: any;
-  var _normScanDigits: any;
-  var _normScanDate: any;
-  var renderScanPagesPrompt: any;
+  // the worker window's (worker-window.ts), called from the scan's (scan.ts)
+  var showWorkerModal: any;
+  var blankWorkerDefaults: any;
+  var applyWorkerDraft: any;
+  var autoFindMissingScanFields: any;
   var I18N: any;
   var I18N_LANG: any;
   var ManagerData: any;
@@ -35,7 +34,6 @@ declare global {
   var editingClientId: any;
   var editingSupplierId: any;
   var editingWorkerId: any;
-  var ensureScanPipelineLoaded: any;
   var gsSavePunch: any;
   var hourApprovalSummary: any;
   var hourApprovalsOf: any;
@@ -73,10 +71,10 @@ declare global {
   var workerSiteName: any;
   var workerToday: any;
   var workers: any;
-  // the page's state kept on window, shared with scan-pipeline.js and the React pieces
+  // the page's state kept on window, shared with the scan process (src/scan-process/) and the React pieces
   interface Window {
-    XLSX?: any; __aiAvatarB64?: any; __aiPacketOtherPages?: any; __aiRescanWorkerId?: any; __aiRescannedWorkerId?: any;
-    __aiScanImage?: any; __aiScanPageThumbs?: any; __pingMs?: any; __scanPipelineReady?: any; __pendingScanPages?: any;
+    XLSX?: any; __aiPacketOtherPages?: any; __aiRescanWorkerId?: any; __aiRescannedWorkerId?: any;
+    __aiScanImage?: any; __pingMs?: any;
     __wCapturedSigPng?: any; __wDraft?: any;
   }
   // a window's own hooks on its overlay (docs/app-core.md → Layout: closing, going back)

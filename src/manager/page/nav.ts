@@ -4,7 +4,7 @@
 // code in the same order — page/entry.ts imports them in that order), typed
 // (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
 // reachable under their old global names through the window accessors below
-// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId, qsa } from './dom';
 import { NAV_TAB_PERMISSION, hasPermission, homeTab, tabAllowed } from '../logic/access';

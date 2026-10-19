@@ -258,8 +258,8 @@ def test_reads_ask_for_boxes_of_every_field():
 
 
 def test_reads_return_name_cross_checks():
-    # The scan picks the holder's name by comparing readings (scan-pipeline.js
-    # _resolveScanNames): the ספח / card back's own copy, the Latin spelling
+    # The scan picks the holder's name by comparing readings (src/scan-process/
+    # names.ts resolveNames): the ספח / card back's own copy, the Latin spelling
     # and the MRZ name line.
     assert '"surname":"holder\'s surname, or empty","given":"holder\'s given name, or empty"' in ai.PROMPTS["readSefach"]
     for key in ('"latinSurname"', '"latinGiven"', '"mrzName"'):

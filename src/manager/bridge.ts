@@ -195,9 +195,8 @@ export type WorkerRecord = {
   docSavedAt?: string;
   assetsFileId?: string;
   docs?: WorkerDoc[];
-  /** display only, from a scan: the ID checksum failed / the ספח's number differs / fields whose two reads differ */
+  /** display only, from a scan: the ID checksum failed / fields whose two reads differ */
   idChecksumOk?: boolean;
-  idMismatch?: boolean;
   __scanCheck?: string[];
   [k: string]: unknown;
 };

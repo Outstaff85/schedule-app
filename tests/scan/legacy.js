@@ -1,3 +1,5 @@
+// FROZEN: scan-pipeline.js as it was before S3 (docs/scan-plan.md), kept only for
+// tests/scan/compare.test.mjs — never edited, never served.
 // scan-pipeline.js — AI document-scan pipeline for schedule-manager.html,
 // lazy-loaded on demand (added 2026-09-28, optimization) — see
 // ensureScanPipelineLoaded() in schedule-manager.html for the loader and

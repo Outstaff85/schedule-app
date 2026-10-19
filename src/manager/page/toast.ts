@@ -4,13 +4,13 @@
 // code in the same order — page/entry.ts imports them in that order), typed
 // (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
 // reachable under their old global names through the window accessors below
-// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId } from './dom';
 import { tr } from '../logic/i18n';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
-  "showToast": {get: () => showToast, configurable: true}, // for scan-pipeline.js (src/manager/toast.ts)
+  "showToast": {get: () => showToast, configurable: true}, // src/manager/toast.ts
   "startVersionWatch": {get: () => startVersionWatch, configurable: true},
   "showNewVersionBar": {get: () => showNewVersionBar, configurable: true},
   "AVATAR_SIZE": {get: () => AVATAR_SIZE, configurable: true},
@@ -58,13 +58,12 @@ function showNewVersionBar(){
     <button type="button" onclick="location.reload()" style="flex:none;border:0;border-radius:999px;padding:6px 14px;background:#4f8ef7;color:#fff;font:inherit;cursor:pointer">${tr('Update')}</button>
     <button type="button" aria-label="${tr('Close')}" onclick="this.parentElement.remove()" style="flex:none;border:0;background:none;color:#7c84a0;font:inherit;font-size:15px;cursor:pointer;padding:4px 8px 4px 2px">✕</button></div>`);
 }
-startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js',...(window.__scanPipelineReady?['scan-pipeline.js']:[])]);
+startVersionWatch(()=>[location.pathname,'og.css','payroll.js','firestore-backend.js']);
 
-const AVATAR_SIZE=160; // shared with scan-pipeline.js's cropPortraitAvatar() and confirmAvatarCrop() below (manual crop editor) — must stay in THIS file, not the lazy one, since confirmAvatarCrop() runs on every worker-photo edit regardless of scanning
+const AVATAR_SIZE=160; // confirmAvatarCrop() below (manual crop editor)
 // Worker avatars are black and white (per user request 2026-10-04): the
 // portrait is turned to grey on the AVATAR_SIZE canvas it was cut onto, in
-// both the scan's portrait crop (cropPortraitAvatar) and the manual crop
-// editor (confirmAvatarCrop). Pixel math, so it works on every browser.
+// the manual crop editor (confirmAvatarCrop). Pixel math, so it works on every browser.
 function grayscaleCanvas(cv?: any){
   const ctx=cv.getContext('2d'), im=ctx.getImageData(0,0,cv.width,cv.height), d=im.data;
   for(let i=0;i<d.length;i+=4){ const y=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]); d[i]=d[i+1]=d[i+2]=y; }

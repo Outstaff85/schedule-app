@@ -291,13 +291,35 @@ def _inside(q, box, shape, n=64):
 
 # ---------- cut and upright ----------
 
-def warp(img, q):
-    """The quad (0..1) of the image cut out flat."""
+# The documents' real proportions (long side / short side): an ID card (ID-1, 85.6 × 54 mm),
+# a passport page (ID-3, 125 × 88 mm), an A4 page (the ספח, a contract). A cut whose
+# sides come out within RATIO_TOL of one of them was foreshortened by the camera's angle
+# and is set to the exact one; anything else keeps its measured sides.
+RATIOS = (85.6 / 54, 125 / 88, 297 / 210)
+RATIO_TOL = 0.055
+
+
+def exact_size(W, Hh):
+    """(width, height) of a cut, set to a document's exact proportion when close to one."""
+    long, short = max(W, Hh), min(W, Hh)
+    r = long / max(1, short)
+    best = min(RATIOS, key=lambda t: abs(r / t - 1))
+    if abs(r / best - 1) > RATIO_TOL:
+        return W, Hh
+    short = max(1, round(long / best))
+    return (long, short) if W >= Hh else (short, long)
+
+
+def warp(img, q, exact=True):
+    """The quad (0..1) of the image cut out flat (exact: in a document's exact proportion
+    when its sides are close to one — never for a whole picture kept as it is)."""
     h, w = img.shape[:2]
     P = (q * [w, h]).astype(np.float32)
     d = lambda a, b: float(np.linalg.norm(a - b))
     W = max(1, round(max(d(P[0], P[1]), d(P[3], P[2]))))
     Hh = max(1, round(max(d(P[0], P[3]), d(P[1], P[2]))))
+    if exact:
+        W, Hh = exact_size(W, Hh)
     M = cv2.getPerspectiveTransform(P, np.float32([[0, 0], [W, 0], [W, Hh], [0, Hh]]))
     return cv2.warpPerspective(img, M, (W, Hh), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
@@ -384,7 +406,7 @@ def find_documents(img, model, face=None, hint=None):
             found.append(refine_edges(part, q))
             sources.append("more")
         for q, src in zip(found, sources):
-            page = warp(part, q)
+            page = warp(part, q, exact=src not in ("photo", "whole"))
             turn = -1
             if face is not None:
                 try:

@@ -1,10 +1,10 @@
-// The manager page's own script, part "scan": the scan pipeline's loading and entry points, Form 101's build and upload.
+// The manager page's own script, part "scan": the scan's entry points (the scanner, its reading into the worker window), Form 101's build and upload.
 // One of the modules of src/manager/page/ (React migration stage 8c-3; the
 // former inline script of schedule-manager.html, split by section, the same
 // code in the same order — page/entry.ts imports them in that order), typed
 // (strict TypeScript; loose records are `any`). Its top-level functions and variables stay
 // reachable under their old global names through the window accessors below
-// (the markup's onclick handlers, scan-pipeline.js, the React bridge, the
+// (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { FORM101_FN_URL, SCAN_WARM_URLS, warmCloudFunctions } from '../logic/functions';
 import { tr } from '../logic/i18n';
@@ -19,11 +19,13 @@ import { renderWorkerUploadProgress } from './worker-window';
 import { render } from './render';
 import { renderWorkersPage } from './workers';
 import { openScanner } from '../../scan/open';
+import type { ScannedPage } from '../../scan/Scanner';
+import { readScan, resetScan, sessionPages } from '../../scan-process/session';
+import { workerFields } from '../../scan-process/worker';
 import { imagesToPdf } from '../../scan/pdf';
 import { showToast } from '../toast';
 Object.defineProperties(window, {
-  "_scanPipelineLoading": {get: () => _scanPipelineLoading, set: (v?: any) => { _scanPipelineLoading = v; }, configurable: true},
-  "ensureScanPipelineLoaded": {get: () => ensureScanPipelineLoaded, configurable: true},
+  "openWorkerModalFromScan": {get: () => openWorkerModalFromScan, configurable: true},
   "startNewScan": {get: () => startNewScan, configurable: true},
   "rescanWorkerDoc": {get: () => rescanWorkerDoc, configurable: true},
   "getSignaturePng": {get: () => getSignaturePng, configurable: true},
@@ -35,37 +37,16 @@ Object.defineProperties(window, {
   "regenerateAllWorkerDocs": {get: () => regenerateAllWorkerDocs, configurable: true},
 });
 
-// ===== Lazy-loaded scan pipeline (added 2026-09-28, optimization) =====
-// The AI document-scan pipeline (corner editor, alignment/OCR orchestration,
-// homography/warp math, review screens — everything scanning-specific) lives
-// in scan-pipeline.js, a plain <script>-tag-injected sibling file, not an ES
-// module (this app has no build step/bundler and no import/export anywhere —
-// see the "No modules/imports" convention below). It's fetched once, only
-// when a scan actually starts, instead of parsing with the rest of this
-// (already ~5000+ line) file on every single page load, most of which never
-// touch scanning at all. Every function in it becomes an ordinary global
-// once loaded, exactly as if it were still inline here.
-let _scanPipelineLoading: any=null;
 // --- Upload preparation (shared by every file upload) -------------------------
 // downscaleForUpload(), fileToUploadPages(), filesToUploadPages(),
 // fileForStorage(), _loadPdfJs() are src/manager/logic/uploads.ts (CLAUDE.md →
 // Uploads).
 
-function ensureScanPipelineLoaded(){
-  if(window.__scanPipelineReady) return Promise.resolve();
-  if(_scanPipelineLoading) return _scanPipelineLoading;
-  _scanPipelineLoading=new Promise((resolve?: any,reject?: any)=>{
-    const s=document.createElement('script');
-    s.src='scan-pipeline.js';
-    s.onload=()=>{ window.__scanPipelineReady=true; resolve(); };
-    s.onerror=()=>{ _scanPipelineLoading=null; reject(new Error('scan-pipeline.js failed to load')); };
-    document.head.appendChild(s);
-  });
-  return _scanPipelineLoading;
-}
 // The contract pages of a scan, saved to the worker's documents as one PDF of type
 // "contract" (docs/scan-plan.md → Contracts in the scan): after the worker is saved,
-// with one retry; its end date is not read — set by hand when wanted.
+// with one retry; its end date is not read — set by hand when wanted. A failure
+// also marks the worker (contractUploadFailed: the red "Contract not saved"
+// notice on the plate and card) until a contract document is added.
 async function saveScanContract(w?: any,pages?: any[]){
   try{
     const pdf=await imagesToPdf(pages!.map((p?: any)=>({b64:p.b64,mediaType:p.mediaType})));
@@ -75,50 +56,81 @@ async function saveScanContract(w?: any,pages?: any[]){
     if(!r||!r.ok) r=await send().catch(()=>null);
     if(!r||!r.ok) throw new Error((r&&r.error)||'network error');
     const doc={id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),type:'contract',name:fileName,fileId:r.id,url:r.url,mediaType:'application/pdf',uploadedAt:new Date().toISOString(),expiry:''};
-    window.ManagerBridge!.addDocs(w.id,[doc]);
+    window.ManagerBridge!.addDocs(w.id,[doc]); // clears contractUploadFailed
     showToast(tr('The contract ({0} pages) was added to the documents of {1}',{0:pages!.length,1:w.name||''}));
   }catch(e: any){
     showToast(tr('The contract could not be saved: {0} — add it from Add document',{0:(e&&e.message)||String(e)}),5000);
     reportError('saveScanContract: '+((e&&e.message)||e),'saveScanContract','');
+    const live=workers.find((x?: any)=>x.id===w.id);
+    if(live){ live.contractUploadFailed=true; autoSave(); render(); renderWorkersPage(); }
   }
 }
-// New-scan entry point (the "Scan passport" button) — awaits the
-// pipeline before calling openAiScan(), which only exists once it's loaded.
+// New-scan entry point (the "Scan passport" button).
 // The Cloud Function warm-up (warmCloudFunctions, SCAN_WARM_URLS, __fnWarm) and
 // the functions' URLs are src/manager/logic/functions.ts.
 async function startNewScan(){
   warmCloudFunctions(SCAN_WARM_URLS());
-  try{ await ensureScanPipelineLoaded(); }
-  catch(e: any){ showToast(tr('Could not load the scan module — check the connection')); return; }
   window.__aiRescanWorkerId=null;
   window.__wDraft=null;
   await openNewScan();
 }
-// The scan window (src/scan/, docs/scan.md → The scan window): the camera with
-// the live frame and the device's photos / PDFs; the server cuts every document
-// flat and upright. Its pages then go to the reading (scan-pipeline.js) as pages
-// already aligned and enhanced: Phase 1 only asks the AI for the turn of a page
-// with no face on it.
-export async function openNewScan(){
-  const pages=await openScanner();
-  if(!pages||!pages.length) return;
-  openAiScan();
-  // a page whose kind came from the scan window was also turned by it: Phase 1 asks the AI nothing
-  window.__pendingScanPages=pages.map(p=>({b64:p.b64,mediaType:p.mediaType,hi:null,ready:true,upright:p.turn>=0||!!p.kind,blurry:p.blurry,kind:p.kind||null}));
-  processAllPendingPages();
+// The scanner (src/scan/, docs/scan.md → The scan window): the camera with the
+// live frame and the device's photos / PDFs; the server cuts every document
+// flat and upright. On Done the scan process (src/scan-process/, docs/scan.md →
+// Reading) reads its pages in the same window, then the worker window opens
+// with what was read. sameSession ("Scan again" from the worker window): the
+// scanner starts with this session's pages, and only the changed ones are read.
+export async function openNewScan(sameSession?: boolean){
+  const initial: ScannedPage[]=sameSession?sessionPages().map(p=>({b64:p.b64,mediaType:p.mediaType,turn:0,blurry:false,kind:(p.kind||undefined) as any})):[];
+  if(!sameSession) resetScan();
+  let found: any=null;
+  const pages=await openScanner({initial,read:async(list,progress)=>{
+    // a page whose kind came from the scanner was also turned by it: only a page with no face and no kind is turned here
+    found=await readScan(list.map(p=>({b64:p.b64,mediaType:p.mediaType,kind:p.kind||null,upright:p.turn>=0||!!p.kind})),progress);
+    return found?null:tr('No ID card or passport was found in the pages — add a photo of one');
+  }});
+  if(!pages||!found) return;
+  openWorkerModalFromScan(found.record,found.reads);
 }
-// Rescan entry point — kept here (not moved into scan-pipeline.js) purely
-// because it's the other real external trigger into the pipeline (called
-// from the always-present worker list, see its own onclick) and needs the
-// same await-before-call treatment; the function body itself is otherwise
-// unchanged.
+// Rescan entry point (the worker list's "scan again"): a new scan of this worker.
 async function rescanWorkerDoc(workerId?: any){
   warmCloudFunctions(SCAN_WARM_URLS());
-  try{ await ensureScanPipelineLoaded(); }
-  catch(e: any){ showToast(tr('Could not load the scan module — check the connection')); return; }
   window.__aiRescanWorkerId=workerId;
   window.__wDraft=null;
   await openNewScan();
+}
+// The scan's record into the worker window (scan-process/worker.ts gives the
+// fields). A rescan of an existing worker (window.__aiRescanWorkerId, set by
+// rescanWorkerDoc() / the worker window) reopens THAT worker with the scan's
+// values over their record; a new scan whose document number matches an
+// existing worker is that worker scanned again (no duplicate record, their
+// stored Form 101 replaced); otherwise a new worker. The pages stay in
+// window.__aiScanImage / __aiPacketOtherPages for the save's Form 101.
+export function openWorkerModalFromScan(p?: any,reads?: any[]){
+  if(!p){ showToast(tr('The scan could not be read')); return; }
+  const ocrFields=workerFields(p,reads||[]);
+  let rescanId=window.__aiRescanWorkerId;
+  window.__aiRescanWorkerId=null;
+  if(!rescanId&&ocrFields.docId){
+    const dup=workers.find((w?: any)=>workerDocId(w)===ocrFields.docId);
+    if(dup){ rescanId=dup.id; showToast(tr('Existing worker found ({0}) — updating their record',{0:dup.name||ocrFields.docId}),4000); }
+  }
+  if(rescanId){
+    const idx=workers.findIndex((w?: any)=>w.id===rescanId);
+    if(idx>=0){
+      editingWorkerId=rescanId;
+      // read by saveWorker(): this edit started from a fresh scan (upload its pages), not a plain edit
+      window.__aiRescannedWorkerId=rescanId;
+      showWorkerModal({...workers[idx],...ocrFields});
+      applyWorkerDraft(); // a rescan started from the open window
+      void autoFindMissingScanFields();
+      return;
+    }
+  }
+  editingWorkerId=null;
+  showWorkerModal({...blankWorkerDefaults(),...ocrFields});
+  applyWorkerDraft();
+  void autoFindMissingScanFields();
 }
 
 // The signature for Form 101 is drawn in the worker window (the shared
