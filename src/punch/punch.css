@@ -2,7 +2,9 @@
    one from the old worker-punch.html in the React migration
    (react-migration-plan.md → stage 5). Loaded only by src/punch/main.tsx;
    og.css (the tokens, the ground, .gbtn, .lang-btn) comes before it. */
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+/* The reset sits in the base layer: the page's own rules below still win, and so do the
+   shared windows' Tailwind utilities (their padding, numbered lists). */
+@layer base{*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}}
 :root{
   --bg:var(--surface);
   --card:var(--surface-2);
