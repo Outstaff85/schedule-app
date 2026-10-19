@@ -655,16 +655,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.given = T.val('wGiven'); r.docId = T.val('wDocId'); r.city = T.val('wCity');
     r.front = !!window.__aiScanImage;
     r.kinds = ['front', ...(window.__aiPacketOtherPages || []).map(x => x.kind + (x.contract ? ':contract' : ''))].join(',');
+    // the save after a scan sends the document with what was saved (docs/hf-plan.md → H8a)
+    ManagerBridge.sendScanDocument('w-test', {docType: 'israeli_id', docGiven: 'Scanned', docSurname: 'Persson', docId: '123456782'});
     closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     return r;
   });
   await p.waitForTimeout(500);
+  const docCall = feedbackCalls.find(c => c.action === 'document') || {};
+  ok(docCall.workerId === 'w-test' && (docCall.pages || []).length === 1 && docCall.pages[0].primary && docCall.pages[0].doctype === 'id_front' && docCall.pages[0].b64
+    && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',
+    'scan, the save after it: the document goes to scan_feedback (H8a) — its own pages (not the contract), the AI\'s read, the fields the scan filled and the ones saved '
+    + JSON.stringify({workerId: docCall.workerId, pages: (docCall.pages || []).map(x => x.doctype + (x.primary ? '*' : '')), scanned: docCall.scanned, saved: docCall.saved}));
+  feedbackCalls.splice(feedbackCalls.indexOf(docCall), docCall.action ? 1 : 0);
   const ex = (feedbackCalls[0] && feedbackCalls[0].examples) || [];
   ok(cutCalls.length === 1 && cutCalls[0][0][0] > 0.1 && cutCalls[0][1][0] === 0.9 && feedbackCalls.length === 1 && feedbackCalls[0].action === 'add' && ex.length === 2
-    && ex[0].image && JSON.stringify(ex[0].cornersFixed) !== JSON.stringify(ex[0].cornersModel) && ex[1].image && ex[1].keep === true && !ex[0].keep && JSON.stringify(ex[1].cornersFixed) === JSON.stringify(ex[1].cornersModel)
-    && ex[0].kindModel === 'id_front' && ex[0].kindFixed === 'id_front' && !ex[0].pageImage && ex[1].kindModel === 'sefach' && ex[1].kindFixed === 'contract' && ex[1].pageImage
+    && ex[0].image && JSON.stringify(ex[0].edgesFixed) !== JSON.stringify(ex[0].edgesModel) && ex[1].image && ex[1].keep === true && !ex[0].keep && JSON.stringify(ex[1].edgesFixed) === JSON.stringify(ex[1].edgesModel)
+    && ex[0].doctypeModel === 'id_front' && ex[0].doctypeFixed === 'id_front' && !ex[0].pageImage && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && ex[1].pageImage
     && kinds0 === 'id_front,sefach' && /\(1\)/.test(otherDone) && scw.kinds === 'front,contract:contract',
-    'scan window corners and kinds: a page tapped, a corner dragged, Apply cuts it again by them; each page shows Haiku\'s kind, Other is not saved, a changed kind goes to the reading; Done sends the training examples — the corrected page with its copy, the changed kind with a copy of the page, the first page the model got right kept with its copy (one in five) ' + JSON.stringify({kinds0, otherDone, kinds: scw.kinds, cutCalls, ex: ex.map(e => ({fixed: e.cornersFixed, model: e.cornersModel, image: !!e.image, keep: e.keep, km: e.kindModel, kf: e.kindFixed, pi: !!e.pageImage}))}));
+    'scan window corners and kinds: a page tapped, a corner dragged, Apply cuts it again by them; each page shows Haiku\'s kind, Other is not saved, a changed kind goes to the reading; Done sends the training examples — the corrected page with its copy, the changed kind with a copy of the page, the first page the model got right kept with its copy (one in five) ' + JSON.stringify({kinds0, otherDone, kinds: scw.kinds, cutCalls, ex: ex.map(e => ({fixed: e.edgesFixed, model: e.edgesModel, image: !!e.image, keep: e.keep, km: e.doctypeModel, kf: e.doctypeFixed, pi: !!e.pageImage}))}));
   ok(scw.pages === 2 && /2/.test(scw.done) && findCalls.length === 1 && findCalls[0].find === true && findCalls[0].auth && findCalls[0].image
     && scw.closed && scw.worker && scw.front && scw.given === 'Scanned' && scw.docId === '123456782' && scw.city === 'Haifa' && readCalls.length === 1 && kindCalls === 2,
     'scan window: a picked photo goes to preprocess_scan whole (find, the sign-in token); its two documents become two pages; Done reads them in the window (one full read of the ID card, no AI alignment again) and opens the worker window with what was read ' + JSON.stringify({scw, findCalls, readCalls, kindCalls}));
@@ -677,11 +685,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(jpg), c => c.charCodeAt(0))))};
   }, JPG);
   ok(cpdf.head === '%PDF-1.4' && cpdf.pages === 2 && cpdf.count && cpdf.images === 2 && cpdf.eof && cpdf.size === '{"h":8,"w":8}', 'scan contract: its pages become one PDF, a page per photo ' + JSON.stringify(cpdf));
-  // S7: a page the firm's page-kind model is sure of (the server's kindSure) asks Haiku nothing.
+  // S7: a page the firm's document type model is sure of (the server's doctypeSure) asks Haiku nothing.
   let s7Kind = 0;
   await p.route(/cloudfunctions\.net\/preprocess_scan$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
-    const page = (kind, sure) => ({quad: QUAD, box: null, source: 'model', turn: 0, blurry: false, imageBase64: JPG, mediaType: 'image/jpeg', kind, kindConf: sure ? 0.97 : 0.5, kindSure: sure});
+    const page = (kind, sure) => ({quad: QUAD, box: null, source: 'model', turn: 0, blurry: false, imageBase64: JPG, mediaType: 'image/jpeg', doctype: kind, doctypeConf: sure ? 0.97 : 0.5, doctypeSure: sure});
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, size: [8, 8], pages: [page('passport', true), page('sefach', false)]})});
   });
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
@@ -701,7 +709,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   await p.unroute(/cloudfunctions\.net\/preprocess_scan$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
-  ok(s7.kinds === 'passport,contract' && s7Kind === 1, 'scan window, page-kind model: a page it is sure of keeps its kind and asks Haiku nothing; the unsure one goes to Haiku ' + JSON.stringify({s7, s7Kind}));
+  ok(s7.kinds === 'passport,contract' && s7Kind === 1, 'scan window, document type model: a page it is sure of keeps its kind and asks Haiku nothing; the unsure one goes to Haiku ' + JSON.stringify({s7, s7Kind}));
   // A scanned contract that could not be saved marks the worker until a contract document is added.
   const cfail = await p.evaluate(() => {
     const w = workers[1]; w.contractUploadFailed = true;
@@ -1832,6 +1840,39 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.legacy, 'edit ticks: without them Schedule, Workers and punches only read; a login made before them changes all ' + JSON.stringify(vo));
   ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule',
     'boss: Users lists the permission templates with New template and Put them on templates; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB}));
+  // Admin → Scanner (docs/hf-plan.md): the training figures, the versions, the document type model's mode
+  // (Off / Shadow / Mixed) and the per-firm switch of the full-document collection — all through scan_feedback.
+  const sfCalls = [];
+  const SFCORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
+  let sfSet = {doctypeMode: 'shadow', collect: {'tenant-one': true}};
+  await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:SFCORS});
+    const b = JSON.parse(r.request().postData() || '{}'); sfCalls.push(b);
+    if (b.action === 'stats') return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, due: false, edgesSince: 42, doctypesDue: false,
+      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8}})});
+    if (b.action === 'setSettings') { if (b.doctypeMode) sfSet.doctypeMode = b.doctypeMode; Object.assign(sfSet.collect, b.collect || {}); }
+    return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, ...sfSet})});
+  });
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('scanner'); });
+  const sa = {shown: await waitFor(p, () => !!document.querySelector('#adminRoot [data-testid="scan-collect"] [data-firm="tenant-one"]'), 10000)};
+  Object.assign(sa, await p.evaluate(() => {
+    const root = document.querySelector('#adminRoot [data-testid="scan-admin"]');
+    return {figs: [...root.querySelectorAll('[data-slot="figures"] b')].map(b => b.textContent).join(','),
+      mode: (root.querySelector('[data-testid="scan-doctype-mode"] [data-state="on"]') || {dataset: {}}).dataset.v,
+      shadow: root.querySelector('[data-testid="scan-shadow"]').textContent,
+      on: root.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state')};
+  }));
+  await p.screenshot({path: SP + '/scan-admin.png'});
+  await p.click('#adminRoot [data-testid="scan-doctype-mode"] [data-v="mixed"]');
+  await p.click('#adminRoot [data-testid="scan-collect"] [data-firm="tenant-one"]');
+  sa.after = await waitFor(p, () => { const r = document.querySelector('#adminRoot [data-testid="scan-admin"]');
+    return (r.querySelector('[data-testid="scan-doctype-mode"] [data-state="on"]') || {dataset: {}}).dataset.v === 'mixed'
+      && r.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state') === 'unchecked'; }, 8000);
+  sa.sent = sfCalls.filter(c => c.action === 'setSettings').map(c => JSON.stringify(c.doctypeMode || c.collect)).join(' ');
+  await p.unroute(/cloudfunctions\.net\/scan_feedback$/);
+  ok(sa.shown && sa.figs === '42/200,5/100,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && sa.on === 'checked'
+    && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
+    'Admin → Scanner: the figures, the shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
     const items = [];

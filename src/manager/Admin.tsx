@@ -39,6 +39,7 @@ import { byClient, dayOf, filterChoices, filterLog, logFigures, monthCounts, NO_
 import { FirmsPane } from './Firms';
 import { UsersPane } from './Users';
 import { LogsPane } from './Logs';
+import { ScanAdmin } from './ScanAdmin';
 
 const PANES: { k: AdminPane; label: string; icon: React.ReactNode }[] = [
   { k: 'punchlog', label: 'Punch Log', icon: <IconClipboardText /> },
@@ -46,6 +47,7 @@ const PANES: { k: AdminPane; label: string; icon: React.ReactNode }[] = [
   { k: 'users', label: 'Users', icon: <IconUsers /> },
   { k: 'errors', label: 'Errors', icon: <IconAlertCircle /> },
   { k: 'timings', label: 'Timings', icon: <IconStopwatch /> },
+  { k: 'scanner', label: 'Scanner', icon: <IconScan /> },
 ];
 /** The line under the tabs: what the open section is for (through tr()). */
 const SUBTITLES: Record<AdminPane, string> = {
@@ -54,6 +56,7 @@ const SUBTITLES: Record<AdminPane, string> = {
   users: 'Staff, HR and supplier logins for this firm',
   errors: 'Client-side errors by period, every firm',
   timings: 'How long login, app open and scans take (real devices, every firm)',
+  scanner: "The scanner's own models: their training, how they are used, the documents collected",
 };
 /** The large tiles while no section is chosen (the UI audit): the three sections an owner uses. */
 const TILES: AdminPane[] = ['punchlog', 'firms', 'users'];
@@ -96,6 +99,7 @@ export function Admin({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }
       {pane === 'firms' && <FirmsPane snap={snap} api={api} />}
       {pane === 'users' && <UsersPane snap={snap} api={api} />}
       {(pane === 'errors' || pane === 'timings') && <LogsPane key={pane} snap={snap} api={api} />}
+      {pane === 'scanner' && <ScanAdmin snap={snap} api={api} />}
     </div>
   );
 }

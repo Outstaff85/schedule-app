@@ -308,6 +308,8 @@ export type WorkerBridge = {
   /** `__aiRescannedWorkerId`: read, set, and read-and-clear */
   rescannedId(): string | null;
   setRescanned(id: string | null): void;
+  /** sends this session's scan with the fields saved as a full document for the field reader model (docs/hf-plan.md → H8a), in the background */
+  sendScanDocument(workerId: string, saved: Partial<WorkerRecord>): void;
   /** replaces the record with prev + fields (the own-rate rule for a new rated client, the HR change); render(), saved */
   commitEdit(id: string, fields: Partial<WorkerRecord>, hrPicked: string | null | undefined): void;
   /** adds the new worker (its HR: an HR login's own uid, else the pick); render(), saved */
@@ -599,7 +601,7 @@ export type AccountingSnapshot = {
 
 // ── Admin (stage 6f) ──
 
-export type AdminPane = 'punchlog' | 'firms' | 'users' | 'errors' | 'timings';
+export type AdminPane = 'punchlog' | 'firms' | 'users' | 'errors' | 'timings' | 'scanner';
 
 /** A punch as the log shows it: as stored, with its site worked out (`punchSite`). */
 export type AdminPunch = {

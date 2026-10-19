@@ -142,7 +142,7 @@ def test_a_whole_picture_keeps_its_own_size():
 
 
 class KindModel:
-    """A stand-in page-kind model: answers the given kind and turn probabilities."""
+    """A stand-in document type model: answers the given type and turn probabilities."""
     def __init__(self, kind, turn):
         self.kind, self.turn, self.seen = np.array([kind], np.float32), np.array([turn], np.float32), None
 
@@ -150,37 +150,37 @@ class KindModel:
         return [Named("img")]
 
     def get_outputs(self):
-        return [Named("kind"), Named("turn")]
+        return [Named("doctype"), Named("turn")]
 
     def run(self, _, feeds):
         self.seen = feeds["img"].shape
         return [self.kind, self.turn]
 
 
-def test_no_kind_model_changes_nothing():
+def test_no_doctype_model_changes_nothing():
     page = np.zeros((10, 20, 3), np.uint8)
-    assert docfind.with_kind(None, page, -1) == (page, -1, {})
+    assert docfind.with_doctype(None, page, -1) == (page, -1, {})
 
 
-def test_a_sure_kind_model_names_the_page_and_turns_one_with_no_face():
+def test_a_sure_doctype_model_names_the_page_and_turns_one_with_no_face():
     page = np.zeros((10, 20, 3), np.uint8)
     m = KindModel([0.01, 0.01, 0.95, 0.01, 0.01, 0.01], [0.02, 0.96, 0.01, 0.01])  # a ספח that needs 90°
-    out, turn, kd = docfind.with_kind(m, page, -1)
+    out, turn, kd = docfind.with_doctype(m, page, -1)
     assert m.seen == (1, 3, 256, 256)
-    assert kd["kind"] == "sefach" and kd["kindSure"] and turn == 1 and out.shape[:2] == (20, 10) and kd["kindTurn"] == 0
+    assert kd["doctype"] == "sefach" and kd["doctypeSure"] and turn == 1 and out.shape[:2] == (20, 10) and kd["doctypeTurn"] == 0
     # a face already set it upright: its turn stays
-    out, turn, kd = docfind.with_kind(m, page, 0)
-    assert turn == 0 and out.shape[:2] == (10, 20) and kd["kindTurn"] == 90 and kd["kindSure"]
+    out, turn, kd = docfind.with_doctype(m, page, 0)
+    assert turn == 0 and out.shape[:2] == (10, 20) and kd["doctypeTurn"] == 90 and kd["doctypeSure"]
 
 
-def test_an_unsure_kind_model_leaves_the_page_to_haiku():
+def test_an_unsure_doctype_model_leaves_the_page_to_haiku():
     page = np.zeros((10, 20, 3), np.uint8)
     m = KindModel([0.5, 0.4, 0.02, 0.02, 0.03, 0.03], [0.5, 0.5, 0, 0])
-    out, turn, kd = docfind.with_kind(m, page, -1)
-    assert not kd["kindSure"] and turn == -1 and out is page
+    out, turn, kd = docfind.with_doctype(m, page, -1)
+    assert not kd["doctypeSure"] and turn == -1 and out is page
 
 
-def test_find_documents_passes_the_kind_on():
+def test_find_documents_passes_the_doctype_on():
     m = KindModel([0.97, 0.01, 0.01, 0.0, 0.0, 0.01], [0.99, 0.01, 0, 0])
-    pages = docfind.find_documents(photo((200, 150, 600, 400)), Model(), kind=m)
-    assert pages[0]["kind"] == "id_front" and pages[0]["kindSure"] and pages[0]["turn"] == 0
+    pages = docfind.find_documents(photo((200, 150, 600, 400)), Model(), doctype=m)
+    assert pages[0]["doctype"] == "id_front" and pages[0]["doctypeSure"] and pages[0]["turn"] == 0

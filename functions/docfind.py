@@ -19,7 +19,7 @@ it with the real models or with stand-ins.
 import numpy as np
 import cv2
 
-S, HM = 256, 128      # the corner model's input and heatmap sides
+S, HM = 256, 128      # the document edges model's input and heatmap sides
 FN = 640              # the face finder's input side (yunet640.onnx)
 MAX_DOCS = 4
 REST_BUSY = 0.3   # photos_on_page: most of a white page outside its photos is white (or a black bar)
@@ -28,7 +28,7 @@ REST_BUSY = 0.3   # photos_on_page: most of a white page outside its photos is w
 # ---------- corners ----------
 
 def detect(sess, img):
-    """The corner model on a BGR image: (pts 4×2 in 0..1 or None, conf). sess may be a
+    """The document edges model on a BGR image: (pts 4×2 in 0..1 or None, conf). sess may be a
     list of models (the accurate one, then the light one): the first that is sure wins."""
     if isinstance(sess, (list, tuple)):
         best = (None, 0.0)
@@ -369,48 +369,48 @@ def face_turn(sess, img):
 
 # ---------- the whole photo ----------
 
-# ---------- the page kind (docs/scan-plan.md → S7) ----------
-# The firm's own page-kind model, once one is trained (models/scan/<version>/kind.onnx):
+# ---------- the document type (docs/scan-plan.md → S7) ----------
+# The firm's own document type model, once one is trained (models/scan/<version>/doctype.onnx):
 # input "img" [1, 3, 256, 256], RGB 0..1, the page stretched to the square (as the
-# training copies are); outputs "kind" [1, 6] (KINDS, probabilities) and "turn" [1, 4]
+# training copies are); outputs "doctype" [1, 6] (DOCTYPES, probabilities) and "turn" [1, 4]
 # (the clockwise turn the page needs: 0, 90, 180, 270°). A page it is sure of
-# (KIND_SURE on both) needs no Haiku.
-KINDS = ("id_front", "id_back", "sefach", "passport", "contract", "other")
+# (DOCTYPE_SURE on both) needs no Haiku.
+DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 KS = 256
-KIND_SURE = 0.9
+DOCTYPE_SURE = 0.9
 
 
-def kind_of(sess, img):
-    """The page's kind and the turn it needs, with how sure the model is."""
+def doctype_of(sess, img):
+    """The page's document type and the turn it needs, with how sure the model is."""
     x = cv2.cvtColor(cv2.resize(img, (KS, KS), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB).astype(np.float32) / 255
     out = dict(zip([o.name for o in sess.get_outputs()], sess.run(None, {sess.get_inputs()[0].name: x.transpose(2, 0, 1)[None]})))
-    kp, tp = np.asarray(out["kind"], np.float64).reshape(-1), np.asarray(out["turn"], np.float64).reshape(-1)
+    kp, tp = np.asarray(out["doctype"], np.float64).reshape(-1), np.asarray(out["turn"], np.float64).reshape(-1)
     k, t = int(kp.argmax()), int(tp.argmax())
-    return {"kind": KINDS[k], "kindConf": round(float(kp[k]), 4), "kindTurn": 90 * t, "kindTurnConf": round(float(tp[t]), 4)}
+    return {"doctype": DOCTYPES[k], "doctypeConf": round(float(kp[k]), 4), "doctypeTurn": 90 * t, "doctypeTurnConf": round(float(tp[t]), 4)}
 
 
-def with_kind(sess, page, turn):
-    """(page, turn, kind fields): the kind read; a page with no face (turn < 0) is set
-    upright by the kind model when it is sure of the turn (turn then ≥ 0). Nothing changes when there is no model or
+def with_doctype(sess, page, turn):
+    """(page, turn, doctype fields): the document type read; a page with no face (turn < 0) is set
+    upright by the document type model when it is sure of the turn (turn then ≥ 0). Nothing changes when there is no model or
     it fails."""
     if sess is None:
         return page, turn, {}
     try:
-        kd = kind_of(sess, page)
+        kd = doctype_of(sess, page)
     except Exception:
         return page, turn, {}
-    if turn < 0 and kd["kindTurnConf"] >= KIND_SURE:  # sure of the turn (0 too: already upright)
-        turn = kd["kindTurn"] // 90
+    if turn < 0 and kd["doctypeTurnConf"] >= DOCTYPE_SURE:  # sure of the turn (0 too: already upright)
+        turn = kd["doctypeTurn"] // 90
         page = turned(page, turn)
-        kd["kindTurn"] = 0
-    kd["kindSure"] = kd["kindConf"] >= KIND_SURE and (turn >= 0 or kd["kindTurnConf"] >= KIND_SURE)
+        kd["doctypeTurn"] = 0
+    kd["doctypeSure"] = kd["doctypeConf"] >= DOCTYPE_SURE and (turn >= 0 or kd["doctypeTurnConf"] >= DOCTYPE_SURE)
     return page, turn, kd
 
 
-def find_documents(img, model, face=None, hint=None, kind=None):
+def find_documents(img, model, face=None, hint=None, doctype=None):
     """The pages on a photo: [{"quad", "box", "source", "turn", "image"}], in order.
 
-    img: BGR; model: the corner model's session, or a list (accurate, light); face: the face finder's (None: no turn);
+    img: BGR; model: the document edges model's session, or a list (accurate, light); face: the face finder's (None: no turn);
     hint: the phone's live corners (0..1) of the first document, kept when the model does
     not confirm its own. quad is in 0..1 of its photo (box: the photo's place on the
     page, None for the whole picture); source says where the corners came from."""
@@ -453,6 +453,6 @@ def find_documents(img, model, face=None, hint=None, kind=None):
                     turn = -2
                 if turn > 0:
                     page = turned(page, turn)
-            page, turn, kd = with_kind(kind, page, turn)
+            page, turn, kd = with_doctype(doctype, page, turn)
             pages.append({"quad": q.tolist(), "box": box, "source": src, "turn": turn, "image": page, **kd})
     return pages

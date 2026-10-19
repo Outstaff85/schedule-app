@@ -16,17 +16,17 @@ import { frameInput, startEngine, type Detection, type Engine, type Pt } from '.
 import { loadTracker, type Tracker } from './track';
 import { cutPage, findPages, sendFeedback, type Example, type FindResult, type ServerPage } from './server';
 import { Corners } from './Corners';
-import { KIND_LABELS, PAGE_KINDS, detectKind, pageCopy, rotateImage, type PageKind } from './kind';
+import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
 
-export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: PageKind };
+export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype };
 // A page the server found keeps what its corners can be corrected on (S6): the photo sent,
 // the part of it the model looked at (0..1; a photo on a white page), the model's corners
 // in that part, the current corners on the whole photo, and — once corrected — the user's
 // corners in the part with a 256×256 copy of the part (the training example).
-// Each page also has its kind: Haiku's (kindModel) and the one shown, which a tap can change.
+// Each page also has its kind: Haiku's (doctypeModel) and the one shown, which a tap can change.
 type Page = ScannedPage & {
   uid: number; src?: string; part?: [number, number, number, number]; modelQuad?: Pt[]; quad?: Pt[]; source?: string; fixedPart?: Pt[]; copy?: string;
-  kindModel?: PageKind | null; kindPending?: boolean; aiRotate?: number; kindBy?: 'haiku' | 'model';
+  doctypeModel?: Doctype | null; doctypePending?: boolean; aiRotate?: number; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: string;
 };
 let nextUid = 0;
 // One in five pages the model got right is kept too, with its copy, so the training
@@ -48,13 +48,13 @@ function fromServer(f: ServerPage, size: FindResult['size'], src: string): Page 
   const [W, H] = size, b = f.box;
   const part: [number, number, number, number] = b ? [b[0] / W, b[1] / H, b[2] / W, b[3] / H] : [0, 0, 1, 1];
   const quad = f.quad.map(([x, y]) => [part[0] + x * (part[2] - part[0]), part[1] + y * (part[3] - part[1])] as Pt);
-  const page: Page = { uid: ++nextUid, b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry, src, part, modelQuad: f.quad, quad, source: f.source, kindPending: true };
-  return withModelKind(page, f.kindSure ? f.kind : undefined);
+  const page: Page = { uid: ++nextUid, b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry, src, part, modelQuad: f.quad, quad, source: f.source, doctypePending: true, ...(f.doctypeShadow ? { doctypeShadow: f.doctypeShadow } : {}) };
+  return withModelDoctype(page, f.doctypeSure ? f.doctype : undefined);
 }
-// A page the firm's page-kind model is sure of (the server's, or the phone's; S7) needs no Haiku.
-function withModelKind(page: Page, kind: string | undefined): Page {
-  return kind && (PAGE_KINDS as readonly string[]).includes(kind)
-    ? { ...page, kind: kind as PageKind, kindModel: kind as PageKind, kindPending: false, kindBy: 'model' } : page;
+// A page the firm's document type model is sure of (the server's, or the phone's; S7) needs no Haiku.
+function withModelDoctype(page: Page, kind: string | undefined): Page {
+  return kind && (DOCTYPES as readonly string[]).includes(kind)
+    ? { ...page, kind: kind as Doctype, doctypeModel: kind as Doctype, doctypePending: false, doctypeBy: 'model' } : page;
 }
 // The part of the photo the model looked at, as a 256×256 JPEG (the training copy — never the photo itself).
 async function partCopy(src: string, part: [number, number, number, number]): Promise<string> {
@@ -87,7 +87,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   const [camera, setCamera] = React.useState<'off' | 'on' | 'denied'>('off');
   const [hint, setHint] = React.useState('');
   const [items, setItems] = React.useState<Item[]>(() => (initial && initial.length
-    ? [{ id: 0, pending: false, pages: initial.map(p => ({ ...p, uid: ++nextUid, kindModel: null })) }] : []));
+    ? [{ id: 0, pending: false, pages: initial.map(p => ({ ...p, uid: ++nextUid, doctypeModel: null })) }] : []));
   const [reading, setReading] = React.useState<{ label: string; pct: number } | null>(null);
   const [finishing, setFinishing] = React.useState(false);
   const [edit, setEdit] = React.useState<{ id: number; k: number } | null>(null);
@@ -104,10 +104,10 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   const addItem = (it: Item) => setItems(xs => [...xs, it]);
   const setItem = (id: number, patch: Partial<Item>) => setItems(xs => xs.map(x => (x.id === id ? { ...x, ...patch } : x)));
   const setPage = (uid: number, patch: Partial<Page>) => setItems(xs => xs.map(x => ({ ...x, pages: x.pages.map(p => (p.uid === uid ? { ...p, ...patch } : p)) })));
-  // Haiku's kind and turn for each new page the page-kind model was not sure of, all at once; a page with no face is turned by it.
-  const classify = (pages: Page[]) => pages.filter(pg => pg.kindPending).forEach(async pg => {
-    const { kind, rotate } = await detectKind(pg.b64, pg.mediaType);
-    const patch: Partial<Page> = { kind: kind || undefined, kindModel: kind, kindPending: false, aiRotate: rotate, kindBy: 'haiku' };
+  // Haiku's kind and turn for each new page the document type model was not sure of, all at once; a page with no face is turned by it.
+  const classify = (pages: Page[]) => pages.filter(pg => pg.doctypePending).forEach(async pg => {
+    const { kind, rotate } = await detectDoctype(pg.b64, pg.mediaType);
+    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, aiRotate: rotate, doctypeBy: 'haiku' };
     if (pg.turn < 0 && rotate) { try { patch.b64 = await rotateImage(pg.b64, pg.mediaType, rotate); patch.mediaType = 'image/jpeg'; } catch { /* kept as cut */ } }
     setPage(pg.uid, patch);
   });
@@ -237,7 +237,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     const local = s.engine.warp(frame.getContext('2d')!.getImageData(0, 0, w, h).data, w, h, pts).then(out => {
       const c = document.createElement('canvas'); c.width = out.width; c.height = out.height;
       c.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-      const page = withModelKind({ uid: ++nextUid, b64: jpeg(c), mediaType: 'image/jpeg', turn: out.turn, blurry: false }, out.kindSure ? out.kind : undefined);
+      const page = withModelDoctype({ uid: ++nextUid, b64: jpeg(c), mediaType: 'image/jpeg', turn: out.turn, blurry: false }, out.doctypeSure ? out.doctype : undefined);
       setItems(xs => xs.map(x => (x.id === id && x.pending ? { ...x, pages: [page] } : x)));
       return page;
     }).catch(() => null);
@@ -251,7 +251,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       setItem(id, { pending: false, pages: got }); classify(got);
     } catch {
       const p = await local; // the server could not be reached: the phone's own cut is kept
-      if (p) { const pg = { ...p, kindPending: !p.kindModel }; setItem(id, { pending: false, pages: [pg] }); classify([pg]); }
+      if (p) { const pg = { ...p, doctypePending: !p.doctypeModel }; setItem(id, { pending: false, pages: [pg] }); classify([pg]); }
       else setItem(id, { pending: false, pages: [], note: tr('This shot could not be cut — take it again') });
     }
   };
@@ -273,7 +273,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
         const got = found.pages.map(f => fromServer(f, found.size, dataUrl(p.b64, p.mediaType)));
         setItem(ids[i], { pending: false, pages: got }); classify(got);
       } catch {
-        const whole: Page = { uid: ++nextUid, b64: p.b64, mediaType: p.mediaType, turn: -1, blurry: false, kindPending: true };
+        const whole: Page = { uid: ++nextUid, b64: p.b64, mediaType: p.mediaType, turn: -1, blurry: false, doctypePending: true };
         setItem(ids[i], { pending: false, pages: [whole] }); classify([whole]);
       }
     }));
@@ -302,16 +302,17 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   // its copy and the user's corners, a page whose kind was changed with a copy of the page
   // and both kinds, one in five right pages with both copies, the others only counted.
   const examples = async (list: Item[]): Promise<Example[]> => Promise.all(list.flatMap(x => x.pages).filter(p => p.modelQuad).map(async p => {
-    const kindChanged = !!p.kindModel && !!p.kind && p.kind !== p.kindModel;
+    const kindChanged = !!p.doctypeModel && !!p.kind && p.kind !== p.doctypeModel;
     const keepRight = !p.fixedPart && p.src && p.part && rightSeen++ % 5 === 0;
     const rightCopy = keepRight ? await partCopy(p.src!, p.part!).catch(() => undefined) : undefined;
     return {
-      cornersModel: p.modelQuad!, cornersFixed: p.fixedPart || p.modelQuad!, source: p.source || 'model', model: '',
+      edgesModel: p.modelQuad!, edgesFixed: p.fixedPart || p.modelQuad!, source: p.source || 'model', model: '',
       ...(p.fixedPart && p.copy ? { image: p.copy } : {}),
       ...(rightCopy ? { image: rightCopy, keep: true } : {}),
-      ...(p.kindModel ? { kindModel: p.kindModel, kindFixed: p.kind || p.kindModel, kindBy: p.kindBy || 'haiku' } : {}),
-      // a changed kind, and a sampled right page, carry a copy of the page for the page-kind model
-      ...(kindChanged || (rightCopy && p.kindModel) ? { pageImage: await pageCopy(p.b64, p.mediaType).catch(() => undefined) } : {}),
+      ...(p.doctypeModel ? { doctypeModel: p.doctypeModel, doctypeFixed: p.kind || p.doctypeModel, doctypeBy: p.doctypeBy || 'haiku' } : {}),
+      ...(p.doctypeShadow ? { doctypeShadow: p.doctypeShadow } : {}),
+      // a changed kind, and a sampled right page, carry a copy of the page for the document type model
+      ...(kindChanged || (rightCopy && p.doctypeModel) ? { pageImage: await pageCopy(p.b64, p.mediaType).catch(() => undefined) } : {}),
     };
   }));
   // Examples a scan could not send (no network) go out when the window opens again.
@@ -319,7 +320,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
 
   const pages = items.flatMap(x => x.pages);
   const kept = pages.filter(p => p.kind !== 'other'); // an "Other" page is not saved unless its kind is changed
-  const pending = items.some(x => x.pending || x.pages.some(p => p.kindPending));
+  const pending = items.some(x => x.pending || x.pages.some(p => p.doctypePending));
   // the latest items, for Done's wait on the pages still with the server
   const itemsRef = React.useRef(items); itemsRef.current = items;
 
@@ -330,7 +331,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
         onClick={async () => {
           setFinishing(true); stopCamera();
           // waits for the pages still with the server and for their kinds
-          while (itemsRef.current.some(x => x.pending || x.pages.some(p => p.kindPending))) await new Promise(r => setTimeout(r, 100));
+          while (itemsRef.current.some(x => x.pending || x.pages.some(p => p.doctypePending))) await new Promise(r => setTimeout(r, 100));
           const list = itemsRef.current;
           void examples(list).then(sendFeedback); // in the background, queued when offline
           const out = list.flatMap(x => x.pages).filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind }) => ({ b64, mediaType, turn, blurry, kind }));
@@ -392,14 +393,14 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
                       {p.blurry && p.kind !== 'other' && <span className="rounded-md bg-background/70 px-1.5 text-[11px] text-warn" data-testid="scan-blurry">{tr('Blurry — take it again')}</span>}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button type="button" data-testid="scan-kind" className="max-w-full truncate rounded-md bg-background/80 px-1.5 py-0.5 text-[11px]" disabled={p.kindPending}>
-                            {p.kindPending ? <IconLoader2 className="inline size-3 animate-spin" /> : p.kind ? tr(KIND_LABELS[p.kind]) : tr('Page kind')}
+                          <button type="button" data-testid="scan-kind" className="max-w-full truncate rounded-md bg-background/80 px-1.5 py-0.5 text-[11px]" disabled={p.doctypePending}>
+                            {p.doctypePending ? <IconLoader2 className="inline size-3 animate-spin" /> : p.kind ? tr(DOCTYPE_LABELS[p.kind]) : tr('Document type')}
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
-                          {PAGE_KINDS.map(kd => (
+                          {DOCTYPES.map(kd => (
                             <DropdownMenuItem key={kd} data-testid={'scan-kind-' + kd} onSelect={() => setPage(p.uid, { kind: kd })}>
-                              {tr(KIND_LABELS[kd])}{kd === p.kind ? <IconCheck className="ml-auto !text-ok" /> : null}
+                              {tr(DOCTYPE_LABELS[kd])}{kd === p.kind ? <IconCheck className="ml-auto !text-ok" /> : null}
                             </DropdownMenuItem>
                           ))}
                         </DropdownMenuContent>

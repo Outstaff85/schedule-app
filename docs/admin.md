@@ -10,7 +10,7 @@ The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log,
 |---|---|
 | Punch Log | everyone who can open the tab — the tab needs the `workers` permission |
 | Firms, Users | `superadmin`, `tenant_admin` |
-| Errors, Timings | `superadmin` |
+| Errors, Timings, Scanner | `superadmin` |
 
 The list is `adminPanes()` on the page (the React tabs draw only these). An `hr` login never sees the Admin tab ([hr.md](hr.md)).
 
@@ -136,3 +136,15 @@ The figures and the text forms are `src/manager/adminlogs.ts`:
 - **all measurements**, newest first, paged by 10: a plate each — the kind, the steps under it (a slow AI call also `aiNote`: the `part`, tries, output / input / cache tokens and a stop reason other than `end_turn`), then time, firm (`firmNames` from the firms cache), user, device, pages and page kinds; the total at the right (amber, and an amber bar, when above its kind's 90%) and a copy button (`timingText`).
 
 "Copy all" copies the summary (`summaryText`) and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.
+
+## Scanner pane (super-admin)
+
+`src/manager/ScanAdmin.tsx` ([hf-plan.md](hf-plan.md) → Admin → Scanner): where the scanner's own models stand and how they are used. Everything through `scan_feedback` (`src/scan/server.ts`: `trainingStats`, `scanSettings`).
+
+- **figures:** the document edges model's corrections since its training (`edgesSince` / 200), the document type model's pages of the type it has the fewest of (/100), the full documents collected (`documents`), the fields the users corrected in them (`fieldsCorrected`);
+- **Models:** the versions in the lab and on the site (`/scan-lab/models.json`, `/scan/models.json`), a link to every version on Hugging Face (`OutStaff/scanner-models`); training runs on the PC (`/scan-train`);
+- **Document type model:** Off / Shadow / Mixed (`scanSettings/current.doctypeMode`, shadow by default; `preprocess_scan` reads it at most once a minute — `doctype_mode()`): Off — Haiku types every page; Shadow — the model reads beside Haiku, its answer (`doctypeShadow`) only travels with the training example and is counted (`shadowPages`, `shadowModelRight`, `shadowHaikuRight` — right meaning the type the user left), shown as "the model right on X %, Haiku on Y %"; Mixed — a page the model is sure of needs no Haiku. A change is saved at once (`setSettings`);
+- **Full documents for the field reader model:** a tick tile per firm (`tenants/<id>/settings/scan.collectDocuments`; ticked unless turned off — `collects_documents`).
+
+The bell's scanner notices ("Time to retrain the document edges model", "Enough pages to train the document type model") open this pane.
+

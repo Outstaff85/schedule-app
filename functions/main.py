@@ -14,6 +14,7 @@ import base64
 import datetime
 import io
 import json
+import os
 import pathlib
 import re
 import threading
@@ -27,6 +28,7 @@ import firebase_admin
 from firebase_admin import auth as fb_auth
 from firebase_functions import https_fn, options
 
+import datastore
 import docfind
 import feedback
 import gate
@@ -688,49 +690,72 @@ def _model_bucket(storage):
     raise RuntimeError(f"no Storage bucket reachable: {last}")
 
 
+# A model file's name by what it does (docs/hf-plan.md → H0) and the name it had in a
+# version not yet moved to Hugging Face (its mirror in Storage still holds the old one).
+MODEL_FILES = {"edges.onnx": "sa24.onnx", "edges-lite.onnx": "lite.onnx", "face.onnx": "yunet640.onnx"}
+
+
+def _model_bytes(bucket, name):
+    """A model file of the site's version from the Storage mirror, under its name or its old one; None when absent."""
+    for n in (name, MODEL_FILES.get(name)):
+        if n:
+            blob = bucket.blob(MODEL_PREFIX + n)
+            if blob.exists():
+                return blob.download_as_bytes()
+    return None
+
+
 def _scan_models():
-    """(corner models [accurate, light], face finder) — ONNX Runtime sessions."""
+    """(document edges models [accurate, light], face finder) — ONNX Runtime sessions."""
     with _models_lock:
-        if not _models:
+        if not _models.get("edges"):
             import onnxruntime as ort
             from firebase_admin import storage
-            if not firebase_admin._apps:
-                firebase_admin.initialize_app()
-            last = None
-            for name in MODEL_BUCKETS:
-                try:
-                    bucket = storage.bucket(name)
-                    raw = {m: bucket.blob(MODEL_PREFIX + m).download_as_bytes() for m in ("sa24.onnx", "lite.onnx", "yunet640.onnx")}
-                    break
-                except Exception as e:  # not this project's bucket name
-                    last = e
-            else:
-                raise RuntimeError(f"scan models not reachable: {last}")
+            bucket = _model_bucket(storage)
+            raw = {m: _model_bytes(bucket, m) for m in ("edges.onnx", "edges-lite.onnx", "face.onnx")}
+            missing = [m for m, v in raw.items() if v is None]
+            if missing:
+                raise RuntimeError(f"scan models not in {MODEL_PREFIX}: {', '.join(missing)}")
             opts = ort.SessionOptions()
             opts.intra_op_num_threads = 2
             new = lambda m: ort.InferenceSession(raw[m], opts, providers=["CPUExecutionProvider"])
-            _models["corners"] = [new("sa24.onnx"), new("lite.onnx")]
-            _models["face"] = new("yunet640.onnx")
-    return _models["corners"], _models["face"]
+            _models["face"] = new("face.onnx")
+            _models["edges"] = [new("edges.onnx"), new("edges-lite.onnx")]
+    return _models["edges"], _models["face"]
 
 
-def _kind_model():
-    """The page-kind model of the site's version (models/scan/<version>/kind.onnx), or None
+def _doctype_model():
+    """The document type model of the site's version (models/scan/<version>/doctype.onnx), or None
     while no version has one (docs/scan-plan.md → S7) — looked for once per instance."""
     with _models_lock:
-        if "kind" not in _models:
-            _models["kind"] = None
+        if "doctype" not in _models:
+            _models["doctype"] = None
             try:
                 import onnxruntime as ort
                 from firebase_admin import storage
-                blob = _model_bucket(storage).blob(MODEL_PREFIX + "kind.onnx")
-                if blob.exists():
+                raw = _model_bytes(_model_bucket(storage), "doctype.onnx")
+                if raw:
                     opts = ort.SessionOptions()
                     opts.intra_op_num_threads = 2
-                    _models["kind"] = ort.InferenceSession(blob.download_as_bytes(), opts, providers=["CPUExecutionProvider"])
+                    _models["doctype"] = ort.InferenceSession(raw, opts, providers=["CPUExecutionProvider"])
             except Exception:
-                pass  # no kind model: the pages go to Haiku as before
-    return _models["kind"]
+                pass  # no document type model: the pages go to Haiku as before
+    return _models["doctype"]
+
+
+def _warm_up():
+    """Load the scanner's models when the instance starts, before its first scan (docs/hf-plan.md → H4);
+    a failure here is retried by the first scan."""
+    try:
+        _scan_models()
+        _doctype_model()
+    except Exception as e:
+        print(f"scan models warm-up failed: {e}")
+
+
+# Only in the running preprocess_scan instance — never while the deploy reads this file.
+if os.environ.get("K_SERVICE") and os.environ.get("FUNCTION_TARGET") == "preprocess_scan":
+    threading.Thread(target=_warm_up, daemon=True).start()
 
 
 def _hint_corners(value):
@@ -744,6 +769,40 @@ def _hint_corners(value):
     return np.clip(q, 0, 1)
 
 
+# How the document type model is used (Admin → Scanner, docs/hf-plan.md → The way a model replaces
+# the AI): "off" — not run; "shadow" — run beside Haiku, its answer only recorded (doctypeShadow),
+# never trusted; "mixed" — a page it is sure of needs no Haiku. scanSettings/current.doctypeMode,
+# read at most once a minute; shadow until the super-admin moves it on.
+DOCTYPE_MODES = ("off", "shadow", "mixed")
+_settings = {"at": 0.0, "doctypeMode": "shadow"}
+
+
+def doctype_mode():
+    import time
+    if time.time() - _settings["at"] > 60:
+        try:
+            from firebase_admin import firestore
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app()
+            d = firestore.client().collection("scanSettings").document("current").get().to_dict() or {}
+            _settings["doctypeMode"] = d.get("doctypeMode") if d.get("doctypeMode") in DOCTYPE_MODES else "shadow"
+        except Exception:
+            pass  # the last mode read stays
+        _settings["at"] = time.time()
+    return _settings["doctypeMode"]
+
+
+def _with_shadow(page, out, mode, sess):
+    """In shadow mode the model's answer on the page, only for the record (doctypeShadow)."""
+    if mode == "shadow" and sess is not None:
+        try:
+            kd = docfind.doctype_of(sess, page)
+            out.update({"doctypeShadow": kd["doctype"], "doctypeShadowConf": kd["doctypeConf"]})
+        except Exception:
+            pass
+    return out
+
+
 def find_scan_pages(image_bytes, hint=None):
     """The documents on a photo, each cut flat, turned upright, enhanced and checked
     for blur (docfind.find_documents; docs/scan.md → Server-side finding)."""
@@ -752,8 +811,9 @@ def find_scan_pages(image_bytes, hint=None):
         return {"ok": False, "reason": "decode_failed"}
     img = _resize_max_dim(img, FIND_MAX_DIM)
     corners, face = _scan_models()
+    mode, sess = doctype_mode(), _doctype_model()
     pages = []
-    for p in docfind.find_documents(img, corners, face, hint, _kind_model()):
+    for p in docfind.find_documents(img, corners, face, hint, sess if mode == "mixed" else None):
         page = _enhance_contrast_sharpness(_resize_max_dim(p["image"], MAX_WORK_DIM))
         blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
         ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
@@ -768,8 +828,9 @@ def find_scan_pages(image_bytes, hint=None):
             "blurVariance": blur,
             "imageBase64": base64.b64encode(buf.tobytes()).decode(),
             "mediaType": "image/jpeg",
-            **{k: p[k] for k in ("kind", "kindConf", "kindTurn", "kindTurnConf", "kindSure") if k in p},
+            **{k: p[k] for k in ("doctype", "doctypeConf", "doctypeTurn", "doctypeTurnConf", "doctypeSure") if k in p},
         })
+        _with_shadow(p["image"], pages[-1], mode, sess)
     return {"ok": True, "pages": pages, "size": [img.shape[1], img.shape[0]]}
 
 
@@ -799,10 +860,12 @@ def cut_scan_page(image_bytes, quad):
         turn = -2
     if turn > 0:
         page = docfind.turned(page, turn)
-    page, turn, kd = docfind.with_kind(_kind_model(), page, turn)
+    mode, sess = doctype_mode(), _doctype_model()
+    page, turn, kd = docfind.with_doctype(sess if mode == "mixed" else None, page, turn)
     out = _page_out(page, quad, turn)
     if out:
         out.update(kd)
+        _with_shadow(page, out, mode, sess)
     return {"ok": True, "pages": [out] if out else [], "size": [img.shape[1], img.shape[0]]}
 
 
@@ -810,18 +873,71 @@ def _json(obj, status=200):
     return https_fn.Response(json.dumps(obj, default=str), status=status, mimetype="application/json")
 
 
+def collects_documents(db, tenant_id):
+    """Whether a firm's full documents are collected (docs/hf-plan.md → H8a): on unless the
+    super-admin turned it off (tenants/<id>/settings/scan.collectDocuments == false)."""
+    if not tenant_id:
+        return False
+    snap = db.collection("tenants").document(tenant_id).collection("settings").document("scan").get()
+    return (snap.to_dict() or {}).get("collectDocuments") is not False
+
+
+def _scan_settings(payload, db):
+    """Admin → Scanner (a super-admin): {"action": "settings"} → the document type model's mode and
+    every firm's full-document collection; {"action": "setSettings", "doctypeMode"?, "collect"?: {tenantId: bool}}."""
+    ref = db.collection("scanSettings").document("current")
+    if payload.get("action") == "setSettings":
+        mode = payload.get("doctypeMode")
+        if mode is not None:
+            if mode not in DOCTYPE_MODES:
+                return _json({"error": "unknown mode"}, 400)
+            ref.set({"doctypeMode": mode}, merge=True)
+            _settings["at"] = 0.0
+        for tid, on in (payload.get("collect") or {}).items():
+            if isinstance(tid, str) and tid and isinstance(on, bool):
+                db.collection("tenants").document(tid).collection("settings").document("scan").set({"collectDocuments": on}, merge=True)
+    cur = ref.get().to_dict() or {}
+    collect = {}
+    for t in db.collection("tenants").stream():
+        collect[t.id] = collects_documents(db, t.id)
+    return _json({"ok": True, "doctypeMode": cur.get("doctypeMode") if cur.get("doctypeMode") in DOCTYPE_MODES else "shadow", "collect": collect})
+
+
+def _scan_document(payload, claims, db, stats_ref, storage):
+    """A full document with the fields the user saved (H8a): kept when the firm collects them."""
+    from firebase_admin import firestore
+    tenant = claims.get("tenantId") or ""
+    if not collects_documents(db, tenant):
+        return _json({"ok": True, "kept": False, "why": "off for this firm"})
+    doc, why = feedback.check_document(payload)
+    if not doc:
+        return _json({"error": why}, 400)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    doc_id = db.collection("scanTraining").document().id
+    base = f"documents/{tenant}/{now:%Y-%m}/{doc_id}"
+    paths = datastore.put([(f"{base}/page-{i + 1}.jpg", pg["image"]) for i, pg in enumerate(doc["pages"])], lambda: _model_bucket(storage))
+    datastore.put([(f"{base}/record.json", datastore.as_json(feedback.document_record(doc, tenant, now, doc_id, paths)))], lambda: _model_bucket(storage))
+    stats_ref.set({"documentsSince": firestore.Increment(1), "documents": firestore.Increment(1),
+                   "fieldsCorrected": firestore.Increment(len(doc["corrected"])), "updatedAt": now}, merge=True)
+    return _json({"ok": True, "kept": True})
+
+
 @https_fn.on_request(
     cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
     memory=options.MemoryOption.MB_512,
     cpu=1,
     concurrency=20,
-    timeout_sec=30,
+    timeout_sec=60,
 )
 def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     """The scanner's training examples (feedback.py; docs/scan-plan.md → S6).
     {"action": "add", "examples": [...]} from the scan window's Done (any manager
     login): pages whose corners the user moved are kept, the rest only counted.
-    {"action": "stats"} (a super-admin): the counts, and whether retraining is due."""
+    {"action": "document", "pages", "read", "reads", "scanned", "saved", "workerId"} from the
+    save of the worker window after a scan: a full document for the field reader model (H8a).
+    {"action": "stats"} (a super-admin): the counts, and whether retraining is due.
+    The files go to the private Hugging Face bucket once the server has its token, else to
+    Firebase Storage training/ (datastore.py)."""
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
     try:
@@ -835,20 +951,27 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         from firebase_admin import firestore, storage
         db = firestore.client()
         stats_ref = db.collection("scanTrainingStats").document("current")
+        if payload.get("action") in ("settings", "setSettings"):
+            if claims.get("role") != "superadmin":
+                return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
+            return _scan_settings(payload, db)
         if payload.get("action") == "stats":
             if claims.get("role") != "superadmin":
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
             stats = (stats_ref.get().to_dict() or {})
-            return _json({"ok": True, "stats": stats, "due": int(stats.get("newSince") or 0) >= feedback.RETRAIN_AT,
-                          "kinds": feedback.kind_counts(stats), "kindsDue": feedback.kinds_due(stats)})
+            return _json({"ok": True, "stats": stats, "due": feedback.edges_since(stats) >= feedback.RETRAIN_AT, "edgesSince": feedback.edges_since(stats),
+                          "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats)})
+        if payload.get("action") == "document":
+            return _scan_document(payload, claims, db, stats_ref, storage)
         examples = payload.get("examples")
         if not isinstance(examples, list) or not examples:
             return _json({"error": "no examples"}, 400)
         now = datetime.datetime.now(datetime.timezone.utc)
-        bucket = None
+        bucket = []
+        fb = lambda: bucket[0] if bucket else (bucket.append(_model_bucket(storage)) or bucket[0])
         kept = right = bad = fixes = 0
         moved_sum = 0.0
-        kinds = {}
+        doctypes, shadow = {}, {}
         for raw in examples[:feedback.MAX_EXAMPLES]:
             ex, why = feedback.check(raw)
             if not ex:
@@ -856,30 +979,35 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
                 continue
             if not feedback.correction(ex):
                 right += 1
+            for k, n in feedback.shadow_counts(ex).items():
+                shadow[k] = shadow.get(k, 0) + n
             if not feedback.kept(ex):
                 continue
-            if bucket is None:
-                bucket = _model_bucket(storage)
             ex["model"] = MODEL_PREFIX.rstrip("/").rsplit("/", 1)[-1]  # the version that found these corners
             ref = db.collection("scanTraining").document()
-            path = page_path = None
+            files = []
             if ex["image"] is not None:
-                path = feedback.image_path(now, ref.id)
-                bucket.blob(path).upload_from_string(ex["image"], content_type="image/jpeg")
+                files.append((f"edges/{now:%Y-%m}/{ref.id}.jpg", ex["image"]))
             if ex["pageImage"] is not None:
-                page_path = feedback.image_path(now, ref.id, "-page")
-                bucket.blob(page_path).upload_from_string(ex["pageImage"], content_type="image/jpeg")
-                kinds[ex["kindFixed"]] = kinds.get(ex["kindFixed"], 0) + 1
-            ref.set(feedback.record(ex, claims.get("tenantId"), now, path, page_path))
+                files.append((f"doctype/{now:%Y-%m}/{ref.id}.jpg", ex["pageImage"]))
+                doctypes[ex["doctypeFixed"]] = doctypes.get(ex["doctypeFixed"], 0) + 1
+            stored = dict(zip([f[0].split("/", 1)[0] for f in files], datastore.put(files, fb)))
+            rec = feedback.record(ex, claims.get("tenantId"), now, stored.get("edges"), stored.get("doctype"))
+            if datastore.on_hf():  # the record goes beside its copies; nothing about the example stays in Firebase
+                rec.pop("deleteAt", None)
+                datastore.put([(f"records/{now:%Y-%m}/{ref.id}.json", datastore.as_json({"id": ref.id, **rec}))])
+            else:
+                ref.set(rec)
             kept += 1
             fixes += feedback.correction(ex)
             moved_sum += ex["moved"]
-        # newSince counts the corrections only: they make a retraining due, the kept right pages do not
-        # kindsSince: the page copies of each kind (by the kind the user left), for the page-kind model
-        update = {"newSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
+        # edgesSince counts the corrections only: they make a retraining due, the kept right pages do not
+        # doctypesSince: the page copies of each document type (by the type the user left), for the document type model
+        update = {"edgesSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
                   "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum), "updatedAt": now}
-        if kinds:  # an empty map under merge would wipe the counts
-            update["kindsSince"] = {k: firestore.Increment(n) for k, n in kinds.items()}
+        if doctypes:  # an empty map under merge would wipe the counts
+            update["doctypesSince"] = {k: firestore.Increment(n) for k, n in doctypes.items()}
+        update.update({k: firestore.Increment(n) for k, n in shadow.items()})
         stats_ref.set(update, merge=True)
         return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
     except Exception as e:

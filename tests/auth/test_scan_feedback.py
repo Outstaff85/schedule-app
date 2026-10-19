@@ -24,12 +24,12 @@ MODEL = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
 
 
 def ex(**kw):
-    return dict({"image": JPG, "cornersModel": MODEL, "cornersFixed": MODEL, "source": "model", "model": "base-v1"}, **kw)
+    return dict({"image": JPG, "edgesModel": MODEL, "edgesFixed": MODEL, "source": "model", "model": "base-v1"}, **kw)
 
 
 def test_a_moved_page_is_kept_with_how_far_it_moved():
     fixed = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.95]]
-    e, why = feedback.check(ex(cornersFixed=fixed))
+    e, why = feedback.check(ex(edgesFixed=fixed))
     assert why is None and abs(e["moved"] - 0.05) < 1e-6 and e["moved"] >= feedback.MOVED_MIN
 
 
@@ -39,14 +39,14 @@ def test_a_page_the_model_got_right_is_only_counted_and_needs_no_copy():
 
 
 def test_bad_examples_are_refused():
-    assert feedback.check(ex(cornersFixed=[[0, 0]]))[1] == "bad corners"
-    assert feedback.check(ex(cornersModel=[[0, 0], [2, 0], [1, 1], [0, 1]]))[1] == "bad corners"
+    assert feedback.check(ex(edgesFixed=[[0, 0]]))[1] == "bad corners"
+    assert feedback.check(ex(edgesModel=[[0, 0], [2, 0], [1, 1], [0, 1]]))[1] == "bad corners"
     moved = [[0.2, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
-    assert feedback.check(ex(cornersFixed=moved, image="not base64!"))[1] == "bad image"
-    assert feedback.check(ex(cornersFixed=moved, image=None))[1] == "the image is not a small JPEG"
-    assert feedback.check(ex(cornersFixed=moved, image=base64.b64encode(b"PNG....").decode()))[1] == "the image is not a small JPEG"
+    assert feedback.check(ex(edgesFixed=moved, image="not base64!"))[1] == "bad image"
+    assert feedback.check(ex(edgesFixed=moved, image=None))[1] == "the image is not a small JPEG"
+    assert feedback.check(ex(edgesFixed=moved, image=base64.b64encode(b"PNG....").decode()))[1] == "the image is not a small JPEG"
     big = base64.b64encode(b"\xff\xd8" + b"\0" * feedback.MAX_IMAGE_BYTES).decode()
-    assert feedback.check(ex(cornersFixed=moved, image=big))[1] == "the image is not a small JPEG"
+    assert feedback.check(ex(edgesFixed=moved, image=big))[1] == "the image is not a small JPEG"
     assert feedback.check("x")[1] == "not an object"
 
 
@@ -72,19 +72,19 @@ def test_server_and_site_use_the_same_model_version():
 
 
 def test_a_changed_kind_is_kept_with_a_copy_of_the_page():
-    e, why = feedback.check(ex(image=None, kindModel="sefach", kindFixed="contract", pageImage=JPG))
-    assert why is None and feedback.kept(e) and e["kindModel"] == "sefach" and e["kindFixed"] == "contract" and e["pageImage"]
+    e, why = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="contract", pageImage=JPG))
+    assert why is None and feedback.kept(e) and e["doctypeModel"] == "sefach" and e["doctypeFixed"] == "contract" and e["pageImage"]
     now = datetime.datetime(2026, 10, 18, tzinfo=datetime.timezone.utc)
     r = feedback.record(e, "t1", now, None, feedback.image_path(now, "abc", "-page"))
-    assert r["image"] is None and r["pageImage"] == "training/scan/2026-10/abc-page.jpg" and r["kindFixed"] == "contract"
+    assert r["image"] is None and r["pageImage"] == "training/scan/2026-10/abc-page.jpg" and r["doctypeFixed"] == "contract"
 
 
 def test_a_kind_left_as_it_was_is_only_counted_and_bad_kinds_are_dropped():
-    e, _ = feedback.check(ex(image=None, kindModel="passport", kindFixed="passport"))
+    e, _ = feedback.check(ex(image=None, doctypeModel="passport", doctypeFixed="passport"))
     assert not feedback.kept(e) and e["pageImage"] is None
-    e, _ = feedback.check(ex(image=None, kindModel="nonsense", kindFixed="x"))
-    assert e["kindModel"] is None and e["kindFixed"] is None and not feedback.kept(e)
-    assert feedback.check(ex(image=None, kindModel="sefach", kindFixed="other"))[1] == "a changed kind needs a small JPEG of the page"
+    e, _ = feedback.check(ex(image=None, doctypeModel="nonsense", doctypeFixed="x"))
+    assert e["doctypeModel"] is None and e["doctypeFixed"] is None and not feedback.kept(e)
+    assert feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="other"))[1] == "a changed document type needs a small JPEG of the page"
 
 
 def test_one_in_five_right_pages_is_kept_with_its_copy_but_is_no_correction():
@@ -97,26 +97,74 @@ def test_one_in_five_right_pages_is_kept_with_its_copy_but_is_no_correction():
     assert feedback.record(e, "t", now, None)["right"] is False
 
 
-def test_a_sampled_right_page_also_keeps_its_page_copy_for_the_kind_model():
-    e, why = feedback.check(ex(keep=True, kindModel="passport", kindFixed="passport", pageImage=JPG))
+def test_a_sampled_right_page_also_keeps_its_page_copy_for_the_doctype_model():
+    e, why = feedback.check(ex(keep=True, doctypeModel="passport", doctypeFixed="passport", pageImage=JPG))
     assert why is None and e["right"] and e["pageImage"] and not feedback.correction(e)
-    e, why = feedback.check(ex(keep=True, kindModel="passport", pageImage="bad"))
+    e, why = feedback.check(ex(keep=True, doctypeModel="passport", pageImage="bad"))
     assert why is None and e["right"] and e["pageImage"] is None  # the page copy is optional here
-    e, _ = feedback.check(ex(image=None, kindModel="passport", kindFixed="passport", pageImage=JPG))
+    e, _ = feedback.check(ex(image=None, doctypeModel="passport", doctypeFixed="passport", pageImage=JPG))
     assert e["pageImage"] is None and not feedback.kept(e)  # only a sampled page keeps it
 
 
-def test_the_kind_model_is_due_when_every_kind_has_enough_copies():
-    assert feedback.kind_counts({})["sefach"] == 0 and not feedback.kinds_due({})
-    full = {k: feedback.KIND_AT for k in feedback.KINDS_TRAINED}
-    assert feedback.kinds_due({"kindsSince": full})
-    assert not feedback.kinds_due({"kindsSince": dict(full, id_back=feedback.KIND_AT - 1)})
-    assert "other" not in feedback.KINDS_TRAINED
+def test_the_doctype_model_is_due_when_every_kind_has_enough_copies():
+    assert feedback.doctype_counts({})["sefach"] == 0 and not feedback.doctypes_due({})
+    full = {k: feedback.DOCTYPE_AT for k in feedback.DOCTYPES_TRAINED}
+    assert feedback.doctypes_due({"doctypesSince": full})
+    assert not feedback.doctypes_due({"doctypesSince": dict(full, id_back=feedback.DOCTYPE_AT - 1)})
+    assert "other" not in feedback.DOCTYPES_TRAINED
 
 
 def test_who_gave_the_kind_is_kept():
-    e, _ = feedback.check(ex(image=None, kindModel="sefach", kindFixed="contract", pageImage=JPG, kindBy="model"))
+    e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="contract", pageImage=JPG, doctypeBy="model"))
     now = datetime.datetime(2026, 10, 19, tzinfo=datetime.timezone.utc)
-    assert feedback.record(e, "t", now, None, "p")["kindBy"] == "model"
-    e, _ = feedback.check(ex(image=None, kindModel="sefach", kindFixed="contract", pageImage=JPG, kindBy="odd"))
-    assert e["kindBy"] == "haiku"
+    assert feedback.record(e, "t", now, None, "p")["doctypeBy"] == "model"
+    e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="contract", pageImage=JPG, doctypeBy="odd"))
+    assert e["doctypeBy"] == "haiku"
+
+
+def test_the_names_before_h0_are_still_read():
+    old = ex(image=None)
+    old["cornersModel"], old["cornersFixed"] = old.pop("edgesModel"), old.pop("edgesFixed")
+    old.update(kindModel="sefach", kindFixed="sefach", kindBy="model")
+    got, why = feedback.check(old)
+    assert why is None and got["edgesModel"] and got["doctypeModel"] == "sefach" and got["doctypeBy"] == "model"
+
+
+def test_the_counters_before_h0_are_added():
+    st = {"newSince": 150, "edgesSince": 60, "kindsSince": {"sefach": 40}, "doctypesSince": {"sefach": 70, "passport": 5}}
+    assert feedback.edges_since(st) == 210
+    c = feedback.doctype_counts(st)
+    assert c["sefach"] == 110 and c["passport"] == 5 and c["other"] == 0
+
+
+DOC_JPG = JPG
+
+
+def doc(**kw):
+    return dict({"workerId": "w1", "pages": [{"b64": DOC_JPG, "doctype": "id_front", "primary": True}, {"b64": DOC_JPG, "doctype": "sefach"}],
+                 "read": {"given": "Dana", "fieldBoxes": {"given": [0.1, 0.1, 0.3, 0.2]}}, "reads": [{"city": "Haifa"}],
+                 "scanned": {"docGiven": "Dana", "docSurname": "Levi", "city": "Hifa"}, "saved": {"docGiven": "Dana", "docSurname": "Levi", "city": "Haifa", "phone": "050"}}, **kw)
+
+
+def test_a_full_document_keeps_its_pages_reads_and_the_fields_corrected():
+    d, why = feedback.check_document(doc())
+    assert why is None and len(d["pages"]) == 2 and d["pages"][0]["primary"] and d["pages"][1]["doctype"] == "sefach"
+    assert d["corrected"] == ["city"] and "phone" not in d["saved"] and d["read"]["fieldBoxes"] and d["workerId"] == "w1"
+    rec = feedback.document_record(d, "t1", "now", "x", ["p1", "p2"])
+    assert rec["pages"][1] == {"path": "p2", "doctype": "sefach", "primary": False} and rec["tenantId"] == "t1" and "image" not in rec["pages"][0]
+
+
+def test_a_full_document_is_refused_without_pages_or_saved_fields():
+    assert feedback.check_document(doc(pages=[]))[1] == "no pages"
+    assert feedback.check_document(doc(pages=[{"b64": "bm90IGpwZWc="}]))[1] == "a page is not a JPEG"
+    assert feedback.check_document(doc(saved={}))[1] == "nothing saved"
+    assert feedback.check_document(doc(pages=[{"b64": DOC_JPG}] * 7))[1] == "no pages"
+
+
+def test_a_shadow_answer_is_kept_and_counted_against_haiku():
+    e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="sefach", doctypeShadow="sefach"))
+    assert e["doctypeShadow"] == "sefach" and feedback.shadow_counts(e) == {"shadowPages": 1, "shadowModelRight": 1, "shadowHaikuRight": 1}
+    e, _ = feedback.check(ex(image=None, pageImage=JPG, doctypeModel="sefach", doctypeFixed="contract", doctypeShadow="contract"))
+    assert feedback.shadow_counts(e) == {"shadowPages": 1, "shadowModelRight": 1, "shadowHaikuRight": 0}
+    e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="sefach", doctypeShadow="bogus"))
+    assert e["doctypeShadow"] is None and feedback.shadow_counts(e) == {}

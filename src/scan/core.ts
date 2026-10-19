@@ -1,6 +1,6 @@
 // The scanner's on-device core, run in its background thread (worker.ts): model
 // download into the browser's cache, sessions (GPU with a self-test, else CPU),
-// the corner model's answer, the perspective warp and the upright turn by the
+// the document edges model's answer, the perspective warp and the upright turn by the
 // face. The site's own copy of the scanner lab's scan-core.js (docs/scan-plan.md →
 // Scanner lab), the same steps; its models and ONNX Runtime are the site's own,
 // under /scan/ (put there at deploy by scripts/scan/fetch-models.sh).
@@ -9,15 +9,15 @@
 // ONNX Runtime Web, loaded into the thread by importScripts (worker.ts).
 declare const ort: any;
 
-export const S = 256, H = 128; // the corner model's input and heatmap sides
+export const S = 256, H = 128; // the document edges model's input and heatmap sides
 export const BASE = '/scan/';
 const CACHE = 'scan-models';
 
 export type Pt = [number, number];
 export type Detection = { pts: (Pt | null)[]; conf: number };
 export type Status = (text: string, frac?: number) => void;
-export type KindRead = { kind?: string; kindConf?: number; kindTurn?: number; kindTurnConf?: number; kindSure?: boolean };
-export type Warped = { data: Uint8ClampedArray; width: number; height: number; turn: number; turnError?: string } & KindRead;
+export type DoctypeRead = { doctype?: string; doctypeConf?: number; doctypeTurn?: number; doctypeTurnConf?: number; doctypeSure?: boolean };
+export type Warped = { data: Uint8ClampedArray; width: number; height: number; turn: number; turnError?: string } & DoctypeRead;
 
 // A model kept in the browser's cache is used only while it is still the file on
 // the server (same ETag; one small HEAD request) — a changed model is downloaded
@@ -215,18 +215,18 @@ export async function upright(faceSess: any, out: { data: Uint8ClampedArray; wid
   }
 }
 
-// The firm's page-kind model on the phone (docs/scan-plan.md → S7), once the site's model
-// version has one (/scan/models.json says so; /scan/kind.onnx): input "img" [1, 3, 256,
-// 256] RGB 0..1, the page stretched to the square; outputs "kind" [1, 6] and "turn" [1, 4]
+// The firm's document type model on the phone (docs/scan-plan.md → S7), once the site's model
+// version has one (/scan/models.json says so; /scan/doctype.onnx): input "img" [1, 3, 256,
+// 256] RGB 0..1, the page stretched to the square; outputs "doctype" [1, 6] and "turn" [1, 4]
 // (the clockwise turn the page needs). The same rule as the server's (functions/docfind.py
-// with_kind — duplicated on purpose): a page with no face is set upright when the model is
-// sure of the turn; kindSure says no Haiku is needed.
-export const KINDS = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
-const KIND_SURE = 0.9;
-export async function kindModelOn(): Promise<boolean> {
-  try { const r = await fetch(BASE + 'models.json', { cache: 'no-cache' }); return r.ok && !!(await r.json()).kind; } catch { return false; }
+// with_doctype — duplicated on purpose): a page with no face is set upright when the model is
+// sure of the turn; doctypeSure says no Haiku is needed.
+export const DOCTYPE_LIST = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
+const DOCTYPE_SURE = 0.9;
+export async function doctypeModelOn(): Promise<boolean> {
+  try { const r = await fetch(BASE + 'models.json', { cache: 'no-cache' }); return r.ok && !!(await r.json()).doctype; } catch { return false; }
 }
-export async function withKind(sess: any, out: Warped): Promise<Warped> {
+export async function withDoctype(sess: any, out: Warped): Promise<Warped> {
   if (!sess) return out;
   try {
     const c = new OffscreenCanvas(out.width, out.height);
@@ -236,13 +236,13 @@ export async function withKind(sess: any, out: Warped): Promise<Warped> {
     const d = g.getImageData(0, 0, S, S).data, n = S * S, f = new Float32Array(3 * n);
     for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
     const r = await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, S, S]) });
-    const kp = Array.from(r.kind.data as Float32Array), tp = Array.from(r.turn.data as Float32Array);
+    const kp = Array.from(r.doctype.data as Float32Array), tp = Array.from(r.turn.data as Float32Array);
     const k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
-    let res: Warped = { ...out, kind: KINDS[k], kindConf: kp[k], kindTurn: 90 * t, kindTurnConf: tp[t] };
-    if (out.turn < 0 && tp[t] >= KIND_SURE) {
+    let res: Warped = { ...out, doctype: DOCTYPE_LIST[k], doctypeConf: kp[k], doctypeTurn: 90 * t, doctypeTurnConf: tp[t] };
+    if (out.turn < 0 && tp[t] >= DOCTYPE_SURE) {
       const tc = turned(c, t), td = tc.getContext('2d')!.getImageData(0, 0, tc.width, tc.height);
-      res = { ...res, data: td.data, width: tc.width, height: tc.height, turn: t, kindTurn: 0 };
+      res = { ...res, data: td.data, width: tc.width, height: tc.height, turn: t, doctypeTurn: 0 };
     }
-    return { ...res, kindSure: kp[k] >= KIND_SURE && (res.turn >= 0 || tp[t] >= KIND_SURE) };
-  } catch { return out; } // a failing kind model never spoils the shot
+    return { ...res, doctypeSure: kp[k] >= DOCTYPE_SURE && (res.turn >= 0 || tp[t] >= DOCTYPE_SURE) };
+  } catch { return out; } // a failing document type model never spoils the shot
 }

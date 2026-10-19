@@ -16,9 +16,24 @@ mkdir -p "$OUT/ort" "$OUT/ort130" "$CACHE"
 pip install -q onnx numpy google-cloud-storage
 STORE=""
 if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py" ping; then STORE=1; else echo "Firebase Storage not reachable: the authors' links are used"; fi
-# get NAME URL: the cache, else the firm's Storage, else the authors' link (then stored).
+# The models' home (docs/hf-plan.md): the public Hugging Face repo, one tag per version, the
+# files named by what they do; Firebase Storage (the old names) only while a version is not moved there yet.
+HF="https://huggingface.co/OutStaff/scanner-models/resolve/$SCAN_MODELS_VERSION"
+hfname() { case "$1" in sa24.onnx) echo edges.onnx;; lite.onnx) echo edges-lite.onnx;; yunet640.onnx) echo face.onnx;; *) echo "$1";; esac; }
+fromhf() {
+  for i in 1 2 3; do
+    code=$(curl -sSL -o "$CACHE/$1.part" -w '%{http_code}' "$HF/$(hfname "$1")" || echo 000)
+    if [ "$code" = 200 ] && [ "$(stat -c %s "$CACHE/$1.part")" -gt 100000 ]; then mv "$CACHE/$1.part" "$CACHE/$1"; echo "from Hugging Face: $(hfname "$1")"; return 0; fi
+    rm -f "$CACHE/$1.part"
+    case "$code" in 401|403|404) return 1;; esac  # not there: the version is not moved yet
+    sleep $((i * 5))
+  done
+  return 1
+}
+# get NAME URL: the cache, else Hugging Face, else the firm's Storage, else the authors' link (then stored).
 get() {
   [ -s "$CACHE/$1" ] && return 0
+  fromhf "$1" && return 0
   [ -n "$STORE" ] && python "$HERE/model_store.py" get "$1" "$CACHE/$1" && return 0
   # only the base models may come from their authors; a trained version is the firm's own
   [ "$SCAN_MODELS_VERSION" = base-v1 ] || { echo "$1 is not in models/scan/$SCAN_MODELS_VERSION"; return 1; }
@@ -38,13 +53,13 @@ get yunet640.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/ma
 # fp16 weights, fp32 math: a plain fp16 conversion gives zeros on WebGPU.
 [ -s "$CACHE/sa24_w16.onnx" ] || python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/sa24_w16.onnx"
 cp "$CACHE/lite.onnx" "$CACHE/sa24_w16.onnx" "$OUT/" && cp "$CACHE/yunet_any.onnx" "$OUT/yunet.onnx"
-# The page-kind model (docs/scan-plan.md → S7): only once this version has one
-# (kind-lite.onnx in Storage); models.json tells the lab whether it is there.
-KIND=false
-if { [ -s "$CACHE/kind-lite.onnx" ] || { [ -n "$STORE" ] && python "$HERE/model_store.py" get kind-lite.onnx "$CACHE/kind-lite.onnx"; }; }; then
-  cp "$CACHE/kind-lite.onnx" "$OUT/kind.onnx"; KIND=true
+# The document type model (docs/scan-plan.md → S7): only once this version has one
+# (doctype-lite.onnx in Storage); models.json tells the lab whether it is there.
+DOCTYPE=false
+if { [ -s "$CACHE/doctype-lite.onnx" ] || fromhf doctype-lite.onnx || { [ -n "$STORE" ] && python "$HERE/model_store.py" get doctype-lite.onnx "$CACHE/doctype-lite.onnx"; }; }; then
+  cp "$CACHE/doctype-lite.onnx" "$OUT/doctype.onnx"; DOCTYPE=true
 fi
-printf '{"version":"%s","kind":%s}\n' "$SCAN_MODELS_VERSION" "$KIND" > "$OUT/models.json"
+printf '{"version":"%s","doctype":%s}\n' "$SCAN_MODELS_VERSION" "$DOCTYPE" > "$OUT/models.json"
 # The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).

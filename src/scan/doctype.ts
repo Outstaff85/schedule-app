@@ -1,23 +1,23 @@
-// The page kind (docs/scan.md → The scan window → Page kinds): as soon as the server has
+// The document type (docs/scan.md → The scan window → Page kinds): as soon as the server has
 // cut a page, Haiku (aiDetectAlign — kind and turn, no corners) says what it is — the
 // ID card's front or back, the ספח, a passport, a contract, anything else — and how far
 // a page with no face on it must turn; a page set upright by its face keeps that turn.
 import { API_URL } from '@/manager/data/api';
 import { gsAuth } from '@/manager/data/session';
 
-export const PAGE_KINDS = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'] as const;
-export type PageKind = (typeof PAGE_KINDS)[number];
+export const DOCTYPES = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'] as const;
+export type Doctype = (typeof DOCTYPES)[number];
 /** The labels (through tr() where they are shown). */
-export const KIND_LABELS: Record<PageKind, string> = {
+export const DOCTYPE_LABELS: Record<Doctype, string> = {
   id_front: 'ID card', id_back: 'ID card back', sefach: 'Appendix (ספח)', passport: 'Passport', contract: 'Contract', other: 'Other',
 };
 
-export async function detectKind(b64: string, mediaType: string): Promise<{ kind: PageKind | null; rotate: number }> {
+export async function detectDoctype(b64: string, mediaType: string): Promise<{ kind: Doctype | null; rotate: number }> {
   try {
     const resp = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'aiDetectAlign', ...gsAuth(), image: b64, mediaType }) });
     const json = await resp.json();
     const a = json && json.ok && json.align;
-    const kind = a && (PAGE_KINDS as readonly string[]).includes(a.kind) ? (a.kind as PageKind) : null;
+    const kind = a && (DOCTYPES as readonly string[]).includes(a.kind) ? (a.kind as Doctype) : null;
     const rotate = a && [90, 180, 270].includes(a.rotate) ? a.rotate : 0;
     return { kind, rotate };
   } catch {

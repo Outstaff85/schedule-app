@@ -7,6 +7,7 @@ on:
       - 'functions/**'
       - 'functions-auth/**'
       - 'tests/auth/**'
+      - 'scripts/scan/mirror.py'
       - '.github/workflows/deploy-functions.yml'
   workflow_dispatch: {}
 
@@ -60,6 +61,15 @@ jobs:
 
       - name: Write service account credentials
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+
+      # The server's scan models from Hugging Face into its Storage mirror (docs/hf-plan.md → H4):
+      # a version not on Hugging Face yet leaves Storage as it is.
+      - name: Mirror the server's scan models
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+        run: |
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q google-cloud-storage
+          "$RUNNER_TEMP/testvenv/bin/python" scripts/scan/mirror.py
 
       - name: Deploy Cloud Functions
         id: deploy
