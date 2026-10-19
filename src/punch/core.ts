@@ -374,8 +374,9 @@ function analyseGps(pos: GeolocationPosition) {
 // GPS off or blocked (docs/punch.md → GPS off or blocked): the page checks by itself — the
 // browser's permission for the page (Permissions API, when there is one: a refusal is known
 // at once, and a change made in the settings re-reads the location by itself) and the reply
-// of a reading (denied / position unavailable). The punch button then says "Turn on GPS",
-// and a tap opens the sheet with the steps and its button.
+// of a reading (denied / position unavailable). The punch button then says "Turn on GPS";
+// a tap asks for the location at once (the browser's own question, or Android's "turn on
+// location"), and only when that is refused a short hint opens with its button.
 let _permWatch = false;
 async function gpsPermission(): Promise<PermissionState | null> {
   try {
@@ -385,8 +386,9 @@ async function gpsPermission(): Promise<PermissionState | null> {
     return p.state;
   } catch { return null; }
 }
+let _askedByTap = false; // the reading was asked for by a tap on "Turn on GPS": a refusal opens the hint
 const blocked = (gpsBlock: 'denied' | 'off' | 'none') => set({
-  gpsBlock, locOk: false,
+  gpsBlock, locOk: false, ...(_askedByTap ? { gpsHelp: true } : {}),
   loc: { cls: 'warn', t: gpsBlock === 'denied' ? 'GPS is blocked for this app' : gpsBlock === 'off' ? 'GPS is off on this phone' : 'GPS not available' },
 });
 /** One GPS reading → the location pill and whether a punch is allowed (locOk). */
@@ -394,8 +396,8 @@ export async function getLocation() {
   set({ loc: { cls: 'loading', t: 'Checking GPS...' }, locOk: false });
   // A site without coordinates: the check is skipped and the punch allowed.
   if (SITE.lat == null || SITE.lng == null) { set({ loc: { cls: 'ok', t: 'Location check skipped' }, locOk: true, gpsBlock: null, gpsHelp: false }); return; }
-  if (!navigator.geolocation) { blocked('none'); return; }
-  if ((await gpsPermission()) === 'denied') { blocked('denied'); return; }
+  if (!navigator.geolocation) { blocked('none'); _askedByTap = false; return; }
+  if ((await gpsPermission()) === 'denied') { blocked('denied'); _askedByTap = false; return; }
   const t0 = Date.now();
   navigator.geolocation.getCurrentPosition(pos => {
     const elapsed = Date.now() - t0, a = analyseGps(pos);
@@ -403,6 +405,7 @@ export async function getLocation() {
     const tooFast = elapsed < GPS_REQUEST_MS;
     const distOk = dist <= SITE.radius, accOk = a.acc > 0 && a.acc <= GPS_MAX_ACCURACY;
     lastGps = { lat: a.lat, lng: a.lng, accuracy: a.acc, dist, suspicious: a.suspicious || tooFast, warnings: tooFast ? ['Response in ' + elapsed + 'ms (too fast)'].concat(a.warnings) : a.warnings, elapsed, at: Date.now() };
+    _askedByTap = false;
     set({ gpsBlock: null, gpsHelp: false });
     if (!distOk) set({ locOk: false, loc: { cls: 'warn', t: '{0}m from site (max {1}m)', p: { 0: dist, 1: SITE.radius } } });
     else if (!accOk) set({ locOk: false, loc: { cls: 'warn', t: 'Weak GPS (±{0}m) — go outside', p: { 0: Math.round(a.acc) } } });
@@ -413,13 +416,15 @@ export async function getLocation() {
     if (err.code === 1) blocked('denied');
     else if (err.code === 2) blocked('off');
     else set({ gpsBlock: null, locOk: false, loc: { cls: 'warn', t: 'GPS error — go outside' } });
+    _askedByTap = false;
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
-/** The sheet's "Turn on GPS": asks for the location again, from the tap — the browser then asks
- * for the permission when it may still ask, and Chrome on Android offers to turn the phone's
- * location on; a page can't switch GPS on itself, so a refusal kept by the browser is undone in
- * the settings (the sheet's steps), after which the page sees it by itself. */
-export function enableGps() { void getLocation(); }
+/** "Turn on GPS" (the punch button, the notice, the hint's button): asks for the location at once,
+ * from the tap — the browser then asks for the permission when it may still ask, and Chrome on
+ * Android offers to turn the phone's location on. A page can't switch GPS on or open the phone's
+ * settings itself: when the browser refuses (a "Block" it keeps), the short hint opens, and a
+ * permission given later in the settings is seen by itself. */
+export function enableGps() { _askedByTap = true; void getLocation(); }
 export const openGpsHelp = () => set({ gpsHelp: true });
 export const closeGpsHelp = () => set({ gpsHelp: false });
 

@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { tr, useI18n } from '@/lib/i18n';
 import { LanguageButton } from '@/components/shared/language';
 import { ThemeButton } from '@/components/shared/theme-switch';
-import { closeGpsHelp, doPunch, enableGps, loadWeather, locText, nextType, openGpsHelp, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
+import { closeGpsHelp, doPunch, enableGps, loadWeather, locText, nextType, openSchedule, pickObject, set, usePunch, type IconName, type PClient } from './core';
 import { greetingHtml, partOfDay } from '@/lib/greeting';
 import { nextShiftText, refreshTileHours } from './figures';
 import { MARK_SVG } from './mark';
@@ -60,7 +60,7 @@ export function PunchScreen({ hidden }: { hidden: boolean }) {
       </div>
       <div className={'loc-chip ' + s.loc.cls} id="locChip"><span className="loc-dot" /><span>{locText(s.loc)}</span></div>
       {s.gpsBlock && (
-        <button type="button" className="gps-notice" data-testid="gps-notice" onClick={openGpsHelp}>
+        <button type="button" className="gps-notice" data-testid="gps-notice" onClick={enableGps}>
           <IconCurrentLocation className="ti" /><span>{tr('To punch, turn on GPS')}</span><span className="go">{tr('Turn on')} ›</span>
         </button>
       )}
@@ -73,29 +73,23 @@ export function PunchScreen({ hidden }: { hidden: boolean }) {
   );
 }
 
-// GPS off or blocked (docs/punch.md): why, the steps for this phone, and "Turn on GPS" — a fresh
-// reading from the tap (the browser asks again when it may; Chrome on Android offers to turn
-// the location on). The sheet closes by itself once a reading comes.
+// GPS off or blocked (docs/punch.md): the short hint, opened only when the browser refused the
+// tap's request (a "Block" it keeps, or the location left off): what to do on this phone in a
+// line, and "Turn on GPS" to ask again. It closes by itself once a reading comes.
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function GpsSheet() {
   const s = usePunch();
   const ios = isIos();
-  const steps = s.gpsBlock === 'none' ? [tr('Open the link in Chrome (Android) or Safari (iPhone).')]
-    : s.gpsBlock === 'off'
-      ? (ios ? [tr('Open Settings → Privacy & Security → Location Services.'), tr('Turn Location Services on.'), tr('Come back here and tap Turn on GPS.')]
-        : [tr('Swipe down from the top of the screen.'), tr('Tap Location to turn it on.'), tr('Come back here and tap Turn on GPS.')])
-      : (ios ? [tr('Open Settings → Privacy & Security → Location Services, and turn it on.'), tr('Below, open Safari Websites (or your browser) and choose While Using the App.'), tr('Come back here and tap Turn on GPS.')]
-        : [tr('Tap Turn on GPS below and choose Allow.'), tr('No question? Tap the lock next to the address → Permissions → Location → Allow. In the installed app: hold its icon → App info → Permissions → Location → Allow.'), tr('Make sure Location is on: swipe down from the top of the screen.')]);
-  const why = s.gpsBlock === 'denied' ? tr('This app is not allowed to use your location.') : s.gpsBlock === 'off' ? tr('Location (GPS) is turned off on this phone.') : tr('This browser cannot give your location.');
+  const hint = s.gpsBlock === 'none' ? tr('Open the link in Chrome (Android) or Safari (iPhone).')
+    : s.gpsBlock === 'off' ? (ios ? tr('Settings → Privacy & Security → Location Services → on.') : tr('Swipe down from the top of the screen and tap Location.'))
+    : (ios ? tr('In Safari tap aA → Website Settings → Location → Allow.') : tr('Tap the lock next to the address → Permissions → Location → Allow.'));
+  const why = s.gpsBlock === 'denied' ? tr('The browser blocked location for this app.') : s.gpsBlock === 'off' ? tr('Location (GPS) is turned off on this phone.') : tr('This browser cannot give your location.');
   return (
     <Window open={s.gpsHelp && !!s.gpsBlock} onOpenChange={o => { if (!o) closeGpsHelp(); }} title={tr('Turn on GPS to punch')} description={why}
       footer={s.gpsBlock !== 'none' && <Button variant="primary" data-testid="gps-enable" disabled={s.loc.cls === 'loading'} onClick={enableGps}>
         <IconCurrentLocation className="size-[18px]" />{s.loc.cls === 'loading' ? tr('Checking GPS...') : tr('Turn on GPS')}
       </Button>}>
-      <ol className="flex list-decimal flex-col gap-2 px-4 pb-2 ps-9 text-sm sm:px-0 sm:ps-5" data-testid="gps-steps">
-        {steps.map((t, i) => <li key={i}>{t}</li>)}
-      </ol>
-      <p className="px-4 pb-2 text-xs text-muted-foreground sm:px-0">{tr('Your location is checked only when you punch, to confirm you are at your site.')}</p>
+      <p className="px-4 pb-3 text-sm sm:px-0" data-testid="gps-steps">{hint}</p>
     </Window>
   );
 }
@@ -126,7 +120,7 @@ function PunchButton() {
 
   const start = (e: React.PointerEvent | React.KeyboardEvent) => {
     const btn = ref.current;
-    if (s.gpsBlock && !s.done) { e.preventDefault(); openGpsHelp(); return; } // GPS off or blocked: the tap opens the steps
+    if (s.gpsBlock && !s.done) { e.preventDefault(); enableGps(); return; } // GPS off or blocked: the tap asks for it at once
     if (!btn || !can || hold.current) return;
     e.preventDefault();
     try { if ('pointerId' in e && e.pointerId != null) btn.setPointerCapture(e.pointerId); } catch { /* not capturable */ }

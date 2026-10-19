@@ -2391,8 +2391,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ptl.dark = await waitFor(p, () => document.documentElement.dataset.theme === 'dark' && localStorage.getItem('uiTheme') === 'dark', 5000);
   await p.keyboard.press('Escape');
   ok(ptl.on && ptl.kept && ptl.dark, 'punch: the theme button turns the light theme on (kept on the device) and back to Dark ' + JSON.stringify(ptl));
-  // GPS off or blocked: the page checks by itself — the pill and a notice say so, the button turns into "Turn on GPS" and a tap
-  // opens the steps with its button; a reading that comes (permission given / location on) closes them and the punch is back.
+  // GPS off or blocked: the page checks by itself — the pill and a notice say so, the button turns into "Turn on GPS".
+  // A tap asks for the location at once (the browser's question / Android's "turn on location"); only when the browser
+  // refuses again does a short hint open, with its own "Turn on GPS"; a reading that comes brings the punch back.
   const gpw = await page(ctx);
   await gpw.setViewportSize({width: 390, height: 844});
   await gpw.addInitScript(() => {
@@ -2402,27 +2403,40 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (m === 'ok') ok(Object.assign({}, at, {timestamp: Date.now()})); else err({code: m === 'off' ? 2 : 1, message: m});
     }, 900);
   });
+  const gpsSheet = () => gpw.evaluate(() => !!document.querySelector('[data-testid="gps-steps"]'));
   await gpw.goto(BASE + 'worker-punch.html?t=tok-new');
   await waitFor(gpw, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
   const gq = {denied: await waitFor(gpw, () => document.getElementById('bigPunchBtn').dataset.state === 'gps', 8000)};
   gq.chip = await gpw.textContent('#locChip'); gq.notice = await gpw.isVisible('[data-testid="gps-notice"]');
+  gq.noSheetFirst = !(await gpsSheet());
   await gpw.screenshot({path: SP + '/gps-blocked.png'});
   await gpw.click('#bigPunchBtn');
   gq.sheet = await waitFor(gpw, () => !!document.querySelector('[data-testid="gps-steps"]') && !!document.querySelector('[data-testid="gps-enable"]'), 5000);
-  gq.steps = await gpw.evaluate(() => document.querySelector('[data-testid="gps-steps"]').children.length);
+  gq.hint = await gpw.textContent('[data-testid="gps-steps"]');
   await sleep(600); await gpw.screenshot({path: SP + '/gps-steps.png'});
   await gpw.evaluate(() => localStorage.setItem('gpsMode', 'ok'));
   await gpw.click('[data-testid="gps-enable"]');
   gq.back = await waitFor(gpw, () => !document.querySelector('[data-testid="gps-steps"]') && document.getElementById('bigPunchBtn').dataset.state !== 'gps' && !document.querySelector('[data-testid="gps-notice"]'), 8000);
+  // the browser gives the location on the tap: straight back to the punch, no hint at all
+  await gpw.evaluate(() => localStorage.setItem('gpsMode', 'denied'));
+  await gpw.reload();
+  await waitFor(gpw, () => document.getElementById('bigPunchBtn').dataset.state === 'gps', 15000);
+  await gpw.evaluate(() => { localStorage.setItem('gpsMode', 'ok'); window.__gpsSheetSeen = false;
+    new MutationObserver(() => { if (document.querySelector('[data-testid="gps-steps"]')) window.__gpsSheetSeen = true; }).observe(document.body, {childList: true, subtree: true}); });
+  await gpw.click('#bigPunchBtn');
+  gq.direct = await waitFor(gpw, () => document.getElementById('bigPunchBtn').dataset.state !== 'gps' && !document.querySelector('[data-testid="gps-notice"]'), 8000)
+    && !(await gpw.evaluate(() => window.__gpsSheetSeen));
   await gpw.evaluate(() => localStorage.setItem('gpsMode', 'off'));
   await gpw.reload();
   gq.off = await waitFor(gpw, () => document.getElementById('bigPunchBtn').dataset.state === 'gps' && /GPS is off on this phone/.test(document.getElementById('locChip').textContent), 15000);
-  await gpw.click('#bigPunchBtn'); await sleep(900); await gpw.screenshot({path: SP + '/gps-off-steps.png'});
+  await gpw.click('#bigPunchBtn');
+  gq.offSheet = await waitFor(gpw, () => /turned off/.test((document.querySelector('[data-testid="window"]') || {}).textContent || ''), 5000);
+  await sleep(600); await gpw.screenshot({path: SP + '/gps-off-steps.png'});
   await gpw.keyboard.press('Escape');
   await gpw.evaluate(() => localStorage.removeItem('gpsMode'));
   await gpw.close();
-  ok(gq.denied && /blocked for this app/.test(gq.chip) && gq.notice && gq.sheet && gq.steps >= 2 && gq.back && gq.off,
-    'punch: GPS blocked or off — the pill and a notice say so, the button opens the steps and "Turn on GPS"; a reading brings the punch back ' + JSON.stringify(gq));
+  ok(gq.denied && /blocked for this app/.test(gq.chip) && gq.notice && gq.noSheetFirst && gq.sheet && /Allow/.test(gq.hint) && gq.back && gq.direct && gq.off && gq.offSheet,
+    'punch: GPS blocked or off — the pill and a notice say so, a tap asks at once, the hint opens only on a refusal; a reading brings the punch back ' + JSON.stringify(gq));
   // ── Stage 5b: a day the worker can't work, a shift offered to a colleague and confirmed by the manager, the pay estimate ──
   await srv('/swapSetup');
   await p.goto(BASE + 'worker-punch.html?t=tok-new');
