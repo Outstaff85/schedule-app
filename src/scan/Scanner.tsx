@@ -13,7 +13,7 @@ import { Window } from '@/components/shared/window';
 import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { filesToUploadPages } from '@/manager/logic/uploads';
-import { reportError } from '@/manager/data/telemetry';
+import { reportError, reportTiming } from '@/manager/data/telemetry';
 import { frameInput, startEngine, startExact, type Detection, type Engine, type Pt } from './engine';
 import { cutHere, findHere } from './find';
 import { loadTracker, type Tracker } from './track';
@@ -80,17 +80,22 @@ async function canvasOfUrl(url: string, max = SEND_MAX) {
 /** The documents on a picture: found and cut on the phone (find.ts), else by the server.
  * src: the picture as a data URL (the corner editor's and the training copies' photo). */
 async function findAny(pic: HTMLCanvasElement, engine: Engine | null, hint: Pt[] | null): Promise<{ found: FindResult; src: string }> {
-  const src = dataUrl(jpeg(pic));
+  const src = dataUrl(jpeg(pic)), t0 = Date.now();
+  // how long the finding took and where (Admin → Timings, kind scanFind)
+  const took = (where: string, found: FindResult) => {
+    reportTiming('scanFind', Date.now() - t0, { where, shot: !!hint, pages: found.pages.length, sources: found.pages.map(p => p.source).join(',') });
+    return { found, src };
+  };
   const ex = await startExact();
   if (ex) {
     try {
       const live = engine ? (rgba: Uint8ClampedArray) => engine.detect({ rgba }).then(r => r.res) : null;
-      return { found: await findHere(ex, live, pic, hint), src };
+      return took('phone', await findHere(ex, live, pic, hint));
     } catch (e) {
       reportError('scan: the phone could not find the documents — ' + ((e as Error)?.message || e), 'scan');
     }
   }
-  return { found: await findPages(src.split(',')[1], hint), src };
+  return took('server', await findPages(src.split(',')[1], hint));
 }
 
 /** read: the scan process run on Done (src/scan-process/) — the window shows its progress
@@ -139,6 +144,8 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     if (!open) return;
     let alive = true;
     void startExact(); // the accurate model, beside the live frame's threads (a picked photo needs only it)
+    // the models kept on the phone are not cleared by the browser when space runs low (granted to an installed or often used site)
+    void navigator.storage?.persist?.().catch(() => false);
     Promise.all([startEngine((_t, f) => alive && setStatus(tr('Preparing the scanner…') + (f != null && f < 1 ? ' ' + Math.round(f * 100) + '%' : ''))), loadTracker()])
       .then(([e, t]) => { if (!alive) return; st.current.engine = e; st.current.track = t; setReady(true); setStatus(''); })
       .catch(e => alive && setStatus(tr('The live frame is not available here ({0}) — pick photos instead', { 0: (e as Error)?.message || String(e) })));

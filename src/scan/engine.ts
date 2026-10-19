@@ -20,13 +20,13 @@ const EXACT = 'edges-w16.onnx'; // the accurate model, fp16 weights with fp32 ma
 const CPU_ORT = 'ort', GPU_ORT = 'ort130'; // 1.22 is smoother on the CPU; 1.30 runs the GPU right where 1.22 gave zeros
 
 /** One background thread of the lab (scan-worker.js). */
-function workerThread(dir: string, onStatus: Status) {
+function workerThread(dir: string, onStatus: Status, silentMs = 25000) {
   const w = new Worker(new URL('./worker.ts', import.meta.url));
   const waiting = new Map<number, { resolve: (m: Reply) => void; reject: (e: Error) => void }>();
   let n = 0, heard = performance.now();
   const failAll = (why: string) => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
-  // A thread that says nothing for 25 s while it has work is taken as stuck.
-  const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 25000) failAll('no answer for 25 s'); }, 1000);
+  // A thread that says nothing for silentMs (25 s; the accurate model's 2 min) while it has work is taken as stuck.
+  const watch = setInterval(() => { if (waiting.size && performance.now() - heard > silentMs) failAll('no answer for ' + silentMs / 1000 + ' s'); }, 1000);
   w.onmessage = ({ data: m }) => {
     heard = performance.now();
     if (m.type === 'status') onStatus(m.text, m.frac);
@@ -70,7 +70,8 @@ let exact: Promise<Exact | null> | null = null;
  * server then finds the documents. */
 export function startExact(): Promise<Exact | null> {
   if (exact) return exact;
-  const t = workerThread(CPU_ORT, () => {});
+  // the accurate model on a phone's CPU may take long over one picture: it is given 2 minutes, not 25 s
+  const t = workerThread(CPU_ORT, () => {}, 120000);
   exact = t.load('wasm', true, EXACT).then(() => {
     let queue: Promise<unknown> = Promise.resolve();
     const one = <T,>(run: () => Promise<T>): Promise<T> => { const r = queue.then(run); queue = r.catch(() => null); return r; };

@@ -19,28 +19,39 @@ export type Status = (text: string, frac?: number) => void;
 export type DoctypeRead = { doctype?: string; doctypeConf?: number; doctypeTurn?: number; doctypeTurnConf?: number; doctypeSure?: boolean };
 export type Warped = { data: Uint8ClampedArray; width: number; height: number; turn: number; turnError?: string } & DoctypeRead;
 
-// A model kept in the browser's cache is used only while it is still the file on
-// the server (same ETag; one small HEAD request) — a changed model is downloaded
-// again. Offline, the kept copy is used as it is.
+// What the deploy put under /scan/ (models.json): the version, whether a document type model is
+// there, and each model file's fingerprint. Read once per thread.
+type ModelsInfo = { version?: string; doctype?: boolean; files?: Record<string, string> };
+let info: Promise<ModelsInfo | null> | null = null;
+export function modelsInfo(): Promise<ModelsInfo | null> {
+  return (info ||= fetch(BASE + 'models.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null));
+}
+
+// A model is kept in the browser's cache under its fingerprint (models.json) and used from there
+// without asking the server anything — a model downloads again only when a deploy changes it,
+// and its older copies are then deleted. Offline (no models.json), a kept copy is used as it is.
 export async function fetchModel(name: string, onProgress: (got: number, total: number) => void): Promise<Uint8Array> {
   const url = BASE + name;
-  try {
-    const cache = await caches.open(CACHE);
-    const hit = await cache.match(name);
-    let etag: string | null = null;
-    try { const h = await fetch(url, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) etag = h.headers.get('etag'); } catch { /* offline */ }
-    if (hit && (!etag || hit.headers.get('x-etag') === etag)) { onProgress(1, 1); return new Uint8Array(await hit.arrayBuffer()); }
-    const res = await fetch(url, { cache: 'no-cache' });
-    if (!res.ok || !res.body) throw new Error('model download failed: HTTP ' + res.status);
-    const total = +(res.headers.get('content-length') || 0);
-    const reader = res.body.getReader(); const parts: Uint8Array[] = []; let got = 0;
-    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
-    const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
-    try { await cache.put(name, new Response(buf, { headers: { 'x-etag': res.headers.get('etag') || etag || '' } })); } catch { /* storage full */ }
-    return buf;
-  } catch {
-    const res = await fetch(url); return new Uint8Array(await res.arrayBuffer());
+  let cache: Cache | null = null;
+  try { cache = await caches.open(CACHE); } catch { /* no Cache Storage here */ }
+  const fp = (await modelsInfo())?.files?.[name];
+  const key = new URL(url + (fp ? '?v=' + fp : ''), self.location.origin).href;
+  const kept = cache ? (await cache.keys()).filter(r => new URL(r.url).pathname === url) : [];
+  const hit = cache && (fp ? await cache.match(key) : kept.length ? await cache.match(kept[0]) : undefined);
+  if (hit) { onProgress(1, 1); return new Uint8Array(await hit.arrayBuffer()); }
+  const res = await fetch(key, { cache: 'no-cache' });
+  if (!res.ok || !res.body) throw new Error('model download failed: HTTP ' + res.status);
+  const total = +(res.headers.get('content-length') || 0);
+  const reader = res.body.getReader(); const parts: Uint8Array[] = []; let got = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
+  const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
+  if (cache) {
+    try {
+      await cache.put(key, new Response(buf));
+      for (const r of kept) if (r.url !== key) await cache.delete(r); // the older copies of this model
+    } catch { /* storage full: used this time only */ }
   }
+  return buf;
 }
 
 // GPU first when asked, else CPU; the warm-up run compiles the GPU shaders now
@@ -224,7 +235,7 @@ export async function upright(faceSess: any, out: { data: Uint8ClampedArray; wid
 export const DOCTYPE_LIST = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
 const DOCTYPE_SURE = 0.9;
 export async function doctypeModelOn(): Promise<boolean> {
-  try { const r = await fetch(BASE + 'models.json', { cache: 'no-cache' }); return r.ok && !!(await r.json()).doctype; } catch { return false; }
+  return !!(await modelsInfo())?.doctype;
 }
 export async function withDoctype(sess: any, out: Warped): Promise<Warped> {
   if (!sess) return out;

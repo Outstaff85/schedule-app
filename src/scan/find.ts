@@ -100,6 +100,20 @@ async function findNext(ex: Exact, live: Live | null, c: HTMLCanvasElement, foun
   return null;
 }
 
+/** A sure document inside the one at q (its bounding box, the accurate model), 5–60 % of that box —
+ * corners back on the picture; null when there is none. */
+async function inner(ex: Exact, c: HTMLCanvasElement, q: Pt[]): Promise<Pt[] | null> {
+  const xs = q.map(p => p[0]), ys = q.map(p => p[1]);
+  // just inside its edges, so the model sees what lies on it and not the document itself again
+  const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], mx = 0.06 * (x1 - x0), my = 0.06 * (y1 - y0);
+  const [a, b, c2, d2] = [Math.max(0, x0 + mx), Math.max(0, y0 + my), Math.min(1, x1 - mx), Math.min(1, y1 - my)];
+  const sw = Math.round((c2 - a) * c.width), sh = Math.round((d2 - b) * c.height);
+  if (sw < 32 || sh < 32) return null;
+  const r = good(await ex.detect(small(c, Math.round(a * c.width), Math.round(b * c.height), sw, sh)));
+  if (!r || area(r) > 0.6 || area(r) < 0.05) return null;
+  return r.map(([x, y]) => [a + x * (c2 - a), b + y * (d2 - b)] as Pt);
+}
+
 /** A white page (a form's page, a PDF, a screenshot) cut into its photos, as boxes in pixels;
  * [] for a plain photo. Bands of rows mostly not white, at least 12 % high; in each band every
  * run of columns a quarter of the page wide (two photos side by side are two); a mostly dark
@@ -257,16 +271,28 @@ export async function findHere(ex: Exact, live: Live | null, pic: HTMLCanvasElem
     : [{ c: pic, box: null as number[] | null }];
   const pages: ServerPage[] = [];
   for (const { c, box } of parts) {
-    let first = good(await ex.detect(small(c))), source = 'model';
-    if (!first && !hint && live) first = good(await live(small(c)));
+    // The first document, the lab's way: the frame's corners (a shot: the live frame's; a picked
+    // page: the light model's, the accurate one's when the light one misses a corner — taken
+    // whatever their certainty, as the lab takes them), then the accurate model's own corners
+    // when it is sure of them.
+    const all = (r: Detection | null) => (r && !r.pts.some(p => !p) ? r.pts as Pt[] : null);
+    const exact = await ex.detect(small(c));
+    let first = hint || null, source = hint ? 'phone' : 'model';
+    if (!first) first = (live && all(await live(small(c)))) || all(exact);
+    if (first && good(exact)) { first = exact.pts as Pt[]; source = 'model'; }
     if (!first && !hint) first = (await padded(ex.detect, c, borderColour(c))) || (live && await padded(live, c, borderColour(c)));
-    if (!first && hint) { first = hint; source = 'phone'; }
     if (!first) { first = [[0, 0], [1, 0], [1, 1], [0, 1]]; source = box ? 'photo' : 'whole'; }
     const found = [first], sources = [source];
     while (found.length < MAX_DOCS) {
       const q = await findNext(ex, live, c, found);
       if (!q) break;
       found.push(q); sources.push('more');
+    }
+    // A document lying on another (an ID card on its ספח): looked for inside each one found —
+    // a sure, smaller frame there is a page of its own too.
+    for (let i = found.length - 1; i >= 0 && found.length < MAX_DOCS; i--) {
+      const q = await inner(ex, c, found[i]);
+      if (q && found.every(f => quadIoU(q, f) <= 0.3)) { found.splice(i + 1, 0, q); sources.splice(i + 1, 0, 'inside'); }
     }
     for (let i = 0; i < found.length; i++) pages.push(await cutHere(ex, c, found[i], sources[i], box));
   }

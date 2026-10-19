@@ -1030,7 +1030,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     cpu=2,
     concurrency=2,
     max_instances=10,
-    timeout_sec=60,
+    timeout_sec=120,
 )
 def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
