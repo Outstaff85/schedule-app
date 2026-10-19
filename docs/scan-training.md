@@ -92,7 +92,7 @@ The models switch on by themselves once their version is set (the lab first, the
 - **Site:** only when the owner says the lab is better, the same version is set in **both** `scripts/scan/models-version` (the phone's light model, `/scan/`) and `functions/scan_models_version.txt` (the server's accurate model; a test keeps the two equal), then deployed.
 - **Rollback:** the previous version in the same files; every version stays on Hugging Face.
 
-At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`resolve/<tag>/<file>`, no key — the repo is public), else from Storage while the version is not moved yet; only `base-v1` may fall back to the models' authors — a trained version is the firm's own. **The server reads its models from a mirror**: the functions' deploy copies the site's version from Hugging Face into Storage `models/scan/<version>/` (`scripts/scan/mirror.py`) and deletes from Storage every other version Hugging Face holds in full; `preprocess_scan` reads the mirror (new names, else the old), and loads its models when an instance starts (warm-up), so it never calls Hugging Face while scanning.
+At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`resolve/<tag>/<file>`, no key — the repo is public), else from Storage while the version is not moved yet; only `base-v1` may fall back to the models' authors — a trained version is the firm's own. **The server runs no scanner model** (2026-10-19: `preprocess_scan` and its Storage mirror were removed — the site's scanner is the lab's page, which runs its models on the phone); `functions/scan_models_version.txt` only names the site's version in each training example.
 
 ## 6. The owner's side
 
