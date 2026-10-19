@@ -1,10 +1,11 @@
 // The scan window (docs/scan-plan.md → S2, S2b; docs/scan.md → The scan window):
 // the camera with a live frame on the document — red while searching, green once
 // it sits on the edges, the shot taken by itself after 1 s held still — and
-// photos / PDFs picked from the device. Every shot or page goes to the server
-// whole (with the live frame's corners), which finds each document on it, cuts
-// it flat and turns it upright; the pages come back into the strip below in
-// order, a photo with two documents as two pages. Done hands the pages over.
+// photos / PDFs picked from the device. As in the scanner lab, the phone itself finds every
+// document on a shot or a page with the accurate model (find.ts — a picked page needs no live
+// frame), cuts it flat and turns it upright; the server (with the live frame's corners) only
+// when the phone cannot. The pages come into the strip below in order, a photo with two
+// documents as two pages. Done hands the pages over.
 import * as React from 'react';
 import { IconCamera, IconCheck, IconLoader2, IconPhoto, IconTrash } from '@tabler/icons-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -13,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { filesToUploadPages } from '@/manager/logic/uploads';
 import { reportError } from '@/manager/data/telemetry';
-import { frameInput, startEngine, type Detection, type Engine, type Pt } from './engine';
+import { frameInput, startEngine, startExact, type Detection, type Engine, type Pt } from './engine';
+import { cutHere, findHere } from './find';
 import { loadTracker, type Tracker } from './track';
 import { cutPage, findPages, sendFeedback, type Example, type FindResult, type ServerPage } from './server';
 import { Corners } from './Corners';
@@ -35,7 +37,7 @@ let nextUid = 0;
 let rightSeen = 0;
 
 const STEADY_MS = 1000, LOCK_MS = 250, MOVE = 0.02, REARM = 0.08; // green after 0.25 s on the edges, the shot after 1 s
-const SEND_MAX = 2400;                             // the photo sent to the server, long side
+const SEND_MAX = 2400;                             // the photo worked on (and sent to the server), long side
 // A page of an old filled Form 101 (its printed title / form number) is left out: a new one is always made.
 const OLD_FORM_101 = /כרטיס\s*עובד|0101\/130/;
 
@@ -70,6 +72,25 @@ function canvasOf(src: CanvasImageSource, w: number, h: number, max: number) {
   c.width = Math.round(w * s); c.height = Math.round(h * s);
   c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
   return c;
+}
+async function canvasOfUrl(url: string, max = SEND_MAX) {
+  const im = new Image(); im.src = url; await im.decode();
+  return canvasOf(im, im.naturalWidth, im.naturalHeight, max);
+}
+/** The documents on a picture: found and cut on the phone (find.ts), else by the server.
+ * src: the picture as a data URL (the corner editor's and the training copies' photo). */
+async function findAny(pic: HTMLCanvasElement, engine: Engine | null, hint: Pt[] | null): Promise<{ found: FindResult; src: string }> {
+  const src = dataUrl(jpeg(pic));
+  const ex = await startExact();
+  if (ex) {
+    try {
+      const live = engine ? (rgba: Uint8ClampedArray) => engine.detect({ rgba }).then(r => r.res) : null;
+      return { found: await findHere(ex, live, pic, hint), src };
+    } catch (e) {
+      reportError('scan: the phone could not find the documents — ' + ((e as Error)?.message || e), 'scan');
+    }
+  }
+  return { found: await findPages(src.split(',')[1], hint), src };
 }
 
 /** read: the scan process run on Done (src/scan-process/) — the window shows its progress
@@ -117,6 +138,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   React.useEffect(() => {
     if (!open) return;
     let alive = true;
+    void startExact(); // the accurate model, beside the live frame's threads (a picked photo needs only it)
     Promise.all([startEngine((_t, f) => alive && setStatus(tr('Preparing the scanner…') + (f != null && f < 1 ? ' ' + Math.round(f * 100) + '%' : ''))), loadTracker()])
       .then(([e, t]) => { if (!alive) return; st.current.engine = e; st.current.track = t; setReady(true); setStatus(''); })
       .catch(e => alive && setStatus(tr('The live frame is not available here ({0}) — pick photos instead', { 0: (e as Error)?.message || String(e) })));
@@ -246,19 +268,18 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     // the camera goes on for the next page after a short pause
     setTimeout(() => { if (st.current.stream) resume(); }, 900);
     try {
-      const sent = jpeg(canvasOf(frame, w, h, SEND_MAX));
-      const found = await findPages(sent, pts);
-      const got = found.pages.map(f => fromServer(f, found.size, dataUrl(sent)));
+      const { found, src } = await findAny(canvasOf(frame, w, h, SEND_MAX), s.engine, pts);
+      const got = found.pages.map(f => fromServer(f, found.size, src));
       setItem(id, { pending: false, pages: got }); classify(got);
     } catch (e) {
-      reportError('scan: the server could not find the documents on a shot — ' + ((e as Error)?.message || e), 'scan');
-      const p = await local; // the server could not be reached: the phone's own cut is kept
+      reportError('scan: the documents on a shot could not be found — ' + ((e as Error)?.message || e), 'scan');
+      const p = await local; // neither the phone nor the server found them: the live frame's cut is kept
       if (p) { const pg = { ...p, doctypePending: !p.doctypeModel }; setItem(id, { pending: false, pages: [pg] }); classify([pg]); }
       else setItem(id, { pending: false, pages: [], note: tr('This shot could not be cut — take it again') });
     }
   };
 
-  // ── photos and PDFs from the device: every page goes to the server at once (4 in flight) ──
+  // ── photos and PDFs from the device: every page's documents found on the phone (else by the server) ──
   const pick = async (files: File[]) => {
     if (!files.length) return;
     const wait = ++st.current.nextId;
@@ -271,11 +292,11 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     setItems(xs => xs.flatMap(x => (x.id === wait ? ids.map(id => ({ id, pending: true, pages: [] as Page[] })) : [x])));
     await Promise.all(pages.map(async (p, i) => {
       try {
-        const found = await findPages(p.b64);
-        const got = found.pages.map(f => fromServer(f, found.size, dataUrl(p.b64, p.mediaType)));
+        const { found, src } = await findAny(await canvasOfUrl(dataUrl(p.b64, p.mediaType)), st.current.engine, null);
+        const got = found.pages.map(f => fromServer(f, found.size, src));
         setItem(ids[i], { pending: false, pages: got }); classify(got);
       } catch (e) {
-        reportError('scan: the server could not find the documents on a picked page — ' + ((e as Error)?.message || e), 'scan');
+        reportError('scan: the documents on a picked page could not be found — ' + ((e as Error)?.message || e), 'scan');
         const whole: Page = { uid: ++nextUid, b64: p.b64, mediaType: p.mediaType, turn: -1, blurry: false, doctypePending: true };
         setItem(ids[i], { pending: false, pages: [whole] }); classify([whole]);
       }
@@ -290,7 +311,8 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     if (shift(q, pg.quad) < 0.003) { setEdit(null); return; }
     setCutting(true);
     try {
-      const cut = await cutPage(pg.src.split(',')[1], q);
+      const ex = await startExact();
+      const cut = ex ? await cutHere(ex, await canvasOfUrl(pg.src), q, 'user', null) : await cutPage(pg.src.split(',')[1], q);
       if (cut.turn < 0 && pg.aiRotate) { try { cut.imageBase64 = await rotateImage(cut.imageBase64, cut.mediaType, pg.aiRotate); cut.mediaType = 'image/jpeg'; } catch { /* kept as cut */ } }
       const [x0, y0, x1, y1] = pg.part;
       const fixedPart = q.map(([x, y]) => [(x - x0) / (x1 - x0), (y - y0) / (y1 - y0)] as Pt);
