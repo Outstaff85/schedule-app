@@ -1372,6 +1372,43 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(gp.daily === '300,0,300' && gp.dayRow && gp.hourBack, 'clients: billing by the day — one day rate per worked shift, the By day / By hour switch ' + JSON.stringify(gp));
   ok(gp.payable && gp.newLogin && gp.tick && gp.saved, 'supplier editor: commission payable this month, New portal login, portal tabs shown read-only (the template\'s) ' + JSON.stringify(gp));
+  // "New client login" / "New portal login" in the client and supplier windows: the user window opens with the role,
+  // the client / supplier and the role's template set; the saved login is listed back in that window, on its template.
+  const nl = await p.evaluate(async () => {
+    const out = {};
+    const userWin = () => document.getElementById('userFormModal'), userOpen = () => document.getElementById('userFormOverlay').classList.contains('open');
+    const make = async (open, modalId, username, password) => {
+      const r = {};
+      open(); await T.tick(200);
+      document.querySelector('#' + modalId + ' [data-testid="new-login"]').click(); await T.tick(300);
+      const u = userWin();
+      r.open = userOpen(); r.role = (u.querySelector('[data-testid="user-window"]') || {dataset: {}}).dataset.role;
+      await T.until(() => /\S/.test((u.querySelector('[data-testid="user-template"]') || {}).innerText || ''), 5000);
+      r.tpl = u.querySelector('[data-testid="user-template"]').innerText.trim();
+      const pick = u.querySelector('[data-testid="user-client"], [data-testid="user-supplier"]');
+      r.owner = pick ? pick.innerText.trim() : '';
+      T.fill('uUsername', username); T.fill('uPassword', password); await T.tick(50);
+      u.querySelector('[data-testid="user-save"]').click();
+      r.closed = await T.until(() => !userOpen(), 15000);
+      return r;
+    };
+    out.client = await make(() => openEditClient('c1'), 'clientModal', 'site.one', 'site-pass-11');
+    for(let i = 0; i < 3; i++){ await T.tick(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    out.supplier = await make(() => openEditSupplier('s-1'), 'supplierModal', 'agency.two', 'agency-pass-2');
+    for(let i = 0; i < 3; i++){ await T.tick(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    const users = (await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'listUsers'})})).json()).users;
+    const u1 = users.find(x => x.username === 'site.one'), u2 = users.find(x => x.username === 'agency.two');
+    out.stored = [u1 && u1.role, u1 && u1.clientId, u1 && u1.templateId, u2 && u2.role, u2 && u2.supplierId, u2 && u2.templateId].join();
+    await T.until(() => (loadAdminCache('users_' + activeTenantIdForAdmin()) || []).some(x => x.username === 'agency.two'), 8000);
+    openEditSupplier('s-1'); await T.tick(250);
+    out.listed = [...document.querySelectorAll('#supplierModal [data-testid="login"]')].map(x => x.innerText.replace(/\s+/g, ' ')).join(' | ');
+    for(let i = 0; i < 3; i++){ await T.tick(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
+    return out;
+  });
+  ok(nl.client.open && nl.client.role === 'client' && nl.client.tpl === 'Client' && /Site A/.test(nl.client.owner) && nl.client.closed
+     && nl.supplier.open && nl.supplier.role === 'supplier' && nl.supplier.tpl === 'Supplier' && /Agency/.test(nl.supplier.owner) && nl.supplier.closed
+     && nl.stored === 'client,c1,client,supplier,s-1,supplier' && /agency\.two/.test(nl.listed) && /Rights follow Supplier/.test(nl.listed),
+    'client / supplier window: New login opens the user window with the role, its client / supplier and template; the login is saved and listed back ' + JSON.stringify(nl));
   // Stage 13: the supplier's own commission rate, set in the supplier window by the owner (per hour / per day, applies from).
   const scom = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
