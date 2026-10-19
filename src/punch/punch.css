@@ -2,7 +2,9 @@
    one from the old worker-punch.html in the React migration
    (react-migration-plan.md → stage 5). Loaded only by src/punch/main.tsx;
    og.css (the tokens, the ground, .gbtn, .lang-btn) comes before it. */
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+/* The reset sits in the base layer: the page's own rules below still win, and so do the
+   shared windows' Tailwind utilities (their padding, numbered lists). */
+@layer base{*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}}
 :root{
   --bg:var(--surface);
   --card:var(--surface-2);
@@ -546,3 +548,9 @@ svg.ti{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125e
 :root[data-theme="light"] .sp-tag.declined{color:var(--red);}
 :root[data-theme="light"] .big-punch-btn{box-shadow:0 20px 50px rgba(20,24,40,.16),inset 0 -8px 20px rgba(20,24,40,.06);}
 
+/* GPS off or blocked (docs/punch.md): the notice under the location pill (a tap opens the
+   steps), and the button's "Turn on GPS" face — it opens the same steps on a tap. */
+.gps-notice{display:flex;align-items:center;gap:8px;width:100%;max-width:340px;margin:0 auto 12px;padding:9px 12px;border:0;border-radius:14px;background:var(--plate);box-shadow:inset 4px 0 0 var(--bad);color:var(--red-text);font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+.gps-notice span{flex:1}
+.gps-notice .go{flex:none;opacity:.85;font-size:12px;white-space:nowrap}
+.big-punch-btn.disabled.gps{cursor:pointer;color:var(--red-text);border-color:var(--bad)}
