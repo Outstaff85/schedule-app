@@ -624,7 +624,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: kindCalls % 2 ? 'id_front' : 'sefach', rotate: 0}})});
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: body.image === JPG ? 'id_front' : 'sefach', rotate: 0}})});
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
@@ -639,7 +639,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {src: f && f.getAttribute('src'), camera: f && f.getAttribute('allow'), copy: /Scanner lab/.test(page) && /\/scan\/embed\.js/.test(page) && /\/scan\/scan-core\.js/.test(page) && !/\/scan-lab\//.test(page)};
   });
   // the lab page's shot: first one page, then (its corners refined, a second document found) two
-  const post = (key, n) => p.evaluate(([jpg, key, n]) => window.postMessage({type: 'scan-pages', key, pages: Array.from({length: n}, () => 'data:image/jpeg;base64,' + jpg)}, location.origin), [JPG, key, n]);
+  // the second page another picture (the ספח), so Haiku's mocked kind follows the page, not the call's order
+  const JPG2 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD2yiiiv2Q/kM//2Q==';
+  const post = (key, n) => p.evaluate(([pics, key, n]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x)}, location.origin), [[JPG, JPG2], key, n]);
   await post('s1', 1);
   await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 1, null, {timeout: 15000}).catch(() => {});
   await post('s1', 2);

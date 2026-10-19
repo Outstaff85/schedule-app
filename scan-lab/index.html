@@ -531,7 +531,17 @@ function photosOnPage(img) {
     if (!run || run[1] - run[0] < 0.25 * w) continue;
     out.push({ area: (run[1] - run[0]) * (y1 - y0) / (w * h), box: [Math.floor(run[0] / sc), Math.floor(y0 / sc), Math.min(W, Math.ceil(run[1] / sc)), Math.min(H, Math.ceil(y1 / sc))] });
   }
-  return out.length === 1 && out[0].area > 0.9 ? [] : out.map(o => o.box);
+  if (!out.length || (out.length === 1 && out[0].area > 0.9)) return [];
+  // A white page: what lies outside the photos is mostly white. A photo of documents on a table is
+  // not one — its bands would be strips of the table, and the second document would be cut away.
+  let rest = 0, restBusy = 0;
+  const inBox = (x, y) => out.some(({ box: [x0, y0, x1, y1] }) => x >= x0 * sc && x < x1 * sc && y >= y0 * sc && y < y1 * sc);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (inBox(x, y)) continue;
+    const k = (y * w + x) * 4; rest++;
+    if (busy[y * w + x] && Math.max(d[k], d[k + 1], d[k + 2]) >= 60) restBusy++;
+  }
+  return rest && restBusy / rest > 0.12 ? [] : out.map(o => o.box);
 }
 
 $('file').onchange = async e => {
