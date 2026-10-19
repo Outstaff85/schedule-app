@@ -629,123 +629,23 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 
 
-# ===== Scan preprocessing: OpenCV geometry + Pillow enhancement =====
-# Called by the client's preAlignScan() (schedule-manager.html) AFTER the
-# user's own manual corner-adjustment editor has already cropped/warped the
-# photo down to just the document (reordered 2026-09-26, per user request,
-# for server economy — see preAlignScan()'s own comment) — this function no
-# longer ever sees the full original frame with background, only the small
-# already-cropped image, so its resize/enhance/blur-check all run over far
-# fewer pixels than before. The geometric auto-crop below (_find_document_quad/
-# _warp_quad) is DORMANT — see preprocess_scan_image()'s own comment; the
-# client tightens the crop before this runs. See docs/history.md for the
-# empirical tests (synthetic + real ID photos) that
-# originally shaped the confidence thresholds below, back when this ran on
-# the full, un-cropped frame — the thresholds themselves are unchanged, only
-# what they're now applied to (an already-single-document image) differs.
+# ===== The scanner's server step: enhancement and blur check =====
+# Every page the scanner's server step cuts (find_scan_pages / cut_scan_page
+# below) is enhanced (contrast, sharpness) and checked for blur here. The old
+# pipeline's enhance-only request (the client cropped by hand first) was
+# removed with it (docs/scan-plan.md → S5).
 MAX_WORK_DIM = 1800  # generous margin above the 1568px Claude Vision actually benefits from
 FIND_MAX_DIM = 2400  # the whole photo the documents are found on (several pages may come from it)
-MIN_QUAD_AREA_FRAC = 0.20
-MAX_QUAD_AREA_FRAC = 0.98
-BLUR_VARIANCE_THRESHOLD = 15.0  # below this (Laplacian variance) = reject as too blurry to bother reading
+BLUR_VARIANCE_THRESHOLD = 15.0  # below this (Laplacian variance, after the enhancement) a page is marked blurry
 # Calibrated against a real Israeli ID photo (see docs/history.md): the sharp original
 # measured ~130, a mild Gaussian blur (still fully legible by eye) measured ~28,
 # a moderate blur (small print starting to degrade) measured ~9 — 15 sits
-# between those last two, closer to "reject only once it's actually a problem"
-# than to "reject anything not perfectly crisp".
-# NOTE: this was calibrated on a RAW (pre-enhancement), FULL-FRAME photo. As
-# of 2026-09-21 the blur check runs AFTER _enhance_contrast_sharpness() (per
-# user request), whose Sharpness pass systematically inflates Laplacian
-# variance for any input — sharpening amplifies gradients that already
-# exist, it can't invent detail that isn't there, but a given genuinely-blurry
-# photo will now score somewhat higher than it would have pre-enhancement.
-# As of 2026-09-26 this also only ever runs on the small image the user has
-# already cropped down to just the document (see this function's own header
-# comment) — a different pixel population again (no background, higher
-# document-fill fraction) than what the number below was originally measured
-# against. Neither variable has been re-measured with real test images in
-# this environment — if an obviously-blurry scan starts passing this check
-# in practice, that's the number to raise.
+# between those last two. The sharpening runs before the check and lifts every
+# score a little; if obviously blurry pages pass, this is the number to raise.
 
 
 def _blur_variance(gray):
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
-
-
-def _auto_canny(gray, sigma=0.33):
-    """Median-based auto-thresholding Canny (a well-known standard trick) —
-    fixed thresholds (the old 50/150) work fine on a clean, evenly-lit
-    synthetic test card but are exactly the kind of number that stops
-    generalizing on a real phone photo (uneven lighting, glare off a
-    laminated ID, a worn/scuffed card, JPEG compression noise) — a real
-    photo can easily sit at a very different overall brightness/contrast
-    than the fixed thresholds assume, causing Canny to find far too few or
-    far too many edges and never settle on a clean 4-point contour. Deriving
-    the thresholds from the image's own median intensity instead adapts to
-    each individual photo's exposure automatically."""
-    m = float(np.median(gray))
-    lower = int(max(0, (1.0 - sigma) * m))
-    upper = int(min(255, (1.0 + sigma) * m))
-    return cv2.Canny(gray, lower, upper)
-
-
-def _find_document_quad(img_bgr):
-    h, w = img_bgr.shape[:2]
-    frame_area = h * w
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    # CLAHE (local contrast normalization) before edge detection only —
-    # doesn't touch the actual output image, just makes the document's own
-    # edges easier to separate from a glare/shadow-uneven real background
-    # than plain global GaussianBlur alone would.
-    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
-    # bilateralFilter smooths real sensor/JPEG noise while keeping the
-    # document's own straight edges sharp (unlike a plain Gaussian blur,
-    # which softens noise and true edges alike) — noisy real photos were the
-    # one category plain GaussianBlur here still missed a confident quad on.
-    denoised = cv2.bilateralFilter(gray, d=9, sigmaColor=40, sigmaSpace=60)
-    edges = _auto_canny(denoised)
-    edges = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=2)
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:8]
-    best_fallback = None
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area < MIN_QUAD_AREA_FRAC * frame_area or area > MAX_QUAD_AREA_FRAC * frame_area:
-            continue
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        if len(approx) == 4 and cv2.isContourConvex(approx):
-            return approx.reshape(4, 2).astype(np.float32)
-        # Real photos routinely lose the clean-4-point case above (a rounded
-        # card corner, motion blur, or compression noise turns one straight
-        # edge into 5-6 slightly-bent approx points) — the largest
-        # plausibly-sized contour's own minimum-area rotated rectangle is a
-        # forgiving fallback for exactly that case, still gated by the same
-        # area bounds as the strict path above, so a low-confidence match
-        # still can't win. Only the single largest candidate is kept (loop
-        # already runs largest-area-first).
-        if best_fallback is None:
-            best_fallback = cv2.boxPoints(cv2.minAreaRect(c)).astype(np.float32)
-    return best_fallback
-
-
-def _order_quad(quad):
-    s = quad.sum(axis=1)
-    diff = np.diff(quad, axis=1).flatten()
-    tl, br = quad[np.argmin(s)], quad[np.argmax(s)]
-    tr, bl = quad[np.argmin(diff)], quad[np.argmax(diff)]
-    return np.float32([tl, tr, br, bl])
-
-
-def _warp_quad(img_bgr, quad):
-    tl, tr, br, bl = _order_quad(quad)
-    w = int(max(np.linalg.norm(br - bl), np.linalg.norm(tr - tl)))
-    h = int(max(np.linalg.norm(tr - br), np.linalg.norm(tl - bl)))
-    if w < 20 or h < 20:
-        return None
-    dst = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
-    m = cv2.getPerspectiveTransform(np.float32([tl, tr, br, bl]), dst)
-    return cv2.warpPerspective(img_bgr, m, (w, h))
 
 
 def _enhance_contrast_sharpness(img_bgr):
@@ -762,53 +662,6 @@ def _resize_max_dim(img_bgr, max_dim):
     if scale >= 1.0:
         return img_bgr
     return cv2.resize(img_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-
-
-def preprocess_scan_image(image_bytes):
-    arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        return {"ok": False, "reason": "decode_failed"}
-
-    img = _resize_max_dim(img, MAX_WORK_DIM)
-
-    # Geometric auto-crop (_find_document_quad/_warp_quad) — DORMANT again as
-    # of 2026-09-27. It was re-enabled 2026-09-26 because the client-side
-    # tightening (refineWithAiAlign) wasn't yet trustworthy enough on a rough
-    # manual crop. Since then, autoPreAlignScan() (aiDetectAlign, a real
-    # vision-model read) plus refineQuadCorners()'s hardened pixel-refinement
-    # plus finalTightenPass()'s independent per-side check now run on the
-    # client BEFORE this endpoint ever sees the image — by the time a photo
-    # gets here it is normally already tightly cropped to just the document.
-    # Running this classical-CV quad detector on an ALREADY near-final crop
-    # is not just redundant (a wasted CLAHE/bilateral/Canny/contour pass on
-    # every scan) but a real regression risk: with little to no background
-    # left to find a document/background boundary against, it can lock onto
-    # a strong internal element instead (the photo, the chip icon, a text
-    # block) and crop INTO the document. Left defined below, unused, in case
-    # a future regression in the client-side pipeline makes this worth
-    # reviving again — see this same pattern's own precedent in
-    # schedule-manager.html (_preAlignThenOcr()/runOcr()).
-    geometry_applied = False
-
-    # Contrast/sharpness enhancement now runs BEFORE the blur check (per user
-    # request, 2026-09-21) rather than after — see BLUR_VARIANCE_THRESHOLD's
-    # own comment above for the trade-off this implies.
-    result = _enhance_contrast_sharpness(img)
-    gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
-    blur_variance = _blur_variance(gray)
-    if blur_variance < BLUR_VARIANCE_THRESHOLD:
-        return {"ok": False, "reason": "blurry", "blurVariance": blur_variance}
-
-    ok, buf = cv2.imencode(".jpg", result, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    if not ok:
-        return {"ok": False, "reason": "encode_failed"}
-    return {
-        "ok": True,
-        "geometryApplied": geometry_applied,
-        "imageBase64": base64.b64encode(buf.tobytes()).decode(),
-        "mediaType": "image/jpeg",
-    }
 
 
 # The scanner's models (docs/scan-plan.md → Scanner lab → Models in Storage), read
@@ -861,6 +714,25 @@ def _scan_models():
     return _models["corners"], _models["face"]
 
 
+def _kind_model():
+    """The page-kind model of the site's version (models/scan/<version>/kind.onnx), or None
+    while no version has one (docs/scan-plan.md → S7) — looked for once per instance."""
+    with _models_lock:
+        if "kind" not in _models:
+            _models["kind"] = None
+            try:
+                import onnxruntime as ort
+                from firebase_admin import storage
+                blob = _model_bucket(storage).blob(MODEL_PREFIX + "kind.onnx")
+                if blob.exists():
+                    opts = ort.SessionOptions()
+                    opts.intra_op_num_threads = 2
+                    _models["kind"] = ort.InferenceSession(blob.download_as_bytes(), opts, providers=["CPUExecutionProvider"])
+            except Exception:
+                pass  # no kind model: the pages go to Haiku as before
+    return _models["kind"]
+
+
 def _hint_corners(value):
     """The phone's live corners: 4 [x, y] pairs in 0..1, else None."""
     try:
@@ -881,7 +753,7 @@ def find_scan_pages(image_bytes, hint=None):
     img = _resize_max_dim(img, FIND_MAX_DIM)
     corners, face = _scan_models()
     pages = []
-    for p in docfind.find_documents(img, corners, face, hint):
+    for p in docfind.find_documents(img, corners, face, hint, _kind_model()):
         page = _enhance_contrast_sharpness(_resize_max_dim(p["image"], MAX_WORK_DIM))
         blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
         ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
@@ -896,6 +768,7 @@ def find_scan_pages(image_bytes, hint=None):
             "blurVariance": blur,
             "imageBase64": base64.b64encode(buf.tobytes()).decode(),
             "mediaType": "image/jpeg",
+            **{k: p[k] for k in ("kind", "kindConf", "kindTurn", "kindTurnConf", "kindSure") if k in p},
         })
     return {"ok": True, "pages": pages, "size": [img.shape[1], img.shape[0]]}
 
@@ -926,7 +799,10 @@ def cut_scan_page(image_bytes, quad):
         turn = -2
     if turn > 0:
         page = docfind.turned(page, turn)
+    page, turn, kd = docfind.with_kind(_kind_model(), page, turn)
     out = _page_out(page, quad, turn)
+    if out:
+        out.update(kd)
     return {"ok": True, "pages": [out] if out else [], "size": [img.shape[1], img.shape[0]]}
 
 
@@ -1040,8 +916,8 @@ def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
             result = cut_scan_page(base64.b64decode(b64), quad)
         elif payload.get("find") is True:
             result = find_scan_pages(base64.b64decode(b64), _hint_corners(payload.get("corners")))
-        else:
-            result = preprocess_scan_image(base64.b64decode(b64))
+        else:  # the old pipeline's enhance-only request (removed in S5)
+            return https_fn.Response(json.dumps({"error": "say find or cut"}), status=400, mimetype="application/json")
         return https_fn.Response(json.dumps(result), status=200, mimetype="application/json")
     except Exception as e:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")

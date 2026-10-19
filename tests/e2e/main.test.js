@@ -674,6 +674,31 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(jpg), c => c.charCodeAt(0))))};
   }, JPG);
   ok(cpdf.head === '%PDF-1.4' && cpdf.pages === 2 && cpdf.count && cpdf.images === 2 && cpdf.eof && cpdf.size === '{"h":8,"w":8}', 'scan contract: its pages become one PDF, a page per photo ' + JSON.stringify(cpdf));
+  // S7: a page the firm's page-kind model is sure of (the server's kindSure) asks Haiku nothing.
+  let s7Kind = 0;
+  await p.route(/cloudfunctions\.net\/preprocess_scan$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
+    const page = (kind, sure) => ({quad: QUAD, box: null, source: 'model', turn: 0, blurry: false, imageBase64: JPG, mediaType: 'image/jpeg', kind, kindConf: sure ? 0.97 : 0.5, kindSure: sure});
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, size: [8, 8], pages: [page('passport', true), page('sefach', false)]})});
+  });
+  await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
+    const body = JSON.parse(r.request().postData() || '{}');
+    if (body.action !== 'aiDetectAlign') return r.fallback();
+    s7Kind++;
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'contract', rotate: 0}})});
+  });
+  await p.evaluate(() => { window.__s7Going = startNewScan(); });
+  await p.waitForSelector('[data-testid="scanner"]');
+  await p.setInputFiles('[data-testid="scan-files"] input', {name: 'p.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(JPG, 'base64')});
+  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 2, null, {timeout: 15000}).catch(() => {});
+  const s7 = await p.evaluate(async () => {
+    const r = {kinds: [...document.querySelectorAll('[data-testid="scan-page"]')].map(e => e.dataset.kind).join(',')};
+    T.esc(); await window.__s7Going;
+    return r;
+  });
+  await p.unroute(/cloudfunctions\.net\/preprocess_scan$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
+  ok(s7.kinds === 'passport,contract' && s7Kind === 1, 'scan window, page-kind model: a page it is sure of keeps its kind and asks Haiku nothing; the unsure one goes to Haiku ' + JSON.stringify({s7, s7Kind}));
   // A scanned contract that could not be saved marks the worker until a contract document is added.
   const cfail = await p.evaluate(() => {
     const w = workers[1]; w.contractUploadFailed = true;

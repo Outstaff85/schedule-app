@@ -11,6 +11,8 @@ import type { Pt } from './engine';
 export type ServerPage = {
   quad: Pt[]; box: number[] | null; source: string; turn: number;
   blurry: boolean; imageBase64: string; mediaType: string;
+  /** the firm's page-kind model's answer, once a version has one (S7); kindSure: no Haiku needed */
+  kind?: string; kindConf?: number; kindSure?: boolean;
 };
 export type FindResult = { pages: ServerPage[]; size: [number, number] };
 
@@ -53,7 +55,11 @@ export function cutPage(b64: string, quad: Pt[]): Promise<ServerPage> {
 }
 
 // ── the training examples (docs/scan-plan.md → S6) ──
-export type Example = { image?: string; cornersModel: Pt[]; cornersFixed: Pt[]; source: string; model: string; kindModel?: string; kindFixed?: string; pageImage?: string; keep?: boolean };
+export type Example = {
+  image?: string; cornersModel: Pt[]; cornersFixed: Pt[]; source: string; model: string; kindModel?: string; kindFixed?: string; pageImage?: string; keep?: boolean;
+  /** who gave kindModel: Haiku, or the firm's page-kind model (S7) */
+  kindBy?: 'haiku' | 'model';
+};
 const QUEUE_KEY = 'scanFeedbackQueue', QUEUE_MAX = 60;
 const readQueue = (): Example[] => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };
 const writeQueue = (q: Example[]) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-QUEUE_MAX))); } catch { /* full or private */ } };

@@ -14,6 +14,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORK = pathlib.Path.home() / ".scan-train"            # examples, models, report — deleted by publish/clean
 MODELS = ("lite.onnx", "sa24.onnx")                   # the corner models trained (the face finder is not)
 KEEP = ("yunet640.onnx",)                             # carried to a new version as it is
+# The page-kind models (docs/scan-plan.md → S7): the phone's (EfficientNet-Lite0; the next
+# size up while the exam shows it short) and the server's (a larger one). Input "img"
+# [1,3,256,256] RGB 0..1; outputs "kind" [1,6] and "turn" [1,4] (functions/docfind.py kind_of).
+KIND_MODELS = {"kind-lite.onnx": "tf_efficientnet_lite0", "kind.onnx": "tf_efficientnet_lite2"}
+KIND_SIZES = [f"tf_efficientnet_lite{i}" for i in range(5)]
+KINDS = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 
 
 def bucket():

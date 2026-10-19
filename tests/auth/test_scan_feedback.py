@@ -112,3 +112,11 @@ def test_the_kind_model_is_due_when_every_kind_has_enough_copies():
     assert feedback.kinds_due({"kindsSince": full})
     assert not feedback.kinds_due({"kindsSince": dict(full, id_back=feedback.KIND_AT - 1)})
     assert "other" not in feedback.KINDS_TRAINED
+
+
+def test_who_gave_the_kind_is_kept():
+    e, _ = feedback.check(ex(image=None, kindModel="sefach", kindFixed="contract", pageImage=JPG, kindBy="model"))
+    now = datetime.datetime(2026, 10, 19, tzinfo=datetime.timezone.utc)
+    assert feedback.record(e, "t", now, None, "p")["kindBy"] == "model"
+    e, _ = feedback.check(ex(image=None, kindModel="sefach", kindFixed="contract", pageImage=JPG, kindBy="odd"))
+    assert e["kindBy"] == "haiku"

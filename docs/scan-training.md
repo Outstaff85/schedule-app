@@ -39,7 +39,7 @@ On **Done**, every page the server found is sent in the background to the functi
 `scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`; a manager login's ID token):
 
 - the copies → Storage `training/scan/<YYYY-MM>/<id>.jpg` (corners) and `<id>-page.jpg` (kind);
-- the record → Firestore `scanTraining/<id>`: `cornersModel`, `cornersFixed`, `moved`, `kindModel`, `kindFixed`, `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
+- the record → Firestore `scanTraining/<id>`: `cornersModel`, `cornersFixed`, `moved`, `kindModel`, `kindFixed`, `kindBy` (who gave `kindModel`: `haiku` or `model`), `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
 - the counts → Firestore `scanTrainingStats/current`: `newSince` (corrections since the last training — the kept right pages do not count), `kept`, `right`, `movedSum`, `kindsSince` (the page copies of each kind, by the kind the user left — for the page-kind model), and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
 
 **Privacy:** no client can read or write any of it (no Firestore or Storage rule opens them); only `scan_feedback` writes, only `/scan-train` on the owner's PC (the owner's own Google account) reads. Every firm's corrections are used, with no switch (owner, 2026-10-18).
@@ -63,7 +63,15 @@ The skill `.claude/skills/scan-train/SKILL.md`, run in Claude Code on the owner'
 3. **`exam.py`** — the exam pages are read by the old models and the new ones: mean corner error, the share within 2 %, the share not found → a "before → after" report (`~/.scan-train/report.json`). If any model is worse it says **do not publish**.
 4. **The owner decides.** **Yes** → **`publish.py`**: the new models go to Storage as the next version `models/scan/v<N>/` (the face finder carried over, the report beside them), the bell's counter is reset, the lab is pointed at `v<N>` (`scripts/scan-lab/models-version`), and the copies on the PC are deleted. **No** → **`clean.py`** deletes the copies; nothing changes.
 
-The page kinds are collected but not trained yet: the page-kind models (EfficientNet-Lite0 on the phone, a larger one on the server, replacing Haiku's kind and turn) are planned in docs/scan-plan.md → S7 and built once the bell says enough are in.
+### The page kinds (S7)
+
+When the bell says **Enough pages for the page-kind model** (every kind but "Other" has 100 page copies), `/scan-train` runs its page-kind steps:
+1. **`pull_kinds.py`** — every kept page copy with the kind the user left (and the one Haiku or the model gave); the same one in seven is the exam.
+2. **`train_kinds.py`** — two models from ImageNet weights (timm): the phone's (EfficientNet-Lite0, `kind-lite.onnx`) and the server's (Lite2, `kind.onnx`), each with two answers: the kind (6) and the turn the page needs (4) — the turn learned by showing every upright copy at a random quarter turn. Exported to ONNX and checked.
+3. **`exam_kinds.py`** — on the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and the site's way (the model where sure, Haiku elsewhere) against Haiku alone. A worse model → the next size up (Lite1, Lite2… — owner, 2026-10-19), trained and examined again.
+4. **The owner decides** — `publish.py` puts the models into the next version beside the corner models (the counter `kindsSince` reset), or `clean.py`.
+
+The models switch on by themselves once their version is set (the lab first, then the site): a page the model is sure of needs no Haiku.
 
 ## 5. Lab first, then the site
 
@@ -88,6 +96,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Storage; only `ba
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
 | the bell's notices | `src/manager/page/header.ts` (`scanTrainingNotice`, `scanKindsNotice`) |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
-| training | `scripts/scan-train/` (`pull.py`, `train.py`, `exam.py`, `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
+| training | `scripts/scan-train/` (corners: `pull.py`, `train.py`, `exam.py`; page kinds: `pull_kinds.py`, `train_kinds.py`, `exam_kinds.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
+| the page-kind models at work | `functions/docfind.py` (`kind_of`, `with_kind`), `functions/main.py` (`_kind_model`), `src/scan/core.ts` (`withKind`), `src/scan/worker.ts`, `src/scan/Scanner.tsx` (`withModelKind`), `scan-lab/index.html` (`kindNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
 | tests | `tests/auth/test_scan_feedback.py`, the browser test "scan window corners and kinds" (`tests/e2e/main.test.js`) |

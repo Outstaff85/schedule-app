@@ -26,7 +26,7 @@ export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry
 // Each page also has its kind: Haiku's (kindModel) and the one shown, which a tap can change.
 type Page = ScannedPage & {
   uid: number; src?: string; part?: [number, number, number, number]; modelQuad?: Pt[]; quad?: Pt[]; source?: string; fixedPart?: Pt[]; copy?: string;
-  kindModel?: PageKind | null; kindPending?: boolean; aiRotate?: number;
+  kindModel?: PageKind | null; kindPending?: boolean; aiRotate?: number; kindBy?: 'haiku' | 'model';
 };
 let nextUid = 0;
 // One in five pages the model got right is kept too, with its copy, so the training
@@ -48,7 +48,13 @@ function fromServer(f: ServerPage, size: FindResult['size'], src: string): Page 
   const [W, H] = size, b = f.box;
   const part: [number, number, number, number] = b ? [b[0] / W, b[1] / H, b[2] / W, b[3] / H] : [0, 0, 1, 1];
   const quad = f.quad.map(([x, y]) => [part[0] + x * (part[2] - part[0]), part[1] + y * (part[3] - part[1])] as Pt);
-  return { uid: ++nextUid, b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry, src, part, modelQuad: f.quad, quad, source: f.source, kindPending: true };
+  const page: Page = { uid: ++nextUid, b64: f.imageBase64, mediaType: f.mediaType, turn: f.turn, blurry: f.blurry, src, part, modelQuad: f.quad, quad, source: f.source, kindPending: true };
+  return withModelKind(page, f.kindSure ? f.kind : undefined);
+}
+// A page the firm's page-kind model is sure of (the server's, or the phone's; S7) needs no Haiku.
+function withModelKind(page: Page, kind: string | undefined): Page {
+  return kind && (PAGE_KINDS as readonly string[]).includes(kind)
+    ? { ...page, kind: kind as PageKind, kindModel: kind as PageKind, kindPending: false, kindBy: 'model' } : page;
 }
 // The part of the photo the model looked at, as a 256×256 JPEG (the training copy — never the photo itself).
 async function partCopy(src: string, part: [number, number, number, number]): Promise<string> {
@@ -98,10 +104,10 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   const addItem = (it: Item) => setItems(xs => [...xs, it]);
   const setItem = (id: number, patch: Partial<Item>) => setItems(xs => xs.map(x => (x.id === id ? { ...x, ...patch } : x)));
   const setPage = (uid: number, patch: Partial<Page>) => setItems(xs => xs.map(x => ({ ...x, pages: x.pages.map(p => (p.uid === uid ? { ...p, ...patch } : p)) })));
-  // Haiku's kind and turn for each new page, all at once; a page with no face is turned by it.
-  const classify = (pages: Page[]) => pages.forEach(async pg => {
+  // Haiku's kind and turn for each new page the page-kind model was not sure of, all at once; a page with no face is turned by it.
+  const classify = (pages: Page[]) => pages.filter(pg => pg.kindPending).forEach(async pg => {
     const { kind, rotate } = await detectKind(pg.b64, pg.mediaType);
-    const patch: Partial<Page> = { kind: kind || undefined, kindModel: kind, kindPending: false, aiRotate: rotate };
+    const patch: Partial<Page> = { kind: kind || undefined, kindModel: kind, kindPending: false, aiRotate: rotate, kindBy: 'haiku' };
     if (pg.turn < 0 && rotate) { try { patch.b64 = await rotateImage(pg.b64, pg.mediaType, rotate); patch.mediaType = 'image/jpeg'; } catch { /* kept as cut */ } }
     setPage(pg.uid, patch);
   });
@@ -231,7 +237,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     const local = s.engine.warp(frame.getContext('2d')!.getImageData(0, 0, w, h).data, w, h, pts).then(out => {
       const c = document.createElement('canvas'); c.width = out.width; c.height = out.height;
       c.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-      const page: Page = { uid: ++nextUid, b64: jpeg(c), mediaType: 'image/jpeg', turn: out.turn, blurry: false };
+      const page = withModelKind({ uid: ++nextUid, b64: jpeg(c), mediaType: 'image/jpeg', turn: out.turn, blurry: false }, out.kindSure ? out.kind : undefined);
       setItems(xs => xs.map(x => (x.id === id && x.pending ? { ...x, pages: [page] } : x)));
       return page;
     }).catch(() => null);
@@ -245,7 +251,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       setItem(id, { pending: false, pages: got }); classify(got);
     } catch {
       const p = await local; // the server could not be reached: the phone's own cut is kept
-      if (p) { const pg = { ...p, kindPending: true }; setItem(id, { pending: false, pages: [pg] }); classify([pg]); }
+      if (p) { const pg = { ...p, kindPending: !p.kindModel }; setItem(id, { pending: false, pages: [pg] }); classify([pg]); }
       else setItem(id, { pending: false, pages: [], note: tr('This shot could not be cut — take it again') });
     }
   };
@@ -303,7 +309,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       cornersModel: p.modelQuad!, cornersFixed: p.fixedPart || p.modelQuad!, source: p.source || 'model', model: '',
       ...(p.fixedPart && p.copy ? { image: p.copy } : {}),
       ...(rightCopy ? { image: rightCopy, keep: true } : {}),
-      ...(p.kindModel ? { kindModel: p.kindModel, kindFixed: p.kind || p.kindModel } : {}),
+      ...(p.kindModel ? { kindModel: p.kindModel, kindFixed: p.kind || p.kindModel, kindBy: p.kindBy || 'haiku' } : {}),
       // a changed kind, and a sampled right page, carry a copy of the page for the page-kind model
       ...(kindChanged || (rightCopy && p.kindModel) ? { pageImage: await pageCopy(p.b64, p.mediaType).catch(() => undefined) } : {}),
     };
