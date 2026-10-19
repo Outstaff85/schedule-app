@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Scanner lab</title>
+<!-- The scanner lab (docs/scan-plan.md → Scanner lab; Admin → Scanner lab, super-admin):
+     runs the scanner's on-device models on this phone's camera and photos — the
+     live frame, the shot, the upright turn — and shows how fast and how sure they
+     are. The models and ONNX Runtime are put next to it at deploy (deploy.yml). -->
+<style>
+  :root{--bg:#10141f;--plate:#1b1e29;--ink:#fff;--ink2:#a3a9bb;--ok:#6dd6a0;--warn:#f5a623;--bad:#ff5f6d;--line:rgba(255,255,255,.14)}
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,Arial,sans-serif;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 24px max(12px,env(safe-area-inset-left))}
+  h1{font-size:18px;margin:0 0 10px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  select,button,label.btn{font:inherit;color:var(--ink);background:var(--plate);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  button.primary{background:#2563eb;border-color:transparent;font-weight:600}
+  button:disabled{opacity:.4}
+  .stage{position:relative;width:100%;background:#000;border-radius:14px;overflow:hidden}
+  video,#still{display:block;width:100%;height:auto}
+  #overlay{position:absolute;inset:0;width:100%;height:100%}
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}
+  .stat{background:var(--plate);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+  .stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+  .stat span{color:var(--ink2);font-size:12px}
+  #log{white-space:pre-wrap;color:var(--ink2);font-size:12px;margin-top:10px}
+  .bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0 10px}
+  .bar i{display:block;height:100%;width:0;background:#2563eb}
+</style>
+</head>
+<body>
+<h1>Scanner lab</h1>
+<div class="row">
+  <select id="model">
+    <option value="lite.onnx+sa24_w16.onnx">Live: light · capture: accurate</option>
+    <option value="sa24_w16.onnx">Accurate only (42 MB)</option>
+    <option value="lite.onnx">Light only (5 MB)</option>
+  </select>
+  <select id="engine">
+    <option value="122">CPU engine: ONNX Runtime 1.22</option>
+    <option value="130">CPU engine: ONNX Runtime 1.30</option>
+  </select>
+  <select id="backend">
+    <option value="auto">Auto (GPU, else CPU)</option>
+    <option value="webgpu">GPU (WebGPU)</option>
+    <option value="wasm">CPU (WASM)</option>
+  </select>
+</div>
+<div class="row">
+  <button class="primary" id="startCam">Start camera</button>
+  <label class="btn">Photo… <input id="file" type="file" accept="image/*" hidden></label>
+  <button id="snap">Capture</button>
+  <button id="stop">Stop</button>
+  <label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="useWorker" checked> Background thread</label>
+  <label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="follow" checked> Follow between frames</label>
+</div>
+<div id="status" style="font-size:13px;color:var(--ink2)">Starting…</div>
+<div class="bar"><i id="prog"></i></div>
+<div class="stage" id="stage">
+  <video id="video" playsinline muted hidden></video>
+  <img id="still" alt="" hidden>
+  <canvas id="overlay"></canvas>
+</div>
+<div id="hint" style="font-size:14px;margin-top:8px;min-height:20px"></div>
+<div id="shot" hidden style="margin-top:10px">
+  <div class="row"><button class="primary" id="retake">Retake</button><label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="auto" checked> Auto capture</label></div>
+  <img id="shotImg" alt="" style="width:100%;border-radius:14px;display:block">
+  <p id="shot2note" style="color:var(--ink2);margin:10px 0 6px"></p>
+  <div id="shotMore" style="display:grid;gap:10px"></div>
+</div>
+<div class="stats">
+  <div class="stat"><b id="sBackend">—</b><span>runs on</span></div>
+  <div class="stat"><b id="sFps">—</b><span>frames per second</span></div>
+  <div class="stat"><b id="sMs">—</b><span>ms per frame (model)</span></div>
+  <div class="stat"><b id="sConf">—</b><span>confidence (≥ 0.50 = found)</span></div>
+  <div class="stat"><b id="sLoad">—</b><span>model load, s</span></div>
+  <div class="stat"><b id="sRes">—</b><span>camera resolution</span></div>
+  <div class="stat"><b id="sUi">—</b><span>screen frames/s (smoothness)</span></div>
+  <div class="stat"><b id="sCap">—</b><span>capture, ms</span></div>
+  <div class="stat"><b id="sTrack">—</b><span>frame follows, frames/s</span></div>
+  <div class="stat"><b id="sTrackMs">—</b><span>follow, ms per frame</span></div>
+</div>
+<div id="log"></div>
+
+<script>
+// The ONNX Runtime build for the CPU: 1.22.0 (faster and smoother there than 1.30); ?ort=130 picks 1.30.0.
+// The GPU always uses 1.30.0: its GPU runs the light model right on a phone where 1.22 returned zeros.
+const ORT_DIR = new URLSearchParams(location.search).get('ort') === '130' ? 'ort130' : 'ort', GPU_ORT = 'ort130';
+document.write('<script src="/scan/' + ORT_DIR + '/ort.all.min.js"><\/script>');
+</script>
+<script src="/scan/scan-core.js"></script>
+<script src="/scan/track.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const log = t => { $('log').textContent = t + '\n' + $('log').textContent; };
+const status = (t, frac) => { $('status').textContent = t; if (frac != null) $('prog').style.width = Math.round(frac * 100) + '%'; };
+window.addEventListener('error', e => log('Page error: ' + e.message));
+window.addEventListener('unhandledrejection', e => log('Error: ' + (e.reason && e.reason.message || e.reason)));
+if (typeof ort === 'undefined') log('ONNX Runtime did not load (ort.all.min.js)');
+ort.env.wasm.wasmPaths = location.origin + '/scan/' + ORT_DIR + '/';
+// Several CPU threads need a cross-origin isolated page (COOP/COEP headers); /scan/ is not isolated, so 1.
+const THREADS = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+ort.env.wasm.numThreads = THREADS;
+// Background threads for the live frame when the pool is used.
+const POOL = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
+
+const STEADY_MS = 1000, MOVE = 0.02, LOCK_MS = 250;  // green after 0.25 s on the edges, the shot after 1 s
+let smooth = null, steadySince = 0, lastRes = null, target = null, shown = null;
+let fails = 0, engine = null, engineKey = '', running = false, stream = null, inFlight = 0, lastSent = 0, seq = 0, applied = 0;
+const times = [], frames = [], uiFrames = [];
+const small = document.createElement('canvas'); small.width = S; small.height = S;
+const sctx = small.getContext('2d', { willReadFrequently: true });
+
+// Two engines with one interface: in the page itself, or in the background worker.
+function pageEngine() {
+  let live = null, cap = null, face = null;
+  return {
+    async load(liveName, capName, want, withFace) {
+      const a = await openSession(liveName, want, status, log); live = a.sess;
+      const b = capName ? await openSession(capName, want, status, log) : a; cap = b.sess;
+      if (withFace !== false) face = await ort.InferenceSession.create(await fetchModel('yunet.onnx', () => {}), { executionProviders: ['wasm'] });
+      return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
+    },
+    hasCap: () => cap !== live,
+    async detect(which, input) { const t = performance.now(); const res = await detectRGBA(which === 'cap' ? cap : live, rgbaOf(input)); return { res, ms: performance.now() - t }; },
+    async warp(rgba, w, h, pts, upright) { return uprightRGBA(upright ? face : null, warpRGBA(rgba, w, h, pts)); },
+    stop() {},
+  };
+}
+function workerEngine(threads, dir = ORT_DIR) {
+  const w = new Worker('/scan/scan-worker.js?ort=' + dir), waiting = new Map(); let n = 0, two = false, heard = performance.now();
+  const failAll = why => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
+  // A worker that says nothing for 30 s while loading is taken as stuck.
+  const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 25000) failAll('no answer for 25 s'); }, 1000);
+  w.onmessage = ({ data: m }) => {
+    heard = performance.now();
+    if (m.type === 'status') status(m.text, m.frac);
+    else if (m.type === 'log') log(m.text);
+    else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); if (p) m.error ? p.reject(new Error(m.error)) : p.resolve(m); }  // a late answer to a call given up on: dropped
+  };
+  w.onerror = e => { log('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
+  const call = (msg, transfer) => new Promise((resolve, reject) => { msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
+  return {
+    async load(liveName, capName, want, withFace = true) { two = !!capName; return (await call({ type: 'load', live: liveName, cap: capName, want, threads, face: withFace })).ep; },
+    hasCap: () => two,
+    async detect(which, input) {
+      const m = input.bitmap ? await call({ type: 'detect', which, bitmap: input.bitmap }, [input.bitmap]) : await call({ type: 'detect', which, rgba: input.rgba.buffer }, [input.rgba.buffer]);
+      return { res: m.res, ms: m.ms };
+    },
+    async warp(rgba, wd, h, pts, upright) { return (await call({ type: 'warp', rgba: rgba.buffer, w: wd, h, pts, upright }, [rgba.buffer])).out; },
+    stop() { clearInterval(watch); w.terminate(); },
+  };
+}
+
+// The ways to run, best first. Each is tried in turn: a way that fails or goes
+// silent for 25 s is dropped (with its throwaway background thread), the next
+// starts clean. A GPU that hangs or computes wrong was seen on a phone, and a
+// phone may refuse CPU threads inside a background thread. The way that worked
+// is remembered on this device, so the next open starts with it.
+const WAYS = [
+  { id: 'bg-gpulive', label: 'GPU live + CPU capture · bg', worker: true, gpuLive: true, ep: 'wasm', threads: 1 },
+  { id: 'bg-pool', label: 'CPU · ' + POOL + ' bg threads + 1', worker: true, pool: true, ep: 'wasm', threads: 1 },
+  { id: 'bg-cpu', label: 'CPU ×' + THREADS + ' · bg', worker: true, ep: 'wasm', threads: THREADS },
+  { id: 'bg-cpu1', label: 'CPU ×1 · bg', worker: true, ep: 'wasm', threads: 1 },
+  { id: 'page-cpu', label: 'CPU ×' + THREADS + ' · page', worker: false, ep: 'wasm', threads: THREADS },
+];
+const WAY_KEY = 'scanTestWay3';
+const remembered = { get: () => { try { return localStorage.getItem(WAY_KEY); } catch (e) { return null; } }, set: v => { try { localStorage.setItem(WAY_KEY, v); } catch (e) {} } };
+
+// Several single-thread background threads: the live frames go to them in
+// turn (2–3 frames worked on at once), the accurate model has its own thread,
+// so a capture never stops the live frame. Phones that refuse CPU threads
+// inside a background thread still run several background threads.
+function poolEngine(nLive = POOL, liveEp = null, capEp = null) {
+  const lives = Array.from({ length: nLive }, () => workerEngine(1, liveEp === 'webgpu' ? GPU_ORT : ORT_DIR)), capE = workerEngine(1), free = lives.slice();
+  let two = false;
+  return {
+    size: nLive,
+    async load(liveName, capName, want) {
+      two = !!capName;
+      const eps = await Promise.all(lives.map((e, i) => e.load(liveName, null, liveEp || want, !two && i === 0)).concat(two ? [capE.load(capName, null, capEp || want, true)] : []));
+      return eps[0] + (two && eps[eps.length - 1] !== eps[0] ? '/' + eps[eps.length - 1] : '');
+    },
+    hasCap: () => two,
+    async detect(which, input) {
+      if (which === 'cap' && two) return capE.detect('live', input);
+      const e = free.shift() || lives[0];
+      try { return await e.detect('live', input); } finally { if (!free.includes(e)) free.push(e); }
+    },
+    warp: (rgba, w, h, pts, upright) => (two ? capE : lives[0]).warp(rgba, w, h, pts, upright),
+    stop() { lives.forEach(e => e.stop()); capE.stop(); },
+  };
+}
+
+async function ensureSession() {
+  const [live, cap] = $('model').value.split('+'), want = $('backend').value, inWorker = $('useWorker').checked;
+  const key = $('model').value + '|' + want + '|' + inWorker;
+  if (engine && engineKey === key) return;
+  if (engine) engine.stop();
+  engine = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…', 0);
+  const t0 = performance.now();
+  let ways = WAYS.filter(w => (inWorker || !w.worker) && (want === 'auto' || w.ep === want || (want === 'webgpu' && false)));
+  if (!navigator.gpu) ways = ways.filter(w => w.ep !== 'webgpu' && !w.gpuLive);
+  if (want === 'webgpu') ways = inWorker ? [{ id: 'bg-gpu', label: 'GPU · bg', worker: true, ep: 'webgpu', threads: 1 }] : [{ id: 'page-gpu', label: 'GPU · page', worker: false, ep: 'webgpu', threads: 1 }];
+  if (want === 'wasm') ways = ways.filter(w => !w.gpuLive);
+  let last = remembered.get();
+  const at = ways.findIndex(w => w.id === last);
+  if (want === 'auto' && at > 0) { log('Starting with "' + ways[at].label + '" — it worked on this device last time (pick another option to retry all)'); ways = ways.slice(at); }
+  let e = null, used = null;
+  for (const w of ways) {
+    status('Trying ' + w.label + '…', 0);
+    const cand = w.gpuLive ? poolEngine(2, 'webgpu', 'wasm') : w.pool ? poolEngine() : w.worker ? workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : ORT_DIR) : pageEngine();
+    try { await cand.load(live, cap, w.ep); e = cand; used = w; break; }
+    catch (err) { cand.stop(); log(w.label + ': ' + (err && err.message || err) + ' — trying the next way'); }
+  }
+  if (!e) { $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw new Error('no way to run the model'); }
+  if (want === 'auto') remembered.set(used.id);
+  $('useWorker').checked = used.worker;
+  $('sBackend').textContent = used.label;
+  log('Live ' + live + (cap ? ', capture ' + cap : '') + ' running as ' + used.label);
+  engine = e; engineKey = $('model').value + '|' + want + '|' + used.worker; times.length = 0; frames.length = 0; $('startCam').disabled = false;
+  status('Model ready — scanning is available', 1);
+  $('sLoad').textContent = ((performance.now() - t0) / 1000).toFixed(1);
+}
+
+function smallRGBA(src, w, h) { sctx.drawImage(src, 0, 0, w, h, 0, 0, S, S); return sctx.getImageData(0, 0, S, S).data; }
+// The camera frame scaled to S×S on the GPU (createImageBitmap) and handed to
+// the background thread as is: no full-size copy into the page's memory.
+let bitmapOk = typeof createImageBitmap === 'function';
+async function frameInput(src, w, h) {
+  if (bitmapOk) {
+    try { return { bitmap: await createImageBitmap(src, { resizeWidth: S, resizeHeight: S, resizeQuality: 'low' }) }; }
+    catch (e) { if (e && e.name === 'InvalidStateError') return null; bitmapOk = false; log('Frame scaling on the GPU is not available here: ' + (e && e.message || e)); }
+  }
+  return { rgba: smallRGBA(src, w, h) };
+}
+function rgbaOf(input) {
+  if (input.rgba) return input.rgba;
+  sctx.drawImage(input.bitmap, 0, 0); input.bitmap.close(); return sctx.getImageData(0, 0, S, S).data;
+}
+
+// Average the corners over frames so the frame does not jitter; a big jump resets it.
+function smoothen(res) {
+  if (res.pts.some(p => !p) || res.conf < 0.5) { smooth = null; steadySince = 0; return res; }
+  const move = smooth ? Math.max(...res.pts.map((p, i) => Math.hypot(p[0] - smooth[i][0], p[1] - smooth[i][1]))) : 1;
+  const now = performance.now();
+  if (move > MOVE * 3 || !smooth) { smooth = res.pts.map(p => p.slice()); steadySince = now; }
+  else { smooth = smooth.map((q, i) => [q[0] * 0.6 + res.pts[i][0] * 0.4, q[1] * 0.6 + res.pts[i][1] * 0.4]); if (move > MOVE) steadySince = now; }
+  return { pts: smooth, conf: res.conf, steady: now - steadySince };
+}
+
+function drawPts(pts, ok, el) {
+  const c = $('overlay'), r = el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
+  const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+  if (!pts) return;
+  // A thin line, no corner dots: red while searching, green once it sits on the edges.
+  g.lineWidth = 2 * dpr; g.lineJoin = 'round'; g.strokeStyle = ok ? '#4ade80' : '#ef4444';
+  g.beginPath(); pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath();
+  if (ok) { g.fillStyle = 'rgba(74,222,128,.12)'; g.fill(); }
+  g.stroke();
+}
+// Every screen frame the drawn frame glides toward the latest model result;
+// the screen frames per second show how smooth the page stays.
+function animate() {
+  const now = performance.now(); uiFrames.push(now); while (uiFrames.length && now - uiFrames[0] > 1000) uiFrames.shift();
+  $('sUi').textContent = uiFrames.length;
+  const v = $('video');
+  if (!v.hidden) {
+    if (!target) shown = null;
+    else if (!shown) shown = target.pts.map(p => p.slice());
+    else shown = shown.map((q, i) => [q[0] + (target.pts[i][0] - q[0]) * 0.35, q[1] + (target.pts[i][1] - q[1]) * 0.35]);
+    drawPts(shown, target && target.ok, v);
+  }
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+
+async function runOnce(src, w, h, el) {
+  const isVideo = el.tagName === 'VIDEO';
+  const my = ++seq;
+  const t0 = performance.now();  // when this frame was taken: the answer is carried forward from here
+  const input = isVideo ? await frameInput(src, w, h) : { rgba: smallRGBA(src, w, h) };
+  if (!input) return;  // the video had no frame (being hidden or stopped)
+  let { res: raw, ms } = await engine.detect('live', input);
+  // A photo the light model misses goes to the accurate one.
+  if (!isVideo && raw.pts.some(p => !p) && engine.hasCap()) ({ res: raw, ms } = await engine.detect('cap', { rgba: smallRGBA(src, w, h) }));
+  if (isVideo && (!running || my < applied || $('video').hidden)) return;  // a later frame already answered, or a capture / photo began
+  applied = my;
+  if (isVideo && $('follow').checked && !raw.pts.some(p => !p)) raw = { ...raw, pts: Track.since(t0, raw.pts) };
+  const res = isVideo ? smoothen(raw) : raw;
+  times.push(ms); if (times.length > 20) times.shift();
+  const now = performance.now(); frames.push(now); while (frames.length && now - frames[0] > 2000) frames.shift();
+  $('sMs').textContent = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
+  $('sFps').textContent = (frames.length / Math.max(0.5, (now - frames[0]) / 1000)).toFixed(1);
+  $('sConf').textContent = res.conf.toFixed(2);
+  target = res.pts.some(p => !p) ? null : { pts: res.pts, ok: res.conf >= 0.5 && (!isVideo || res.steady >= LOCK_MS) };
+  if (!isVideo) { shown = target && target.pts.map(p => p.slice()); drawPts(shown, target && target.ok, el); }
+  lastRes = res;
+  const missing = raw.pts.filter(p => !p).length;
+  $('hint').textContent = missing ? (missing === 4 ? 'No document in the frame' : missing + ' corner(s) outside the frame — move the phone back')
+    : res.conf < 0.5 ? 'Edges not clear — more light, a darker background' : res.steady != null && res.steady < STEADY_MS ? 'Hold still… ' + ((STEADY_MS - res.steady) / 1000).toFixed(1) + ' s' : 'Found';
+  if (isVideo && $('auto').checked && res.steady >= STEADY_MS) showShot();
+}
+
+// Freeze the frame, take the exact corners from the accurate model, straighten.
+// The shot is shown at once, straightened by the live frame; the accurate model
+// then refines the corners in the background and replaces it if they moved.
+// The document type model (docs/scan-plan.md → S7), when this lab's model version has one
+// (/scan/models.json): its answer on every shot — the document type, how sure, and the turn the
+// page needs — so a trained version is tried here before the site gets it.
+let doctypeSess = null;
+const DOCTYPE_NAMES = { id_front: 'ID card', id_back: 'ID card back', sefach: 'Appendix (ספח)', passport: 'Passport', contract: 'Contract', other: 'Other' };
+(async () => {
+  try {
+    const r = await fetch('/scan/models.json', { cache: 'no-cache' });
+    if (r.ok && (await r.json()).doctype) { doctypeSess = await ort.InferenceSession.create(await fetchModel('doctype.onnx', () => {}), { executionProviders: ['wasm'] }); log('Document type model loaded'); }
+  } catch (e) { log('Document type model: ' + (e && e.message || e)); }
+})();
+async function doctypeNote(canvas) {
+  if (!doctypeSess || !canvas) return '';
+  try {
+    const sq = document.createElement('canvas'); sq.width = 256; sq.height = 256;
+    const g = sq.getContext('2d', { willReadFrequently: true }); g.drawImage(canvas, 0, 0, 256, 256);
+    const d = g.getImageData(0, 0, 256, 256).data, n = 256 * 256, f = new Float32Array(3 * n);
+    for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+    const t0 = performance.now(), r = await doctypeSess.run({ [doctypeSess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, 256, 256]) });
+    const kp = Array.from(r.doctype.data), tp = Array.from(r.turn.data), k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
+    const names = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
+    return '; type: ' + DOCTYPE_NAMES[names[k]] + ' ' + Math.round(kp[k] * 100) + '%, needs ' + t * 90 + '° (' + Math.round(tp[t] * 100) + '%), ' + Math.round(performance.now() - t0) + ' ms';
+  } catch (e) { return '; the document type model failed: ' + (e && e.message || e); }
+}
+let shotId = 0, lastTurn = -1, pageMore = false;  // pageMore: a later photo of the same page — its pages join the list
+const turnNote = () => lastTurn === -2 ? '; the face finder failed (see the log), not turned' : lastTurn > 0 ? '; turned ' + lastTurn * 90 + '° by the face' : lastTurn === 0 ? '; upright by the face' : '; no face to set it upright';
+async function showShot() {
+  try { await takeShot(); }
+  catch (e) {
+    log('Shot failed: ' + (e && e.message || e));
+    $('hint').textContent = 'The shot failed — see the log; the camera goes on';
+    if ($('video').srcObject && !$('video').hidden) { smooth = null; steadySince = 0; running = true; loop(); startFollow(); }
+  }
+}
+async function takeShot() {
+  const v = $('video'), img = $('still'), isVideo = !v.hidden, el = isVideo ? v : img;
+  if (!lastRes || lastRes.pts.some(p => !p)) { $('hint').textContent = 'No frame to capture yet'; return; }
+  running = false;
+  const id = ++shotId, t0 = performance.now(), w = isVideo ? v.videoWidth : img.naturalWidth, h = isVideo ? v.videoHeight : img.naturalHeight;
+  const frame = document.createElement('canvas'); frame.width = w; frame.height = h;
+  const fctx = frame.getContext('2d'); fctx.drawImage(el, 0, 0, w, h);
+  const pix = fctx.getImageData(0, 0, w, h).data;
+  const put = async pts => {
+    const out = await engine.warp(pix.slice(), w, h, pts, true);
+    lastTurn = out.turn; if (out.turnError) log('Face finder: ' + out.turnError);
+    if (id !== shotId) return false;
+    const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
+    oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+    put.canvas = oc;
+    const url = oc.toDataURL('image/jpeg', 0.9);
+    if (!pageMore) $('shotImg').src = url;
+    else { if (!put.el) { put.el = new Image(); put.el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(put.el); } put.el.src = url; }
+    return true;
+  };
+  const livePts = lastRes.pts;
+  if (!(await put(livePts))) return;
+  const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
+  const kn = await doctypeNote(put.canvas);
+  $('shot').hidden = false; $('shot').scrollIntoView({ behavior: 'smooth' });
+  const refine = engine.hasCap();
+  $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + turnNote() + kn + (refine ? ' — refining the corners…' : ' — Retake for another');
+  if (!refine) return;
+  while (inFlight) await new Promise(r => setTimeout(r, 10));  // the live frames still in work finish first
+  const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });
+  if (id !== shotId) return;
+  const total = () => Math.round(performance.now() - t0);
+  const confirmed = !exact.pts.some(p => !p) && exact.conf >= 0.5;
+  let first = livePts, moved = 0;
+  if (confirmed) {
+    moved = Math.max(...exact.pts.map((p, k) => Math.hypot(p[0] - livePts[k][0], p[1] - livePts[k][1])));
+    if (moved > 0.002 && !(await put(exact.pts))) return;
+    first = exact.pts; target = { pts: exact.pts, ok: true }; shown = exact.pts.map(p => p.slice());
+    if (!isVideo) drawPts(shown, true, img);
+  }
+  const note = 'Shown in ' + ms + ' ms; ' + (!confirmed ? 'the accurate model did not confirm the corners' : moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + total() + ' ms' + turnNote() + kn;
+  $('hint').textContent = note + ' — looking for more documents…';
+  const s0 = performance.now(); $('shot2note').textContent = 'Looking for more documents on this photo…';
+  // More documents on the same photo (a passport, its ספח, a card…): up to 4 in all.
+  const found = [first];
+  for (let n = 1; n < 4; n++) {
+    const q = await findNext(frame, w, h, found);
+    if (id !== shotId) return;
+    if (!q) break;
+    found.push(q);
+    const out = await engine.warp(pix.slice(), w, h, q, true);
+    if (id !== shotId) return;
+    const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
+    oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+    const im = new Image(); im.src = oc.toDataURL('image/jpeg', 0.9); im.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(im);
+    $('shot2note').textContent = 'Found ' + found.length + ' documents so far, looking for more…';
+  }
+  const more = found.length - 1, took = Math.round(performance.now() - s0);
+  $('shot2note').textContent = more ? found.length + ' documents on this photo (the others found in ' + took + ' ms):' : 'One document on this photo (searched for more in ' + took + ' ms)';
+  $('hint').textContent = note + (more ? '; ' + found.length + ' documents' : '; one document') + ' — Retake for another';
+}
+
+// The next document is looked for on the photo with every one found so far painted
+// over in the background's colour — by the accurate model, then the light one — then
+// the same with a 10 % margin of that colour around the photo (a document cut off by
+// the photo's edge then lies whole inside, its corners on the edge), then in the
+// widest strip left beside the first. A frame overlapping a found one by over 30 % is
+// that one again.
+function quadArea(q) { let a = 0; for (let i = 0; i < 4; i++) { const [x1, y1] = q[i], [x2, y2] = q[(i + 1) % 4]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; }
+function quadConvex(q) { let sg = 0; for (let i = 0; i < 4; i++) { const [a, b, c] = [q[i], q[(i + 1) % 4], q[(i + 2) % 4]]; const z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); if (z) { if (sg && Math.sign(z) !== sg) return false; sg = Math.sign(z); } } return true; }
+function inQuad(q, x, y) { let inside = false; for (let i = 0, j = 3; i < 4; j = i++) { const [xi, yi] = q[i], [xj, yj] = q[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; } return inside; }
+function quadIoU(a, b) { let both = 0, any = 0; for (let y = 0.5; y < 64; y++) for (let x = 0.5; x < 64; x++) { const p = inQuad(a, x / 64, y / 64), q = inQuad(b, x / 64, y / 64); both += p && q; any += p || q; } return any ? both / any : 0; }
+const goodQuad = r => !r.pts.some(p => !p) && r.conf >= 0.5 && quadConvex(r.pts) && quadArea(r.pts) > 0.03;
+async function findNext(frame, w, h, found) {
+  const fresh = q => found.every(f => quadIoU(q, f) <= 0.3);
+  const tryIt = async (which, src, sw, sh, map) => {
+    const { res } = await engine.detect(which, { rgba: smallRGBA(src, sw, sh) });
+    if (!goodQuad(res)) return null;
+    const q = res.pts.map(map);
+    return fresh(q) ? q : null;
+  };
+  const models = engine.hasCap() ? ['cap', 'live'] : ['live'];
+  // the found ones painted over in the colour of the photo's border
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(frame, 0, 0);
+  const t = document.createElement('canvas'); t.width = t.height = 32; const tg = t.getContext('2d'); tg.drawImage(frame, 0, 0, 32, 32);
+  const d = tg.getImageData(0, 0, 32, 32).data, rs = [], gs = [], bs = [];
+  for (let i = 0; i < 32; i++) for (const [x, y] of [[i, 0], [i, 31], [0, i], [31, i]]) { const k = (y * 32 + x) * 4; rs.push(d[k]); gs.push(d[k + 1]); bs.push(d[k + 2]); }
+  const med = a => a.sort((p, q) => p - q)[a.length >> 1];
+  g.fillStyle = `rgb(${med(rs)},${med(gs)},${med(bs)})`;
+  for (const q of found) {
+    const cx = q.reduce((a, p) => a + p[0], 0) / 4, cy = q.reduce((a, p) => a + p[1], 0) / 4;
+    g.beginPath(); q.forEach(([x, y], i) => { const X = (x + (x - cx) * 0.04) * w, Y = (y + (y - cy) * 0.04) * h; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill();
+  }
+  for (const m of models) { const q = await tryIt(m, c, w, h, p => p); if (q) return q; }
+  const P = Math.round(0.1 * Math.max(w, h)), pc = document.createElement('canvas'); pc.width = w + 2 * P; pc.height = h + 2 * P;
+  const pg = pc.getContext('2d'); pg.fillStyle = g.fillStyle; pg.fillRect(0, 0, pc.width, pc.height); pg.drawImage(c, P, P);
+  const clamp = v => Math.min(1, Math.max(0, v));
+  for (const m of models) { const q = await tryIt(m, pc, pc.width, pc.height, ([x, y]) => [clamp((x * pc.width - P) / w), clamp((y * pc.height - P) / h)]); if (q) return q; }
+  // the widest strip left beside the first
+  const q1 = found[0], xs = q1.map(p => p[0]), ys = q1.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const strips = [[0, 0, 1, y0], [0, y1, 1, 1], [0, 0, x0, 1], [x1, 0, 1, 1]].filter(([a, b, c2, d2]) => c2 - a >= 0.25 && d2 - b >= 0.2)
+    .sort((p, q) => (q[2] - q[0]) * (q[3] - q[1]) - (p[2] - p[0]) * (p[3] - p[1]));
+  for (const [a, b, c2, d2] of strips.slice(0, 2)) {
+    const sw = Math.round((c2 - a) * w), sh = Math.round((d2 - b) * h), sc = document.createElement('canvas'); sc.width = sw; sc.height = sh;
+    sc.getContext('2d').drawImage(c, Math.round(a * w), Math.round(b * h), sw, sh, 0, 0, sw, sh);
+    const q = await tryIt(models[0], sc, sw, sh, ([x, y]) => [a + x * (c2 - a), b + y * (d2 - b)]);
+    if (q) return q;
+  }
+  return null;
+}
+
+// On every camera frame the frame follows the document (track.js) between the model's answers.
+const followTimes = [], followMs = [];
+let following = false;
+function followLoop() {
+  const v = $('video');
+  if (!running || v.hidden) { following = false; Track.reset(); return; }
+  const next = () => v.requestVideoFrameCallback ? v.requestVideoFrameCallback(followLoop) : requestAnimationFrame(followLoop);
+  if (!$('follow').checked || !target) { Track.reset(); next(); return; }
+  const t = performance.now();
+  Track.step(v, target.pts).then(r => {
+    if (r && target && running) {
+      target = { ...target, pts: r.pts };
+      if (smooth) smooth = r.apply(smooth);
+      if (shown) shown = r.apply(shown);
+      if (lastRes && !lastRes.pts.some(p => !p)) lastRes = { ...lastRes, pts: r.apply(lastRes.pts) };
+      if (r.moved > 0.004) steadySince = performance.now();  // the phone or the document moves: not still
+      const now = performance.now(); followTimes.push(now); while (followTimes.length && now - followTimes[0] > 1000) followTimes.shift();
+      followMs.push(now - t); if (followMs.length > 30) followMs.shift();
+      $('sTrack').textContent = followTimes.length; $('sTrackMs').textContent = Math.round(followMs.reduce((a, b) => a + b, 0) / followMs.length);
+    }
+  }).catch(e => log('Follow: ' + (e && e.message || e))).finally(next);
+}
+function startFollow() { if (!following) { following = true; Track.reset(); followLoop(); } }
+
+// Up to engine.size frames are worked on at once, sent evenly spaced.
+function loop() {
+  if (!running) return;
+  const v = $('video'), n = (engine && engine.size) || 1, now = performance.now();
+  const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 300;
+  if (inFlight < n && v.readyState >= 2 && now - lastSent >= avg / n) {
+    inFlight++; lastSent = now;
+    runOnce(v, v.videoWidth, v.videoHeight, v).then(() => { fails = 0; }).catch(e => {
+      if (!running || v.hidden) return;
+      log('Frame error: ' + (e && e.message || e)); if (++fails >= 5) { running = false; log('Stopped after 5 failed frames'); }
+    }).finally(() => { inFlight--; });
+  }
+  requestAnimationFrame(loop);
+}
+
+$('startCam').onclick = async () => {
+  try {
+    await ensureSession();
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    const v = $('video'); v.srcObject = stream; v.hidden = false; $('still').hidden = true; await v.play();
+    $('sRes').textContent = v.videoWidth + '×' + v.videoHeight;
+    running = true; loop(); startFollow();
+  } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
+};
+$('retake').onclick = () => { shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('snap').onclick = showShot;
+$('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
+// The photos on a white page (a form's page, a PDF, a screenshot): every band of rows
+// where most of the page is not white, at least 12 % high; inside each, the longest run
+// of columns mostly not white gives its sides. Top to bottom; none when the picture is
+// (nearly) one photo already.
+function photosOnPage(img) {
+  const W = img.naturalWidth, H = img.naturalHeight, sc = 300 / Math.max(W, H), w = Math.max(1, Math.round(W * sc)), h = Math.max(1, Math.round(H * sc));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0, w, h); const d = g.getImageData(0, 0, w, h).data;
+  const busy = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) busy[i] = Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) < 225 ? 1 : 0;
+  const rowShare = y => { let n = 0; for (let x = 0; x < w; x++) n += busy[y * w + x]; return n / w; };
+  const out = [];
+  for (let y = 0; y < h; y++) {
+    if (rowShare(y) <= 0.45) continue;
+    const y0 = y; while (y < h && rowShare(y) > 0.45) y++;
+    const y1 = y;
+    if (y1 - y0 < 0.12 * h) continue;
+    const colShare = x => { let n = 0; for (let yy = y0; yy < y1; yy++) n += busy[yy * w + x]; return n / (y1 - y0); };
+    let run = null;
+    for (let x = 0; x < w; x++) {
+      if (colShare(x) <= 0.6) continue;
+      const x0 = x; while (x < w && colShare(x) > 0.6) x++;
+      if (!run || x - x0 > run[1] - run[0]) run = [x0, x];
+    }
+    if (!run || run[1] - run[0] < 0.25 * w) continue;
+    out.push({ area: (run[1] - run[0]) * (y1 - y0) / (w * h), box: [Math.floor(run[0] / sc), Math.floor(y0 / sc), Math.min(W, Math.ceil(run[1] / sc)), Math.min(H, Math.ceil(y1 / sc))] });
+  }
+  return out.length === 1 && out[0].area > 0.9 ? [] : out.map(o => o.box);
+}
+
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
+  shotId++; $('shotMore').textContent = ''; $('shot2note').textContent = ''; const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
+  img.hidden = false; $('video').hidden = true;
+  // A white page with photos in it (a form's page, a PDF, a screenshot): each photo is cut
+  // out and goes through on its own, and their documents make one list of pages.
+  const boxes = photosOnPage(img), page = await new Promise(r => { const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0); r(c); });
+  const parts = boxes.length ? boxes : [null];
+  if (boxes.length) log('Photos inside a white page: ' + boxes.map(b => (b[2] - b[0]) + '×' + (b[3] - b[1]) + ' at ' + b[0] + ',' + b[1]).join('; ') + ' of ' + page.width + '×' + page.height);
+  let pages = 0;
+  for (const box of parts) {
+    if (box) {
+      const [x0, y0, x1, y1] = box, c = document.createElement('canvas'); c.width = x1 - x0; c.height = y1 - y0;
+      c.getContext('2d').drawImage(page, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+      img.src = c.toDataURL('image/jpeg', 0.95); await img.decode();
+    }
+    $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
+    lastRes = null; await runOnce(img, img.naturalWidth, img.naturalHeight, img);
+    // A photo cut from a page with no document frame in it is a document already cut to
+    // its edges (a card photographed edge to edge): the whole photo is the page.
+    if (box && (!lastRes || lastRes.pts.some(p => !p))) lastRes = { pts: [[0, 0], [1, 0], [1, 1], [0, 1]], conf: 1 };
+    if (lastRes && !lastRes.pts.some(p => !p)) {
+      pageMore = pages > 0; await showShot(); pageMore = false; pages++;
+    }
+  }
+  if (parts.length > 1) $('shot2note').textContent = 'Pages from ' + parts.length + ' photos on this page:';
+};
+// Switching the model, GPU / CPU or the thread: nothing of the old way stays on screen —
+// no frame, no figures — and the frame and its following start again on the new way.
+$('model').onchange = $('backend').onchange = $('useWorker').onchange = async () => {
+  const was = running; running = false; shotId++;
+  while (inFlight) await new Promise(r => setTimeout(r, 30));
+  target = shown = smooth = lastRes = null; steadySince = 0; Track.reset();
+  times.length = frames.length = followTimes.length = followMs.length = 0;
+  for (const id of ['sFps', 'sMs', 'sConf', 'sTrack', 'sTrackMs', 'sCap']) $(id).textContent = '—';
+  drawPts(null, false, $('video')); $('hint').textContent = 'Switching…';
+  await ensureSession().catch(() => {});
+  $('hint').textContent = '';
+  if (was) { running = true; loop(); startFollow(); }
+};
+$('engine').value = ORT_DIR === 'ort130' ? '130' : '122';
+$('engine').onchange = () => { location.search = '?ort=' + $('engine').value + '&v=' + Date.now(); };
+log('CPU engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || ORT_DIR) + ', GPU engine: 1.30.0');
+log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
+log('CPU: ' + (navigator.hardwareConcurrency || '?') + ' cores; several background threads of one thread each are used');
+// The models are fetched as soon as the page opens; the camera button waits for them.
+ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
+</script>
+<script src="/scan/embed.js"></script>
+</body>
+</html>

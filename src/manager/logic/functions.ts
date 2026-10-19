@@ -1,5 +1,5 @@
 // The Cloud Functions the page calls directly, and their warm-up (from
-// schedule-manager.html). A cold preprocess_scan / fill_form_101 / ai_read
+// schedule-manager.html). A cold fill_form_101 / ai_read
 // instance costs seconds on first use (the Timings pane showed ~4-5 s in
 // "Enhance (server)"), so a {"ping":true} call wakes them while the user is
 // still photographing or filling the form; the functions answer a ping at
@@ -8,15 +8,13 @@
 
 // The server-side Form 101 PDF builder (Python + PyMuPDF; functions/main.py).
 export const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
-// The scanner's server: finding, cutting and enhancing the documents on a photo (src/scan/server.ts).
-export const PREPROCESS_SCAN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/preprocess_scan';
 // The scanner's training examples and their counts (docs/scan-plan.md → S6).
 export const SCAN_FEEDBACK_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/scan_feedback';
 // The AI reads (firestore-backend.js sends them).
 export const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
 export const USERS_ADMIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';
 /** the functions a scan uses */
-export function SCAN_WARM_URLS(): string[] { return [PREPROCESS_SCAN_FN_URL, FORM101_FN_URL, AI_FN_URL]; }
+export function SCAN_WARM_URLS(): string[] { return [FORM101_FN_URL, AI_FN_URL]; }
 
 export const fnWarm: Record<string, {at: number; ms: number | null}> = {};
 export function warmCloudFunctions(urls: string[]): void {

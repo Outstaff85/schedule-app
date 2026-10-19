@@ -105,7 +105,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 
 | What | Where |
 |---|---|
-| corner editor, page kinds, sending the examples | `src/scan/Corners.tsx`, `src/scan/doctype.ts`, `src/scan/Scanner.tsx`, `src/scan/server.ts` |
+| page kinds, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx`, `src/scan/server.ts` (the scan window no longer sends corner or kind examples: since 2026-10-19 the scanner is the lab's page, `scan/`) |
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
 | the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`) |
 | the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
