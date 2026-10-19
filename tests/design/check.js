@@ -25,17 +25,18 @@ for(const [n, v] of toks){
   if(!m) errs.push(`og.css: token --${n} missing`);
   else if(norm(m[1]) !== norm(v)) errs.push(`og.css: --${n} is ${m[1].trim()}, tokens.json says ${v}`);
 }
-// Every page links og.css: a new page's HTML entry (next/index.html,
-// client-portal.html) links /og.css and Vite bundles it; the manager page links
+// Every page that draws links og.css (client-portal.html and supplier-portal.html
+// only send to the manager app and draw nothing): a new page's HTML entry
+// (next/index.html) links /og.css and Vite bundles it; the manager page links
 // it as it is (vite-ignore), so its own styles keep their place before it.
-for(const f of ['schedule-manager.html', 'supplier-portal.html', 'client-portal.html', 'worker-punch.html']){
+for(const f of ['schedule-manager.html', 'worker-punch.html']){
   const s = read(f);
   if(!/<link rel="stylesheet" href="\/?og\.css"( vite-ignore)?>/.test(s)) errs.push(`${f}: does not link og.css`);
   for(const [n] of toks) if(new RegExp('(^|[^\\w-])--' + n + '\\s*:').test(s)) errs.push(`${f}: defines --${n} (it lives in og.css)`);
 }
 // The theme (docs/redesign.md → Light theme): every page puts the chosen look on
 // <html data-theme> in a <head> script before the first draw (no dark flash).
-for(const f of ['schedule-manager.html', 'supplier-portal.html', 'client-portal.html', 'worker-punch.html', 'next/index.html']){
+for(const f of ['schedule-manager.html', 'worker-punch.html', 'next/index.html']){
   const head = (read(f).split('</head>')[0]) || '';
   if(!/localStorage\.getItem\('uiTheme'\)/.test(head) || !/data-theme/.test(head)) errs.push(`${f}: no theme script in <head> (localStorage.uiTheme → <html data-theme>)`);
 }

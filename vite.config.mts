@@ -19,12 +19,12 @@ export default defineConfig({
   resolve: { alias: { '@': r('src') } },
   publicDir: false,
   define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
-  optimizeDeps: { entries: ['next/index.html', 'client-portal.html', 'supplier-portal.html', 'worker-punch.html', 'schedule-manager.html'] },
+  optimizeDeps: { entries: ['next/index.html', 'worker-punch.html', 'schedule-manager.html'] },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     rolldownOptions: {
-      input: { next: r('next/index.html'), client: r('client-portal.html'), supplier: r('supplier-portal.html'), punch: r('worker-punch.html'), manager: r('schedule-manager.html') },
+      input: { next: r('next/index.html'), punch: r('worker-punch.html'), manager: r('schedule-manager.html') },
     },
   },
 });

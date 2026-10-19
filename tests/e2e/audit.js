@@ -113,7 +113,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await ctx.close();
     // Supplier portal
     ctx = await newCtx({viewport: vp}); p = await page(ctx);
-    await login(p, BASE + 'supplier-portal.html', 'sup1', 'sup-pass-11'); await sleep(3000);
+    await login(p, BASE + 'schedule-manager.html', 'sup1', 'sup-pass-11'); await sleep(3000);
     // a React page (src/supplier/): its tabs are buttons of the Shell (the tabs on a computer, the bottom bar on a phone)
     for(const [t, label] of [['dashboard', 'Dashboard'], ['workers', 'My Workers'], ['hours', 'My Hours'], ['review', 'Approvals']])
       await step(p, w, 'supplier-' + t, new Function(`[...document.querySelectorAll('[data-slot="shell"] button')].find(b => b.innerText.trim() === '${label}').click()`));
@@ -121,8 +121,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await ctx.close();
     // Client portal
     ctx = await newCtx({viewport: vp}); p = await page(ctx);
-    await p.goto(BASE + 'client-portal.html'); await p.waitForSelector('#loginScreen', {state: 'visible'}).catch(() => {}); await shoot(p, 'client-signin-' + w);
-    await login(p, BASE + 'client-portal.html', 'client1', 'client-pass-1'); await sleep(3500); await shoot(p, 'client-hours-' + w);
+    await p.goto(BASE + 'schedule-manager.html'); await p.waitForSelector('#loginScreen', {state: 'visible'}).catch(() => {}); await shoot(p, 'client-signin-' + w);
+    await login(p, BASE + 'schedule-manager.html', 'client1', 'client-pass-1'); await sleep(3500); await shoot(p, 'client-hours-' + w);
     await ctx.close();
     // Punch page
     ctx = await newCtx({viewport: vp}); p = await page(ctx);
