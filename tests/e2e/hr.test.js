@@ -187,12 +187,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // the React frame's side menu shows only the sections this login may see
     const vis = k => !!document.querySelector('[data-testid=shell-menu] [data-testid=tab-' + k + ']');
     return {tab: currentTab, today: vis('dashboard'), admin: vis('admin'), workersTab: vis('workers'), sched: vis('schedule'),
-      acc: vis('accounting'), name: workers[0].name, punches: getPunchLog().map(e => e.workerId)};
+      acc: vis('accounting'), com: vis('commission'), hours: vis('hours'), name: workers[0].name, punches: getPunchLog().map(e => e.workerId)};
   });
-  ok(hv.tab === 'workers' && !hv.today && !hv.admin && hv.workersTab && !hv.sched && hv.acc, 'hr: the Workers tab and, with Accounting ticked, its pay view; lands on Workers ' + JSON.stringify(hv));
+  ok(hv.tab === 'workers' && !hv.today && !hv.admin && hv.workersTab && !hv.sched && !hv.acc && hv.com && hv.hours,
+    'hr: the Workers tab, Commission (its template\'s Commission tick) and Hours (its hours ticks), never Accounting; lands on Workers ' + JSON.stringify(hv));
   const pv = await h.evaluate(async () => {
-    switchTab('accounting'); await ManagerBridge.setPeriod('all'); await T.tick(100);
-    const root = document.getElementById('accountingRoot'), vis = sel => !!root.querySelector(sel);
+    switchTab('commission'); await ManagerBridge.setPeriod('all'); await T.tick(100);
+    const root = document.getElementById('commissionRoot'), vis = sel => !!root.querySelector(sel);
     const txt = (root.querySelector('#accSecSalary') || {}).innerText || '';
     const rows = [...root.querySelectorAll('[data-testid=sal-table] tbody tr')].map(r => r.dataset.rowId);
     const e = ManagerAcc.salaryEntriesFor(accData(), 'all').byWorker;
@@ -201,12 +202,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       hours: rows.reduce((t, id) => t + e[id].hours, 0), comText: txt};
   });
   ok(pv.rows.length === 1 && pv.rows[0] === 'w2' && pv.com && pv.view === 'pay' && !pv.tabs && !pv.payable && !pv.pend && !pv.alerts && pv.noExport && pv.noSelect,
-    'hr pay view: own worker only, its commission, no tabs, no export, nothing else of Accounting ' + JSON.stringify(pv).slice(0, 300));
-  ok(pv.comText.includes('₪' + (pv.hours * 4).toFixed(0)), 'hr pay view: commission = hours × 4 ' + pv.hours);
-  // Hours approval in Accounting (hours ticks): its own worker's days; approve one.
-  // The HR's Hours approval: the shared React screen (src/hours-review/) on top of Accounting.
-  const hrReady = () => !!document.querySelector('#accSecReview [data-testid="hours-review"][data-ready="1"]');
-  await h.evaluate(() => switchTab('accounting'));
+    'hr Commission tab: own worker only, its commission, no tabs, no export, nothing else of Accounting ' + JSON.stringify(pv).slice(0, 300));
+  ok(pv.comText.includes('₪' + (pv.hours * 4).toFixed(0)), 'hr Commission tab: commission = hours × 4 ' + pv.hours);
+  // The HR's Hours tab (hours ticks): the shared React screen (src/hours-review/); its own worker's days; approve one.
+  const hrReady = () => !!document.querySelector('#hoursRoot #accSecReview [data-testid="hours-review"][data-ready="1"]');
+  await h.evaluate(() => switchTab('hours'));
   await waitFor(h, hrReady, 15000);
   if (!(await h.evaluate(() => document.querySelectorAll('#accSecReview [data-day-key]').length))) {
     await h.click('#accSecReview button[aria-label="Previous month"]'); await sleep(300); await waitFor(h, hrReady, 15000);
@@ -220,7 +220,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   }
   const hrv = {...hrv0, st: await h.evaluate(k => (document.querySelector(`#accSecReview [data-day-key="${k}"]`) || {dataset: {}}).dataset.state, hrv0.key)};
   await (await h.$('#accSecReview')).screenshot({path: SP + '/hr-hours-review.png'}).catch(()=>{});
-  ok(hrv.shown && hrv.names.join() === 'Dana Levi' && hrv.days >= 1 && hrv.st === 'approved', 'hr: Hours approval in Accounting — own workers only, approves a day ' + JSON.stringify(hrv));
+  ok(hrv.shown && hrv.names.join() === 'Dana Levi' && hrv.days >= 1 && hrv.st === 'approved', 'hr: the Hours tab — own workers only, approves a day ' + JSON.stringify(hrv));
   const mh = await h.evaluate(async () => {
     const r = {};
     openHoursImportModal('w2');
@@ -238,11 +238,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const pm = await h.evaluate(async () => {
     const r = {};
     workers.find(w => w.id === 'w2').bank = 'Hapoalim';
-    switchTab('accounting'); await T.tick(50);
-    const row = document.querySelector('#accountingRoot [data-testid=sal-table] tbody tr');
+    switchTab('commission'); await T.tick(50);
+    const row = document.querySelector('#commissionRoot [data-testid=sal-table] tbody tr');
     r.own = Object.keys(ManagerAcc.salaryEntriesFor(accData(), accPeriod).byWorker).filter(id => (workers.find(w => w.id === id) || {}).hrId).length;
     if (row) { row.querySelector('td:nth-child(2)').click(); await T.tick(250); }
-    r.cards = [...document.querySelectorAll('#accountingRoot [data-testid=sal-table] tbody tr')].map(c => c.textContent.replace(/\s+/g, ' ') + ' ' + ((document.querySelector('[data-testid=window] [data-testid=sal-det]') || {}).textContent || ''));
+    r.cards = [...document.querySelectorAll('#commissionRoot [data-testid=sal-table] tbody tr')].map(c => c.textContent.replace(/\s+/g, ' ') + ' ' + ((document.querySelector('[data-testid=window] [data-testid=sal-det]') || {}).textContent || ''));
     r.noPayBtn = !document.querySelector('[data-testid=window] [data-testid=sal-pay]');
     document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await T.tick(250);
     openPayModal('w2'); await T.tick(50);
@@ -286,7 +286,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const r = {};
     r.canEdit = canEditPay(workers.find(w => w.id === 'w2'));
     r.notOthers = !canEditPay({id: 'x', hrId: 'someone-else'});
-    switchTab('accounting');
+    switchTab('commission');
     openPayModal('w2'); await T.tick(50);
     r.enabled = !document.getElementById('payRate').disabled;
     T.fill('payRate', '52'); T.fill('payBank', 'Discount'); T.fill('payBankAccount', '777'); await T.tick(20);

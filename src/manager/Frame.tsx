@@ -8,7 +8,7 @@
 // tabs' React islands) are moved into the Shell's page area as they are.
 // The bell's list (BellPanel) opens under the bell.
 import * as React from 'react';
-import { IconCash, IconCalendar, IconDownload, IconHome, IconLock, IconTruckDelivery, IconUserEdit, IconUsers, IconUsersGroup } from '@tabler/icons-react';
+import { IconCash, IconCalendar, IconClockCheck, IconCoin, IconDownload, IconHome, IconLock, IconTruckDelivery, IconUserEdit, IconUsers, IconUsersGroup } from '@tabler/icons-react';
 import { LanguageScope, adoptLanguage, tr } from '@/lib/i18n';
 import { Shell, ShellGreeting, type ShellSection } from '@/components/shared/shell';
 import { AppBrand, ShellBell } from '@/components/shared/app-brand';
@@ -28,6 +28,8 @@ const SECTIONS: { key: string; label: string; Icon: typeof IconHome; color: stri
   { key: 'suppliers', label: 'Suppliers', Icon: IconTruckDelivery, color: '#c084fc', more: true },
   { key: 'admin', label: 'Admin', Icon: IconLock, color: '#ff8a95', more: true },
   { key: 'accounting', label: 'Accounting', Icon: IconCash, color: '#f7c062' },
+  { key: 'commission', label: 'Commission', Icon: IconCoin, color: '#f7c062' },
+  { key: 'hours', label: 'Hours', Icon: IconClockCheck, color: '#6dd6a0' },
 ];
 
 /** Puts a page element (found by id) inside this spot, each time the spot mounts. */

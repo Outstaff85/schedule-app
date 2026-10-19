@@ -48,35 +48,39 @@ export function staffPayEdit(): boolean {
 }
 export function isHrSession(): boolean { const s = getSession(); return !!s && s.role === 'hr'; }
 export function isFirmAdminSession(): boolean { const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
-// An HR login (docs/hr.md) gets only the tabs of its sections: never Today
-// or Admin (the firm-wide punch log); it lands on its first tab.
-export const HR_HIDDEN_TABS = ['dashboard', 'admin'];
-// An HR never gets the full Accounting tab: with the Accounting section
-// (off by default) it gets a reduced one — Salary for its own workers,
-// read-only, with its commission — nothing else.
+// An HR login (docs/hr.md) gets only the tabs of its sections: never Today,
+// Admin (the firm-wide punch log) or Accounting; it lands on its first tab.
+export const HR_HIDDEN_TABS = ['dashboard', 'admin', 'accounting'];
+// An HR never gets the Accounting tab: with the Accounting section (its
+// template's Commission tick, off by default) it gets the Commission tab —
+// Salary for its own workers, read-only, with its commission — nothing else.
 export function hrPayOnly(): boolean {
   const s = getSession();
   return !!s && s.role === 'hr' && hasPermission('accounting');
 }
 // An HR with an hours tick (users.hourPerms → claim hp) reviews its workers'
-// hours in Accounting → Hours approval (src/hours-review/), even without the
-// Accounting section.
+// hours in the Hours tab (src/hours-review/).
 export function hrHourReview(): boolean {
   const s = getSession();
   return !!s && s.role === 'hr' && ((s.hourPerms as string[] | undefined) || []).some(p => p === 'hours' || p === 'schedule');
 }
+/** The tabs in menu order (the frame draws those tabAllowed gives); Commission and Hours are an HR's. */
+export const NAV_TABS = ['dashboard', 'schedule', 'workers', 'clients', 'suppliers', 'admin', 'accounting', 'commission', 'hours'];
 export function tabAllowed(tab: string): boolean {
+  if (tab === 'commission') return hrPayOnly();
+  if (tab === 'hours') return hrHourReview();
   if (isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
   const r = staffRights();
   if (r && tab === 'dashboard') return r.includes('today');
   if (r && tab === 'admin') return r.includes('punchlog');
-  if (tab === 'accounting' && hrHourReview()) return true;
   return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
 }
+/** Accounting and an HR's Commission and Hours: drawn by the page's renderAccounting(), on the same data. */
+export const isAccTab = (tab: string) => tab === 'accounting' || tab === 'commission' || tab === 'hours';
 /** The tab a login opens on. */
 export function homeTab(): string {
   if (!isHrSession() && tabAllowed('dashboard')) return 'dashboard';
-  return ['workers', 'schedule', 'clients', 'suppliers', 'accounting', 'admin'].find(tabAllowed) || 'workers';
+  return ['workers', 'schedule', 'clients', 'suppliers', 'accounting', 'admin', 'commission', 'hours'].find(tabAllowed) || 'workers';
 }
 // Phone bottom bar: the tabs that sit under More (CSS .ttab.in-more).
 export const MORE_TABS = ['clients', 'suppliers', 'admin'];

@@ -37,7 +37,7 @@ import { ClientEditor, clientWindow, type ClientProps } from './ClientEditor';
 import { SupplierEditor, type SupplierProps } from './SupplierEditor';
 import { ManualPunch } from './ManualPunch';
 import { MapPicker, mapPicker, type MapPickProps } from './MapPicker';
-import { Accounting, setKeptTab } from './Accounting';
+import { Accounting, HoursTab, setKeptTab } from './Accounting';
 import { PayWindow } from './PayWindow';
 import { Admin } from './Admin';
 import { FirmsScreen, FirmWindow } from './Firms';
@@ -102,6 +102,9 @@ const renderWorkers = island('workersRoot', b => b.workers(), (s, api) => <Worke
 const renderClients = island('clientsRoot', b => b.clients(), (s, api) => <Clients snap={s} api={api} />);
 const renderSuppliers = island('suppliersRoot', b => b.suppliers(), (s, api) => <Suppliers snap={s} api={api} />);
 const renderAccounting = island('accountingRoot', b => b.accounting(), (s, api) => <Accounting snap={s} api={api} />);
+// An HR's Commission tab: the Accounting tab in its pay view (payOnly); its Hours tab: the hours review.
+const renderCommission = island('commissionRoot', b => b.accounting(), (s, api) => <div data-testid="commission"><Accounting snap={s} api={api} /></div>);
+const renderHours = island('hoursRoot', () => ({}), (_s, api) => <HoursTab api={api} />);
 const renderAdmin = island('adminRoot', b => b.admin(), (s, api) => <Admin snap={s} api={api} />);
 const renderFirmsScreen = island('firmsScreenRoot', b => b.admin(), (s, api) => <FirmsScreen snap={s} api={api} />);
 
@@ -218,6 +221,8 @@ provideIsland({
   openMapPicker: p => mapWin.show({ ...p, seq: ++seq }),
   mapPickAt: (lat, lng) => flushSync(() => mapPicker.at(lat, lng)),
   renderAccounting,
+  renderCommission,
+  renderHours,
   setAccTab: k => { setKeptTab(k); renderAccounting(); },
   openPay: id => payWin.show({ id, seq: ++seq }),
   renderAdmin,

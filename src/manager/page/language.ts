@@ -12,7 +12,7 @@ import { getSession } from '../data/session';
 import { API_URL } from '../data/api';
 import { esc } from '../logic/util';
 import { workerExpiryStatus } from '../logic/workers';
-import { tabAllowed } from '../logic/access';
+import { isAccTab, tabAllowed } from '../logic/access';
 import { setFrame } from '../frame';
 import { island } from '../bridge';
 Object.defineProperties(window, {
@@ -94,7 +94,7 @@ function redrawForLanguage(){
   try{ if(byId('firmsScreen')?.style.display === 'block' && island()) island()!.renderFirmsScreen(); }catch(e: any){}
   try{ const s = getSession(); if(s) renderAccountControl(s); }catch(e: any){}
   try{ if(typeof render === 'function') render(); }catch(e: any){}
-  try{ if(typeof currentTab !== 'undefined' && currentTab === 'accounting') renderAccounting(); }catch(e: any){}
+  try{ if(typeof currentTab !== 'undefined' && isAccTab(currentTab)) renderAccounting(); }catch(e: any){}
 }
 // ═══ CANONICAL punch-hours calculation — single source of truth. ═══
 // The one copy is src/lib/payroll.ts, loaded as payroll.js (the global

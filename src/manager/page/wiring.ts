@@ -17,6 +17,7 @@ import { refreshBell } from './header';
 import { showToast } from '../toast';
 import { setFrame } from '../frame';
 import { island } from '../bridge';
+import { isAccTab } from '../logic/access';
 Object.defineProperties(window, {
   "backToFirmsList": {get: () => backToFirmsList, configurable: true},
 });
@@ -43,9 +44,9 @@ ManagerData.setHost({
 ManagerData.on('data', ()=>render());
 // Hours approvals compare each day with the punches: they redraw too, or a
 // day could keep showing a stale "Changed after approval".
-ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); else if(currentTab==='accounting') renderAccounting(); else if(currentTab==='admin') renderAdmin(); });
+ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); else if(isAccTab(currentTab)) renderAccounting(); else if(currentTab==='admin') renderAdmin(); });
 // An open worker card shows the worker's latest hours batch live.
-ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(island()) island()!.refreshWindows(); if(currentTab==='accounting') renderAccounting(); });
+ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(island()) island()!.refreshWindows(); if(isAccTab(currentTab)) renderAccounting(); });
 ManagerData.on('save', (s?: any)=>setSaveStatus(s));
 ManagerData.on('notice', ({msg, ms}: any)=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
 ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());

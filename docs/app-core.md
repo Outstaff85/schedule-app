@@ -41,8 +41,8 @@ Shared helpers:
 - **`switchTab(tab)`** toggles the tab/section and renders that tab. Opening Admin also runs `setupAdminPaneBar()`, only there, so a save doesn't reset the Admin pane ([admin.md](admin.md)).
 - **Permissions (client-side visibility only; the server enforces):**
   - `hasPermission(section)` — only a `staff` or `hr` role is limited by its `permissions` (`'*'` or a list); every other role passes;
-  - `NAV_TAB_PERMISSION` maps tabs to sections: schedule, workers, clients, suppliers, accounting, and `admin` → `workers`. Today is never gated, except for HR;
-  - `tabAllowed(tab)` adds the HR rule: an `hr` login never gets Today or Admin (`HR_HIDDEN_TABS`); `homeTab()` is Today for everyone else and the first allowed tab (Workers by default) for HR;
+  - `NAV_TABS` is the tabs in menu order (Today, Schedule, Workers, Clients, Suppliers, Admin, Accounting, Commission, Hours); `NAV_TAB_PERMISSION` maps tabs to sections: schedule, workers, clients, suppliers, accounting, and `admin` → `workers`. Today is never gated, except for HR (and a staff login on the flat rights: Today and Punch log are their own ticks);
+  - `tabAllowed(tab)` adds the HR rule: an `hr` login never gets Today, Admin or Accounting (`HR_HIDDEN_TABS`), and only an HR gets **Commission** (`hrPayOnly()`, the Accounting section) and **Hours** (`hrHourReview()`, an hours tick) — [accounting.md](accounting.md); `homeTab()` is Today for everyone else and the first allowed tab (Workers by default) for HR;
   - `applyNavPermissions()` hides tabs (Today included) and moves off a hidden tab to `homeTab()`; without the `exports` section it also hides the header Export menu and the salary export (`.perm-exports`).
 
 ## Schedule tab (`#sectionSchedule`)

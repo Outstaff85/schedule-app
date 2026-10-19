@@ -94,7 +94,7 @@ function notifList(){
     const td=workerToday(w,todayLog);
     if(td.k==='none'){ const [h,m]=String(td.sh.start).split(':').map(Number); out.push({id:t+'nopunch:'+w.id+':'+today, lvl:'red', icon:'ti-clock-off', title:tr('No punch on today\'s shift'), detail:w.name+' · '+td.sh.start+'–'+(td.sh.end||''), at:new Date(now).setHours(h||0,m||0,0,0), open:()=>openNotices(w.id), acts:noPunchActs(w,td.sh)}); }
   });
-  if(hasPermission('accounting')) (__hoursBatches||[]).filter((b?: any)=>b.status==='pending').forEach((b?: any)=>{
+  if(hasPermission('accounting')&&!isHrSession()) (__hoursBatches||[]).filter((b?: any)=>b.status==='pending').forEach((b?: any)=>{
     out.push({id:t+'hours:'+b.batchId, lvl:'blue', icon:'ti-clock-hour-4', title:tr('Hours waiting for approval'), detail:[b.fileName,b.uploadedBy].filter(Boolean).join(' · '), at:Date.parse(b.uploadedAt)||dayStart, open:()=>switchTab('accounting')}); });
   __notifApprovals.forEach((a?: any)=>out.push(Object.assign({lvl:'green', icon:'ti-circle-check', open:()=>switchTab('accounting')}, a)));
   const tr6=scanEdgesNotice(); if(tr6) out.push(tr6);

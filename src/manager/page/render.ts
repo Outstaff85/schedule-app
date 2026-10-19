@@ -8,6 +8,7 @@
 // other parts and the browser tests use them).
 import { loadNotifReads, refreshBell, renderCrumb, renderGreeting } from './header';
 import { island } from '../bridge';
+import { isAccTab } from '../logic/access';
 Object.defineProperties(window, {
   "render": {get: () => render, configurable: true},
 });
@@ -31,7 +32,7 @@ export function render(){
   if(currentTab==='suppliers')  renderSuppliersPage();
   if(currentTab==='admin')      renderAdmin();
   if(currentTab==='dashboard')  renderDashboard();
-  if(currentTab==='accounting') renderAccounting();
+  if(isAccTab(currentTab)) renderAccounting();
   refreshBell(); loadNotifReads();
   renderGreeting(); renderCrumb();
   // The worker windows that are open (the card, the notices, the worker window) read their data again.
