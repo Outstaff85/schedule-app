@@ -89,7 +89,7 @@ Object.assign(w, {
   UPLOAD_MAX_DIM: up.UPLOAD_MAX_DIM, downscaleForUpload: up.downscaleForUpload, _loadPdfJs: up.loadPdfJs, isPdfFile: up.isPdfFile,
   fileToUploadPages: up.fileToUploadPages, fileForStorage: up.fileForStorage, filesToUploadPages: up.filesToUploadPages,
   // the functions the page calls directly, and their warm-up (logic/functions.ts)
-  FORM101_FN_URL: fns.FORM101_FN_URL, PREPROCESS_SCAN_FN_URL: fns.PREPROCESS_SCAN_FN_URL, AI_FN_URL: fns.AI_FN_URL,
+  FORM101_FN_URL: fns.FORM101_FN_URL, AI_FN_URL: fns.AI_FN_URL,
   USERS_ADMIN_FN_URL: fns.USERS_ADMIN_FN_URL, SCAN_WARM_URLS: fns.SCAN_WARM_URLS, __fnWarm: fns.fnWarm, warmCloudFunctions: fns.warmCloudFunctions,
   // the Schedule: its shifts, who is shown, the workers' requests (logic/schedule.ts)
   DAYS: sched.DAYS, DAYS_HE: sched.DAYS_HE, WORKER_COLORS: sched.WORKER_COLORS, CLIENT_COLORS: sched.CLIENT_COLORS,
