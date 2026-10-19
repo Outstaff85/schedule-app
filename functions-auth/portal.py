@@ -422,7 +422,8 @@ def supplier_action(db, caller, body):
     t_ref = db.collection("tenants").document(tid)
     action = str(body.get("action") or "")
 
-    pay = caller.get("pay") is True
+    rights = caller.get("rights") or set()  # the flat rights (core.caller_rights)
+    pay = "seePay" in rights
     if action == "loadSchedule":
         workers = [strip_worker(d, sid, pay) for _, d in _own_workers(db, tid, sid)]
         clients = []
@@ -459,11 +460,10 @@ def supplier_action(db, caller, body):
                 entries.append(e)
         return {"entries": entries}
 
-    # The portal tabs this login may use (claim ss; a token without it: all).
-    sections = caller.get("ss") if isinstance(caller.get("ss"), list) else ["dashboard", "workers", "hours"]
-    if action in ("supplierAddWorker", "supplierUpdateWorker", "supplierDeleteWorker") and "workers" not in sections:
+    # Its workers are changed with the Workers tab, its hours sent and listed with Commission.
+    if action in ("supplierAddWorker", "supplierUpdateWorker", "supplierDeleteWorker") and "workers" not in rights:
         return {"error": E_NO_SECTION}
-    if action in ("supplierSubmitHours", "supplierListHours") and "hours" not in sections:
+    if action in ("supplierSubmitHours", "supplierListHours") and "commission" not in rights:
         return {"error": E_NO_SECTION}
 
     fields = body.get("worker") or {}

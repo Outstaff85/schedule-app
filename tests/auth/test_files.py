@@ -10,6 +10,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "function
 
 import files  # noqa: E402
 
+import core  # noqa: E402
+
+
+def _old_claims(fn):
+    """The callers in this file are written as ID tokens signed in before the
+    flat rights (their old claims): they are read through core.caller_rights,
+    as main.py does; a caller that already has `rights` goes as it is."""
+    def run(first, caller, *a, **k):
+        return fn(first, caller if "rights" in caller else dict(caller, rights=core.caller_rights(caller)), *a, **k)
+    return run
+
+
+files.run = _old_claims(files.run)
+
 T1, T2 = "t-one", "t-two"
 ASSETS = f"tenants/{T1}/workers/w1/assets/1-123456782_Avi_Cohen_assets.json"
 PDF = f"tenants/{T1}/workers/w1/form101/1-123456782_Avi_Cohen.pdf"
@@ -82,6 +96,14 @@ def test_delete_needs_workers_right():
     assert PDF not in b.store
     # deleting again (already gone) is fine, like Drive's best-effort trash
     assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": PDF}) == {"ok": True}
+
+
+def test_delete_needs_the_workers_tab_and_edit_workers():
+    # A token with the flat rights (claim rt): the Workers tab and Edit workers.
+    b = Bucket()
+    view = {"role": "staff", "tenantId": T1, "rights": {"workers"}}
+    assert files.run(b, view, {"action": "deleteWorkerDoc", "fileId": PDF}) == {"error": files.E_NO_RIGHT}
+    assert files.run(b, dict(view, rights={"workers", "editWorkers"}), {"action": "deleteWorkerDoc", "fileId": PDF}) == {"ok": True}
 
 
 def test_supplier_and_missing_refused():

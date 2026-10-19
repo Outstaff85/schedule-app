@@ -148,10 +148,12 @@ def claims_for(user):
     else:
         perms_list = list(perms)
     claims = {"role": role, "perms": perms_list}
-    if role == "staff" and isinstance(user.get("rights"), list):
-        # r: on the flat rights — its pay edits need payEdit (Edit pay), no
-        # longer the accounting section (firestore.rules staffPayRight)
-        claims["r"] = True
+    if role in ROLES_SUB:
+        # rt: the flat rights (docs/permissions-plan.md) — what the rules and
+        # the functions check (caller_rights); a login on no template yet has
+        # them worked out from its fields, one to one. The claims below are
+        # the same rights in their old shape, for the app's older code.
+        claims["rt"] = _template_rights(role, user)["rights"]
     if role in ("staff", "hr") and isinstance(user.get("editPerms"), list):
         # ed: what it may change (shifts, workers, punches); none stored = all
         claims["ed"] = _edit_perms(user.get("editPerms"))
@@ -181,6 +183,28 @@ def claims_for(user):
     if role == "supplier":
         claims["ss"] = _supplier_sections(user.get("supplierSections"))
     return claims
+
+
+def caller_rights(decoded):
+    """The flat rights of a verified ID token (claim rt). A token signed in
+    before them has its old claims read one to one (_flat_of), until the
+    next sign-in; an owner or a superadmin has none (it may do everything)."""
+    rt = decoded.get("rt")
+    if isinstance(rt, list):
+        return set(rt)
+    role = _norm_role(decoded.get("role"))
+    if role not in ROLES_SUB:
+        return set()
+    perms = decoded.get("perms")
+    v = {"permissions": "*" if isinstance(perms, list) and "*" in perms else perms,
+         "editPerms": decoded.get("ed"), "supplierSections": decoded.get("ss"),
+         "showPay": decoded.get("pay") is True}
+    if isinstance(decoded.get("hp"), list):
+        v["hourPerms"] = decoded.get("hp")
+    flat = set(_flat_of(role, v))
+    if role == "staff" and decoded.get("r") and "payEdit" not in (perms or []):
+        flat.discard("editPay")  # signed in on the first flat rights: Accounting alone never changed pay
+    return flat
 
 
 def _rate(v):
@@ -273,8 +297,8 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "clientId": claims.get("clientId"),
         "hourPerms": claims.get("hp", []),
         "editPerms": claims.get("ed", list(EDIT_PERMS)) if claims["role"] in ("staff", "hr") else None,
-        # the flat rights (docs/permissions-plan.md); None: a login on none yet
-        "rights": user.get("rights") if isinstance(user.get("rights"), list) else None,
+        # the flat rights (docs/permissions-plan.md); None: an owner or a superadmin
+        "rights": claims.get("rt"),
         "ownOnly": claims.get("own", False),
         "showPay": claims.get("pay", False),
         "commissionRate": claims.get("hrc", 0),

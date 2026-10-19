@@ -630,7 +630,22 @@ def test_old_templates_get_flat_rights():
     # The new sign-in: on the flat rights (claim r), pay edits by payEdit.
     out = core.login(DB, "old1", "old-pass-11", mint)
     c = id_token_claims(out["token"])
-    assert c["r"] is True and "payEdit" in c["perms"] and out["rights"] == t["rights"]
+    assert c["rt"] == t["rights"] and "payEdit" in c["perms"] and out["rights"] == t["rights"]
+
+
+def test_caller_rights_new_and_old_tokens():
+    """What the functions check: the flat rights of the token (claim rt);
+    a token from before them is read from its old claims, one to one."""
+    assert core.caller_rights({"role": "staff", "rt": ["workers"]}) == {"workers"}
+    assert core.caller_rights({"role": "tenant_admin", "perms": ["*"]}) == set()
+    old = core.caller_rights({"role": "staff", "perms": ["schedule", "accounting"]})
+    assert {"today", "schedule", "accounting", "editPay", "editSchedule", "editWorkers", "editPunches"} == old
+    # signed in on the first flat rights (claim r): Accounting alone never changed pay
+    assert "editPay" not in core.caller_rights({"role": "staff", "perms": ["accounting"], "r": True})
+    assert "editPay" in core.caller_rights({"role": "staff", "perms": ["accounting", "payEdit"], "r": True})
+    sup = core.caller_rights({"role": "supplier", "ss": ["dashboard", "hours"], "hp": ["hours"], "pay": False})
+    assert sup == {"today", "commission", "hours"}
+    assert core.caller_rights({"role": "client", "hp": ["hours", "fix"]}) == {"hours", "fixHours"}
 
 
 def test_template_rights_go_to_every_login_in_every_firm():
@@ -683,7 +698,7 @@ def test_hr_template_and_legacy_login():
     h = core.create_tenant_user(DB, ADMIN1, {"username": "hrt", "password": "hr-pass-11", "fullName": "Hr T", "templateId": "hr", "ownOnly": False})
     c = id_token_claims(core.login(DB, "hrt", "hr-pass-11", mint)["token"])
     assert c["role"] == "hr" and c["own"] is True and c["perms"] == ["schedule", "workers"] and c["hp"] == ["hours", "approve", "dispute", "fix", "schedule"]
-    assert "r" not in c  # the pay marker is for staff only
+    assert c["rt"][:2] == ["schedule", "workers"]  # the flat rights, every role
     # The HR template sees every worker: the HR logins follow.
     rv = Revokes()
     core.save_template(DB, SUPER, {"id": "hr", "name": "HR", "role": "hr", "rights": ["workers", "editPay", "hours"], "ownOnly": False}, rv)
@@ -743,7 +758,9 @@ def test_edit_ticks_follow_the_template():
     assert id_token_claims(out["token"])["ed"] == ["editSchedule"] and out["editPerms"] == ["editSchedule"]
     # A login made before the ticks has no ed claim (everything allowed) and reads as all three.
     out = core.login(DB, "staff1", "staff-pass-1", mint)
-    assert "ed" not in id_token_claims(out["token"]) and out["editPerms"] == list(core.EDIT_PERMS) and out["rights"] is None
+    c = id_token_claims(out["token"])
+    # ... and its flat rights worked out from its fields, one to one (claim rt; the login reply's rights)
+    assert "ed" not in c and out["editPerms"] == list(core.EDIT_PERMS) and out["rights"] == c["rt"] == ["today", "schedule", "workers", "punchlog", "editSchedule", "editWorkers", "editPunches"]
     # Unticking a template's edit reaches its logins.
     rv = Revokes()
     assert core.save_template(DB, SUPER, {"id": r["id"], "name": "Viewer", "role": "staff", "rights": ["schedule", "workers"]}, rv)["updated"] == 1

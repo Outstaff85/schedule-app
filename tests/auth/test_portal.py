@@ -7,6 +7,20 @@ import pytest
 
 import portal
 
+import core  # noqa: E402
+
+
+def _old_claims(fn):
+    """The callers in this file are written as ID tokens signed in before the
+    flat rights (their old claims): they are read through core.caller_rights,
+    as main.py does; a caller that already has `rights` goes as it is."""
+    def run(first, caller, *a, **k):
+        return fn(first, caller if "rights" in caller else dict(caller, rights=core.caller_rights(caller)), *a, **k)
+    return run
+
+
+portal.supplier_action = _old_claims(portal.supplier_action)
+
 T1, T2 = "t-one", "t-two"
 
 
@@ -303,6 +317,19 @@ def test_supplier_sections_limit_the_actions():
     assert DB.collection("tenants").document(T1).collection("workers").document("w1").get().exists
     # With My Workers the change goes through.
     assert portal.supplier_action(DB, dict(SUP1, ss=["workers"]), {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "2"}})["ok"]
+
+
+def test_supplier_flat_rights_decide_the_actions():
+    """A token with the flat rights (claim rt): Workers changes its workers,
+    Commission sends and lists its hours, See workers' pay hands out the pay."""
+    tick = lambda *r: dict(SUP1, rights=set(r))
+    assert portal.supplier_action(DB, tick("today"), {"action": "supplierListHours"}) == {"error": portal.E_NO_SECTION}
+    assert portal.supplier_action(DB, tick("hours"), {"action": "supplierListHours"}) == {"error": portal.E_NO_SECTION}  # the review alone sends no hours
+    assert "batches" in portal.supplier_action(DB, tick("commission"), {"action": "supplierListHours"})
+    assert portal.supplier_action(DB, tick("commission"), {"action": "supplierDeleteWorker", "workerId": "w1"}) == {"error": portal.E_NO_SECTION}
+    assert portal.supplier_action(DB, tick("workers"), {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "3"}})["ok"]
+    w = lambda r: portal.supplier_action(DB, r, {"action": "loadSchedule"})["workers"][0]
+    assert "hourlyRate" not in w(tick("workers")) and "hourlyRate" in w(tick("workers", "seePay"))
 
 
 # ── Days off and shift offers (stage 5b) ─────────────────────────────────────

@@ -31,8 +31,8 @@ rules_version = '2';
 //     its own pending-hours batches) whose hrId is its uid. No hr login ever
 //     changes a worker's hrId — the owner or a superadmin assigns workers;
 //     an hr or staff login changes a worker's pay and bank fields only
-//     with payEdit (Edit pay; a staff session from before the flat rights:
-//     with accounting);
+//     with Edit pay (the flat rights, claim rt — can(); a token signed in
+//     before them keeps its old checks until its next sign-in);
 //   - users, password hashes, usernames and worker punch-link tokens are
 //     function-only.
 service cloud.firestore {
@@ -44,23 +44,33 @@ service cloud.firestore {
     function member(t) { return signedIn() && request.auth.token.tenantId == t; }
     function isTenantAdmin(t) { return member(t) && role() == 'tenant_admin'; }
     function isAdmin(t) { return isSuper() || isTenantAdmin(t); }
-    function staffCan(t, section) {
-      return member(t) && role() == 'staff'
-        && request.auth.token.perms is list
-        && (('*' in request.auth.token.perms) || (section in request.auth.token.perms));
+    // The flat rights (claim rt, docs/permissions-plan.md): every check of a
+    // staff / HR login below is one right of that list — a tab (schedule,
+    // workers, clients, suppliers), an edit (editSchedule, editWorkers,
+    // editPunches) or Edit pay (editPay). A token signed in before them (no
+    // rt) keeps its old checks (oldCan, oldPerm) until its next sign-in.
+    function flat() { return ('rt' in request.auth.token) && request.auth.token.rt is list; }
+    function can(k) { return (flat() && k in request.auth.token.rt) || (!flat() && oldCan(k)); }
+    function oldPerm(s) {
+      return request.auth.token.perms is list
+        && (('*' in request.auth.token.perms) || (s in request.auth.token.perms));
     }
-    // HR logins. hrMine: "only own workers" (claim own); hrAll: sees the firm
-    // like staff. hrCan: the login has that section.
+    function oldCan(k) {
+      return (k in ['schedule', 'workers', 'clients', 'suppliers'] && oldPerm(k))
+        || (k in ['editSchedule', 'editWorkers', 'editPunches'] && (!('ed' in request.auth.token) || (k in request.auth.token.ed)))
+        || (k == 'editPay' && (oldPerm('payEdit') || (role() == 'staff' && !('r' in request.auth.token) && oldPerm('accounting'))));
+    }
+    function isStaff(t) { return member(t) && role() == 'staff'; }
+    // HR logins. hrMine: "only own workers" (claim own); hrAll: sees the firm like staff.
     function isHr(t) { return member(t) && role() == 'hr'; }
     function hrMine(t) { return isHr(t) && request.auth.token.own == true; }
     function hrAll(t) { return isHr(t) && request.auth.token.own != true; }
-    function hrCan(t, section) {
-      return isHr(t) && request.auth.token.perms is list
-        && (('*' in request.auth.token.perms) || (section in request.auth.token.perms));
-    }
     function uid() { return request.auth.uid; }
-    // The edit ticks (claim ed): absent = everything, as before them.
-    function mayEd(k) { return !('ed' in request.auth.token) || (k in request.auth.token.ed); }
+    // An edit right: the owner and a superadmin may change everything.
+    function mayEd(k) { return role() in ['tenant_admin', 'superadmin'] || can(k); }
+    // A staff login writes a firm's clients / suppliers with that tab (an
+    // old token: with the schedule section, as before the flat rights).
+    function staffTab(t, k) { return isStaff(t) && ((flat() && can(k)) || (!flat() && oldPerm('schedule'))); }
     // A worker update: with Edit workers anything but the shifts (those too
     // with Edit shifts); with only Edit shifts nothing but the shifts.
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
@@ -73,21 +83,23 @@ service cloud.firestore {
     // Manager-side logins of the firm that see all of its data (never a
     // supplier, never an own-workers hr).
     function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']) || hrAll(t); }
-    function scheduleWriter(t) { return isAdmin(t) || staffCan(t, 'schedule'); }
-    // A worker's money: staff changes it only with Edit pay (payEdit; the
-    // owner and a superadmin always may). A login signed in before the flat
-    // rights (no claim r) still changes it with the accounting section.
-    function staffPayRight(t) { return staffCan(t, 'payEdit') || (!('r' in request.auth.token) && staffCan(t, 'accounting')); }
-    function staffPayOk(t) { return isAdmin(t) || staffPayRight(t) || samePay(); }
-    function staffNewPayOk(t) { return isAdmin(t) || staffPayRight(t) || noPay(); }
-    // An hr login that may write workers: the workers or schedule section;
+    // Staff that writes workers: the Workers or the Schedule tab (an old
+    // token: the schedule section); what it may change, its edit rights.
+    function workerWriter(t) { return isAdmin(t) || (isStaff(t) && ((flat() && (can('workers') || can('schedule'))) || (!flat() && oldPerm('schedule')))); }
+    // The firm's shift settings and offers: the Schedule tab.
+    function scheduleWriter(t) { return isAdmin(t) || (isStaff(t) && can('schedule')); }
+    // A worker's money: staff changes it only with Edit pay (the owner and a
+    // superadmin always may).
+    function staffPayOk(t) { return isAdmin(t) || (isStaff(t) && can('editPay')) || samePay(); }
+    function staffNewPayOk(t) { return isAdmin(t) || (isStaff(t) && can('editPay')) || noPay(); }
+    // An hr login that may write workers: the Workers or Schedule tab;
     // with own, only its own workers.
-    function hrWorkers(t) { return hrCan(t, 'workers') || hrCan(t, 'schedule'); }
+    function hrWorkers(t) { return isHr(t) && (can('workers') || can('schedule')); }
     // A worker's money (rate, pay mode, OT / Shabbat, travel, bank, per-client
-    // rates, days set by hand): an hr login changes it only with payEdit
-    // ("Edit own workers' pay"); without it a write must leave every one of
-    // these fields as it was (missing and null count as the same).
-    function hrPayOk(t) { return hrCan(t, 'payEdit') || samePay(); }
+    // rates, days set by hand): an hr login changes it only with Edit pay;
+    // without it a write must leave every one of these fields as it was
+    // (missing and null count as the same).
+    function hrPayOk(t) { return can('editPay') || samePay(); }
     function samePay() {
       return sameField('hourlyRate') && sameField('regRate') && sameField('otRate')
         && sameField('shabbatRate') && sameField('payMode') && sameField('travelAllowance')
@@ -95,8 +107,8 @@ service cloud.firestore {
         && sameField('bankAccountNumber') && sameField('clientRates') && sameField('dayOverrides');
     }
     function sameField(k) { return request.resource.data.get(k, null) == resource.data.get(k, null); }
-    // A new worker made by an hr login without payEdit carries no money.
-    function hrNewPayOk(t) { return hrCan(t, 'payEdit') || noPay(); }
+    // A new worker made by an hr login without Edit pay carries no money.
+    function hrNewPayOk(t) { return can('editPay') || noPay(); }
     function noPay() {
       return noField('hourlyRate') && noField('regRate') && noField('otRate')
         && noField('shabbatRate') && noField('payMode') && noField('travelAllowance')
@@ -120,34 +132,34 @@ service cloud.firestore {
       match /workers/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
         // Only the owner (or super-admin) assigns a worker to an hr (docs/hr.md).
-        allow create: if mayEd('editWorkers') && ((scheduleWriter(t) && staffNewPayOk(t) && (isAdmin(t) || newHr() == null))
+        allow create: if mayEd('editWorkers') && ((workerWriter(t) && staffNewPayOk(t) && (isAdmin(t) || newHr() == null))
           || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()) && hrNewPayOk(t))
           || (hrMine(t) && hrWorkers(t) && newHr() == uid() && hrNewPayOk(t)));
-        allow update: if workerEdOk() && ((scheduleWriter(t) && staffPayOk(t) && (isAdmin(t) || newHr() == oldHr()))
+        allow update: if workerEdOk() && ((workerWriter(t) && staffPayOk(t) && (isAdmin(t) || newHr() == oldHr()))
           || (hrAll(t) && hrWorkers(t) && newHr() == oldHr() && hrPayOk(t))
           || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid() && hrPayOk(t)));
-        allow delete: if mayEd('editWorkers') && (scheduleWriter(t)
+        allow delete: if mayEd('editWorkers') && (workerWriter(t)
           || (hrAll(t) && hrWorkers(t))
           || (hrMine(t) && hrWorkers(t) && oldHr() == uid()));
       }
       match /clients/{id} {
         allow read: if manager(t) || isHr(t);
-        allow write: if scheduleWriter(t) || hrCan(t, 'clients');
+        allow write: if isAdmin(t) || staffTab(t, 'clients') || (isHr(t) && can('clients'));
       }
       // A supplier's own commission rate (commission, set in the supplier
       // window) is changed only by the firm owner or a superadmin; staff and
       // HR with the section edit everything else and keep it as it is.
       match /suppliers/{id} {
         allow read: if manager(t) || isHr(t);
-        allow create: if (scheduleWriter(t) || hrCan(t, 'suppliers'))
+        allow create: if (isAdmin(t) || staffTab(t, 'suppliers') || (isHr(t) && can('suppliers')))
           && (isAdmin(t) || request.resource.data.get('commission', null) == null);
-        allow update: if (scheduleWriter(t) || hrCan(t, 'suppliers'))
+        allow update: if (isAdmin(t) || staffTab(t, 'suppliers') || (isHr(t) && can('suppliers')))
           && (isAdmin(t) || request.resource.data.get('commission', null) == resource.data.get('commission', null));
-        allow delete: if scheduleWriter(t) || hrCan(t, 'suppliers');
+        allow delete: if isAdmin(t) || staffTab(t, 'suppliers') || (isHr(t) && can('suppliers'));
       }
       match /settings/{id} {
         allow read: if manager(t) || isHr(t);
-        allow write: if scheduleWriter(t) || (hrAll(t) && hrCan(t, 'schedule'));
+        allow write: if scheduleWriter(t) || (hrAll(t) && can('schedule'));
       }
       match /punches/{id} {
         allow read: if manager(t);
@@ -175,8 +187,8 @@ service cloud.firestore {
       // reassigning a worker's HR moves its requests' hrId (setPunchesHr).
       match /shiftRequests/{id} {
         allow read: if manager(t) || (hrMine(t) && oldHr() == uid());
-        allow update: if (scheduleWriter(t) || (hrAll(t) && hrCan(t, 'schedule'))
-            || (hrMine(t) && hrCan(t, 'schedule') && oldHr() == uid()))
+        allow update: if (scheduleWriter(t) || (hrAll(t) && can('schedule'))
+            || (hrMine(t) && can('schedule') && oldHr() == uid()))
           && resource.data.kind == 'swap' && resource.data.status == 'pending'
           && request.resource.data.status in ['confirmed', 'declined']
           && request.resource.data.decidedByUid == uid()
