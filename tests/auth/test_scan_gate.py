@@ -1,4 +1,4 @@
-"""The sign-in gate of preprocess_scan and fill_form_101 (functions/gate.py):
+"""The sign-in gate of fill_form_101 and scan_feedback (functions/gate.py):
 only a manager-side login with a valid ID token passes."""
 import importlib.util
 import pathlib

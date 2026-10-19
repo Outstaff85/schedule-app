@@ -3,16 +3,14 @@ read by the old models (the lab's version) and the new ones; for each model: the
 mean corner error (the farthest corner from where the user put it, 0..1 of the
 part), the share within 2 % and the share not found. Writes ~/.scan-train/report.json
 and prints "before → after"."""
-import sys
 
 import cv2
 import numpy as np
 import onnxruntime as ort
 
-from common import MODELS, ROOT, WORK, model_path, read_json, version_of, write_json
+from common import MODELS, WORK, model_path, read_json, version_of, write_json
 
-sys.path.insert(0, str(ROOT / "functions"))
-import docfind  # noqa: E402  the server's own corner reading
+import docfind  # the corner reading (once the server's, kept here for the exam)
 
 
 def score(path, examples):

@@ -1,5 +1,5 @@
-"""The sign-in gate of the us-central1 functions (preprocess_scan,
-fill_form_101 — docs/backend.md): a request carries the caller's Firebase ID
+"""The sign-in gate of the us-central1 functions (fill_form_101,
+scan_feedback — docs/backend.md): a request carries the caller's Firebase ID
 token ("Authorization: Bearer <ID token>", as the europe-west3 functions take
 it), and only a manager-side login passes — a super-admin, a firm's owner,
 staff or HR. A supplier or client login, a missing, bad or revoked token: no.

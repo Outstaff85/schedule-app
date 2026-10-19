@@ -21,7 +21,7 @@ KEEP = ("face.onnx",)                                 # carried to a new version
 OLD_FILES = {"edges.onnx": "sa24.onnx", "edges-lite.onnx": "lite.onnx", "face.onnx": "yunet640.onnx"}
 # The document type models (docs/scan-plan.md → S7): the phone's (EfficientNet-Lite0; the next
 # size up while the exam shows it short) and the server's (a larger one). Input "img"
-# [1,3,256,256] RGB 0..1; outputs "doctype" [1,6] and "turn" [1,4] (functions/docfind.py doctype_of).
+# [1,3,256,256] RGB 0..1; outputs "doctype" [1,6] and "turn" [1,4] (scripts/scan-train/docfind.py doctype_of).
 DOCTYPE_MODELS = {"doctype-lite.onnx": "tf_efficientnet_lite0", "doctype.onnx": "tf_efficientnet_lite2"}
 DOCTYPE_SIZES = [f"tf_efficientnet_lite{i}" for i in range(5)]
 DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")

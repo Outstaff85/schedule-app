@@ -3,8 +3,7 @@ Storage (models/scan/<version>/) goes to the public Hugging Face repo REPO — o
 version holding exactly its files under today's names (sa24.onnx → edges.onnx, lite.onnx →
 edges-lite.onnx, yunet640.onnx → face.onnx), tagged with the version; base-v1 first, then
 v2, v3… in order. A version already tagged is skipped, so it is safe to run again. Storage is
-not touched: the functions' deploy (scripts/scan/mirror.py) deletes a version there once
-Hugging Face holds it. Needs `hf auth login` and `gcloud auth application-default login`.
+not touched. Needs `hf auth login` and `gcloud auth application-default login`.
 
   python move_to_hf.py            # what would move
   python move_to_hf.py --apply

@@ -92,7 +92,7 @@ The models switch on by themselves once their version is set (the lab first, the
 - **Site:** only when the owner says the lab is better, the same version is set in **both** `scripts/scan/models-version` (the phone's light model, `/scan/`) and `functions/scan_models_version.txt` (the server's accurate model; a test keeps the two equal), then deployed.
 - **Rollback:** the previous version in the same files; every version stays on Hugging Face.
 
-At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`resolve/<tag>/<file>`, no key — the repo is public), else from Storage while the version is not moved yet; only `base-v1` may fall back to the models' authors — a trained version is the firm's own. **The server reads its models from a mirror**: the functions' deploy copies the site's version from Hugging Face into Storage `models/scan/<version>/` (`scripts/scan/mirror.py`) and deletes from Storage every other version Hugging Face holds in full; `preprocess_scan` reads the mirror (new names, else the old), and loads its models when an instance starts (warm-up), so it never calls Hugging Face while scanning.
+At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`resolve/<tag>/<file>`, no key — the repo is public), else from Storage while the version is not moved yet; only `base-v1` may fall back to the models' authors — a trained version is the firm's own. **The server runs no scanner model** (2026-10-19: `preprocess_scan` and its Storage mirror were removed — the site's scanner is the lab's page, which runs its models on the phone); `functions/scan_models_version.txt` only names the site's version in each training example.
 
 ## 6. The owner's side
 
@@ -110,9 +110,9 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 | the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`) |
 | the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
 | full documents (H8a) | `src/scan-process/session.ts` (`scanDocument`), `src/scan/server.ts` (`sendScanDocument`), `src/manager/worker-save.ts`, `functions/feedback.py` (`check_document`, `document_record`), `functions/main.py` (`_scan_document`, `collects_documents`) |
-| the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh`, `scripts/scan/mirror.py` |
+| the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh` |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
 | training | `scripts/scan-train/` (corners: `pull.py`, `train.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
-| the document type models at work | `functions/docfind.py` (`doctype_of`, `with_doctype`), `functions/main.py` (`_doctype_model`), `src/scan/core.ts` (`withDoctype`), `src/scan/worker.ts`, `src/scan/Scanner.tsx` (`withModelDoctype`), `scan-lab/index.html` (`doctypeNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
+| the document type models at work | `scan-lab/index.html` (`doctypeNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
 | tests | `tests/auth/test_scan_feedback.py`, the browser test "scan window corners and kinds" (`tests/e2e/main.test.js`) |

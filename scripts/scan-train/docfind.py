@@ -1,4 +1,5 @@
-"""The documents on a scanned photo, found on the server (docs/scan-plan.md → S1).
+"""The documents on a scanned photo — once the server's finder (removed 2026-10-19: the site's
+scanner is the lab's page); kept here for /scan-train's exam (exam.py: detect, good_quad).
 
 The same steps as the scanner lab (scan-lab/index.html, scan-lab/scan-core.js),
 with the accurate model in full precision:

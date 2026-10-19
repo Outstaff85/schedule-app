@@ -78,7 +78,7 @@ A script copies every version from Firebase Storage `models/scan/<version>/` to 
 ### H3 — the site and the lab take the models from HF
 `scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh` (`model_store.py`): download the tag named in `models-version` from HF; the authors' links stay only for `base-v1`.
 
-### H4 — the server's mirror and warm-up
+### H4 — the server's mirror and warm-up (removed 2026-10-19 with `preprocess_scan`: the site's scanner is the lab's page)
 The functions' deploy copies the site's version (`functions/scan_models_version.txt`) from HF to Firebase `models/scan/<version>/` when it is not there yet, and deletes the other versions there. `functions/main.py` loads them from Firebase as now (`_scan_models`, `_kind_model`), now when the instance starts (warm-up).
 
 ### H5 — `/scan-train` on HF

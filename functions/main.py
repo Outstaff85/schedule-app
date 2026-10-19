@@ -14,14 +14,10 @@ import base64
 import datetime
 import io
 import json
-import os
 import pathlib
 import re
-import threading
 from datetime import date
 
-import cv2
-import numpy as np
 import pymupdf
 from bidi.algorithm import get_display
 import firebase_admin
@@ -30,10 +26,9 @@ from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
 import datastore
-import docfind
 import feedback
 import gate
-from PIL import Image, ImageEnhance
+from PIL import Image
 
 ASSETS_DIR = pathlib.Path(__file__).parent / "assets"
 TEMPLATE_PATH = ASSETS_DIR / "form101_fillable.pdf"
@@ -632,48 +627,12 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 
 
-# ===== The scanner's server step: enhancement and blur check =====
-# Every page the scanner's server step cuts (find_scan_pages / cut_scan_page
-# below) is enhanced (contrast, sharpness) and checked for blur here. The old
-# pipeline's enhance-only request (the client cropped by hand first) was
-# removed with it (docs/scan-plan.md → S5).
-MAX_WORK_DIM = 1800  # generous margin above the 1568px Claude Vision actually benefits from
-FIND_MAX_DIM = 2400  # the whole photo the documents are found on (several pages may come from it)
-BLUR_VARIANCE_THRESHOLD = 15.0  # below this (Laplacian variance, after the enhancement) a page is marked blurry
-# Calibrated against a real Israeli ID photo (see docs/history.md): the sharp original
-# measured ~130, a mild Gaussian blur (still fully legible by eye) measured ~28,
-# a moderate blur (small print starting to degrade) measured ~9 — 15 sits
-# between those last two. The sharpening runs before the check and lifts every
-# score a little; if obviously blurry pages pass, this is the number to raise.
-
-
-def _blur_variance(gray):
-    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
-
-
-def _enhance_contrast_sharpness(img_bgr):
-    rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    pil = Image.fromarray(rgb)
-    pil = ImageEnhance.Contrast(pil).enhance(1.15)
-    pil = ImageEnhance.Sharpness(pil).enhance(1.4)
-    return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
-
-
-def _resize_max_dim(img_bgr, max_dim):
-    h, w = img_bgr.shape[:2]
-    scale = min(1.0, max_dim / max(h, w))
-    if scale >= 1.0:
-        return img_bgr
-    return cv2.resize(img_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-
-
-# The scanner's models (docs/scan-plan.md → Scanner lab → Models in Storage), read
-# from the project's own Storage once per instance and kept in memory.
-# The site scanner's model version: the same as scripts/scan/models-version (tests/auth checks it).
+# ===== The scanner's training data (scan_feedback below) =====
+# The site's scanner is the lab's page (docs/scan.md); the server keeps only the training data.
+# The scanner's model version: the same as scripts/scan/models-version (tests/auth checks it),
+# written into each kept example.
 MODEL_PREFIX = "models/scan/" + (pathlib.Path(__file__).parent / "scan_models_version.txt").read_text().strip() + "/"
 MODEL_BUCKETS = ("schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com")
-_models = {}
-_models_lock = threading.Lock()
 
 
 def _model_bucket(storage):
@@ -692,85 +651,6 @@ def _model_bucket(storage):
     raise RuntimeError(f"no Storage bucket reachable: {last}")
 
 
-# A model file's name by what it does (docs/hf-plan.md → H0) and the name it had in a
-# version not yet moved to Hugging Face (its mirror in Storage still holds the old one).
-MODEL_FILES = {"edges.onnx": "sa24.onnx", "edges-lite.onnx": "lite.onnx", "face.onnx": "yunet640.onnx"}
-
-
-def _model_bytes(bucket, name):
-    """A model file of the site's version from the Storage mirror, under its name or its old one; None when absent."""
-    for n in (name, MODEL_FILES.get(name)):
-        if n:
-            blob = bucket.blob(MODEL_PREFIX + n)
-            if blob.exists():
-                return blob.download_as_bytes()
-    return None
-
-
-def _scan_models():
-    """(document edges models [accurate, light], face finder) — ONNX Runtime sessions."""
-    with _models_lock:
-        if not _models.get("edges"):
-            import onnxruntime as ort
-            from firebase_admin import storage
-            bucket = _model_bucket(storage)
-            raw = {m: _model_bytes(bucket, m) for m in ("edges.onnx", "edges-lite.onnx", "face.onnx")}
-            missing = [m for m, v in raw.items() if v is None]
-            if missing:
-                raise RuntimeError(f"scan models not in {MODEL_PREFIX}: {', '.join(missing)}")
-            opts = ort.SessionOptions()
-            opts.intra_op_num_threads = 2
-            new = lambda m: ort.InferenceSession(raw[m], opts, providers=["CPUExecutionProvider"])
-            _models["face"] = new("face.onnx")
-            _models["edges"] = [new("edges.onnx"), new("edges-lite.onnx")]
-    return _models["edges"], _models["face"]
-
-
-def _doctype_model():
-    """The document type model of the site's version (models/scan/<version>/doctype.onnx), or None
-    while no version has one (docs/scan-plan.md → S7) — looked for once per instance."""
-    with _models_lock:
-        if "doctype" not in _models:
-            _models["doctype"] = None
-            try:
-                import onnxruntime as ort
-                from firebase_admin import storage
-                raw = _model_bytes(_model_bucket(storage), "doctype.onnx")
-                if raw:
-                    opts = ort.SessionOptions()
-                    opts.intra_op_num_threads = 2
-                    _models["doctype"] = ort.InferenceSession(raw, opts, providers=["CPUExecutionProvider"])
-            except Exception:
-                pass  # no document type model: the pages go to Haiku as before
-    return _models["doctype"]
-
-
-def _warm_up():
-    """Load the scanner's models when the instance starts, before its first scan (docs/hf-plan.md → H4);
-    a failure here is retried by the first scan."""
-    try:
-        _scan_models()
-        _doctype_model()
-    except Exception as e:
-        print(f"scan models warm-up failed: {e}")
-
-
-# Only in the running preprocess_scan instance — never while the deploy reads this file.
-if os.environ.get("K_SERVICE") and os.environ.get("FUNCTION_TARGET") == "preprocess_scan":
-    threading.Thread(target=_warm_up, daemon=True).start()
-
-
-def _hint_corners(value):
-    """The phone's live corners: 4 [x, y] pairs in 0..1, else None."""
-    try:
-        q = np.array(value, np.float64)
-    except (TypeError, ValueError):
-        return None
-    if q.shape != (4, 2) or not np.isfinite(q).all() or (q < -0.05).any() or (q > 1.05).any():
-        return None
-    return np.clip(q, 0, 1)
-
-
 # The server's Hugging Face token, in Secret Manager (docs/hf-plan.md → H1): it may only write to
 # the private bucket; scan_feedback gets it as the environment variable datastore.py reads.
 HF_DATA_TOKEN = SecretParam("HF_DATA_TOKEN")
@@ -782,98 +662,6 @@ HF_DATA_TOKEN = SecretParam("HF_DATA_TOKEN")
 # read at most once a minute; shadow until the super-admin moves it on.
 DOCTYPE_MODES = ("off", "shadow", "mixed")
 _settings = {"at": 0.0, "doctypeMode": "shadow"}
-
-
-def doctype_mode():
-    import time
-    if time.time() - _settings["at"] > 60:
-        try:
-            from firebase_admin import firestore
-            if not firebase_admin._apps:
-                firebase_admin.initialize_app()
-            d = firestore.client().collection("scanSettings").document("current").get().to_dict() or {}
-            _settings["doctypeMode"] = d.get("doctypeMode") if d.get("doctypeMode") in DOCTYPE_MODES else "shadow"
-        except Exception:
-            pass  # the last mode read stays
-        _settings["at"] = time.time()
-    return _settings["doctypeMode"]
-
-
-def _with_shadow(page, out, mode, sess):
-    """In shadow mode the model's answer on the page, only for the record (doctypeShadow)."""
-    if mode == "shadow" and sess is not None:
-        try:
-            kd = docfind.doctype_of(sess, page)
-            out.update({"doctypeShadow": kd["doctype"], "doctypeShadowConf": kd["doctypeConf"]})
-        except Exception:
-            pass
-    return out
-
-
-def find_scan_pages(image_bytes, hint=None):
-    """The documents on a photo, each cut flat, turned upright, enhanced and checked
-    for blur (docfind.find_documents; docs/scan.md → Server-side finding)."""
-    img = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if img is None:
-        return {"ok": False, "reason": "decode_failed"}
-    img = _resize_max_dim(img, FIND_MAX_DIM)
-    corners, face = _scan_models()
-    mode, sess = doctype_mode(), _doctype_model()
-    pages = []
-    for p in docfind.find_documents(img, corners, face, hint, sess if mode == "mixed" else None):
-        page = _enhance_contrast_sharpness(_resize_max_dim(p["image"], MAX_WORK_DIM))
-        blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
-        ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
-        if not ok:
-            continue
-        pages.append({
-            "quad": [[round(x, 5), round(y, 5)] for x, y in p["quad"]],
-            "box": list(p["box"]) if p["box"] else None,
-            "source": p["source"],
-            "turn": p["turn"],
-            "blurry": blur < BLUR_VARIANCE_THRESHOLD,
-            "blurVariance": blur,
-            "imageBase64": base64.b64encode(buf.tobytes()).decode(),
-            "mediaType": "image/jpeg",
-            **{k: p[k] for k in ("doctype", "doctypeConf", "doctypeTurn", "doctypeTurnConf", "doctypeSure") if k in p},
-        })
-        _with_shadow(p["image"], pages[-1], mode, sess)
-    return {"ok": True, "pages": pages, "size": [img.shape[1], img.shape[0]]}
-
-
-def _page_out(img, quad, turn):
-    page = _enhance_contrast_sharpness(_resize_max_dim(img, MAX_WORK_DIM))
-    blur = _blur_variance(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
-    ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    if not ok:
-        return None
-    return {"quad": [[round(x, 5), round(y, 5)] for x, y in quad], "box": None, "source": "user", "turn": turn,
-            "blurry": blur < BLUR_VARIANCE_THRESHOLD, "blurVariance": blur,
-            "imageBase64": base64.b64encode(buf.tobytes()).decode(), "mediaType": "image/jpeg"}
-
-
-def cut_scan_page(image_bytes, quad):
-    """One page cut exactly by the corners the user set (0..1 of the photo), turned
-    upright by its face and enhanced (docs/scan.md → The scan window → Corners)."""
-    img = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if img is None:
-        return {"ok": False, "reason": "decode_failed"}
-    img = _resize_max_dim(img, FIND_MAX_DIM)
-    _, face = _scan_models()
-    page = docfind.warp(img, quad)
-    try:
-        turn = docfind.face_turn(face, page)
-    except Exception:
-        turn = -2
-    if turn > 0:
-        page = docfind.turned(page, turn)
-    mode, sess = doctype_mode(), _doctype_model()
-    page, turn, kd = docfind.with_doctype(sess if mode == "mixed" else None, page, turn)
-    out = _page_out(page, quad, turn)
-    if out:
-        out.update(kd)
-        _with_shadow(page, out, mode, sess)
-    return {"ok": True, "pages": [out] if out else [], "size": [img.shape[1], img.shape[0]]}
 
 
 def _json(obj, status=200):
@@ -1022,40 +810,3 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
     except Exception as e:
         return _json({"error": str(e)}, 500)
-
-
-@https_fn.on_request(
-    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
-    memory=options.MemoryOption.GB_2,
-    cpu=2,
-    concurrency=2,
-    max_instances=10,
-    timeout_sec=120,
-)
-def preprocess_scan(req: https_fn.Request) -> https_fn.Response:
-    if req.method != "POST":
-        return https_fn.Response(json.dumps({"error": "POST only"}), status=405, mimetype="application/json")
-    try:
-        # force=True — see fill_form_101.
-        payload = req.get_json(silent=True, force=True) or {}
-        pong = _ping_response(payload)
-        if pong:
-            return pong
-        denied = _gate_response(req)
-        if denied:
-            return denied
-        b64 = payload.get("image")
-        if not b64:
-            return https_fn.Response(json.dumps({"error": "no image"}), status=400, mimetype="application/json")
-        if payload.get("cut") is not None:
-            quad = _hint_corners(payload.get("cut"))
-            if quad is None:
-                return https_fn.Response(json.dumps({"error": "bad corners"}), status=400, mimetype="application/json")
-            result = cut_scan_page(base64.b64decode(b64), quad)
-        elif payload.get("find") is True:
-            result = find_scan_pages(base64.b64decode(b64), _hint_corners(payload.get("corners")))
-        else:  # the old pipeline's enhance-only request (removed in S5)
-            return https_fn.Response(json.dumps({"error": "say find or cut"}), status=400, mimetype="application/json")
-        return https_fn.Response(json.dumps(result), status=200, mimetype="application/json")
-    except Exception as e:
-        return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
