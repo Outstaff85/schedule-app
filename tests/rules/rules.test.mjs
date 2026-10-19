@@ -33,7 +33,14 @@ const who = {
   staffView:    { uid: 'u-stView', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: [] } },
   staffEdAll:   { uid: 'u-stEdAll', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editSchedule', 'editWorkers', 'editPunches'] } },
   hrOwnView:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true, ed: ['editWorkers'] } },
-  // On the flat rights (claim r): a staff login changes pay only with payEdit (Edit pay).
+  // Signed in on the flat rights (claim rt): every check is one right of the list.
+  flatWorkers:  { uid: 'u-fW', claims: { role: 'staff', tenantId: A, perms: [], rt: ['today', 'workers', 'editWorkers'] } },
+  flatView:     { uid: 'u-fV', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], rt: ['schedule', 'workers'] } },
+  flatClients:  { uid: 'u-fC', claims: { role: 'staff', tenantId: A, perms: ['schedule'], rt: ['clients'] } },
+  flatPay:      { uid: 'u-fP', claims: { role: 'staff', tenantId: A, perms: [], rt: ['workers', 'editWorkers', 'editPay', 'editPunches'] } },
+  flatHrOwn:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers', 'payEdit'], own: true, rt: ['workers', 'editWorkers'] } },
+  flatHrPay:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: [], own: true, rt: ['workers', 'editWorkers', 'editPay', 'suppliers'] } },
+  // Signed in on the first flat rights (claim r): a staff login changes pay only with payEdit (Edit pay).
   staffFlatAcc: { uid: 'u-stFA', claims: { role: 'staff', tenantId: A, perms: ['today', 'schedule', 'accounting'], r: true } },
   staffFlatPay: { uid: 'u-stFP', claims: { role: 'staff', tenantId: A, perms: ['today', 'schedule', 'accounting', 'payEdit'], r: true } },
 };
@@ -472,4 +479,41 @@ test('the edit ticks (claim ed): shifts, worker records and punches', async () =
   await assertFails(updateDoc(hp, { notes: 'x' }));
   await assertFails(deleteDoc(hp));
   await assertSucceeds(updateDoc(doc(db('hrOwn'), 'tenants', A, 'punches', 'p2'), { notes: 'ok' }));
+});
+
+test('the flat rights (claim rt): a tab and an edit right, never the old fields', async () => {
+  // Workers + Edit workers, no Schedule section: edits its workers (not the pay), no clients
+  const fw = db('flatWorkers');
+  await assertSucceeds(updateDoc(doc(fw, 'tenants', A, 'workers', 'w1'), { phone: '051' }));
+  await assertSucceeds(setDoc(doc(fw, 'tenants', A, 'workers', 'n1'), { name: 'New' }));
+  await assertFails(updateDoc(doc(fw, 'tenants', A, 'workers', 'w1'), { hourlyRate: 45 }));
+  await assertFails(updateDoc(doc(fw, 'tenants', A, 'clients', 'c1'), { name: 'X' }));
+  await assertFails(updateDoc(doc(fw, 'tenants', A, 'workers', 'w1'), { schedule: [{ d: 1 }] }));
+  await assertFails(updateDoc(doc(fw, 'tenants', A, 'punches', 'p1'), { type: 'out' }));
+  // the old fields (perms schedule) give nothing once the token has the flat list
+  const fv = db('flatView');
+  await assertFails(updateDoc(doc(fv, 'tenants', A, 'workers', 'w1'), { phone: '052' }));
+  await assertFails(updateDoc(doc(fv, 'tenants', A, 'clients', 'c1'), { name: 'X' }));
+  await assertFails(deleteDoc(doc(fv, 'tenants', A, 'workers', 'w1')));
+  // the Clients tab writes clients (and nothing of the workers)
+  const fc = db('flatClients');
+  await assertSucceeds(updateDoc(doc(fc, 'tenants', A, 'clients', 'c1'), { name: 'Y' }));
+  await assertFails(updateDoc(doc(fc, 'tenants', A, 'suppliers', 's1'), { name: 'Y' }));
+  await assertFails(updateDoc(doc(fc, 'tenants', A, 'workers', 'w1'), { phone: '053' }));
+  // Edit pay changes the money; Edit / delete punches writes punches
+  const fp = db('flatPay');
+  await assertSucceeds(updateDoc(doc(fp, 'tenants', A, 'workers', 'w1'), { hourlyRate: 46, bank: 'Z' }));
+  await assertSucceeds(updateDoc(doc(fp, 'tenants', A, 'punches', 'p1'), { type: 'out' }));
+  // an own-workers HR: its own worker, the money only with Edit pay (its old payEdit field gives nothing)
+  const fh = db('flatHrOwn');
+  await assertSucceeds(updateDoc(doc(fh, 'tenants', A, 'workers', 'w2'), { phone: '054' }));
+  await assertFails(updateDoc(doc(fh, 'tenants', A, 'workers', 'w2'), { hourlyRate: 47 }));
+  await assertFails(updateDoc(doc(fh, 'tenants', A, 'workers', 'w3'), { phone: '054' }));
+  await assertFails(updateDoc(doc(fh, 'tenants', A, 'suppliers', 's1'), { name: 'Q' }));
+  const fhp = db('flatHrPay');
+  await assertSucceeds(updateDoc(doc(fhp, 'tenants', A, 'workers', 'w2'), { hourlyRate: 48 }));
+  await assertSucceeds(updateDoc(doc(fhp, 'tenants', A, 'suppliers', 's1'), { name: 'Q' }));
+  // storage: a worker's files with Workers + Edit workers; the Workers tab alone only reads
+  await assertSucceeds(uploadString(ref(st('flatWorkers'), `tenants/${A}/workers/w1/f.txt`), 'x'));
+  await assertFails(uploadString(ref(st('flatView'), `tenants/${A}/workers/w1/g.txt`), 'x'));
 });

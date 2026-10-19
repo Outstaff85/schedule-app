@@ -9,6 +9,20 @@ import pytest
 
 import hours
 
+import core  # noqa: E402
+
+
+def _old_claims(fn):
+    """The callers in this file are written as ID tokens signed in before the
+    flat rights (their old claims): they are read through core.caller_rights,
+    as main.py does; a caller that already has `rights` goes as it is."""
+    def run(first, caller, *a, **k):
+        return fn(first, caller if "rights" in caller else dict(caller, rights=core.caller_rights(caller)), *a, **k)
+    return run
+
+
+hours.hours_action = _old_claims(hours.hours_action)
+
 T1 = "t-one"
 
 
@@ -73,6 +87,16 @@ def test_ticks_decide_what_is_handed_out_and_allowed():
                        ("fix", {"workerId": "w1", "day": "2026-10-05", "inT": "08:00", "outT": "15:00"})):
         assert hours.hours_action(DB, dict(SUP, hp=["hours"]), dict(extra, action=act, month="2026-10"))["error"] == hours.E_NO_PERM
     assert hours.hours_action(DB, {"uid": "x", "role": "staff", "tenantId": T1}, {"action": "load", "month": "2026-10"})["error"] == hours.E_ROLE
+
+
+def test_flat_rights_are_the_hours_ticks():
+    """A token with the flat rights (claim rt): Hours shows the shifts, the
+    review actions need their own ticks; a staff login manages with Accounting."""
+    r = hours.hours_action(DB, dict(CL, rights={"hours"}), {"action": "load", "month": "2026-10"})
+    assert "punches" in r and r["perms"] == ["hours"]
+    assert hours.hours_action(DB, dict(CL, rights={"hours"}), {"action": "approve", "month": "2026-10", "lines": []})["error"] == hours.E_NO_PERM
+    assert hours.hour_ticks({"hours", "approveHours", "export", "seePay"}) == {"hours", "approve", "export"}
+    assert hours._is_manager({"role": "staff", "rights": {"accounting"}}) and not hours._is_manager({"role": "staff", "rights": {"workers"}})
 
 
 def test_approve_a_day_or_the_month_dispute_and_out_of_scope():

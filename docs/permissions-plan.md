@@ -48,6 +48,10 @@ Unchanged throughout: the worker punch page (`/punch`), the `supplier` and `hour
 - The edit ticks (Edit shifts, Edit workers, Edit / delete punches) enforced by the rules, and Who gets what (PR #294).
 - **One place for logins** (owner, 2026-10-19): every login is made and changed only in Admin → Users (the user window, its template); the client and supplier windows have no login section any more. Add workers there gives an HR or a supplier its own workers. A worker has no login: its access is the punch link (the worker window's Access section).
 
+## Done after the plan
+
+- **The rules and the functions read the flat rights** (owner, 2026-10-19): every new token carries the flat list (claim `rt`; for a login on no template yet worked out from its fields, one to one); `firestore.rules` / `storage.rules` check one right per check (`can(k)`), the functions read `core.caller_rights`, the manager app `session.rights`. One untangling came with it: a staff login writes workers with the Workers or the Schedule tab and its edit rights, clients with the Clients tab, suppliers with the Suppliers tab (before: all of them with the schedule section). A token signed in before keeps its old checks until its next sign-in. **Later:** once every login is on a template and the old tokens are gone, the old fields (`permissions`, `editPerms`, `hourPerms`, `supplierSections`, `showPay`) and their claims can be dropped.
+
 ## Not planned now
 
 - **Separate money ticks inside Accounting** (owner, 2026-10-19: not needed for now): real protection would need the rates moved out of the worker and client records; the Commission tab covers what an HR and a supplier need.

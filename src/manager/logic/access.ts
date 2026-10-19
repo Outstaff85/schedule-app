@@ -7,10 +7,21 @@
 // the tabs from tabAllowed()).
 import { getSession } from '../data/session';
 
-/** A section of a staff / HR login (users.permissions → session.permissions: '*' or a list). Other roles see every section. */
+// The page's old section names → the flat rights (docs/permissions-plan.md):
+// an HR's Accounting is its Commission tab.
+const SECTION_RIGHT: Record<string, string> = { exports: 'export', payEdit: 'editPay' };
+/**
+ * A section of a staff / HR login: from its flat rights (the login reply's
+ * rights → session.rights); a session from before them: its permissions
+ * ('*' or a list). Other roles see every section.
+ */
 export function hasPermission(section: string): boolean {
   const s = getSession();
   if (!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
+  if (Array.isArray(s.rights)) {
+    const k = section === 'accounting' && s.role === 'hr' ? 'commission' : SECTION_RIGHT[section] || section;
+    return s.rights.includes(k);
+  }
   const perms = s.permissions;
   return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
 }
@@ -22,12 +33,13 @@ export const NAV_TAB_PERMISSION: Record<string, string> = { schedule: 'schedule'
 /**
  * What a staff / HR login may change in the sections it sees — editSchedule
  * (shifts), editWorkers (worker records), editPunches (punches) — from its
- * permission template (users.editPerms → session.editPerms, claim ed); none
- * in the session (a login made before the ticks) or another role: all.
+ * flat rights (session.rights); a session from before them: users.editPerms
+ * (session.editPerms, claim ed), none = all; another role: all.
  */
 export function canChange(k: 'editSchedule' | 'editWorkers' | 'editPunches'): boolean {
   const s = getSession();
   if (!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
+  if (Array.isArray(s.rights)) return s.rights.includes(k);
   const e = s.editPerms;
   return !Array.isArray(e) || e.indexOf(k) !== -1;
 }

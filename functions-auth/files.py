@@ -39,8 +39,8 @@ def _workers_writer(caller):
     role = caller.get("role")
     if role in ("superadmin", "tenant_admin"):
         return True
-    perms = caller.get("perms")
-    return role in ("staff", "hr") and isinstance(perms, list) and ("*" in perms or "workers" in perms)
+    rights = caller.get("rights") or set()  # the flat rights (core.caller_rights)
+    return role in ("staff", "hr") and "workers" in rights and "editWorkers" in rights
 
 
 def run(bucket, caller, body, worker_hr=None):

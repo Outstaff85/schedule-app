@@ -149,7 +149,7 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
         caller["tenantId"] = body.get("asTenantId") or None  # the firm it is viewing
     try:
         if body.get("action") in files.ACTIONS:
-            caller["perms"] = decoded.get("perms")
+            caller["rights"] = core.caller_rights(decoded)
             caller["own"] = decoded.get("own") is True
             tid = caller["tenantId"]
 
@@ -190,8 +190,7 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
     if not decoded:
         return _json({"error": E_SESSION}, 401)
     caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId"),
-              "supplierId": decoded.get("supplierId"), "pay": decoded.get("pay") is True,
-              "ss": decoded.get("ss")}
+              "supplierId": decoded.get("supplierId"), "rights": core.caller_rights(decoded)}
     try:
         return _json(portal.supplier_action(_db(), caller, _body(req)))
     except Exception as e:
@@ -207,8 +206,9 @@ def hours(req: https_fn.Request) -> https_fn.Response:
     decoded = _verified(req)
     if not decoded:
         return _json({"error": E_SESSION}, 401)
-    caller = {k: decoded.get(k) for k in ("role", "tenantId", "clientId", "supplierId", "own", "hp", "perms")}
+    caller = {k: decoded.get(k) for k in ("role", "tenantId", "clientId", "supplierId", "own")}
     caller["uid"] = decoded["uid"]
+    caller["rights"] = core.caller_rights(decoded)
     try:
         return _json(hours_mod.hours_action(_db(), caller, _body(req), storage.bucket))
     except Exception as e:
