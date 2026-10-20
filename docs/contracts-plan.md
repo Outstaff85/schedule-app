@@ -34,6 +34,18 @@ The owner's scheme:
   - `{{signature}}`, `{{sign_date}}`.
 - **Preparing it in Word:** the marks are typed as plain text, then File → Save as → PDF. Print to PDF or a scan would turn the text into a picture, and the marks could not be found; the upload then says so.
 - **Filling:** the server finds each mark in the PDF's text, whites it out and writes the value in its place. Hebrew is drawn right to left, as Form 101 already does (PyMuPDF, `functions/main.py`), and a long value is shrunk to fit. No new server is needed.
+- **Made light on upload** (owner, 2026-10-20). Whatever way the PDF was saved (PDF/A with whole fonts, big pictures, a heavy editor), the server turns it into the firm's standard light template, and the heavy original is not kept:
+  1. it keeps only the letters each font needs (`subset_fonts`);
+  2. it shrinks the pictures (logo, stamp) to 200 dpi, JPEG (`rewrite_images`);
+  3. it drops the PDF/A extras and anything unused (`garbage=4`, `deflate`, `clean`).
+
+  Then it checks the light one against the original:
+  - every page rendered at 100 dpi looks the same (pictures may differ only by the shrinking);
+  - every mark is still found.
+
+  The admin sees the sample PDF of the light one with both sizes ("2.4 MB → 180 KB") and saves it; only the light one is stored, and the original is dropped. If the check fails, the upload says why, and nothing is stored.
+  - A page that is only a picture (a scan, Print to PDF) has no text to find marks in; the upload says so.
+  - A Word file (`.docx`) is not taken: it is saved as PDF in Word first (D6 dropped).
 - **Templates:** several per firm, in Admin; a firm sees only its own.
 - **On upload:** the site lists the marks it found and the unknown ones, and shows a sample PDF filled with made-up data.
 - **The first marks:**
