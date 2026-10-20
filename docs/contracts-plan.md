@@ -146,7 +146,7 @@ Contracts can be added and changed at any time; whatever goes in, the output alw
 3. When the worker signs, the new Form 101 and contract are stored and the old ones are deleted.
 
 - **A change to the firm's own details** (name, address, phone, deductions file) does not ask the workers to sign again. The new details go into the next signing (owner, 2026-10-20).
-- **Before deleting old Forms 101:** check with the firm's accountant whether old forms must be kept for some years. If so, the old ones are not deleted but go to a hidden archive under the worker (owner, 2026-10-20).
+- **The old documents are deleted** when the new ones are signed. No accountant's check is needed and there is no archive (owner, 2026-10-20).
 
 ## D5 — "Download data" on the worker card
 

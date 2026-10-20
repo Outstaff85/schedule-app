@@ -147,7 +147,8 @@ Every attempt made by anyone who scans becomes a training example with no extra 
   - At **15**, the super-admin's bell says **New scan attempts — time to train**. The lab also shows **New for training: N / 15** (the super-admin only).
   - `/scan-train` takes `attempts/new/` (`pull.py --attempts`) together with the site's corrections:
     - the target corners are the moved corners, or the model's own corners for a kept attempt;
-    - a retaken attempt with no moved corners is used only as a hard example in the exam, never as a target.
+    - a retaken attempt with no moved corners is used only as a hard example in the exam, never as a target;
+    - **a deleted page teaches what not to find** (owner, 2026-10-20). A page the user deleted from a kept batch (its outcome `deleted`) is a frame the model found where there is no document to keep — the extra third page cut from a photo of two. Its frame is trained as "nothing here": the next document search (`findNext`) learns to leave such a spot alone, and the exam counts the extra pages found before → after.
   - **The exam shows pictures too** (owner, 2026-10-20). Besides the figures, `exam.py` writes `~/.scan-train/report.html` on the owner's PC and opens it in the browser:
     - the 10 exam pages where the old and new models differ most;
     - each page with the old model's corners, the new model's corners and the right ones drawn on it, with the corner error of each model.
