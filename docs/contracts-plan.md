@@ -48,7 +48,7 @@ A signed document with a date is a legal record: it is built once, when the work
   - the marks are filled into the `.docx`, then it is converted to PDF, then compressed;
   - a text PDF of ~50–200 KB.
 - The call carries the user's ID token and the firm is checked, as the other functions do.
-- Its first start after idle takes ~5–10 s, in the background. A kept-warm instance is a small monthly cost — the owner's choice.
+- Its first start after idle takes ~5–10 s, in the background.
 
 ## Order
 
