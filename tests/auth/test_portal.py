@@ -26,7 +26,9 @@ def fresh():
     _clear()
     W(T1, "w1").set({"id": "w1", "name": "Avi Cohen", "token": "tok-avi", "colorIdx": 2, "clientIds": ["c1", "c2"],
                      "hourlyRate": 55, "phone": "0501111111", "docId": "123456782", "supplierId": "sp1",
-                     "supplierRates": {"sp1": {"rate": 7}, "sp9": {"rate": 99}}, "sortIndex": 0})
+                     "supplierRates": {"sp1": {"rate": 7}, "sp9": {"rate": 99}}, "sortIndex": 0,
+                     "scanPages": [{"fileId": f"tenants/{T1}/workers/w1/pages/1-0-id_front.jpg", "kind": "id_front", "primary": True}],
+                     "sigFileId": f"tenants/{T1}/workers/w1/signature/1-signature.png"})
     W(T1, "w2").set({"id": "w2", "name": "Dana Levi", "token": "tok-dana", "clientIds": [], "hourlyRate": 60,
                      "supplierId": "sp2", "sortIndex": 1})
     W(T2, "w9").set({"id": "w9", "name": "Other Firm", "token": "tok-other", "clientIds": []})
@@ -127,6 +129,7 @@ def test_supplier_sees_only_own_workers_stripped():
     assert w["supplierRate"] == 7 and w["phone"] == "0501111111"
     assert "hourlyRate" not in w and "supplierRates" not in w and "sortIndex" not in w
     assert "token" not in w and "docUrl" not in w and "docFileId" not in w and "assetsFileId" not in w
+    assert "scanPages" not in w and "sigFileId" not in w
     assert {"id": "c1", "name": "Site A", "object": "Gate 1"} in r["clients"]
     assert "billRate" not in str(r["clients"]) and "lat" not in str(r["clients"]) and r["suppliers"] == []
 

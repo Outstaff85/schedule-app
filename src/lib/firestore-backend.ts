@@ -19,7 +19,8 @@
 //   punchesBetween(t, from, to) one-time read of older punches, on demand
 //   savePunch / updatePunch / deletePunch  (a punch gets its worker's hrId)
 //   idToken()                   the signed-in user's ID token (supplier portal)
-//   uploadWorkerFile(t, body, onProgress)   saveWorkerDoc / saveWorkerAssets /
+//   uploadWorkerFile(t, body, onProgress)   saveWorkerDoc / saveWorkerPage /
+//                               saveWorkerSignature / saveWorkerAssets /
 //                               saveWorkerFile into Storage, replying {ok,id,url}
 //   handleAction(action, params, ctx)   answers one named data action (Admin
 //                               panes, telemetry, hours queue, AI reads, another
@@ -66,10 +67,10 @@ const FUNCTION_ACTIONS = ['listTenants','setTenantActive','deleteTenant','create
   'loadTenantProfile','listUsers','createTenantUser','updateUser','resetUserPassword','deleteUser','checkWorkerDoc','updateMyName','updateMyLanguage','updateMyTheme',
   'listTemplates','saveTemplate','deleteTemplate','linkToTemplates'];
 // File uploads, straight to Storage.
-const UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerAssets','saveWorkerFile'];
+const UPLOAD_ACTIONS = ['saveWorkerDoc','saveWorkerPage','saveWorkerSignature','saveWorkerAssets','saveWorkerFile'];
 // Reading/deleting a file in Storage (its id is the object path) goes
 // through users_admin (functions-auth/files.py).
-const STORAGE_FILE_ACTIONS = ['loadWorkerAssets','deleteWorkerDoc'];
+const STORAGE_FILE_ACTIONS = ['loadWorkerAssets','loadWorkerPages','deleteWorkerDoc'];
 const isStoragePath = (id: unknown): boolean => typeof id === 'string' && id.indexOf('tenants/') === 0;
 const PUNCH_MONTHS = 13;            // listenPunches() default window when no `since` is given
 const BATCH_LIMIT = 450;            // Firestore allows 500 writes per batch
@@ -597,10 +598,12 @@ export async function initFirestoreBackend() {
   }
 
   // ── Worker files in Storage ──────────────────────────────────────────
-  // tenants/<t>/workers/<workerId>/{form101,assets,docs}/<time>-<name>.
+  // tenants/<t>/workers/<workerId>/{form101,pages,signature,assets,docs}/<time>-<name>.
   // The object path is the file's id on the worker record (docFileId,
-  // assetsFileId, docs[].fileId); the PDF and documents also get a download
-  // URL (docUrl, docs[].url) the app opens directly.
+  // scanPages[].fileId, sigFileId, assetsFileId — the old sidecar —,
+  // docs[].fileId); the PDF and documents also get a download URL (docUrl,
+  // docs[].url) the app opens directly; a scanned page and the signature
+  // don't (read back through users_admin loadWorkerPages).
   function safeName(name: unknown): string {
     return String(name || 'file').replace(/[\/\\#?\[\]*\u0000-\u001f]/g, '_').slice(0, 150) || 'file';
   }
@@ -618,6 +621,14 @@ export async function initFirestoreBackend() {
     if (action === 'saveWorkerDoc') {
       if (!body.fileBase64 || !body.fileName) return {error: 'No fileBase64 or fileName'};
       kind = 'form101'; name = body.fileName; bytes = b64Bytes(body.fileBase64); type = body.mimeType || 'application/pdf';
+    } else if (action === 'saveWorkerPage') {
+      // One scanned page, a JPEG (docs/contracts.md → Scanned pages).
+      if (!body.fileBase64) return {error: 'No fileBase64'};
+      kind = 'pages'; name = (body.index != null ? body.index + '-' : '') + safeName(body.kind || 'other') + '.jpg';
+      bytes = b64Bytes(body.fileBase64); type = 'image/jpeg';
+    } else if (action === 'saveWorkerSignature') {
+      if (!body.fileBase64) return {error: 'No fileBase64'};
+      kind = 'signature'; name = 'signature.png'; bytes = b64Bytes(body.fileBase64); type = 'image/png';
     } else if (action === 'saveWorkerAssets') {
       // A sidecar may hold only a signature (a worker added without a scan).
       if (!body.scanB64 && !body.sigPng) return {error: 'No scanB64'};
@@ -637,12 +648,13 @@ export async function initFirestoreBackend() {
     // with its uid (storage.rules).
     const hr = await hrOnly();
     if (hr) meta.customMetadata.hrId = hr;
-    if (kind !== 'assets') meta.contentDisposition = "inline; filename*=UTF-8''" + encodeURIComponent(safeName(name));
+    const priv = kind === 'assets' || kind === 'pages' || kind === 'signature';
+    if (!priv) meta.contentDisposition = "inline; filename*=UTF-8''" + encodeURIComponent(safeName(name));
     await new Promise((resolve, reject) => {
       const task = stMod.uploadBytesResumable(ref, bytes, meta);
       task.on('state_changed', (snap: any) => { if (onProgress) onProgress(snap.bytesTransferred, snap.totalBytes); }, reject, resolve);
     });
-    if (kind === 'assets') return {ok: true, id: path};
+    if (priv) return {ok: true, id: path};
     return {ok: true, id: path, url: await stMod.getDownloadURL(ref)};
   }
 
@@ -654,6 +666,7 @@ export async function initFirestoreBackend() {
     if (FUNCTION_ACTIONS.includes(action)) return callUsersAdmin(params);
     if (AI_ACTIONS.includes(action)) return callUsersAdmin(params, AI_FN_URL);
     if (STORAGE_FILE_ACTIONS.includes(action)) {
+      if (action === 'loadWorkerPages') return Array.isArray(params.fileIds) && params.fileIds.every(isStoragePath) ? callUsersAdmin(params) : {error: 'File not found'};
       if (isStoragePath(params.fileId)) return callUsersAdmin(params);
       // Not a Storage path: nothing of ours to delete, nothing to read.
       return action === 'deleteWorkerDoc' ? {ok: true} : {error: 'File not found'};

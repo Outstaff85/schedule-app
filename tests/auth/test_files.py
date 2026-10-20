@@ -2,6 +2,7 @@
 (functions-auth/files.py). The bucket is an in-memory stand-in: files.py only
 calls blob(path).exists()/download_as_bytes()/delete() and list_blobs(prefix)."""
 
+import base64
 import json
 import os
 import sys
@@ -56,7 +57,7 @@ def test_load_assets_reply_shape():
 
 def test_other_firms_file_refused():
     b = Bucket()
-    for action in files.ACTIONS:
+    for action in ("loadWorkerAssets", "deleteWorkerDoc"):  # loadWorkerPages: test_load_pages_only_pages_and_signatures_of_this_firm
         assert files.run(b, ADMIN, {"action": action, "fileId": OTHER}) == {"error": files.E_NOT_FIRM}
     assert OTHER in b.store
     # a path that climbs out of the firm's folder, or one outside workers/
@@ -124,3 +125,47 @@ def test_hr_own_only_reaches_its_own_workers_files():
     hr_all = dict(hr, own=False)
     assert files.run(Bucket(), hr_all, {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"ok": True}
     assert files.run(Bucket(), dict(hr_all, rights={"commission"}), {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"error": files.E_NO_RIGHT}
+
+
+PAGE = f"tenants/{T1}/workers/w1/pages/1-0-id_front.jpg"
+SEF = f"tenants/{T1}/workers/w1/pages/1-1-sefach.jpg"
+SIG = f"tenants/{T1}/workers/w1/signature/1-signature.png"
+
+
+def _pages_bucket():
+    b = Bucket()
+    b.store.update({PAGE: b"\xff\xd8front", SEF: b"\xff\xd8sef", SIG: b"\x89PNGsig"})
+    return b
+
+
+def test_load_pages_in_one_call():
+    r = files.run(_pages_bucket(), ADMIN, {"action": "loadWorkerPages", "fileIds": [PAGE, SEF, SIG]})
+    assert r["ok"] and r["missing"] == []
+    assert [(p["fileId"], p["mediaType"]) for p in r["pages"]] == [
+        (PAGE, "image/jpeg"), (SEF, "image/jpeg"), (SIG, "image/png")]
+    assert base64.b64decode(r["pages"][2]["b64"]) == b"\x89PNGsig"
+
+
+def test_load_pages_reports_a_missing_one():
+    gone = f"tenants/{T1}/workers/w1/pages/2-0-passport.jpg"
+    r = files.run(_pages_bucket(), ADMIN, {"action": "loadWorkerPages", "fileIds": [gone, PAGE]})
+    assert r["ok"] and r["missing"] == [gone] and [p["fileId"] for p in r["pages"]] == [PAGE]
+
+
+def test_load_pages_only_pages_and_signatures_of_this_firm():
+    b = _pages_bucket()
+    # one bad path refuses the whole call: another firm, the PDF, the old sidecar, a climb out
+    for bad in (f"tenants/{T2}/workers/w9/pages/1-0-id_front.jpg", PDF, ASSETS,
+                f"tenants/{T1}/workers/w1/pages/../form101/1-x.pdf"):
+        assert files.run(b, ADMIN, {"action": "loadWorkerPages", "fileIds": [PAGE, bad]}) == {"error": files.E_NOT_FIRM}
+    assert files.run(b, ADMIN, {"action": "loadWorkerPages", "fileIds": []}) == {"error": files.E_NO_FILE}
+    assert files.run(b, ADMIN, {"action": "loadWorkerPages", "fileIds": PAGE}) == {"error": files.E_NO_FILE}
+    assert "error" in files.run(b, ADMIN, {"action": "loadWorkerPages", "fileIds": [PAGE] * (files.MAX_PAGES + 1)})
+    assert "error" in files.run(b, {"role": "supplier", "tenantId": T1}, {"action": "loadWorkerPages", "fileIds": [PAGE]})
+
+
+def test_load_pages_hr_own_only():
+    hr = {"uid": "u-hr", "role": "hr", "tenantId": T1, "rights": {"workers"}, "own": True}
+    assert files.run(_pages_bucket(), hr, {"action": "loadWorkerPages", "fileIds": [PAGE]}, lambda wid: "u-hr")["ok"]
+    assert files.run(_pages_bucket(), hr, {"action": "loadWorkerPages", "fileIds": [PAGE]},
+                     lambda wid: "other") == {"error": files.E_NOT_FIRM}

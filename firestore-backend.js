@@ -40,10 +40,16 @@
 	];
 	var UPLOAD_ACTIONS = [
 		"saveWorkerDoc",
+		"saveWorkerPage",
+		"saveWorkerSignature",
 		"saveWorkerAssets",
 		"saveWorkerFile"
 	];
-	var STORAGE_FILE_ACTIONS = ["loadWorkerAssets", "deleteWorkerDoc"];
+	var STORAGE_FILE_ACTIONS = [
+		"loadWorkerAssets",
+		"loadWorkerPages",
+		"deleteWorkerDoc"
+	];
 	var isStoragePath = (id) => typeof id === "string" && id.indexOf("tenants/") === 0;
 	var PUNCH_MONTHS = 13;
 	var BATCH_LIMIT = 450;
@@ -683,6 +689,18 @@
 				name = body.fileName;
 				bytes = b64Bytes(body.fileBase64);
 				type = body.mimeType || "application/pdf";
+			} else if (action === "saveWorkerPage") {
+				if (!body.fileBase64) return { error: "No fileBase64" };
+				kind = "pages";
+				name = (body.index != null ? body.index + "-" : "") + safeName(body.kind || "other") + ".jpg";
+				bytes = b64Bytes(body.fileBase64);
+				type = "image/jpeg";
+			} else if (action === "saveWorkerSignature") {
+				if (!body.fileBase64) return { error: "No fileBase64" };
+				kind = "signature";
+				name = "signature.png";
+				bytes = b64Bytes(body.fileBase64);
+				type = "image/png";
 			} else if (action === "saveWorkerAssets") {
 				if (!body.scanB64 && !body.sigPng) return { error: "No scanB64" };
 				kind = "assets";
@@ -714,13 +732,14 @@
 			};
 			const hr = await hrOnly();
 			if (hr) meta.customMetadata.hrId = hr;
-			if (kind !== "assets") meta.contentDisposition = "inline; filename*=UTF-8''" + encodeURIComponent(safeName(name));
+			const priv = kind === "assets" || kind === "pages" || kind === "signature";
+			if (!priv) meta.contentDisposition = "inline; filename*=UTF-8''" + encodeURIComponent(safeName(name));
 			await new Promise((resolve, reject) => {
 				stMod.uploadBytesResumable(ref, bytes, meta).on("state_changed", (snap) => {
 					if (onProgress) onProgress(snap.bytesTransferred, snap.totalBytes);
 				}, reject, resolve);
 			});
-			if (kind === "assets") return {
+			if (priv) return {
 				ok: true,
 				id: path
 			};
@@ -744,6 +763,7 @@
 			if (FUNCTION_ACTIONS.includes(action)) return callUsersAdmin(params);
 			if (AI_ACTIONS.includes(action)) return callUsersAdmin(params, AI_FN_URL);
 			if (STORAGE_FILE_ACTIONS.includes(action)) {
+				if (action === "loadWorkerPages") return Array.isArray(params.fileIds) && params.fileIds.every(isStoragePath) ? callUsersAdmin(params) : { error: "File not found" };
 				if (isStoragePath(params.fileId)) return callUsersAdmin(params);
 				return action === "deleteWorkerDoc" ? { ok: true } : { error: "File not found" };
 			}

@@ -3,7 +3,7 @@
 How a worker's Form 101 PDF is built, stored and rebuilt.
 - The client assembles a JSON payload: `aiFillForm101()` in `src/manager/page/form101.ts`, its values from `form101Payload(worker, isId, profile)` in `src/manager/logic/form101.ts` (pure; React migration 8f).
 - The Cloud Function `fill_form_101` (`functions/main.py`, PyMuPDF, region us-central1) fills the template and returns the PDF. The call carries the manager's Firebase ID token (`Authorization: Bearer`); the function refuses any other caller (`functions/gate.py`, [backend.md](backend.md) → Cloud Functions).
-- The client stores the PDF and a scan sidecar in Firebase Storage.
+- The client stores the PDF, and the scan's pages (one JPEG each) and the signature (a PNG) in Firebase Storage ([contracts.md](contracts.md) → Scanned pages).
 
 **Before touching field rects or the template:** read and update [form101-field-map.md](form101-field-map.md) (every AcroForm field: name, rect, Hebrew label, meaning).
 
@@ -17,8 +17,8 @@ All paths call `aiFillForm101(isId, 'upload', workerId, btn, presetAssets?)`.
 |---|---|---|
 | New worker saved | `autoUploadWithRetry()` (one retry after 1.5 s), modal shows progress | the live scan globals: `window.__aiScanImage`, `__aiPacketOtherPages`, the signature pad |
 | Worker rescanned in this session (`__aiRescannedWorkerId`) | `autoUploadWithRetry()` | the live scan globals |
-| A Form 101 field changed on an existing worker | `regenerateWorkerDoc(id)` in the background | the stored sidecar (`loadWorkerAssets(w.assetsFileId)`) — never the live globals, which may belong to another scan |
-| Firm profile changed (employer block) | `regenerateAllWorkerDocs()`, one worker at a time, for workers that have `docUrl` and `assetsFileId` | sidecars |
+| A Form 101 field changed on an existing worker | `regenerateWorkerDoc(id)` in the background | the stored pages and signature (`loadStoredAssets(w)`, `src/manager/data/pages.ts`) — never the live globals, which may belong to another scan; when they can't be read, nothing is rebuilt |
+| Firm profile changed (employer block) | `regenerateAllWorkerDocs()`, one worker at a time, for workers that have `docUrl` and stored pages or a signature (`hasStoredAssets`) | the stored pages |
 
 The trigger fields are `FORM101_WATCHED` in `src/manager/worker.ts`, checked by `form101Changed()` in `saveWorker()` (`src/manager/worker-save.ts`, [workers.md](workers.md)). The `'download'` mode (local download instead of upload) still exists in the function but nothing calls it.
 
@@ -36,12 +36,12 @@ Everything comes from the saved worker record, `targetWorker`:
 | `address` | street + house number in one string |
 | `city`, `marital`, `workStart` (`workStartDate`), `healthFund`, `children` | worker — for both document types |
 | `spouse` | `{surname, given, idNo, dob, income}` when any spouse field is set |
-| `signaturePngBase64` | the pad of the worker window (the shared `SignaturePad`; its save hands the PNG to `window.__wCapturedSigPng`, which `getSignaturePng()` returns) or the sidecar's `sigPng`; a signature drawn while editing an existing worker is passed to the rebuild (`regenerateWorkerDoc(id, newSigPng)`, `sigChanged`) |
+| `signaturePngBase64` | the pad of the worker window (the shared `SignaturePad`; its save hands the PNG to `window.__wCapturedSigPng`, which `getSignaturePng()` returns) or the stored signature (`sigFileId`); a signature drawn while editing an existing worker is passed to the rebuild (`regenerateWorkerDoc(id, newSigPng)`, `sigChanged`) |
 | `extraPages` | `[{b64, mediaType, caption}]`: the main scan first (`'Document scan'`), then the other pages (`'Document'`) |
 
 Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after the save.
 
-**Rescan without new extra pages:** when a rescan in this session captured no extra pages, the old sidecar's `extraPages` (the ספח, a contract) are loaded and reused, so they are not lost.
+**Rescan without new extra pages:** when a rescan in this session captured no extra pages, the stored ones (the ספח…) are loaded for the PDF and kept as they are stored, so they are not lost; the same for the signature.
 
 ## Building the PDF (`build_form101_pdf`, functions/main.py)
 
@@ -77,7 +77,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
   - the first two `extraPages` share one page, top and bottom halves (normally the ID front and the ספח);
   - every further page gets its own page;
   - each image is shrunk to 150 dpi for its box (`_shrink_for_embed` — JPEG 82, or PNG when the image has transparency);
-  - this happens only here: the full-resolution scan stays in the sidecar.
+  - this happens only here: the stored page stays as it was kept (a JPEG of at most 2000 px).
 - **Output:**
   - the file is saved with `garbage=4, deflate, clean`, and `NeedAppearances=false`;
   - the file name is `<given> <surname> - <ID or passport number> - <company>.pdf` ([form101-field-map.md](form101-field-map.md) → File name);
@@ -86,15 +86,16 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
 
 ## Storing the result
 
-The PDF and the sidecar are uploaded at the same time; the progress bar runs 20–90 %, combined over both uploads.
+The PDF and the scan's pages are uploaded at the same time; the progress bar runs 20–90 %, combined over every upload.
 
 | What | Action | Stored at |
 |---|---|---|
 | PDF | `saveWorkerDoc` `{fileBase64, fileName, previousFileId, workerId}` | Storage `tenants/<t>/workers/<id>/form101/<ms>-<name>`, with a download URL |
-| Sidecar (scan, signature, extra pages as JSON) | `saveWorkerAssets` `{scanB64, scanMediaType, sigPng, extraPages, fileNameBase, previousFileId}` — written on a new save, and again on a rebuild with a new signature; it may hold only a signature (`scanB64` empty) for a worker added without a scan | Storage `…/assets/` (no URL) |
+| Each scanned page (the ID card or passport first, then the other pages; not the contract's pages) | `saveScanPages()` (`src/manager/data/pages.ts`): `saveWorkerPage` per page, all at once, each shrunk to a JPEG of at most 2000 px (`pageForStorage`) | Storage `…/pages/<ms>-<index>-<kind>.jpg` (no URL); listed on the worker as `scanPages` |
+| The signature | `saveWorkerSignature`, with the pages | Storage `…/signature/<ms>-signature.png` (no URL); `sigFileId`, `sigSavedAt` |
 
-- **Sidecar:** written only when there is a scan image, and not on a background rebuild.
-- **The worker record after a successful save:** `docUrl`, `docFileId`, `docSavedAt`, `assetsFileId`, `docHasSignature`, `docExtraPages`; `docUploadFailed` is set to `false`.
+- **Pages:** stored when the save has a scan of this session (a new worker, a rescan), or a new signature, or on a rebuild of a worker still on the old sidecar (its pages are split then). A part that came from Storage unchanged (the other pages kept on a rescan, the signature not drawn again) keeps its stored file. Once the new files are up, the replaced ones and the old sidecar are deleted; a failed upload keeps what the worker had ([contracts.md](contracts.md) → Scanned pages).
+- **The worker record after a successful save:** `docUrl`, `docFileId`, `docSavedAt`, `scanPages`, `sigFileId`, `sigSavedAt`, `docHasSignature`, `docExtraPages`; `docUploadFailed` is set to `false`; `assetsFileId` (the old sidecar) is removed.
 - **Replacing the old file:** the file being replaced (`previousFileId`) is deleted after the new one is up, through `users_admin`.
 - **Failure:** any error sets `docUploadFailed = true`, which shows the UPLOAD FAILED / NO DOCUMENT badge, and a toast.
 

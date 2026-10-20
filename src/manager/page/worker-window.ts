@@ -19,6 +19,8 @@ import { openNewScan } from './scan';
 import { verifierFor } from '../../scan-process/ai';
 import { normDate, normDigits } from '../../scan-process/ids';
 import { resetScan } from '../../scan-process/session';
+import { loadStoredAssets, scanFileIds } from '../data/pages';
+import { workerHasScan } from '../worker';
 import { showToast } from '../toast';
 import { island } from '../bridge';
 Object.defineProperties(window, {
@@ -71,18 +73,19 @@ const SCAN_FIND_FIELDS: Record<string, any>={
 };
 // The worker's page photos, for a field search: the scan still in memory
 // when it belongs to this worker (a new worker from a scan: w null), else the
-// Storage sidecar saved with their Form 101 (cached per file).
+// pages stored with their Form 101 (data/pages.ts; cached per set of files).
 const __scanPagesCache: any={};
 export function workerScanLive(w?: any){ return !!window.__aiScanImage&&(w?window.__aiRescannedWorkerId===w.id:editingWorkerId===null); }
-export function workerHasScanPages(w?: any){ return workerScanLive(w)||!!(w&&w.assetsFileId); }
+export function workerHasScanPages(w?: any){ return workerScanLive(w)||workerHasScan(w); }
 async function workerScanPages(w?: any){
   if(workerScanLive(w)) return {front:window.__aiScanImage,others:(window.__aiPacketOtherPages||[]).filter((p?: any)=>p&&p.b64)};
-  if(!w||!w.assetsFileId) return null;
-  if(__scanPagesCache[w.assetsFileId]) return __scanPagesCache[w.assetsFileId];
-  const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets',...gsAuth(),fileId:w.assetsFileId})})).json();
-  if(!j||!j.ok||!j.scanB64) return null;
-  return __scanPagesCache[w.assetsFileId]={front:{b64:j.scanB64,mediaType:j.scanMediaType||'image/jpeg'},
-    others:(j.extraPages||[]).filter((p?: any)=>p&&p.b64)};
+  if(!workerHasScan(w)) return null;
+  const key=scanFileIds(w).join('|');
+  if(__scanPagesCache[key]) return __scanPagesCache[key];
+  const j=await loadStoredAssets(w);
+  if(!j||!j.scanB64) return null;
+  return __scanPagesCache[key]={front:{b64:j.scanB64,mediaType:j.scanMediaType||'image/jpeg'},
+    others:j.extraPages.filter((p?: any)=>p&&p.b64)};
 }
 // Searches the worker's page photos for one or more fields in ONE aiFindField
 // request (the photos are the expensive part, so they go once). Each value
@@ -218,13 +221,13 @@ export function copyWorkerLink(wid?: any){
   }
 }
 // Removes the worker, then best-effort deletes their files (Form 101 PDF,
-// the scan + signature sidecar, the contract / visa / permit files).
+// the scanned pages and the signature, the contract / visa / permit files).
 export function deleteWorkerNow(id?: any){
   const wi=workers.findIndex((x?: any)=>x.id===id); if(wi<0) return;
   const w=workers[wi];
   const docFileIds=(w.docs||[]).map((d?: any)=>d.fileId).filter(Boolean);
   workers.splice(wi,1);
   if(w.docFileId) gsDeleteWorkerDoc(w.docFileId);
-  if(w.assetsFileId) gsDeleteWorkerDoc(w.assetsFileId);
+  scanFileIds(w).forEach(gsDeleteWorkerDoc);
   docFileIds.forEach(gsDeleteWorkerDoc);
 }

@@ -1,0 +1,42 @@
+name: Split the old scan sidecars into pages
+
+# One-time migration (docs/contracts.md → Scanned pages, D1): each worker's old
+# scan sidecar (one JSON with the pictures inside) becomes one JPEG per page and
+# a PNG signature (scripts/migrate/scan_pages.py). Started only by hand.
+# dry-run reads and reports, writing nothing; apply and cleanup change real
+# workers' data and are run only with the owner's yes.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry-run (report only), apply (write the pages, keep the sidecars), cleanup (delete the split sidecars)'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options: ['dry-run', 'apply', 'cleanup']
+      tenant:
+        description: 'One firm id only (empty: every firm)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Write service account credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+      - name: Split the sidecars (${{ inputs.mode }})
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+          MODE: ${{ inputs.mode }}
+          TENANT: ${{ inputs.tenant }}
+        run: |
+          pip install -q firebase-admin Pillow
+          if [ -n "$TENANT" ]; then python scripts/migrate/scan_pages.py "$MODE" --tenant "$TENANT"; else python scripts/migrate/scan_pages.py "$MODE"; fi

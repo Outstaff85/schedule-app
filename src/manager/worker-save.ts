@@ -84,7 +84,7 @@ export async function saveWorker(api: ManagerBridge, o: {
       return;
     }
     close();
-    // Otherwise from the stored sidecar (the scan in memory could be another worker's).
+    // Otherwise from the stored pages (the scan in memory could be another worker's).
     if (changed || sig) {
       const id = editId;
       api.regenerateDoc(id, sig).then(ok => api.toast(ok ? tr("{0}'s document was updated", { 0: name }) : tr("Updating {0}'s document failed", { 0: name })));
