@@ -27,22 +27,25 @@
       return { doctype: NAMES[k], conf: kp[k], turn: t * 90, turnConf: tp[t] };
     } catch { return null; }
   };
-  const shown = () => ($('shot').hidden ? [] : [$('shotImg'), ...$('shotMore').querySelectorAll('img')].map(i => i.src).filter(s => s && s.startsWith('data:image/')));
-  const post = async (key, pages) => {
+  const shownImgs = () => ($('shot').hidden ? [] : [$('shotImg'), ...$('shotMore').querySelectorAll('img')]).filter(i => i.src && i.src.startsWith('data:image/'));
+  const shown = () => shownImgs().map(i => i.src);
+  // each page's attempt (the lab's training, docs/scan-plan.md → S8): the window tells back which were deleted
+  const owners = () => shownImgs().map(i => ({ att: i.dataset.att || '', pg: +(i.dataset.pg || 0) }));
+  const post = async (key, pages, from) => {
     const answers = await Promise.all(pages.map(answer));
-    window.parent.postMessage({ type: 'scan-pages', key, pages, answers }, location.origin);
+    window.parent.postMessage({ type: 'scan-pages', key, pages, answers, attempts: from }, location.origin);
   };
   // A camera shot: its pages (again under the same key when its corners are refined).
-  const send = async key => { const pages = shown(); if (pages.length) await post(key, pages); };
+  const send = async key => { const pages = shown(); if (pages.length) await post(key, pages, owners()); };
   // Picked files (several photos and PDFs): each file's new pages as soon as the lab has them
   // ('lab-picked'), under their own key, so the window types them while the next file is worked on.
   let fileKey = null, files = 0, shots = 0, sent = 0, part = 0;
   const sendNew = async () => {
     if (!fileKey) return;
-    const pages = shown(), fresh = pages.slice(sent);
+    const pages = shown(), fresh = pages.slice(sent), from = owners().slice(sent);
     if (!fresh.length) return;
     sent = pages.length;
-    await post(fileKey + '.' + (++part), fresh);
+    await post(fileKey + '.' + (++part), fresh, from);
   };
   window.addEventListener('lab-picked', () => { void sendNew(); });
   // The scan window closed (src/scan/lab.ts keeps this page loaded a few minutes, so the models need
@@ -52,11 +55,14 @@
   window.addEventListener('message', e => {
     if (e.origin !== location.origin || !e.data) return;
     if (e.data.type === 'scan-sleep') {
+      decideAttempts('kept');  // the window closed on them: they stay in its batches
       $('stop').click(); shotId++;
       $('video').hidden = true; $('still').hidden = true; $('shot').hidden = true;
       $('shotMore').textContent = ''; $('shot2note').textContent = ''; $('hint').textContent = ''; $('kept').textContent = '';
+    } else if (e.data.type === 'scan-deleted') {
+      for (const p of e.data.pages || []) void attemptPageDeleted(p.att, p.pg);
     } else if (e.data.type === 'scan-continue') {
-      if (e.data.discard) { shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; }
+      if (e.data.discard) { decideAttempts('retaken'); shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; }
       $('keep').click();
     }
   });

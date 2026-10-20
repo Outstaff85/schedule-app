@@ -112,7 +112,7 @@ Replaces Haiku's page kind and upright turn (`aiDetectAlign`) with the firm's ow
 
 ### S8 — every scan attempt is sent for training (owner, 2026-10-20)
 
-**Status:** S8-1 built (the server: `scan_feedback` `attempt` / `attemptOutcome`, the folders, `attemptsSince`, the bell at 15 — docs/scan-training.md → 2, 3); S8-2 (sending from the lab and the site, the queue, the readouts), S8-3 (the corner editor) and S8-4 (`/scan-train`) to come.
+**Status:** S8-1 built (the server: `scan_feedback` `attempt` / `attemptOutcome`, the folders, `attemptsSince`, the bell at 15 — docs/scan-training.md → 2, 3); S8-2 built (every attempt sent from the lab and the site, the deleted pages, the queue, the readouts — docs/scan.md → The scan window); S8-3 (the corner editor) and S8-4 (`/scan-train`) to come.
 
 Every attempt made by anyone who scans becomes a training example with no extra step (owner, 2026-10-20: everyone who works sends data for training). This covers every login of every firm in the site's scanner (`/scan/`, the scan window) and the super-admin in the lab (`/scan-lab/`). The models learn from real work on real phones.
 
