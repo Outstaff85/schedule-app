@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
 import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
+import { showLab, sleepLab } from './lab';
 
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype };
 // Each page has its kind: Haiku's or the model's (doctypeModel, doctypeBy) and the one shown, which a tap can change;
@@ -50,7 +51,6 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   /** pages already scanned (this session's, for "Scan again"): shown first */
   initial?: ScannedPage[]; read?: ReadFn;
 }) {
-  const frame = React.useRef<HTMLIFrameElement>(null);
   const [hint, setHint] = React.useState('');
   const [items, setItems] = React.useState<Item[]>(() => (initial && initial.length
     ? [{ key: 'before', pages: initial.map(p => ({ ...p, uid: ++nextUid, doctypeModel: null })) }] : []));
@@ -94,8 +94,9 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   const kept = pages.filter(p => p.kind !== 'other'); // an "Other" page is not saved unless its kind is changed
   const pending = pages.some(p => p.doctypePending);
   const itemsRef = React.useRef(items); itemsRef.current = items;
-  // the lab page's camera stops when the window closes (the page is removed with it)
-  const close = () => { if (frame.current) frame.current.src = 'about:blank'; onClose(); };
+  // the lab page over its slot while the window shows it (lab.ts); hidden, its camera stopped, when the slot goes
+  const slot = React.useCallback((el: HTMLDivElement | null) => (el ? showLab(el, tr('Scanner')) : undefined), []);
+  const close = () => onClose();
 
   return (
     <Window open={open} onOpenChange={o => { if (!o) close(); }} title={tr('Scan documents')}
@@ -103,7 +104,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       footer={<Button variant="primary" data-testid="scan-done" disabled={!kept.length || finishing}
         onClick={async () => {
           setFinishing(true);
-          if (frame.current) frame.current.src = 'about:blank'; // the camera stops
+          sleepLab(); // the camera stops
           // waits for the pages' kinds
           while (itemsRef.current.some(x => x.pages.some(p => p.doctypePending))) await new Promise(r => setTimeout(r, 100));
           const list = itemsRef.current;
@@ -128,9 +129,8 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
         </div>
       ) : (
       <div className="flex flex-col gap-3 px-4 pb-2 sm:px-0" data-testid="scanner">
-        {/* the scanner lab's page, copied as it is (scan/); its pages come back through scan/embed.js */}
-        <iframe ref={frame} src="/scan/?embed=1" title={tr('Scanner')} allow="camera" data-vaul-no-drag data-testid="scan-lab-frame"
-          className="h-[62vh] w-full rounded-lg border-0 bg-background" />
+        {/* the scanner lab's page, copied as it is (scan/), laid over this slot (lab.ts); its pages come back through scan/embed.js */}
+        <div ref={slot} className="h-[62vh] w-full rounded-lg bg-background" data-testid="scan-lab-slot" />
         {hint && <div className="text-sm text-muted-foreground" data-testid="scan-hint">{hint}</div>}
         {items.length > 0 && (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" data-testid="scan-pages">
@@ -147,7 +147,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
                             {p.doctypePending ? <IconLoader2 className="inline size-3 animate-spin" /> : p.kind ? tr(DOCTYPE_LABELS[p.kind]) : tr('Document type')}
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
+                        <DropdownMenuContent align="start" className="z-[52]">
                           {DOCTYPES.map(kd => (
                             <DropdownMenuItem key={kd} data-testid={'scan-kind-' + kd} onSelect={() => setPage(p.uid, { kind: kd })}>
                               {tr(DOCTYPE_LABELS[kd])}{kd === p.kind ? <IconCheck className="ml-auto !text-ok" /> : null}
