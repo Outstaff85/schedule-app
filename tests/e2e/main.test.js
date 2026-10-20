@@ -796,6 +796,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(queue.waiting === 5 && queue.shown === 'In queue: 5 / 5' && online.waiting === 0 && online.shown === '',
     'scan attempts: with no network they wait on the phone, 5 at most ("In queue: 5 / 5"), and go when it is back ' + JSON.stringify({queue, online}));
+  // The corner editor (S8-3): the window's Fix corners on a new page opens the lab's editor on its photo; a corner
+  // dragged and Apply make the moved corners the attempt's answer, sent with it when it is kept
+  const fixed = await p.evaluate(async () => {
+    const going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, fd = fw.document;
+    const c = fd.createElement('canvas'); c.width = 800; c.height = 600; c.getContext('2d').fillRect(0, 0, 800, 600);
+    const a = fw.newAttempt(c, 800, 600, 'camera'); a.edgesModel = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
+    const img = fd.getElementById('shotImg'); img.src = c.toDataURL('image/jpeg'); img.dataset.att = a.id; img.dataset.pg = '0'; fd.getElementById('shot').hidden = false;
+    window.postMessage({type: 'scan-pages', key: 's77', pages: [img.src], attempts: [{att: a.id, pg: 0}]}, location.origin);
+    const r = {button: await T.until(() => document.querySelector('[data-testid="scan-preview"] [data-testid="scan-fix"]'), 4000)};
+    document.querySelector('[data-testid="scan-preview"] [data-testid="scan-fix"]').click();
+    r.editor = await T.until(() => fd.getElementById('cornerEditor'), 4000);
+    const cv = fd.querySelector('#cornerEditor canvas'), b = cv.getBoundingClientRect();
+    const k = Math.min(b.width / 800, b.height / 600), ox = (b.width - 800 * k) / 2, oy = (b.height - 600 * k) / 2;
+    const ev = (type, x, y) => cv.dispatchEvent(new fw.PointerEvent(type, {clientX: b.left + ox + x * 800 * k, clientY: b.top + oy + y * 600 * k, pointerId: 1, bubbles: true}));
+    ev('pointerdown', 0.1, 0.1); ev('pointermove', 0.2, 0.15); ev('pointerup', 0.2, 0.15);
+    [...fd.querySelectorAll('#cornerEditor button')].find(x => x.textContent === 'Apply').click();
+    r.closed = await T.until(() => !fd.getElementById('cornerEditor'), 2000);
+    r.fixed = a.edgesFixed && a.edgesFixed[0].map(v => Math.round(v * 100)).join();
+    r.id = a.id;
+    fw.decideAttempts('kept'); await fw.flushAttempts();
+    T.esc(); await going;
+    return r;
+  });
+  const sentFix = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts).find(x => x.id === fixed.id) || {};
+  ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20,
+    'scan corner editor: the window\'s Fix corners opens the lab\'s editor on the photo; a dragged corner is the attempt\'s answer, sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
   ok(picked.shape.join() === 'false,true', 'scan window: another document found on a photo needs a document\'s shape (no triangle, no sliver) ' + JSON.stringify(picked.shape));
   ok(kept.hidden && kept.same && kept.shown && kept.over && kept.tap && kept.closed,
     'scan window: the lab page is kept loaded after the window closes and shown again over the window\'s slot (no new load), a tap there reaching it ' + JSON.stringify(kept));

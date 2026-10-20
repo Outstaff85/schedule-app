@@ -74,6 +74,7 @@
 <div id="hint" style="font-size:14px;margin-top:8px;min-height:20px"></div>
 <div id="train" style="font-size:12px;color:var(--ink2)"></div>
 <div id="shot" hidden style="margin-top:10px">
+  <p style="color:var(--ink2);margin:0 0 6px;font-size:13px">Tap a page to fix its corners</p>
   <div class="row"><button class="primary" id="retake">Retake</button><button id="keep">Looks good</button><label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="auto" checked> Auto capture</label></div>
   <img id="shotImg" alt="" style="width:100%;border-radius:14px;display:block">
   <p id="shot2note" style="color:var(--ink2);margin:10px 0 6px"></p>
@@ -385,14 +386,77 @@ const TRAIN_SOURCE = location.pathname.includes('scan-lab') ? 'lab' : 'site';  /
 const QUEUE_MAX = 5, QUEUE_MS = 3600e3, PICTURE_MAX = 1600;
 let modelsVersion = '', onScreen = [], retakeGroup = null;
 const attemptDirs = new Map();  // attempt id → its folder on the server (for a page deleted later)
+const attemptFrames = new Map();  // attempt id → its full photo, for the corner editor (not sent)
 function newAttempt(frame, w, h, input) {
   const k = Math.min(1, PICTURE_MAX / Math.max(w, h)), c = document.createElement('canvas');
   c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext('2d').drawImage(frame, 0, 0, c.width, c.height);
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const a = { id, group: retakeGroup || id, source: TRAIN_SOURCE, input, picture: c.toDataURL('image/jpeg', 0.85).split(',')[1],
-    edgesModel: null, edgesMore: [], model: modelsVersion, way: engineWay || '', pages: 1, deletedPages: [] };
+    edgesModel: null, edgesMore: [], edgesFixed: null, edgesMoreFixed: [], model: modelsVersion, way: engineWay || '', pages: 1, deletedPages: [] };
   retakeGroup = null; onScreen.push(a);
+  attemptFrames.set(id, { frame, w, h });
+  for (const k of [...attemptFrames.keys()].slice(0, -6)) attemptFrames.delete(k);  // the last few photos only (memory)
   return a;
+}
+// The corner editor (S8-3): a tap on a page in the preview shows its photo with the four corners the
+// model found; the user drags them to the document's real corners and taps Apply — the page is cut
+// again from those corners, and they go with the attempt as the right answer (edgesFixed, or
+// edgesMoreFixed for another document found on the photo). The scan window opens it on its own
+// preview through embed.js ('scan-fix'), and gets the page again ('lab-fixed').
+const WHOLE_PAGE = [[0, 0], [1, 0], [1, 1], [0, 1]];
+async function fixCorners(img) {
+  const a = onScreen.find(x => x.id === img.dataset.att), f = a && attemptFrames.get(a.id);
+  if (!a || !f) { $('hint').textContent = 'This page can no longer be fixed — Retake it'; return; }
+  const pg = +img.dataset.pg || 0;
+  const was = (pg ? a.edgesMoreFixed[pg - 1] || a.edgesMore[pg - 1] : a.edgesFixed || a.edgesModel) || WHOLE_PAGE;
+  const pts = await cornerEditor(f.frame, was.map(p => p.slice()));
+  if (!pts) return;
+  if (pg) { while (a.edgesMoreFixed.length < a.edgesMore.length) a.edgesMoreFixed.push(null); a.edgesMoreFixed[pg - 1] = pts; } else a.edgesFixed = pts;
+  log('Corners fixed by hand (page ' + (pg + 1) + ')');
+  try {
+    if (!engine) await ensureSession();
+    const pix = f.frame.getContext('2d').getImageData(0, 0, f.w, f.h).data;
+    const out = await engine.warp(pix, f.w, f.h, pts, true);
+    const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
+    oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+    img.src = oc.toDataURL('image/jpeg', 0.9);
+  } catch (e) { log('The page could not be cut again: ' + (e && e.message || e)); return; }
+  window.dispatchEvent(new CustomEvent('lab-fixed', { detail: img }));
+}
+function cornerEditor(frame, start) {
+  return new Promise(done => {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.85);display:flex;flex-direction:column;gap:10px;padding:12px;touch-action:none';
+    const note = document.createElement('div'); note.style.cssText = 'color:#fff;font-size:14px'; note.textContent = 'Drag each corner to the document\'s corner';
+    const wrap = document.createElement('div'); wrap.style.cssText = 'position:relative;flex:1;min-height:0';
+    const cv = document.createElement('canvas'); cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
+    const row = document.createElement('div'); row.className = 'row';
+    const ok = document.createElement('button'); ok.className = 'primary'; ok.textContent = 'Apply'; box.id = 'cornerEditor';
+    const no = document.createElement('button'); no.textContent = 'Cancel';
+    row.append(ok, no); wrap.append(cv); box.append(note, wrap, row); document.body.append(box);
+    const pts = start, r = wrap.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    cv.width = r.width * dpr; cv.height = r.height * dpr;
+    const k = Math.min(r.width / frame.width, r.height / frame.height), iw = frame.width * k, ih = frame.height * k, ox = (r.width - iw) / 2, oy = (r.height - ih) / 2;
+    const g = cv.getContext('2d');
+    const draw = () => {
+      g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height); g.drawImage(frame, ox, oy, iw, ih);
+      g.strokeStyle = '#3ad29f'; g.lineWidth = 2; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo : g.moveTo).call(g, ox + x * iw, oy + y * ih)); g.closePath(); g.stroke();
+      for (const [x, y] of pts) { g.beginPath(); g.arc(ox + x * iw, oy + y * ih, 14, 0, 7); g.fillStyle = 'rgba(58,210,159,.35)'; g.fill(); g.stroke(); }
+    };
+    let drag = -1;
+    const at = e => { const b = cv.getBoundingClientRect(); return [(e.clientX - b.left - ox) / iw, (e.clientY - b.top - oy) / ih]; };
+    cv.onpointerdown = e => {
+      const [x, y] = at(e); let best = 1e9;
+      pts.forEach(([px, py], i) => { const d = Math.hypot((px - x) * iw, (py - y) * ih); if (d < best && d < 48) { best = d; drag = i; } });
+      if (drag >= 0) try { cv.setPointerCapture(e.pointerId); } catch { /* no live pointer (a test's event) */ }
+    };
+    cv.onpointermove = e => { if (drag < 0) return; const [x, y] = at(e); pts[drag] = [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))]; draw(); };
+    cv.onpointerup = cv.onpointercancel = () => { drag = -1; };
+    const end = v => { box.remove(); done(v); };
+    ok.onclick = () => end(pts.map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]));
+    no.onclick = () => end(null);
+    draw();
+  });
 }
 function decideAttempts(outcome) {
   const list = onScreen; onScreen = [];
@@ -713,6 +777,7 @@ $('startCam').onclick = async () => {
 $('keep').onclick = () => { keepCurrent(); smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } };
 $('retake').onclick = () => { decideAttempts('retaken'); shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
+$('shot').addEventListener('click', e => { if (e.target.tagName === 'IMG' && e.target.dataset.att) void fixCorners(e.target); });
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 // The photos on a white page (a form's page, a PDF, a screenshot): every band of rows
 // where most of the page is not white, at least 12 % high; inside each, the longest run
