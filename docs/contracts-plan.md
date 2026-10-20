@@ -65,7 +65,7 @@ The owner's scheme:
     - The manager sees **Sent to sign** on the worker until it is signed, then **Signed** with the date.
     - The link is the worker's own (`punchToken`); the server checks it, and the page gets only this worker's own documents.
 - **Both documents on screen, both ways:** Form 101 and the contract, filled with this worker's data, one after the other, to scroll through. The worker must see what they sign, and the signature is open only after scrolling to the end of both.
-- **One signature** at the bottom (the shared `SignaturePad`); the date is set by itself.
+- **One signature** at the bottom (the shared `SignaturePad`). The date is today's by default and can be changed with a date picker next to it (owner, 2026-10-20); the chosen date is the one printed in both documents. The moment of signing is also kept in the record (`signedAt`, the server's time), apart from the printed date.
 - **The same signature and date go into both PDFs.** The two are built on the server in parallel (two calls at once; the function declared `cpu=1`, `concurrency=20`), in the background: the save does not wait.
 - The signed PDFs are stored in the worker's documents: Form 101, and `contract` with the template's name and version.
 - They are **never rebuilt** afterwards.
