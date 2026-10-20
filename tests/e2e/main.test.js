@@ -778,10 +778,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const cpdf = await p.evaluate(async jpg => {
     const b64 = await ManagerScan.imagesToPdf([{b64: jpg, mediaType: 'image/jpeg'}, {b64: jpg, mediaType: 'image/jpeg'}]);
     const txt = atob(b64);
+    // A camera-sized page (3000 px wide) is scaled down to A4 at 200 dpi (1654 px); the small one goes in as it is.
+    const cv = document.createElement('canvas'); cv.width = 3000; cv.height = 4000;
+    const g = cv.getContext('2d'); g.fillStyle = '#eee'; g.fillRect(0, 0, 3000, 4000); g.fillStyle = '#000'; g.font = '80px sans-serif'; g.fillText('Contract', 200, 400);
+    const big = cv.toDataURL('image/jpeg', 0.95).split(',')[1];
+    const txt2 = atob(await ManagerScan.imagesToPdf([{b64: big, mediaType: 'image/jpeg'}, {b64: jpg, mediaType: 'image/jpeg'}]));
+    const widths = [...txt2.matchAll(/\/Subtype \/Image \/Width (\d+) \/Height (\d+)/g)].map(m => m[1] + 'x' + m[2]).join(',');
     return {head: txt.slice(0, 8), pages: (txt.match(/\/Type \/Page\b/g) || []).length, count: /\/Count 2\b/.test(txt), images: (txt.match(/\/DCTDecode/g) || []).length, eof: /%%EOF\s*$/.test(txt),
-      size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(jpg), c => c.charCodeAt(0))))};
+      size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(jpg), c => c.charCodeAt(0)))), widths, smaller: txt2.length < atob(big).length};
   }, JPG);
-  ok(cpdf.head === '%PDF-1.4' && cpdf.pages === 2 && cpdf.count && cpdf.images === 2 && cpdf.eof && cpdf.size === '{"h":8,"w":8}', 'scan contract: its pages become one PDF, a page per photo ' + JSON.stringify(cpdf));
+  ok(cpdf.head === '%PDF-1.4' && cpdf.pages === 2 && cpdf.count && cpdf.images === 2 && cpdf.eof && cpdf.size === '{"h":8,"w":8}' && cpdf.widths === '1654x2205,8x8' && cpdf.smaller,
+    'scan contract: its pages become one PDF, a page per photo; a camera-sized page is scaled down to A4 at 200 dpi, a small one goes in as it is ' + JSON.stringify(cpdf));
   // A scanned contract that could not be saved marks the worker until a contract document is added.
   const cfail = await p.evaluate(() => {
     const w = workers[1]; w.contractUploadFailed = true;

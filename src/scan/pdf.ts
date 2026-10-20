@@ -1,11 +1,15 @@
 // Pages (photos) put together as one PDF, a page per photo, in order — the
 // contract pages of a scan saved to the worker's documents (docs/scan-plan.md →
-// Contracts in the scan). JPEG pages go in as they are (DCTDecode); any other
-// image is turned into a JPEG first. No library: a PDF of images is a few objects.
+// Contracts in the scan). Each page is A4 wide at 200 dpi at most (MAX_W): a
+// JPEG no wider goes in as it is (DCTDecode, no re-encoding); a wider one — a
+// phone camera's page is ~3000 px, 1.5–3 MB — is scaled down to it first, as is
+// any other image turned into a JPEG. No library: a PDF of images is a few objects.
 
 export type PageImage = { b64: string; mediaType: string };
 
 const A4_W = 595; // points: every page is A4 wide, as tall as its photo
+/** The widest page in pixels: A4's 8.27 in at 200 dpi — small print, stamps and a blue signature stay clear. */
+export const MAX_W = 1654;
 
 /** The pixel size of a JPEG, read from its SOF marker; null when it is not one. */
 export function jpegSize(bytes: Uint8Array): { w: number; h: number } | null {
@@ -33,13 +37,17 @@ function toB64(bytes: Uint8Array): string {
 
 async function asJpeg(p: PageImage): Promise<Uint8Array> {
   const raw = fromB64(p.b64);
-  if (jpegSize(raw)) return raw;
+  const size = jpegSize(raw);
+  if (size && size.w <= MAX_W) return raw;
   const img = new Image();
   img.src = 'data:' + p.mediaType + ';base64,' + p.b64;
   await img.decode();
-  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
-  const g = c.getContext('2d')!; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0);
-  return fromB64(c.toDataURL('image/jpeg', 0.9).split(',')[1]);
+  const scale = Math.min(1, MAX_W / img.naturalWidth);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.naturalWidth * scale)); c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const g = c.getContext('2d')!; g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  return fromB64(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
 }
 
 /** The pages as one PDF, base64. */

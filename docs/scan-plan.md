@@ -110,6 +110,60 @@ Replaces Haiku's page kind and upright turn (`aiDetectAlign`) with the firm's ow
 - **Training:** a step of `/scan-train` (the same skill, the owner's PC): 6 classes (`id_front`, `id_back`, `sefach`, `passport`, `contract`, `other`), ImageNet weights fine-tuned on the page copies; the upright turn is learned for free by turning the copies 90°/180°/270° (the copies are stored upright). The exam pages (the same id rule as the corners) are read by the new models and by Haiku (its answers are in the records): published only when the models beat Haiku there. The publish resets `doctypesSince`.
 - **Handed over like the corners:** the models go into the same version `v<N>` (Hugging Face); the lab first (a kind readout added to `/scan-lab/`), the site (phone and server, one version) only when the owner says it is better.
 
+### S8 — every scan attempt is sent for training (owner, 2026-10-20)
+
+**Status:** S8-1 built (the server: `scan_feedback` `attempt` / `attemptOutcome`, the folders, `attemptsSince`, the bell at 15 — docs/scan-training.md → 2, 3); S8-2 (sending from the lab and the site, the queue, the readouts), S8-3 (the corner editor) and S8-4 (`/scan-train`) to come.
+
+Every attempt made by anyone who scans becomes a training example with no extra step (owner, 2026-10-20: everyone who works sends data for training). This covers every login of every firm in the site's scanner (`/scan/`, the scan window) and the super-admin in the lab (`/scan-lab/`). The models learn from real work on real phones.
+
+- **The lab and the site are one scanner** (owner, 2026-10-20): the site's scanner (`scan/`) is the lab's page copied as it is, so the sending, the queue, the corner editor and the readouts are the same code in both. Only `source` (`lab` / `site`) tells them apart. Most attempts come from the site, because the firms' users scan there every day.
+- **The order of a release** (unchanged):
+  1. The lab tries the new code or model version (the super-admin, on the phone).
+  2. The owner approves it.
+  3. It is copied into `scan/` (code) or set in `scripts/scan/models-version` (models).
+  4. On the next deploy the site's scanner is the same as the lab's again.
+
+  The site never runs anything the lab has not run first.
+
+- **What is an attempt:** every camera shot and every page of a picked photo or PDF. For each one the scanner keeps:
+  - the picture, at most 1600 px on the long side, JPEG;
+  - the models' corners, the model version (`models-version`) and the way it ran (GPU / pool / CPU);
+  - the page kind when the version has a document type model;
+  - the outcome: kept (Looks good), retaken, or a page deleted from the batch;
+  - the corrected corners when the user moved them. The scanner's preview (the lab's page, so the site's too) gets a 4-corner editor: drag a corner, and the moved corners become the answer.
+- **A retake is sent too:** a retake of the same document sends both attempts, linked by one `group` id.
+  - The earlier attempt is marked `retaken`, the later one `kept`.
+  - The pair shows the training what went wrong (the earlier attempt) and what was right (the later one).
+- **Sent at once:** each attempt goes in the background right after it is made, as one JSON request to `scan_feedback` with a new action `attempt`. The request carries the user's ID token. The server checks only that it is a signed-in login of a firm (any role, as S6), so that no stranger can fill the bucket with junk or poisoned examples, and records the firm (`tenantId`) and where the attempt came from (`source`: `site` / `lab`).
+  - Nothing is kept on the phone when the network is up.
+- **No network:** the attempt waits in a small queue on the phone (IndexedDB) and goes with the next attempt or when the network is back.
+  - At most **5** attempts (pages) wait; the oldest is dropped beyond that (owner, 2026-10-20).
+  - An attempt waits at most **1 hour**, then it is dropped.
+  - The scanner shows **In queue: N / 5** while anything waits.
+- **Where it is kept:** only the private Hugging Face bucket `OutStaff/scanner-data` (never a public repo), with the server's write-only token, as the site's examples. The attempts have their own folders and are never mixed with S6's examples:
+  - new attempts go to `attempts/new/<source>/<YYYY-MM-DD>/<id>/` (`picture.jpg` + `answer.json`), where `<source>` is `site` or `lab`;
+  - after a training uses them, `publish.py` moves them to `attempts/used/v<N>/`, so the next run takes only the new ones.
+- **When to train:** the server counts the attempts in `attempts/new/` (`scanTrainingStats/current.attemptsSince`, site and lab together).
+  - At **15**, the super-admin's bell says **New scan attempts — time to train**. The lab also shows **New for training: N / 15** (the super-admin only).
+  - `/scan-train` takes `attempts/new/` (`pull.py --attempts`) together with the site's corrections:
+    - the target corners are the moved corners, or the model's own corners for a kept attempt;
+    - a retaken attempt with no moved corners is used only as a hard example in the exam, never as a target;
+    - **a deleted page teaches what not to find** (owner, 2026-10-20). A page the user deleted from a kept batch (its outcome `deleted`) is a frame the model found where there is no document to keep — the extra third page cut from a photo of two. Its frame is trained as "nothing here": the next document search (`findNext`) learns to leave such a spot alone, and the exam counts the extra pages found before → after.
+  - **The exam shows pictures too** (owner, 2026-10-20). Besides the figures, `exam.py` writes `~/.scan-train/report.html` on the owner's PC and opens it in the browser:
+    - the 10 exam pages where the old and new models differ most;
+    - each page with the old model's corners, the new model's corners and the right ones drawn on it, with the corner error of each model.
+
+    The owner sees at a glance where it got better and where worse. The page stays on the PC only, because it shows workers' documents; `clean.py` / `publish.py` delete it with the copies.
+  - Then the exam, and on the owner's yes the publish, which resets `attemptsSince` and moves the attempts to `attempts/used/`.
+  - As always, the new version is set for the lab first and for the site only when it is better.
+- **Files to change:**
+  - `scan-lab/index.html` (the queue, the corner editor, the readouts);
+  - `functions/feedback.py` (the `attempt` action, the counter);
+  - `src/manager/page/header.ts` (the bell notice);
+  - `scripts/scan-train/pull.py`, `exam.py` (the picture report) and `publish.py`;
+  - `scan/` gets the copy as usual. In the site's scanner `embed.js` sets `source: site`. S6 keeps collecting the page kinds on Done; the corners come from the attempts.
+  - The docs: docs/scan-training.md and docs/scan.md.
+
 ### S3 — reading in TypeScript — done (2026-10-19)
 
 - The reading, the zoomed re-reads, the check digits, the name pick and the page merging are `src/scan-process/` (`read.ts`, `verify.ts`, `merge.ts`, `names.ts`, `ids.ts`, `ai.ts`, `crop.ts`, `worker.ts`, `session.ts`), typed; every text through `tr()` (the old Hebrew progress texts are now the Hebrew dictionary's). `tests/scan/compare.test.mjs` runs the old code (`tests/scan/legacy.js`, frozen) and the new on 600 generated scans: the same record, stored pages and worker fields, never more AI calls. Each page's reads are kept by its image for the session, so Scan again reads only what changed.

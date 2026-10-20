@@ -99,6 +99,7 @@ function notifList(){
   __notifApprovals.forEach((a?: any)=>out.push(Object.assign({lvl:'green', icon:'ti-circle-check', open:()=>switchTab('accounting')}, a)));
   const tr6=scanEdgesNotice(); if(tr6) out.push(tr6);
   const tr7=scanDoctypeNotice(); if(tr7) out.push(tr7);
+  const tr8=scanAttemptsNotice(); if(tr8) out.push(tr8);
   return out.sort((a?: any,b?: any)=>b.at-a.at);
 }
 // The scanner's "time to retrain" notice (docs/scan-plan.md → S6), the super-admin's
@@ -107,7 +108,7 @@ function notifList(){
 let __scanTrain: any=null, __scanTrainAt=0;
 function scanEdgesNotice(){
   if((getSession()||{} as any).role!=='superadmin') return null;
-  if(Date.now()-__scanTrainAt>6*3600e3){ __scanTrainAt=Date.now(); trainingStats().then(r=>{ __scanTrain=r; if(r&&(r.due||r.doctypesDue)) refreshBell(); }); }
+  if(Date.now()-__scanTrainAt>6*3600e3){ __scanTrainAt=Date.now(); trainingStats().then(r=>{ __scanTrain=r; if(r&&(r.due||r.doctypesDue||r.attemptsDue)) refreshBell(); }); }
   if(!(__scanTrain&&__scanTrain.due)) return null;
   const n=__scanTrain.edgesSince;
   return {id:'scan-train:'+Math.floor(n/100), lvl:'blue', icon:'ti-scan', title:tr('Time to retrain the document edges model'),
@@ -120,6 +121,14 @@ function scanDoctypeNotice(){
   const n=Math.min(...['id_front','id_back','sefach','passport','contract'].map(k=>Number(__scanTrain.doctypes[k]||0)));
   return {id:'scan-doctypes', lvl:'blue', icon:'ti-scan', title:tr('Enough pages to train the document type model'),
     detail:tr('At least {0} pages of each document type — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0), open:openScanAdmin};
+}
+// Every scan attempt (docs/scan-plan.md → S8): enough new attempts from the site and the lab
+// (scan_feedback's attemptsDue, read with the notices above) to train on.
+function scanAttemptsNotice(){
+  if((getSession()||{} as any).role!=='superadmin'||!(__scanTrain&&__scanTrain.attemptsDue)) return null;
+  const n=Number(__scanTrain.attemptsSince||0);
+  return {id:'scan-attempts:'+Math.floor(n/15), lvl:'blue', icon:'ti-scan', title:tr('New scan attempts — time to train'),
+    detail:tr('{0} new scan attempts since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0), open:openScanAdmin};
 }
 // A scanner notice opens Admin → Scanner (docs/hf-plan.md → Admin → Scanner and the bell).
 function openScanAdmin(){ switchTab('admin'); (window as any).switchAdminPane?.('scanner'); }
