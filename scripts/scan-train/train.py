@@ -23,9 +23,12 @@ FLIP = [1, 0, 3, 2]  # a mirrored page: top-left ↔ top-right, bottom-right ↔
 
 
 def heatmaps(corners):
-    """4 Gaussian heatmaps (H×H) peaking where the corners are (as docfind.corners reads them)."""
+    """4 Gaussian heatmaps (H×H) peaking where the corners are (as docfind.corners reads them);
+    corners None — a page the user deleted, "nothing here" (S8) — gives 4 empty maps."""
     ys, xs = np.mgrid[0:H, 0:H].astype(np.float32)
     out = np.zeros((4, H, H), np.float32)
+    if corners is None:
+        return out
     for k, (x, y) in enumerate(corners):
         cx, cy = x * H - 0.5, y * H - 0.5
         out[k] = np.exp(-((xs - cx) ** 2 + (ys - cy) ** 2) / (2 * SIGMA ** 2))
@@ -35,6 +38,8 @@ def heatmaps(corners):
 def load(examples):
     X, Y = [], []
     for e in examples:
+        if e.get("hard"):
+            continue  # a retaken page with no right answer: only the exam's
         img = cv2.imread(e["file"])
         if img is None:
             continue
@@ -47,12 +52,12 @@ def load(examples):
 def batch(X, Y, idx, augment):
     xs, ys = [], []
     for i in idx:
-        img, c = X[i].astype(np.float32), [list(p) for p in Y[i]]
+        img, c = X[i].astype(np.float32), [list(p) for p in Y[i]] if Y[i] is not None else None
         if augment:
             img = np.clip(img * random.uniform(0.75, 1.25) + random.uniform(-25, 25), 0, 255)
             if random.random() < 0.5:
                 img = img[:, ::-1]
-                c = [[1 - c[j][0], c[j][1]] for j in FLIP]
+                c = [[1 - c[j][0], c[j][1]] for j in FLIP] if c is not None else None
         xs.append(np.ascontiguousarray(img.transpose(2, 0, 1)) / 255.0)
         ys.append(heatmaps(c))
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(np.stack(ys))

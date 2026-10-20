@@ -24,13 +24,13 @@ Both end in the same step 5: one new version holds whatever was trained; the res
 - Once, before the first training on Hugging Face: `python scripts/scan-train/move_to_hf.py --apply` (the versions still in Storage go to Hugging Face as tags) and `python scripts/scan-train/rename_fields.py --apply` (the records collected before H0 get today's names). Each says what it would do without `--apply`; both are safe to run again.
 
 ## 2. Download the examples
-`python scripts/scan-train/pull.py` — prints how many examples, how many kept apart for the exam. Fewer than ~100 to train on: tell the owner it is early and ask whether to go on.
+`python scripts/scan-train/pull.py` — prints how many examples (and how many came from the scan attempts, S8), how many kept apart for the exam. Fewer than ~100 to train on: tell the owner it is early and ask whether to go on.
 
 ## 3. Train
 `python scripts/scan-train/train.py` — both document edges models (`edges-lite.onnx` for the phone's live frame, `edges.onnx` for the server), starting from the lab's current version (`scripts/scan-lab/models-version`). ~15–30 min on the 4070. Each epoch prints its loss; it must go down.
 
 ## 4. Exam
-`python scripts/scan-train/exam.py` — the pages never trained on, old models vs new: mean corner error, share within 2 %, share not found. Show the owner this report in plain words (before → after). If it says "NO — do not publish", say so and recommend `clean.py`.
+`python scripts/scan-train/exam.py` — the pages never trained on, old models vs new: mean corner error, share within 2 %, share not found. From the scan attempts it also prints the extra pages found where the user deleted one (lower is better) and how often a retaken page is answered other than the rejected frame. Show the owner this report in plain words (before → after), and point them to the picture report it opens in the browser (`~/.scan-train/report.html`: the 10 exam pages where the models differ most, the old corners red, the new blue, the right ones green — it stays on the PC). If it says "NO — do not publish", say so and recommend `clean.py`.
 
 ## 4b. Document types (S7)
 1. `python scripts/scan-train/pull_doctypes.py` — the page copies with their kinds; prints how many per kind. A kind with fewer than ~80 to train on: say it is early, ask whether to go on.
@@ -39,7 +39,7 @@ Both end in the same step 5: one new version holds whatever was trained; the res
 4. When it says a model is worse, it prints the next size up (owner, 2026-10-19: Lite0 → Lite1 → Lite2… until the result is right): run that `train_doctypes.py --only phone --phone tf_efficientnet_lite1` (or `--only server --server …`), then `exam_doctypes.py` again. At Lite4 and still worse: more page copies are needed — `clean.py`, and wait for the bell.
 
 ## 5. The owner decides
-- **Yes** → `python scripts/scan-train/publish.py`: the new version goes to Hugging Face as one commit tagged `v<N>` (https://huggingface.co/OutStaff/scanner-models/tree/v<N>, with the reports; every model not retrained is carried over from the lab's version), the bell's counters are reset (`edgesSince` after the edges, `doctypesSince` after the document types), `scripts/scan-lab/models-version` names `v<N>`, the copies on the PC are deleted. Document type models whose exam said "not worth publishing" are left out unless the owner explicitly says to publish them anyway (`--force-doctypes`).
+- **Yes** → `python scripts/scan-train/publish.py`: the new version goes to Hugging Face as one commit tagged `v<N>` (https://huggingface.co/OutStaff/scanner-models/tree/v<N>, with the reports; every model not retrained is carried over from the lab's version), the bell's counters are reset (`edgesSince` after the edges, `doctypesSince` after the document types), `scripts/scan-lab/models-version` names `v<N>`, the scan attempts trained on move to `attempts/used/v<N>/` (`attemptsSince` lowered by them), the copies on the PC are deleted. Document type models whose exam said "not worth publishing" are left out unless the owner explicitly says to publish them anyway (`--force-doctypes`).
 - **No** → `python scripts/scan-train/clean.py` (deletes the copies; nothing changes on Hugging Face).
 
 ## 6. Give the new version to the lab
