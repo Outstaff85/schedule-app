@@ -4,7 +4,7 @@
 
 The owner's scheme:
 - The Form 101 template never changes.
-- The firm's contract is uploaded as a template, PDF or Word.
+- The firm's contract is uploaded as a PDF template. The owner writes it in Word and saves it as PDF there, so the site takes PDF only and needs no Word converter (owner, 2026-10-20).
 - The worker sees both documents filled with their data and signs **once**. The same signature and date go into both.
 - Everything is kept under the worker.
 - When the worker's data changes, the worker signs again, and the new documents replace the old ones.
@@ -32,6 +32,7 @@ The owner's scheme:
 - The firm uploads its contract as a **PDF** with marks written in the text, for example:
   - `{{given}}`, `{{surname}}`, `{{id}}`, `{{start_date}}`, `{{company}}`;
   - `{{signature}}`, `{{sign_date}}`.
+- **Preparing it in Word:** the marks are typed as plain text, then File → Save as → PDF. Print to PDF or a scan would turn the text into a picture, and the marks could not be found; the upload then says so.
 - **Filling:** the server finds each mark in the PDF's text, whites it out and writes the value in its place. Hebrew is drawn right to left, as Form 101 already does (PyMuPDF, `functions/main.py`), and a long value is shrunk to fit. No new server is needed.
 - **Templates:** several per firm, in Admin; a firm sees only its own.
 - **On upload:** the site lists the marks it found and the unknown ones, and shows a sample PDF filled with made-up data.
@@ -75,13 +76,8 @@ The owner's scheme:
 - Built from the stored signed PDFs and the JPEG pages. The joined file is not stored.
 - The summary never shows pay or rates unless the login may see pay. Its labels are Hebrew, as Form 101's.
 
-## D6 — Word templates
-
-- A `.docx` with the same marks is turned into a PDF **once, when the template is uploaded** (LibreOffice in a Cloud Run service). From then on it is a PDF template as in D2; the signing never waits for LibreOffice.
-- Not needed if the owner saves the template from Word as PDF.
-
 ## Order
 
-D1 → D2 → D3 → D4 → D5 → D6.
+D1 → D2 → D3 → D4 → D5.
 
 Each stage brings its own docs (docs/form101.md, docs/workers.md and a new docs/contracts.md), browser checks and Hebrew dictionary entries.
