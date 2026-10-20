@@ -57,7 +57,7 @@ def test_load_assets_reply_shape():
 
 def test_other_firms_file_refused():
     b = Bucket()
-    for action in files.ACTIONS:
+    for action in ("loadWorkerAssets", "deleteWorkerDoc"):  # loadWorkerPages: test_load_pages_only_pages_and_signatures_of_this_firm
         assert files.run(b, ADMIN, {"action": action, "fileId": OTHER}) == {"error": files.E_NOT_FIRM}
     assert OTHER in b.store
     # a path that climbs out of the firm's folder, or one outside workers/
