@@ -616,6 +616,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Done reads them in the window (src/scan-process/) and opens the worker window with what was read.
   const JPG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDpKKKKAP/Z';
   const feedbackCalls = [];
+  let attemptsOffline = false;
   const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
   // Haiku's page kinds (aiDetectAlign): the first page an ID card, the second a ספח; the ID card's read (aiReadDoc)
   let kindCalls = 0;
@@ -635,7 +636,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
     const body = JSON.parse(r.request().postData() || '{}');
+    if (body.action === 'attempt' && attemptsOffline) return r.abort('internetdisconnected');
     feedbackCalls.push(body);
+    if (body.action === 'attempt') return r.fulfill({status:200, contentType:'application/json', headers:CORS,
+      body: JSON.stringify({ok: true, dirs: Object.fromEntries((body.attempts || []).map(a => [a.id, 'attempts/new/' + a.source + '/2026-10-20/' + a.id]))})});
     // Admin → Scanner set to Mixed: a page the document type model is sure of needs no Haiku
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'mode' ? {ok: true, doctypeMode: 'mixed'} : {ok: true})});
   });
@@ -754,6 +758,44 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(picked.multiple && picked.accept === '' && picked.one && picked.button === 'Photos or PDF…'
     && picked.out.join('|') === 'file 1 of 2 blob:http:|file 2 of 2, page 1 of 2 data:image|file 2 of 2, page 2 of 2 data:image',
     'scan window: the lab\'s one Photos or PDF… (no file type: the phone\'s file chooser, photos and PDFs side by side) takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+  // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
+  // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
+  // a kept page deleted later is told by its folder; with no network they wait on the phone, 5 at most
+  const att = await p.evaluate(async () => {
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
+    const shot = () => { const c = fw.document.createElement('canvas'); c.width = 3200; c.height = 2400; const g = c.getContext('2d'); g.fillStyle = '#ddd'; g.fillRect(0, 0, 3200, 2400); return fw.newAttempt(c, 3200, 2400, 'camera'); };
+    const a = shot(); a.edgesModel = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
+    fw.decideAttempts('retaken');
+    const b = shot(); b.edgesMore = [[[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]]; b.pages = 2;
+    fw.decideAttempts('kept');
+    await new Promise(res => setTimeout(res, 2500));
+    await fw.flushAttempts();
+    await fw.attemptPageDeleted(b.id, 1);
+    return {a: a.id, b: b.id, group: b.group === a.group, size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b.picture), ch => ch.charCodeAt(0))))};
+  });
+  const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
+  const atA = sent.find(x => x.id === att.a) || {}, atB = sent.find(x => x.id === att.b) || {};
+  const outc = feedbackCalls.find(c => c.action === 'attemptOutcome') || {};
+  ok(att.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
+    && att.size === '{"h":1200,"w":1600}' && outc.dir === 'attempts/new/site/2026-10-20/' + att.b && outc.outcome === 'deleted' && outc.page === 1,
+    'scan attempts: each sent for training as it is decided (a retake and the next shot one group, the photo at most 1600 px), a page deleted later told by its folder '
+    + JSON.stringify({att, a: {o: atA.outcome, g: atA.group}, b: {o: atB.outcome, g: atB.group, p: atB.pages}, outc}));
+  attemptsOffline = true;
+  const queue = await p.evaluate(async () => {
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
+    for (let i = 0; i < 7; i++) { const c = fw.document.createElement('canvas'); c.width = 40; c.height = 30; fw.newAttempt(c, 40, 30, 'photo'); fw.decideAttempts('kept'); await fw.flushAttempts(); }
+    await fw.flushAttempts();
+    const r = {waiting: (await fw.queued()).length, shown: fw.document.getElementById('train').textContent};
+    return r;
+  });
+  attemptsOffline = false;
+  const online = await p.evaluate(async () => {
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
+    await fw.flushAttempts();
+    return {waiting: (await fw.queued()).length, shown: fw.document.getElementById('train').textContent};
+  });
+  ok(queue.waiting === 5 && queue.shown === 'In queue: 5 / 5' && online.waiting === 0 && online.shown === '',
+    'scan attempts: with no network they wait on the phone, 5 at most ("In queue: 5 / 5"), and go when it is back ' + JSON.stringify({queue, online}));
   ok(picked.shape.join() === 'false,true', 'scan window: another document found on a photo needs a document\'s shape (no triangle, no sliver) ' + JSON.stringify(picked.shape));
   ok(kept.hidden && kept.same && kept.shown && kept.over && kept.tap && kept.closed,
     'scan window: the lab page is kept loaded after the window closes and shown again over the window\'s slot (no new load), a tap there reaching it ' + JSON.stringify(kept));

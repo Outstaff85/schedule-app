@@ -272,7 +272,9 @@ def check_attempt(a):
             "model": str(a.get("model") or "")[:40], "way": str(a.get("way") or "")[:20],
             "input": a.get("input") if a.get("input") in INPUTS else "camera",
             "doctype": a.get("doctype") if a.get("doctype") in DOCTYPES else None,
-            "pages": _pages(a.get("pages"))}, None
+            "pages": _pages(a.get("pages")),
+            # pages of a kept attempt deleted before it was sent (the extra ones found: "nothing here")
+            "deletedPages": sorted({p for p in (a.get("deletedPages") or [])[:20] if isinstance(p, int) and not isinstance(p, bool) and 0 <= p < 20})}, None
 
 
 def attempt_dir(a, now):
@@ -283,7 +285,8 @@ def attempt_record(a, tenant_id, now, picture_path):
     """The answer kept beside an attempt's picture (answer.json)."""
     return {"id": a["id"], "group": a["group"], "source": a["source"], "outcome": a["outcome"], "tenantId": tenant_id or "",
             "picture": picture_path, "edgesModel": a["edgesModel"], "edgesMore": a["edgesMore"], "edgesFixed": a["edgesFixed"], "moved": a["moved"],
-            "model": a["model"], "way": a["way"], "input": a["input"], "doctype": a["doctype"], "pages": a["pages"], "createdAt": now}
+            "model": a["model"], "way": a["way"], "input": a["input"], "doctype": a["doctype"], "pages": a["pages"],
+            "deletedPages": a["deletedPages"], "createdAt": now}
 
 
 def outcome_dir(v):

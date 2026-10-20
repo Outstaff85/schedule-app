@@ -72,6 +72,7 @@
   <canvas id="overlay"></canvas>
 </div>
 <div id="hint" style="font-size:14px;margin-top:8px;min-height:20px"></div>
+<div id="train" style="font-size:12px;color:var(--ink2)"></div>
 <div id="shot" hidden style="margin-top:10px">
   <div class="row"><button class="primary" id="retake">Retake</button><button id="keep">Looks good</button><label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="auto" checked> Auto capture</label></div>
   <img id="shotImg" alt="" style="width:100%;border-radius:14px;display:block">
@@ -356,7 +357,8 @@ const DOCTYPE_NAMES = { id_front: 'ID card', id_back: 'ID card back', sefach: 'A
 (async () => {
   try {
     const r = await fetch('/scan-lab/models.json', { cache: 'no-cache' });
-    if (r.ok && (await r.json()).doctype) { doctypeSess = await ort.InferenceSession.create(await fetchModel('doctype.onnx', () => {}), { executionProviders: ['wasm'] }); log('Document type model loaded'); }
+    const mj = r.ok ? await r.json() : {}; modelsVersion = String(mj.version || '');
+    if (mj.doctype) { doctypeSess = await ort.InferenceSession.create(await fetchModel('doctype.onnx', () => {}), { executionProviders: ['wasm'] }); log('Document type model loaded'); }
   } catch (e) { log('Document type model: ' + (e && e.message || e)); }
 })();
 async function doctypeNote(canvas) {
@@ -372,6 +374,117 @@ async function doctypeNote(canvas) {
     return '; type: ' + DOCTYPE_NAMES[names[k]] + ' ' + Math.round(kp[k] * 100) + '%, needs ' + t * 90 + '° (' + Math.round(tp[t] * 100) + '%), ' + Math.round(performance.now() - t0) + ' ms';
   } catch (e) { return '; the document type model failed: ' + (e && e.message || e); }
 }
+// Every attempt goes for training (docs/scan-plan.md → S8; the same code on the site, the copy in /scan/):
+// a camera shot or a picked picture, with the photo (at most 1600 px), the models' corners (the first
+// document's, the others found on it) and, once decided, how it went — kept (Looks good, or the next
+// shot or pick folding it), retaken (Retake: the next one shares its group) or a kept page deleted later.
+// Sent at once to scan_feedback with the signed-in user's token; with no network it waits on the phone
+// (IndexedDB), 5 at most, an hour at most. The lab also shows the new attempts since the last training.
+const TRAIN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/scan_feedback';
+const TRAIN_SOURCE = location.pathname.includes('scan-lab') ? 'lab' : 'site';  // (no slashes: the copy to /scan/ keeps this line)
+const QUEUE_MAX = 5, QUEUE_MS = 3600e3, PICTURE_MAX = 1600;
+let modelsVersion = '', onScreen = [], retakeGroup = null;
+const attemptDirs = new Map();  // attempt id → its folder on the server (for a page deleted later)
+function newAttempt(frame, w, h, input) {
+  const k = Math.min(1, PICTURE_MAX / Math.max(w, h)), c = document.createElement('canvas');
+  c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext('2d').drawImage(frame, 0, 0, c.width, c.height);
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const a = { id, group: retakeGroup || id, source: TRAIN_SOURCE, input, picture: c.toDataURL('image/jpeg', 0.85).split(',')[1],
+    edgesModel: null, edgesMore: [], model: modelsVersion, way: engineWay || '', pages: 1, deletedPages: [] };
+  retakeGroup = null; onScreen.push(a);
+  return a;
+}
+function decideAttempts(outcome) {
+  const list = onScreen; onScreen = [];
+  if (outcome === 'retaken' && list.length) retakeGroup = list[0].group;
+  for (const a of list) { a.outcome = outcome; void queueAttempt(a); }
+}
+function trainDb() {
+  return new Promise((ok, no) => { const r = indexedDB.open('scanAttempts', 1); r.onupgradeneeded = () => r.result.createObjectStore('queue', { keyPath: 'a.id' }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+}
+async function trainStore(mode, fn) {
+  const d = await trainDb();
+  try { return await new Promise((ok, no) => { const q = fn(d.transaction('queue', mode).objectStore('queue')); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); }
+  finally { d.close(); }
+}
+function queued() { return trainStore('readonly', s => s.getAll()).catch(() => []); }
+async function queueAttempt(a) {
+  try { await trainStore('readwrite', s => s.put({ a, at: Date.now() })); } catch { /* no storage here: sent only now */ }
+  await flushAttempts(a);
+}
+async function attemptPageDeleted(id, pg) {
+  if (!id) return;
+  const dir = attemptDirs.get(id);
+  if (dir) { await trainPost({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {}); return; }
+  if (flushing) { lateDeletes.set(id, [...(lateDeletes.get(id) || []), pg]); return; }  // on its way: told once its folder is known
+  try {
+    const item = await trainStore('readonly', s => s.get(id));
+    if (item) { item.a.deletedPages.push(pg); await trainStore('readwrite', s => s.put(item)); }
+  } catch { /* gone already */ }
+}
+let backendLoad = null;
+async function trainToken() {
+  try {
+    const shared = window.parent !== window && window.parent.__fsBackendLoad;  // the scan window's sign-in, in the frame
+    backendLoad = backendLoad || shared || window.__fsBackendLoad || (window.__fsBackendLoad = new Promise((ok, no) => {
+      const el = document.createElement('script'); el.src = '/firestore-backend.js';
+      el.onload = () => window.initFirestoreBackend().then(ok, no); el.onerror = () => no(new Error('firestore-backend.js'));
+      document.head.appendChild(el);
+    }));
+    return await (await backendLoad).idToken();
+  } catch { backendLoad = null; return null; }
+}
+async function trainPost(body) {
+  const token = await trainToken();
+  if (!token) throw new Error('not signed in');
+  const r = await fetch(TRAIN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => null);
+  if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'HTTP ' + r.status);
+  return j;
+}
+let flushing = null, again = false;
+const lateDeletes = new Map();
+async function flushAttempts() {
+  if (flushing) { again = true; return flushing; }
+  flushing = (async () => {
+    let items = (await queued()).sort((x, y) => x.at - y.at);
+    const old = items.filter((x, i) => Date.now() - x.at > QUEUE_MS || i < items.length - QUEUE_MAX);
+    for (const x of old) await trainStore('readwrite', s => s.delete(x.a.id)).catch(() => {});
+    items = items.filter(x => !old.includes(x));
+    if (items.length && navigator.onLine !== false) {
+      try {
+        const j = await trainPost({ action: 'attempt', attempts: items.map(x => x.a) });
+        for (const [id, dir] of Object.entries(j.dirs || {})) {
+          attemptDirs.set(id, dir);
+          for (const pg of lateDeletes.get(id) || []) void trainPost({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {});
+          lateDeletes.delete(id);
+        }
+        for (const x of items) await trainStore('readwrite', s => s.delete(x.a.id)).catch(() => {});
+        items = [];
+        void trainFigures(true);
+      } catch (e) { log('Training: kept on the phone (' + (e && e.message || e) + ')'); }
+    }
+    showTrain(items.length);
+  })().finally(() => { flushing = null; if (again) { again = false; void flushAttempts(); } });
+  return flushing;
+}
+let newForTraining = null, figuresAt = 0;
+function showTrain(waiting) {
+  const t = [];
+  if (waiting) t.push('In queue: ' + waiting + ' / ' + QUEUE_MAX);
+  if (TRAIN_SOURCE === 'lab' && newForTraining) t.push('New for training: ' + newForTraining.n + ' / ' + newForTraining.at);
+  $('train').textContent = t.join(' · ');
+}
+// the new attempts since the last training (a super-admin's: anyone else is refused, and nothing shows)
+async function trainFigures(now) {
+  if (TRAIN_SOURCE !== 'lab' || (!now && Date.now() - figuresAt < 60e3)) return;
+  figuresAt = Date.now();
+  try { const j = await trainPost({ action: 'stats' }); newForTraining = { n: j.attemptsSince || 0, at: j.attemptsAt || 15 }; } catch { newForTraining = null; }
+  showTrain((await queued()).length);
+}
+window.addEventListener('online', () => { void flushAttempts(); });
+setTimeout(() => { void flushAttempts(); void trainFigures(true); }, 3000);
+
 // The pages on screen are one batch (a shot, or the files of one pick). Looked at — Looks good, or a new
 // shot or pick coming — it folds into a line under them (keepCurrent): a tap on the line unfolds its
 // pages, each with ✕, and Delete removes it. Retake throws the batch away. (In the site's scan window the
@@ -379,6 +492,7 @@ async function doctypeNote(canvas) {
 let batchLabel = 'Camera', picking = false;
 function keptCount(row) { return row.querySelectorAll('.kept-page').length; }
 function keepCurrent(bump = true) {
+  decideAttempts('kept');
   const imgs = $('shot').hidden ? [] : [$('shotImg'), ...$('shotMore').querySelectorAll('img')].filter(i => i.src && i.src.startsWith('data:image/'));
   if (imgs.length) {
     const row = document.createElement('div'); row.className = 'kept';
@@ -391,11 +505,12 @@ function keepCurrent(bump = true) {
     for (const i of imgs) {
       const w = document.createElement('div'); w.className = 'kept-page';
       const im = new Image(); im.src = i.src;
-      const x = document.createElement('button'); x.textContent = '✕'; x.onclick = () => { w.remove(); relabel(); };
+      im.dataset.att = i.dataset.att || ''; im.dataset.pg = i.dataset.pg || '0';
+      const x = document.createElement('button'); x.textContent = '✕'; x.onclick = () => { attemptPageDeleted(im.dataset.att, +im.dataset.pg); w.remove(); relabel(); };
       w.append(im, x); body.append(w);
     }
     open.append(...thumbs, label); open.onclick = () => { body.hidden = !body.hidden; };
-    const del = document.createElement('button'); del.textContent = 'Delete'; del.onclick = () => row.remove();
+    const del = document.createElement('button'); del.textContent = 'Delete'; del.onclick = () => { for (const im of row.querySelectorAll('.kept-page img')) attemptPageDeleted(im.dataset.att, +im.dataset.pg); row.remove(); };
     head.append(open, del); row.append(head, body); $('kept').append(row); relabel();
   }
   if (bump) shotId++;
@@ -429,8 +544,11 @@ async function takeShot() {
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
     put.canvas = oc;
     const url = oc.toDataURL('image/jpeg', 0.9);
-    if (!pageMore) $('shotImg').src = url;
-    else { if (!put.el) { put.el = new Image(); put.el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(put.el); } put.el.src = url; }
+    if (!pageMore) put.el = $('shotImg');
+    else if (!put.el) { put.el = new Image(); put.el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(put.el); }
+    put.el.src = url;
+    if (!put.att) put.att = newAttempt(frame, w, h, shotWhole ? 'pdf' : isVideo ? 'camera' : 'photo');
+    put.att.edgesModel = shotWhole ? null : pts.map(p => p.slice()); put.el.dataset.att = put.att.id; put.el.dataset.pg = '0';
     return true;
   };
   const livePts = lastRes.pts;
@@ -469,6 +587,7 @@ async function takeShot() {
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
     const im = new Image(); im.src = oc.toDataURL('image/jpeg', 0.9); im.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(im);
+    if (put.att) { put.att.edgesMore.push(q.map(p => p.slice())); put.att.pages = found.length; im.dataset.att = put.att.id; im.dataset.pg = String(found.length - 1); }
     $('shot2note').textContent = 'Found ' + found.length + ' documents so far, looking for more…';
   }
   const more = found.length - 1, took = Math.round(performance.now() - s0);
@@ -592,7 +711,7 @@ $('startCam').onclick = async () => {
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
 $('keep').onclick = () => { keepCurrent(); smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } };
-$('retake').onclick = () => { shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+$('retake').onclick = () => { decideAttempts('retaken'); shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
 // The photos on a white page (a form's page, a PDF, a screenshot): every band of rows

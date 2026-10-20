@@ -44,6 +44,12 @@ export function continueLab(discard = false) {
   frame?.contentWindow?.postMessage({ type: 'scan-continue', discard }, location.origin);
 }
 
+/** Pages the user removed from the window: the scanner's training learns they were not wanted (docs/scan-plan.md → S8; scan/embed.js). */
+export function labDeleted(pages: { att?: string; pg?: number }[]) {
+  const list = pages.filter(p => p.att).map(p => ({ att: p.att, pg: p.pg || 0 }));
+  if (list.length) frame?.contentWindow?.postMessage({ type: 'scan-deleted', pages: list }, location.origin);
+}
+
 /** Stops the lab page's camera (the page stays loaded and shown). */
 export function sleepLab() {
   frame?.contentWindow?.postMessage({ type: 'scan-sleep' }, location.origin);
