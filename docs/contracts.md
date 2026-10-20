@@ -95,3 +95,11 @@ Form 101 and the worker's contract are signed **once**, with the same signature 
 ### Tests (D3)
 
 `tests/auth/test_signing.py` (the send refused as a whole without the date right or with pay marks; an own-workers HR; the worker's page by its token, another worker's link sees nothing; the frozen template; one signature; two builds, never again; the date of signing by default; a new send replaces; a deleted template withdraws), `tests/auth/test_core.py` (the new right off in Full access), and the browser checks "signing" (`tests/e2e/main.test.js`: Send to sign with the WhatsApp link, the worker's page — both documents, the end of both, one signature, both PDFs with the same date —, the manager app takes them, a rebuild leaves them, the card's chip; Sign here in person).
+
+## A new signature after a change (D4)
+
+- **At the send** the sign window keeps what the documents print about the worker: `printHash(form101, values, marks, withPay)` (`src/manager/logic/contract-values.ts`) — Form 101's values without the firm's block and the date, and the contract's marks the template prints (`printMarks`), without the firm's marks; the pay marks count only when the sender saw pay (`printPay`, which the server keeps true only for a login that sees pay). The server stores them with the request; taking the signed documents onto the worker copies them (`signedPrint`, `signedPrintPay`, `signedPrintMarks`).
+- **A change** to any of those values (the worker window, a scan, the card) gives the worker the amber notice **Documents changed — needs a new signature** (`signedChanged`, `workerNotices` in `src/manager/page/workers.ts`) on the plate and the card, with **Sign** as its action: the worker card opens with the sign window (`askSign` / `takeSign`, `SignWindow.tsx`). A change to the firm's own details (name, address, phone, deductions file) asks no worker to sign again; the new details go into the next signing.
+- **Until the worker signs**, the old signed documents stay. **When the worker signs**, the new Form 101 and contract replace them and the old ones are deleted — no archive (owner, 2026-10-20; `adoptSigned`, Signing above).
+
+Tests: `tests/auth/test_signing.py` (the hash kept with the send, pay only for a login that sees pay) and the browser check "new signature (D4)".

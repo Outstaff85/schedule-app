@@ -122,7 +122,7 @@ Contracts can be added and changed at any time; whatever goes in, the output alw
 - **The worker's own terms without a new template:** the marks `{{terms_1}}`, `{{terms_2}}`… are filled from the worker's own text fields (for example a special rate, hours, a trial period), typed in the worker window. One template then serves many workers with different terms.
 - **A changed or replaced template** reaches only new signings; signed contracts stay as signed (D3).
 
-## D3 — one signature for both documents — built (2026-10-20)
+## D3 — one signature for both documents — built and merged (2026-10-20)
 
 Built as docs/contracts.md → Signing. A login sees pay when it is the owner or the super-admin, a staff login with Accounting or Edit pay, or an HR with See workers' pay. The status of a send lives in its request (`signRequests`), not on the worker record; the signed documents are put on the worker by the manager app.
 
@@ -148,7 +148,10 @@ Built as docs/contracts.md → Signing. A login sees pay when it is the owner or
   - A later change to a template never touches signed contracts.
 - Scanned paper contracts stay as they are (docs/scan.md → Contracts).
 
-## D4 — data changed → a new signature, the old documents replaced
+## D4 — data changed → a new signature, the old documents replaced — built (2026-10-20)
+
+Built as docs/contracts.md → A new signature after a change.
+
 
 1. A change to a field that Form 101 or the worker's contract prints marks the worker **Documents changed — needs a new signature** (the notice on the plate and the card, with Sign as its action).
 2. Until the worker signs, the old signed documents stay, so the worker is never without signed documents.

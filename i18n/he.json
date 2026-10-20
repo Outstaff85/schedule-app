@@ -1502,5 +1502,7 @@
   "Signed — being saved…": "נחתם — נשמר…",
   "Set the signing date": "קביעת תאריך החתימה",
   "The date printed on Form 101 and the contract; off: the day of signing": "התאריך המודפס בטופס 101 ובחוזה; כבוי: יום החתימה",
-  "Signed": "נחתם"
+  "Signed": "נחתם",
+  "Documents changed": "המסמכים השתנו",
+  "Documents changed — needs a new signature": "המסמכים השתנו — נדרשת חתימה חדשה"
 }

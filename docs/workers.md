@@ -40,6 +40,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `sigFileId`, `sigSavedAt` | the signature, a PNG in Storage, and when it was stored |
 | `assetsFileId` | the old scan sidecar (scan + signature + extra pages in one JSON), read until it is split into `scanPages` (`scripts/migrate/scan_pages.py`); gone once the worker's pages are saved again |
 | `contractCategory`, `contractTemplateId`, `contractTerms` | the contract's category, a template picked for this worker alone (empty: the category's default), the worker's own terms for `{{terms_1}}`…`{{terms_5}}` (empty ones at the end dropped) — [contracts.md](contracts.md) → The worker's contract |
+| `signedPrint`, `signedPrintPay`, `signedPrintMarks` | what the signed documents printed about the worker (a hash), for the notice Documents changed — needs a new signature ([contracts.md](contracts.md) → A new signature after a change) |
 | `signedAt`, `signDate`, `signedRequestId` | the last signing of Form 101 and the contract: when (server time), the date printed, its request; the signed contract is a `docs` entry with `signed: true` ([contracts.md](contracts.md) → Signing) |
 | `assetsMigratedFrom` | the sidecar a worker's pages were split from, until the migration's cleanup deletes it |
 | `docHasSignature`, `docExtraPages` | written by `aiFillForm101()` on each successful save |

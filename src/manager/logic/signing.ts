@@ -14,7 +14,7 @@ import { SIGN_FN_URL } from './functions';
 export type SignRequest = {
   id: string; workerId: string; status: 'sent' | 'signing' | 'signed' | 'replaced' | 'withdrawn'; way?: string;
   templateId?: string; templateName?: string; templateVersion?: number; signDate?: string | null; dateFixed?: boolean;
-  sentAt?: string; signedAt?: string; sigPath?: string; appliedAt?: string;
+  sentAt?: string; signedAt?: string; sigPath?: string; appliedAt?: string; printHash?: string; printPay?: boolean; printMarks?: string[];
   parts?: Record<'form101' | 'contract', { path: string; name: string; size: number }>;
 };
 
@@ -81,7 +81,7 @@ async function adoptSigned(): Promise<void> {
       }];
       w.signedAt = r.signedAt || now; w.signDate = r.signDate || ''; w.signedRequestId = r.id;
       if (r.sigPath) { w.sigFileId = r.sigPath; w.sigSavedAt = w.signedAt; }
-      delete w.signChanged;
+      w.signedPrint = r.printHash || ''; w.signedPrintPay = !!r.printPay; w.signedPrintMarks = r.printMarks || [];
       // the replaced signed documents go (the new ones are on the worker now)
       if (old101 && old101 !== w.docFileId) gsDeleteWorkerDoc(old101);
       oldSigned.forEach((d: Rec) => d.fileId && d.fileId !== r.parts!.contract.path && gsDeleteWorkerDoc(d.fileId));

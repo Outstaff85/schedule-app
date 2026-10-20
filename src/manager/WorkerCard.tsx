@@ -22,7 +22,7 @@ import { NewBadge } from '@/components/shared/new-badge';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
-import { SignWindow } from './SignWindow';
+import { SignWindow, takeSign } from './SignWindow';
 import { HoursStatusChip, NoticeChipsAll, WorkerHeadLine } from './worker-head';
 import { INCOME_LABELS, OTHER_INCOME_LABELS, WORKER_DOC_TYPES, fmtDMY, missingScanKeys, recordScanValues, scanLabel, workerAddress, workerDocId, workerHasScan } from './worker';
 import { hoursShort } from './today';
@@ -165,7 +165,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
   const setPane = (p: Pane) => { lastPane = { wid: w.id, pane: p }; setPaneState(p); };
   React.useEffect(() => { lastPane = { wid: w.id, pane }; }, [w.id, pane]);
   const press = React.useRef(0);
-  const [signing, setSigning] = React.useState(false);
+  const [signing, setSigning] = React.useState(() => takeSign(w.id));
   const req = api.signRequest(w.id);
 
   const status = w.status || 'active';

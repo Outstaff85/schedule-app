@@ -150,3 +150,13 @@ def test_rights_rules():
     assert signing.may_see_pay(OWNER) and not signing.may_see_pay(STAFF_NO_PAY) and signing.may_see_pay(STAFF_DATE) and signing.may_see_pay(HR_OWN)
     assert signing.may_set_date(OWNER) and signing.may_set_date(STAFF_DATE) and not signing.may_set_date(HR_OWN)
     assert signing.run(Db(), Bucket(), {"role": "supplier", "tenantId": "t1"}, {"action": "list"}, build101) == {"error": signing.E_NO_RIGHT}
+
+
+def test_the_print_hash_is_kept_with_the_send():
+    db, bucket, t = _setup()
+    r = _send(db, bucket, STAFF_NO_PAY, t, printHash="abc123", printPay=True)
+    req = db.data[("tenants", "t1", "signRequests", r["id"])]
+    # a login that doesn't see pay never marks the hash as with pay
+    assert req["printHash"] == "abc123" and req["printPay"] is False and "full_name" in req["printMarks"]
+    lst = signing.run(db, bucket, OWNER, {"action": "list"}, build101)["requests"]
+    assert lst[0]["printHash"] == "abc123" and lst[0]["printMarks"] == req["printMarks"]

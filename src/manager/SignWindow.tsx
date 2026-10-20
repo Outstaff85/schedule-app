@@ -18,6 +18,12 @@ import type { PdfDoc } from '@/components/shared/pdf-pages';
 import type { ManagerBridge, SignContext } from './bridge';
 import { defaultFor, listTemplates, type ContractTemplate } from './contracts';
 import { rememberRequest, signCall, type SignRequest } from './logic/signing';
+import { printHash } from './logic/contract-values';
+
+// A notice's Sign (D4): the worker card opens with this window.
+let pending: string | null = null;
+export function askSign(workerId: string): void { pending = workerId; }
+export function takeSign(workerId: string): boolean { if (pending !== workerId) return false; pending = null; return true; }
 
 const ymdToDmy = (s: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
 
@@ -56,7 +62,8 @@ export function SignWindow({ workerId, api, onClose }: { workerId: string; api: 
     setBusy(true); setErr('');
     try {
       const r = await signCall<{ id: string; request: SignRequest }>({ action: 'send', workerId, templateId: tid, way,
-        values: ctx.values, form101: ctx.form101, ...(date ? { signDate: ymdToDmy(date) } : {}) });
+        values: ctx.values, form101: ctx.form101, ...(date ? { signDate: ymdToDmy(date) } : {}),
+        printHash: printHash(ctx.form101, ctx.values, list?.find(t => t.id === tid)?.marks || null, ctx.canSeePay), printPay: ctx.canSeePay });
       rememberRequest({ ...r.request, id: r.id });
       if (way === 'remote') { setSent({ ...r.request, id: r.id }); return; }
       // in person: both documents filled, on this phone

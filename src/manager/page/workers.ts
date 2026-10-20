@@ -11,6 +11,10 @@ import { getPunchLog } from '../data/punches';
 import { DOC_STORE, WORKER_DOC_TYPES, isActiveWorker, workerDocStatus, workerExpiryStatus } from '../logic/workers';
 import { shiftOn } from '../logic/schedule';
 import { loadSignRequests } from '../logic/signing';
+import { contractValues, printHash } from '../logic/contract-values';
+import { form101Payload } from '../logic/form101';
+import { activeTenantProfile } from '../logic/admin';
+import { askSign } from '../SignWindow';
 import { loadXlsx, toMins } from '../logic/util';
 import { hasPermission } from '../logic/access';
 import { tr } from '../logic/i18n';
@@ -57,6 +61,14 @@ export function workerSiteName(w?: any){ const c=(w.clientIds||[]).map((id?: any
 // documents, the contract ending, no punch on today's shift. Each has a short
 // word (its chip), a title and a detail line (the notices sheet) and, with the
 // rights for it, the action that fixes it.
+/** The worker signed documents and what they print about the worker has changed since (docs/contracts.md → A new signature). */
+export function signedChanged(w?: any): boolean {
+  if(!w||!w.signedAt||!w.signedPrint) return false;
+  const profile=activeTenantProfile();
+  const f=form101Payload(w,w.docType!=='passport',profile);
+  const v=contractValues(w,{profile,clients,suppliers,seePay:!!w.signedPrintPay});
+  return printHash(f,v,w.signedPrintMarks||null,!!w.signedPrintPay)!==w.signedPrint;
+}
 export function workerNotices(w?: any, today?: any){
   const out: any=[], st=workerDocStatus(w), id=w.id, can=hasPermission('workers');
   const idx=()=>workers.findIndex((x?: any)=>x.id===id);
@@ -72,6 +84,9 @@ export function workerNotices(w?: any, today?: any){
   st.docExpiries.forEach((x?: any)=>{ const bad=x.level==='error', label=tr(WORKER_DOC_TYPES[x.doc.type]||'Document');
     out.push({lvl:bad?'red':'amber', icon:'ti-id-badge-2', word:bad?tr('{0} expired',{0:label}):tr('{0} {n}d',{0:label,n:days(x.date)}), title:label, detail:x.text, act:renew}); });
   if(st.missing.length) out.push({lvl:'amber', icon:'ti-file-alert', word:tr('Documents'), title:tr('Missing documents'), detail:st.missing.join(', '), act:rescan});
+  // D4: what the signed documents print about the worker changed — a new signature (the old documents stay until then)
+  if(signedChanged(w)) out.push({lvl:'amber', icon:'ti-signature', word:tr('Documents changed'), title:tr('Documents changed — needs a new signature'),
+    detail:tr('Signed {0}',{0:w.signDate||''}), act:can?{label:tr('Sign'), icon:'ti-signature', fn:go(()=>{ askSign(id); openWorkerCard(idx()); })}:null});
   const ex=workerExpiryStatus(w);
   if(ex) out.push({lvl:ex.level==='overdue'?'red':'amber', icon:'ti-file-certificate', word:tr('Contract'), title:ex.level==='overdue'?tr('Contract ended'):tr('Contract ending'), detail:ex.deadline.toLocaleDateString('en-GB'),
     act:can?{label:tr('Extend'), icon:'ti-calendar-plus', fn:go(()=>openEditWorker(idx()))}:null});
