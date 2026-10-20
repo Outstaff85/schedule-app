@@ -75,7 +75,12 @@ Contracts can be added and changed at any time; whatever goes in, the output alw
     - The manager sees **Sent to sign** on the worker until it is signed, then **Signed** with the date.
     - The link is the worker's own (`punchToken`); the server checks it, and the page gets only this worker's own documents.
 - **Both documents on screen, both ways:** Form 101 and the contract, filled with this worker's data, one after the other, to scroll through. The worker must see what they sign, and the signature is open only after scrolling to the end of both.
-- **One signature** at the bottom (the shared `SignaturePad`). The date is today's by default and can be changed with a date picker next to it (owner, 2026-10-20); the chosen date is the one printed in both documents. The moment of signing is also kept in the record (`signedAt`, the server's time), apart from the printed date.
+- **One signature** at the bottom (the shared `SignaturePad`). The moment of signing is kept in the record (`signedAt`, the server's time), apart from the printed date.
+- **The signing date** (owner, 2026-10-20) is printed in both documents:
+  - **By default** it is the day of signing.
+  - **Set by a login with the right** "Set the signing date": a super-admin, the firm's admin, or a login whose template has the tick. In the worker window, before Send to sign or signing in person, they pick the date; it goes to the worker with the documents.
+  - **The worker never changes it:** in the worker's page the date is shown, fixed, next to the signature.
+  - **The right:** `setSignDate`, a new tick in the shared permission templates, in the **Actions** group next to Edit workers (`RIGHT_ACTIONS`, `src/manager/templates.ts`; docs/permissions-plan.md), off by default. The server checks it too: a date sent by a login without it is ignored and the day of signing is printed.
 - **The same signature and date go into both PDFs.** The two are built on the server in parallel (two calls at once; the function declared `cpu=1`, `concurrency=20`), in the background: the save does not wait.
 - The signed PDFs are stored in the worker's documents: Form 101, and `contract` with the template's name and version.
 - They are **never rebuilt** afterwards.
