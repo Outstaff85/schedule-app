@@ -116,6 +116,15 @@ Replaces Haiku's page kind and upright turn (`aiDetectAlign`) with the firm's ow
 
 Every attempt made by anyone who scans becomes a training example with no extra step (owner, 2026-10-20: everyone who works sends data for training). This covers every login of every firm in the site's scanner (`/scan/`, the scan window) and the super-admin in the lab (`/scan-lab/`). The models learn from real work on real phones.
 
+- **The lab and the site are one scanner** (owner, 2026-10-20): the site's scanner (`scan/`) is the lab's page copied as it is, so the sending, the queue, the corner editor and the readouts are the same code in both. Only `source` (`lab` / `site`) tells them apart. Most attempts come from the site, because the firms' users scan there every day.
+- **The order of a release** (unchanged):
+  1. The lab tries the new code or model version (the super-admin, on the phone).
+  2. The owner approves it.
+  3. It is copied into `scan/` (code) or set in `scripts/scan/models-version` (models).
+  4. On the next deploy the site's scanner is the same as the lab's again.
+
+  The site never runs anything the lab has not run first.
+
 - **What is an attempt:** every camera shot and every page of a picked photo or PDF. For each one the scanner keeps:
   - the picture, at most 1600 px on the long side, JPEG;
   - the models' corners, the model version (`models-version`) and the way it ran (GPU / pool / CPU);
