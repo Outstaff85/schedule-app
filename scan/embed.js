@@ -54,8 +54,7 @@
   });
   const shot = window.showShot;
   window.showShot = async () => { const key = 's' + (++shots); await shot(); if (!fileKey) await send(key); };
-  for (const id of ['file', 'file2']) {  // Photos… and Files (PDF)…
-    const pick = $(id).onchange;
-    $(id).onchange = async e => { fileKey = 'f' + (++files); sent = 0; part = 0; try { await pick(e); } finally { await sendNew(); fileKey = null; } };
-  }
+  // a pick adds to the pages already on screen: only the ones after them are new
+  const pick = $('file').onchange;
+  $('file').onchange = async e => { fileKey = 'f' + (++files); sent = shown().length; part = 0; try { await pick(e); } finally { await sendNew(); fileKey = null; } };
 })();

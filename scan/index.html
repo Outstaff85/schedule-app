@@ -50,8 +50,7 @@
 </div>
 <div class="row">
   <button class="primary" id="startCam">Start camera</button>
-  <label class="btn">Photos… <input id="file" type="file" accept="image/*" multiple hidden></label>
-  <label class="btn">Files (PDF)… <input id="file2" type="file" multiple hidden></label>
+  <label class="btn">Photos or PDF… <input id="file" type="file" multiple hidden></label>
   <button id="snap">Capture</button>
   <button id="stop">Stop</button>
   <label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="useWorker" checked> Background thread</label>
@@ -395,6 +394,7 @@ async function takeShot() {
     return true;
   };
   const livePts = lastRes.pts;
+  if (!pageMore) { $('shotMore').textContent = ''; $('shot2note').textContent = ''; }  // a camera shot starts its own list
   if (!(await put(livePts))) return;
   const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
   const kn = await doctypeNote(put.canvas);
@@ -674,13 +674,14 @@ async function pickPicture(url, before, pdfPage) {
   }
   return pages;
 }
-// Photos… (the gallery) and Files (PDF)… (any file: the phone's file chooser, where PDFs are — a picker
-// that takes images opens only the gallery on Android) share one handler.
-$('file').onchange = $('file2').onchange = async e => {
+// Photos or PDF…: no file type set, so the phone opens its file chooser, where photos and PDFs are side by
+// side (a picker that takes only images opens only the gallery on Android). Each pick adds its pages to the
+// list on screen (Retake clears it), so photos and then PDFs from another folder go in one after the other.
+$('file').onchange = async e => {
   const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
   running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
-  shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = '';
-  let pages = 0, pictures = 0;
+  shotId++;
+  let pages = $('shot').hidden ? 0 : 1 + $('shotMore').querySelectorAll('img').length;
   try {
     for await (const [url, tag, pdfPage] of pickedPictures(files)) {
       $('status').textContent = 'Working on ' + tag + '…';
@@ -694,14 +695,13 @@ $('file').onchange = $('file2').onchange = async e => {
         if (!shot) $('shot').hidden = true;
         await ensureSession(); pages = await pickPicture(url, pages, pdfPage);
       }
-      pictures++;
       window.dispatchEvent(new Event('lab-picked'));
     }
   } catch (err) { log('Picked file: ' + (err && err.message || err)); $('hint').textContent = 'A file could not be opened — see the log'; }
   // every page on the list (the other documents found on a photo too)
   const total = $('shot').hidden ? 0 : 1 + $('shotMore').querySelectorAll('img').length;
-  $('status').textContent = total + ' page(s) from ' + files.length + ' file(s)';
-  if (pictures > 1 || total > 1) $('shot2note').textContent = total + ' page(s) from ' + files.length + ' file(s):';
+  $('status').textContent = total + ' page(s) on the list (' + files.length + ' file(s) added)';
+  if (total > 1) $('shot2note').textContent = total + ' page(s) on the list:';
 };
 // Switching the model, GPU / CPU or the thread: nothing of the old way stays on screen —
 // no frame, no figures — and the frame and its following start again on the new way.
