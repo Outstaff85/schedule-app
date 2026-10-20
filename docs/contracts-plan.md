@@ -45,8 +45,14 @@ The owner's scheme:
 
 ## D3 — one signature for both documents
 
-- In the worker window: **Documents to sign** → pick the contract template (the firm's default is chosen first).
-- **Both documents on screen:** Form 101 and the contract, filled with this worker's data, one after the other, to scroll through. The worker must see what they sign.
+- In the worker window: **Documents to sign** → pick the contract template (the firm's default is chosen first). Then one of two ways:
+  - **In person:** the worker signs on the manager's phone.
+  - **At home, in the worker's own page** (owner, 2026-10-20): **Send to sign** puts the documents in the worker's page (the punch page, `/punch`, the worker's own link) and offers the link for WhatsApp.
+    - The page shows **Documents to sign** at the top; the worker opens them and signs there.
+    - The signatures and dates stay there: after signing, the page keeps showing the signed Form 101 and contract to read and download, so the worker always sees what they signed.
+    - The manager sees **Sent to sign** on the worker until it is signed, then **Signed** with the date.
+    - The link is the worker's own (`punchToken`); the server checks it, and the page gets only this worker's own documents.
+- **Both documents on screen, both ways:** Form 101 and the contract, filled with this worker's data, one after the other, to scroll through. The worker must see what they sign, and the signature is open only after scrolling to the end of both.
 - **One signature** at the bottom (the shared `SignaturePad`); the date is set by itself.
 - **The same signature and date go into both PDFs.** The two are built on the server in parallel (two calls at once; the function declared `cpu=1`, `concurrency=20`), in the background: the save does not wait.
 - The signed PDFs are stored in the worker's documents: Form 101, and `contract` with the template's name and version.
