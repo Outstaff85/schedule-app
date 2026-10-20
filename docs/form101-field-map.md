@@ -136,6 +136,8 @@ The section ט table of other employers has no fields and is left as printed.
 
 ## Re-checking the template
 
+The fields' font is the PDF's own Helvetica (`/Helv`), with no font file in the template ([form101.md](form101.md) → Building the PDF). A new template saved from an editor that names an embedded font in its fields (Calibri, Arial…) is set back to `/Helv` the same way before it is committed.
+
 When `form101_fillable.pdf` is replaced, dump its fields and compare them with this file:
 
 ```
