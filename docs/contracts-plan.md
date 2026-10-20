@@ -4,7 +4,7 @@
 
 The owner's scheme:
 - The Form 101 template never changes.
-- The firm's contract is uploaded as a PDF template. The owner writes it in Word and saves it as PDF there, so the site takes PDF only and needs no Word converter (owner, 2026-10-20).
+- The firm's contract is uploaded as a PDF template. The owner writes it in Word and saves it as PDF there, and a `.docx` can be uploaded directly too (D7, owner, 2026-10-20).
 - The worker sees both documents filled with their data and signs **once**. The same signature and date go into both.
 - Everything is kept under the worker.
 - When the worker's data changes, the worker signs again, and the new documents replace the old ones.
@@ -46,7 +46,7 @@ The owner's scheme:
   The admin sees the sample PDF of the light one with both sizes ("2.4 MB → 180 KB") and saves it; only the light one is stored, and the original is dropped. If the check fails, the upload says why, and nothing is stored.
   - **Heavy templates go to Admin → Errors** (owner, 2026-10-20), with no warning at upload. A template still over 1 MB after it was made light, or one whose making light failed its check, writes an entry there: the firm, the template's name, both sizes and the reason (whole fonts, big pictures, pages that are pictures). The super-admin sees it and fixes the template when needed.
   - **A page that is only a picture** (a scan, Print to PDF) goes through the same making light (owner, 2026-10-20): its picture is straightened and cut by the scanner's own way when it is a photo, then shrunk to 200 dpi, JPEG (a scanned A4 page ~200–300 KB). It has no text to find marks in, so its marks are **placed by hand**: the upload shows the page, and the admin taps where each value goes and picks the mark (`{{given}}`, `{{signature}}`…), with its width. The places are stored with the template and filled exactly like found marks. A text page can use the same placing too, for a mark the search missed.
-  - A Word file (`.docx`) is not taken: it is saved as PDF in Word first (D6 dropped).
+  - A Word file (`.docx`) is taken too (D7): it is turned into a PDF on upload, then goes the same way. Saving it as PDF in Word first still works and needs no converter.
 - **Templates:** several per firm, in Admin; a firm sees only its own.
 - **On upload:** the site lists the marks it found and the unknown ones, and shows a sample PDF filled with made-up data.
 - **The first marks:**
@@ -80,7 +80,7 @@ Contracts can be added and changed at any time; whatever goes in, the output alw
   - **By default** it is the day of signing.
   - **Set by a login with the right** "Set the signing date": a super-admin, the firm's admin, or a login whose template has the tick. In the worker window, before Send to sign or signing in person, they pick the date; it goes to the worker with the documents.
   - **The worker never changes it:** in the worker's page the date is shown, fixed, next to the signature.
-  - **The right:** `setSignDate`, a new tick in the shared permission templates, in the **Actions** group next to Edit workers (`RIGHT_ACTIONS`, `src/manager/templates.ts`; docs/permissions-plan.md), off by default. The server checks it too: a date sent by a login without it is ignored and the day of signing is printed.
+  - **The right:** `setSignDate`, a new tick in the shared permission templates, in the **Actions** group next to Edit workers (`RIGHT_ACTIONS`, `src/manager/templates.ts`; docs/permissions-plan.md), off by default. The server checks it too: a send carrying a date from a login without the right is refused as a whole — nothing reaches the worker, and the sender sees why; the documents are sent again (without a date, or by a login with the right).
 - **The same signature and date go into both PDFs.** The two are built on the server in parallel (two calls at once; the function declared `cpu=1`, `concurrency=20`), in the background: the save does not wait.
 - The signed PDFs are stored in the worker's documents: Form 101, and `contract` with the template's name and version.
 - They are **never rebuilt** afterwards.
@@ -130,8 +130,14 @@ The owner's rule: when a worker moves to another firm, everything under the old 
 
 - The firms stay apart. Only the server copies, only after the worker's own signed approval, and each copy is logged (who, when, from which firm to which).
 
+## D7 — Word templates taken directly (owner, 2026-10-20)
+
+- A `.docx` with the same marks can be uploaded as it is, as well as a PDF.
+- On upload only, it is turned into a PDF by LibreOffice (headless, Hebrew right to left) in a small Cloud Run service. The call carries the user's ID token and the firm is checked. Its first start after idle takes ~5–10 s, once per upload.
+- From then on it is a PDF template: made light, its marks found (D2). The `.docx` is not kept. The signing never waits for LibreOffice.
+
 ## Order
 
-D1 → D2 → D3 → D4 → D5 → D6.
+D1 → D2 → D3 → D4 → D5 → D6 → D7.
 
 Each stage brings its own docs (docs/form101.md, docs/workers.md and a new docs/contracts.md), browser checks and Hebrew dictionary entries.
