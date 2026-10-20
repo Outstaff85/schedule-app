@@ -10,6 +10,12 @@ The owner's scheme:
 - When the worker's data changes, the worker signs again, and the new documents replace the old ones.
 - On request, everything is joined into one PDF.
 
+## D0 — lighter PDFs — built (2026-10-20), on the work branch, not merged yet
+
+- Form 101's template without the whole Calibri: a filled form with three scans 822 → 247 KB, the same to the pixel (docs/form101.md → Building the PDF).
+- A scanned contract's pages scaled down to A4 at 200 dpi: ~15 → ~2 MB for 8 camera pages (docs/scan.md → Contracts).
+- Tests green (Tests run on the branch). Merged with the plan when the owner says so.
+
 ## What is kept, and how
 
 | What | Kept as | Where |
