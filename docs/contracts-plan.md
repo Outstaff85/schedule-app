@@ -60,19 +60,20 @@ The owner's scheme:
 2. Until the worker signs, the old signed documents stay, so the worker is never without signed documents.
 3. When the worker signs, the new Form 101 and contract are stored and the old ones are deleted.
 
-- **A change to the firm's own details** (name, address, phone, deductions file) does not ask every worker to sign again. The new details go into the next signing. To confirm with the owner.
+- **A change to the firm's own details** (name, address, phone, deductions file) does not ask every worker to sign again. The new details go into the next signing (owner, 2026-10-20).
 - **Before deleting old Forms 101:** check with the firm's accountant whether old forms must be kept for some years. If so, the old ones go to a hidden archive instead of being deleted.
 
 ## D5 — "Download data" on the worker card
 
 - One PDF, put together on request, in this order:
-  1. Form 101;
-  2. the contract;
-  3. the ID card or passport;
-  4. the ספח;
-  5. the other documents.
+  1. a summary of the worker's data (owner, 2026-10-20): names, ID or passport number and its expiry, birth date, phone, address, start date, clients or site, supplier, the signing date, and the list of the documents that follow;
+  2. Form 101;
+  3. the contract;
+  4. the ID card or passport;
+  5. the ספח;
+  6. the other documents.
 - Built from the stored signed PDFs and the JPEG pages. The joined file is not stored.
-- A first page with a summary of the worker's data is optional (the owner decides).
+- The summary never shows pay or rates unless the login may see pay. Its labels are Hebrew, as Form 101's.
 
 ## D6 — Word templates
 
