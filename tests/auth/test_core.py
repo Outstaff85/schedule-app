@@ -64,15 +64,25 @@ def seed_legacy(uid, username, password, **user):
     })
 
 
+STAFF1_RIGHTS = ["today", "schedule", "workers", "punchlog", "editSchedule", "editWorkers", "editPunches"]
+SUP1_RIGHTS = ["today", "workers", "commission", "hours", "approveHours", "disputeHours", "fixHours", "seePay"]
+
+
+def tpl_rights(tid):
+    return DB.collection("permTemplates").document(tid).get().to_dict()["rights"]
+
+
 @pytest.fixture(autouse=True)
 def fresh():
     _clear()
     DB.collection("tenants").document(T1).set({"companyName": "Firm One", "phone": "0501234567", "deductionsFileNumber": "012345678"})
-    seed_legacy("u-admin1", "owner1", "owner-pass-1", role="tenant", tenantId=T1, permissions="*")
-    seed_legacy("u-admin2", "owner2", "owner-pass-2", role="tenant_admin", tenantId=T2, permissions="*")
-    seed_legacy("u-staff1", "staff1", "staff-pass-1", role="staff", tenantId=T1, permissions=["schedule", "workers"])
-    seed_legacy("u-sup1", "sup1", "sup-pass-11", role="supplier", tenantId=T1, permissions="", supplierId="s-1")
-    seed_legacy("u-super", "boss", "boss-pass-1", role="superadmin", tenantId=None, permissions="*")
+    seed_legacy("u-admin1", "owner1", "owner-pass-1", role="tenant", tenantId=T1)
+    seed_legacy("u-admin2", "owner2", "owner-pass-2", role="tenant_admin", tenantId=T2)
+    seed_legacy("u-staff1", "staff1", "staff-pass-1", role="staff", tenantId=T1, rights=STAFF1_RIGHTS)
+    seed_legacy("u-sup1", "sup1", "sup-pass-11", role="supplier", tenantId=T1, supplierId="s-1", rights=SUP1_RIGHTS)
+    seed_legacy("u-super", "boss", "boss-pass-1", role="superadmin", tenantId=None)
+    core._seed_templates(DB)  # full, dispatcher, accountant, hr, supplier, client
+    core._converted = True  # the old rights fields' conversion has its own test
     yield
 
 
@@ -98,7 +108,7 @@ SUPER = {"uid": "u-super", "role": "superadmin"}
 def test_legacy_password_logs_in_and_is_upgraded():
     r = core.login(DB, "  Owner1 ", "owner-pass-1", mint)
     assert r["ok"] and r["role"] == "tenant_admin" and r["tenantId"] == T1 and r["username"] == "owner1"
-    assert r["permissions"] == "*"
+    assert r["rights"] is None and "permissions" not in r
     # Leading zeros intact: Firestore keeps strings as strings.
     assert r["tenantProfile"]["phone"] == "0501234567"
     assert r["tenantProfile"]["deductionsFileNumber"] == "012345678"
@@ -148,13 +158,14 @@ def test_lockout_after_five_wrong_passwords():
 def test_claims_reach_the_id_token():
     staff = id_token_claims(core.login(DB, "staff1", "staff-pass-1", mint)["token"])
     assert staff["uid"] == "u-staff1" and staff["role"] == "staff"
-    assert staff["tenantId"] == T1 and staff["perms"] == ["schedule", "workers"]
+    assert staff["tenantId"] == T1 and staff["rt"] == STAFF1_RIGHTS
+    assert not {"perms", "ed", "hp", "ss", "pay", "r"} & set(staff)
 
     owner = id_token_claims(core.login(DB, "owner1", "owner-pass-1", mint)["token"])
-    assert owner["role"] == "tenant_admin" and owner["perms"] == ["*"]
+    assert owner["role"] == "tenant_admin" and "rt" not in owner
 
     sup = id_token_claims(core.login(DB, "sup1", "sup-pass-11", mint)["token"])
-    assert sup["role"] == "supplier" and sup["supplierId"] == "s-1" and sup["perms"] == []
+    assert sup["role"] == "supplier" and sup["supplierId"] == "s-1" and sup["rt"] == SUP1_RIGHTS
 
     boss_login = core.login(DB, "boss", "boss-pass-1", mint)
     boss = id_token_claims(boss_login["token"])
@@ -175,30 +186,33 @@ def test_list_users_is_scoped_and_hides_secrets():
 
 def test_create_tenant_user():
     # A tenant_admin always creates in its own firm, whatever tenantId it sends.
-    r = core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "New.Staff", "password": "new-pass-1",
-                                             "permissions": ["accounting"], "tenantId": T2})
+    # The template says the role and the rights, whatever the body sends.
+    r = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "New.Staff", "password": "new-pass-1", "templateId": "accountant",
+                                             "permissions": ["schedule"], "rights": ["schedule"], "tenantId": T2})
     assert r["ok"]
     u = DB.collection("users").document(r["userId"]).get().to_dict()
-    assert u["tenantId"] == T1 and u["username"] == "new.staff" and u["permissions"] == ["accounting"]
-    assert id_token_claims(core.login(DB, "new.staff", "new-pass-1", mint)["token"])["perms"] == ["accounting"]
+    assert u["tenantId"] == T1 and u["username"] == "new.staff" and u["role"] == "staff" and u["templateId"] == "accountant"
+    assert u["rights"] == tpl_rights("accountant") and not set(core.OLD_RIGHT_FIELDS) & set(u)
+    assert id_token_claims(core.login(DB, "new.staff", "new-pass-1", mint)["token"])["rt"] == tpl_rights("accountant")
 
-    assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "new.staff", "password": "other-pass-1"})["error"] == core.E_TAKEN
-    assert core.create_tenant_user(DB, ADMIN1, {"role": "tenant_admin", "username": "x1", "password": "xxxxxxxx1"})["error"].startswith("The role")
-    assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "x2", "password": "short"})["error"] == core.E_SHORT_PW
-    assert "supplier" in core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "x3", "password": "xxxxxxxx1"})["error"]
-    assert core.create_tenant_user(DB, STAFF1, {"role": "staff", "username": "x4", "password": "xxxxxxxx1"})["error"] == core.E_NO_RIGHTS
+    assert core.create_tenant_user(DB, ADMIN1, {"templateId": "full", "username": "new.staff", "password": "other-pass-1"})["error"] == core.E_TAKEN
+    assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "x1", "password": "xxxxxxxx1"})["error"] == core.E_PICK_TEMPLATE
+    assert core.create_tenant_user(DB, ADMIN1, {"templateId": "nope", "username": "x1", "password": "xxxxxxxx1"})["error"] == core.E_TEMPLATE_NOT_FOUND
+    assert core.create_tenant_user(DB, ADMIN1, {"templateId": "full", "username": "x2", "password": "short"})["error"] == core.E_SHORT_PW
+    assert "supplier" in core.create_tenant_user(DB, ADMIN1, {"templateId": "supplier", "username": "x3", "password": "xxxxxxxx1"})["error"]
+    assert core.create_tenant_user(DB, STAFF1, {"templateId": "full", "username": "x4", "password": "xxxxxxxx1"})["error"] == core.E_NO_RIGHTS
     # A superadmin may target any firm.
-    r2 = core.create_tenant_user(DB, SUPER, {"role": "supplier", "username": "sup2", "password": "sup-pass-22",
+    r2 = core.create_tenant_user(DB, SUPER, {"templateId": "supplier", "username": "sup2", "password": "sup-pass-22",
                                              "supplierId": "s-9", "tenantId": T2})
     u2 = DB.collection("users").document(r2["userId"]).get().to_dict()
-    assert u2["tenantId"] == T2 and u2["supplierId"] == "s-9" and u2["permissions"] == ""
+    assert u2["tenantId"] == T2 and u2["supplierId"] == "s-9" and u2["rights"] == tpl_rights("supplier")
 
 
 def test_update_user_and_revoke():
     rv = Revokes()
-    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "permissions": ["schedule"], "active": False}, rv)["ok"]
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "rights": ["schedule"], "active": False}, rv)["ok"]
     u = DB.collection("users").document("u-staff1").get().to_dict()
-    assert u["permissions"] == ["schedule"] and u["active"] is False
+    assert u["rights"] == STAFF1_RIGHTS and u["active"] is False  # rights come only from a template
     assert rv == [("u-staff1", False)]
     assert "your own firm" in core.update_user(DB, ADMIN2, {"id": "u-staff1", "active": True}, rv)["error"]
     assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "active": False}, rv)["error"] == core.E_ADMIN_TARGET
@@ -224,7 +238,7 @@ def test_delete_user_frees_the_username():
     assert rv == [("u-staff1", True)]
     assert not DB.collection("authSecrets").document("u-staff1").get().exists
     assert core.login(DB, "staff1", "staff-pass-1", mint)["error"] == core.E_BAD_LOGIN
-    assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "staff1", "password": "again-pass-1"})["ok"]
+    assert core.create_tenant_user(DB, ADMIN1, {"templateId": "full", "username": "staff1", "password": "again-pass-1"})["ok"]
 
 
 def test_create_firm():
@@ -354,7 +368,7 @@ def test_http_superadmin_acts_on_the_viewed_firm():
                                  headers={"Content-Type": "application/json"})
     id_token = json.loads(urllib.request.urlopen(req).read())["idToken"]
     hdr = {"Authorization": "Bearer " + id_token}
-    status, out = _call(main.users_admin, {"action": "createTenantUser", "asTenantId": T2, "role": "staff",
+    status, out = _call(main.users_admin, {"action": "createTenantUser", "asTenantId": T2, "templateId": "full",
                                            "username": "t2staff", "password": "t2-pass-11"}, hdr)
     assert status == 200 and out["ok"]
     assert DB.collection("users").document(out["userId"]).get().get("tenantId") == T2
@@ -375,64 +389,70 @@ def test_http_superadmin_acts_on_the_viewed_firm():
 
 # ── HR logins ────────────────────────────────────────────────────────────────
 
+def _hr_all_template():
+    """An HR template that sees every worker, with Commission and without See pay."""
+    DB.collection("permTemplates").document("hrall").set({"name": "HR all", "role": "hr", "ownOnly": False,
+                                                          "rights": ["workers", "commission", "hours"]})
+    return "hrall"
+
+
 def test_hr_user_create_login_update():
     rv = Revokes()
-    assert "name" in core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hr1", "password": "hr-pass-11"})["error"]
-    r = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "HR1", "password": "hr-pass-11",
+    assert "name" in core.create_tenant_user(DB, ADMIN1, {"templateId": "hr", "username": "hr1", "password": "hr-pass-11"})["error"]
+    r = core.create_tenant_user(DB, ADMIN1, {"templateId": "hr", "username": "HR1", "password": "hr-pass-11",
                                              "fullName": " Dana Levi ", "phone": "050-1112233"})
     assert r["ok"]
     u = DB.collection("users").document(r["userId"]).get().to_dict()
-    # Defaults: only the workers section, only own workers.
-    assert u["role"] == "hr" and u["permissions"] == ["workers"] and u["ownOnly"] is True
+    # The HR template: only own workers.
+    assert u["role"] == "hr" and u["rights"] == tpl_rights("hr") and u["ownOnly"] is True
     assert u["fullName"] == "Dana Levi" and u["phone"] == "050-1112233" and u["tenantId"] == T1
     login = core.login(DB, "hr1", "hr-pass-11", mint)
     assert login["role"] == "hr" and login["ownOnly"] is True and login["fullName"] == "Dana Levi"
     claims = id_token_claims(login["token"])
-    assert claims["role"] == "hr" and claims["perms"] == ["workers"] and claims["own"] is True and claims["tenantId"] == T1
+    assert claims["role"] == "hr" and claims["rt"] == tpl_rights("hr") and claims["own"] is True and claims["tenantId"] == T1
     # Listed with name, phone, ownOnly.
     row = next(x for x in core.list_users(DB, ADMIN1)["users"] if x["username"] == "hr1")
     assert row["fullName"] == "Dana Levi" and row["phone"] == "050-1112233" and row["ownOnly"] is True
-    # Name / phone change needs no new sign-in; rights do.
+    # Name / phone change needs no new sign-in; rights (another template) do.
     assert core.update_user(DB, ADMIN1, {"id": r["userId"], "fullName": "Dana L.", "phone": "1"}, rv)["ok"] and rv == []
     assert "name" in core.update_user(DB, ADMIN1, {"id": r["userId"], "fullName": " "}, rv)["error"]
-    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "ownOnly": False, "permissions": ["workers", "accounting"]}, rv)["ok"]
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "ownOnly": False, "rights": ["workers"]}, rv)["ok"] and rv == []
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "templateId": _hr_all_template()}, rv)["ok"]
     assert rv == [(r["userId"], False)]
     claims = id_token_claims(core.login(DB, "hr1", "hr-pass-11", mint)["token"])
-    assert claims["own"] is False and claims["perms"] == ["workers", "accounting"]
+    assert claims["own"] is False and claims["rt"] == ["workers", "commission", "hours"]
     # Not a firm-admin: can't manage users.
     hr = {"uid": r["userId"], "role": "hr", "tenantId": T1}
     assert core.list_users(DB, hr)["error"] == core.E_NO_RIGHTS
 
 
-def test_hr_and_supplier_see_pay_by_default_and_hr_commission():
+def test_hr_commission_and_see_pay_from_the_template():
     rv = Revokes()
-    r = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hrp", "password": "hr-pass-11",
+    r = core.create_tenant_user(DB, ADMIN1, {"templateId": "hr", "username": "hrp", "password": "hr-pass-11",
                                              "fullName": "Pay HR", "commissionRate": "6.5",
                                              "commissionDayRate": "40"})
     login = core.login(DB, "hrp", "hr-pass-11", mint)
-    assert login["showPay"] is True and login["commissionRate"] == 6.5 and login["commissionDayRate"] == 40
+    assert "seePay" in login["rights"] and login["commissionRate"] == 6.5 and login["commissionDayRate"] == 40
     claims = id_token_claims(login["token"])
-    assert claims["pay"] is True and claims["hrc"] == 6.5 and claims["hrcd"] == 40
+    assert "seePay" in claims["rt"] and claims["hrc"] == 6.5 and claims["hrcd"] == 40
     row = next(x for x in core.list_users(DB, ADMIN1)["users"] if x["username"] == "hrp")
-    assert row["showPay"] is True and row["commissionRate"] == 6.5 and row["commissionDayRate"] == 40
-    # Turning it off or changing the commission is a rights change: a new sign-in.
-    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "showPay": False, "commissionRate": 6.5}, rv)["ok"]
+    assert "seePay" in row["rights"] and row["commissionRate"] == 6.5 and row["commissionDayRate"] == 40
+    # A template without See pay, and the same commission: a new sign-in.
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "templateId": _hr_all_template(), "commissionRate": 6.5}, rv)["ok"]
     assert rv == [(r["userId"], False)]
-    claims = id_token_claims(core.login(DB, "hrp", "hr-pass-11", mint)["token"])
-    assert claims["pay"] is False
+    assert "seePay" not in id_token_claims(core.login(DB, "hrp", "hr-pass-11", mint)["token"])["rt"]
     # The day commission is a rights change too.
     rv.clear()
     assert core.update_user(DB, ADMIN1, {"id": r["userId"], "commissionDayRate": 55}, rv)["ok"]
     assert rv == [(r["userId"], False)]
     assert id_token_claims(core.login(DB, "hrp", "hr-pass-11", mint)["token"])["hrcd"] == 55
-    s = core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "supp", "password": "sup-pass-11",
+    s = core.create_tenant_user(DB, ADMIN1, {"templateId": "supplier", "username": "supp", "password": "sup-pass-11",
                                              "supplierId": "sp1", "commissionRate": 9})
     u = DB.collection("users").document(s["userId"]).get().to_dict()
-    assert u["showPay"] is True and "commissionRate" not in u
-    assert id_token_claims(core.login(DB, "supp", "sup-pass-11", mint)["token"])["pay"] is True
-    # A staff login carries neither.
-    st = core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "stp", "password": "stf-pass-11"})
-    assert "showPay" not in DB.collection("users").document(st["userId"]).get().to_dict()
+    assert "seePay" in u["rights"] and "commissionRate" not in u
+    # A staff login carries no commission.
+    st = core.create_tenant_user(DB, ADMIN1, {"templateId": "full", "username": "stp", "password": "stf-pass-11"})
+    assert "commissionRate" not in DB.collection("users").document(st["userId"]).get().to_dict()
 
 
 def test_check_worker_doc_answers_only_yes_or_no():
@@ -457,8 +477,8 @@ def test_check_worker_doc_answers_only_yes_or_no():
 
 def test_full_name_for_every_role_and_update_my_name():
     owner = {"uid": "u-own", "role": "tenant_admin", "tenantId": "t-n"}
-    seed_legacy("u-own", "ownern", "owner-pass-1", role="tenant_admin", tenantId="t-n", permissions="*")
-    r = core.create_tenant_user(DB, owner, {"role": "staff", "username": "st1", "password": "staff-pass-1",
+    seed_legacy("u-own", "ownern", "owner-pass-1", role="tenant_admin", tenantId="t-n")
+    r = core.create_tenant_user(DB, owner, {"templateId": "full", "username": "st1", "password": "staff-pass-1",
                                             "fullName": "  Dana Staff ", "phone": "050"})
     d = DB.collection("users").document(r["userId"]).get().to_dict()
     assert d["fullName"] == "Dana Staff" and d["phone"] == "050"
@@ -477,38 +497,40 @@ def test_full_name_for_every_role_and_update_my_name():
 
 def test_update_user_revokes_only_on_a_real_rights_change():
     rv = Revokes()
-    cur = DB.collection("users").document("u-staff1").get().to_dict()
-    same = {"id": "u-staff1", "permissions": cur.get("permissions") if isinstance(cur.get("permissions"), list) else "*",
-            "active": True, "fullName": "Staff One", "phone": "050"}
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "templateId": "dispatcher"}, rv)["ok"] and rv == [("u-staff1", False)]
+    rv.clear()
+    same = {"id": "u-staff1", "templateId": "dispatcher", "active": True, "fullName": "Staff One", "phone": "050"}
     assert core.update_user(DB, ADMIN1, same, rv)["ok"]
     d = DB.collection("users").document("u-staff1").get().to_dict()
     assert d["fullName"] == "Staff One" and d["phone"] == "050" and rv == []
-    assert core.update_user(DB, ADMIN1, dict(same, permissions=["accounting"]), rv)["ok"] and rv == [("u-staff1", False)]
+    assert core.update_user(DB, ADMIN1, dict(same, templateId="accountant"), rv)["ok"] and rv == [("u-staff1", False)]
     # owner row: name and phone only, never rights
     assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "fullName": "Owner", "phone": "1"}, rv)["ok"]
     assert DB.collection("users").document("u-admin1").get().to_dict()["fullName"] == "Owner"
     assert core.update_user(DB, SUPER, {"id": "u-admin1", "fullName": "Owner 2"}, rv)["ok"]
-    assert core.update_user(DB, SUPER, {"id": "u-admin1", "permissions": ["workers"]}, rv)["error"] == core.E_ADMIN_TARGET
+    assert core.update_user(DB, SUPER, {"id": "u-admin1", "templateId": "full"}, rv)["error"] == core.E_ADMIN_TARGET
     assert len(rv) == 1
 
 
 def test_update_user_changes_role_between_staff_hr_supplier():
     rv = Revokes()
-    assert "name" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": ""}, rv)["error"]
-    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": "Dana HR", "permissions": ["workers"]}, rv)["ok"]
+    # The role comes only from a template.
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "hr", "fullName": "Dana HR"}, rv)["error"] == core.E_PICK_TEMPLATE
+    assert "name" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "templateId": "hr", "fullName": ""}, rv)["error"]
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "templateId": "hr", "fullName": "Dana HR"}, rv)["ok"]
     d = DB.collection("users").document("u-staff1").get().to_dict()
-    assert d["role"] == "hr" and d["ownOnly"] is True and d["permissions"] == ["workers"] and rv == [("u-staff1", False)]
+    assert d["role"] == "hr" and d["ownOnly"] is True and d["rights"] == tpl_rights("hr") and rv == [("u-staff1", False)]
     assert core.login(DB, "staff1", "staff-pass-1", mint)["role"] == "hr"
-    assert "supplier" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "supplier"}, rv)["error"]
-    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "supplier", "supplierId": "s-9"}, rv)["ok"]
+    assert "supplier" in core.update_user(DB, ADMIN1, {"id": "u-staff1", "templateId": "supplier"}, rv)["error"]
+    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "templateId": "supplier", "supplierId": "s-9"}, rv)["ok"]
     d = DB.collection("users").document("u-staff1").get().to_dict()
-    assert d["role"] == "supplier" and d["supplierId"] == "s-9" and d["permissions"] == ""
+    assert d["role"] == "supplier" and d["supplierId"] == "s-9" and d["rights"] == tpl_rights("supplier")
     assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "role": "tenant_admin"}, rv)["error"]
     assert core.update_user(DB, ADMIN1, {"id": "u-admin1", "role": "staff"}, rv)["error"] == core.E_ADMIN_TARGET
 
 
 def test_update_my_language_follows_the_user_to_login():
-    seed_legacy("u-lang", "langu", "lang-pass-11", role="staff", tenantId="t-l", permissions="*")
+    seed_legacy("u-lang", "langu", "lang-pass-11", role="staff", tenantId="t-l", rights=["today"])
     me = {"uid": "u-lang", "role": "staff", "tenantId": "t-l"}
     assert core.login(DB, "langu", "lang-pass-11", lambda u, c: "tok")["language"] is None  # never picked: the page's default
     assert core.update_my_language(DB, me, {"language": "he"}) == {"ok": True, "language": "he"}
@@ -520,7 +542,7 @@ def test_update_my_language_follows_the_user_to_login():
 
 
 def test_update_my_theme_follows_the_user_to_login():
-    seed_legacy("u-theme", "themeu", "theme-pass-11", role="staff", tenantId="t-l", permissions="*")
+    seed_legacy("u-theme", "themeu", "theme-pass-11", role="staff", tenantId="t-l", rights=["today"])
     me = {"uid": "u-theme", "role": "staff", "tenantId": "t-l"}
     assert core.login(DB, "themeu", "theme-pass-11", lambda u, c: "tok")["theme"] is None  # never picked: the device's (Dark by default)
     assert core.update_my_theme(DB, me, {"theme": "light"}) == {"ok": True, "theme": "light"}
@@ -531,44 +553,23 @@ def test_update_my_theme_follows_the_user_to_login():
     assert DB.collection("users").document("u-theme").get().to_dict()["theme"] == "system"
 
 
-def test_hour_review_ticks_for_client_supplier_and_hr():
-    # A client login needs a client; the hours ticks (hourPerms) are the same list for client, supplier and HR.
-    assert "client" in core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl0", "password": "client-pass-1"})["error"]
-    r = core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "Client.One", "password": "client-pass-1",
-                                             "clientId": "c1", "hourPerms": ["hours", "approve", "workers", "*"]})
+def test_client_login_and_its_rights():
+    # A client login needs a client; its rights (the hours ticks among them) come from its template.
+    assert "client" in core.create_tenant_user(DB, ADMIN1, {"templateId": "client", "username": "cl0", "password": "client-pass-1"})["error"]
+    r = core.create_tenant_user(DB, ADMIN1, {"templateId": "client", "username": "Client.One", "password": "client-pass-1", "clientId": "c1"})
     u = DB.collection("users").document(r["userId"]).get().to_dict()
-    assert u["role"] == "client" and u["clientId"] == "c1" and u["hourPerms"] == ["hours", "approve"] and u["permissions"] == ""
+    assert u["role"] == "client" and u["clientId"] == "c1" and u["rights"] == ["hours", "approveHours", "disputeHours", "fixHours"]
     out = core.login(DB, "client.one", "client-pass-1", mint)
     claims = id_token_claims(out["token"])
-    assert claims["role"] == "client" and claims["clientId"] == "c1" and claims["hp"] == ["hours", "approve"] and claims["perms"] == []
-    assert out["clientId"] == "c1" and out["hourPerms"] == ["hours", "approve"]
-    # Defaults: a client and a supplier made without ticks get HOUR_DEFAULT; an
-    # older login with none stored gets it too; ticks set to none stay none.
-    r2 = core.create_tenant_user(DB, ADMIN1, {"role": "client", "username": "cl2", "password": "client-pass-2", "clientId": "c2"})
-    assert DB.collection("users").document(r2["userId"]).get().to_dict()["hourPerms"] == core.HOUR_DEFAULT
-    r3 = core.create_tenant_user(DB, ADMIN1, {"role": "supplier", "username": "sup9", "password": "sup-pass-99", "supplierId": "s-1"})
-    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == core.HOUR_DEFAULT
-    DB.collection("users").document(r3["userId"]).update({"hourPerms": firestore.DELETE_FIELD})
-    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == core.HOUR_DEFAULT
-    assert core.update_user(DB, ADMIN1, {"id": r3["userId"], "hourPerms": []}, Revokes())["ok"]
-    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == []
+    assert claims["role"] == "client" and claims["clientId"] == "c1" and claims["rt"] == u["rights"]
+    assert out["clientId"] == "c1" and out["rights"] == u["rights"]
+    # Moving to staff (another template) drops the clientId; the list shows each login's rights.
     rv = Revokes()
-    assert core.update_user(DB, ADMIN1, {"id": r3["userId"], "hourPerms": ["hours", "fix"]}, rv)["ok"] and rv
-    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["hp"] == ["hours", "fix"]
-    # A supplier's portal tabs: all by default (claim ss), a chosen set when given.
-    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["ss"] == list(core.SUPPLIER_SECTIONS)
-    assert core.update_user(DB, ADMIN1, {"id": r3["userId"], "supplierSections": ["dashboard", "bogus"]}, Revokes())["ok"]
-    assert id_token_claims(core.login(DB, "sup9", "sup-pass-99", mint)["token"])["ss"] == ["dashboard"]
-    # An HR keeps its sections and gets the hours ticks beside them; staff gets no hp claim.
-    r4 = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "hr9", "password": "hr-pass-999", "fullName": "Hr Nine",
-                                              "permissions": ["workers"], "hourPerms": ["hours", "approve"]})
-    c4 = id_token_claims(core.login(DB, "hr9", "hr-pass-999", mint)["token"])
-    assert c4["perms"] == ["workers"] and c4["hp"] == ["hours", "approve"]
-    # Moving to staff drops the clientId; the list shows each login's ticks.
-    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "role": "staff", "permissions": "*"}, rv)["ok"]
+    assert core.update_user(DB, ADMIN1, {"id": r["userId"], "templateId": "full"}, rv)["ok"] and rv
     assert DB.collection("users").document(r["userId"]).get().to_dict().get("clientId") is None
     users = {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}
-    assert users[r2["userId"]]["clientId"] == "c2" and users[r3["userId"]]["hourPerms"] == ["hours", "fix"]
+    assert users[r["userId"]]["rights"] == tpl_rights("full") and users["u-sup1"]["rights"] == SUP1_RIGHTS
+    assert all(not set(core.OLD_RIGHT_FIELDS) & set(x) for x in users.values())
 
 
 # ── Permission templates (one set for every firm; only a superadmin edits) ──
@@ -578,13 +579,12 @@ def test_templates_seeded_and_listed():
     ts = core.list_templates(DB, ADMIN1)["templates"]
     assert [t["id"] for t in ts] == ["accountant", "dispatcher", "full", "supplier", "hr", "client"]
     by = {t["id"]: t for t in ts}
-    # The flat rights, and the fields the claims and rules read worked out from them.
+    # The flat rights only (and an HR's ownOnly).
     assert by["dispatcher"]["rights"] == ["today", "schedule", "workers", "punchlog", "editSchedule", "editWorkers", "editPunches"]
-    assert by["dispatcher"]["permissions"] == ["today", "schedule", "workers", "punchlog"] and by["dispatcher"]["count"] == 0
+    assert by["dispatcher"]["count"] == 0 and not set(core.OLD_RIGHT_FIELDS) & set(by["dispatcher"])
     assert by["full"]["rights"] == list(core.RIGHT_CAPS["staff"])
-    assert by["hr"]["ownOnly"] is True and by["hr"]["hourPerms"] == ["hours", "approve", "dispute", "fix", "schedule"]
-    assert by["supplier"]["supplierSections"] == list(core.SUPPLIER_SECTIONS) and by["supplier"]["permissions"] == ""
-    assert by["client"]["hourPerms"] == core.HOUR_DEFAULT and "seePay" not in by["client"]["rights"]
+    assert by["hr"]["ownOnly"] is True and "ownOnly" not in by["supplier"]
+    assert by["client"]["rights"] == ["hours", "approveHours", "disputeHours", "fixHours"]
     # Read again: no second seed.
     assert len(core.list_templates(DB, SUPER)["templates"]) == 6
     # Only a superadmin writes them.
@@ -592,79 +592,81 @@ def test_templates_seeded_and_listed():
     assert core.delete_template(DB, ADMIN1, {"id": "hr"}, Revokes())["error"] == core.E_NO_RIGHTS
 
 
-def test_flat_rights_one_to_one():
-    """Every old shape of rights converts to the flat list and back to the
-    same fields (one to one), and a role never keeps a tick beyond its cap."""
-    # A staff login: Today always, the Punch log with Workers, Accounting also lets it change pay.
-    f = core._flat_of("staff", {"permissions": ["workers", "accounting"]})
-    assert f == ["today", "workers", "accounting", "punchlog", "editSchedule", "editWorkers", "editPunches", "editPay"]
-    leg = core._legacy_of("staff", f)
-    assert leg["permissions"] == ["today", "workers", "accounting", "payEdit", "punchlog"] and leg["editPerms"] == list(core.EDIT_PERMS)
-    # An HR's Accounting (its reduced one) is Commission; payEdit is Edit pay.
-    f = core._flat_of("hr", {"permissions": ["workers", "accounting", "payEdit"], "hourPerms": ["hours"], "showPay": False, "editPerms": []})
-    assert f == ["workers", "commission", "hours", "editPay"]
-    leg = core._legacy_of("hr", f, own=False)
-    assert leg["permissions"] == ["workers", "accounting", "payEdit"] and leg["hourPerms"] == ["hours"]
-    assert leg["showPay"] is False and leg["ownOnly"] is False and leg["editPerms"] == []
-    # A supplier: Dashboard → Today, the portal's hours tab → Commission (it shows the commission there).
-    f = core._flat_of("supplier", {"supplierSections": ["dashboard", "hours"], "hourPerms": ["approve"]})
-    assert f == ["today", "commission", "approveHours", "seePay"]
-    assert core._legacy_of("supplier", f)["supplierSections"] == ["dashboard", "hours"]
-    # Caps: a client never gets money or Clients, a supplier never Accounting or the Punch log.
+def test_rights_caps():
+    """A role never keeps a tick beyond its cap: a client never gets money or
+    Clients, a supplier never Accounting or the Punch log, an HR Commission
+    instead of Accounting."""
     assert core._template_rights("client", {"rights": ["hours", "seePay", "clients", "accounting"]})["rights"] == ["hours"]
     assert core._template_rights("supplier", {"rights": ["accounting", "punchlog", "clients", "workers"]})["rights"] == ["workers"]
-    assert core._template_rights("hr", {"rights": ["today", "punchlog", "accounting", "commission"]})["rights"] == ["commission"]
+    assert core._template_rights("hr", {"rights": ["today", "punchlog", "accounting", "commission"]}) == {"rights": ["commission"], "ownOnly": True}
 
 
-def test_old_templates_get_flat_rights():
-    """A template saved before the flat rights gets them on the next read,
-    and so do its logins — with no session ended (nothing they may do changes)."""
-    core.list_templates(DB, SUPER)
+def test_old_rights_fields_are_converted_once():
+    """Logins and templates saved with the old rights fields get their flat
+    rights, one to one, and the old fields go — once, on the first call."""
+    core._converted = False
+    seed_legacy("o-st", "ost", "old-pass-11", role="staff", tenantId=T1, permissions=["workers", "accounting"])
+    seed_legacy("o-all", "oall", "old-pass-11", role="staff", tenantId=T1, permissions="*", editPerms=["editSchedule"])
+    seed_legacy("o-hr", "ohr", "old-pass-11", role="hr", tenantId=T1, permissions=["workers", "accounting", "payEdit"],
+                hourPerms=["hours"], showPay=False, editPerms=[], fullName="H")
+    seed_legacy("o-sup", "osup", "old-pass-11", role="supplier", tenantId=T1, permissions="", supplierId="s-1",
+                supplierSections=["dashboard", "hours"], hourPerms=["approve"])
+    seed_legacy("o-cl", "ocl", "old-pass-11", role="client", tenantId=T1, permissions=["hours", "fix"], clientId="c1")
+    seed_legacy("o-own", "oown", "old-pass-11", role="tenant_admin", tenantId=T1, permissions="*")
+    seed_legacy("o-tpl", "otpl", "old-pass-11", role="staff", tenantId=T1, templateId="dispatcher",
+                rights=tpl_rights("dispatcher"), permissions=["today", "schedule", "workers", "punchlog"], editPerms=["editSchedule"])
     DB.collection("permTemplates").document("old").set({"name": "Old", "role": "staff", "permissions": ["schedule", "accounting"], "editPerms": ["editSchedule"]})
-    u = core.create_tenant_user(DB, ADMIN1, {"username": "old1", "password": "old-pass-11", "templateId": "dispatcher"})
-    DB.collection("users").document(u["userId"]).update({"templateId": "old", "rights": firestore.DELETE_FIELD, "permissions": ["schedule", "accounting"], "editPerms": ["editSchedule"]})
-    t = {x["id"]: x for x in core.list_templates(DB, SUPER)["templates"]}["old"]
-    assert t["rights"] == ["today", "schedule", "accounting", "editSchedule", "editPay"]
-    for d in (DB.collection("permTemplates").document("old").get().to_dict(), DB.collection("users").document(u["userId"]).get().to_dict()):
-        assert d["rights"] == t["rights"] and d["permissions"] == ["today", "schedule", "accounting", "payEdit"]
-    # The new sign-in: on the flat rights (claim r), pay edits by payEdit.
-    out = core.login(DB, "old1", "old-pass-11", mint)
-    c = id_token_claims(out["token"])
-    assert c["rt"] == t["rights"] and "payEdit" in c["perms"] and out["rights"] == t["rights"]
+    DB.collection("permTemplates").document("hr").update({"hourPerms": ["hours"], "showPay": True})
+    out = core.login(DB, "ost", "old-pass-11", mint)
+    get = lambda col, i: DB.collection(col).document(i).get().to_dict()
+    # A staff login: Today always, the Punch log with Workers, Accounting also lets it change pay.
+    assert get("users", "o-st")["rights"] == ["today", "workers", "accounting", "punchlog", "editSchedule", "editWorkers", "editPunches", "editPay"]
+    assert out["rights"] == id_token_claims(out["token"])["rt"] == get("users", "o-st")["rights"]
+    assert get("users", "o-all")["rights"] == ["today", "schedule", "workers", "clients", "suppliers", "accounting", "punchlog", "editSchedule", "editPay", "export"]
+    # An HR's Accounting (its reduced one) is Commission; payEdit is Edit pay; ownOnly is stored.
+    h = get("users", "o-hr")
+    assert h["rights"] == ["workers", "commission", "hours", "editPay"] and h["ownOnly"] is True
+    # A supplier: Dashboard → Today, the portal's hours tab → Commission.
+    assert get("users", "o-sup")["rights"] == ["today", "commission", "approveHours", "seePay"]
+    # A client made before hourPerms: its ticks were its permissions.
+    assert get("users", "o-cl")["rights"] == ["hours", "fixHours"]
+    # A login already on the flat rights keeps them; an owner has none.
+    assert get("users", "o-tpl")["rights"] == tpl_rights("dispatcher") and "rights" not in get("users", "o-own")
+    assert get("permTemplates", "old")["rights"] == ["today", "schedule", "accounting", "editSchedule", "editPay"]
+    for col in ("users", "permTemplates"):
+        for snap in DB.collection(col).stream():
+            assert not set(core.OLD_RIGHT_FIELDS) & set(snap.to_dict()), (col, snap.id)
+    assert DB.collection("appMeta").document("rights").get().exists
+    # Once: an old field written later is no longer read or removed.
+    DB.collection("users").document("o-st").update({"permissions": ["schedule"]})
+    core._converted = False
+    core.run_action(DB, ADMIN1, {"action": "listUsers"}, Revokes())
+    assert get("users", "o-st")["permissions"] == ["schedule"]
 
 
-def test_caller_rights_new_and_old_tokens():
-    """What the functions check: the flat rights of the token (claim rt);
-    a token from before them is read from its old claims, one to one."""
+def test_caller_rights_are_the_rt_claim():
+    """What the functions check: the flat rights of the token (claim rt); a
+    token without them has none."""
     assert core.caller_rights({"role": "staff", "rt": ["workers"]}) == {"workers"}
-    assert core.caller_rights({"role": "tenant_admin", "perms": ["*"]}) == set()
-    old = core.caller_rights({"role": "staff", "perms": ["schedule", "accounting"]})
-    assert {"today", "schedule", "accounting", "editPay", "editSchedule", "editWorkers", "editPunches"} == old
-    # signed in on the first flat rights (claim r): Accounting alone never changed pay
-    assert "editPay" not in core.caller_rights({"role": "staff", "perms": ["accounting"], "r": True})
-    assert "editPay" in core.caller_rights({"role": "staff", "perms": ["accounting", "payEdit"], "r": True})
-    sup = core.caller_rights({"role": "supplier", "ss": ["dashboard", "hours"], "hp": ["hours"], "pay": False})
-    assert sup == {"today", "commission", "hours"}
-    assert core.caller_rights({"role": "client", "hp": ["hours", "fix"]}) == {"hours", "fixHours"}
+    assert core.caller_rights({"role": "tenant_admin"}) == set()
+    assert core.caller_rights({"role": "staff", "perms": ["schedule", "accounting"]}) == set()
 
 
 def test_template_rights_go_to_every_login_in_every_firm():
-    core.list_templates(DB, SUPER)
     # A new staff template: only its role's ticks are kept.
     r = core.save_template(DB, SUPER, {"name": "Shift manager", "role": "staff", "rights": ["schedule", "commission", "seePay", "bogus"]}, Revokes())
     tid = r["id"]
     t = DB.collection("permTemplates").document(tid).get().to_dict()
-    assert t["rights"] == ["schedule"] and t["permissions"] == ["schedule"] and t["role"] == "staff" and t["editPerms"] == []
+    assert t["rights"] == ["schedule"] and t["role"] == "staff" and not set(core.OLD_RIGHT_FIELDS) & set(t)
     assert core.save_template(DB, SUPER, {"name": "shift MANAGER", "role": "staff"}, Revokes())["error"].startswith("A template")
-    # Logins on it in two firms: the template says the role and the rights, whatever the body sends.
-    a = core.create_tenant_user(DB, ADMIN1, {"role": "hr", "username": "sm1", "password": "sm-pass-11", "templateId": tid, "permissions": ["accounting"]})
+    # Logins on it in two firms.
+    a = core.create_tenant_user(DB, ADMIN1, {"username": "sm1", "password": "sm-pass-11", "templateId": tid})
     b = core.create_tenant_user(DB, ADMIN2, {"username": "sm2", "password": "sm-pass-22", "templateId": tid})
     ua = DB.collection("users").document(a["userId"]).get().to_dict()
-    assert ua["role"] == "staff" and ua["permissions"] == ["schedule"] and ua["rights"] == ["schedule"] and ua["templateId"] == tid
-    assert core.create_tenant_user(DB, ADMIN1, {"role": "staff", "username": "h1", "password": "hr-pass-01", "templateId": "nope"})["error"] == core.E_TEMPLATE_NOT_FOUND
+    assert ua["role"] == "staff" and ua["rights"] == ["schedule"] and ua["templateId"] == tid
     # The firm's owner can't hand-edit a linked login's rights.
     rv = Revokes()
-    assert core.update_user(DB, ADMIN1, {"id": a["userId"], "permissions": ["accounting"], "rights": ["accounting"], "fullName": "Sam"}, rv)["ok"] and not rv
+    assert core.update_user(DB, ADMIN1, {"id": a["userId"], "rights": ["accounting"], "fullName": "Sam"}, rv)["ok"] and not rv
     assert DB.collection("users").document(a["userId"]).get().to_dict()["rights"] == ["schedule"]
     # The counts: every firm for the superadmin, its own for an owner.
     assert {t["id"]: t["count"] for t in core.list_templates(DB, SUPER)["templates"]}[tid] == 2
@@ -673,43 +675,40 @@ def test_template_rights_go_to_every_login_in_every_firm():
     rv = Revokes()
     out = core.save_template(DB, SUPER, {"id": tid, "name": "Shift manager", "role": "staff", "rights": ["schedule", "workers"]}, rv)
     assert out["updated"] == 2 and sorted(u for u, _ in rv) == sorted([a["userId"], b["userId"]])
-    assert id_token_claims(core.login(DB, "sm2", "sm-pass-22", mint)["token"])["perms"] == ["schedule", "workers"]
+    assert id_token_claims(core.login(DB, "sm2", "sm-pass-22", mint)["token"])["rt"] == ["schedule", "workers"]
     rv = Revokes()
     assert core.save_template(DB, SUPER, {"id": tid, "name": "Shift manager", "role": "staff", "rights": ["schedule", "workers"]}, rv)["updated"] == 0 and not rv
     # Its role is fixed while logins use it.
     assert "role" in core.save_template(DB, SUPER, {"id": tid, "name": "Shift manager", "role": "hr"}, Revokes())["error"]
-    # A role change of a linked login needs a template: the template's role is the login's.
+    # A role change needs a template: the template's role is the login's.
     assert core.update_user(DB, ADMIN1, {"id": a["userId"], "role": "client", "clientId": "c1"}, Revokes())["error"] == core.E_PICK_TEMPLATE
     rv = Revokes()
     assert core.update_user(DB, ADMIN1, {"id": a["userId"], "clientId": "c1", "templateId": "client"}, rv)["ok"] and rv
     uc = DB.collection("users").document(a["userId"]).get().to_dict()
-    assert uc["role"] == "client" and uc["templateId"] == "client" and uc["hourPerms"] == core.HOUR_DEFAULT and uc["permissions"] == ""
+    assert uc["role"] == "client" and uc["templateId"] == "client" and uc["clientId"] == "c1"
     assert uc["rights"] == ["hours", "approveHours", "disputeHours", "fixHours"]
     # Deleting the template keeps its logins' rights, without a template.
     d = core.delete_template(DB, SUPER, {"id": tid}, Revokes())
     assert d["unlinked"] == 1
     ub = DB.collection("users").document(b["userId"]).get().to_dict()
-    assert "templateId" not in ub and ub["permissions"] == ["schedule", "workers"]
+    assert "templateId" not in ub and ub["rights"] == ["schedule", "workers"]
     assert not DB.collection("permTemplates").document(tid).get().exists
 
 
-def test_hr_template_and_legacy_login():
-    core.list_templates(DB, SUPER)
+def test_hr_template_follows_its_logins():
     h = core.create_tenant_user(DB, ADMIN1, {"username": "hrt", "password": "hr-pass-11", "fullName": "Hr T", "templateId": "hr", "ownOnly": False})
     c = id_token_claims(core.login(DB, "hrt", "hr-pass-11", mint)["token"])
-    assert c["role"] == "hr" and c["own"] is True and c["perms"] == ["schedule", "workers"] and c["hp"] == ["hours", "approve", "dispute", "fix", "schedule"]
-    assert c["rt"][:2] == ["schedule", "workers"]  # the flat rights, every role
+    assert c["role"] == "hr" and c["own"] is True and c["rt"] == tpl_rights("hr")
     # The HR template sees every worker: the HR logins follow.
     rv = Revokes()
     core.save_template(DB, SUPER, {"id": "hr", "name": "HR", "role": "hr", "rights": ["workers", "editPay", "hours"], "ownOnly": False}, rv)
+    assert rv == [(h["userId"], False)]
     c = id_token_claims(core.login(DB, "hrt", "hr-pass-11", mint)["token"])
-    assert c["own"] is False and c["pay"] is False and c["perms"] == ["workers", "payEdit"] and c["hp"] == ["hours"]
-    # A login made before templates keeps its hand-set rights and may be linked later.
-    rv = Revokes()
-    assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "permissions": ["accounting"]}, rv)["ok"] and rv
+    assert c["own"] is False and c["rt"] == ["workers", "hours", "editPay"]
+    # A login made before templates keeps its rights and may be linked later.
     assert core.update_user(DB, ADMIN1, {"id": "u-staff1", "templateId": "dispatcher"}, Revokes())["ok"]
     u = DB.collection("users").document("u-staff1").get().to_dict()
-    assert u["templateId"] == "dispatcher" and u["permissions"] == ["today", "schedule", "workers", "punchlog"]
+    assert u["templateId"] == "dispatcher" and u["rights"] == tpl_rights("dispatcher")
     row = {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}["u-staff1"]
     assert row["templateId"] == "dispatcher" and row["rights"][:3] == ["today", "schedule", "workers"]
     # An owner's row never takes a template.
@@ -717,11 +716,11 @@ def test_hr_template_and_legacy_login():
 
 
 def test_link_every_login_to_a_template():
-    core.list_templates(DB, SUPER)
-    seed_legacy("u-hr1", "hrx", "hr-pass-11", role="hr", tenantId=T1, permissions=["workers", "payEdit"], ownOnly=False, fullName="H")
-    seed_legacy("u-st2", "st2", "st-pass-22", role="staff", tenantId=T2, permissions=["workers", "accounting"])
-    seed_legacy("u-cl1", "cl1", "cl-pass-11", role="client", tenantId=T2, permissions="", clientId="c1")
-    seed_legacy("u-all", "all1", "all-pass-11", role="staff", tenantId=T2, permissions="*")
+    seed_legacy("u-hr1", "hrx", "hr-pass-11", role="hr", tenantId=T1, rights=["workers", "editPay"], ownOnly=False, fullName="H")
+    seed_legacy("u-st2", "st2", "st-pass-22", role="staff", tenantId=T2,
+                rights=["today", "workers", "accounting", "punchlog", "editSchedule", "editWorkers", "editPunches", "editPay"])
+    seed_legacy("u-cl1", "cl1", "cl-pass-11", role="client", tenantId=T2, clientId="c1", rights=["hours", "approveHours", "disputeHours", "fixHours"])
+    seed_legacy("u-all", "all1", "all-pass-11", role="staff", tenantId=T2, rights=list(core.RIGHT_CAPS["staff"]))
     assert core.list_templates(DB, SUPER)["unlinked"] == 6
     assert core.list_templates(DB, ADMIN2)["unlinked"] == 3
     assert core.link_to_templates(DB, ADMIN1, {}, Revokes())["error"] == core.E_NO_RIGHTS
@@ -729,16 +728,16 @@ def test_link_every_login_to_a_template():
     out = core.link_to_templates(DB, SUPER, {}, rv)
     assert out["linked"] == 6 and out["skipped"] == 0
     get = lambda uid: DB.collection("users").document(uid).get().to_dict()
-    # staff1 (Schedule, Workers) is the Dispatcher exactly: linked, rights unchanged, no new sign-in.
+    # staff1 is the Dispatcher exactly: linked, rights unchanged, no new sign-in.
     assert get("u-staff1")["templateId"] == "dispatcher" and "u-staff1" not in [u for u, _ in rv]
-    # st2 (Workers, Accounting) is closest to the Accountant; the HR goes on the HR template; the client on Client.
-    assert get("u-st2")["templateId"] == "accountant" and get("u-st2")["permissions"] == ["today", "workers", "accounting", "payEdit", "exports", "punchlog"]
+    # st2 is closest to the Accountant; the HR goes on the HR template; the client on Client.
+    assert get("u-st2")["templateId"] == "accountant" and get("u-st2")["rights"] == tpl_rights("accountant")
     h = get("u-hr1")
-    assert h["templateId"] == "hr" and h["ownOnly"] is True and h["permissions"] == ["schedule", "workers"]
-    assert get("u-cl1")["templateId"] == "client" and get("u-cl1")["hourPerms"] == core.HOUR_DEFAULT
-    # The supplier with every portal tab is the Supplier template exactly.
+    assert h["templateId"] == "hr" and h["ownOnly"] is True and h["rights"] == tpl_rights("hr")
+    assert get("u-cl1")["templateId"] == "client" and "u-cl1" not in [u for u, _ in rv]
+    # The supplier is the Supplier template exactly.
     assert get("u-sup1")["templateId"] == "supplier" and "u-sup1" not in [u for u, _ in rv]
-    # A staff login with every section ('*') goes on Full access, nothing lost.
+    # A staff login with everything goes on Full access, nothing lost.
     assert get("u-all")["templateId"] == "full" and get("u-all")["rights"] == list(core.RIGHT_CAPS["staff"])
     assert sorted(u for u, _ in rv) == sorted(["u-st2", "u-hr1"]) and out["changed"] == 2
     # Owners and the superadmin are left alone; a second run finds nothing.
@@ -748,21 +747,12 @@ def test_link_every_login_to_a_template():
 
 
 def test_edit_ticks_follow_the_template():
-    core.list_templates(DB, SUPER)
-    by = {t["id"]: t for t in core.list_templates(DB, SUPER)["templates"]}
-    # The defaults may change all three (what every login could before the ticks); a supplier template has none.
-    assert by["dispatcher"]["editPerms"] == list(core.EDIT_PERMS) and "editPerms" not in by["supplier"]
     r = core.save_template(DB, SUPER, {"name": "Viewer", "role": "staff", "rights": ["schedule", "workers", "editSchedule", "bogus"]}, Revokes())
     u = core.create_tenant_user(DB, ADMIN1, {"username": "view1", "password": "view-pass-1", "templateId": r["id"]})
     out = core.login(DB, "view1", "view-pass-1", mint)
-    assert id_token_claims(out["token"])["ed"] == ["editSchedule"] and out["editPerms"] == ["editSchedule"]
-    # A login made before the ticks has no ed claim (everything allowed) and reads as all three.
-    out = core.login(DB, "staff1", "staff-pass-1", mint)
-    c = id_token_claims(out["token"])
-    # ... and its flat rights worked out from its fields, one to one (claim rt; the login reply's rights)
-    assert "ed" not in c and out["editPerms"] == list(core.EDIT_PERMS) and out["rights"] == c["rt"] == ["today", "schedule", "workers", "punchlog", "editSchedule", "editWorkers", "editPunches"]
+    assert id_token_claims(out["token"])["rt"] == out["rights"] == ["schedule", "workers", "editSchedule"]
     # Unticking a template's edit reaches its logins.
     rv = Revokes()
     assert core.save_template(DB, SUPER, {"id": r["id"], "name": "Viewer", "role": "staff", "rights": ["schedule", "workers"]}, rv)["updated"] == 1
-    assert id_token_claims(core.login(DB, "view1", "view-pass-1", mint)["token"])["ed"] == []
-    assert {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}[u["userId"]]["editPerms"] == []
+    assert id_token_claims(core.login(DB, "view1", "view-pass-1", mint)["token"])["rt"] == ["schedule", "workers"]
+    assert {x["id"]: x for x in core.list_users(DB, ADMIN1)["users"]}[u["userId"]]["rights"] == ["schedule", "workers"]

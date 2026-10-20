@@ -6,19 +6,18 @@ rules_version = '2';
 // carry who the caller is:
 //   role      'superadmin' | 'tenant_admin' | 'staff' | 'hr' | 'supplier' | 'client'
 //   tenantId  the caller's firm (absent for a superadmin)
-//   perms     list of sections a staff or hr login may use, ['*'] = all
+//   rt        staff / hr / supplier / client: its flat rights
+//             (docs/permissions-plan.md) — tabs, actions, what is shown
 //   own       hr only: true = "only own workers" (docs/admin.md → HR)
 //   supplierId  only for role 'supplier'
 //   clientId    only for role 'client' (the client portal goes through a function too)
-//   hp        hr / supplier / client: its hours-review ticks (read by the hours function only)
-//   ed        staff / hr on a permission template: what it may change —
-//             editSchedule (shifts), editWorkers (worker records),
-//             editPunches (punches); absent = all three (a login made before)
 //
 // These rules mirror the Apps Script checks they replace:
 //   - a firm sees only its own data, a superadmin sees every firm;
-//   - workers/clients/suppliers/settings are written by tenant_admin or by
-//     staff with 'schedule' (saveSchedule's requirePermission gate);
+//   - workers are written by tenant_admin or by staff with the Workers or
+//     Schedule tab (what it may change: its edit rights), clients with the
+//     Clients tab, suppliers with the Suppliers tab, the shift settings with
+//     the Schedule tab;
 //   - punches: any manager-side login of the firm (savePunch/updatePunch/
 //     deletePunch had no role gate); bulk month deletion is a function;
 //   - pending hours: anyone of the firm may submit, only tenant_admin or
@@ -31,8 +30,7 @@ rules_version = '2';
 //     its own pending-hours batches) whose hrId is its uid. No hr login ever
 //     changes a worker's hrId — the owner or a superadmin assigns workers;
 //     an hr or staff login changes a worker's pay and bank fields only
-//     with Edit pay (the flat rights, claim rt — can(); a token signed in
-//     before them keeps its old checks until its next sign-in);
+//     with Edit pay (the flat rights, claim rt — can());
 //   - users, password hashes, usernames and worker punch-link tokens are
 //     function-only.
 service cloud.firestore {
@@ -47,19 +45,8 @@ service cloud.firestore {
     // The flat rights (claim rt, docs/permissions-plan.md): every check of a
     // staff / HR login below is one right of that list — a tab (schedule,
     // workers, clients, suppliers), an edit (editSchedule, editWorkers,
-    // editPunches) or Edit pay (editPay). A token signed in before them (no
-    // rt) keeps its old checks (oldCan, oldPerm) until its next sign-in.
-    function flat() { return ('rt' in request.auth.token) && request.auth.token.rt is list; }
-    function can(k) { return (flat() && k in request.auth.token.rt) || (!flat() && oldCan(k)); }
-    function oldPerm(s) {
-      return request.auth.token.perms is list
-        && (('*' in request.auth.token.perms) || (s in request.auth.token.perms));
-    }
-    function oldCan(k) {
-      return (k in ['schedule', 'workers', 'clients', 'suppliers'] && oldPerm(k))
-        || (k in ['editSchedule', 'editWorkers', 'editPunches'] && (!('ed' in request.auth.token) || (k in request.auth.token.ed)))
-        || (k == 'editPay' && (oldPerm('payEdit') || (role() == 'staff' && !('r' in request.auth.token) && oldPerm('accounting'))));
-    }
+    // editPunches) or Edit pay (editPay). A token without rt has none.
+    function can(k) { return ('rt' in request.auth.token) && request.auth.token.rt is list && k in request.auth.token.rt; }
     function isStaff(t) { return member(t) && role() == 'staff'; }
     // HR logins. hrMine: "only own workers" (claim own); hrAll: sees the firm like staff.
     function isHr(t) { return member(t) && role() == 'hr'; }
@@ -68,9 +55,8 @@ service cloud.firestore {
     function uid() { return request.auth.uid; }
     // An edit right: the owner and a superadmin may change everything.
     function mayEd(k) { return role() in ['tenant_admin', 'superadmin'] || can(k); }
-    // A staff login writes a firm's clients / suppliers with that tab (an
-    // old token: with the schedule section, as before the flat rights).
-    function staffTab(t, k) { return isStaff(t) && ((flat() && can(k)) || (!flat() && oldPerm('schedule'))); }
+    // A staff login writes a firm's clients / suppliers with that tab.
+    function staffTab(t, k) { return isStaff(t) && can(k); }
     // A worker update: with Edit workers anything but the shifts (those too
     // with Edit shifts); with only Edit shifts nothing but the shifts.
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
@@ -83,9 +69,9 @@ service cloud.firestore {
     // Manager-side logins of the firm that see all of its data (never a
     // supplier, never an own-workers hr).
     function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']) || hrAll(t); }
-    // Staff that writes workers: the Workers or the Schedule tab (an old
-    // token: the schedule section); what it may change, its edit rights.
-    function workerWriter(t) { return isAdmin(t) || (isStaff(t) && ((flat() && (can('workers') || can('schedule'))) || (!flat() && oldPerm('schedule')))); }
+    // Staff that writes workers: the Workers or the Schedule tab; what it
+    // may change, its edit rights.
+    function workerWriter(t) { return isAdmin(t) || (isStaff(t) && (can('workers') || can('schedule'))); }
     // The firm's shift settings and offers: the Schedule tab.
     function scheduleWriter(t) { return isAdmin(t) || (isStaff(t) && can('schedule')); }
     // A worker's money: staff changes it only with Edit pay (the owner and a

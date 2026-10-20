@@ -21,12 +21,10 @@ service firebase.storage {
     function hrAll(t) { return member(t) && role() == 'hr' && request.auth.token.own != true; }
     function hrMine(t) { return member(t) && role() == 'hr' && request.auth.token.own == true; }
     function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']) || hrAll(t); }
-    // The Workers tab and Edit workers (the flat rights, claim rt; a token
-    // signed in before them: the workers section, as before).
+    // The Workers tab and Edit workers (the flat rights, claim rt).
     function workersPerm() {
-      return (('rt' in request.auth.token) && request.auth.token.rt is list && 'workers' in request.auth.token.rt && 'editWorkers' in request.auth.token.rt)
-        || (!('rt' in request.auth.token) && request.auth.token.perms is list
-          && (('*' in request.auth.token.perms) || ('workers' in request.auth.token.perms)));
+      return ('rt' in request.auth.token) && request.auth.token.rt is list
+        && 'workers' in request.auth.token.rt && 'editWorkers' in request.auth.token.rt;
     }
     function workersWriter(t) {
       return isSuper()

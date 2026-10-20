@@ -10,17 +10,6 @@ import portal
 import core  # noqa: E402
 
 
-def _old_claims(fn):
-    """The callers in this file are written as ID tokens signed in before the
-    flat rights (their old claims): they are read through core.caller_rights,
-    as main.py does; a caller that already has `rights` goes as it is."""
-    def run(first, caller, *a, **k):
-        return fn(first, caller if "rights" in caller else dict(caller, rights=core.caller_rights(caller)), *a, **k)
-    return run
-
-
-portal.supplier_action = _old_claims(portal.supplier_action)
-
 T1, T2 = "t-one", "t-two"
 
 
@@ -126,7 +115,9 @@ def test_push_subscription_and_errors():
 
 # ── Supplier portal ──────────────────────────────────────────────────────────
 
-SUP1 = {"uid": "u-sup", "role": "supplier", "tenantId": T1, "supplierId": "sp1"}
+# A supplier with every tab but See workers' pay (its rights as main.py hands them, core.caller_rights).
+SUP_RIGHTS = ["today", "workers", "commission", "hours", "approveHours", "disputeHours", "fixHours"]
+SUP1 = {"uid": "u-sup", "role": "supplier", "tenantId": T1, "supplierId": "sp1", "rights": set(SUP_RIGHTS)}
 
 
 def test_supplier_sees_only_own_workers_stripped():
@@ -163,7 +154,7 @@ def test_supplier_day_commission_only_for_a_daily_worker():
 
 
 def test_supplier_with_pay_gets_the_pay_inputs_never_billing():
-    r = portal.supplier_action(DB, dict(SUP1, pay=True), {"action": "loadSchedule"})
+    r = portal.supplier_action(DB, dict(SUP1, rights={*SUP_RIGHTS, "seePay"}), {"action": "loadSchedule"})
     w = r["workers"][0]
     assert r["showPay"] is True and w["hourlyRate"] == 55 and w["supplierRate"] == 7
     assert "supplierRates" not in w and "token" not in w and "docUrl" not in w
@@ -247,11 +238,11 @@ def test_http_functions():
     assert _call(main.punch, {"ping": True})[1]["warm"]
     status, r = _call(main.punch, {"action": "load", "token": "tok-avi"})
     assert status == 200 and r["workers"][0]["id"] == "w1"
-    sup = _id_token("u-sup", {"role": "supplier", "tenantId": T1, "supplierId": "sp1"})
+    sup = _id_token("u-sup", {"role": "supplier", "tenantId": T1, "supplierId": "sp1", "rt": SUP_RIGHTS})
     status, r = _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + sup})
     assert status == 200 and [w["id"] for w in r["workers"]] == ["w1"] and r["showPay"] is False
-    # The pay claim from the token reaches the portal code.
-    paysup = _id_token("u-sup2", {"role": "supplier", "tenantId": T1, "supplierId": "sp1", "pay": True})
+    # See workers' pay in the token's rights reaches the portal code.
+    paysup = _id_token("u-sup2", {"role": "supplier", "tenantId": T1, "supplierId": "sp1", "rt": SUP_RIGHTS + ["seePay"]})
     r = _call(main.supplier, {"action": "loadSchedule"}, {"Authorization": "Bearer " + paysup})[1]
     assert r["showPay"] is True and r["workers"][0]["hourlyRate"] == 55
     assert _call(main.supplier, {"action": "loadSchedule"})[0] == 401
@@ -303,20 +294,6 @@ def test_my_month_gives_own_punches_and_pay_inputs_only():
     assert portal.punch_action(DB, {"action": "myMonth", "token": "tok-avi", "month": "10/2026"}) == {"error": "Bad month"}
     assert portal.punch_action(DB, {"action": "myMonth", "token": "nope", "month": "2026-10"}) == {"error": portal.E_LINK}
 
-
-
-def test_supplier_sections_limit_the_actions():
-    # Only the Dashboard tab: no worker changes, no hours sent or listed; reads still work.
-    only = dict(SUP1, ss=["dashboard"])
-    assert portal.supplier_action(DB, only, {"action": "loadSchedule"}).get("workers") is not None
-    for body in ({"action": "supplierAddWorker", "worker": {"docGiven": "X"}},
-                 {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "1"}},
-                 {"action": "supplierDeleteWorker", "workerId": "w1"},
-                 {"action": "supplierListHours"}):
-        assert portal.supplier_action(DB, only, body) == {"error": portal.E_NO_SECTION}
-    assert DB.collection("tenants").document(T1).collection("workers").document("w1").get().exists
-    # With My Workers the change goes through.
-    assert portal.supplier_action(DB, dict(SUP1, ss=["workers"]), {"action": "supplierUpdateWorker", "workerId": "w1", "worker": {"phone": "2"}})["ok"]
 
 
 def test_supplier_flat_rights_decide_the_actions():

@@ -1788,8 +1788,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const tpB = await p.evaluate(async () => {
     const r = {closed: await T.until(() => !document.querySelector('[data-testid="template-window"]'), 8000)};
     const j = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'listTemplates'})})).json();
-    r.hours = j.templates.find(t => t.id === 'client').hourPerms.join();
     const t = j.templates.find(t => t.id === 'client');
+    r.old = Object.keys(t).filter(k => ['permissions', 'hourPerms', 'editPerms', 'supplierSections', 'showPay'].includes(k)).join();
     r.rights = t.rights.join();
     await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'saveTemplate', id: t.id, name: t.name, role: t.role, rights: t.rights.filter(k => k !== 'schedule')})});
     return r;
@@ -1810,17 +1810,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // A staff login on a template without its edit ticks: the Schedule, Workers, card and punch log only read.
   const vo = await p.evaluate(() => {
     const keep = JSON.stringify(getSession()), s = JSON.parse(keep), B = ManagerBridge;
-    saveSession(Object.assign({}, s, {role: 'staff', permissions: '*', editPerms: []}));
+    const tabs = ['today', 'schedule', 'workers', 'clients', 'suppliers', 'punchlog'];
+    saveSession(Object.assign({}, s, {role: 'staff', rights: tabs}));
     const r = {sched: B.schedule().canEdit, workers: B.workers().canEdit, add: B.today().canAddWorker, punches: B.admin().canEditPunches, punch: B.clients().canPunch};
-    saveSession(Object.assign({}, s, {role: 'staff', permissions: '*', editPerms: ['editSchedule']}));
+    saveSession(Object.assign({}, s, {role: 'staff', rights: [...tabs, 'editSchedule']}));
     r.schedOnly = B.schedule().canEdit && !B.workers().canEdit;
-    saveSession(Object.assign({}, s, {role: 'staff', permissions: '*'}));
-    r.legacy = B.schedule().canEdit && B.workers().canEdit && B.admin().canEditPunches;
+    saveSession(Object.assign({}, s, {role: 'staff', rights: [...tabs, 'editSchedule', 'editWorkers', 'editPunches']}));
+    r.all = B.schedule().canEdit && B.workers().canEdit && B.admin().canEditPunches;
     saveSession(JSON.parse(keep));
     return r;
   });
-  ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.legacy, 'edit ticks: without them Schedule, Workers and punches only read; a login made before them changes all ' + JSON.stringify(vo));
-  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.hours === 'hours,approve,dispute,fix,schedule' && /schedule,hours/.test(tpB.rights) && capd.clients && capd.pay && capd.hours,
+  ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.all, 'edit ticks: without them Schedule, Workers and punches only read; with all three it changes all ' + JSON.stringify(vo));
+  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.old === '' && /schedule,hours/.test(tpB.rights) && capd.clients && capd.pay && capd.hours,
     'boss: Users lists the permission templates with New template and Put them on templates; a client template greys Clients and pay; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB, capd}));
   // Admin → Scanner (docs/hf-plan.md): the training figures, the versions, the document type model's mode
   // (Off / Shadow / Mixed) and the per-firm switch of the full-document collection — all through scan_feedback.
@@ -2315,6 +2316,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(() => { localStorage.removeItem('schedMgr_session'); });
   await p.goto(BASE + 'client-portal.html');
   ok(await waitFor(p, () => /schedule-manager/.test(location.pathname) && !!document.querySelector('[data-testid="hours-review"][data-ready="1"]'), 15000), 'client: an old portal session opens the manager app signed in');
+  // A session signed in before the flat rights (no rights) goes to the sign-in: its token has no rt claim.
+  await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('schedMgr_session')); delete s.rights; localStorage.setItem('schedMgr_session', JSON.stringify(s)); });
+  await p.reload();
+  ok(await waitFor(p, () => document.getElementById('loginScreen').style.display !== 'none' && !localStorage.getItem('schedMgr_session') && !localStorage.getItem('clientPortal_session'), 15000),
+    'a session from before the flat rights is sent to the sign-in');
   await ctx.close();
 
   // ── Worker punch page without a personal link: a message, no worker picker ──

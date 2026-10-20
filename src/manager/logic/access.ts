@@ -7,56 +7,40 @@
 // the tabs from tabAllowed()).
 import { getSession } from '../data/session';
 
-// The page's old section names → the flat rights (docs/permissions-plan.md):
+// The page's section names → the flat rights (docs/permissions-plan.md):
 // an HR's Accounting is its Commission tab.
 const SECTION_RIGHT: Record<string, string> = { exports: 'export', payEdit: 'editPay' };
-/**
- * A section of a staff / HR login: from its flat rights (the login reply's
- * rights → session.rights); a session from before them: its permissions
- * ('*' or a list). Other roles see every section.
- */
+/** The flat rights of a staff / HR / supplier / client session (the login reply's rights); [] when it has none. */
+function rights(): string[] {
+  const s = getSession();
+  return s && Array.isArray(s.rights) ? s.rights : [];
+}
+/** A section of a staff / HR login: one of its flat rights. Other roles see every section. */
 export function hasPermission(section: string): boolean {
   const s = getSession();
   if (!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
-  if (Array.isArray(s.rights)) {
-    const k = section === 'accounting' && s.role === 'hr' ? 'commission' : SECTION_RIGHT[section] || section;
-    return s.rights.includes(k);
-  }
-  const perms = s.permissions;
-  return perms === '*' || (Array.isArray(perms) && perms.indexOf(section) !== -1);
+  const k = section === 'accounting' && s.role === 'hr' ? 'commission' : SECTION_RIGHT[section] || section;
+  return rights().includes(k);
 }
 // The section that gates each nav tab. 'admin' (the punch log, plus Firms /
 // Users / Errors / Timings for the owner and the super-admin, gated by role)
 // rides on 'workers'. 'dashboard' (Today) is never gated — except for a staff
-// login on the flat rights, where Today and Punch log are their own ticks.
+// login, whose Today and Punch log are their own ticks.
 export const NAV_TAB_PERMISSION: Record<string, string> = { schedule: 'schedule', workers: 'workers', clients: 'clients', suppliers: 'suppliers', admin: 'workers', accounting: 'accounting' };
 /**
  * What a staff / HR login may change in the sections it sees — editSchedule
  * (shifts), editWorkers (worker records), editPunches (punches) — from its
- * flat rights (session.rights); a session from before them: users.editPerms
- * (session.editPerms, claim ed), none = all; another role: all.
+ * flat rights; another role: all.
  */
 export function canChange(k: 'editSchedule' | 'editWorkers' | 'editPunches'): boolean {
   const s = getSession();
   if (!s || (s.role !== 'staff' && s.role !== 'hr')) return true;
-  if (Array.isArray(s.rights)) return s.rights.includes(k);
-  const e = s.editPerms;
-  return !Array.isArray(e) || e.indexOf(k) !== -1;
+  return rights().includes(k);
 }
-/**
- * A staff login on the flat rights (users.rights → session.rights,
- * docs/permissions-plan.md): Today and the Punch log are their own ticks, and
- * a worker's pay changes only with Edit pay. A session from before them (no
- * rights): Today always, the Punch log with Workers, pay with Accounting.
- */
-function staffRights(): string[] | null {
-  const s = getSession();
-  return s && s.role === 'staff' && Array.isArray(s.rights) ? s.rights : null;
-}
-/** A staff login may change a worker's pay (Edit pay; before the flat rights: Accounting). */
+/** A staff login may change a worker's pay: Edit pay. */
 export function staffPayEdit(): boolean {
-  const r = staffRights();
-  return r ? r.includes('editPay') : hasPermission('accounting');
+  const s = getSession();
+  return !!s && s.role === 'staff' && rights().includes('editPay');
 }
 export function isHrSession(): boolean { const s = getSession(); return !!s && s.role === 'hr'; }
 export function isFirmAdminSession(): boolean { const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
@@ -70,11 +54,11 @@ export function hrPayOnly(): boolean {
   const s = getSession();
   return !!s && s.role === 'hr' && hasPermission('accounting');
 }
-// An HR with an hours tick (users.hourPerms → claim hp) reviews its workers'
-// hours in the Hours tab (src/hours-review/).
+// An HR with the Hours (or Schedule) right reviews its workers' hours in the
+// Hours tab (src/hours-review/).
 export function hrHourReview(): boolean {
   const s = getSession();
-  return !!s && s.role === 'hr' && ((s.hourPerms as string[] | undefined) || []).some(p => p === 'hours' || p === 'schedule');
+  return !!s && s.role === 'hr' && rights().some(p => p === 'hours' || p === 'schedule');
 }
 /** The tabs in menu order (the frame draws those tabAllowed gives); Commission and Hours are an HR's. */
 export const NAV_TABS = ['dashboard', 'schedule', 'workers', 'clients', 'suppliers', 'admin', 'accounting', 'commission', 'hours'];
@@ -82,9 +66,9 @@ export function tabAllowed(tab: string): boolean {
   if (tab === 'commission') return hrPayOnly();
   if (tab === 'hours') return hrHourReview();
   if (isHrSession() && HR_HIDDEN_TABS.includes(tab)) return false;
-  const r = staffRights();
-  if (r && tab === 'dashboard') return r.includes('today');
-  if (r && tab === 'admin') return r.includes('punchlog');
+  const staff = getSession()?.role === 'staff';
+  if (staff && tab === 'dashboard') return rights().includes('today');
+  if (staff && tab === 'admin') return rights().includes('punchlog');
   return !NAV_TAB_PERMISSION[tab] || hasPermission(NAV_TAB_PERMISSION[tab]);
 }
 /** Accounting and an HR's Commission and Hours: drawn by the page's renderAccounting(), on the same data. */

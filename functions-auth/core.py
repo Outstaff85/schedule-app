@@ -11,18 +11,19 @@ deleteTemplate, linkToTemplates, with the error texts the app shows.
 
 Collections (see firestore.rules — all of these are function-only except
 users/{uid}, which its owner, a superadmin or the firm's tenant_admin may read):
-  users/{uid}         username, tenantId, role, permissions ('*' or list),
-                      supplierId, clientId (a client login), hourPerms (hr,
-                      supplier, client: the hours-review ticks), active, createdAt, fullName (the
-                      person's name the app shows), phone, language
-                      (the UI language the person last picked: en/he/ru), theme
-                      (the look last picked in the account menu: dark/light/system); an 'hr' user also
-                      ownOnly (sees only the workers whose
-                      hrId is theirs — see firestore.rules); templateId (the
-                      permission template its rights are copied from)
-  permTemplates/{id}  name, role, permissions, hourPerms, supplierSections,
-                      ownOnly, showPay, updatedAt — one set for every firm,
-                      only a superadmin edits it (saveTemplate)
+  users/{uid}         username, tenantId, role, supplierId, clientId (a
+                      client login), rights (staff, hr, supplier, client: the
+                      flat list of rights, copied from its template), active,
+                      createdAt, fullName (the person's name the app shows),
+                      phone, language (the UI language the person last
+                      picked: en/he/ru), theme (the look last picked in the
+                      account menu: dark/light/system); an 'hr' user also
+                      ownOnly (sees only the workers whose hrId is theirs —
+                      see firestore.rules) and its commission rates;
+                      templateId (the permission template its rights are
+                      copied from)
+  permTemplates/{id}  name, role, rights, ownOnly (hr), updatedAt — one set
+                      for every firm, only a superadmin edits it (saveTemplate)
   authSecrets/{uid}   algo, salt, hash, failCount, lastFailAt
   usernames/{name}    {uid} — makes a username unique: the batch that
                       creates a user create()s this doc and fails as a whole
@@ -47,36 +48,11 @@ from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 ROLES_SUB = ("staff", "supplier", "hr", "client")    # what a firm can create for itself
-# Hours review (hours.py, the `hours` function) — the same ticks for an HR, a
-# supplier and a client login (users.hourPerms → claim hp). A client login
-# login without its own ticks (none stored yet) has HOUR_DEFAULT — the same
-# for an HR, a supplier and a client (user request 2026-10-11).
+# The hours review's ticks (hours.py, the `hours` function) — the same for an
+# HR, a supplier and a client login, worked out from its flat rights (HOUR_OF).
 HOUR_PERMS = ("hours", "approve", "dispute", "fix", "schedule", "export")
-HOUR_DEFAULT = ["hours", "approve", "dispute", "fix"]
 HOUR_ROLES = ("hr", "supplier", "client")
-# The supplier portal's tabs a supplier login may use (users.supplierSections
-# → claim ss; none stored = all of them). The supplier function refuses a
-# worker change without "workers" and the hours actions without "hours".
-SUPPLIER_SECTIONS = ("dashboard", "workers", "hours")
-
-
-def _supplier_sections(v):
-    return [p for p in SUPPLIER_SECTIONS if p in v] if isinstance(v, list) else list(SUPPLIER_SECTIONS)
-
-
-def _hour_perms(v):
-    return [p for p in HOUR_PERMS if isinstance(v, list) and p in v]
-
-
-def _stored_hour_perms(d):
-    """A review login's ticks as stored; HOUR_DEFAULT when none are stored
-    (a client made before hourPerms: its old permissions list)."""
-    hp = d.get("hourPerms")
-    if hp is None and _norm_role(d.get("role")) == "client" and isinstance(d.get("permissions"), list):
-        hp = d.get("permissions")
-    return _hour_perms(hp) if hp is not None else list(HOUR_DEFAULT)
 E_ROLE = "The role must be staff, supplier, hr or client"
-HR_DEFAULT_PERMS = ["workers"]
 ADMIN_ROLES = ("tenant_admin", "superadmin")
 PROFILE_FIELDS = ("companyName", "deductionsFileNumber", "phone", "street", "streetNumber", "city")
 # The UI languages a person can pick in the page header (docs/translations.md).
@@ -136,75 +112,35 @@ def verify_password(password, secret):
 # ── Claims ───────────────────────────────────────────────────────────────────
 
 def claims_for(user):
-    """Custom-token claims read by firestore.rules / storage.rules."""
+    """Custom-token claims read by firestore.rules / storage.rules and the
+    functions (caller_rights)."""
     role = _norm_role(user.get("role"))
-    perms = user.get("permissions")
-    if role == "supplier":
-        perms_list = []
-    elif role == "client":
-        perms_list = []
-    elif perms in (None, "", "*"):
-        perms_list = ["*"]
-    else:
-        perms_list = list(perms)
-    claims = {"role": role, "perms": perms_list}
+    claims = {"role": role}
     if role in ROLES_SUB:
-        # rt: the flat rights (docs/permissions-plan.md) — what the rules and
-        # the functions check (caller_rights); a login on no template yet has
-        # them worked out from its fields, one to one. The claims below are
-        # the same rights in their old shape, for the app's older code.
-        claims["rt"] = _template_rights(role, user)["rights"]
-    if role in ("staff", "hr") and isinstance(user.get("editPerms"), list):
-        # ed: what it may change (shifts, workers, punches); none stored = all
-        claims["ed"] = _edit_perms(user.get("editPerms"))
+        # rt: the flat rights (docs/permissions-plan.md) — the one thing the
+        # rules and the functions check.
+        claims["rt"] = _user_rights(role, user)
     if role == "hr":
         # own: this HR sees and edits only the workers whose hrId is its uid
-        # (firestore.rules / storage.rules / files.py read it).
+        # (firestore.rules / storage.rules / files.py read it); hrc: its
+        # commission ₪/h; hrcd: its commission ₪/day for a worker paid by the day.
         claims["own"] = user.get("ownOnly") is not False
-    if role in ("hr", "supplier"):
-        # pay: sees its own workers' rate, pay and its own commission
-        # (showPay, on unless turned off); hrc: an HR's commission ₪/h;
-        # hrcd: its commission ₪/day for a worker paid by the day.
-        claims["pay"] = user.get("showPay") is not False
-        if role == "hr":
-            claims["hrc"] = _rate(user.get("commissionRate"))
-            claims["hrcd"] = _rate(user.get("commissionDayRate"))
+        claims["hrc"] = _rate(user.get("commissionRate"))
+        claims["hrcd"] = _rate(user.get("commissionDayRate"))
     if user.get("tenantId"):
         claims["tenantId"] = user["tenantId"]
     if user.get("supplierId"):
         claims["supplierId"] = user["supplierId"]
     if role == "client" and user.get("clientId"):
         claims["clientId"] = user["clientId"]
-    if role in HOUR_ROLES:
-        hp = user.get("hourPerms")
-        if hp is None and role == "client" and isinstance(user.get("permissions"), list):
-            hp = user.get("permissions")  # a client login made before hourPerms: its ticks were its permissions
-        claims["hp"] = _hour_perms(hp) if hp is not None else list(HOUR_DEFAULT)
-    if role == "supplier":
-        claims["ss"] = _supplier_sections(user.get("supplierSections"))
     return claims
 
 
 def caller_rights(decoded):
-    """The flat rights of a verified ID token (claim rt). A token signed in
-    before them has its old claims read one to one (_flat_of), until the
-    next sign-in; an owner or a superadmin has none (it may do everything)."""
+    """The flat rights of a verified ID token (claim rt); none for a token
+    without them (an owner or a superadmin may do everything anyway)."""
     rt = decoded.get("rt")
-    if isinstance(rt, list):
-        return set(rt)
-    role = _norm_role(decoded.get("role"))
-    if role not in ROLES_SUB:
-        return set()
-    perms = decoded.get("perms")
-    v = {"permissions": "*" if isinstance(perms, list) and "*" in perms else perms,
-         "editPerms": decoded.get("ed"), "supplierSections": decoded.get("ss"),
-         "showPay": decoded.get("pay") is True}
-    if isinstance(decoded.get("hp"), list):
-        v["hourPerms"] = decoded.get("hp")
-    flat = set(_flat_of(role, v))
-    if role == "staff" and decoded.get("r") and "payEdit" not in (perms or []):
-        flat.discard("editPay")  # signed in on the first flat rights: Accounting alone never changed pay
-    return flat
+    return set(rt) if isinstance(rt, list) else set()
 
 
 def _rate(v):
@@ -244,6 +180,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
     if not username or not password:
         return {"error": "Enter a username and password"}
 
+    convert_old_rights(db)
     name_doc = db.collection("usernames").document(username).get()
     if not name_doc.exists:
         return refused("no such username (usernames/{name} missing)")
@@ -284,7 +221,6 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         t = db.collection("tenants").document(tenant_id).get()
         if t.exists:
             profile = dict(t.to_dict(), tenantId=tenant_id)
-    perms = user.get("permissions")
     return {
         "ok": True,
         "token": mint_token(uid, claims),
@@ -292,15 +228,11 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "username": username,
         "role": claims["role"],
         "tenantId": tenant_id,
-        "permissions": "*" if perms in (None, "", "*") else perms,
         "supplierId": user.get("supplierId") or None,
         "clientId": claims.get("clientId"),
-        "hourPerms": claims.get("hp", []),
-        "editPerms": claims.get("ed", list(EDIT_PERMS)) if claims["role"] in ("staff", "hr") else None,
         # the flat rights (docs/permissions-plan.md); None: an owner or a superadmin
         "rights": claims.get("rt"),
         "ownOnly": claims.get("own", False),
-        "showPay": claims.get("pay", False),
         "commissionRate": claims.get("hrc", 0),
         "commissionDayRate": claims.get("hrcd", 0),
         "fullName": user.get("fullName") or "",
@@ -373,19 +305,14 @@ def list_users(db, caller):
             "id": s.id, "username": d.get("username"), "role": _norm_role(d.get("role")),
             "tenantId": d.get("tenantId") or None, "active": d.get("active", True),
             "createdAt": d.get("createdAt"),
-            "permissions": "*" if d.get("permissions") in (None, "", "*") else d.get("permissions"),
             "supplierId": d.get("supplierId") or None,
             "clientId": d.get("clientId") or None,
-            "hourPerms": _stored_hour_perms(d) if _norm_role(d.get("role")) in HOUR_ROLES else None,
-            "supplierSections": _supplier_sections(d.get("supplierSections")) if _norm_role(d.get("role")) == "supplier" else None,
             "fullName": d.get("fullName") or "", "phone": d.get("phone") or "",
             "ownOnly": d.get("ownOnly") is not False if _norm_role(d.get("role")) == "hr" else None,
-            "showPay": d.get("showPay") is not False if _norm_role(d.get("role")) in ("hr", "supplier") else None,
             "commissionRate": _rate(d.get("commissionRate")) if _norm_role(d.get("role")) == "hr" else None,
             "commissionDayRate": _rate(d.get("commissionDayRate")) if _norm_role(d.get("role")) == "hr" else None,
             "templateId": d.get("templateId") or None,
-            "editPerms": _edit_perms(d.get("editPerms")) if _norm_role(d.get("role")) in ("staff", "hr") else None,
-            "rights": d.get("rights") if isinstance(d.get("rights"), list) else None,
+            "rights": _user_rights(_norm_role(d.get("role")), d) if _norm_role(d.get("role")) in ROLES_SUB else None,
         })
     return {"users": users}
 
@@ -451,7 +378,7 @@ def create_firm(db, caller, body):
         return {"error": err}
     tenant_id = str(uuid.uuid4())
     uid, err = _new_user_batch(db, username, {
-        "role": "tenant_admin", "tenantId": tenant_id, "permissions": "*",
+        "role": "tenant_admin", "tenantId": tenant_id,
         "supplierId": None, "active": True,
         "fullName": str(body.get("ownerName") or "").strip()[:80],
     }, password)
@@ -466,20 +393,19 @@ def create_firm(db, caller, body):
 
 
 def create_tenant_user(db, caller, body):
+    """createTenantUser: a new login of the firm, on a permission template —
+    the template says its role and rights."""
     if not _can_manage(caller):
         return {"error": E_NO_RIGHTS}
     tenant_id = (body.get("tenantId") or caller.get("tenantId")) if _is_super(caller) else caller.get("tenantId")
     if not tenant_id:
         return {"error": "No tenantId"}
-    tpl = None
-    if body.get("templateId"):  # the template says the role
-        tpl, err = _load_template(db, body.get("templateId"))
-        if err:
-            return {"error": err}
-        body = dict(body, role=tpl["role"], **tpl["rights"])
-    role = body.get("role")
-    if role not in ROLES_SUB:
-        return {"error": E_ROLE}
+    if not body.get("templateId"):
+        return {"error": E_PICK_TEMPLATE}
+    tpl, err = _load_template(db, body.get("templateId"))
+    if err:
+        return {"error": err}
+    role = tpl["role"]
     username = _norm_username(body.get("username"))
     password = str(body.get("password") or "")
     if not username or not password:
@@ -493,40 +419,20 @@ def create_tenant_user(db, caller, body):
         return {"error": "A client login needs a client"}
     if role == "hr" and not str(body.get("fullName") or "").strip():
         return {"error": "An HR login needs a name"}
-    perms = body.get("permissions")
-    if role == "supplier":
-        perms = ""
-    elif role == "client":
-        perms = ""
-    elif role == "hr":
-        perms = list(perms) if isinstance(perms, list) else list(HR_DEFAULT_PERMS)
-    else:
-        perms = list(perms) if isinstance(perms, list) else "*"
-    user = {
-        "role": role, "tenantId": tenant_id, "permissions": perms,
+    user = dict({
+        "role": role, "tenantId": tenant_id,
         "supplierId": body.get("supplierId") if role == "supplier" else None,
-        "supplierSections": _supplier_sections(body.get("supplierSections")) if role == "supplier" else None,
         "clientId": str(body.get("clientId")) if role == "client" else None,
         "active": True,
         # The person's name (shown in the app header and the Users list
         # instead of the login); required for an HR.
         "fullName": str(body.get("fullName") or "").strip()[:80],
         "phone": str(body.get("phone") or "").strip()[:40],
-    }
+        "templateId": tpl["id"],
+    }, **tpl["rights"])
     if role == "hr":
-        user["ownOnly"] = body.get("ownOnly") is not False
         user["commissionRate"] = _rate(body.get("commissionRate"))
         user["commissionDayRate"] = _rate(body.get("commissionDayRate"))
-    if role in ("hr", "supplier"):
-        user["showPay"] = body.get("showPay") is not False
-    if role in ("staff", "hr") and isinstance(body.get("editPerms"), list):
-        user["editPerms"] = _edit_perms(body.get("editPerms"))
-    if role in HOUR_ROLES:
-        hp = body.get("hourPerms")
-        user["hourPerms"] = _hour_perms(hp) if isinstance(hp, list) else list(HOUR_DEFAULT)
-    if tpl:
-        user["templateId"] = tpl["id"]
-        user["rights"] = tpl["rights"]["rights"]
     uid, err = _new_user_batch(db, username, user, password)
     if err:
         return {"error": err}
@@ -537,75 +443,44 @@ E_ADMIN_TARGET = "For the firm owner and the super-admin only the name and phone
 
 
 def update_user(db, caller, body, revoke):
-    """Name and phone are saved as they are and need no new sign-in. Rights
-    (permissions, supplier, active, ownOnly) are compared with what is
-    stored: only a real change ends the user's sessions (the app's form
-    sends them every time). An owner / super-admin target takes only name
-    and phone."""
+    """Name and phone are saved as they are and need no new sign-in. The
+    role and rights come only from a template (templateId; a new one copies
+    its role and rights in); supplier, client, active and an HR's commission
+    are compared with what is stored: only a real change ends the user's
+    sessions (the app's form sends them every time). An owner / super-admin
+    target takes only name and phone."""
     if not _can_manage(caller):
         return {"error": E_NO_RIGHTS}
     ref, data, err = _load_target(db, caller, body.get("id"))
     if err:
         return {"error": err}
     role = _norm_role(data.get("role"))
-    if role in ADMIN_ROLES and any(k in body for k in ("permissions", "supplierId", "clientId", "hourPerms", "active", "ownOnly", "role",
-                                                       "showPay", "commissionRate", "commissionDayRate", "templateId")):
+    if role in ADMIN_ROLES and any(k in body for k in ("supplierId", "clientId", "active", "role",
+                                                       "commissionRate", "commissionDayRate", "templateId")):
         return {"error": E_ADMIN_TARGET}
     upd = {}
-    # A login on a template takes its rights from the template only: a new
-    # templateId copies them in (and may change the role to the template's);
-    # without one, the rights the body sends are dropped.
-    tpl = None
     if body.get("templateId"):
         tpl, err = _load_template(db, body.get("templateId"))  # the template says the role
         if err:
             return {"error": err}
-        body = dict({k: v for k, v in body.items() if k not in TEMPLATE_RIGHTS}, role=tpl["role"], **tpl["rights"])
-        if tpl["id"] != data.get("templateId"):
-            upd["templateId"] = tpl["id"]
-    elif data.get("templateId"):
-        body = {k: v for k, v in body.items() if k not in TEMPLATE_RIGHTS}
-    # A login may move between staff, hr, supplier and client (never to an admin role).
-    new_role = body.get("role") or role
-    if new_role != role:
-        if new_role not in ROLES_SUB:
-            return {"error": E_ROLE}
-        if data.get("templateId") and not tpl:
-            return {"error": E_PICK_TEMPLATE}
-        if new_role == "supplier" and not (body.get("supplierId") or data.get("supplierId")):
-            return {"error": "A supplier login needs a supplier"}
-        if new_role == "client" and not (body.get("clientId") or data.get("clientId")):
-            return {"error": "A client login needs a client"}
-        if new_role == "hr" and not str(body.get("fullName") or data.get("fullName") or "").strip():
-            return {"error": "An HR login needs a name"}
-        upd["role"] = new_role
-        if new_role == "supplier":
-            body = dict(body, permissions="")
-        if new_role != "supplier":
-            body = dict(body, supplierId=None)
-        if new_role != "client":
-            body = dict(body, clientId=None)
-        else:
-            body = dict(body, permissions="")
-        if new_role in HOUR_ROLES and not isinstance(body.get("hourPerms"), list) and data.get("hourPerms") is None:
-            body = dict(body, hourPerms=list(HOUR_DEFAULT))
-        if new_role == "hr" and "ownOnly" not in body:
-            body = dict(body, ownOnly=True)
-        role = new_role
-    if "permissions" in body:
-        p = body.get("permissions")
-        if role == "client":
-            upd["permissions"] = ""
-        else:
-            upd["permissions"] = list(p) if isinstance(p, list) else ("" if p == "" else "*")
-    if "hourPerms" in body:
-        upd["hourPerms"] = _hour_perms(body.get("hourPerms")) if role in HOUR_ROLES else []
-    if "editPerms" in body and role in ("staff", "hr"):
-        upd["editPerms"] = _edit_perms(body.get("editPerms"))
-    if tpl:
-        upd["rights"] = tpl["rights"]["rights"]
-    if "supplierSections" in body and role == "supplier":
-        upd["supplierSections"] = _supplier_sections(body.get("supplierSections"))
+        new_role = tpl["role"]
+        if new_role != role:
+            if new_role == "supplier" and not (body.get("supplierId") or data.get("supplierId")):
+                return {"error": "A supplier login needs a supplier"}
+            if new_role == "client" and not (body.get("clientId") or data.get("clientId")):
+                return {"error": "A client login needs a client"}
+            if new_role == "hr" and not str(body.get("fullName") or data.get("fullName") or "").strip():
+                return {"error": "An HR login needs a name"}
+            upd["role"] = new_role
+            if new_role != "supplier":
+                body = dict(body, supplierId=None)
+            if new_role != "client":
+                body = dict(body, clientId=None)
+            role = new_role
+        upd["templateId"] = tpl["id"]
+        upd.update(tpl["rights"])
+    elif body.get("role") and _norm_role(body.get("role")) != role:
+        return {"error": E_PICK_TEMPLATE}
     if "clientId" in body:
         upd["clientId"] = (str(body.get("clientId")) if body.get("clientId") else None) if role == "client" else None
     if "supplierId" in body:
@@ -613,29 +488,18 @@ def update_user(db, caller, body, revoke):
     if "active" in body:
         upd["active"] = bool(body.get("active"))
     is_hr = role == "hr"
-    if is_hr and "ownOnly" in body:
-        upd["ownOnly"] = body.get("ownOnly") is not False
-    if role in ("hr", "supplier") and "showPay" in body:
-        upd["showPay"] = body.get("showPay") is not False
     if is_hr and "commissionRate" in body:
         upd["commissionRate"] = _rate(body.get("commissionRate"))
     if is_hr and "commissionDayRate" in body:
         upd["commissionDayRate"] = _rate(body.get("commissionDayRate"))
     current = {"role": _norm_role(data.get("role")),
-               "permissions": "*" if data.get("permissions") in (None, "", "*") else data.get("permissions"),
+               "templateId": data.get("templateId"), "rights": data.get("rights"),
+               "ownOnly": data.get("ownOnly"),
                "supplierId": data.get("supplierId") or None, "clientId": data.get("clientId") or None,
-               "hourPerms": data.get("hourPerms"),
-               "supplierSections": data.get("supplierSections"),  # none stored ≠ none ticked (none stored = HOUR_DEFAULT)
                "active": data.get("active", True) is not False,
-               "ownOnly": data.get("ownOnly") is not False, "showPay": data.get("showPay") is not False,
                "commissionRate": _rate(data.get("commissionRate")),
                "commissionDayRate": _rate(data.get("commissionDayRate"))}
-    current["templateId"] = data.get("templateId")
-    current["editPerms"] = data.get("editPerms")
-    current["rights"] = data.get("rights")
-    upd = {k: v for k, v in upd.items() if v != current[k]}
-    if upd.get("role") == "hr":  # a new HR always gets its ownOnly flag stored
-        upd["ownOnly"] = body.get("ownOnly") is not False
+    upd = {k: v for k, v in upd.items() if v != current.get(k)}
     info = {}
     if "fullName" in body:
         if is_hr and not str(body.get("fullName") or "").strip():
@@ -648,7 +512,7 @@ def update_user(db, caller, body, revoke):
     if upd:
         ref.update(upd)
         # Claims are baked into the session: make the user sign in again so
-        # new permissions (or a deactivation) take effect within the hour.
+        # new rights (or a deactivation) take effect within the hour.
         revoke(ref.id)
     return {"ok": True}
 
@@ -690,29 +554,17 @@ def delete_user(db, caller, body, revoke):
 # One set of templates for every firm (owner, 2026-10-19): only a superadmin
 # edits them, every firm's owner picks them for its logins. A login on a
 # template has the template's rights copied into its users doc (so login,
-# the rules and the functions read them as before); saving a template copies
-# them again into every login on it, in every firm, and ends the sessions of
-# those whose rights changed. Deleting a template leaves its logins' rights as
-# they are, without a template.
+# the rules and the functions read them from there); saving a template
+# copies them again into every login on it, in every firm, and ends the
+# sessions of those whose rights changed. Deleting a template leaves its
+# logins' rights as they are, without a template.
 
-TEMPLATE_RIGHTS = ("rights", "permissions", "editPerms", "hourPerms", "supplierSections", "ownOnly", "showPay")
-# What a staff / HR login may change in the sections it sees (users.editPerms
-# → claim ed; firestore.rules): the shifts, the worker records, the punches.
-# A login with none stored (made before them) may change all three.
-EDIT_PERMS = ("editSchedule", "editWorkers", "editPunches")
-# The sections a staff / HR template may tick (payEdit: HR only).
-TEMPLATE_SECTIONS = ("schedule", "workers", "clients", "suppliers", "accounting", "payEdit", "exports")
+TEMPLATE_RIGHTS = ("rights", "ownOnly")
 E_PICK_TEMPLATE = "Pick a template"
 E_TEMPLATE_NOT_FOUND = "Template not found"
 E_TEMPLATE_ROLE = "The template is for another role"
-# The templates written the first time the list is read (the demo's, and
-# Full access: what a staff login with every section — permissions '*' —
-# had, so linking it changes nothing).
 # The flat list of rights (docs/permissions-plan.md): one tick, one thing —
-# a tab, an action, or what is shown. A template keeps them (rights) and the
-# fields the claims, the rules and the functions read, worked out from them
-# (_legacy_of); a template saved before them has them worked out from those
-# fields (_flat_of), one to one. Whose workers an HR works with is ownOnly.
+# a tab, an action, or what is shown. Whose workers an HR works with is ownOnly.
 RIGHT_TABS = ("today", "schedule", "workers", "clients", "suppliers", "accounting", "punchlog", "commission", "hours")
 RIGHT_ACTIONS = ("editSchedule", "editWorkers", "editPunches", "editPay", "export", "approveHours", "disputeHours", "fixHours")
 RIGHT_SHOWN = ("seePay",)
@@ -731,52 +583,9 @@ RIGHT_CAPS = {
                  "approveHours", "disputeHours", "fixHours", "seePay"),
     "client": ("schedule", "hours", "export", "approveHours", "disputeHours", "fixHours"),
 }
-# A right → the hours tick (users.hourPerms → claim hp) it gives.
+# An hours-review tick (hours.py, HOUR_PERMS) → the right that gives it.
 HOUR_OF = (("hours", "hours"), ("approve", "approveHours"), ("dispute", "disputeHours"),
            ("fix", "fixHours"), ("schedule", "schedule"), ("export", "export"))
-# A staff / HR login's permissions in this order (claim perms).
-PERM_ORDER = ("today", "schedule", "workers", "clients", "suppliers", "accounting", "payEdit", "exports", "punchlog")
-
-
-def _flat_of(role, v):
-    """The flat rights a login or template saved before them has: what it
-    may do today, one to one (a staff login always had Today, and the Punch
-    log with Workers; Accounting let it change pay)."""
-    p = v.get("permissions")
-    if role in ("staff", "hr") and p in (None, "", "*"):
-        perms = {s for s in TEMPLATE_SECTIONS if s != "payEdit"}
-    else:
-        perms = set(p) if isinstance(p, list) else set()
-    f = set()
-    if role in ("staff", "hr"):
-        f |= perms & {"schedule", "workers", "clients", "suppliers"}
-        f |= set(_edit_perms(v.get("editPerms")))
-        if "exports" in perms:
-            f.add("export")
-        if "payEdit" in perms:
-            f.add("editPay")
-        if role == "staff":
-            f.add("today")
-            if "workers" in perms:
-                f.add("punchlog")
-            if "accounting" in perms:
-                f |= {"accounting", "editPay"}
-        elif "accounting" in perms:
-            f.add("commission")  # an HR's Accounting is its reduced one: its own workers' pay and commission
-    if role == "supplier":
-        ss = set(_supplier_sections(v.get("supplierSections")))
-        if "dashboard" in ss:
-            f.add("today")
-        if "workers" in ss:
-            f.add("workers")
-        if "hours" in ss:
-            f.add("commission")  # the portal's hours tab shows its commission
-    if role in HOUR_ROLES:
-        hp = set(_stored_hour_perms(dict(v, role=role)))
-        f |= {k for h, k in HOUR_OF if h in hp}
-    if role in ("hr", "supplier") and v.get("showPay") is not False:
-        f.add("seePay")
-    return _rights_for(role, f)
 
 
 def _rights_for(role, f):
@@ -784,34 +593,10 @@ def _rights_for(role, f):
     return [r for r in RIGHTS if r in f and r in caps]
 
 
-def _legacy_of(role, flat, own=True):
-    """The fields the claims, the rules and the functions read, from the flat rights."""
-    f = set(flat)
-    out = {"rights": list(flat)}
-    if role in ("staff", "hr"):
-        p = {s for s in ("schedule", "workers", "clients", "suppliers") if s in f}
-        if "accounting" in f or (role == "hr" and "commission" in f):
-            p.add("accounting")
-        if "editPay" in f:
-            p.add("payEdit")
-        if "export" in f:
-            p.add("exports")
-        if role == "staff":
-            p |= {s for s in ("today", "punchlog") if s in f}
-        out["permissions"] = [s for s in PERM_ORDER if s in p]
-        out["editPerms"] = [e for e in EDIT_PERMS if e in f]
-    else:
-        out["permissions"] = ""
-    if role in HOUR_ROLES:
-        out["hourPerms"] = [h for h, k in HOUR_OF if k in f]
-    if role == "supplier":
-        out["supplierSections"] = [s for s, ks in (("dashboard", ("today",)), ("workers", ("workers",)), ("hours", ("hours", "commission")))
-                                   if f & set(ks)]
-    if role == "hr":
-        out["ownOnly"] = own
-    if role in ("hr", "supplier"):
-        out["showPay"] = "seePay" in f
-    return out
+def _user_rights(role, d):
+    """A login's (or template's) stored flat rights, only its role's."""
+    r = (d or {}).get("rights")
+    return _rights_for(role, set(r)) if isinstance(r, list) else []
 
 
 DEFAULT_TEMPLATES = (
@@ -829,15 +614,12 @@ DEFAULT_TEMPLATES = (
 
 def _template_rights(role, v):
     """The rights a template gives a login of this role, as the users doc
-    keeps them: the flat list (rights; worked out from the old fields when
-    there is none) and the fields read from it."""
+    keeps them: the flat list, and an HR's ownOnly."""
     v = v or {}
-    flat = _rights_for(role, set(v["rights"])) if isinstance(v.get("rights"), list) else _flat_of(role, v)
-    return _legacy_of(role, flat, v.get("ownOnly") is not False)
-
-
-def _edit_perms(v):
-    return [p for p in EDIT_PERMS if p in v] if isinstance(v, list) else list(EDIT_PERMS)
+    out = {"rights": _rights_for(role, set(v["rights"])) if isinstance(v.get("rights"), list) else []}
+    if role == "hr":
+        out["ownOnly"] = v.get("ownOnly") is not False
+    return out
 
 
 def _template_out(snap):
@@ -868,28 +650,105 @@ def _load_template(db, tid, role=None):
     return {"id": snap.id, "role": t["role"], "rights": {k: t[k] for k in TEMPLATE_RIGHTS if k in t}}, None
 
 
-def _migrate_templates(db, snaps):
-    """Templates saved before the flat rights get them (worked out one to
-    one from their fields), and so do their logins; the rights a login has
-    stay the same, so no session ends."""
-    done = False
-    for snap in snaps:
-        d = snap.to_dict() or {}
-        if isinstance(d.get("rights"), list):
-            continue
-        rights = _template_rights(_norm_role(d.get("role")), d)
-        snap.reference.update(rights)
-        batch, n = db.batch(), 0
-        for u in _template_users(db, snap.id):
-            batch.update(u.reference, rights)
+# ── The old rights fields → the flat rights, once ─────────────────────────────
+# Before the flat rights a login and a template kept its rights in other
+# fields (permissions, editPerms, hourPerms, supplierSections, showPay). The
+# first call after the deploy (login or a users_admin action) writes every
+# such doc's flat rights, worked out one to one from those fields, and
+# deletes them; appMeta/rights remembers it is done. A session signed in
+# before the flat rights has no `rt` claim and the app sends it to the
+# sign-in (docs/permissions-plan.md → Done after the plan).
+
+OLD_RIGHT_FIELDS = ("permissions", "editPerms", "hourPerms", "supplierSections", "showPay")
+_OLD_SECTIONS = ("schedule", "workers", "clients", "suppliers", "accounting", "exports")
+_OLD_HOUR_DEFAULT = ("hours", "approve", "dispute", "fix")
+_converted = False
+
+
+def _old_flat_of(role, v):
+    """The flat rights a login or template with the old fields had: what it
+    could do, one to one (a staff login always had Today, and the Punch log
+    with Workers; Accounting let it change pay)."""
+    p = v.get("permissions")
+    if role in ("staff", "hr") and p in (None, "", "*"):
+        perms = set(_OLD_SECTIONS)
+    else:
+        perms = set(p) if isinstance(p, list) else set()
+    f = set()
+    if role in ("staff", "hr"):
+        f |= perms & {"schedule", "workers", "clients", "suppliers"}
+        ed = v.get("editPerms")
+        f |= set(ed) & {"editSchedule", "editWorkers", "editPunches"} if isinstance(ed, list) else {"editSchedule", "editWorkers", "editPunches"}
+        if "exports" in perms:
+            f.add("export")
+        if "payEdit" in perms:
+            f.add("editPay")
+        if role == "staff":
+            f.add("today")
+            if "workers" in perms:
+                f.add("punchlog")
+            if "accounting" in perms:
+                f |= {"accounting", "editPay"}
+        elif "accounting" in perms:
+            f.add("commission")  # an HR's Accounting was its reduced one: its own workers' pay and commission
+    if role == "supplier":
+        ss = v.get("supplierSections")
+        ss = set(ss) if isinstance(ss, list) else {"dashboard", "workers", "hours"}
+        if "dashboard" in ss:
+            f.add("today")
+        if "workers" in ss:
+            f.add("workers")
+        if "hours" in ss:
+            f.add("commission")  # the portal's hours tab showed its commission
+    if role in HOUR_ROLES:
+        hp = v.get("hourPerms")
+        if hp is None and role == "client" and isinstance(p, list):
+            hp = p  # a client login made before hourPerms: its ticks were its permissions
+        hp = set(hp) if isinstance(hp, list) else set(_OLD_HOUR_DEFAULT)
+        f |= {k for h, k in HOUR_OF if h in hp}
+    if role in ("hr", "supplier") and v.get("showPay") is not False:
+        f.add("seePay")
+    return _rights_for(role, f)
+
+
+def _convert_doc(snap):
+    """The update that gives one users / permTemplates doc its flat rights
+    and drops the old fields, or None when it has nothing to convert."""
+    d = snap.to_dict() or {}
+    old = [k for k in OLD_RIGHT_FIELDS if k in d]
+    role = _norm_role(d.get("role"))
+    upd = {k: firestore.DELETE_FIELD for k in old}
+    if role in ROLES_SUB and not isinstance(d.get("rights"), list):
+        upd["rights"] = _old_flat_of(role, d)
+    if role == "hr" and not isinstance(d.get("ownOnly"), bool):
+        upd["ownOnly"] = d.get("ownOnly") is not False
+    return upd or None
+
+
+def convert_old_rights(db):
+    """Runs the conversion once (see above); later calls cost one read."""
+    global _converted
+    if _converted:
+        return
+    flag = db.collection("appMeta").document("rights")
+    if flag.get().exists:
+        _converted = True
+        return
+    batch, n = db.batch(), 0
+    for col in ("permTemplates", "users"):
+        for snap in db.collection(col).stream():
+            upd = _convert_doc(snap)
+            if not upd:
+                continue
+            batch.update(snap.reference, upd)
             n += 1
             if n % 400 == 0:
                 batch.commit()
                 batch = db.batch()
-        if n % 400:
-            batch.commit()
-        done = True
-    return done
+    if n % 400:
+        batch.commit()
+    flag.set({"converted": _now_iso(), "docs": n})
+    _converted = True
 
 
 def list_templates(db, caller):
@@ -900,8 +759,6 @@ def list_templates(db, caller):
     snaps = list(db.collection("permTemplates").stream())
     if not snaps:
         _seed_templates(db)
-        snaps = list(db.collection("permTemplates").stream())
-    elif _migrate_templates(db, snaps):
         snaps = list(db.collection("permTemplates").stream())
     q = db.collection("users")
     if not _is_super(caller):
@@ -971,11 +828,6 @@ def save_template(db, caller, body, revoke):
     return {"ok": True, "id": tid, "updated": len(changed)}
 
 
-def _rights_now(role, d):
-    """A login's rights as they are stored, in a template's shape."""
-    return _template_rights(role, d)
-
-
 def _closest_template(role, now, tpls):
     """The template giving exactly these rights, else the one of the role
     sharing the most rights (the fewest extra on a tie), else its first."""
@@ -997,7 +849,6 @@ def link_to_templates(db, caller, body, revoke):
         return {"error": E_NO_RIGHTS}
     if not list(db.collection("permTemplates").limit(1).stream()):
         _seed_templates(db)
-    _migrate_templates(db, list(db.collection("permTemplates").stream()))
     tpls = [_template_out(s) for s in db.collection("permTemplates").stream()]
     order = {r: i for i, r in enumerate(ROLES_SUB)}
     tpls.sort(key=lambda t: (order.get(t["role"], 9), t["name"].lower()))
@@ -1008,7 +859,7 @@ def link_to_templates(db, caller, body, revoke):
         role = _norm_role(d.get("role"))
         if d.get("templateId") or role not in ROLES_SUB:
             continue
-        now = _rights_now(role, d)
+        now = _template_rights(role, d)
         t = _closest_template(role, now, tpls)
         if not t:
             skipped += 1
@@ -1247,4 +1098,5 @@ def run_action(db, caller, body, revoke):
     fn = ACTIONS.get(str(body.get("action") or ""))
     if not fn:
         return {"error": "Unknown action"}
+    convert_old_rights(db)
     return fn(db, caller, body, revoke)

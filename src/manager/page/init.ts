@@ -81,18 +81,12 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons
     // Start on Dashboard (an HR login: its first tab)
     switchTab(homeTab());
     showContractNotice();
-    // An HR's hours ticks as the ID token has them now (a change by the
-    // owner shows on the next sign-in without a new login here).
-    if(isHrSession()) loadFirestoreBackend().then((b?: any) => b.hourPerms()).then((hp?: any) => {
-      const s = getSession(); if(!s || JSON.stringify(hp) === JSON.stringify(s.hourPerms || [])) return;
-      saveSession(Object.assign(s, {hourPerms: hp})); applyNavPermissions();
-      if(isAccTab(currentTab)) renderAccounting();
-    }).catch(()=>{});
-    // What a staff / HR login may change, as the ID token has it now (a
+    // A staff / HR login's flat rights as the ID token has them now (a
     // template change ends the session; until then the token is the truth).
-    if(isHrSession() || (getSession() || {} as any).role === 'staff') loadFirestoreBackend().then((b?: any) => b.editPerms()).then((ed?: any) => {
-      const s = getSession(); if(!s || JSON.stringify(ed) === JSON.stringify(s.editPerms ?? null)) return;
-      saveSession(Object.assign(s, {editPerms: ed})); render();
+    if(isHrSession() || (getSession() || {} as any).role === 'staff') loadFirestoreBackend().then((b?: any) => b.rights()).then((rt?: any) => {
+      const s = getSession(); if(!s || !Array.isArray(rt) || JSON.stringify(rt) === JSON.stringify(s.rights || [])) return;
+      saveSession(Object.assign(s, {rights: rt})); applyNavPermissions();
+      if(isAccTab(currentTab)) renderAccounting(); else render();
     }).catch(()=>{});
     // Wake users_admin (firm profile, users, files) so its first real call
     // doesn't wait for a cold start.

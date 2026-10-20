@@ -10,18 +10,17 @@ export const SUPPLIER_VIEWS: Record<string, 'dashboard' | 'workers' | 'hours' | 
 };
 
 /**
- * The frame tabs of a supplier (its portal tabs, claim ss — Today the
- * dashboard, Workers, Commission its hours and pay — and Hours the review
- * with an hours or schedule tick, claim hp) or a client (Hours).
+ * The frame tabs of a supplier, from its flat rights (claim rt): Today (its
+ * dashboard), Workers, Commission (its hours and pay) and Hours (the review,
+ * with Hours or Schedule); a client: Hours.
  */
-export function portalTabs(role: string, ss: string[], hp: string[]): string[] {
-  const review = hp.some(p => p === 'hours' || p === 'schedule');
+export function portalTabs(role: string, rights: string[]): string[] {
   if (role === 'client') return ['hours'];
   const out: string[] = [];
-  if (ss.includes('dashboard')) out.push('dashboard');
-  if (ss.includes('workers')) out.push('workers');
-  if (ss.includes('hours')) out.push('commission');
-  if (review) out.push('hours');
+  if (rights.includes('today')) out.push('dashboard');
+  if (rights.includes('workers')) out.push('workers');
+  if (rights.includes('commission')) out.push('commission');
+  if (rights.some(p => p === 'hours' || p === 'schedule')) out.push('hours');
   return out;
 }
 

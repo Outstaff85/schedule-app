@@ -91,12 +91,10 @@ export async function signIn(username?: any, password?: any): Promise<string | n
   try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e: any){}
   saveSession({
     uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,
-    permissions: fb.permissions, supplierId: fb.supplierId, clientId: fb.clientId || null,
+    supplierId: fb.supplierId, clientId: fb.clientId || null,
     ownOnly: fb.ownOnly === true, fullName: fb.fullName || '',
-    showPay: fb.showPay === true, commissionRate: Number(fb.commissionRate) || 0,
-    hourPerms: Array.isArray(fb.hourPerms) ? fb.hourPerms : [],
-    editPerms: Array.isArray(fb.editPerms) ? fb.editPerms : null,
-    rights: Array.isArray(fb.rights) ? fb.rights : null, // the flat rights; null: a login on none yet
+    commissionRate: Number(fb.commissionRate) || 0,
+    rights: Array.isArray(fb.rights) ? fb.rights : null, // the flat rights; null: an owner or a superadmin
     commissionDayRate: Number(fb.commissionDayRate) || 0,
     viewingTenantId: fb.tenantId, // a super-admin (tenantId null) picks one on the Firms screen
   });

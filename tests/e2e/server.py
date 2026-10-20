@@ -40,15 +40,18 @@ def seed():
     # The permission templates: the defaults, and three more the HR checks put logins on.
     import core
     core._seed_templates(DB)
-    for tid, name, role, rights in (('hrpay', 'HR with pay', 'hr', {'permissions': ['workers', 'accounting'], 'hourPerms': core.HOUR_DEFAULT}),
-                                    ('hrpayedit', 'HR pay edit', 'hr', {'permissions': ['workers', 'accounting', 'payEdit'], 'hourPerms': core.HOUR_DEFAULT}),
-                                    ('staffworkers', 'Workers only', 'staff', {'permissions': ['workers']})):
+    HOURS = ['approveHours', 'disputeHours', 'fixHours']
+    ED = ['editSchedule', 'editWorkers', 'editPunches']
+    for tid, name, role, rights in (('hrpay', 'HR with pay', 'hr', {'rights': ['workers', 'commission', 'hours', *ED, *HOURS, 'seePay']}),
+                                    ('hrpayedit', 'HR pay edit', 'hr', {'rights': ['workers', 'commission', 'hours', *ED, 'editPay', *HOURS, 'seePay']}),
+                                    ('staffworkers', 'Workers only', 'staff', {'rights': ['today', 'workers', 'punchlog', *ED]})):
         DB.collection('permTemplates').document(tid).set(dict({'name': name, 'role': role}, **core._template_rights(role, rights)))
-    seed_legacy('u-admin1', 'owner1', 'owner-pass-1', role='tenant_admin', tenantId=T1, permissions='*')
-    seed_legacy('u-sup1', 'sup1', 'sup-pass-11', role='supplier', tenantId=T1, permissions='', supplierId='s-1', hourPerms=['hours', 'approve', 'export'])
-    seed_legacy('u-super', 'boss', 'boss-pass-1', role='superadmin', tenantId=None, permissions='*')
+    seed_legacy('u-admin1', 'owner1', 'owner-pass-1', role='tenant_admin', tenantId=T1)
+    seed_legacy('u-sup1', 'sup1', 'sup-pass-11', role='supplier', tenantId=T1, supplierId='s-1',
+                rights=['today', 'workers', 'commission', 'hours', 'export', 'approveHours', 'seePay'])
+    seed_legacy('u-super', 'boss', 'boss-pass-1', role='superadmin', tenantId=None)
     seed_legacy('u-client1', 'client1', 'client-pass-1', role='client', tenantId=T1, clientId='c2', fullName='Site B manager',
-                permissions='', hourPerms=['hours', 'approve', 'dispute', 'fix', 'schedule', 'export'])
+                rights=['schedule', 'hours', 'export', *HOURS])
     t1.collection('settings').document('schedule').set({'savedAt': 'S1'})
     t1.collection('clients').document('c1').set({'id': 'c1', 'name': 'Site A', 'lat': 32.0, 'lng': 34.8, 'radius': 100, 'sortIndex': 0})
     t1.collection('clients').document('c2').set({'id': 'c2', 'name': 'Site B', 'sortIndex': 1})
