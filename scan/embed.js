@@ -28,24 +28,30 @@
     } catch { return null; }
   };
   const shownImgs = () => ($('shot').hidden ? [] : [$('shotImg'), ...$('shotMore').querySelectorAll('img')]).filter(i => i.src && i.src.startsWith('data:image/'));
-  const shown = () => shownImgs().map(i => i.src);
-  // each page's attempt (the lab's training, docs/scan-plan.md → S8): the window tells back which were deleted
-  const owners = () => shownImgs().map(i => ({ att: i.dataset.att || '', pg: +(i.dataset.pg || 0) }));
-  const post = async (key, pages, from) => {
+  // each page carries its attempt (the lab's training, docs/scan-plan.md → S8): the window tells back which
+  // were deleted ('scan-deleted') and which page's corners to fix ('scan-fix'); a fixed page is posted again
+  window.addEventListener('lab-fixed', e => {
+    for (const [key, imgs] of posted) if (imgs.includes(e.detail)) { void post(key, imgs); return; }
+  });
+  // the pictures posted under each key, so a page whose corners were fixed is posted again with its key
+  const posted = new Map();
+  const post = async (key, imgs) => {
+    posted.set(key, imgs);
+    const pages = imgs.map(i => i.src), from = imgs.map(i => ({ att: i.dataset.att || '', pg: +(i.dataset.pg || 0) }));
     const answers = await Promise.all(pages.map(answer));
     window.parent.postMessage({ type: 'scan-pages', key, pages, answers, attempts: from }, location.origin);
   };
   // A camera shot: its pages (again under the same key when its corners are refined).
-  const send = async key => { const pages = shown(); if (pages.length) await post(key, pages, owners()); };
+  const send = async key => { const imgs = shownImgs(); if (imgs.length) await post(key, imgs); };
   // Picked files (several photos and PDFs): each file's new pages as soon as the lab has them
   // ('lab-picked'), under their own key, so the window types them while the next file is worked on.
   let fileKey = null, files = 0, shots = 0, sent = 0, part = 0;
   const sendNew = async () => {
     if (!fileKey) return;
-    const pages = shown(), fresh = pages.slice(sent), from = owners().slice(sent);
+    const imgs = shownImgs(), fresh = imgs.slice(sent);
     if (!fresh.length) return;
-    sent = pages.length;
-    await post(fileKey + '.' + (++part), fresh, from);
+    sent = imgs.length;
+    await post(fileKey + '.' + (++part), fresh);
   };
   window.addEventListener('lab-picked', () => { void sendNew(); });
   // The scan window closed (src/scan/lab.ts keeps this page loaded a few minutes, so the models need
@@ -59,6 +65,9 @@
       $('stop').click(); shotId++;
       $('video').hidden = true; $('still').hidden = true; $('shot').hidden = true;
       $('shotMore').textContent = ''; $('shot2note').textContent = ''; $('hint').textContent = ''; $('kept').textContent = '';
+    } else if (e.data.type === 'scan-fix') {
+      const img = shownImgs().find(i => i.dataset.att === e.data.att && +(i.dataset.pg || 0) === +e.data.pg);
+      if (img) void fixCorners(img);
     } else if (e.data.type === 'scan-deleted') {
       for (const p of e.data.pages || []) void attemptPageDeleted(p.att, p.pg);
     } else if (e.data.type === 'scan-continue') {
