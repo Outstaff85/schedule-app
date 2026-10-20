@@ -70,3 +70,28 @@ On the worker (`src/manager/WorkerContract.tsx`, the worker window's **Contract*
 ### Tests (D2)
 
 `tests/auth/test_contracts.py` (marks in both directions and a typo; made light, same look, pictures shrunk; not a PDF refused; a picture page; filling, also by hand, and the signature; the actions — prepare, save, defaults, a worker's own, another firm sees none, staff may not manage, a new version, delete; Admin → Errors entries), and the browser check "contract templates" (`tests/e2e/main.test.js`: the upload made light with its marks — the Hebrew line too — and the typo, the sample, Save as the category's default, a tap opens the sample, the worker window's Contract section saved, ⋮ and Delete through Undo).
+
+## Signing (D3)
+
+Form 101 and the worker's contract are signed **once**, with the same signature and date in both, and are never built again.
+
+### The manager's side
+
+- **Documents to sign** on the worker card (`card-sign`, a login that edits workers) opens the sign window (`src/manager/SignWindow.tsx`). It reads `ManagerBridge.signContext(id)` — the saved worker, Form 101's values (`form101Payload`), the contract's mark values (`contractValues`, `src/manager/logic/contract-values.ts`: Hebrew as Form 101, a passport's names Latin; the pay marks only for a login that sees pay, `canSeePay`), the punch link and its WhatsApp link — and the templates (`list` with the worker): the worker's own pick, else its category's default, is chosen first.
+- **The signing date:** the day of signing by default; a login with the right **Set the signing date** (`canSetSignDate`: the owner, the super-admin, or the template's `setSignDate` tick — docs/permissions-plan.md) picks it in the window. The worker never changes it.
+- **Send to sign** (`send`, way `remote`): the request waits in the worker's own page; the window shows the link with **Send on WhatsApp** and Copy. **Sign here** (way `person`): both documents filled, in the window (`SignDocuments`), one signature → `sign`, the window closes at once and the two PDFs are built in the background (`buildSigned`: `build` form101 and contract at once), then taken onto the worker.
+- **On the worker** (`src/manager/logic/signing.ts`): the firm's requests are read when the Workers tab is drawn (at most once a minute; `loadSignRequests`) and after a signing; the card shows **Sent to sign**, **Signed <date>** or **Needs sending again** (the template was deleted before the signature). A signed request not taken yet is put on the worker once (`adoptSigned`): Form 101 as `docUrl` / `docFileId`, the contract as a `docs` entry with `signed: true`, `signedAt`, `signDate`, `signedRequestId`, the signature (`sigFileId`); the replaced signed Form 101 and contract are deleted; then `applied`.
+- **Never built again:** a worker with `signedAt` keeps its signed Form 101 — no rebuild after an edit or a firm change, a rescan stores only its pages (docs/form101.md → When it is built). A later change to a template never touches signed contracts.
+
+### The server (`functions/signing.py`, the `sign_documents` function)
+
+- **`send`** (a login that edits workers; an own-workers HR only its own): the whole send is refused — nothing reaches the worker — when it carries a signing date from a login without `setSignDate`, or a non-empty pay mark (`rate`, `pay_mode`, `ot_rate`, `shabbat_rate`, `travel`, `bank`) from a login that doesn't see pay (`may_see_pay`: the owner, the super-admin, a staff login with Accounting or Edit pay, an HR with See workers' pay). The template's file is copied for this send (`…/workers/<w>/sign/<id>/contract-template.pdf`), so a replaced template doesn't change what the worker signs; a waiting send of the same worker is `replaced`. Deleting a template withdraws its waiting sends (`withdrawn`).
+- **`view`** `{which}`: Form 101 (`build_form101_pdf` with the stored pages — docs/contracts.md → Scanned pages — and the date) or the contract (`contracts.fill` with the values, the date, `{{today}}`), unsigned; once signed, the stored signed PDF.
+- **`sign`** `{signaturePng}`: once (a PNG of at most 400 KB), kept in `…/signature/`, `signedAt` = the server's time, the date fixed (the day of signing unless set).
+- **`build`** `{which}`: the signed PDF built with the signature and the date, stored in `…/form101/` or `…/docs/`; called twice at once; whoever sees both parts marks the request `signed`. A part already built is answered as it is — never built again.
+- **The worker's page** calls `mine`, `view`, `sign`, `build` with the punch link's token only: the worker's own latest request (a token of another worker sees nothing).
+- `list`, `applied`, `withdraw` for the manager app.
+
+### Tests (D3)
+
+`tests/auth/test_signing.py` (the send refused as a whole without the date right or with pay marks; an own-workers HR; the worker's page by its token, another worker's link sees nothing; the frozen template; one signature; two builds, never again; the date of signing by default; a new send replaces; a deleted template withdraws), `tests/auth/test_core.py` (the new right off in Full access), and the browser checks "signing" (`tests/e2e/main.test.js`: Send to sign with the WhatsApp link, the worker's page — both documents, the end of both, one signature, both PDFs with the same date —, the manager app takes them, a rebuild leaves them, the card's chip; Sign here in person).

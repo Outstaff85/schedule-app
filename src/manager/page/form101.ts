@@ -158,10 +158,12 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
     for(const p of otherPagesToUse) extraPages.push({b64:p.b64,mediaType:p.mediaType,caption:'Document'});
     if(extraPages.length) payload.extraPages=extraPages;
 
+    // A worker with signed documents keeps its signed Form 101 (never built again): a rescan stores only its pages.
+    const keepSigned=mode==='upload'&&!!(targetWorker&&targetWorker.signedAt);
     const f101t0=Date.now();
     // The function lets in only a signed-in manager-side login (functions/gate.py).
     const idToken=await (await loadFirestoreBackend()).idToken();
-    const fnResp=await fetch(FORM101_FN_URL,{method:'POST',headers:idToken?{'Content-Type':'application/json',Authorization:'Bearer '+idToken}:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const fnResp=keepSigned?new Response(JSON.stringify({pdfBase64:'',fileName:'signed.pdf'})):await fetch(FORM101_FN_URL,{method:'POST',headers:idToken?{'Content-Type':'application/json',Authorization:'Bearer '+idToken}:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const fnJson=await fnResp.json();
     if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Could not build the PDF');
     // Admin → Timings, kind "form101": what each generated form carried —
@@ -207,7 +209,7 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
       // and don't depend on each other's result — fired concurrently, since
       // this whole call runs behind a blocking "please wait" overlay for new
       // workers/rescans.
-      const docPromise=uploadWorkerFile(
+      const docPromise=keepSigned?Promise.resolve({ok:true,kept:true} as any):uploadWorkerFile(
         {action:'saveWorkerDoc',...gsAuth(),workerId:w&&w.id,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
         (loaded?: any,total?: any)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
       // The scan's pages and the signature that built this PDF are kept
@@ -230,13 +232,12 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
       if(!json||json.error) throw new Error((json&&json.error)||'The server did not answer');
       if(showBlockingProgress) renderWorkerUploadProgress('הועלה בהצלחה',100);
       if(w){
-        w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id;
+        if(!json.kept){ w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id; }
         w.docUploadFailed=false;
         if(saved) applySavedPages(w,saved);
         // Completeness flags for workerDocStatus(): what this saved document
         // actually contains (on a regenerate these come from the stored pages).
-        w.docHasSignature=!!sigPng;
-        w.docExtraPages=Array.isArray(otherPagesToUse)?otherPagesToUse.length:0;
+        if(!json.kept){ w.docHasSignature=!!sigPng; w.docExtraPages=Array.isArray(otherPagesToUse)?otherPagesToUse.length:0; }
         render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
         showToast(tr('Documents of {0} saved to {1}',{0:(w.name||''),1:(DOC_STORE)}));
         window.__aiRescanWorkerId=null;
@@ -302,6 +303,8 @@ async function autoUploadWithRetry(isId?: any,workerId?: any){
 async function regenerateWorkerDoc(workerId?: any, newSigPng?: any){
   const w=workers.find((x?: any)=>x.id===workerId);
   if(!w) return false;
+  // A signed Form 101 is never built again (docs/contracts.md → Signing): it changes only by a new signing.
+  if(w.signedAt) return true;
   try{
     let assets: any={scanB64:null,scanMediaType:null,sigPng:null,extraPages:[]};
     if(hasStoredAssets(w)){
@@ -335,7 +338,7 @@ function maybeRegenAfterFirmEdit(){
 // `workers` (see firmSaved()) — there's nothing to regenerate for a
 // firm whose schedule isn't the one open right now.
 async function regenerateAllWorkerDocs(){
-  const targets=workers.filter((w?: any)=>w.docUrl&&hasStoredAssets(w));
+  const targets=workers.filter((w?: any)=>w.docUrl&&hasStoredAssets(w)&&!w.signedAt);
   if(!targets.length) return;
   let done=0, failed=0;
   for(const w of targets){

@@ -151,6 +151,13 @@ export type DatedChange = { workerId: string; date: string; shift: DayShift | nu
 // ── The worker card, the worker window, documents, hours (stage 6c-2) ──
 
 /** A worker record as stored (docs/workers.md → Data: the worker record); the window reads and writes these fields. */
+/** The sign window's context (`signContext`). */
+export type SignContext = {
+  worker: WorkerRecord; form101: Record<string, unknown>; values: Record<string, string>;
+  canSeePay: boolean; canSetDate: boolean; punchLink: string; whatsapp: string;
+};
+/** A worker's sign request as the window shows it (src/manager/logic/signing.ts). */
+export type SignRequestView = { id: string; status: string; templateName?: string; signDate?: string | null; sentAt?: string; signedAt?: string; way?: string };
 export type WorkerDoc = { id: string; type: string; name?: string; fileId?: string; url?: string; mediaType?: string; uploadedAt?: string; expiry?: string };
 /** A scanned page kept as its own JPEG in Storage (docs/contracts.md → Scanned pages). */
 export type ScanPage = { fileId: string; kind: 'id_front' | 'id_back' | 'sefach' | 'passport' | 'other'; primary?: boolean; savedAt: string };
@@ -302,6 +309,12 @@ export type WorkerBridge = {
   setScanField(workerId: string, key: string, value: string): void;
   /** rebuilds the Form 101 from the stored pages and signature (`regenerateWorkerDoc`) */
   regenerateDoc(workerId: string, sig?: string | null): Promise<boolean>;
+  /** what the sign window needs (docs/contracts.md → Signing): the saved worker, Form 101's values and the contract's marks
+   * (the firm's profile refreshed first), whether this login sees pay and sets the signing date, the worker's punch link */
+  signContext(workerId: string): Promise<SignContext | null>;
+  /** the worker's latest sign request (`signRequestOf`), and reading them again */
+  signRequest(workerId: string): SignRequestView | null;
+  reloadSignRequests(): Promise<void>;
   /** searches the worker's scan (`findScanFields`; editId null: the scan in memory of a new worker) */
   findScanFields(editId: string | null, keys: string[], docType: string): Promise<Record<string, ScanHit> | null>;
   /** keeps the window as a draft and opens the scan over it (`rescanFromWorkerModal`) */

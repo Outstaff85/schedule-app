@@ -26,6 +26,7 @@ import { undoDelete } from '@/components/shared/undo';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { Window } from '@/components/shared/window';
 import { SignaturePad } from '@/components/shared/signature-pad';
+import { SignDocuments } from '@/components/shared/sign-documents';
 import { LanguageButton } from '@/components/shared/language';
 import { AccountMenu } from '@/components/shared/account-menu';
 import { AppBrand, ShellBell } from '@/components/shared/app-brand';
@@ -352,6 +353,11 @@ function Windows() {
 
       <Demo id="signature" title={tr('Signature pad')}>
         <SignaturePad />
+      </Demo>
+
+      <Demo id="sign-documents" title={tr('Documents to sign')}>
+        <SignDocuments signDate="01/01/2026" onSign={async () => { toast(tr('Signed')); }}
+          docs={[{ key: 'a', title: tr('Form 101'), b64: SAMPLE_PDF }, { key: 'b', title: tr('Contract'), b64: SAMPLE_PDF }]} />
       </Demo>
 
       <Demo id="menu" title={tr('Dropdown Menu (⋮), Popover, Tooltip')}>
@@ -687,3 +693,6 @@ export function App() {
     </Shell>
   );
 }
+
+// A one-page PDF for the Documents to sign block.
+const SAMPLE_PDF = 'JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguNQoKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguNSk+Pj4+CmVuZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKCjMgMCBvYmoKPDwvRm9udDw8L2hlbHYgNSAwIFI+Pj4+CmVuZG9iagoKNCAwIG9iago8PC9UeXBlL1BhZ2UvTWVkaWFCb3hbMCAwIDMwMCAyMDBdL1JvdGF0ZSAwL1Jlc291cmNlcyAzIDAgUi9QYXJlbnQgMiAwIFIvQ29udGVudHNbNiAwIFIgNyAwIFJdPj4KZW5kb2JqCgo1IDAgb2JqCjw8L1R5cGUvRm9udC9TdWJ0eXBlL1R5cGUxL0Jhc2VGb250L0hlbHZldGljYS9FbmNvZGluZy9XaW5BbnNpRW5jb2Rpbmc+PgplbmRvYmoKCjYgMCBvYmoKPDwvTGVuZ3RoIDgzL0ZpbHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nOMq5HIK4TJUMABCQwUjIGFmoBCSy6WfkZpTpmBoohCSphBtY2psZmiWYm5glmxmamRgZmKWZmZsbmqWYmZqlmpuYhcb4sXlGsIVyAUAox4RvQplbmRzdHJlYW0KZW5kb2JqCgo3IDAgb2JqCjw8L0xlbmd0aCA5OC9GaWx0ZXIvRmxhdGVEZWNvZGU+PgpzdHJlYW0KeNoVijEKhEAQBPN5xfzAmXG3lwO5QDAxEzYTw10MzsDE919LQ1EULbfMVVyNcw1iNK2XDGf7Per0rvuUPKwYHAWZltDJQGZJYXgN6G9hH/Hhr5ENJdr3qKssVTb5A/DkF9kKZW5kc3RyZWFtCmVuZG9iagoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQyIDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3MiAwMDAwMCBuIAowMDAwMDAwMjEzIDAwMDAwIG4gCjAwMDAwMDAzMjYgMDAwMDAgbiAKMDAwMDAwMDQxNSAwMDAwMCBuIAowMDAwMDAwNTY2IDAwMDAwIG4gCgp0cmFpbGVyCjw8L1NpemUgOC9Sb290IDEgMCBSL0lEWzxDM0E3QzI4RUMyODU1QTQwQzM5RUMyODA3QzAxMEJDMz48QzA3RTU1NDBCMUU0NUUwMjZCMTQ1Q0ZGQzA4NkEwNjA+XT4+CnN0YXJ0eHJlZgo3MzIKJSVFT0YK';

@@ -85,7 +85,8 @@ export async function saveWorker(api: ManagerBridge, o: {
     }
     close();
     // Otherwise from the stored pages (the scan in memory could be another worker's).
-    if (changed || sig) {
+    // A worker with signed documents: they are never built again — a change waits for a new signing (docs/contracts.md).
+    if ((changed || sig) && !prev.signedAt) {
       const id = editId;
       api.regenerateDoc(id, sig).then(ok => api.toast(ok ? tr("{0}'s document was updated", { 0: name }) : tr("Updating {0}'s document failed", { 0: name })));
     }

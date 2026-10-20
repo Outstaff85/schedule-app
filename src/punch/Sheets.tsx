@@ -14,7 +14,7 @@ import { cancelRequest, loadRequests, offerShift, requestsOn, setUnavailable } f
 export function useSheetClose() {
   React.useEffect(() => {
     let sw: { s: HTMLElement; y: number; x: number; dy: number } | null = null;
-    const sheet = () => ['screenSchedule', 'screenHours'].map(id => document.getElementById(id)).find(el => el && !el.classList.contains('hidden')) || null;
+    const sheet = () => ['screenSchedule', 'screenHours', 'screenDocuments'].map(id => document.getElementById(id)).find(el => el && !el.classList.contains('hidden')) || null;
     const start = (e: TouchEvent) => { const s = sheet(); sw = null; if (!s || e.touches.length !== 1 || !s.contains(e.target as Node) || s.scrollTop > 0) return; sw = { s, y: e.touches[0].clientY, x: e.touches[0].clientX, dy: 0 }; };
     const move = (e: TouchEvent) => {
       if (!sw) return;
@@ -42,7 +42,7 @@ export function useSheetClose() {
   }, []);
 }
 
-function Sheet({ id, hidden, icon, title, children }: { id: string; hidden: boolean; icon: React.ReactNode; title: string; children: React.ReactNode }) {
+export function Sheet({ id, hidden, icon, title, children }: { id: string; hidden: boolean; icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <div className={'screen' + (hidden ? ' hidden' : '')} id={id} style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
       <button type="button" className="sheet-grab" onClick={closeSheet} aria-label={tr('Close')} title={tr('Close')} />

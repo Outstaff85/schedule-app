@@ -557,6 +557,11 @@ def run(db, bucket, claims, body):
             if b.exists():
                 b.delete()
         ref.delete()
+        # Sends still waiting for a signature on it are withdrawn (the worker needs sending again).
+        for r in db.collection("tenants").document(tenant).collection("signRequests").stream():
+            x = r.to_dict() or {}
+            if x.get("templateId") == snap.id and x.get("status") == "sent":
+                db.collection("tenants").document(tenant).collection("signRequests").document(r.id).update({"status": "withdrawn", "withdrawnWhy": "template deleted"})
         if d.get("isDefault") and not d.get("workerId"):
             for o in col.stream():
                 x = o.to_dict() or {}

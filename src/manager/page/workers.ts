@@ -10,6 +10,7 @@ import { byId } from './dom';
 import { getPunchLog } from '../data/punches';
 import { DOC_STORE, WORKER_DOC_TYPES, isActiveWorker, workerDocStatus, workerExpiryStatus } from '../logic/workers';
 import { shiftOn } from '../logic/schedule';
+import { loadSignRequests } from '../logic/signing';
 import { loadXlsx, toMins } from '../logic/util';
 import { hasPermission } from '../logic/access';
 import { tr } from '../logic/i18n';
@@ -102,6 +103,7 @@ export function openNotices(wid?: any){
 // ── Workers (stage 6c-1): the list is drawn in React — src/manager/Workers.tsx.
 // The page keeps the data; the tab reads it through window.ManagerBridge.workers().
 export function renderWorkersPage(){
+  void loadSignRequests(); // Sent to sign / Signed, and the signed documents taken onto the workers (at most once a minute)
   if(island()) island()!.renderWorkers();
 }
 

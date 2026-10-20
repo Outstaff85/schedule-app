@@ -30,6 +30,28 @@ def contract_templates(request):
     except ValueError as e:
         return app.response_class(json.dumps({'error': str(e)}), status=400, mimetype='application/json')
     return app.response_class(json.dumps(out, default=str), mimetype='application/json')
+# One signature for Form 101 and the contract (functions/signing.py), with the real Form 101 build
+# of functions/main.py (loaded under another name: functions-auth's main is `main` here).
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location('fmain', os.path.join(_HERE, '..', '..', 'functions', 'main.py'))
+_fmain = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_fmain)
+import signing as _signing
+def sign_documents(request):
+    body = request.get_json(silent=True, force=True) or {}
+    if body.get('ping') is True:
+        return app.response_class(json.dumps({'ok': True, 'warm': True}), mimetype='application/json')
+    bucket = _orig_bucket('demo-schedule.appspot.com')
+    try:
+        if body.get('token') and not (request.headers.get('Authorization') or '').startswith('Bearer '):
+            out = _signing.run_worker(DB, bucket, body, _fmain.build_form101_pdf)
+        else:
+            status, error, claims = _gate.claims_of(request.headers, lambda t: main.auth.verify_id_token(t, check_revoked=True))
+            if status:
+                return app.response_class(json.dumps({'error': error}), status=status, mimetype='application/json')
+            out = _signing.run(DB, bucket, claims, body, _fmain.build_form101_pdf)
+    except ValueError as e:
+        return app.response_class(json.dumps({'error': str(e)}), status=400, mimetype='application/json')
+    return app.response_class(json.dumps(out, default=str), mimetype='application/json')
 
 # Anthropic stand-in for aiFindField: finds the city (ישוב), nothing else.
 CALLS = []
@@ -144,6 +166,20 @@ class H(BaseHTTPRequestHandler):
         elif self.path == '/contractTemplates':
             rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream()]
             status, data = 200, json.dumps(rows, default=str).encode()
+        elif self.path == '/signRequests':
+            rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('signRequests').stream()]
+            status, data = 200, json.dumps(rows, default=str).encode()
+        elif self.path.startswith('/signedPdf/'):
+            # the text of a signed PDF in Storage (a request's part): what was printed
+            import pymupdf
+            rid, which = self.path.split('/')[2:4]
+            r = DB.collection('tenants').document(T1).collection('signRequests').document(rid).get().to_dict() or {}
+            pdf = _orig_bucket('demo-schedule.appspot.com').blob(r['parts'][which]['path']).download_as_bytes()
+            d = pymupdf.open(stream=pdf)
+            out = os.environ.get('E2E_OUT') or os.path.join(_HERE, 'out')
+            os.makedirs(out, exist_ok=True)
+            open(os.path.join(out, 'signed-' + which + '.pdf'), 'wb').write(pdf)
+            status, data = 200, json.dumps({'text': ''.join(pg.get_text() for pg in d), 'pages': d.page_count, 'images': sum(len(pg.get_images()) for pg in d)}).encode()
         elif self.path.startswith('/lang/'):
             DB.collection('tenants').document(T1).set({'language': self.path[6:]}, merge=True)
             status, data = 200, b'{"ok":true}'
@@ -151,7 +187,7 @@ class H(BaseHTTPRequestHandler):
             docs = [d.to_dict() for d in DB.collection('tenants').document(T1).collection('punches').stream()]
             status, data = 200, json.dumps({'n': len(docs), 'ids': sorted(d['id'] if isinstance(d.get('id'), str) else str(d.get('id')) for d in docs), 'days': [d.get('day') for d in docs]}).encode()
         else:
-            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read, '/weather': main.weather, '/contract_templates': contract_templates}[self.path]
+            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read, '/weather': main.weather, '/contract_templates': contract_templates, '/sign_documents': sign_documents}[self.path]
             hdr = {'Content-Type': 'application/json'}
             if self.headers.get('Authorization'): hdr['Authorization'] = self.headers['Authorization']
             with app.test_request_context('/', method='POST', data=raw, headers=hdr):

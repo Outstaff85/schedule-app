@@ -26,7 +26,7 @@ The owner's scheme:
 | Form 101 and the contract | the signed PDFs, built once at signing | Storage, the worker's documents |
 | The one PDF of everything | not kept: put together on request | — |
 
-## D1 — scans as separate JPEG pages — built (2026-10-20); the old sidecars' split waits for the owner's yes
+## D1 — scans as separate JPEG pages — built and merged (2026-10-20); the old sidecars' split waits for the owner's yes (dry-run: 5 workers, 6 pages, 3 signatures)
 
 Built as docs/contracts.md → Scanned pages: every new save stores pages and the signature as files; a worker still on the old sidecar is read from it, and split into pages on its next save. The one-time split of every old sidecar (`scripts/migrate/scan_pages.py`, the workflow *Split the old scan sidecars into pages*) is run as `dry-run` first; `apply` and `cleanup` only with the owner's yes.
 
@@ -36,7 +36,7 @@ Built as docs/contracts.md → Scanned pages: every new save stores pages and th
 - The existing workers' sidecars are split into pages once, by a migration.
 - Form 101, the contract and the joined PDF read the pages from here.
 
-## D2 — contract templates (PDF first) — built (2026-10-20)
+## D2 — contract templates (PDF first) — built and merged (2026-10-20)
 
 Built as docs/contracts.md → Contract templates and The worker's contract. A picture page is shrunk to 200 dpi but not straightened by the server (the scanner runs on the phone); its marks are placed by hand. Managing templates is for the firm's admin and the super-admin.
 
@@ -122,7 +122,10 @@ Contracts can be added and changed at any time; whatever goes in, the output alw
 - **The worker's own terms without a new template:** the marks `{{terms_1}}`, `{{terms_2}}`… are filled from the worker's own text fields (for example a special rate, hours, a trial period), typed in the worker window. One template then serves many workers with different terms.
 - **A changed or replaced template** reaches only new signings; signed contracts stay as signed (D3).
 
-## D3 — one signature for both documents
+## D3 — one signature for both documents — built (2026-10-20)
+
+Built as docs/contracts.md → Signing. A login sees pay when it is the owner or the super-admin, a staff login with Accounting or Edit pay, or an HR with See workers' pay. The status of a send lives in its request (`signRequests`), not on the worker record; the signed documents are put on the worker by the manager app.
+
 
 - In the worker window: **Documents to sign** → pick the contract template (the firm's default is chosen first). Then one of two ways:
   - **In person:** the worker signs on the manager's phone.

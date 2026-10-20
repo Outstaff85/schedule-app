@@ -11,7 +11,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "functions"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "functions"))  # after functions-auth: its main stays `main`
 
 import pymupdf  # noqa: E402
 import contracts  # noqa: E402
@@ -94,7 +94,7 @@ def test_fill_leaves_an_empty_value_empty_and_no_signature_blank():
 
 class Blob:
     def __init__(self, store, path):
-        self.store, self.path = store, path
+        self.store, self.path, self.metadata = store, path, None
 
     def exists(self):
         return self.path in self.store
@@ -140,7 +140,12 @@ class Doc:
         self.db.data[self.path] = dict(d)
 
     def update(self, d):
-        self.db.data[self.path].update(d)
+        for k, v in d.items():  # a dotted key is a field inside a map, as in Firestore
+            cur = self.db.data[self.path]
+            *head, last = k.split(".")
+            for h in head:
+                cur = cur.setdefault(h, {})
+            cur[last] = v
 
     def delete(self):
         self.db.data.pop(self.path, None)

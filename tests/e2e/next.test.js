@@ -37,12 +37,15 @@ const server = http.createServer((req, res) => {
 const DEMOS = {
   controls: ['button', 'input', 'select', 'checkbox', 'toggle-group', 'form'],
   lists: ['plate', 'plate-sizes', 'empty'],
-  windows: ['window', 'signature', 'menu', 'account', 'theme', 'sheet'],
+  windows: ['window', 'signature', 'sign-documents', 'menu', 'account', 'theme', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
   data: ['table', 'data-table', 'chart', 'calendar', 'card'],
   layout: ['tabs', 'accordion', 'collapsible'],
 };
 
+// pdf.js (the documents shown before signing) from node_modules, as the CDN would give it
+const pdfRoute = t => t.route(/cdnjs\.cloudflare\.com\/.*\/pdf(\.worker)?\.min\.js$/, r => r.fulfill({ status: 200, contentType: 'application/javascript',
+  body: fs.readFileSync(require.resolve('pdfjs-dist/build/' + r.request().url().split('/').pop())) }));
 async function open(p, section) {
   await p.goto(BASE + '#' + section, { waitUntil: 'networkidle' });
   await p.reload({ waitUntil: 'networkidle' });
@@ -61,6 +64,7 @@ async function touch(p, sel, steps) {
 
 async function computer(browser) {
   const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await pdfRoute(p);
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));
   // The tab icon's request cancelled by the test's own reload (open()) is not a failed load.
@@ -233,6 +237,7 @@ async function computer(browser) {
 
 async function phone(browser) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await pdfRoute(ctx);
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));
@@ -313,6 +318,7 @@ async function contrastReport(p) {
 async function theme(browser) {
   for (const [w, h, mobile] of [[1280, 860, false], [390, 844, true]]) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile, hasTouch: mobile });
+    await pdfRoute(ctx);
     const p = await ctx.newPage();
     const errors = []; p.on('pageerror', e => errors.push(e.message));
     const look = () => p.evaluate(() => document.documentElement.dataset.theme);
