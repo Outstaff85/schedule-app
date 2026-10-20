@@ -16,7 +16,7 @@ Everything runs on the Firebase emulators — never against the live project, no
 | Functions | `tests/auth/*.py` | `functions-auth/`: login, users, punch link, supplier portal, hours review (`test_hours.py`), AI reads (`ai_golden.json`), files; `functions/`: the scan gate, the training examples and full documents (`test_scan_feedback.py`), where the training data goes (`test_datastore.py`) | `cd tests/rules && PYTHON=<python> npm run test:auth` |
 | Browser | `tests/e2e/` | the `/next` component gallery of the new stack (`next.test.js`, from `dist/`), then the real pages in Chromium with the real function code: login per role, workers, schedule, accounting and exports, punch link, supplier portal, client portal and hours review, HR | `npm ci && npm run build` at the repo root, then `cd tests/e2e && npm install && PYTHON=<python> npm test` |
 
-`<python>` = a Python 3.12 with `pip install -r functions-auth/requirements.txt pytest`. The emulators need Java 21. In a Claude cloud session Chromium is preinstalled (`PLAYWRIGHT_BROWSERS_PATH`); elsewhere run `npx playwright install chromium` once.
+`<python>` = a Python 3.12 with `pip install -r functions-auth/requirements.txt pytest Pillow` (Pillow for the scan-page migration, `tests/auth/test_migrate_pages.py`; CI installs it in both test venvs). The emulators need Java 21. In a Claude cloud session Chromium is preinstalled (`PLAYWRIGHT_BROWSERS_PATH`); elsewhere run `npx playwright install chromium` once.
 
 ## Browser tests (`tests/e2e/`)
 
