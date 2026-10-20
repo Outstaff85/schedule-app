@@ -1431,5 +1431,12 @@
   "With Workers it edits its own workers": "עם עובדים הוא עורך את עובדיו",
   "An HR gets Commission instead": "משאבי אנוש מקבל עמלה במקום",
   "Firm-wide: not for an HR": "לכל החברה: לא למשאבי אנוש",
-  "For HR, supplier and client logins": "לכניסות משאבי אנוש, ספק ולקוח"
+  "For HR, supplier and client logins": "לכניסות משאבי אנוש, ספק ולקוח",
+  "Files": "קבצים",
+  "Scanned before": "נסרק קודם",
+  "Pages removed": "הדפים הוסרו",
+  "New pages": "דפים חדשים",
+  "Looks good": "נראה טוב",
+  "Retake": "צילום חוזר",
+  "{0} pages": "{0} דפים"
 }

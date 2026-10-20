@@ -39,6 +39,11 @@ export function showLab(slot: HTMLElement, title: string): () => void {
   return () => { cancelAnimationFrame(raf); hideLab(); };
 }
 
+/** The window's Looks good / Retake on the last batch: the lab folds it (or throws it away) and its camera goes on (scan/embed.js). */
+export function continueLab(discard = false) {
+  frame?.contentWindow?.postMessage({ type: 'scan-continue', discard }, location.origin);
+}
+
 /** Stops the lab page's camera (the page stays loaded and shown). */
 export function sleepLab() {
   frame?.contentWindow?.postMessage({ type: 'scan-sleep' }, location.origin);
