@@ -1194,6 +1194,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(!d4.fresh && !d4.firm && d4.changed && d4.window && d4.back,
     'new signature (D4): a changed phone marks Documents changed — needs a new signature, its Sign opens the sign window; a change to the firm\'s details does not ' + JSON.stringify(d4));
   await p.keyboard.press('Escape'); await sleep(300);
+  // D5: Download data on the worker card — one PDF: the summary, Form 101, the contract, the ID card, the ספח, the other documents.
+  await p.evaluate(() => { window.__opened = []; window.__origOpen2 = window.open; window.open = u => { window.__opened.push(String(u)); return {}; };
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openWorkerCard(workers.findIndex(w => w.id === 'w1')); });
+  await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
+  await p.click('[role="menuitem"]:has-text("Download data")');
+  ok(await waitFor(p, () => window.__opened.length === 1, 30000), 'download data: the PDF opens');
+  const d5 = await p.evaluate(async () => {
+    const buf = await (await fetch(window.__opened[0])).arrayBuffer();
+    await _loadPdfJs();
+    const pdf = await pdfjsLib.getDocument({data: new Uint8Array(buf)}).promise;
+    const first = (await (await pdf.getPage(1)).getTextContent()).items.map(i => i.str).join(' ');
+    window.open = window.__origOpen2;
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /50/.test(first)};
+  });
+  ok(d5.pages >= 4 && d5.name && d5.sign && !d5.pay, 'download data: one PDF — the summary (names, the signing date, never pay) then Form 101, the contract, the scanned pages ' + JSON.stringify(d5));
   // In person, on the manager's phone: Dana signs in the window.
   await p.evaluate(() => { switchTab('workers'); openWorkerCard(workers.findIndex(w => w.id === 'w2')); });
   await p.waitForSelector('[data-testid="card-sign"]');
