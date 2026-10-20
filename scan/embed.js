@@ -1,7 +1,8 @@
 // The site's scan window (src/scan/Scanner.tsx) opens this page — the scanner lab's own, copied as it
 // is — in a frame with ?embed=1. The one file the site adds: it hides the lab's tools and figures and
 // posts each shot's (and each picked photo's) cut pages to the window, with the document type model's
-// answer on each when this version has the model (docs/scan.md → The scan window). Nothing else changes.
+// answer on each when this version has the model; it stops the camera when the window closes
+// (docs/scan.md → The scan window). Nothing else changes.
 (() => {
   if (new URLSearchParams(location.search).get('embed') !== '1' || window.parent === window) return;
   const css = document.createElement('style');
@@ -31,6 +32,14 @@
     const answers = await Promise.all(pages.map(answer));
     window.parent.postMessage({ type: 'scan-pages', key, pages, answers }, location.origin);
   };
+  // The scan window closed (src/scan/lab.ts keeps this page loaded a few minutes, so the models need
+  // not start again): the camera stops, its loops end, the last shot is cleared for the next worker.
+  window.addEventListener('message', e => {
+    if (e.origin !== location.origin || !e.data || e.data.type !== 'scan-sleep') return;
+    $('stop').click(); shotId++;
+    $('video').hidden = true; $('still').hidden = true; $('shot').hidden = true;
+    $('shotMore').textContent = ''; $('shot2note').textContent = ''; $('hint').textContent = '';
+  });
   let fileKey = null, files = 0, shots = 0;
   const shot = window.showShot;
   window.showShot = async () => { const key = 's' + (++shots); await shot(); if (!fileKey) await send(key); };

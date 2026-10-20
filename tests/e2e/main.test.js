@@ -675,6 +675,28 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   await p.waitForTimeout(500);
+  // The lab page stays loaded (lab.ts): closed, it is hidden and kept; opened again within 3 minutes it is
+  // the same page (not loaded again), laid over the window's slot
+  const kept = await p.evaluate(async () => {
+    const f = document.querySelector('[data-testid="scan-lab-frame"]');
+    const r = {hidden: !!f && f.style.visibility === 'hidden' && document.body.contains(f)};
+    f.contentWindow.__mark = 1;
+    const going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
+    await new Promise(res => setTimeout(res, 600));
+    const g = document.querySelector('[data-testid="scan-lab-frame"]');
+    r.same = g === f && g.contentWindow.__mark === 1;
+    r.shown = g.style.visibility === 'visible';
+    const sl = document.querySelector('[data-testid="scan-lab-slot"]').getBoundingClientRect(), fr = g.getBoundingClientRect();
+    r.over = Math.abs(sl.top - fr.top) < 2 && Math.abs(sl.left - fr.left) < 2 && Math.abs(sl.width - fr.width) < 2;
+    // a tap there reaches the lab page: above the window, with its own pointer events
+    r.tap = document.elementFromPoint(sl.left + sl.width / 2, sl.top + Math.min(sl.height / 2, 100)) === g;
+    T.esc(); await going;
+    r.closed = await T.until(() => g.style.visibility === 'hidden', 3000);
+    return r;
+  });
+  ok(kept.hidden && kept.same && kept.shown && kept.over && kept.tap && kept.closed,
+    'scan window: the lab page is kept loaded after the window closes and shown again over the window\'s slot (no new load), a tap there reaching it ' + JSON.stringify(kept));
   // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
   // by Haiku and changed to Contract — with a copy of the page
   const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
