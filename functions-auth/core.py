@@ -566,7 +566,8 @@ E_TEMPLATE_ROLE = "The template is for another role"
 # The flat list of rights (docs/permissions-plan.md): one tick, one thing —
 # a tab, an action, or what is shown. Whose workers an HR works with is ownOnly.
 RIGHT_TABS = ("today", "schedule", "workers", "clients", "suppliers", "accounting", "punchlog", "commission", "hours")
-RIGHT_ACTIONS = ("editSchedule", "editWorkers", "editPunches", "editPay", "export", "approveHours", "disputeHours", "fixHours")
+RIGHT_ACTIONS = ("editSchedule", "editWorkers", "editPunches", "editPay", "export", "approveHours", "disputeHours", "fixHours",
+                 "setSignDate")
 RIGHT_SHOWN = ("seePay",)
 RIGHTS = RIGHT_TABS + RIGHT_ACTIONS + RIGHT_SHOWN
 # What each role's template may tick. A supplier or client never gets the
@@ -575,10 +576,10 @@ RIGHTS = RIGHT_TABS + RIGHT_ACTIONS + RIGHT_SHOWN
 # doesn't get them; Accounting is the full tab, an HR gets Commission.
 RIGHT_CAPS = {
     "staff": ("today", "schedule", "workers", "clients", "suppliers", "accounting", "punchlog",
-              "editSchedule", "editWorkers", "editPunches", "editPay", "export"),
+              "editSchedule", "editWorkers", "editPunches", "editPay", "export", "setSignDate"),
     "hr": ("schedule", "workers", "clients", "suppliers", "commission", "hours",
            "editSchedule", "editWorkers", "editPunches", "editPay", "export",
-           "approveHours", "disputeHours", "fixHours", "seePay"),
+           "approveHours", "disputeHours", "fixHours", "setSignDate", "seePay"),
     "supplier": ("today", "schedule", "workers", "commission", "hours", "export",
                  "approveHours", "disputeHours", "fixHours", "seePay"),
     "client": ("schedule", "hours", "export", "approveHours", "disputeHours", "fixHours"),
@@ -600,7 +601,7 @@ def _user_rights(role, d):
 
 
 DEFAULT_TEMPLATES = (
-    ("full", "Full access", "staff", {"rights": list(RIGHT_CAPS["staff"])}),
+    ("full", "Full access", "staff", {"rights": [r for r in RIGHT_CAPS["staff"] if r != "setSignDate"]}),  # Set the signing date: off by default
     ("dispatcher", "Dispatcher", "staff", {"rights": ["today", "schedule", "workers", "punchlog", "editSchedule", "editWorkers", "editPunches"]}),
     ("accountant", "Accountant", "staff", {"rights": ["today", "workers", "accounting", "punchlog", "editSchedule", "editWorkers",
                                                      "editPunches", "editPay", "export"]}),

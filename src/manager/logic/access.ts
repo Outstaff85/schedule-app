@@ -80,3 +80,17 @@ export function homeTab(): string {
 }
 // Phone bottom bar: the tabs that sit under More (CSS .ttab.in-more).
 export const MORE_TABS = ['clients', 'suppliers', 'admin'];
+/** Sees the workers' pay (docs/contracts.md → Signing: a contract's pay marks): the owner and the
+ * super-admin; a staff login with Accounting or Edit pay; an HR with See workers' pay. functions/signing.py may_see_pay is the same rule. */
+export function canSeePay(): boolean {
+  const s = getSession();
+  if (!s) return false;
+  if (s.role === 'superadmin' || s.role === 'tenant_admin') return true;
+  if (s.role === 'staff') return rights().includes('accounting') || rights().includes('editPay');
+  return s.role === 'hr' && rights().includes('seePay');
+}
+/** Sets the date printed on Form 101 and the contract (the right "Set the signing date"); functions/signing.py may_set_date. */
+export function canSetSignDate(): boolean {
+  const s = getSession();
+  return !!s && (s.role === 'superadmin' || s.role === 'tenant_admin' || rights().includes('setSignDate'));
+}

@@ -12,7 +12,7 @@
 // supplierId) and the server calls go through the page (ManagerBridge).
 import * as React from 'react';
 import {
-  IconCalendar, IconCash, IconCheck, IconCircleCheck, IconClock, IconCoin, IconHome, IconLayoutGrid, IconPencil, IconPin, IconPlus, IconTrash,
+  IconCalendar, IconCalendarCheck, IconCash, IconCheck, IconCircleCheck, IconClock, IconCoin, IconHome, IconLayoutGrid, IconPencil, IconPin, IconPlus, IconTrash,
   IconTruckDelivery, IconUpload, IconUser, IconUserPlus, IconUsers, IconUsersGroup, IconWallet, IconAlertTriangle, IconLock, IconTemplate, IconCalendarEvent, IconUserEdit, IconClockEdit, IconTable, IconList, IconEye,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
@@ -126,7 +126,7 @@ const RIGHT_ICONS: Record<string, React.ReactNode> = {
   today: <IconHome />, schedule: <IconCalendar />, workers: <IconUsersGroup />, clients: <IconUsers />, suppliers: <IconTruckDelivery />, accounting: <IconCash />,
   punchlog: <IconList />, commission: <IconCoin />, hours: <IconClock />,
   editSchedule: <IconCalendarEvent />, editWorkers: <IconUserEdit />, editPunches: <IconClockEdit />, editPay: <IconWallet />, export: <IconUpload />,
-  approveHours: <IconCircleCheck />, disputeHours: <IconAlertTriangle />, fixHours: <IconPencil />, seePay: <IconEye />,
+  approveHours: <IconCircleCheck />, disputeHours: <IconAlertTriangle />, fixHours: <IconPencil />, setSignDate: <IconCalendarCheck />, seePay: <IconEye />,
 };
 const tileLabel = (icon: React.ReactNode, label: string) => <span className="inline-flex items-center gap-1.5 [&_svg]:size-4">{icon}{label}</span>;
 const flip = (list: string[], k: string) => (list.includes(k) ? list.filter(x => x !== k) : [...list, k]);

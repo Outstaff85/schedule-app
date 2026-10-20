@@ -11,14 +11,14 @@ import type { FormRole } from './users';
 
 /** The flat rights (core.py RIGHT_TABS / RIGHT_ACTIONS / RIGHT_SHOWN), in their order. */
 export const RIGHT_TABS = ['today', 'schedule', 'workers', 'clients', 'suppliers', 'accounting', 'punchlog', 'commission', 'hours'];
-export const RIGHT_ACTIONS = ['editSchedule', 'editWorkers', 'editPunches', 'editPay', 'export', 'approveHours', 'disputeHours', 'fixHours'];
+export const RIGHT_ACTIONS = ['editSchedule', 'editWorkers', 'editPunches', 'editPay', 'export', 'approveHours', 'disputeHours', 'fixHours', 'setSignDate'];
 export const RIGHT_SHOWN = ['seePay'];
 export const RIGHTS = [...RIGHT_TABS, ...RIGHT_ACTIONS, ...RIGHT_SHOWN];
 /** What each role's template may tick (core.py RIGHT_CAPS). */
 export const RIGHT_CAPS: Record<FormRole, string[]> = {
-  staff: ['today', 'schedule', 'workers', 'clients', 'suppliers', 'accounting', 'punchlog', 'editSchedule', 'editWorkers', 'editPunches', 'editPay', 'export'],
+  staff: ['today', 'schedule', 'workers', 'clients', 'suppliers', 'accounting', 'punchlog', 'editSchedule', 'editWorkers', 'editPunches', 'editPay', 'export', 'setSignDate'],
   hr: ['schedule', 'workers', 'clients', 'suppliers', 'commission', 'hours', 'editSchedule', 'editWorkers', 'editPunches', 'editPay', 'export',
-    'approveHours', 'disputeHours', 'fixHours', 'seePay'],
+    'approveHours', 'disputeHours', 'fixHours', 'setSignDate', 'seePay'],
   supplier: ['today', 'schedule', 'workers', 'commission', 'hours', 'export', 'approveHours', 'disputeHours', 'fixHours', 'seePay'],
   client: ['schedule', 'hours', 'export', 'approveHours', 'disputeHours', 'fixHours'],
 };
@@ -27,7 +27,7 @@ export const RIGHT_LABELS: Record<string, string> = {
   today: 'Today', schedule: 'Schedule', workers: 'Workers', clients: 'Clients', suppliers: 'Suppliers', accounting: 'Accounting', punchlog: 'Punch log',
   commission: 'Commission', hours: 'Hours',
   editSchedule: 'Edit shifts', editWorkers: 'Edit workers', editPunches: 'Edit / delete punches', editPay: 'Edit pay', export: 'Export',
-  approveHours: 'Approve hours', disputeHours: 'Dispute hours', fixHours: 'Fix hours',
+  approveHours: 'Approve hours', disputeHours: 'Dispute hours', fixHours: 'Fix hours', setSignDate: 'Set the signing date',
   seePay: "See workers' pay",
 };
 export const RIGHT_HINTS: Record<string, string> = {
@@ -44,6 +44,7 @@ export const RIGHT_HINTS: Record<string, string> = {
   editPay: 'Rate, pay mode, travel and bank of the workers it sees',
   export: 'Export buttons and hours to Excel',
   approveHours: 'A day or the whole month', disputeHours: 'Disputes a day with a comment', fixHours: 'Proposes the right in / out; the firm accepts it',
+  setSignDate: 'The date printed on Form 101 and the contract; off: the day of signing',
   seePay: "Its workers' rate and pay",
 };
 

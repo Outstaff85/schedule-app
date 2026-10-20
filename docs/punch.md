@@ -26,6 +26,7 @@ The page talks only to the `punch` Cloud Function (`PUNCH_FN_URL` = `https://eur
 | The month on My Hours | `{action:'myMonth', token, month:'YYYY-MM'}` → `{punches, pay, clients}` |
 | Days off and shift offers (My Schedule) | `{action:'myRequests' / 'setUnavailable' / 'offerShift' / 'cancelRequest', token, …}` ([backend.md](backend.md) → `punch`) |
 | Error telemetry | `{action:'logError', …}` |
+| Documents to sign (`src/punch/sign.ts`) | the **`sign_documents`** function (`SIGN_FN_URL`, us-central1), every call with the link's token: `{action:'mine'}` → the worker's latest request (`{id, status, templateName, signDate, dateFixed, signedAt}` or null), `{action:'view', which}` (Form 101 / the contract, both at once), `{action:'sign', signaturePng}`, then `{action:'build', which}` twice at once ([contracts.md](contracts.md) → Signing) |
 
 The function hands out only this worker and their sites, and accepts punches for this worker only.
 
@@ -101,6 +102,10 @@ The button: "Not on site" when `!locOk` (the ring's track only, no hold); otherw
 - The service worker is registered with `updateViaCache:'none'` and the page reloads when a new version takes control (`main.tsx`).
 - New version check: `useVersionWatch` watches the page's own HTML (it names the hashed bundle) and `og.css` and offers **Update** in a toast after a deploy.
 - Toasts: the shared Sonner toasts; `showToast(msg)` picks success / warning / error / info from the text, as the old page's `toastKind`.
+
+## Documents to sign (`#screenDocuments`, `src/punch/Documents.tsx`)
+
+Read once the worker is known (`loadSignState()`, online only). When documents wait for the worker's signature, a card **Documents to sign** sits above the tiles (`data-testid="tile-documents"`, `data-state="sent"`); once signed it reads **My documents · Signed <date>**. Its sheet (the same sheet as My Schedule: the swipe down, Escape) shows Form 101 and the contract filled with the worker's data, one under the other (`SignDocuments` — the shared component: `PdfPages` over pdf.js, the signing date shown fixed, the signature opening only after the end of both documents was seen); **Sign** sends the signature, then builds the two signed PDFs (two calls at once) and reads the state again. Afterwards the sheet lists the two signed documents, each opened (or downloaded) as a PDF. The page gets only this worker's own documents (the token; [contracts.md](contracts.md) → Signing).
 
 ## My schedule (`#screenSchedule`)
 

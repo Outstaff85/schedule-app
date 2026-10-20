@@ -8,7 +8,7 @@
 import * as React from 'react';
 import {
   IconAlertTriangle, IconCash, IconChevronDown, IconCircleCheck, IconDotsVertical, IconDownload, IconFile, IconFileCertificate,
-  IconFileExport, IconFileUpload, IconFiles, IconFolder, IconIdBadge2, IconLink, IconLoader2, IconPencil, IconScan, IconSearch, IconUpload,
+  IconFileExport, IconFileUpload, IconFiles, IconFolder, IconIdBadge2, IconLink, IconLoader2, IconPencil, IconScan, IconSearch, IconSend, IconSignature, IconUpload,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -21,7 +21,8 @@ import { PagedList } from '@/components/shared/paged-list';
 import { NewBadge } from '@/components/shared/new-badge';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
-import type { CardSnapshot, ManagerBridge, WorkerDoc } from './bridge';
+import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
+import { SignWindow } from './SignWindow';
 import { HoursStatusChip, NoticeChipsAll, WorkerHeadLine } from './worker-head';
 import { INCOME_LABELS, OTHER_INCOME_LABELS, WORKER_DOC_TYPES, fmtDMY, missingScanKeys, recordScanValues, scanLabel, workerAddress, workerDocId, workerHasScan } from './worker';
 import { hoursShort } from './today';
@@ -150,12 +151,22 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
   );
 }
 
+/** Sent to sign (waiting for the worker) / Signed with its date / Needs sending again (the template was deleted). */
+function SignChip({ req, signDate }: { req: SignRequestView | null; signDate?: string }) {
+  if (req && (req.status === 'sent' || req.status === 'signing')) return <Badge variant="info" data-testid="card-sign-state" data-state="sent"><IconSend />{tr('Sent to sign')}</Badge>;
+  if (req && req.status === 'withdrawn') return <Badge variant="warn" data-testid="card-sign-state" data-state="withdrawn"><IconAlertTriangle />{tr('Needs sending again')}</Badge>;
+  const d = (req && req.status === 'signed' && req.signDate) || signDate;
+  return d ? <Badge variant="ok" data-testid="card-sign-state" data-state="signed"><IconSignature />{tr('Signed {0}', { 0: d })}</Badge> : null;
+}
+
 export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
   const w = snap.w, can = snap.canEdit;
   const [pane, setPaneState] = React.useState<Pane>(() => (lastPane && lastPane.wid === w.id ? lastPane.pane : 'info'));
   const setPane = (p: Pane) => { lastPane = { wid: w.id, pane: p }; setPaneState(p); };
   React.useEffect(() => { lastPane = { wid: w.id, pane }; }, [w.id, pane]);
   const press = React.useRef(0);
+  const [signing, setSigning] = React.useState(false);
+  const req = api.signRequest(w.id);
 
   const status = w.status || 'active';
   const docId = workerDocId(w);
@@ -187,7 +198,9 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
         <NoticeChipsAll notices={snap.notices} onOpen={() => { api.closeModal('workerCardOverlay'); api.openNotices(w.id); }} />
         {!can && <Badge variant={STATUS_BADGE[status]?.[0] || 'ok'}>{tr(STATUS_BADGE[status]?.[1] || 'Active')}</Badge>}
         <NewBadge createdAt={w.createdAt} />
+        <SignChip req={req} signDate={w.signDate as string | undefined} />
       </div>
+      {signing && <SignWindow workerId={w.id} api={api} onClose={() => setSigning(false)} />}
       {(can || w.docSavedAt) && (
         <div className="mb-2.5 flex flex-wrap items-center justify-end gap-2" data-testid="card-tools">
           {can && (
@@ -204,6 +217,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
           )}
           {w.docSavedAt && <span className="text-[11px] text-ink-3">{tr('Saved: {0}', { 0: new Date(w.docSavedAt).toLocaleDateString('en-GB') })}</span>}
           {can && <Button size="sm" data-testid="card-scan" onClick={() => api.rescanFromCard(w.id)}><IconScan className="size-4" />{tr(w.docUrl ? 'Rescan' : 'Scan document')}</Button>}
+          {can && <Button size="sm" data-testid="card-sign" onClick={() => setSigning(true)}><IconSignature className="size-4" />{tr('Documents to sign')}</Button>}
         </div>
       )}
       <ToggleGroup type="single" value={pane} onValueChange={v => { if (v) setPane(v as Pane); }} className="mb-3" data-testid="card-panes">

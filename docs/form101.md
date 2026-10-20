@@ -18,6 +18,7 @@ All paths call `aiFillForm101(isId, 'upload', workerId, btn, presetAssets?)`.
 | New worker saved | `autoUploadWithRetry()` (one retry after 1.5 s), modal shows progress | the live scan globals: `window.__aiScanImage`, `__aiPacketOtherPages`, the signature pad |
 | Worker rescanned in this session (`__aiRescannedWorkerId`) | `autoUploadWithRetry()` | the live scan globals |
 | A Form 101 field changed on an existing worker | `regenerateWorkerDoc(id)` in the background | the stored pages and signature (`loadStoredAssets(w)`, `src/manager/data/pages.ts`) — never the live globals, which may belong to another scan; when they can't be read, nothing is rebuilt |
+| — a worker with signed documents (`signedAt`) | never: `regenerateWorkerDoc` does nothing, `regenerateAllWorkerDocs` skips them, the save of the worker window rebuilds nothing, and a rescan stores only its pages — a signed Form 101 changes only by a new signing ([contracts.md](contracts.md) → Signing) | — |
 | Firm profile changed (employer block) | `regenerateAllWorkerDocs()`, one worker at a time, for workers that have `docUrl` and stored pages or a signature (`hasStoredAssets`) | the stored pages |
 
 The trigger fields are `FORM101_WATCHED` in `src/manager/worker.ts`, checked by `form101Changed()` in `saveWorker()` (`src/manager/worker-save.ts`, [workers.md](workers.md)). The `'download'` mode (local download instead of upload) still exists in the function but nothing calls it.

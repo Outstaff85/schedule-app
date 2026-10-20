@@ -23,7 +23,9 @@ export interface PunchEntry {
   gpsAccuracy: number | null; gpsSuspicious: boolean; gpsWarnings: string[]; gpsElapsed: number | null;
   workerToken?: string | null;
 }
-export type Screen = 'none' | 'loading' | 'invalid' | 'punch' | 'schedule' | 'hours';
+export type Screen = 'none' | 'loading' | 'invalid' | 'punch' | 'schedule' | 'hours' | 'documents';
+/** The worker's documents to sign, or signed (documents.ts; docs/contracts.md → Signing). */
+export interface SignReq { id: string; status: 'sent' | 'signing' | 'signed'; templateName?: string; signDate?: string | null; dateFixed?: boolean; signedAt?: string }
 export type IconName = 'link' | 'link-off' | 'wifi-off' | 'alert-triangle';
 /** A day the worker can't work ('unavailable') or their shift offered to a colleague ('swap'), from the punch function's myRequests. */
 export interface ShiftReq { id: string; kind: 'unavailable' | 'swap'; date: string; start?: string; end?: string; toWorkerId?: string; toWorkerName?: string; note?: string; status: 'active' | 'pending' | 'confirmed' | 'declined' }
@@ -99,13 +101,15 @@ export interface PunchState {
   /** the worker's days off and shift offers (null = not read yet) and the colleagues of their sites (requests.ts) */
   requests: ShiftReq[] | null;
   colleagues: Colleague[];
+  /** the documents to sign or signed (null = none, or not read yet) */
+  signReq: SignReq | null;
   /** bumped on every write that the screens draw from (the punch log, the month data) */
   rev: number;
 }
 let st: PunchState = {
   screen: 'none', invalid: null, picker: null, worker: null,
   loc: { cls: 'loading', t: 'Checking location...' }, locOk: false, gpsBlock: null, gpsHelp: false, gpsCanAsk: false,
-  done: null, result: null, schedChanged: false, queued: 0, wx: null, tileHours: '—', requests: null, colleagues: [], rev: 0,
+  done: null, result: null, schedChanged: false, queued: 0, wx: null, tileHours: '—', requests: null, colleagues: [], signReq: null, rev: 0,
 };
 const subs = new Set<() => void>();
 export const set = (p: Partial<PunchState>) => { st = { ...st, ...p }; subs.forEach(f => f()); };

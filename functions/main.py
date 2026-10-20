@@ -26,6 +26,7 @@ from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
 import contracts
+import signing
 import datastore
 import feedback
 import gate
@@ -886,6 +887,44 @@ def contract_templates(req: https_fn.Request) -> https_fn.Response:
             return _json({"error": error}, status)
         from firebase_admin import firestore, storage
         return _json(contracts.run(firestore.client(), _model_bucket(storage), claims, payload))
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+# ===== One signature for Form 101 and the contract (signing.py; docs/contracts.md → Signing) =====
+
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
+    memory=options.MemoryOption.GB_1,
+    cpu=1,
+    concurrency=20,
+    timeout_sec=120,
+)
+def sign_documents(req: https_fn.Request) -> https_fn.Response:
+    """The worker's page ({"token", "action": "mine" | "view" | "sign" | "build"}, the punch link's
+    token) and a manager login ({"action": "send" | "list" | "view" | "sign" | "build" | "applied" |
+    "withdraw"}, its ID token). The two signed PDFs are built by two calls at once (build, which =
+    form101 / contract); no shared state per request."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    try:
+        payload = req.get_json(silent=True, force=True) or {}
+        pong = _ping_response(payload)
+        if pong:
+            return pong
+        from firebase_admin import firestore, storage
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app()
+        db, bucket = firestore.client(), _model_bucket(storage)
+        build101 = lambda p: build_form101_pdf(p)
+        if payload.get("token") and not (req.headers.get("Authorization") or "").startswith("Bearer "):
+            return _json(signing.run_worker(db, bucket, payload, build101, firestore.SERVER_TIMESTAMP))
+        status, error, claims = gate.claims_of(req.headers, _verify_token)
+        if status:
+            return _json({"error": error}, status)
+        return _json(signing.run(db, bucket, claims, payload, build101, firestore.SERVER_TIMESTAMP))
     except ValueError as e:
         return _json({"error": str(e)}, 400)
     except Exception as e:

@@ -38,7 +38,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
-      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read|weather|contract_templates)$/) || [])[1];
+      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read|weather|contract_templates|sign_documents)$/) || [])[1];
       if (fn) {
         if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
         const h = r.request().headers();
@@ -1113,6 +1113,83 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(wct.saved && /The default: Hourly contract/.test(wct.trigger), 'contract templates: the worker window\'s Contract section — the category\'s default, the worker\'s own terms saved ' + JSON.stringify(wct));
+  // One signature for Form 101 and the contract (docs/contracts.md → Signing, D3): Send to sign → the worker's own page.
+  const sg = {};
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); openWorkerCard(workers.findIndex(w => w.id === 'w1')); });
+  await p.waitForSelector('[data-testid="card-sign"]');
+  await p.click('[data-testid="card-sign"]');
+  await p.waitForSelector('[data-testid="sign-window"][data-state="ready"]', {timeout: 30000});
+  sg.form = await p.evaluate(() => ({tpl: document.querySelector('[data-testid="sign-template"]').innerText, date: !!document.getElementById('signDate')}));
+  await p.click('[data-testid="sign-send"]');
+  await p.waitForSelector('[data-testid="sign-sent"]', {timeout: 30000});
+  sg.sent = await p.evaluate(() => ({wa: (document.querySelector('[data-testid="sign-whatsapp"]') || {}).href || '', chip: (document.querySelector('[data-testid="card-sign-state"]') || {}).dataset?.state}));
+  const sgReqs1 = await (await fetch('http://127.0.0.1:5055/signRequests', {method: 'POST'})).json();
+  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/.*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
+    && sgReqs1.length === 1 && sgReqs1[0].status === 'sent' && sgReqs1[0].workerId === 'w1' && sgReqs1[0].values.full_name !== undefined && /\/sign\//.test(sgReqs1[0].templatePath),
+    'signing: Documents to sign — the category\'s default picked, the date for a login with the right; Send to sign keeps the template frozen, offers the link for WhatsApp, the card says Sent to sign ' + JSON.stringify({sg, sgReqs1: sgReqs1.map(r => ({s: r.status, w: r.workerId, t: r.templatePath}))}));
+  await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
+  await p.keyboard.press('Escape'); await sleep(300);
+  // The worker signs in their own page: both documents, the end of both, one signature.
+  const wpg = await page(ctx);
+  await wpg.goto(BASE + 'worker-punch.html?t=tok-avi');
+  await wpg.waitForSelector('[data-testid="tile-documents"][data-state="sent"]', {timeout: 30000});
+  await wpg.click('[data-testid="tile-documents"]');
+  ok(await waitFor(wpg, () => [...document.querySelectorAll('#screenDocuments [data-testid="pdf-doc"]')].every(d => Number(d.dataset.pages) > 0) && document.querySelectorAll('#screenDocuments [data-testid="pdf-doc"]').length === 2, 40000),
+    'signing: the worker\'s page shows Form 101 and the contract filled, page by page');
+  sg.locked = await wpg.evaluate(() => !!document.querySelector('[data-testid="sign-locked"]') && /Signing date/.test(document.querySelector('[data-testid="sign-date"]').innerText));
+  await wpg.evaluate(() => document.querySelector('#screenDocuments [data-testid="pdf-end"]').scrollIntoView());
+  await wpg.waitForSelector('#screenDocuments [data-testid="sign-button"]', {timeout: 10000});
+  const sgPad = await wpg.$('#screenDocuments [data-testid="sign-documents"] canvas:not([data-page])');
+  const sbb = await sgPad.boundingBox();
+  await wpg.mouse.move(sbb.x + 20, sbb.y + 30); await wpg.mouse.down();
+  for (let i = 1; i <= 10; i++) await wpg.mouse.move(sbb.x + 20 + i * 15, sbb.y + 30 + (i % 2 ? 15 : -10));
+  await wpg.mouse.up();
+  await wpg.click('#screenDocuments [data-testid="sign-button"]');
+  await wpg.waitForSelector('[data-testid="documents"][data-state="signed"]', {timeout: 60000});
+  sg.after = await wpg.evaluate(() => ({opens: document.querySelectorAll('[data-testid="documents-open"]').length, errs: 0}));
+  await waitFor(wpg, () => document.querySelectorAll('[data-testid="documents-open"]').length === 2, 20000);
+  sg.opens = await wpg.evaluate(() => document.querySelectorAll('[data-testid="documents-open"]').length);
+  const sgReqs2 = await (await fetch('http://127.0.0.1:5055/signRequests', {method: 'POST'})).json();
+  const sgR2 = sgReqs2.find(r => r.workerId === 'w1');
+  const sgF101 = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/form101', {method: 'POST'})).json();
+  const sgCtr = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/contract', {method: 'POST'})).json();
+  ok(sg.locked && sgR2.status === 'signed' && sgR2.signedAt && sgR2.signDate && sgF101.text.includes(sgR2.signDate) && sgF101.images >= 1 && sgCtr.text.includes(sgR2.signDate) && sgCtr.images === 1 && !/\{\{/.test(sgCtr.text.replace(/tpyo/, '')) && sg.opens === 2 && !wpg.errs.length,
+    'signing: the signature opens only after both documents; one signature and the same date in both signed PDFs; afterwards the page keeps them to read ' + JSON.stringify({sg, status: sgR2.status, signDate: sgR2.signDate, sgF101: {i: sgF101.images, p: sgF101.pages}, sgCtr: {i: sgCtr.images, p: sgCtr.pages}, errs: wpg.errs}));
+  await wpg.close();
+  // The manager app takes the signed documents onto the worker; Form 101 is never built again.
+  const sgTook = await p.evaluate(async () => {
+    await ManagerBridge.reloadSignRequests();
+    const w = workers.find(x => x.id === 'w1');
+    const signedDoc = (w.docs || []).find(d => d.signed);
+    const r = {docFile: /\/form101\//.test(w.docFileId || ''), url: !!w.docUrl, contract: !!signedDoc && /\/docs\//.test(signedDoc.fileId) && !!signedDoc.url, signedAt: !!w.signedAt, signDate: w.signDate, sig: /\/signature\//.test(w.sigFileId || '')};
+    const before = w.docFileId;
+    r.regen = await regenerateWorkerDoc('w1');
+    r.kept = w.docFileId === before;
+    openWorkerCard(workers.findIndex(x => x.id === 'w1')); await T.tick(200);
+    r.chip = (document.querySelector('[data-testid="card-sign-state"]') || {}).innerText || '';
+    closeModal('workerCardOverlay');
+    return r;
+  });
+  ok(sgTook.docFile && sgTook.url && sgTook.contract && sgTook.signedAt && sgTook.sig && sgTook.regen && sgTook.kept && /Signed/.test(sgTook.chip),
+    'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
+  // In person, on the manager's phone: Dana signs in the window.
+  await p.evaluate(() => { switchTab('workers'); openWorkerCard(workers.findIndex(w => w.id === 'w2')); });
+  await p.waitForSelector('[data-testid="card-sign"]');
+  await p.click('[data-testid="card-sign"]');
+  await p.waitForSelector('[data-testid="sign-window"][data-state="ready"]', {timeout: 30000});
+  await p.click('[data-testid="sign-person"]');
+  ok(await waitFor(p, () => [...document.querySelectorAll('[data-testid="sign-window"] [data-testid="pdf-doc"]')].filter(d => Number(d.dataset.pages) > 0).length === 2, 40000), 'signing in person: both documents in the window');
+  await p.evaluate(() => document.querySelector('[data-testid="sign-window"] [data-testid="pdf-end"]').scrollIntoView());
+  await p.waitForSelector('[data-testid="sign-window"] [data-testid="sign-button"]', {timeout: 10000});
+  const sgPad2 = await p.$('[data-testid="sign-window"] [data-testid="sign-documents"] canvas:not([data-page])');
+  const sgBb2 = await sgPad2.boundingBox();
+  await p.mouse.move(sgBb2.x + 20, sgBb2.y + 30); await p.mouse.down();
+  for (let i = 1; i <= 10; i++) await p.mouse.move(sgBb2.x + 20 + i * 15, sgBb2.y + 30 + (i % 2 ? 15 : -10));
+  await p.mouse.up();
+  await p.click('[data-testid="sign-window"] [data-testid="sign-button"]');
+  ok(await waitFor(p, () => { const w = workers.find(x => x.id === 'w2'); return !!(w && w.signedAt && (w.docs || []).some(d => d.signed)); }, 40000),
+    'signing in person: the window closes at once, the two PDFs are built in the background and the worker gets them');
+  await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
   // Delete through ⋮ and the Undo snack: the template and its file go.
   await p.evaluate(() => { switchTab('admin'); switchAdminPane('contracts'); });
   await p.waitForSelector('[data-testid="contract-row"]');
@@ -2093,7 +2170,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {n: rows.length, shifts: cell('Edit shifts', 'Dispatcher'), sup: cell('Edit shifts', 'Supplier'), ownHr: cell('Only own workers', 'HR with pay'), today: cell('Today', 'Supplier'),
       hrToday: cell('Today', 'HR with pay'), com: cell('Commission', 'HR with pay'), pay: cell('Edit pay', 'Accountant'), payD: cell('Edit pay', 'Dispatcher')};
   });
-  ok(rmx.n === 19 && rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.today === "✓" && rmx.hrToday === "" && rmx.com === "✓" && rmx.pay === "✓" && rmx.payD === "—",
+  ok(rmx.n === 20 && rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.today === "✓" && rmx.hrToday === "" && rmx.com === "✓" && rmx.pay === "✓" && rmx.payD === "—",
     "boss: Who gets what — the flat ticks by template (blank: never for that role) " + JSON.stringify(rmx));
   // A staff login on a template without its edit ticks: the Schedule, Workers, card and punch log only read.
   const vo = await p.evaluate(() => {

@@ -15,7 +15,7 @@ The approved plan for a login's rights (owner, 2026-10-19), stage by stage, with
 Today · Schedule · Workers · Clients · Suppliers · Accounting · Punch log · Commission · Hours
 
 **Actions:**
-Edit shifts · Edit workers · Edit / delete punches · Edit pay · Export · Approve hours · Dispute hours · Fix hours
+Edit shifts · Edit workers · Edit / delete punches · Edit pay · Export · Approve hours · Dispute hours · Fix hours · Set the signing date (`setSignDate`, docs/contracts.md → Signing: the date printed on Form 101 and the contract; staff and HR templates may have it, off by default — not in Full access; the owner and the super-admin always may; the `sign_documents` function refuses a whole send with a date from a login without it)
 
 **What is shown:**
 See workers' pay (rates and pay). Its own commission is what the Commission tab shows, so it needs no tick of its own.

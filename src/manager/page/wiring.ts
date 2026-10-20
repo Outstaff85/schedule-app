@@ -51,7 +51,7 @@ ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(island()) is
 ManagerData.on('save', (s?: any)=>setSaveStatus(s));
 ManagerData.on('notice', ({msg, ms}: any)=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
 ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());
-ManagerData.on('requests', ()=>{ if(currentTab==='schedule') renderSchedulePage(); });
+ManagerData.on('requests', ()=>{ if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(island()) island()!.refreshWindows(); });
 export function setSaveStatus(s?: any){ setFrame({save:s==='saving'?'saving':'saved'}); }
 // The count of hours batches waiting for a decision, on the Accounting tab.
 function updateHoursBadge(){ setFrame({counts:{accounting:pendingHoursCount()}}); }

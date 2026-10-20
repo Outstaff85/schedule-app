@@ -38,6 +38,11 @@ import { showToast } from '../toast';
 import { scanDocument } from '../../scan-process/session';
 import { sendScanDocument } from '../../scan/server';
 import { bridge, island, provideBridge } from '../bridge';
+import { canSeePay, canSetSignDate } from '../logic/access';
+import { contractValues } from '../logic/contract-values';
+import { form101Payload } from '../logic/form101';
+import { loadSignRequests, signRequestOf } from '../logic/signing';
+import { refreshTenantProfile } from './admin';
 Object.defineProperties(window, {
   "renderDashboard": {get: () => renderDashboard, configurable: true},
   "renderSchedulePage": {get: () => renderSchedulePage, configurable: true},
@@ -395,6 +400,17 @@ provideBridge({
     autoSave(); render();
   },
   regenerateDoc:(id?: any,sig?: any)=>regenerateWorkerDoc(id,sig||undefined),
+  signContext:async(workerId?: any)=>{
+    const w=workers.find((x?: any)=>x.id===workerId); if(!w) return null;
+    const profile=await refreshTenantProfile(5*60*1000);
+    const seePay=canSeePay();
+    const link=w.token?buildPunchLink(w):'';
+    return {worker:w, form101:form101Payload(w,w.docType!=='passport',profile),
+      values:contractValues(w,{profile,clients,suppliers,seePay}), canSeePay:seePay, canSetDate:canSetSignDate(), punchLink:link,
+      whatsapp:link?'https://wa.me/'+String(w.phone||'').replace(/\D/g,'').replace(/^0/,'972')+'?text='+encodeURIComponent(tr('Documents to sign: {0}',{0:link})):''};
+  },
+  signRequest:(workerId?: any)=>signRequestOf(workerId) as any,
+  reloadSignRequests:()=>loadSignRequests(true),
   findScanFields:(editId?: any,keys?: any,docType?: any)=>findScanFields(editId?workers.find((x?: any)=>x.id===editId)||null:null,keys,docType),
   rescan:()=>rescanFromWorkerModal(),
   newToken:(id?: any)=>regenerateWorkerToken(id),
