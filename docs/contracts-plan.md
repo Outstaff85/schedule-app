@@ -47,7 +47,13 @@ The owner's scheme:
   - **Heavy templates go to Admin → Errors** (owner, 2026-10-20), with no warning at upload. A template still over 1 MB after it was made light, or one whose making light failed its check, writes an entry there: the firm, the template's name, both sizes and the reason (whole fonts, big pictures, pages that are pictures). The super-admin sees it and fixes the template when needed.
   - **A page that is only a picture** (a scan, Print to PDF) goes through the same making light (owner, 2026-10-20): its picture is straightened and cut by the scanner's own way when it is a photo, then shrunk to 200 dpi, JPEG (a scanned A4 page ~200–300 KB). It has no text to find marks in, so its marks are **placed by hand**: the upload shows the page, and the admin taps where each value goes and picks the mark (`{{given}}`, `{{signature}}`…), with its width. The places are stored with the template and filled exactly like found marks. A text page can use the same placing too, for a mark the search missed.
   - A Word file (`.docx`) is taken too (D7): it is turned into a PDF on upload, then goes the same way. Saving it as PDF in Word first still works and needs no converter.
-- **Templates:** several per firm, in Admin; a firm sees only its own.
+- **Templates:** a list per firm, in **Admin → Contract templates**; a firm sees only its own.
+  - Each line shows the name, the category (and Default), the size, the date added and how many workers signed it.
+  - The list follows the app's list template (`Plate`, `PagedList`, ⋮). A tap opens the template's sample PDF. From ⋮ the template can be renamed, given another category, made the category's default, or replaced by a new file (a new version). **New template** adds one.
+  - **Delete** follows the app's rule: no question, an Undo snack (`undoDelete`).
+    - Contracts already signed on it stay in the workers' documents.
+    - Sends still waiting for a signature on it are withdrawn; those workers are marked **needs sending again**.
+  - A worker's own one-off templates (above) are listed in that worker's window, not here.
 - **On upload:** the site lists the marks it found and the unknown ones, and shows a sample PDF filled with made-up data.
 - **The first marks:**
   - the worker's names, ID or passport number, birth date, address, phone, start date;
