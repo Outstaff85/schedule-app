@@ -1947,7 +1947,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       && r.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state') === 'unchecked'; }, 8000);
   sa.sent = sfCalls.filter(c => c.action === 'setSettings').map(c => JSON.stringify(c.doctypeMode || c.collect)).join(' ');
   await p.unroute(/cloudfunctions\.net\/scan_feedback$/);
-  ok(sa.shown && sa.figs === '42/200,5/100,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && sa.on === 'checked'
+  ok(sa.shown && sa.figs === '42/20,5/20,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && sa.on === 'checked'
     && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
     'Admin → Scanner: the figures, the shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes

@@ -1,7 +1,8 @@
-// The scan window's batches kept on this phone (IndexedDB) until Done has read them, for a day at most:
+// The scan window's batches kept on this phone (IndexedDB) until Done has read them, for 3 minutes at most
+// (owner, 2026-10-20 — as long as the lab page stays loaded, lab.ts):
 // a window closed by mistake, or a page the phone reloaded, opens again with them (docs/scan.md →
 // The scan window → Batches). Only on this device; nothing here goes to a server.
-const DB = 'scanner', STORE = 'batches', KEY = 'current', KEEP_MS = 24 * 3600 * 1000;
+const DB = 'scanner', STORE = 'batches', KEY = 'current', KEEP_MS = 3 * 60 * 1000;
 
 function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -23,11 +24,12 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   } finally { d.close(); }
 }
 
-/** The batches kept, or null (none, older than a day, or no storage here). */
+/** The batches kept, or null (none, older than 3 minutes — then cleared —, or no storage here). */
 export async function loadBatches<B>(): Promise<B[] | null> {
   try {
     const v = await run<{ at: number; batches: B[] } | undefined>('readonly', s => s.get(KEY));
-    if (!v || !Array.isArray(v.batches) || Date.now() - v.at > KEEP_MS) return null;
+    if (v && Date.now() - v.at > KEEP_MS) { await run('readwrite', s => s.delete(KEY)); return null; }
+    if (!v || !Array.isArray(v.batches)) return null;
     return v.batches;
   } catch { return null; }
 }

@@ -61,7 +61,7 @@ What is in Firebase moves to the bucket with `scripts/scan-train/move_data_to_hf
 
 ## 3. When to train
 
-When **200** new corrections are kept, the super-admin's bell shows **Time to retrain the scanner** (the server counts; the app asks `scan_feedback` `{"action":"stats"}` at most every 6 hours). When every page kind but "Other" has **100** page copies (`doctypesSince`, `feedback.DOCTYPE_AT`), it shows **Enough pages for the document type model** (`doctypesDue`). Nothing trains by itself.
+When **20** new corrections are kept (owner, 2026-10-20: 20 for every model), the super-admin's bell shows **Time to retrain the scanner** (the server counts; the app asks `scan_feedback` `{"action":"stats"}` at most every 6 hours). When every page kind but "Other" has **20** page copies (`doctypesSince`, `feedback.DOCTYPE_AT`), it shows **Enough pages for the document type model** (`doctypesDue`). Nothing trains by itself.
 
 ## 4. How a model is trained (`/scan-train` on the owner's PC)
 
@@ -78,7 +78,7 @@ The skill `.claude/skills/scan-train/SKILL.md`, run in Claude Code on the owner'
 
 ### The page kinds (S7)
 
-When the bell says **Enough pages for the document type model** (every kind but "Other" has 100 page copies), `/scan-train` runs its page-kind steps:
+When the bell says **Enough pages for the document type model** (every kind but "Other" has 20 page copies), `/scan-train` runs its page-kind steps:
 1. **`pull_doctypes.py`** — every kept page copy with the kind the user left (and the one Haiku or the model gave); the same one in seven is the exam.
 2. **`train_doctypes.py`** — two models from ImageNet weights (timm): the phone's (EfficientNet-Lite0, `doctype-lite.onnx`) and the server's (Lite2, `doctype.onnx` — no server code runs it since 2026-10-19; the phone's is the one at work), each with two answers: the kind (6) and the turn the page needs (4) — the turn learned by showing every upright copy at a random quarter turn. Exported to ONNX and checked.
 3. **`exam_doctypes.py`** — on the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and the site's way (the model where sure, Haiku elsewhere) against Haiku alone. A worse model → the next size up (Lite1, Lite2… — owner, 2026-10-19), trained and examined again.

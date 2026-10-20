@@ -14,7 +14,7 @@ import { Figures, Section } from '@/components/shared/section';
 import { scanSettings, trainingStats, type DoctypeMode, type ScanSettings, type TrainingStats } from '@/scan/server';
 import type { AdminSnapshot, ManagerBridge } from './bridge';
 
-const RETRAIN_AT = 200, DOCTYPE_AT = 100; // functions/feedback.py RETRAIN_AT, DOCTYPE_AT
+const RETRAIN_AT = 20, DOCTYPE_AT = 20; // functions/feedback.py RETRAIN_AT, DOCTYPE_AT
 const DOCTYPES = ['id_front', 'id_back', 'sefach', 'passport', 'contract'] as const;
 const HF_MODELS = 'https://huggingface.co/OutStaff/scanner-models';
 

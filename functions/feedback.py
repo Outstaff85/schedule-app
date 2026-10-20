@@ -11,8 +11,8 @@ import math
 MAX_EXAMPLES = 20          # per request
 MAX_IMAGE_BYTES = 80_000   # a 256×256 JPEG
 MOVED_MIN = 0.005          # corners moved less than this: the model was right (counted, not kept)
-RETRAIN_AT = 200           # new kept examples that make the retraining due
-DOCTYPE_AT = 100           # page copies of each document type that make the first document type model due
+RETRAIN_AT = 20            # new corrections that make the retraining due (owner, 2026-10-20: 20 for every model)
+DOCTYPE_AT = 20            # page copies of each document type that make the document type model due (owner, 2026-10-20)
 KEEP_DAYS = 365
 SOURCES = ("model", "phone", "more", "photo", "whole", "page")
 # "page": a page as the phone cut it (the scanner lab's page in the scan window) — only its document type
