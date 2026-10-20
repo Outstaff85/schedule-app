@@ -221,7 +221,8 @@ def test_a_picture_taken_whole_has_no_corners_and_a_retake_keeps_its_group():
     a, why = feedback.check_attempt(att(edgesModel=None, outcome="retaken", source="lab", input="pdf"))
     assert why is None and a["edgesModel"] is None and a["outcome"] == "retaken" and a["source"] == "lab" and a["input"] == "pdf"
     a, _ = feedback.check_attempt(att(group=None))
-    assert a["group"] == "s12"
+    assert a["group"] == "s12" and a["deletedPages"] == []
+    assert feedback.check_attempt(att(deletedPages=[2, 1, 2, -1, 99, True, "x"]))[0]["deletedPages"] == [1, 2]
 
 
 def test_bad_attempts_are_refused():

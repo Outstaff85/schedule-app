@@ -744,13 +744,14 @@ def _scan_attempts(payload, claims, db, stats_ref, storage):
 
 def _scan_attempt_outcome(payload, storage):
     """A later outcome of a kept attempt (a page deleted from its batch): {"action": "attemptOutcome",
-    "dir", "outcome"} → outcome-<time>.json beside it; the training reads the latest."""
+    "dir", "outcome", "page"} → outcome-<time>.json beside it (page: which of its pages, none for all)."""
     base = feedback.outcome_dir(payload.get("dir"))
     outcome = payload.get("outcome") if payload.get("outcome") in feedback.OUTCOMES else None
     if not base or not outcome:
         return _json({"error": "bad outcome"}, 400)
     now = datetime.datetime.now(datetime.timezone.utc)
-    datastore.put([(f"{base}/outcome-{now:%Y%m%dT%H%M%S%f}.json", datastore.as_json({"outcome": outcome, "at": now}))], lambda: _model_bucket(storage))
+    page = payload.get("page") if isinstance(payload.get("page"), int) and not isinstance(payload.get("page"), bool) and 0 <= payload.get("page") < 20 else None
+    datastore.put([(f"{base}/outcome-{now:%Y%m%dT%H%M%S%f}.json", datastore.as_json({"outcome": outcome, "page": page, "at": now}))], lambda: _model_bucket(storage))
     return _json({"ok": True})
 
 

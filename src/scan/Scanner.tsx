@@ -17,20 +17,20 @@ import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
 import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
-import { continueLab, showLab, sleepLab } from './lab';
+import { continueLab, labDeleted, showLab, sleepLab } from './lab';
 import { loadBatches, saveBatches } from './store';
 
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype };
 // Each page has its kind: Haiku's or the model's (doctypeModel, doctypeBy) and the one shown, which a tap can change;
 // in shadow the model's answer is only kept (doctypeShadow) for the example. part: the posted key it came under.
-type Page = ScannedPage & { uid: number; part?: string; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype };
+type Page = ScannedPage & { uid: number; part?: string; att?: string; pg?: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype };
 let nextUid = 0;
 /** A batch: a camera shot (s<n>), the files of one pick (f<n>, posted in parts f<n>.<i>), or the pages before a Scan again. */
 type Batch = { key: string; source: 'camera' | 'file' | 'before'; kept: boolean; pages: Page[] };
 /** The document type model's answer on a page (scan/embed.js), when this version has the model. */
 type Answer = { doctype: Doctype; conf: number; turn: number; turnConf: number } | null;
 /** The lab page's pages of one shot or one part of a pick (scan/embed.js). */
-type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[] };
+type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[]; attempts?: { att: string; pg: number }[] };
 /** How sure the model must be of the type and the turn for Mixed to skip Haiku (as the server's docfind.DOCTYPE_SURE was). */
 const SURE = 0.9;
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
@@ -126,7 +126,10 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   }, [batches]);
 
   const setPage = (uid: number, patch: Partial<Page>) => setBatches(xs => xs.map(b => ({ ...b, pages: b.pages.map(p => (p.uid === uid ? { ...p, ...patch } : p)) })));
-  const removePage = (uid: number) => setBatches(xs => xs.map(b => ({ ...b, pages: b.pages.filter(p => p.uid !== uid) })).filter(b => b.pages.length));
+  const removePage = (uid: number) => {
+    labDeleted(batchesRef.current.flatMap(b => b.pages).filter(p => p.uid === uid)); // the scanner's training: a page not wanted (S8)
+    setBatches(xs => xs.map(b => ({ ...b, pages: b.pages.filter(p => p.uid !== uid) })).filter(b => b.pages.length));
+  };
   // Each new page's kind and turn, all at once: Mixed takes the model's when it is sure of both, else
   // Haiku's (Shadow keeps the model's answer beside it); a page said to be turned is set upright.
   const classify = (pages: Page[], answers: Answer[]) => pages.forEach(async (pg, i) => {
@@ -146,8 +149,10 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     const on = (e: MessageEvent) => {
       const m = e.data as Posted;
       if (e.origin !== location.origin || !m || m.type !== 'scan-pages' || !Array.isArray(m.pages) || typeof m.key !== 'string') return;
-      const pages: Page[] = m.pages.filter(u => typeof u === 'string' && u.startsWith('data:image/')).map(u => ({
+      const from = Array.isArray(m.attempts) ? m.attempts : [];
+      const pages: Page[] = m.pages.map((u, i) => ({ u, a: from[i] })).filter(({ u }) => typeof u === 'string' && u.startsWith('data:image/')).map(({ u, a }) => ({
         uid: ++nextUid, part: m.key, b64: u.split(',')[1], mediaType: u.slice(5, u.indexOf(';')), turn: -1, blurry: false, doctypePending: true,
+        ...(a && typeof a.att === 'string' && a.att ? { att: a.att, pg: Number(a.pg) || 0 } : {}),
       }));
       if (!pages.length) return;
       const key = m.key.split('.')[0], source = key.startsWith('f') ? 'file' : 'camera';
@@ -178,7 +183,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   const deleteBatch = (b: Batch) => {
     const at = batchesRef.current.findIndex(x => x.key === b.key);
     setBatches(xs => xs.filter(x => x.key !== b.key));
-    undoDelete(tr('Pages removed'), () => {}, () => setBatches(xs => (xs.some(x => x.key === b.key) ? xs : [...xs.slice(0, at), b, ...xs.slice(at)])));
+    undoDelete(tr('Pages removed'), () => labDeleted(b.pages), () => setBatches(xs => (xs.some(x => x.key === b.key) ? xs : [...xs.slice(0, at), b, ...xs.slice(at)])));
   };
   const tiles = (b: Batch, cols: string) => (
     <div className={'grid gap-2 ' + cols} data-testid="scan-pages">
