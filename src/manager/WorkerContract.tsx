@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FieldRow } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { defaultFor, listTemplates, type ContractTemplate } from './contracts';
+import { TEMPLATE_ACCEPT, defaultFor, listTemplates, type ContractTemplate } from './contracts';
 import { UploadWindow } from './ContractTemplates';
 import type { FormKey, WorkerForm } from './worker';
 
@@ -62,7 +62,7 @@ export function ContractSection({ v, set, workerId, opened, toast }: {
         </div>
       ))}
       {workerId && <>
-        <input ref={pick} type="file" accept="application/pdf,.pdf" className="hidden" data-testid="editor-contract-file"
+        <input ref={pick} type="file" accept={TEMPLATE_ACCEPT} className="hidden" data-testid="editor-contract-file"
           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setUpload(f); }} />
         <Button size="sm" className="justify-self-start" data-testid="editor-contract-upload" onClick={() => pick.current?.click()}>
           <IconUpload className="size-4" />{tr('A contract for this worker only')}</Button>

@@ -61,10 +61,14 @@ jobs:
       - name: Scan process (the old reading vs src/scan-process/)
         run: node tests/scan/compare.test.mjs
 
+      # LibreOffice for the Word templates' conversion (services/docx2pdf, docs/contracts.md → Word templates)
+      - name: LibreOffice
+        run: which soffice || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libreoffice-writer-nogui fonts-culmus)
+
       - name: Python for the functions
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi flask
 
       - name: Rules tests
         working-directory: tests/rules

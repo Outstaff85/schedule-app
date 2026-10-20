@@ -1268,6 +1268,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForTimeout(6500);
   const ctAfter = await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json();
   ok(ctMenu === 'Edit,Category,Replace file,Delete' && ctAfter.length === 0, 'contract templates: ⋮ holds Edit (the name), Category, Replace file, Delete; Delete goes through the Undo snack ' + JSON.stringify({ctMenu, after: ctAfter.length}));
+  // D7: several files at once — a PDF and a Word file — each prepared and saved in the background.
+  const docxBuf = Buffer.from(await (await fetch('http://127.0.0.1:5055/contractDocx', {method: 'POST'})).arrayBuffer());
+  await p.setInputFiles('[data-testid="contract-file"]', [
+    {name: 'Monthly.pdf', mimeType: 'application/pdf', buffer: cpdf2},
+    {name: 'Word contract.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: docxBuf}]);
+  const d7busy = await p.evaluate(() => document.querySelectorAll('[data-testid="contract-pending"][data-state="busy"]').length);
+  ok(await waitFor(p, () => document.querySelectorAll('[data-testid="contract-row"]').length === 2 && !document.querySelector('[data-testid="contract-pending"]'), 90000),
+    'word templates: two files at once — each line says Preparing… and becomes a template ' + JSON.stringify({d7busy}));
+  const d7 = await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json();
+  const word = d7.find(t => t.name === 'Word contract') || {};
+  ok(d7busy === 2 && (word.marks || []).includes('full_name') && (word.marks || []).includes('signature') && /\.pdf$/.test(word.fileId || ''),
+    'word templates: a .docx is turned into a PDF (LibreOffice), made light and its marks found — the Hebrew line too ' + JSON.stringify(d7.map(t => ({n: t.name, m: t.marks}))));
   await p.evaluate(() => { window.open = window.__origOpen; window.__opened = undefined; switchAdminPane(null); switchTab('schedule'); });
   // Admin pane: users through the dispatcher
   ok(await p.evaluate(async () => { const j = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'listUsers'})})).json(); return (j.users||[]).some(u=>u.username==='sup1'); }), 'owner: listUsers via the dispatcher');

@@ -18,6 +18,8 @@ app = Flask(__name__)
 # deploy-only imports): the same gate as functions/main.py, the emulators' Firestore and Storage.
 sys.path.append(os.path.join(_HERE, '..', '..', 'functions'))
 import contracts as _contracts, gate as _gate
+sys.path.append(os.path.join(_HERE, '..', '..', 'services', 'docx2pdf'))
+import convert as _docx2pdf
 def contract_templates(request):
     body = request.get_json(silent=True, force=True) or {}
     if body.get('ping') is True:
@@ -26,7 +28,8 @@ def contract_templates(request):
     if status:
         return app.response_class(json.dumps({'error': error}), status=status, mimetype='application/json')
     try:
-        out = _contracts.run(DB, _orig_bucket('demo-schedule.appspot.com'), claims, body)
+        # a Word file: the docx2pdf service's own conversion (services/docx2pdf/convert.py, LibreOffice here)
+        out = _contracts.run(DB, _orig_bucket('demo-schedule.appspot.com'), claims, body, docx=_docx2pdf.convert)
     except ValueError as e:
         return app.response_class(json.dumps({'error': str(e)}), status=400, mimetype='application/json')
     return app.response_class(json.dumps(out, default=str), mimetype='application/json')
@@ -163,6 +166,11 @@ class H(BaseHTTPRequestHandler):
             pg.insert_htmlbox(pymupdf.Rect(40, 60, 550, 160), '<p dir="rtl" style="font-size:12pt">אני {{full_name}} ת.ז. {{id}}' + '&nbsp;' * 12 + 'מסכים. {{tpyo}}</p>')
             pg.insert_text((50, 250), 'Name: {{given}} {{surname}}   Signature: {{signature}}   Date: {{sign_date}}', fontsize=12)
             status, data = 200, doc.tobytes()
+        elif self.path == '/contractDocx':
+            # a Word contract template with marks (D7)
+            sys.path.insert(0, os.path.join(_HERE, '..', 'auth'))
+            from test_docx2pdf import docx as _docx
+            status, data = 200, _docx()
         elif self.path == '/contractTemplates':
             rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream()]
             status, data = 200, json.dumps(rows, default=str).encode()

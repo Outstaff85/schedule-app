@@ -50,12 +50,15 @@ jobs:
 
       - run: npm install -g firebase-tools
 
+      - name: LibreOffice (the Word templates' test)
+        run: which soffice || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libreoffice-writer-nogui fonts-culmus)
+
       # A failing login/user-management test stops the deploy. pytest goes
       # into a separate venv so it never reaches the deployed functions.
       - name: Test login and user management on the emulators
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi flask
           firebase emulators:exec --only firestore,auth --project demo-schedule "$RUNNER_TEMP/testvenv/bin/python -m pytest tests/auth -q"
 
       - name: Write service account credentials

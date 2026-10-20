@@ -886,7 +886,7 @@ def contract_templates(req: https_fn.Request) -> https_fn.Response:
         if status:
             return _json({"error": error}, status)
         from firebase_admin import firestore, storage
-        return _json(contracts.run(firestore.client(), _model_bucket(storage), claims, payload))
+        return _json(contracts.run(firestore.client(), _model_bucket(storage), claims, payload, req.headers.get("Authorization") or ""))
     except ValueError as e:
         return _json({"error": str(e)}, 400)
     except Exception as e:

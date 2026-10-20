@@ -1,0 +1,45 @@
+name: Deploy the docx2pdf service
+
+# Word contract templates (docs/contracts.md → Word templates, D7): LibreOffice (headless) in a small
+# Cloud Run service. One conversion per instance (concurrency 1, cpu 1), up to 5 instances side by side
+# (max-instances 5), none while idle (min-instances 0). Its address goes to Firestore appConfig/docx2pdf,
+# where the contract_templates function reads it. The deploy's service account needs Cloud Run Admin,
+# Cloud Build Editor, Artifact Registry Writer and Service Account User (the owner grants them once).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/docx2pdf/**'
+      - '.github/workflows/deploy-docx2pdf.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write service account credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          gcloud run deploy docx2pdf --source services/docx2pdf --project schedule-odinson --region europe-west3 \
+            --allow-unauthenticated --concurrency 1 --cpu 1 --memory 1Gi --max-instances 5 --min-instances 0 --timeout 120 --quiet
+          echo "url=$(gcloud run services describe docx2pdf --project schedule-odinson --region europe-west3 --format='value(status.url)')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Write the address for contract_templates
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          pip install -q firebase-admin
+          python -c "import os, firebase_admin; from firebase_admin import firestore; firebase_admin.initialize_app(options={'projectId': 'schedule-odinson'}); firestore.client().collection('appConfig').document('docx2pdf').set({'url': os.environ['URL']}); print('appConfig/docx2pdf =', os.environ['URL'])"

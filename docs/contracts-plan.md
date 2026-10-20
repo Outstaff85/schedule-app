@@ -176,7 +176,7 @@ Built as docs/contracts.md → Download data.
 - Built from the stored signed PDFs and the JPEG pages. The joined file is not stored.
 - The summary never shows pay or rates unless the login may see pay. Its labels are Hebrew, as Form 101's.
 
-## D6 — a worker moves to another firm (a copy, with the worker's consent) — built (2026-10-20)
+## D6 — a worker moves to another firm (a copy, with the worker's consent) — built and merged (2026-10-20)
 
 Built as docs/contracts.md → Moving to another firm. The new record's start date is the day of signing; the new firm's contract is its default template (the one without a category first).
 
@@ -199,7 +199,10 @@ The owner's rule: when a worker moves to another firm, everything under the old 
 
 - The firms stay apart. Only the server copies, only after the worker's own signed approval, and each copy is logged (who, when, from which firm to which).
 
-## D7 — Word templates taken directly (owner, 2026-10-20)
+## D7 — Word templates taken directly (owner, 2026-10-20) — built (2026-10-20); the service's first deploy needs the owner's Google Cloud rights
+
+Built as docs/contracts.md → Word templates. The service is `services/docx2pdf`, deployed by its own workflow; until its address is in `appConfig/docx2pdf`, a Word file is refused with the way out (save it as PDF in Word).
+
 
 - A `.docx` with the same marks can be uploaded as it is, as well as a PDF.
 - On upload only, it is turned into a PDF by LibreOffice (headless, Hebrew right to left) in a small Cloud Run service. The call carries the user's ID token and the firm is checked. Its first start after idle takes ~5–10 s, once per upload.
