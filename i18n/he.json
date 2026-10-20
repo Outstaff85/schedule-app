@@ -1440,5 +1440,6 @@
   "Retake": "צילום חוזר",
   "{0} pages": "{0} דפים",
   "New scan attempts — time to train": "ניסיונות סריקה חדשים — הגיע הזמן לאמן",
-  "{0} new scan attempts since the last training — run /scan-train on the PC": "{0} ניסיונות סריקה חדשים מאז האימון האחרון — הריצו את ‎/scan-train במחשב"
+  "{0} new scan attempts since the last training — run /scan-train on the PC": "{0} ניסיונות סריקה חדשים מאז האימון האחרון — הריצו את ‎/scan-train במחשב",
+  "Fix corners": "תיקון פינות"
 }

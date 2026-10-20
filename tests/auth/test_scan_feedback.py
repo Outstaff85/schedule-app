@@ -203,6 +203,16 @@ def test_an_attempt_is_kept_with_its_picture_corners_and_outcome():
     assert a["outcome"] == "kept" and a["group"] == "g3" and a["source"] == "site" and a["pages"] == 2 and a["edgesFixed"] is None and a["edgesMore"] == []
     other = [[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]
     assert feedback.check_attempt(att(edgesMore=[other, [[9, 9]], "x"]))[0]["edgesMore"] == [other]
+
+
+def test_corners_moved_by_hand_on_another_document_are_kept_beside_it():
+    other = [[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]
+    moved = [[0.45, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]
+    third = [[0.1, 0.6], [0.3, 0.6], [0.3, 0.9], [0.1, 0.9]]
+    a, _ = feedback.check_attempt(att(edgesMore=[other, third], edgesMoreFixed=[moved, third]))
+    assert a["edgesMore"] == [other, third] and a["edgesMoreFixed"] == [moved, None]
+    a, _ = feedback.check_attempt(att(edgesMore=[other], edgesMoreFixed="x"))
+    assert a["edgesMoreFixed"] == [None]
     now = datetime.datetime(2026, 10, 20, 12, tzinfo=datetime.timezone.utc)
     assert feedback.attempt_dir(a, now) == "attempts/new/site/2026-10-20/s12"
     rec = feedback.attempt_record(a, "t1", now, "attempts/new/site/2026-10-20/s12/picture.jpg")

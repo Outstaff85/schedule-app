@@ -265,9 +265,18 @@ def check_attempt(a):
     if a.get("edgesFixed") is not None and not fixed:
         return None, "bad corners"
     shift = round(moved(model or WHOLE, fixed), 5) if fixed else 0.0
-    more = a.get("edgesMore") if isinstance(a.get("edgesMore"), list) else []
-    more = [q for q in (_corners(v) for v in more[:3]) if q]  # the other documents found on the same photo
-    return {"edgesMore": more, "id": aid, "group": group, "source": source, "outcome": outcome, "picture": picture,
+    # the other documents found on the same photo, and the corners the user moved on them (S8-3; None: not moved)
+    raw_more = a.get("edgesMore") if isinstance(a.get("edgesMore"), list) else []
+    raw_fixed = a.get("edgesMoreFixed") if isinstance(a.get("edgesMoreFixed"), list) else []
+    more, more_fixed = [], []
+    for i, v in enumerate(raw_more[:3]):
+        q = _corners(v)
+        if not q:
+            continue
+        fq = _corners(raw_fixed[i]) if i < len(raw_fixed) and raw_fixed[i] is not None else None
+        more.append(q)
+        more_fixed.append(fq if fq and moved(q, fq) >= MOVED_MIN else None)
+    return {"edgesMore": more, "edgesMoreFixed": more_fixed, "id": aid, "group": group, "source": source, "outcome": outcome, "picture": picture,
             "edgesModel": model, "edgesFixed": fixed if fixed and shift >= MOVED_MIN else None, "moved": shift,
             "model": str(a.get("model") or "")[:40], "way": str(a.get("way") or "")[:20],
             "input": a.get("input") if a.get("input") in INPUTS else "camera",
@@ -284,7 +293,8 @@ def attempt_dir(a, now):
 def attempt_record(a, tenant_id, now, picture_path):
     """The answer kept beside an attempt's picture (answer.json)."""
     return {"id": a["id"], "group": a["group"], "source": a["source"], "outcome": a["outcome"], "tenantId": tenant_id or "",
-            "picture": picture_path, "edgesModel": a["edgesModel"], "edgesMore": a["edgesMore"], "edgesFixed": a["edgesFixed"], "moved": a["moved"],
+            "picture": picture_path, "edgesModel": a["edgesModel"], "edgesMore": a["edgesMore"], "edgesFixed": a["edgesFixed"],
+            "edgesMoreFixed": a["edgesMoreFixed"], "moved": a["moved"],
             "model": a["model"], "way": a["way"], "input": a["input"], "doctype": a["doctype"], "pages": a["pages"],
             "deletedPages": a["deletedPages"], "createdAt": now}
 

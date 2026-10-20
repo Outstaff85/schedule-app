@@ -44,6 +44,11 @@ export function continueLab(discard = false) {
   frame?.contentWindow?.postMessage({ type: 'scan-continue', discard }, location.origin);
 }
 
+/** Opens the lab's corner editor on a new page (scan/embed.js → fixCorners); the page comes back fixed as a 'scan-pages' message. */
+export function labFix(att: string, pg: number) {
+  frame?.contentWindow?.postMessage({ type: 'scan-fix', att, pg }, location.origin);
+}
+
 /** Pages the user removed from the window: the scanner's training learns they were not wanted (docs/scan-plan.md → S8; scan/embed.js). */
 export function labDeleted(pages: { att?: string; pg?: number }[]) {
   const list = pages.filter(p => p.att).map(p => ({ att: p.att, pg: p.pg || 0 }));

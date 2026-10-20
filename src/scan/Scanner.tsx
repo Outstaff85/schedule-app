@@ -7,7 +7,7 @@
 // Mixed). The batches are kept on this phone until Done has read them (store.ts); Done reads every
 // batch's pages in order and sends the pages' examples.
 import * as React from 'react';
-import { IconCamera, IconCheck, IconFileText, IconLoader2, IconTrash } from '@tabler/icons-react';
+import { IconCamera, IconCheck, IconCrop, IconFileText, IconLoader2, IconTrash } from '@tabler/icons-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Window } from '@/components/shared/window';
 import { Plate } from '@/components/shared/plate';
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
 import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
-import { continueLab, labDeleted, showLab, sleepLab } from './lab';
+import { continueLab, labDeleted, labFix, showLab, sleepLab } from './lab';
 import { loadBatches, saveBatches } from './store';
 
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype };
@@ -61,8 +61,9 @@ function batchTitle(b: Batch): string {
  * and closes when it succeeds; an error text keeps the window open with the pages. */
 export type ReadFn = (pages: ScannedPage[], progress: (label: string, pct: number) => void) => Promise<string | null>;
 
-/** One page: its picture, its type (a tap changes it), a remove button. */
-function PageTile({ p, onKind, onRemove }: { p: Page; onKind: (k: Doctype) => void; onRemove: () => void }) {
+/** One page: its picture, its type (a tap changes it), a remove button, and — on the new pages — a button that opens
+ * the lab's corner editor for it (docs/scan-plan.md → S8). */
+function PageTile({ p, onKind, onRemove, onFix }: { p: Page; onKind: (k: Doctype) => void; onRemove: () => void; onFix?: () => void }) {
   return (
     <div className={'relative overflow-hidden rounded-lg bg-plate' + (p.kind === 'other' ? ' opacity-60' : '')} data-testid="scan-page" data-kind={p.kind || undefined}>
       <img src={'data:' + p.mediaType + ';base64,' + p.b64} alt="" data-testid="scan-page-img" className="block aspect-[3/4] w-full object-contain" />
@@ -87,6 +88,11 @@ function PageTile({ p, onKind, onRemove }: { p: Page; onKind: (k: Doctype) => vo
       <button type="button" aria-label={tr('Remove')} className="absolute right-1 top-1 rounded-md bg-background/70 p-1" onClick={onRemove}>
         <IconTrash className="size-4" />
       </button>
+      {onFix && (
+        <button type="button" aria-label={tr('Fix corners')} data-testid="scan-fix" className="absolute left-1 top-1 rounded-md bg-background/70 p-1" onClick={onFix}>
+          <IconCrop className="size-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -187,7 +193,8 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
   };
   const tiles = (b: Batch, cols: string) => (
     <div className={'grid gap-2 ' + cols} data-testid="scan-pages">
-      {b.pages.map(p => <PageTile key={p.uid} p={p} onKind={k => setPage(p.uid, { kind: k })} onRemove={() => removePage(p.uid)} />)}
+      {b.pages.map(p => <PageTile key={p.uid} p={p} onKind={k => setPage(p.uid, { kind: k })} onRemove={() => removePage(p.uid)}
+        onFix={!b.kept && p.att ? () => labFix(p.att!, p.pg || 0) : undefined} />)}
     </div>
   );
 
