@@ -1,7 +1,7 @@
-// The site's scan window (docs/scan.md → The scan window) opens this page — the scanner lab's own
-// page, copied as it is (scan-lab/ → scan/) — with ?embed=1. This is the one thing added to the copy:
-// the lab's tools (the model pickers, the figures, the log) are hidden, and every shot's cut pages
-// (and a picked photo's) are sent to the window that opened the page, which reads them on Done.
+// The site's scan window (src/scan/Scanner.tsx) opens this page — the scanner lab's own, copied as it
+// is — in a frame with ?embed=1. The one file the site adds: it hides the lab's tools and figures and
+// posts each shot's (and each picked photo's) cut pages to the window, with the document type model's
+// answer on each when this version has the model (docs/scan.md → The scan window). Nothing else changes.
 (() => {
   if (new URLSearchParams(location.search).get('embed') !== '1' || window.parent === window) return;
   const css = document.createElement('style');
@@ -9,16 +9,31 @@
     'body{padding:0 0 12px;background:transparent}';
   document.head.appendChild(css);
   const $ = id => document.getElementById(id);
-  // A shot's pages: the first shown, then the others found on the same photo.
-  const send = key => {
+  // The document type model's answer on a page, as the lab's doctypeNote reads it (doctypeSess: the
+  // lab's session, null while this version has no model or it is still loading): null when none.
+  const NAMES = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
+  const answer = async src => {
+    if (typeof doctypeSess === 'undefined' || !doctypeSess) return null;
+    try {
+      const im = new Image(); im.src = src; await im.decode();
+      const sq = document.createElement('canvas'); sq.width = 256; sq.height = 256;
+      const g = sq.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0, 256, 256);
+      const d = g.getImageData(0, 0, 256, 256).data, n = 256 * 256, f = new Float32Array(3 * n);
+      for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+      const r = await doctypeSess.run({ [doctypeSess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, 256, 256]) });
+      const kp = Array.from(r.doctype.data), tp = Array.from(r.turn.data), k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
+      return { doctype: NAMES[k], conf: kp[k], turn: t * 90, turnConf: tp[t] };
+    } catch { return null; }
+  };
+  const send = async key => {
     const pages = [$('shotImg'), ...$('shotMore').querySelectorAll('img')].map(i => i.src).filter(s => s && s.startsWith('data:image/'));
-    if (!$('shot').hidden && pages.length) window.parent.postMessage({ type: 'scan-pages', key, pages }, location.origin);
+    if ($('shot').hidden || !pages.length) return;
+    const answers = await Promise.all(pages.map(answer));
+    window.parent.postMessage({ type: 'scan-pages', key, pages, answers }, location.origin);
   };
   let fileKey = null, files = 0, shots = 0;
-  // a camera shot: sent when it is done (its corners refined, the other documents found)
   const shot = window.showShot;
-  window.showShot = async () => { const key = 's' + (++shots); await shot(); if (!fileKey) send(key); };
-  // a picked photo: every part of it, sent once all of it is done
+  window.showShot = async () => { const key = 's' + (++shots); await shot(); if (!fileKey) await send(key); };
   const pick = $('file').onchange;
-  $('file').onchange = async e => { fileKey = 'f' + (++files); try { await pick(e); } finally { send(fileKey); fileKey = null; } };
+  $('file').onchange = async e => { fileKey = 'f' + (++files); try { await pick(e); } finally { await send(fileKey); fileKey = null; } };
 })();

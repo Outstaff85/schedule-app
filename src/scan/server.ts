@@ -1,6 +1,6 @@
-// The scanner's server calls (scan_feedback): a full document after a scan's save (H8a, docs/hf-plan.md),
-// the scanner's settings and its training figures (Admin → Scanner). Finding and cutting the
-// documents is the phone's (scan/, the scanner lab's own page — docs/scan.md → The scan window).
+// The scanner's server calls (scan_feedback): the pages' document type examples (the queue), the
+// document type model's mode, a full document after a scan's save (H8a, docs/hf-plan.md), the
+// scanner's settings and its training figures (Admin → Scanner). Finding and cutting the documents is the phone's (scan/, the scanner lab's own page — docs/scan.md → The scan window).
 import { SCAN_FEEDBACK_FN_URL } from '@/manager/logic/functions';
 import { loadFirestoreBackend } from '@/manager/data/api';
 
@@ -25,6 +25,44 @@ export type ScanDocument = {
 };
 export async function sendScanDocument(doc: ScanDocument): Promise<void> {
   try { await post(SCAN_FEEDBACK_FN_URL, { action: 'document', ...doc }); } catch { /* offline or refused: this one is not collected */ }
+}
+
+/** A page's training example (functions/feedback.py): the scan window's pages are cut by the phone
+ * (source "page" — no corners), so each teaches only its document type: who typed it (Haiku or the
+ * document type model), the type the user left, the model's answer in shadow, and a 256×256 copy of
+ * the page when its type was changed (or one right page in five, keep). */
+export type Example = {
+  source: 'page'; doctypeModel: string; doctypeFixed: string; doctypeBy: 'haiku' | 'model';
+  doctypeShadow?: string; pageImage?: string; keep?: boolean;
+};
+const QUEUE_KEY = 'scanFeedbackQueue', QUEUE_MAX = 60;
+const readQueue = (): Example[] => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };
+const writeQueue = (q: Example[]) => { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-QUEUE_MAX))); } catch { /* full or private */ } };
+let sending = false;
+
+/** Adds the scan's examples to the phone's queue and sends the queue in the background;
+ * what cannot be sent now (no network) waits for the next scan. Never throws. */
+export async function sendFeedback(examples: Example[] = []): Promise<void> {
+  if (examples.length) writeQueue([...readQueue(), ...examples]);
+  if (sending) return;
+  sending = true;
+  try {
+    for (let q = readQueue(); q.length; q = readQueue()) {
+      const batch = q.slice(0, 10);
+      await post(SCAN_FEEDBACK_FN_URL, { action: 'add', examples: batch });
+      writeQueue(readQueue().slice(batch.length));
+    }
+  } catch { /* offline or refused: kept for the next time */ }
+  finally { sending = false; }
+}
+
+/** How the scan window uses the document type model (Admin → Scanner's Off / Shadow / Mixed); shadow
+ * when it cannot be read — the model's answer is then only recorded, never trusted. */
+export async function doctypeMode(): Promise<DoctypeMode> {
+  try {
+    const m = (await post(SCAN_FEEDBACK_FN_URL, { action: 'mode' })).doctypeMode;
+    return m === 'off' || m === 'mixed' ? m : 'shadow';
+  } catch { return 'shadow'; }
 }
 
 /** Admin → Scanner (a super-admin): how the document type model is used, and which firms' full
