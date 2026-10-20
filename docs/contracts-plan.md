@@ -92,6 +92,9 @@ The owner's scheme:
   4. the ID card or passport;
   5. the ספח;
   6. the other documents.
+- **Two choices** under the card's Download data (owner, 2026-10-20):
+  - **Everything:** the whole order above.
+  - **For the accountant:** the same order without the contract (the accountant does not need it). The summary's list of documents leaves it out too.
 - Built from the stored signed PDFs and the JPEG pages. The joined file is not stored.
 - The summary never shows pay or rates unless the login may see pay. Its labels are Hebrew, as Form 101's.
 
