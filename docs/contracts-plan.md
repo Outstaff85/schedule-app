@@ -44,6 +44,7 @@ The owner's scheme:
   - every mark is still found.
 
   The admin sees the sample PDF of the light one with both sizes ("2.4 MB → 180 KB") and saves it; only the light one is stored, and the original is dropped. If the check fails, the upload says why, and nothing is stored.
+  - **Heavy templates go to Admin → Errors** (owner, 2026-10-20), with no warning at upload. A template still over 1 MB after it was made light, or one whose making light failed its check, writes an entry there: the firm, the template's name, both sizes and the reason (whole fonts, big pictures, pages that are pictures). The super-admin sees it and fixes the template when needed.
   - A page that is only a picture (a scan, Print to PDF) has no text to find marks in; the upload says so.
   - A Word file (`.docx`) is not taken: it is saved as PDF in Word first (D6 dropped).
 - **Templates:** several per firm, in Admin; a firm sees only its own.
