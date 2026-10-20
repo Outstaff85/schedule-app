@@ -148,13 +148,18 @@ Every attempt made by anyone who scans becomes a training example with no extra 
   - `/scan-train` takes `attempts/new/` (`pull.py --attempts`) together with the site's corrections:
     - the target corners are the moved corners, or the model's own corners for a kept attempt;
     - a retaken attempt with no moved corners is used only as a hard example in the exam, never as a target.
+  - **The exam shows pictures too** (owner, 2026-10-20). Besides the figures, `exam.py` writes `~/.scan-train/report.html` on the owner's PC and opens it in the browser:
+    - the 10 exam pages where the old and new models differ most;
+    - each page with the old model's corners, the new model's corners and the right ones drawn on it, with the corner error of each model.
+
+    The owner sees at a glance where it got better and where worse. The page stays on the PC only, because it shows workers' documents; `clean.py` / `publish.py` delete it with the copies.
   - Then the exam, and on the owner's yes the publish, which resets `attemptsSince` and moves the attempts to `attempts/used/`.
   - As always, the new version is set for the lab first and for the site only when it is better.
 - **Files to change:**
   - `scan-lab/index.html` (the queue, the corner editor, the readouts);
   - `functions/feedback.py` (the `attempt` action, the counter);
   - `src/manager/page/header.ts` (the bell notice);
-  - `scripts/scan-train/pull.py` and `publish.py`;
+  - `scripts/scan-train/pull.py`, `exam.py` (the picture report) and `publish.py`;
   - `scan/` gets the copy as usual. In the site's scanner `embed.js` sets `source: site`. S6 keeps collecting the page kinds on Done; the corners come from the attempts.
   - The docs: docs/scan-training.md and docs/scan.md.
 
