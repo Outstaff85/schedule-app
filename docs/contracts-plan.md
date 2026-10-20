@@ -56,6 +56,15 @@ The owner's scheme:
   - the client or site;
   - the signature and the signing date.
 
+### Fitting the contract to a worker or a category (owner, 2026-10-20)
+
+Contracts can be added and changed at any time; whatever goes in, the output always goes through the same processing (made light, the marks filled, frozen at signing).
+- **Categories:** each template has a category the firm names (for example hourly, monthly, foreign worker, driver). One template per category is its default.
+- **The worker's template:** a worker gets the default of their category; in the worker window another template can be picked for this worker alone.
+- **A contract for one worker:** a template uploaded from the worker window belongs to that worker only (not listed for others), and goes through the same making light and marks.
+- **The worker's own terms without a new template:** the marks `{{terms_1}}`, `{{terms_2}}`… are filled from the worker's own text fields (for example a special rate, hours, a trial period), typed in the worker window. One template then serves many workers with different terms.
+- **A changed or replaced template** reaches only new signings; signed contracts stay as signed (D3).
+
 ## D3 — one signature for both documents
 
 - In the worker window: **Documents to sign** → pick the contract template (the firm's default is chosen first). Then one of two ways:
