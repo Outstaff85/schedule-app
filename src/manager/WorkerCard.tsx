@@ -209,6 +209,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
         {!can && <Badge variant={STATUS_BADGE[status]?.[0] || 'ok'}>{tr(STATUS_BADGE[status]?.[1] || 'Active')}</Badge>}
         <NewBadge createdAt={w.createdAt} />
         <SignChip req={req} signDate={w.signDate as string | undefined} />
+        {!!w.movedToOtherFirm && <Badge variant="warn" data-testid="card-moved">{tr('Moved to another firm')}</Badge>}
       </div>
       {signing && <SignWindow workerId={w.id} api={api} onClose={() => setSigning(false)} />}
       {(can || w.docSavedAt) && (

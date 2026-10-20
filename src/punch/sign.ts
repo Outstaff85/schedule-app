@@ -6,7 +6,7 @@ import { getState, set, wpToken, type SignReq } from './core';
 
 export const SIGN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/sign_documents';
 
-async function signFn<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
+export async function signFn<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
   const resp = await fetch(SIGN_FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, token: wpToken() }) });
   const json = await resp.json().catch(() => null);
   if (!resp.ok || !json || !json.ok) throw new Error((json && json.error) || 'HTTP ' + resp.status);
@@ -39,3 +39,19 @@ export function openPdf(b64: string, name: string): void {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+
+// ── Another firm asks to take the worker's details (D6, functions/transfer.py) ──
+const tr_ = (body: Record<string, unknown>) => signFn({ ...body, transfer: true });
+/** Reads whether another firm asks for this worker. Never throws. */
+export async function loadTransferState(): Promise<void> {
+  if (!wpToken() || !navigator.onLine) return;
+  try { const j = await tr_({ action: 'mine' }) as { transfer: import('./core').TransferReq | null }; set({ transfer: j.transfer }); } catch { /* kept */ }
+}
+export const viewTransfer = (): Promise<Viewed[]> => Promise.all(['form101', 'contract'].map(which => tr_({ action: 'view', which }) as Promise<Viewed>));
+/** The consent and the signing in one: the signature, then the new firm's two PDFs built at once — the copy follows. */
+export async function signTransfer(png: string): Promise<void> {
+  await tr_({ action: 'sign', signaturePng: png });
+  await Promise.all(['form101', 'contract'].map(which => tr_({ action: 'build', which })));
+  await loadTransferState();
+}
+export async function declineTransfer(): Promise<void> { await tr_({ action: 'decline' }); set({ transfer: null }); }

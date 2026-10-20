@@ -4,7 +4,7 @@
 // result line and the two tiles (My Schedule, My Hours). On an invalid link
 // only the top bar stays and the message is a glass card under it.
 import * as React from 'react';
-import { DocumentsCard } from './Documents';
+import { DocumentsCard, TransferCard } from './Documents';
 import {
   IconAlertTriangle, IconBuilding, IconBuildingStore, IconCalendarEvent, IconCalendarWeek, IconClockHour4, IconCurrentLocation, IconLink, IconLinkOff,
   IconMapPin, IconMapPinOff, IconWifiOff,
@@ -67,6 +67,7 @@ export function PunchScreen({ hidden }: { hidden: boolean }) {
       )}
       <PunchButton />
       <div className={s.result ? 'pp-result show ' + s.result.type : 'pp-result'} id="punchResult">{s.result ? s.result.text : ''}</div>
+      <TransferCard />
       <DocumentsCard />
       <Tiles />
       {s.picker && <ObjectPicker objs={s.picker} name={s.worker?.name || ''} />}

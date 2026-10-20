@@ -9,7 +9,7 @@
 import * as React from 'react';
 import {
   IconBeach, IconCash, IconChevronDown, IconChevronUp, IconCircleCheck, IconDownload, IconFilter, IconId, IconLayoutGrid, IconLink, IconList,
-  IconPlus, IconScan, IconTrash, IconUserPlus, IconUsers, IconX,
+  IconPlus, IconScan, IconTransfer, IconTrash, IconUserPlus, IconUsers, IconX,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,8 @@ import { NewBadge } from '@/components/shared/new-badge';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
 import type { ManagerBridge, WorkerRow, WorkersSnapshot } from './bridge';
+import { TransferAskWindow } from './TransferAsk';
+import { isFirmAdminSession } from './logic/access';
 import { Line, MoreChip, NoticeChip, TodayPin } from './pieces';
 import { hoursShort } from './today';
 import {
@@ -78,6 +80,7 @@ function FilterSelect<V extends string>({ id, cap, value, opts, onChange, classN
 }
 
 export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBridge }) {
+  const [transfer, setTransfer] = React.useState(false);
   const [f, setF] = React.useState<Filters>(kept);
   const [view, setView] = React.useState<'cards' | 'list'>(() => (stored('workersView') === 'list' ? 'list' : 'cards'));
   const [open, setOpen] = React.useState(() => !!stored('workersFiltersOpen'));
@@ -188,7 +191,9 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
       <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="workers-head">
         {can && <Button variant="primary" className="og-new" data-testid="workers-new" onClick={api.addWorker}><IconPlus />{tr('New')}</Button>}
         {can && <Button data-testid="workers-scan" onClick={api.scanNew}><IconScan />{tr('Scan passport')}</Button>}
+        {can && isFirmAdminSession() && <Button data-testid="workers-transfer" onClick={() => setTransfer(true)}><IconTransfer />{tr('From another firm')}</Button>}
       </div>
+      {transfer && <TransferAskWindow onClose={() => setTransfer(false)} toast={(m, ms) => api.toast(m, ms)} />}
 
       <div className="og-tabs" id="workersTabs" data-testid="workers-tabs">
         {TABS.map(([k, l]) => <button key={k} type="button" className={cn(tabOn(k, f) && 'on')} onClick={() => set(pickTab(k, f))}>{tr(l)}</button>)}

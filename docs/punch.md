@@ -107,6 +107,10 @@ The button: "Not on site" when `!locOk` (the ring's track only, no hold); otherw
 
 Read once the worker is known (`loadSignState()`, online only). When documents wait for the worker's signature, a card **Documents to sign** sits above the tiles (`data-testid="tile-documents"`, `data-state="sent"`); once signed it reads **My documents · Signed <date>**. Its sheet (the same sheet as My Schedule: the swipe down, Escape) shows Form 101 and the contract filled with the worker's data, one under the other (`SignDocuments` — the shared component: `PdfPages` over pdf.js, the signing date shown fixed, the signature opening only after the end of both documents was seen); **Sign** sends the signature, then builds the two signed PDFs (two calls at once) and reads the state again. Afterwards the sheet lists the two signed documents, each opened (or downloaded) as a PDF. The page gets only this worker's own documents (the token; [contracts.md](contracts.md) → Signing).
 
+## Another firm asks (`#screenTransfer`, D6)
+
+When another firm asks to take the worker's details (`loadTransferState()`, `sign_documents` with `transfer: true`), a card **[firm] asks to take your details** sits above the tiles (`tile-transfer`); its sheet shows that firm's Form 101 and contract filled (`SignDocuments`), one signature (the consent and the signing), or **Decline** ([contracts.md](contracts.md) → Moving to another firm).
+
 ## My schedule (`#screenSchedule`)
 
 "My Schedule" on the punch screen (next to "My Hours") opens the worker's own roster as a month calendar: `openSchedule()` → `ScheduleSheet`. The days come from the worker's `schedule` (seven days, Sunday first, `{type:'work'|'off', start, end}` — the weekly roster the manager plans on the Schedule tab) and its `dates` (the manager's changes for single dates, which win on their date; `schedDay(w, d)`). The punch `load` sends a worker only their own week (`_week()` in `portal.py`), and the worker list keeps it (`schedule` in `loadWorkers` / `loadWorkersFromGS`), so it also shows offline from the cache. On a personal link and online, opening the screen reloads it from the server first.

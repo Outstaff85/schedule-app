@@ -74,6 +74,21 @@
       ]
     },
     {
+      "collectionGroup": "workers",
+      "fieldPath": "docKeys",
+      "ttl": false,
+      "indexes": [
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
       "collectionGroup": "scanTraining",
       "fieldPath": "deleteAt",
       "ttl": true,

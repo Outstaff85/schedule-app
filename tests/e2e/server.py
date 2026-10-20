@@ -166,6 +166,28 @@ class H(BaseHTTPRequestHandler):
         elif self.path == '/contractTemplates':
             rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream()]
             status, data = 200, json.dumps(rows, default=str).encode()
+        elif self.path == '/transferSetup':
+            # D6: firm two's worker gets an ID number, and firm one a contract template (the new firm's contract)
+            import pymupdf
+            DB.collection('tenants').document(T2).collection('workers').document('w9').update({'docId': '039337423', 'docKeys': ['039337423'],
+                'docGiven': 'Other', 'docSurname': 'Worker', 'docType': 'passport', 'notes': 'old firm notes'})
+            status, data = 200, b'{"ok":true}'
+        elif self.path == '/transferCleanup':
+            # the copy made by the transfer check goes, and firm two's worker is as seeded (the later checks count them)
+            from google.cloud import firestore as _fs
+            for d in DB.collection('tenants').document(T1).collection('workers').stream():
+                if (d.to_dict() or {}).get('movedFromOtherFirm'):
+                    d.reference.delete()
+            DB.collection('tenants').document(T2).collection('workers').document('w9').update({'status': 'active', 'movedToOtherFirm': _fs.DELETE_FIELD,
+                'movedAt': _fs.DELETE_FIELD, 'docKeys': _fs.DELETE_FIELD, 'docId': _fs.DELETE_FIELD})
+            status, data = 200, b'{"ok":true}'
+        elif self.path == '/transferState':
+            t1w = [d.to_dict() for d in DB.collection('tenants').document(T1).collection('workers').stream()]
+            moved = [w for w in t1w if w.get('movedFromOtherFirm')]
+            old = DB.collection('tenants').document(T2).collection('workers').document('w9').get().to_dict() or {}
+            reqs = [d.to_dict() for d in DB.collection('transferRequests').stream()]
+            status, data = 200, json.dumps({'moved': moved, 'old': {k: old.get(k) for k in ('status', 'movedToOtherFirm', 'clientIds')},
+                                            'reqs': [r.get('status') for r in reqs], 'log': len(list(DB.collection('transferLog').stream()))}, default=str).encode()
         elif self.path == '/signRequests':
             rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('signRequests').stream()]
             status, data = 200, json.dumps(rows, default=str).encode()

@@ -160,7 +160,7 @@ Built as docs/contracts.md → A new signature after a change.
 - **A change to the firm's own details** (name, address, phone, deductions file) does not ask the workers to sign again. The new details go into the next signing (owner, 2026-10-20).
 - **The old documents are deleted** when the new ones are signed. No accountant's check is needed and there is no archive (owner, 2026-10-20).
 
-## D5 — "Download data" on the worker card — built (2026-10-20)
+## D5 — "Download data" on the worker card — built and merged (2026-10-20)
 
 Built as docs/contracts.md → Download data.
 
@@ -176,7 +176,10 @@ Built as docs/contracts.md → Download data.
 - Built from the stored signed PDFs and the JPEG pages. The joined file is not stored.
 - The summary never shows pay or rates unless the login may see pay. Its labels are Hebrew, as Form 101's.
 
-## D6 — a worker moves to another firm (a copy, with the worker's consent)
+## D6 — a worker moves to another firm (a copy, with the worker's consent) — built (2026-10-20)
+
+Built as docs/contracts.md → Moving to another firm. The new record's start date is the day of signing; the new firm's contract is its default template (the one without a category first).
+
 
 The owner's rule: when a worker moves to another firm, everything under the old firm stays there; the worker's data is copied to the new firm and signed for it; and only when the worker approves it in their own page (owner, 2026-10-20).
 
