@@ -1,22 +1,45 @@
 // The scan window (docs/scan.md → The scan window): the scanner lab's own page, copied as it is
 // into the site (scan/, served at /scan/ — owner, 2026-10-19: "the scan must be the lab's"), opened
 // inside the window. Every shot's pages, and a picked photo's, come back from it (scan/embed.js
-// posts them) into the strip below in order, each with its document type (Haiku); Done reads them.
+// posts them) into the strip below in order, each with its document type — Haiku's, or the document type
+// model's as Admin → Scanner says (Off / Shadow / Mixed); Done reads them and sends the pages' examples.
 import * as React from 'react';
 import { IconCheck, IconLoader2, IconTrash } from '@tabler/icons-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Window } from '@/components/shared/window';
 import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
-import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, rotateImage, type Doctype } from './doctype';
+import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
+import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
 
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype };
-// Each page has its kind: Haiku's (doctypeModel) and the one shown, which a tap can change.
-type Page = ScannedPage & { uid: number; doctypeModel?: Doctype | null; doctypePending?: boolean };
+// Each page has its kind: Haiku's or the model's (doctypeModel, doctypeBy) and the one shown, which a tap can change;
+// in shadow the model's answer is only kept (doctypeShadow) for the example.
+type Page = ScannedPage & { uid: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype };
 let nextUid = 0;
 type Item = { key: string; pages: Page[] };
+/** The document type model's answer on a page (scan/embed.js), when this version has the model. */
+type Answer = { doctype: Doctype; conf: number; turn: number; turnConf: number } | null;
 /** The lab page's pages of one shot or one picked photo (scan/embed.js). */
-type Posted = { type: 'scan-pages'; key: string; pages: string[] };
+type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[] };
+/** How sure the model must be of the type and the turn for Mixed to skip Haiku (as the server's docfind.DOCTYPE_SURE was). */
+const SURE = 0.9;
+let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
+
+/** The pages' training examples (functions/feedback.py, source "page"): every page with a type from
+ * Haiku or the model — a changed one with its copy, one right page in five with its copy too. */
+async function examples(pages: Page[]): Promise<Example[]> {
+  const out: Example[] = [];
+  for (const p of pages) {
+    if (!p.doctypeModel) continue;
+    const fixed = p.kind || p.doctypeModel, changed = fixed !== p.doctypeModel, keep = !changed && rightSeen++ % 5 === 0;
+    const copy = changed || keep ? await pageCopy(p.b64, p.mediaType).catch(() => undefined) : undefined;
+    if (changed && !copy) continue;
+    out.push({ source: 'page', doctypeModel: p.doctypeModel, doctypeFixed: fixed, doctypeBy: p.doctypeBy || 'haiku',
+      ...(p.doctypeShadow ? { doctypeShadow: p.doctypeShadow } : {}), ...(copy ? { pageImage: copy } : {}), ...(keep && copy ? { keep: true } : {}) });
+  }
+  return out;
+}
 
 /** read: the scan process run on Done (src/scan-process/) — the window shows its progress
  * and closes when it succeeds; an error text keeps the window open with the pages. */
@@ -33,12 +56,19 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     ? [{ key: 'before', pages: initial.map(p => ({ ...p, uid: ++nextUid, doctypeModel: null })) }] : []));
   const [reading, setReading] = React.useState<{ label: string; pct: number } | null>(null);
   const [finishing, setFinishing] = React.useState(false);
+  // Admin → Scanner's mode, read when the window opens (shadow until it is known)
+  const mode = React.useRef<Promise<DoctypeMode>>(Promise.resolve('shadow'));
+  React.useEffect(() => { if (open) { mode.current = doctypeMode(); void sendFeedback(); } }, [open]);
   const setPage = (uid: number, patch: Partial<Page>) => setItems(xs => xs.map(x => ({ ...x, pages: x.pages.map(p => (p.uid === uid ? { ...p, ...patch } : p)) })));
-  // Haiku's kind and turn for each new page, all at once; a page it says is turned is set upright.
-  const classify = (pages: Page[]) => pages.forEach(async pg => {
-    const { kind, rotate } = await detectDoctype(pg.b64, pg.mediaType);
-    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false };
-    if (rotate) { try { patch.b64 = await rotateImage(pg.b64, pg.mediaType, rotate); patch.mediaType = 'image/jpeg'; } catch { /* kept as cut */ } }
+  // Each new page's kind and turn, all at once: Mixed takes the model's when it is sure of both, else
+  // Haiku's (Shadow keeps the model's answer beside it); a page said to be turned is set upright.
+  const classify = (pages: Page[], answers: Answer[]) => pages.forEach(async (pg, i) => {
+    const m = await mode.current, a = m === 'off' ? null : answers[i] || null;
+    const sure = m === 'mixed' && a && (DOCTYPES as readonly string[]).includes(a.doctype) && a.conf >= SURE && a.turnConf >= SURE;
+    const { kind, rotate } = sure ? { kind: a!.doctype, rotate: a!.turn } : await detectDoctype(pg.b64, pg.mediaType);
+    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, doctypeBy: sure ? 'model' : 'haiku',
+      ...(m === 'shadow' && a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { doctypeShadow: a.doctype } : {}) };
+    if ([90, 180, 270].includes(rotate)) { try { patch.b64 = await rotateImage(pg.b64, pg.mediaType, rotate); patch.mediaType = 'image/jpeg'; } catch { /* kept as cut */ } }
     setPage(pg.uid, patch);
   });
 
@@ -54,7 +84,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       if (!pages.length) return;
       setItems(xs => (xs.some(x => x.key === m.key) ? xs.map(x => (x.key === m.key ? { key: m.key, pages } : x)) : [...xs, { key: m.key, pages }]));
       setHint('');
-      classify(pages);
+      classify(pages, Array.isArray(m.answers) ? m.answers : []);
     };
     window.addEventListener('message', on);
     return () => window.removeEventListener('message', on);
@@ -77,6 +107,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
           // waits for the pages' kinds
           while (itemsRef.current.some(x => x.pages.some(p => p.doctypePending))) await new Promise(r => setTimeout(r, 100));
           const list = itemsRef.current;
+          void examples(list.flatMap(x => x.pages)).then(sendFeedback); // in the background, queued when offline
           const out = list.flatMap(x => x.pages).filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind }) => ({ b64, mediaType, turn, blurry, kind }));
           if (read) {
             setReading({ label: tr('Reading the pages…'), pct: 2 });
