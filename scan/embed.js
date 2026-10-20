@@ -1,6 +1,6 @@
 // The site's scan window (src/scan/Scanner.tsx) opens this page — the scanner lab's own, copied as it
 // is — in a frame with ?embed=1. The one file the site adds: it hides the lab's tools and figures and
-// posts each shot's (and each picked photo's) cut pages to the window, with the document type model's
+// posts each shot's cut pages (and each picked file's, as each is done) to the window, with the document type model's
 // answer on each when this version has the model; it stops the camera when the window closes
 // (docs/scan.md → The scan window). Nothing else changes.
 (() => {
@@ -26,12 +26,24 @@
       return { doctype: NAMES[k], conf: kp[k], turn: t * 90, turnConf: tp[t] };
     } catch { return null; }
   };
-  const send = async key => {
-    const pages = [$('shotImg'), ...$('shotMore').querySelectorAll('img')].map(i => i.src).filter(s => s && s.startsWith('data:image/'));
-    if ($('shot').hidden || !pages.length) return;
+  const shown = () => ($('shot').hidden ? [] : [$('shotImg'), ...$('shotMore').querySelectorAll('img')].map(i => i.src).filter(s => s && s.startsWith('data:image/')));
+  const post = async (key, pages) => {
     const answers = await Promise.all(pages.map(answer));
     window.parent.postMessage({ type: 'scan-pages', key, pages, answers }, location.origin);
   };
+  // A camera shot: its pages (again under the same key when its corners are refined).
+  const send = async key => { const pages = shown(); if (pages.length) await post(key, pages); };
+  // Picked files (several photos and PDFs): each file's new pages as soon as the lab has them
+  // ('lab-picked'), under their own key, so the window types them while the next file is worked on.
+  let fileKey = null, files = 0, shots = 0, sent = 0, part = 0;
+  const sendNew = async () => {
+    if (!fileKey) return;
+    const pages = shown(), fresh = pages.slice(sent);
+    if (!fresh.length) return;
+    sent = pages.length;
+    await post(fileKey + '.' + (++part), fresh);
+  };
+  window.addEventListener('lab-picked', () => { void sendNew(); });
   // The scan window closed (src/scan/lab.ts keeps this page loaded a few minutes, so the models need
   // not start again): the camera stops, its loops end, the last shot is cleared for the next worker.
   window.addEventListener('message', e => {
@@ -40,9 +52,8 @@
     $('video').hidden = true; $('still').hidden = true; $('shot').hidden = true;
     $('shotMore').textContent = ''; $('shot2note').textContent = ''; $('hint').textContent = '';
   });
-  let fileKey = null, files = 0, shots = 0;
   const shot = window.showShot;
   window.showShot = async () => { const key = 's' + (++shots); await shot(); if (!fileKey) await send(key); };
   const pick = $('file').onchange;
-  $('file').onchange = async e => { fileKey = 'f' + (++files); try { await pick(e); } finally { await send(fileKey); fileKey = null; } };
+  $('file').onchange = async e => { fileKey = 'f' + (++files); sent = 0; part = 0; try { await pick(e); } finally { await sendNew(); fileKey = null; } };
 })();

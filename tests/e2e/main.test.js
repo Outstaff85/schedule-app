@@ -31,6 +31,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (process.env.E2E_NOW) await ctx.clock.install({time: new Date(process.env.E2E_NOW)});
     await ctx.route('**/*', async r => {
       const u = r.request().url();
+      // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose
+      // models never start, so the lab page's own script runs (its file reading is tested)
+      if (/\/scan\/ort(130)?\/ort\.all\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript',
+        body:"window.ort={env:{wasm:{},webgpu:{}},Tensor:function(){},InferenceSession:{create:async()=>{throw new Error('no models in the tests')}}};"});
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
@@ -41,6 +45,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         const res = await fetch('http://127.0.0.1:5055/' + fn, {method:'POST', body:r.request().postData(), headers: h.authorization ? {Authorization: h.authorization} : {}});
         return r.fulfill({status:res.status, contentType:'application/json', headers:{'Access-Control-Allow-Origin':'*'}, body: await res.text()});
       }
+      if (/cdnjs\.cloudflare\.com\/.*\/pdf(\.worker)?\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript', body:require('fs').readFileSync(require.resolve('pdfjs-dist/build/' + u.split('/').pop()))});
       if (/xlsx\.full\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript', body:require('fs').readFileSync(require.resolve('xlsx/dist/xlsx.full.min.js'))});
       if (/fonts\.g|cdnjs|tabler|jsdelivr|unpkg/.test(u)) return r.fulfill({status:200, body:''});
       external.push(u);
@@ -695,6 +700,26 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.closed = await T.until(() => g.style.visibility === 'hidden', 3000);
     return r;
   });
+  // The lab's Photo or PDF…: several files at once, a PDF split into its pages (pdf.js), in the files' order
+  const PDF2 = (() => {
+    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 280] >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 280] >>'];
+    let out = '%PDF-1.4\n'; const offs = [];
+    objs.forEach((o, i) => { offs.push(out.length); out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
+    const x = out.length;
+    return out + 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n' + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')
+      + 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + x + '\n%%EOF';
+  })();
+  const picked = await p.evaluate(async ([jpg, pdf]) => {
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, input = fw.document.getElementById('file');
+    const files = [new File([Uint8Array.from(atob(jpg), c => c.charCodeAt(0))], 'a.jpg', {type: 'image/jpeg'}), new File([pdf], 'b.pdf', {type: 'application/pdf'})];
+    const out = [];
+    try { for await (const [url, tag] of fw.pickedPictures(files)) out.push(tag + ' ' + url.slice(0, 10)); } catch (e) { out.push('error ' + e.message); }
+    return {out, accept: input.accept, multiple: input.multiple, button: input.parentElement.textContent.trim()};
+  }, [JPG, PDF2]);
+  ok(picked.multiple && /application\/pdf/.test(picked.accept) && picked.button === 'Photo or PDF…'
+    && picked.out.join('|') === 'file 1 of 2 blob:http:|file 2 of 2, page 1 of 2 data:image|file 2 of 2, page 2 of 2 data:image',
+    'scan window: the lab\'s Photo or PDF… takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
   ok(kept.hidden && kept.same && kept.shown && kept.over && kept.tap && kept.closed,
     'scan window: the lab page is kept loaded after the window closes and shown again over the window\'s slot (no new load), a tap there reaching it ' + JSON.stringify(kept));
   // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
