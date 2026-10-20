@@ -4,7 +4,7 @@ name: Deploy the docx2pdf service
 # Cloud Run service. One conversion per instance (concurrency 1, cpu 1), up to 5 instances side by side
 # (max-instances 5), none while idle (min-instances 0). Its address goes to Firestore appConfig/docx2pdf,
 # where the contract_templates function reads it. The deploy's service account needs Cloud Run Admin,
-# Cloud Build Editor, Artifact Registry Writer and Service Account User (the owner grants them once).
+# Cloud Build Editor, Artifact Registry Administrator (the first deploy creates the image repository) and Service Account User (the owner grants them once).
 on:
   push:
     branches: [main]
