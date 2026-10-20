@@ -51,7 +51,7 @@ The owner's scheme:
 - **The same signature and date go into both PDFs.** The two are built on the server in parallel (two calls at once; the function declared `cpu=1`, `concurrency=20`), in the background: the save does not wait.
 - The signed PDFs are stored in the worker's documents: Form 101, and `contract` with the template's name and version.
 - They are **never rebuilt** afterwards.
-  - `regenerateWorkerDoc` and `regenerateAllWorkerDocs` stop rebuilding signed forms.
+  - `regenerateWorkerDoc` stops rebuilding signed forms. `regenerateAllWorkerDocs` runs only for the firm's details, by the admin's choice (D4).
   - A later change to a template never touches signed contracts.
 - Scanned paper contracts stay as they are (docs/scan.md → Contracts).
 
@@ -61,7 +61,11 @@ The owner's scheme:
 2. Until the worker signs, the old signed documents stay, so the worker is never without signed documents.
 3. When the worker signs, the new Form 101 and contract are stored and the old ones are deleted.
 
-- **A change to the firm's own details** (name, address, phone, deductions file) does not ask every worker to sign again. The new details go into the next signing (owner, 2026-10-20).
+- **A change to the firm's own details** (name, address, phone, deductions file) asks the firm's admin, on saving the firm profile, which way to go (owner, 2026-10-20):
+  - **Ask every worker to sign again**: every worker with signed documents gets the **needs a new signature** mark, as for a worker's own change.
+  - **Apply without new signatures**: every worker's Form 101 and contract are rebuilt in the background with the new firm details. Each worker's own signature and signing date are kept, and the old PDFs are replaced. This is the one case where a signed document is rebuilt.
+
+  Advice shown with the choice: when the employer itself is another company (a new name or deductions file), a contract with another company needs the workers' new signatures.
 - **Before deleting old Forms 101:** check with the firm's accountant whether old forms must be kept for some years. If so, the old ones go to a hidden archive instead of being deleted.
 
 ## D5 — "Download data" on the worker card
