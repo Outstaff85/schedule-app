@@ -50,7 +50,7 @@
 </div>
 <div class="row">
   <button class="primary" id="startCam">Start camera</button>
-  <label class="btn">Photo… <input id="file" type="file" accept="image/*" hidden></label>
+  <label class="btn">Photo or PDF… <input id="file" type="file" accept="image/*,application/pdf" multiple hidden></label>
   <button id="snap">Capture</button>
   <button id="stop">Stop</button>
   <label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="useWorker" checked> Background thread</label>
@@ -544,17 +544,47 @@ function photosOnPage(img) {
   return rest && restBusy / rest > 0.12 ? [] : out.map(o => o.box);
 }
 
-$('file').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
-  shotId++; $('shotMore').textContent = ''; $('shot2note').textContent = ''; const img = $('still'); img.src = URL.createObjectURL(f); await img.decode();
+// Picked files: several photos and PDFs at once. A PDF is rendered page by page (pdf.js, on the
+// phone); every photo and PDF page then goes through the same steps as one photo, and its pages
+// join the list in the order of the files. After each, 'lab-picked' says the list grew (the site's
+// scan window takes the new pages then, scan/embed.js).
+let pdfjsLoading = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve();
+  return pdfjsLoading || (pdfjsLoading = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; res(); };
+    sc.onerror = () => { pdfjsLoading = null; rej(new Error('pdf.js could not be loaded')); };
+    document.head.appendChild(sc);
+  }));
+}
+const isPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+// The pictures of the picked files, one at a time: [url, what it is] — a PDF's pages as JPEGs.
+async function* pickedPictures(files) {
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i], tag = 'file ' + (i + 1) + ' of ' + files.length;
+    if (!isPdf(f)) { yield [URL.createObjectURL(f), tag]; continue; }
+    await loadPdfJs();
+    const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const pg = await pdf.getPage(n), vp = pg.getViewport({ scale: 2 });
+      const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      await pg.render({ canvasContext: g, viewport: vp }).promise;
+      yield [c.toDataURL('image/jpeg', 0.92), tag + ', page ' + n + ' of ' + pdf.numPages];
+    }
+  }
+}
+// One picture: a white page with photos in it (a form's page, a PDF, a screenshot) is cut into its
+// photos first, each goes through on its own; its pages join the list after `before` pages.
+async function pickPicture(url, before) {
+  const img = $('still'); img.src = url; await img.decode();
   img.hidden = false; $('video').hidden = true;
-  // A white page with photos in it (a form's page, a PDF, a screenshot): each photo is cut
-  // out and goes through on its own, and their documents make one list of pages.
   const boxes = photosOnPage(img), page = await new Promise(r => { const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0); r(c); });
   const parts = boxes.length ? boxes : [null];
   if (boxes.length) log('Photos inside a white page: ' + boxes.map(b => (b[2] - b[0]) + '×' + (b[3] - b[1]) + ' at ' + b[0] + ',' + b[1]).join('; ') + ' of ' + page.width + '×' + page.height);
-  let pages = 0;
+  let pages = before;
   for (const box of parts) {
     if (box) {
       const [x0, y0, x1, y1] = box, c = document.createElement('canvas'); c.width = x1 - x0; c.height = y1 - y0;
@@ -570,7 +600,24 @@ $('file').onchange = async e => {
       pageMore = pages > 0; await showShot(); pageMore = false; pages++;
     }
   }
-  if (parts.length > 1) $('shot2note').textContent = 'Pages from ' + parts.length + ' photos on this page:';
+  return pages;
+}
+$('file').onchange = async e => {
+  const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+  running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
+  shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = '';
+  let pages = 0, pictures = 0;
+  try {
+    for await (const [url, tag] of pickedPictures(files)) {
+      $('status').textContent = 'Working on ' + tag + '…';
+      pages = await pickPicture(url, pages); pictures++;
+      window.dispatchEvent(new Event('lab-picked'));
+    }
+  } catch (err) { log('Picked file: ' + (err && err.message || err)); $('hint').textContent = 'A file could not be opened — see the log'; }
+  // every page on the list (the other documents found on a photo too)
+  const total = $('shot').hidden ? 0 : 1 + $('shotMore').querySelectorAll('img').length;
+  $('status').textContent = total + ' page(s) from ' + files.length + ' file(s)';
+  if (pictures > 1 || total > 1) $('shot2note').textContent = total + ' page(s) from ' + files.length + ' file(s):';
 };
 // Switching the model, GPU / CPU or the thread: nothing of the old way stays on screen —
 // no frame, no figures — and the frame and its following start again on the new way.
