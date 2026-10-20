@@ -682,6 +682,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForTimeout(500);
   // The lab page stays loaded (lab.ts): closed, it is hidden and kept; opened again within 3 minutes it is
   // the same page (not loaded again), laid over the window's slot
+  const kindAtDone = kindCalls; // the Haiku calls of this scan, before the next checks post their own pages
   const kept = await p.evaluate(async () => {
     const f = document.querySelector('[data-testid="scan-lab-frame"]');
     const r = {hidden: !!f && f.style.visibility === 'hidden' && document.body.contains(f)};
@@ -700,6 +701,35 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.closed = await T.until(() => g.style.visibility === 'hidden', 3000);
     return r;
   });
+  // Batches (owner, 2026-10-20): the last batch under New pages; a new one folds it into a line; Looks good
+  // folds it too; a tap unfolds a line; closed and opened again, the batches come back from this phone
+  const batches = await p.evaluate(async ([a, b]) => {
+    const post = (key, pic) => window.postMessage({type: 'scan-pages', key, pages: ['data:image/jpeg;base64,' + pic]}, location.origin);
+    const n = sel => document.querySelectorAll(sel).length;
+    const r = {};
+    let going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
+    post('s91', a);
+    r.preview = await T.until(() => n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
+    post('f91.1', b);
+    r.foldedByNew = await T.until(() => n('[data-testid="scan-batch"]') === 1 && n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
+    document.querySelector('[data-testid="scan-keep"]').click();
+    r.foldedByKeep = await T.until(() => n('[data-testid="scan-batch"]') === 2 && !document.querySelector('[data-testid="scan-preview"]'), 4000);
+    T.tap('[data-testid="scan-batch"]');
+    r.unfolds = await T.until(() => { const d = document.querySelector('[data-testid="scan-batch"] [data-no-tap]'); return !!d && d.offsetHeight > 0 && getComputedStyle(d).opacity === '1'; }, 4000);
+    r.done = document.querySelector('[data-testid="scan-done"]').textContent;
+    await new Promise(res => setTimeout(res, 700)); // kept on the phone a moment after a change
+    T.esc(); await going;
+    await new Promise(res => setTimeout(res, 500)); // the window gone, as a person opens it again
+    going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
+    r.restored = await T.until(() => n('[data-testid="scan-batch"]') === 2, 4000);
+    T.esc(); await going;
+    await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
+    return r;
+  }, [JPG, JPG2]);
+  ok(batches.preview && batches.foldedByNew && batches.foldedByKeep && batches.unfolds && /2/.test(batches.done) && batches.restored,
+    'scan window, batches: the last one under New pages, folded by the next one and by Looks good, a line unfolds on a tap, kept on the phone after the window closes ' + JSON.stringify(batches));
   // The lab's Photo or PDF…: several files at once, a PDF split into its pages (pdf.js), in the files' order
   const PDF2 = (() => {
     const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
@@ -733,8 +763,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const exOk = ex.length === 2 && ex.every(e => e.source === 'page')
     && ex[0].doctypeBy === 'model' && ex[0].doctypeModel === 'id_front' && ex[0].doctypeFixed === 'id_front'
     && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage;
-  ok(exOk && kindCalls === 1 && feedbackCalls.some(c => c.action === 'mode'),
-    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep}))}));
+  ok(exOk && kindAtDone === 1 && feedbackCalls.some(c => c.action === 'mode'),
+    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep}))}));
   const docCall = feedbackCalls.find(c => c.action === 'document') || {};
   ok(docCall.workerId === 'w-test' && (docCall.pages || []).length === 1 && docCall.pages[0].primary && docCall.pages[0].doctype === 'id_front' && docCall.pages[0].b64
     && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',

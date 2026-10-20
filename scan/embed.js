@@ -6,7 +6,8 @@
 (() => {
   if (new URLSearchParams(location.search).get('embed') !== '1' || window.parent === window) return;
   const css = document.createElement('style');
-  css.textContent = 'h1,.row:first-of-type,.stats,#log,label.btn:has(#useWorker),label.btn:has(#follow){display:none!important}' +
+  // the window shows the pages itself (one preview, the batches' lines): the lab's own are hidden
+  css.textContent = 'h1,.row:first-of-type,.stats,#log,label.btn:has(#useWorker),label.btn:has(#follow),#shot,#kept{display:none!important}' +
     'body{padding:0 0 12px;background:transparent}';
   document.head.appendChild(css);
   const $ = id => document.getElementById(id);
@@ -46,15 +47,22 @@
   window.addEventListener('lab-picked', () => { void sendNew(); });
   // The scan window closed (src/scan/lab.ts keeps this page loaded a few minutes, so the models need
   // not start again): the camera stops, its loops end, the last shot is cleared for the next worker.
+  // The window's Looks good / Retake on the last batch ("scan-continue"): the lab folds it (or throws it
+  // away) and its camera goes on.
   window.addEventListener('message', e => {
-    if (e.origin !== location.origin || !e.data || e.data.type !== 'scan-sleep') return;
-    $('stop').click(); shotId++;
-    $('video').hidden = true; $('still').hidden = true; $('shot').hidden = true;
-    $('shotMore').textContent = ''; $('shot2note').textContent = ''; $('hint').textContent = '';
+    if (e.origin !== location.origin || !e.data) return;
+    if (e.data.type === 'scan-sleep') {
+      $('stop').click(); shotId++;
+      $('video').hidden = true; $('still').hidden = true; $('shot').hidden = true;
+      $('shotMore').textContent = ''; $('shot2note').textContent = ''; $('hint').textContent = ''; $('kept').textContent = '';
+    } else if (e.data.type === 'scan-continue') {
+      if (e.data.discard) { shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; }
+      $('keep').click();
+    }
   });
   const shot = window.showShot;
   window.showShot = async () => { const key = 's' + (++shots); await shot(); if (!fileKey) await send(key); };
-  // a pick adds to the pages already on screen: only the ones after them are new
+  // a pick is a batch of its own (the lab folds the one on screen first): its pages from the first
   const pick = $('file').onchange;
-  $('file').onchange = async e => { fileKey = 'f' + (++files); sent = shown().length; part = 0; try { await pick(e); } finally { await sendNew(); fileKey = null; } };
+  $('file').onchange = async e => { fileKey = 'f' + (++files); sent = 0; part = 0; try { await pick(e); } finally { await sendNew(); fileKey = null; } };
 })();

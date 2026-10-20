@@ -28,6 +28,14 @@
   #log{white-space:pre-wrap;color:var(--ink2);font-size:12px;margin-top:10px}
   .bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0 10px}
   .bar i{display:block;height:100%;width:0;background:#2563eb}
+  .kept{background:var(--plate);border:1px solid var(--line);border-radius:12px;margin:8px 0;padding:8px}
+  .kept-head{display:flex;align-items:center;gap:8px;margin:0}
+  .kept-head .open{flex:1;text-align:left;display:flex;align-items:center;gap:8px;background:none;border:0;padding:4px}
+  .kept-head .open img{height:36px;width:auto;border-radius:6px}
+  .kept-body{display:grid;gap:10px;margin-top:8px}
+  .kept-page{position:relative}
+  .kept-page img{width:100%;border-radius:10px;display:block}
+  .kept-page button{position:absolute;top:6px;right:6px;padding:4px 10px}
 </style>
 </head>
 <body>
@@ -65,11 +73,12 @@
 </div>
 <div id="hint" style="font-size:14px;margin-top:8px;min-height:20px"></div>
 <div id="shot" hidden style="margin-top:10px">
-  <div class="row"><button class="primary" id="retake">Retake</button><label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="auto" checked> Auto capture</label></div>
+  <div class="row"><button class="primary" id="retake">Retake</button><button id="keep">Looks good</button><label class="btn" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="auto" checked> Auto capture</label></div>
   <img id="shotImg" alt="" style="width:100%;border-radius:14px;display:block">
   <p id="shot2note" style="color:var(--ink2);margin:10px 0 6px"></p>
   <div id="shotMore" style="display:grid;gap:10px"></div>
 </div>
+<div id="kept"></div>
 <div class="stats">
   <div class="stat"><b id="sBackend">—</b><span>runs on</span></div>
   <div class="stat"><b id="sFps">—</b><span>frames per second</span></div>
@@ -244,7 +253,8 @@ async function startSession() {
     catch (err) { cand.stop(); log(w.label + ': ' + (err && err.message || err) + ' — trying the next way'); }
   }
   if (!e) { $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw new Error('no way to run the model'); }
-  if (want === 'auto') remembered.set(used.id);
+  // remembered for the next open — not a way taken only because another hung on this page (onStuck): that is for this page only
+  if (want === 'auto' && !stuckWays.size) remembered.set(used.id);
   $('useWorker').checked = used.worker;
   $('sBackend').textContent = used.label;
   log('Live ' + live + (cap ? ', capture ' + cap : '') + ' running as ' + used.label);
@@ -362,6 +372,36 @@ async function doctypeNote(canvas) {
     return '; type: ' + DOCTYPE_NAMES[names[k]] + ' ' + Math.round(kp[k] * 100) + '%, needs ' + t * 90 + '° (' + Math.round(tp[t] * 100) + '%), ' + Math.round(performance.now() - t0) + ' ms';
   } catch (e) { return '; the document type model failed: ' + (e && e.message || e); }
 }
+// The pages on screen are one batch (a shot, or the files of one pick). Looked at — Looks good, or a new
+// shot or pick coming — it folds into a line under them (keepCurrent): a tap on the line unfolds its
+// pages, each with ✕, and Delete removes it. Retake throws the batch away. (In the site's scan window the
+// window draws the batches itself, src/scan/Scanner.tsx, and drives these through scan/embed.js.)
+let batchLabel = 'Camera', picking = false;
+function keptCount(row) { return row.querySelectorAll('.kept-page').length; }
+function keepCurrent(bump = true) {
+  const imgs = $('shot').hidden ? [] : [$('shotImg'), ...$('shotMore').querySelectorAll('img')].filter(i => i.src && i.src.startsWith('data:image/'));
+  if (imgs.length) {
+    const row = document.createElement('div'); row.className = 'kept';
+    const head = document.createElement('div'); head.className = 'kept-head';
+    const open = document.createElement('button'); open.className = 'open';
+    const label = document.createElement('span');
+    const thumbs = imgs.slice(0, 3).map(i => { const t = new Image(); t.src = i.src; return t; });
+    const body = document.createElement('div'); body.className = 'kept-body'; body.hidden = true;
+    const name = batchLabel, relabel = () => { const n = keptCount(row); if (!n) row.remove(); label.textContent = name + ' · ' + n + ' page(s)'; };
+    for (const i of imgs) {
+      const w = document.createElement('div'); w.className = 'kept-page';
+      const im = new Image(); im.src = i.src;
+      const x = document.createElement('button'); x.textContent = '✕'; x.onclick = () => { w.remove(); relabel(); };
+      w.append(im, x); body.append(w);
+    }
+    open.append(...thumbs, label); open.onclick = () => { body.hidden = !body.hidden; };
+    const del = document.createElement('button'); del.textContent = 'Delete'; del.onclick = () => row.remove();
+    head.append(open, del); row.append(head, body); $('kept').append(row); relabel();
+  }
+  if (bump) shotId++;
+  $('shot').hidden = true; $('shotImg').removeAttribute('src'); $('shotMore').textContent = ''; $('shot2note').textContent = '';
+}
+
 let shotWhole = false;  // the picture is the page as it is (a PDF page): no refining, no other documents
 let shotId = 0, lastTurn = -1, pageMore = false;  // pageMore: a later photo of the same page — its pages join the list
 const turnNote = () => lastTurn === -2 ? '; the face finder failed (see the log), not turned' : lastTurn > 0 ? '; turned ' + lastTurn * 90 + '° by the face' : lastTurn === 0 ? '; upright by the face' : '; no face to set it upright';
@@ -394,7 +434,7 @@ async function takeShot() {
     return true;
   };
   const livePts = lastRes.pts;
-  if (!pageMore) { $('shotMore').textContent = ''; $('shot2note').textContent = ''; }  // a camera shot starts its own list
+  if (!pageMore && !picking) { keepCurrent(false); batchLabel = 'Camera'; }  // a camera shot is a batch of its own; the one on screen folds
   if (!(await put(livePts))) return;
   const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
   const kn = await doctypeNote(put.canvas);
@@ -551,6 +591,7 @@ $('startCam').onclick = async () => {
     running = true; loop(); startFollow();
   } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
 };
+$('keep').onclick = () => { keepCurrent(); smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } };
 $('retake').onclick = () => { shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 $('snap').onclick = showShot;
 $('stop').onclick = () => { running = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
@@ -675,13 +716,13 @@ async function pickPicture(url, before, pdfPage) {
   return pages;
 }
 // Photos or PDF…: no file type set, so the phone opens its file chooser, where photos and PDFs are side by
-// side (a picker that takes only images opens only the gallery on Android). Each pick adds its pages to the
-// list on screen (Retake clears it), so photos and then PDFs from another folder go in one after the other.
+// side (a picker that takes only images opens only the gallery on Android). Each pick is a batch of its own:
+// the one on screen folds into a line first, so photos and then PDFs from another folder go in one after the other.
 $('file').onchange = async e => {
   const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
   running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
-  shotId++;
-  let pages = $('shot').hidden ? 0 : 1 + $('shotMore').querySelectorAll('img').length;
+  keepCurrent(); batchLabel = files.map(f => f.name).join(', ') || 'Files'; picking = true;
+  let pages = 0;
   try {
     for await (const [url, tag, pdfPage] of pickedPictures(files)) {
       $('status').textContent = 'Working on ' + tag + '…';
@@ -700,8 +741,9 @@ $('file').onchange = async e => {
   } catch (err) { log('Picked file: ' + (err && err.message || err)); $('hint').textContent = 'A file could not be opened — see the log'; }
   // every page on the list (the other documents found on a photo too)
   const total = $('shot').hidden ? 0 : 1 + $('shotMore').querySelectorAll('img').length;
-  $('status').textContent = total + ' page(s) on the list (' + files.length + ' file(s) added)';
-  if (total > 1) $('shot2note').textContent = total + ' page(s) on the list:';
+  picking = false;
+  $('status').textContent = total + ' page(s) from ' + files.length + ' file(s)';
+  if (total > 1) $('shot2note').textContent = total + ' page(s) from ' + files.length + ' file(s):';
 };
 // Switching the model, GPU / CPU or the thread: nothing of the old way stays on screen —
 // no frame, no figures — and the frame and its following start again on the new way.

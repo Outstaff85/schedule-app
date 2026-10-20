@@ -214,7 +214,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .sw.gone,.t3-line.gone{max-height:0 !important;margin:0 !important;opacity:0;overflow:hidden;padding-top:0;padding-bottom:0;}
 .t3-line.gone{transition:max-height .3s,margin .3s,opacity .3s,padding .3s;}
 /* The Undo snack: glass, 5 s, the gradient timer line. */
-.og-snack{position:fixed;left:50%;bottom:var(--bar-gap);z-index:3500;width:min(420px,calc(100% - 28px));display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-radius:16px;background:rgba(var(--pop-rgb),.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(var(--tint),.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:var(--ink);font-size:14px;overflow:hidden;transform:translate(-50%,160%);transition:transform .3s cubic-bezier(.3,.7,.3,1);}
+.og-snack{pointer-events:auto;position:fixed;left:50%;bottom:var(--bar-gap);z-index:3500;width:min(420px,calc(100% - 28px));display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;border-radius:16px;background:rgba(var(--pop-rgb),.8);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border:1px solid rgba(var(--tint),.24);box-shadow:0 12px 30px rgba(0,0,0,.4);color:var(--ink);font-size:14px;overflow:hidden;transform:translate(-50%,160%);transition:transform .3s cubic-bezier(.3,.7,.3,1);}
 .og-snack.open{transform:translate(-50%,0);}
 .og-snack-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .og-snack-u{position:relative;border:0;background:none;color:var(--ink);font:700 14px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer;padding:4px 6px;}
