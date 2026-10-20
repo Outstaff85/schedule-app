@@ -47,9 +47,8 @@ import {
 } from './templates';
 import { island } from './bridge';
 
-// The hours ticks among the flat rights, and the old hourPerms names of them.
+// The hours ticks among the flat rights.
 const HOUR_RIGHTS = ['hours', 'approveHours', 'disputeHours', 'fixHours'];
-const HOUR_RIGHT_OF: Record<string, string> = { hours: 'hours', approve: 'approveHours', dispute: 'disputeHours', fix: 'fixHours' };
 // Logins deleted here and still inside their Undo time: left out of the list.
 const hiddenUsers = new Set<string>();
 const redrawUsers = () => island()?.renderAdmin();
@@ -83,14 +82,13 @@ export function UsersPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   };
   const row = (u: UserRow) => {
     const sup = u.role === 'supplier' ? snap.suppliers.find(s => s.id === u.supplierId) : null;
-    const perms = u.role !== 'staff' && u.role !== 'hr' ? '' : Array.isArray(u.rights) ? u.rights.filter(k => RIGHT_TABS.includes(k)).map(k => tr(RIGHT_LABELS[k])).join(', ')
-      : u.permissions === '*' ? tr('Full access') : Array.isArray(u.permissions) ? u.permissions.join(', ') : '—';
+    const perms = u.role !== 'staff' && u.role !== 'hr' ? '' : (u.rights || []).filter(k => RIGHT_TABS.includes(k)).map(k => tr(RIGHT_LABELS[k])).join(', ') || '—';
     const count = u.role === 'hr' ? snap.team.filter(w => w.hrId === u.id).length : u.role === 'supplier' && u.supplierId ? snap.team.filter(w => w.supplierId === u.supplierId).length : null;
     const team = count == null ? '' : workersText(count) + (u.role === 'hr' && u.ownOnly === false ? ' · ' + tr('sees all workers') : '');
     const what = u.role === 'supplier' ? (sup ? sup.name : '—') : u.role === 'client' ? (snap.clients.find(c => c.id === u.clientId)?.name || '—') : perms;
     const name = u.fullName || u.username || '?', col = roleColor(u.role);
-    // the hours ticks: from the flat rights (a login made before them: its hourPerms)
-    const hourKeys = Array.isArray(u.rights) ? u.rights.filter(k => HOUR_RIGHTS.includes(k)) : (u.hourPerms || []).map(h => HOUR_RIGHT_OF[h]).filter(Boolean);
+    // the hours ticks among its flat rights
+    const hourKeys = (u.rights || []).filter(k => HOUR_RIGHTS.includes(k));
     const ticks = u.role !== 'staff' && !isAdminRole(u.role) ? hourKeys.map(k => tr(RIGHT_LABELS[k])).join(', ') : '';
     const tpl = isAdminRole(u.role) ? null : (tpls.list || []).find(t => t.id === u.templateId);
     const selectable = !UNSELECTABLE.includes(u.role);

@@ -388,10 +388,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await T.save();
     r.err = T.err();
     const u2 = (await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'listUsers'})})).json()).users.find(u=>u.id===sup.id);
-    r.role = u2.role; r.perms = u2.permissions; r.tpl = u2.templateId;
+    r.role = u2.role; r.rights = u2.rights; r.tpl = u2.templateId;
     return r;
   }));
-  ok(rc.enabled && !rc.err && rc.role === 'staff' && JSON.stringify(rc.perms) === '["today","workers","punchlog"]' && rc.tpl === 'staffworkers', 'owner: a staff template turns a supplier login into staff ' + JSON.stringify(rc));
+  ok(rc.enabled && !rc.err && rc.role === 'staff' && JSON.stringify(rc.rights) === '["today","workers","punchlog","editSchedule","editWorkers","editPunches"]' && rc.tpl === 'staffworkers', 'owner: a staff template turns a supplier login into staff ' + JSON.stringify(rc));
   const sc = await p.evaluate(async () => {
     const up = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'', sigPng:'data:image/png;base64,QUJD', fileNameBase:'sig'}, () => {});
     const back = await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadWorkerAssets', fileId: up.id})})).json();

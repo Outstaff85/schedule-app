@@ -4,9 +4,9 @@ The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs an
 
 One screen, one Cloud Function and one store for every login that reviews its workers' hours: a **client**, a **supplier** and an **HR** — each in the manager app's **Hours** tab (a client's and a supplier's through `src/manager/Portal.tsx`, an HR's `HoursTab`). The same ticks, the same per-day actions, the same code (per user request 2026-10-11: "one template and one set of functions for hours").
 
-## Ticks (`users.hourPerms` → claim `hp`; the function reads them from the flat rights, claim `rt` — `hour_ticks`)
+## Ticks (from the flat rights, claim `rt` — `hour_ticks`, `HOUR_OF`)
 
-`HOUR_PERMS` in `functions-auth/core.py` (and `HOUR_PERM_LABELS` in the manager app):
+`HOUR_PERMS` in `functions-auth/core.py` (and `HOUR_PERM_LABELS` in the manager app), each given by one right — hours by **Hours**, approve / dispute / fix by **Approve / Dispute / Fix hours**, schedule by **Schedule**, export by **Export**:
 
 - **hours** — see the month's shifts (in / out / hours per day);
 - **approve** — approve a day, several ticked days at once (Select for a login with this tick — owner 2026-10-13: a Select button above the days; after it "N selected · Select all · Done" and a tick box on every day still waiting / changed / whose fix was rejected; a tap on the day or its box ticks it, the day's own buttons stay; with a tick the glass bar shows — its Approve sends their lines in one `approve` (`approveSelected` in `HoursReview.tsx`), ✕ clears the ticks), or the whole month at once;
@@ -15,13 +15,13 @@ One screen, one Cloud Function and one store for every login that reviews its wo
 - **schedule** — the workers' planned shifts;
 - **export** — the month to Excel.
 
-Set in the login's permission template (Admin → Users → Templates, a super-admin; [admin.md](admin.md) → Users pane) and shown read-only in the user window's **Hours** block (`src/manager/Users.tsx`), for HR, supplier and client (`HOUR_ROLES`). The default HR, Supplier and Client templates have `HOUR_DEFAULT` (hours, approve, dispute, fix); a login made without a template gets the same; a login with no ticks stored (made before `hourPerms`) gets the same (`claims_for`, `_stored_hour_perms` in `list_users`), except a client made before then, whose old `permissions` list are its ticks. Ticks set to none stay none. The login reply and the Users list carry `hourPerms`; a change ends the user's sessions like any rights change. The pages read the ticks from the ID token (`firestore-backend.js` `hourPerms()`).
+Set in the login's permission template (Admin → Users → Templates, a super-admin; [admin.md](admin.md) → Users pane) and shown read-only in the user window's **Hours** block (`src/manager/Users.tsx`), for HR, supplier and client (`HOUR_ROLES`). The default HR, Supplier and Client templates have Hours and Approve / Dispute / Fix hours (the HR one Schedule too). The login reply and the Users list carry the login's `rights`; a change ends the user's sessions like any rights change. The manager app reads them from the ID token at start (`firestore-backend.js` `rights()`).
 
 Whose workers: a client — the workers at its site (`punches.clientId`); a supplier — its own (`workers.supplierId`); an HR — the workers assigned to it (`workers.hrId`), or every worker of the firm when its "Only own workers" is off (claim `own`). "Only own workers" closes the user form: an HR may untick it, a supplier and a client always have it on (locked).
 
 ## The `hours` function (`functions-auth/hours.py` → `hours_action(db, caller, body)`)
 
-`caller` = the ID token's `uid, role, tenantId, clientId, supplierId, own, hp, perms` (`main.py`). A superadmin passes `tenantId` in the body. `scope_of(caller)` gives `(kind, ownerId)`: `client`/clientId, `supplier`/supplierId, `hr`/uid; any other role → "Not available for this login". A missing tick → "Not allowed for this login". Never returns a wage, a rate, a supplier, GPS, notes, documents or a token.
+`caller` = the ID token's `uid, role, tenantId, clientId, supplierId, own` and its flat rights (`rights`, `core.caller_rights`; `main.py`). A superadmin passes `tenantId` in the body. `scope_of(caller)` gives `(kind, ownerId)`: `client`/clientId, `supplier`/supplierId, `hr`/uid; any other role → "Not available for this login". A missing tick → "Not allowed for this login". Never returns a wage, a rate, a supplier, GPS, notes, documents or a token.
 
 - `load {month}` → `{owner: {kind, id, name, object}, perms, month, workers, punches?, days?}` — `workers` `{id, name}` (+ `schedule` / `dates` with the schedule tick, `portal._week` / `_dates`; a worker who worked here this month and has since moved is listed too); with the hours tick, the scope's `punches` of the month with a day of margin (`{id, workerId, type, time, date, ts}`) and `days` (the stored day entries).
 - `approve {month, lines}` → each line `"<worker>|<day>|<ins>|<outs>"` (a day's shifts comma-joined; ≤ 3000, the scope's workers only — for a client, the workers with punches at its site that month) stored as `approved`. Dispute and fix take only the same workers (else "Bad day").

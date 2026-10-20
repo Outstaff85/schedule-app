@@ -4,8 +4,8 @@ A client of the firm (a site where its workers work) signs in with its own login
 
 ## Logins
 
-- Made in the manager app: Admin → Users → New user, a **Client** template (the template says the role; its **Hours** ticks, `hourPerms` — the default Client template: hours, approve, dispute, fix), then the client (the user window's client picker, `src/manager/Users.tsx`). "Only own workers" is on and locked.
-- Server side (`core.py`): `create_tenant_user` / `update_user` accept role `client` with `clientId` (required); `claims_for` gives it `role: 'client'`, `clientId`, `hp` (its hours ticks) and `perms: []`. The login reply carries `clientId` and `hourPerms`.
+- Made in the manager app: Admin → Users → New user, a **Client** template (the template says the role and its rights — the default Client template: Hours, Approve / Dispute / Fix hours), then the client (the user window's client picker, `src/manager/Users.tsx`). "Only own workers" is on and locked.
+- Server side (`core.py`): `create_tenant_user` / `update_user` take a Client template with `clientId` (required); `claims_for` gives it `role: 'client'`, `clientId` and `rt` (its flat rights). The login reply carries `clientId` and `rights`.
 - The Users list shows a client login as "(client)" with its client and its hours ticks.
 - `firestore.rules`: no rule lets a `client` role read or write anything (tested in `rules.test.mjs`).
 

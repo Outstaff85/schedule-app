@@ -11,38 +11,40 @@ let env;
 const A = 'firmA', B = 'firmB';
 
 // Identities as the `login` function will issue them (custom-token claims).
+// The rights (claim rt) are what a login on such a template gets.
+const ED = ['editSchedule', 'editWorkers', 'editPunches'];
 const who = {
-  superadmin:   { uid: 'u-super',  claims: { role: 'superadmin', perms: ['*'] } },
-  ownerA:       { uid: 'u-ownerA', claims: { role: 'tenant_admin', tenantId: A, perms: ['*'] } },
-  ownerB:       { uid: 'u-ownerB', claims: { role: 'tenant_admin', tenantId: B, perms: ['*'] } },
-  staffAll:     { uid: 'u-staffAll', claims: { role: 'staff', tenantId: A, perms: ['*'] } },
-  staffSched:   { uid: 'u-staffSched', claims: { role: 'staff', tenantId: A, perms: ['schedule'] } },
-  staffSchedAcc: { uid: 'u-staffSA', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'accounting'] } },
-  staffWorkers: { uid: 'u-staffWorkers', claims: { role: 'staff', tenantId: A, perms: ['workers'] } },
-  staffNone:    { uid: 'u-staffNone', claims: { role: 'staff', tenantId: A, perms: [] } },
-  clientA:      { uid: 'u-clientA', claims: { role: 'client', tenantId: A, clientId: 'c1', perms: [], hp: ['hours', 'approve', 'dispute', 'fix', 'schedule', 'export'] } },
-  supplierA:    { uid: 'u-supA', claims: { role: 'supplier', tenantId: A, supplierId: 's1', perms: [] } },
-  hrOwn:        { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true } },
-  hrOwnClients: { uid: 'u-hrOwnC', claims: { role: 'hr', tenantId: A, perms: ['workers', 'clients'], own: true } },
-  hrAll:        { uid: 'u-hrAll', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: false } },
-  hrOwnPay:     { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers', 'accounting', 'payEdit'], own: true } },
-  hrOwnB:       { uid: 'u-hrOwnB', claims: { role: 'hr', tenantId: B, perms: ['workers'], own: true } },
-  // On a permission template: what they may change (claim ed).
-  staffShifts:  { uid: 'u-stShifts', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editSchedule'] } },
-  staffRecords: { uid: 'u-stRec', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editWorkers'] } },
-  staffView:    { uid: 'u-stView', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: [] } },
-  staffEdAll:   { uid: 'u-stEdAll', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], ed: ['editSchedule', 'editWorkers', 'editPunches'] } },
-  hrOwnView:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers'], own: true, ed: ['editWorkers'] } },
-  // Signed in on the flat rights (claim rt): every check is one right of the list.
-  flatWorkers:  { uid: 'u-fW', claims: { role: 'staff', tenantId: A, perms: [], rt: ['today', 'workers', 'editWorkers'] } },
-  flatView:     { uid: 'u-fV', claims: { role: 'staff', tenantId: A, perms: ['schedule', 'workers'], rt: ['schedule', 'workers'] } },
-  flatClients:  { uid: 'u-fC', claims: { role: 'staff', tenantId: A, perms: ['schedule'], rt: ['clients'] } },
-  flatPay:      { uid: 'u-fP', claims: { role: 'staff', tenantId: A, perms: [], rt: ['workers', 'editWorkers', 'editPay', 'editPunches'] } },
-  flatHrOwn:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: ['workers', 'payEdit'], own: true, rt: ['workers', 'editWorkers'] } },
-  flatHrPay:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, perms: [], own: true, rt: ['workers', 'editWorkers', 'editPay', 'suppliers'] } },
-  // Signed in on the first flat rights (claim r): a staff login changes pay only with payEdit (Edit pay).
-  staffFlatAcc: { uid: 'u-stFA', claims: { role: 'staff', tenantId: A, perms: ['today', 'schedule', 'accounting'], r: true } },
-  staffFlatPay: { uid: 'u-stFP', claims: { role: 'staff', tenantId: A, perms: ['today', 'schedule', 'accounting', 'payEdit'], r: true } },
+  superadmin:   { uid: 'u-super',  claims: { role: 'superadmin' } },
+  ownerA:       { uid: 'u-ownerA', claims: { role: 'tenant_admin', tenantId: A } },
+  ownerB:       { uid: 'u-ownerB', claims: { role: 'tenant_admin', tenantId: B } },
+  staffAll:     { uid: 'u-staffAll', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'workers', 'clients', 'suppliers', 'accounting', 'punchlog', ...ED, 'editPay', 'export'] } },
+  staffSched:   { uid: 'u-staffSched', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', ...ED] } },
+  staffSchedAcc: { uid: 'u-staffSA', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'accounting', ...ED, 'editPay'] } },
+  staffWorkers: { uid: 'u-staffWorkers', claims: { role: 'staff', tenantId: A, rt: ['today', 'workers', 'punchlog', ...ED] } },
+  staffNone:    { uid: 'u-staffNone', claims: { role: 'staff', tenantId: A, rt: ['today', ...ED] } },
+  clientA:      { uid: 'u-clientA', claims: { role: 'client', tenantId: A, clientId: 'c1', rt: ['schedule', 'hours', 'export', 'approveHours', 'disputeHours', 'fixHours'] } },
+  supplierA:    { uid: 'u-supA', claims: { role: 'supplier', tenantId: A, supplierId: 's1', rt: ['today', 'workers', 'commission', 'hours', 'approveHours', 'disputeHours', 'fixHours', 'seePay'] } },
+  hrOwn:        { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, rt: ['workers', ...ED], own: true } },
+  hrOwnClients: { uid: 'u-hrOwnC', claims: { role: 'hr', tenantId: A, rt: ['workers', 'clients', ...ED], own: true } },
+  hrAll:        { uid: 'u-hrAll', claims: { role: 'hr', tenantId: A, rt: ['workers', ...ED], own: false } },
+  hrOwnPay:     { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, rt: ['workers', 'commission', ...ED, 'editPay'], own: true } },
+  hrOwnB:       { uid: 'u-hrOwnB', claims: { role: 'hr', tenantId: B, rt: ['workers', ...ED], own: true } },
+  // What it may change: one edit right each.
+  staffShifts:  { uid: 'u-stShifts', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'workers', 'punchlog', 'editSchedule'] } },
+  staffRecords: { uid: 'u-stRec', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'workers', 'punchlog', 'editWorkers'] } },
+  staffView:    { uid: 'u-stView', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'workers', 'punchlog'] } },
+  staffEdAll:   { uid: 'u-stEdAll', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'workers', 'punchlog', ...ED] } },
+  hrOwnView:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, rt: ['workers', 'editWorkers'], own: true } },
+  flatWorkers:  { uid: 'u-fW', claims: { role: 'staff', tenantId: A, rt: ['today', 'workers', 'editWorkers'] } },
+  flatView:     { uid: 'u-fV', claims: { role: 'staff', tenantId: A, rt: ['schedule', 'workers'] } },
+  flatClients:  { uid: 'u-fC', claims: { role: 'staff', tenantId: A, rt: ['clients'] } },
+  flatPay:      { uid: 'u-fP', claims: { role: 'staff', tenantId: A, rt: ['workers', 'editWorkers', 'editPay', 'editPunches'] } },
+  flatHrOwn:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, own: true, rt: ['workers', 'editWorkers'] } },
+  flatHrPay:    { uid: 'u-hrOwn', claims: { role: 'hr', tenantId: A, own: true, rt: ['workers', 'editWorkers', 'editPay', 'suppliers'] } },
+  staffFlatAcc: { uid: 'u-stFA', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'accounting', ...ED] } },
+  staffFlatPay: { uid: 'u-stFP', claims: { role: 'staff', tenantId: A, rt: ['today', 'schedule', 'accounting', ...ED, 'editPay'] } },
+  // A token without the flat rights (signed in before them, old claims) has none.
+  staffOld:     { uid: 'u-stOld', claims: { role: 'staff', tenantId: A, perms: ['*'] } },
 };
 const db = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).firestore();
 const st = name => (name === 'anon' ? env.unauthenticatedContext() : env.authenticatedContext(who[name].uid, who[name].claims)).storage();
@@ -107,13 +109,18 @@ test('not signed in: nothing at all', async () => {
 });
 
 // ── Roles inside a firm ──────────────────────────────────────────────────────
-test('workers/clients/suppliers: tenant_admin and staff with "schedule" write, other staff only read', async () => {
+test('workers/clients/suppliers/settings: tenant_admin and staff with that tab write, other staff only read', async () => {
+  // the tab that lets staff write each: workers — Workers or Schedule, clients — Clients, suppliers — Suppliers, settings — Schedule
+  const writers = { workers: ['staffSched', 'staffWorkers'], clients: ['flatClients'], suppliers: [], settings: ['staffSched'] };
   for (const sub of ['workers', 'clients', 'suppliers', 'settings']) {
     await assertSucceeds(setDoc(doc(db('ownerA'), 'tenants', A, sub, 'n1'), { name: 'a' }));
-    await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, sub, 'n2'), { name: 'b' }));
     await assertSucceeds(setDoc(doc(db('staffAll'), 'tenants', A, sub, 'n3'), { name: 'c' }));
-    await assertFails(setDoc(doc(db('staffWorkers'), 'tenants', A, sub, 'n4'), { name: 'd' }));
+    for (const r of ['staffSched', 'staffWorkers', 'flatClients']) {
+      const write = setDoc(doc(db(r), 'tenants', A, sub, 'n-' + r), { name: 'b' });
+      await (writers[sub].includes(r) ? assertSucceeds(write) : assertFails(write));
+    }
     await assertFails(setDoc(doc(db('staffNone'), 'tenants', A, sub, 'n5'), { name: 'e' }));
+    await assertFails(setDoc(doc(db('staffOld'), 'tenants', A, sub, 'n6'), { name: 'f' }));  // a token without rt: no rights
     await assertSucceeds(getDocs(collection(db('staffNone'), 'tenants', A, sub)));
   }
 });
@@ -122,10 +129,10 @@ test('suppliers: only the owner or a superadmin sets the commission; staff keep 
   const com = [{ from: '2026-10-01', mode: 'hour', rate: 7 }];
   await assertSucceeds(setDoc(doc(db('ownerA'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency', commission: com }));
   await assertSucceeds(setDoc(doc(db('superadmin'), 'tenants', A, 'suppliers', 'sc2'), { name: 'Agency 2', commission: com }));
-  await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc3'), { name: 'New', commission: com }));
-  await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc3'), { name: 'New' }));
-  await assertSucceeds(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency renamed', commission: com }));
-  await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency', commission: [{ from: '', mode: 'day', rate: 99 }] }));
+  await assertFails(setDoc(doc(db('staffAll'), 'tenants', A, 'suppliers', 'sc3'), { name: 'New', commission: com }));
+  await assertSucceeds(setDoc(doc(db('staffAll'), 'tenants', A, 'suppliers', 'sc3'), { name: 'New' }));
+  await assertSucceeds(setDoc(doc(db('staffAll'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency renamed', commission: com }));
+  await assertFails(setDoc(doc(db('staffAll'), 'tenants', A, 'suppliers', 'sc1'), { name: 'Agency', commission: [{ from: '', mode: 'day', rate: 99 }] }));
   await assertFails(updateDoc(doc(db('staffAll'), 'tenants', A, 'suppliers', 'sc1'), { commission: [] }));
   await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'suppliers', 'sc1'), { commission: [] }));
 });
@@ -254,7 +261,7 @@ test('hr own-workers: reads and writes only workers with its hrId, never reassig
   await assertFails(getDoc(doc(db('hrOwnB'), 'tenants', A, 'workers', 'w2')));
 });
 
-test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only with Edit pay (accounting before the flat rights)', async () => {
+test('a worker\'s pay and bank: hr and staff only with Edit pay (an hr: its own workers)', async () => {
   const h = db('hrOwn');
   for (const f of [{ hourlyRate: 45 }, { regRate: 45 }, { otRate: 60 }, { shabbatRate: 70 }, { payMode: 'daily' },
     { travelAllowance: 20 }, { travelMonthly: 150 }, { bank: 'X' }, { bankBranch: '1' }, { bankAccountNumber: '9' },
@@ -269,7 +276,7 @@ test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only w
   await assertSucceeds(updateDoc(doc(hp, 'tenants', A, 'workers', 'w2'), { hourlyRate: 52, bank: 'Discount', bankAccountNumber: '777', travelMonthly: 150 }));
   await assertSucceeds(setDoc(doc(hp, 'tenants', A, 'workers', 'n3'), { name: 'New', hrId: 'u-hrOwn', hourlyRate: 50 }));
   await assertFails(updateDoc(doc(hp, 'tenants', A, 'workers', 'w3'), { hourlyRate: 52 }));
-  // the owner always; staff only with accounting
+  // the owner always; staff only with Edit pay
   await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'w3'), { bank: 'Y' }));
   await assertSucceeds(updateDoc(doc(db('staffAll'), 'tenants', A, 'workers', 'w3'), { hourlyRate: 42 }));
   await assertSucceeds(updateDoc(doc(db('staffSchedAcc'), 'tenants', A, 'workers', 'w3'), { travelMonthly: 100 }));
@@ -284,7 +291,7 @@ test('a worker\'s pay and bank: hr only with payEdit (own workers), staff only w
   await assertFails(updateDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrOwn' }));
   await assertFails(setDoc(doc(db('staffSched'), 'tenants', A, 'workers', 'n10'), { name: 'New', hrId: 'u-hrOwn' }));
   await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'w3'), { hrId: 'u-hrOwn' }));
-  // on the flat rights: Accounting alone no longer changes pay, Edit pay does
+  // Accounting alone doesn't change pay, Edit pay does
   await assertFails(updateDoc(doc(db('staffFlatAcc'), 'tenants', A, 'workers', 'w3'), { hourlyRate: 43 }));
   await assertFails(setDoc(doc(db('staffFlatAcc'), 'tenants', A, 'workers', 'n8'), { name: 'New', hourlyRate: 30 }));
   await assertSucceeds(updateDoc(doc(db('staffFlatAcc'), 'tenants', A, 'workers', 'w3'), { phone: '054' }));
@@ -481,8 +488,8 @@ test('the edit ticks (claim ed): shifts, worker records and punches', async () =
   await assertSucceeds(updateDoc(doc(db('hrOwn'), 'tenants', A, 'punches', 'p2'), { notes: 'ok' }));
 });
 
-test('the flat rights (claim rt): a tab and an edit right, never the old fields', async () => {
-  // Workers + Edit workers, no Schedule section: edits its workers (not the pay), no clients
+test('the flat rights (claim rt): a tab and an edit right each', async () => {
+  // Workers + Edit workers, no Schedule tab: edits its workers (not the pay), no clients
   const fw = db('flatWorkers');
   await assertSucceeds(updateDoc(doc(fw, 'tenants', A, 'workers', 'w1'), { phone: '051' }));
   await assertSucceeds(setDoc(doc(fw, 'tenants', A, 'workers', 'n1'), { name: 'New' }));
@@ -490,7 +497,7 @@ test('the flat rights (claim rt): a tab and an edit right, never the old fields'
   await assertFails(updateDoc(doc(fw, 'tenants', A, 'clients', 'c1'), { name: 'X' }));
   await assertFails(updateDoc(doc(fw, 'tenants', A, 'workers', 'w1'), { schedule: [{ d: 1 }] }));
   await assertFails(updateDoc(doc(fw, 'tenants', A, 'punches', 'p1'), { type: 'out' }));
-  // the old fields (perms schedule) give nothing once the token has the flat list
+  // the tabs without an edit right only read
   const fv = db('flatView');
   await assertFails(updateDoc(doc(fv, 'tenants', A, 'workers', 'w1'), { phone: '052' }));
   await assertFails(updateDoc(doc(fv, 'tenants', A, 'clients', 'c1'), { name: 'X' }));
@@ -504,7 +511,7 @@ test('the flat rights (claim rt): a tab and an edit right, never the old fields'
   const fp = db('flatPay');
   await assertSucceeds(updateDoc(doc(fp, 'tenants', A, 'workers', 'w1'), { hourlyRate: 46, bank: 'Z' }));
   await assertSucceeds(updateDoc(doc(fp, 'tenants', A, 'punches', 'p1'), { type: 'out' }));
-  // an own-workers HR: its own worker, the money only with Edit pay (its old payEdit field gives nothing)
+  // an own-workers HR: its own worker, the money only with Edit pay
   const fh = db('flatHrOwn');
   await assertSucceeds(updateDoc(doc(fh, 'tenants', A, 'workers', 'w2'), { phone: '054' }));
   await assertFails(updateDoc(doc(fh, 'tenants', A, 'workers', 'w2'), { hourlyRate: 47 }));

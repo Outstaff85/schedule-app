@@ -10,19 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "function
 
 import files  # noqa: E402
 
-import core  # noqa: E402
-
-
-def _old_claims(fn):
-    """The callers in this file are written as ID tokens signed in before the
-    flat rights (their old claims): they are read through core.caller_rights,
-    as main.py does; a caller that already has `rights` goes as it is."""
-    def run(first, caller, *a, **k):
-        return fn(first, caller if "rights" in caller else dict(caller, rights=core.caller_rights(caller)), *a, **k)
-    return run
-
-
-files.run = _old_claims(files.run)
+# The callers carry their flat rights as main.py hands them (core.caller_rights).
 
 T1, T2 = "t-one", "t-two"
 ASSETS = f"tenants/{T1}/workers/w1/assets/1-123456782_Avi_Cohen_assets.json"
@@ -86,12 +74,12 @@ def test_superadmin_works_in_the_firm_it_views():
 
 def test_delete_needs_workers_right():
     b = Bucket()
-    staff_ro = {"role": "staff", "tenantId": T1, "perms": ["schedule"]}
+    staff_ro = {"role": "staff", "tenantId": T1, "rights": {"schedule", "editSchedule", "editWorkers"}}
     assert files.run(b, staff_ro, {"action": "deleteWorkerDoc", "fileId": PDF}) == {"error": files.E_NO_RIGHT}
     assert PDF in b.store
     # but may read (the rules let any manager login of the firm read)
     assert files.run(b, staff_ro, {"action": "loadWorkerAssets", "fileId": ASSETS})["ok"]
-    staff = {"role": "staff", "tenantId": T1, "perms": ["workers"]}
+    staff = {"role": "staff", "tenantId": T1, "rights": {"workers", "editWorkers"}}
     assert files.run(b, staff, {"action": "deleteWorkerDoc", "fileId": PDF}) == {"ok": True}
     assert PDF not in b.store
     # deleting again (already gone) is fine, like Drive's best-effort trash
@@ -124,7 +112,7 @@ def test_delete_tenant_files_only_that_firm():
 
 def test_hr_own_only_reaches_its_own_workers_files():
     b = Bucket()
-    hr = {"uid": "u-hr", "role": "hr", "tenantId": T1, "perms": ["workers"], "own": True}
+    hr = {"uid": "u-hr", "role": "hr", "tenantId": T1, "rights": {"workers", "editWorkers"}, "own": True}
     mine = lambda wid: "u-hr" if wid == "w1" else "other"
     assert files.run(b, hr, {"action": "loadWorkerAssets", "fileId": ASSETS}, mine)["ok"]
     theirs = lambda wid: "other"
@@ -135,4 +123,4 @@ def test_hr_own_only_reaches_its_own_workers_files():
     # Without own-only, an HR with the workers right is a workers writer for the whole firm.
     hr_all = dict(hr, own=False)
     assert files.run(Bucket(), hr_all, {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"ok": True}
-    assert files.run(Bucket(), dict(hr_all, perms=["accounting"]), {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"error": files.E_NO_RIGHT}
+    assert files.run(Bucket(), dict(hr_all, rights={"commission"}), {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"error": files.E_NO_RIGHT}

@@ -135,8 +135,7 @@
 		async function mayWrite(kind) {
 			const c = await myClaims();
 			if (c.role !== "hr" || kind === "workers") return true;
-			const p = Array.isArray(c.perms) ? c.perms : [];
-			return p.includes("*") || p.includes(kind);
+			return Array.isArray(c.rt) && c.rt.includes(kind);
 		}
 		const hrWhere = (hr) => hr ? [F.where("hrId", "==", hr)] : [];
 		async function login(username, password) {
@@ -849,21 +848,9 @@
 			},
 			currentUser: () => auth.currentUser,
 			idToken: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
-			hourPerms: async () => {
-				const h = (await myClaims()).hp;
-				return Array.isArray(h) ? h : [];
-			},
-			editPerms: async () => {
-				const v = (await myClaims()).ed;
+			rights: async () => {
+				const v = (await myClaims()).rt;
 				return Array.isArray(v) ? v : null;
-			},
-			supplierSections: async () => {
-				const v = (await myClaims()).ss;
-				return Array.isArray(v) ? v : [
-					"dashboard",
-					"workers",
-					"hours"
-				];
 			},
 			signOut: () => {
 				if (punchUnsub) punchUnsub();

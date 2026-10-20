@@ -14,21 +14,14 @@ export type UserRow = {
   fullName?: string;
   phone?: string;
   active?: boolean;
-  /** staff / hr: the sections, '*' for every one */
-  permissions?: string[] | '*';
   supplierId?: string;
   clientId?: string;
-  hourPerms?: string[];
-  supplierSections?: string[];
   ownOnly?: boolean;
-  showPay?: boolean;
   commissionRate?: number;
   commissionDayRate?: number;
-  /** staff / hr: what it may change (editSchedule, editWorkers, editPunches) */
-  editPerms?: string[] | null;
   /** the permission template its rights come from; none: a login made before templates */
   templateId?: string | null;
-  /** the flat rights (templates.ts RIGHTS); none: a login made before them */
+  /** the flat rights (templates.ts RIGHTS); none: an owner or a super-admin */
   rights?: string[] | null;
 };
 

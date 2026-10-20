@@ -65,12 +65,6 @@ export type PermTemplate = {
   rights?: string[];
   /** HR: only the workers assigned to it */
   ownOnly?: boolean;
-  // The fields the claims and rules read, worked out from the rights by the server.
-  permissions?: string[] | '';
-  editPerms?: string[];
-  hourPerms?: string[];
-  supplierSections?: string[];
-  showPay?: boolean;
   count: number;
 };
 

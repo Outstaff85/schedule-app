@@ -52,8 +52,15 @@ export function cacheTenantProfile(tenantId?: any, profile?: any){
 // (3) everyone else (a tenant login, or a super-admin who picked a firm) →
 //     the normal app — runInitApp() runs the pre-existing init sequence.
 // Called once at startup in place of the old unconditional init block.
+const SUB_ROLES = ['staff', 'hr', 'supplier', 'client'];
 export function gateApp(runInitApp?: any){
   let s = getSession() || adoptPortalSession();
+  // A staff / HR / supplier / client session signed in before the flat rights
+  // (no rights): its token has no claim rt, so the rules refuse it — sign in again.
+  if(s && SUB_ROLES.includes(String(s.role)) && !Array.isArray(s.rights)){
+    clearSession(); clearPortalSessions(); s = null;
+    loadFirestoreBackend().then((b?: any) => b.signOut()).catch(() => {});
+  }
   if(s && isPortalRole(s.role)){ void startPortal(s); return; }
   if(!s){
     // The sign-in screen (React, src/manager/SignIn.tsx) wakes the login function itself.
@@ -77,25 +84,25 @@ export function gateApp(runInitApp?: any){
 }
 
 // A supplier or client login stays here (permissions plan, stage 3): the same
-// frame with its own tabs (portalTabs: a supplier's portal tabs, claim ss, and
-// the hours review with an hours tick, claim hp; a client: Hours), each drawn
+// frame with its own tabs (portalTabs, from its flat rights, claim rt; a
+// client: Hours), each drawn
 // with the portal's screens through the supplier / hours functions. No firm
 // data is loaded for it (runInitApp never runs) and nothing reads Firestore.
 // The portal screens' own code reads its session key (PORTAL_SESSION_KEYS);
 // a Firebase sign-in that is gone or another user's sends to the sign-in.
 async function startPortal(s?: any){
-  try{ localStorage.setItem(PORTAL_SESSION_KEYS[s.role], JSON.stringify({uid:s.uid, role:s.role, tenantId:s.tenantId, supplierId:s.supplierId, clientId:s.clientId, username:s.username})); }catch(e: any){}
+  try{ localStorage.setItem(PORTAL_SESSION_KEYS[s.role], JSON.stringify({uid:s.uid, role:s.role, tenantId:s.tenantId, supplierId:s.supplierId, clientId:s.clientId, username:s.username, rights:s.rights})); }catch(e: any){}
   setFrame({screen:'app'});
   renderAccountControl(s);
-  let ss = ['dashboard','workers','hours'], hp: string[] = Array.isArray(s.hourPerms) ? s.hourPerms : [];
+  let rt: string[] = Array.isArray(s.rights) ? s.rights : [];
   try{
     const b = await loadFirestoreBackend();
     const u = b.currentUser();
     if(!u || u.uid !== s.uid){ clearPortalSessions(); clearSession(); location.reload(); return; }
-    [ss, hp] = await Promise.all([s.role === 'supplier' ? b.supplierSections().catch(() => ss) : Promise.resolve(ss), b.hourPerms().catch(() => hp)]);
-  }catch(e: any){ /* offline: the session's ticks */ }
+    rt = (await b.rights().catch(() => rt)) || rt;
+  }catch(e: any){ /* offline: the session's rights */ }
   setPortal({role: s.role, username: s.fullName || s.username || ''});
-  const tabs = portalTabs(s.role, ss, hp);
+  const tabs = portalTabs(s.role, rt);
   setFrame({tabs});
   switchTab(tabs[0] || 'hours');
 }

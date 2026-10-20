@@ -168,8 +168,7 @@ export async function initFirestoreBackend() {
   async function mayWrite(kind: Kind): Promise<boolean> {
     const c = await myClaims();
     if (c.role !== 'hr' || kind === 'workers') return true;
-    const p: unknown[] = Array.isArray(c.perms) ? c.perms : [];
-    return p.includes('*') || p.includes(kind);
+    return Array.isArray(c.rt) && c.rt.includes(kind);
   }
   const hrWhere = (hr: string | null) => hr ? [F.where('hrId', '==', hr)] : [];
 
@@ -730,14 +729,9 @@ export async function initFirestoreBackend() {
     storageUrl: async (path: string): Promise<string> => { await loadStorage(); return stMod.getDownloadURL(stMod.ref(storage, path)); },
     currentUser: (): {uid: string} | null => auth.currentUser,
     idToken: (): Promise<string | null> => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
-    // The hours-review ticks of this login (claim hp: hours, approve,
-    // dispute, fix, schedule, export — functions-auth/core.py HOUR_PERMS).
-    hourPerms: async (): Promise<string[]> => { const h = (await myClaims()).hp; return Array.isArray(h) ? h : []; },
-    // What a staff / HR login may change (claim ed: editSchedule, editWorkers,
-    // editPunches); null when the token has none (a login made before: all).
-    editPerms: async (): Promise<string[] | null> => { const v = (await myClaims()).ed; return Array.isArray(v) ? v : null; },
-    // A supplier login's portal tabs (claim ss; none in the token = all).
-    supplierSections: async (): Promise<string[]> => { const v = (await myClaims()).ss; return Array.isArray(v) ? v : ['dashboard', 'workers', 'hours']; },
+    // The flat rights of this login as its ID token has them (claim rt,
+    // docs/permissions-plan.md); null for an owner or a superadmin.
+    rights: async (): Promise<string[] | null> => { const v = (await myClaims()).rt; return Array.isArray(v) ? v : null; },
     signOut: (): Promise<void> => { if (punchUnsub) punchUnsub(); claimsFor = null; claims = {}; return authMod.signOut(auth); },
   };
 }
