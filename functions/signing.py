@@ -198,7 +198,7 @@ def _sig_bytes(s):
 
 def _summary(rid, x):
     keys = ("workerId", "hrId", "status", "way", "templateId", "templateName", "templateVersion", "signDate", "sentAt", "sentBy",
-            "signedAt", "sigPath", "parts", "appliedAt", "dateFixed")
+            "signedAt", "sigPath", "parts", "appliedAt", "dateFixed", "printHash", "printPay", "printMarks")
     out = {k: x.get(k) for k in keys if k in x}
     if out.get("signedAt") is not None and not isinstance(out["signedAt"], str):
         try:
@@ -263,6 +263,9 @@ def run(db, bucket, claims, body, build101, server_time=None):
                "templateId": tsnap.id, "templateName": tpl.get("name") or "", "templateVersion": int(tpl.get("version") or 1),
                "templatePath": frozen, "placed": tpl.get("placed") or [], "values": values,
                "form101": _clean_form101(body.get("form101")), "signDate": sign_date or None, "dateFixed": bool(sign_date),
+               # what the documents print about the worker (the app's printHash): a later change asks for a new signature (D4)
+               "printHash": str(body.get("printHash") or "")[:40], "printPay": bool(body.get("printPay")) and may_see_pay(claims),
+               "printMarks": [m for m in (tpl.get("marks") or []) if m in contracts.MARKS],
                "sentAt": _now_iso(), "sentBy": claims.get("uid", "")}
         col.document(rid).set(req)
         return {"ok": True, "id": rid, "request": _summary(rid, req)}

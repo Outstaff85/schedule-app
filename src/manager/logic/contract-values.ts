@@ -70,3 +70,23 @@ export function contractValues(w: Rec, ctx: ValuesCtx): Record<string, string> {
   }
   return out;
 }
+
+// ── What the signed documents print about the worker (D4: data changed → a new signature) ──
+const FIRM_MARKS = ['company', 'company_address', 'company_phone', 'deductions_file'];
+const PAY_MARKS = ['rate', 'pay_mode', 'ot_rate', 'shabbat_rate', 'travel', 'bank'];
+function hash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+/** A short hash of what Form 101 and the contract print about the worker: Form 101's values without the
+ * firm's block and the date, and the contract's marks the template prints, without the firm's (a change to
+ * the firm's own details asks no worker to sign again). The pay marks count only when they were filled. */
+export function printHash(form101: Record<string, unknown>, values: Record<string, string>, marks: string[] | null, withPay: boolean): string {
+  const f: Record<string, unknown> = { ...form101 };
+  delete f.employer; delete f.signDate; delete f.firmMissing; delete f.signaturePngBase64; delete f.extraPages;
+  const keys = (marks && marks.length ? marks : Object.keys(values))
+    .filter(k => k in values && !FIRM_MARKS.includes(k) && (withPay || !PAY_MARKS.includes(k))).sort();
+  const sorted = (o: Record<string, unknown>) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k] ?? null]));
+  return hash(sorted(f) + '|' + JSON.stringify(keys.map(k => [k, values[k] || ''])));
+}

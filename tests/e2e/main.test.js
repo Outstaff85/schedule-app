@@ -1172,6 +1172,28 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sgTook.docFile && sgTook.url && sgTook.contract && sgTook.signedAt && sgTook.sig && sgTook.regen && sgTook.kept && /Signed/.test(sgTook.chip),
     'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
+  // D4: a change to what the signed documents print asks for a new signature; the firm's own details don't.
+  const d4 = await p.evaluate(async () => {
+    const w = workers.find(x => x.id === 'w1');
+    const has = () => workerNotices(w).some(n => n.title === 'Documents changed — needs a new signature');
+    const r = {fresh: has()};
+    const key = 'schedMgr_session', raw = localStorage.getItem(key), s = JSON.parse(raw);
+    (s.tenantProfile || (s.tenantProfile = {})).companyName = 'Renamed Firm Ltd'; localStorage.setItem(key, JSON.stringify(s));
+    r.firm = has();
+    localStorage.setItem(key, raw);
+    const phone = w.phone; w.phone = '0509999999';
+    const n = workerNotices(w).find(x => x.title === 'Documents changed — needs a new signature');
+    r.changed = !!n && n.lvl === 'amber' && !!n.act;
+    n.act.fn(); await T.tick(300);
+    r.window = !!document.querySelector('[data-testid="sign-window"]');
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(200);
+    w.phone = phone;
+    r.back = !has();
+    return r;
+  });
+  ok(!d4.fresh && !d4.firm && d4.changed && d4.window && d4.back,
+    'new signature (D4): a changed phone marks Documents changed — needs a new signature, its Sign opens the sign window; a change to the firm\'s details does not ' + JSON.stringify(d4));
+  await p.keyboard.press('Escape'); await sleep(300);
   // In person, on the manager's phone: Dana signs in the window.
   await p.evaluate(() => { switchTab('workers'); openWorkerCard(workers.findIndex(w => w.id === 'w2')); });
   await p.waitForSelector('[data-testid="card-sign"]');
