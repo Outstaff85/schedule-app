@@ -212,3 +212,96 @@ def document_record(doc, tenant_id, now, doc_id, page_paths):
     return {"id": doc_id, "tenantId": tenant_id or "", "workerId": doc["workerId"], "createdAt": now,
             "pages": [{"path": path, "doctype": pg["doctype"], "primary": pg["primary"]} for path, pg in zip(page_paths, doc["pages"])],
             "read": doc["read"], "reads": doc["reads"], "scanned": doc["scanned"], "saved": doc["saved"], "corrected": doc["corrected"]}
+
+
+# ---------- every scan attempt (docs/scan-plan.md → S8) ----------
+# A camera shot or a page of a picked photo or PDF, from the scanner on the site and in the lab:
+# the picture, the models' corners, how it went (kept / retaken / deleted) and the corners the user
+# moved. Kept in the private bucket under attempts/new/<source>/<YYYY-MM-DD>/<id>/ until a training
+# uses them (publish.py moves them to attempts/used/v<N>/).
+ATTEMPTS_AT = 15                 # new attempts that make a training due (owner, 2026-10-20)
+MAX_ATTEMPTS = 10                # per request (the phone's queue holds 5)
+MAX_ATTEMPT_BYTES = 1_500_000    # a JPEG at most 1600 px on the long side
+ATTEMPT_SOURCES = ("site", "lab")
+OUTCOMES = ("kept", "retaken", "deleted")
+INPUTS = ("camera", "photo", "pdf")
+_ID_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+
+
+def _attempt_id(v):
+    s = str(v or "")
+    return s if 1 <= len(s) <= 64 and set(s) <= _ID_CHARS else None
+
+
+def _pages(v):
+    """How many pages the attempt was cut into (0..20)."""
+    return min(v, 20) if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
+
+
+def check_attempt(a):
+    """(the attempt cleaned, None) or (None, why it is refused)."""
+    if not isinstance(a, dict):
+        return None, "not an object"
+    aid, group = _attempt_id(a.get("id")), _attempt_id(a.get("group") or a.get("id"))
+    if not aid or not group:
+        return None, "bad id"
+    source = a.get("source") if a.get("source") in ATTEMPT_SOURCES else None
+    if not source:
+        return None, "bad source"
+    outcome = a.get("outcome") if a.get("outcome") in OUTCOMES else None
+    if not outcome:
+        return None, "bad outcome"
+    try:
+        picture = base64.b64decode(str(a.get("picture") or ""), validate=True)
+    except Exception:
+        return None, "bad picture"
+    if not picture.startswith(b"\xff\xd8") or len(picture) > MAX_ATTEMPT_BYTES:
+        return None, "the picture is not a JPEG under 1.5 MB"
+    # no corners: the model found no frame and the picture was taken whole
+    model = _corners(a.get("edgesModel")) if a.get("edgesModel") is not None else None
+    if a.get("edgesModel") is not None and not model:
+        return None, "bad corners"
+    fixed = _corners(a.get("edgesFixed")) if a.get("edgesFixed") is not None else None
+    if a.get("edgesFixed") is not None and not fixed:
+        return None, "bad corners"
+    shift = round(moved(model or WHOLE, fixed), 5) if fixed else 0.0
+    more = a.get("edgesMore") if isinstance(a.get("edgesMore"), list) else []
+    more = [q for q in (_corners(v) for v in more[:3]) if q]  # the other documents found on the same photo
+    return {"edgesMore": more, "id": aid, "group": group, "source": source, "outcome": outcome, "picture": picture,
+            "edgesModel": model, "edgesFixed": fixed if fixed and shift >= MOVED_MIN else None, "moved": shift,
+            "model": str(a.get("model") or "")[:40], "way": str(a.get("way") or "")[:20],
+            "input": a.get("input") if a.get("input") in INPUTS else "camera",
+            "doctype": a.get("doctype") if a.get("doctype") in DOCTYPES else None,
+            "pages": _pages(a.get("pages"))}, None
+
+
+def attempt_dir(a, now):
+    return f"attempts/new/{a['source']}/{now:%Y-%m-%d}/{a['id']}"
+
+
+def attempt_record(a, tenant_id, now, picture_path):
+    """The answer kept beside an attempt's picture (answer.json)."""
+    return {"id": a["id"], "group": a["group"], "source": a["source"], "outcome": a["outcome"], "tenantId": tenant_id or "",
+            "picture": picture_path, "edgesModel": a["edgesModel"], "edgesMore": a["edgesMore"], "edgesFixed": a["edgesFixed"], "moved": a["moved"],
+            "model": a["model"], "way": a["way"], "input": a["input"], "doctype": a["doctype"], "pages": a["pages"], "createdAt": now}
+
+
+def outcome_dir(v):
+    """A later outcome (a kept page deleted from its batch) names the attempt's folder as the server gave it."""
+    s = str(v or "")
+    parts = s.split("/")
+    if len(parts) != 5 or parts[:2] != ["attempts", "new"] or parts[2] not in ATTEMPT_SOURCES:
+        return None
+    try:
+        datetime.date.fromisoformat(parts[3])
+    except ValueError:
+        return None
+    return s if _attempt_id(parts[4]) else None
+
+
+def attempts_since(stats):
+    return int(stats.get("attemptsSince") or 0)
+
+
+def attempts_due(stats):
+    return attempts_since(stats) >= ATTEMPTS_AT

@@ -186,3 +186,63 @@ def test_a_corner_fix_from_the_old_window_still_counts_toward_the_edges_retraini
     fixed = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.95]]
     e, _ = feedback.check(ex(edgesFixed=fixed))
     assert feedback.edges_correction(e)
+
+
+# ---------- every scan attempt (S8) ----------
+BIG = base64.b64encode(b"\xff\xd8" + b"\0" * 1000 + b"\xff\xd9").decode()
+
+
+def att(**kw):
+    return dict({"id": "s12", "group": "g3", "source": "site", "outcome": "kept", "picture": BIG,
+                 "edgesModel": MODEL, "model": "base-v1", "way": "bg-gpulive", "input": "camera", "pages": 2}, **kw)
+
+
+def test_an_attempt_is_kept_with_its_picture_corners_and_outcome():
+    a, why = feedback.check_attempt(att())
+    assert why is None and a["picture"].startswith(b"\xff\xd8") and a["edgesModel"] == MODEL
+    assert a["outcome"] == "kept" and a["group"] == "g3" and a["source"] == "site" and a["pages"] == 2 and a["edgesFixed"] is None and a["edgesMore"] == []
+    other = [[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]
+    assert feedback.check_attempt(att(edgesMore=[other, [[9, 9]], "x"]))[0]["edgesMore"] == [other]
+    now = datetime.datetime(2026, 10, 20, 12, tzinfo=datetime.timezone.utc)
+    assert feedback.attempt_dir(a, now) == "attempts/new/site/2026-10-20/s12"
+    rec = feedback.attempt_record(a, "t1", now, "attempts/new/site/2026-10-20/s12/picture.jpg")
+    assert rec["tenantId"] == "t1" and "picture" in rec and not isinstance(rec["picture"], bytes)
+
+
+def test_moved_corners_are_the_answer_and_a_tiny_move_is_none():
+    fixed = [[0.2, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    a, _ = feedback.check_attempt(att(edgesFixed=fixed))
+    assert a["edgesFixed"] == fixed and a["moved"] > 0.05
+    a, _ = feedback.check_attempt(att(edgesFixed=MODEL))
+    assert a["edgesFixed"] is None and a["moved"] == 0
+
+
+def test_a_picture_taken_whole_has_no_corners_and_a_retake_keeps_its_group():
+    a, why = feedback.check_attempt(att(edgesModel=None, outcome="retaken", source="lab", input="pdf"))
+    assert why is None and a["edgesModel"] is None and a["outcome"] == "retaken" and a["source"] == "lab" and a["input"] == "pdf"
+    a, _ = feedback.check_attempt(att(group=None))
+    assert a["group"] == "s12"
+
+
+def test_bad_attempts_are_refused():
+    assert feedback.check_attempt(att(id="../x"))[0] is None
+    assert feedback.check_attempt(att(source="other"))[0] is None
+    assert feedback.check_attempt(att(outcome="maybe"))[0] is None
+    assert feedback.check_attempt(att(picture="not base64!"))[0] is None
+    assert feedback.check_attempt(att(picture=base64.b64encode(b"PNG...").decode()))[0] is None
+    assert feedback.check_attempt(att(picture=base64.b64encode(b"\xff\xd8" + b"\0" * 1_600_000).decode()))[0] is None
+    assert feedback.check_attempt(att(edgesModel=[[0, 0]]))[0] is None
+    assert feedback.check_attempt("x")[0] is None
+
+
+def test_a_later_outcome_names_only_an_attempts_folder():
+    assert feedback.outcome_dir("attempts/new/site/2026-10-20/s12") == "attempts/new/site/2026-10-20/s12"
+    for bad in ("attempts/used/site/2026-10-20/s12", "attempts/new/x/2026-10-20/s12", "attempts/new/site/20-10/s12",
+                "attempts/new/site/2026-10-20/../s", "documents/t/2026-10/x", None):
+        assert feedback.outcome_dir(bad) is None, bad
+
+
+def test_a_training_is_due_at_15_attempts():
+    assert feedback.ATTEMPTS_AT == 15
+    assert not feedback.attempts_due({"attemptsSince": 14}) and feedback.attempts_due({"attemptsSince": 15})
+    assert feedback.attempts_since({}) == 0

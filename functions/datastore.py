@@ -7,6 +7,8 @@ real). Paths, the same in both:
   doctype/<YYYY-MM>/<id>.jpg    the page, for the document type model (256×256)
   records/<YYYY-MM>/<id>.json   the example's record (bucket only — in Firebase it is Firestore scanTraining/<id>)
   documents/<tenant>/<YYYY-MM>/<id>/page-<n>.jpg, record.json   a full document with its fields (H8a)
+  attempts/new/<site|lab>/<YYYY-MM-DD>/<id>/picture.jpg, answer.json, outcome-<time>.json   every scan attempt (S8);
+                                after a training, attempts/used/v<N>/…
 In Firebase they sit under training/ (training/scan/… keeps its old place for the copies)."""
 import json
 import os

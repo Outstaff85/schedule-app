@@ -715,6 +715,45 @@ def _scan_document(payload, claims, db, stats_ref, storage):
     return _json({"ok": True, "kept": True})
 
 
+def _scan_attempts(payload, claims, db, stats_ref, storage):
+    """Every scan attempt (S8): {"action": "attempt", "attempts": [...]} from the scanner on the
+    site or in the lab, sent as each attempt is decided (any manager login). Each goes to
+    attempts/new/<source>/<YYYY-MM-DD>/<id>/ (picture.jpg + answer.json) and counts toward the
+    training (attemptsSince). → the folder of each kept attempt, for a later outcome."""
+    from firebase_admin import firestore
+    attempts = payload.get("attempts")
+    if not isinstance(attempts, list) or not attempts:
+        return _json({"error": "no attempts"}, 400)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    bucket = []
+    fb = lambda: bucket[0] if bucket else (bucket.append(_model_bucket(storage)) or bucket[0])
+    dirs, refused = {}, 0
+    for raw in attempts[:feedback.MAX_ATTEMPTS]:
+        a, why = feedback.check_attempt(raw)
+        if not a:
+            refused += 1
+            continue
+        base = feedback.attempt_dir(a, now)
+        pic = datastore.put([(f"{base}/picture.jpg", a["picture"])], fb)[0]
+        datastore.put([(f"{base}/answer.json", datastore.as_json(feedback.attempt_record(a, claims.get("tenantId"), now, pic)))], fb)
+        dirs[a["id"]] = base
+    if dirs:
+        stats_ref.set({"attemptsSince": firestore.Increment(len(dirs)), "attempts": firestore.Increment(len(dirs)), "updatedAt": now}, merge=True)
+    return _json({"ok": True, "kept": len(dirs), "refused": refused, "dirs": dirs})
+
+
+def _scan_attempt_outcome(payload, storage):
+    """A later outcome of a kept attempt (a page deleted from its batch): {"action": "attemptOutcome",
+    "dir", "outcome"} → outcome-<time>.json beside it; the training reads the latest."""
+    base = feedback.outcome_dir(payload.get("dir"))
+    outcome = payload.get("outcome") if payload.get("outcome") in feedback.OUTCOMES else None
+    if not base or not outcome:
+        return _json({"error": "bad outcome"}, 400)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    datastore.put([(f"{base}/outcome-{now:%Y%m%dT%H%M%S%f}.json", datastore.as_json({"outcome": outcome, "at": now}))], lambda: _model_bucket(storage))
+    return _json({"ok": True})
+
+
 @https_fn.on_request(
     cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
     memory=options.MemoryOption.MB_512,
@@ -729,6 +768,8 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     login): pages whose corners the user moved are kept, the rest only counted.
     {"action": "document", "pages", "read", "reads", "scanned", "saved", "workerId"} from the
     save of the worker window after a scan: a full document for the field reader model (H8a).
+    {"action": "attempt", "attempts": [...]} / {"action": "attemptOutcome", "dir", "outcome"} from
+    the scanner (S8): every scan attempt, for the training.
     {"action": "stats"} (a super-admin): the counts, and whether retraining is due.
     The files go to the private Hugging Face bucket once the server has its token, else to
     Firebase Storage training/ (datastore.py)."""
@@ -757,9 +798,14 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
             stats = (stats_ref.get().to_dict() or {})
             return _json({"ok": True, "stats": stats, "due": feedback.edges_since(stats) >= feedback.RETRAIN_AT, "edgesSince": feedback.edges_since(stats),
-                          "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats)})
+                          "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats),
+                          "attemptsSince": feedback.attempts_since(stats), "attemptsAt": feedback.ATTEMPTS_AT, "attemptsDue": feedback.attempts_due(stats)})
         if payload.get("action") == "document":
             return _scan_document(payload, claims, db, stats_ref, storage)
+        if payload.get("action") == "attempt":
+            return _scan_attempts(payload, claims, db, stats_ref, storage)
+        if payload.get("action") == "attemptOutcome":
+            return _scan_attempt_outcome(payload, storage)
         examples = payload.get("examples")
         if not isinstance(examples, list) or not examples:
             return _json({"error": "no examples"}, 400)
