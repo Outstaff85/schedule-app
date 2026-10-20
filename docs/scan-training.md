@@ -118,4 +118,4 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 | training | `scripts/scan-train/` (corners: `pull.py`, `attempts.py` — the scan attempts' examples —, `train.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
 | the document type models at work | `scan-lab/index.html` (`doctypeNote`, `doctypeSess`), `scan/embed.js` (`answer` — each posted page's), `src/scan/Scanner.tsx` (Off / Shadow / Mixed), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
-| tests | `tests/auth/test_scan_feedback.py`, the browser test "scan window corners and kinds" (`tests/e2e/main.test.js`) |
+| tests | `tests/auth/test_scan_feedback.py`, `tests/auth/test_scan_train_attempts.py` (the scan attempts' training examples, `attempts.py`), the browser test "scan window corners and kinds" (`tests/e2e/main.test.js`) |
