@@ -1,6 +1,6 @@
 # Signed documents plan: Form 101 and the contract under one signature, one PDF per worker
 
-**Status:** planned, not built (owner, 2026-10-20). This is the short plan; each stage gets its detailed design before it is built.
+**Status:** built — D0–D7 merged (2026-10-20); waiting on the owner: the old scan sidecars' split (`apply`, D1) and the Google Cloud rights for the docx2pdf service (D7). What is built is described in docs/contracts.md.
 
 The owner's scheme:
 - The Form 101 template never changes.
@@ -199,7 +199,7 @@ The owner's rule: when a worker moves to another firm, everything under the old 
 
 - The firms stay apart. Only the server copies, only after the worker's own signed approval, and each copy is logged (who, when, from which firm to which).
 
-## D7 — Word templates taken directly (owner, 2026-10-20) — built (2026-10-20); the service's first deploy needs the owner's Google Cloud rights
+## D7 — Word templates taken directly (owner, 2026-10-20) — built and merged (2026-10-20); the service's first deploy waits for the owner's Google Cloud rights (the deploy's service account needs Cloud Run Admin, Cloud Build Editor, Artifact Registry Administrator — it creates the image repository on the first deploy — and Service Account User; then re-run *Deploy the docx2pdf service*)
 
 Built as docs/contracts.md → Word templates. The service is `services/docx2pdf`, deployed by its own workflow; until its address is in `appConfig/docx2pdf`, a Word file is refused with the way out (save it as PDF in Word).
 
