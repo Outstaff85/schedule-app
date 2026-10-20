@@ -222,12 +222,25 @@ def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None
             part = {"path": path, "name": name, "size": len(data)}
             ref.update({"parts." + which: part})
         cur = ref.get().to_dict() or {}
-        if all(k in (cur.get("parts") or {}) for k in signing.WHICH) and cur.get("status") == "signing":
-            ref.update({"status": "done", "doneAt": _iso(_now())})
+        # The two builds may finish at the same moment and both see both parts: only the one that creates
+        # the log entry (transferLog/<request id> — create() fails when it is there) makes the copy.
+        if all(k in (cur.get("parts") or {}) for k in signing.WHICH) and cur.get("status") == "signing" and _claim(db, rid, cur):
             _copy(db, bucket, rid, dict(cur, status="done"), worker)
+            ref.update({"status": "done", "doneAt": _iso(_now())})
             cur["status"] = "done"
         return {"ok": True, "part": part, "status": cur.get("status")}
     return {"error": "Unknown action"}
+
+
+def _claim(db, rid, req):
+    """The copy's one-time lock and its log entry: True for the one call that creates it."""
+    try:
+        db.collection("transferLog").document(rid).create({
+            "at": _iso(_now()), "requestId": rid, "fromTenant": req["fromTenant"], "fromWorker": req["fromWorker"],
+            "toTenant": req["toTenant"], "newWorker": req["newWorkerId"], "askedBy": req.get("askedBy")})
+        return True
+    except Exception:  # already there: the other build makes the copy
+        return False
 
 
 def _copy(db, bucket, rid, req, worker):
@@ -260,5 +273,3 @@ def _copy(db, bucket, rid, req, worker):
     db.collection("tenants").document(to_t).collection("workers").document(new_id).set(rec)
     db.collection("tenants").document(req["fromTenant"]).collection("workers").document(req["fromWorker"]).update(
         {"status": "fired", "movedToOtherFirm": True, "movedAt": now})
-    db.collection("transferLog").add({"at": now, "requestId": rid, "fromTenant": req["fromTenant"], "fromWorker": req["fromWorker"],
-                                      "toTenant": to_t, "newWorker": new_id, "askedBy": req.get("askedBy")})

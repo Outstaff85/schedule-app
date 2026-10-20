@@ -126,7 +126,7 @@ A copy, with the worker's signed consent (`functions/transfer.py`, through `sign
 3. **The copy** (`_copy`, only after both signed PDFs are built): a new worker record in the new firm with the personal and family fields only (`PERSONAL`: names, ID / passport, its expiry, birth date, sex, marital status, health fund, phone, address, income types, children, spouse), the scanned pages and the signature (copied in Storage), the signed Form 101 (`docUrl`) and contract (`docs`, `signed`), a new punch-link token, the start date = the day of signing, `movedFromOtherFirm`. Nothing else: no hours, pay, rates, clients, supplier, HR, token or notes.
 4. **The old firm** keeps the worker as they were — the record, the documents, the hours — set Inactive (`status: fired`) with `movedToOtherFirm` (the card's chip **Moved to another firm**), without the new firm's name.
 
-Each copy is logged in `transferLog` (when, the request, from which firm and worker to which firm and new worker, who asked). `transferRequests` and `transferLog` are top-level collections only the functions read and write.
+Each copy is logged in `transferLog/<request id>` (when, the request, from which firm and worker to which firm and new worker, who asked); creating that entry is also the copy's one-time lock — the two builds may finish together, and only the one that creates it makes the copy (`_claim`). `transferRequests` and `transferLog` are top-level collections only the functions read and write.
 
 Tests: `tests/auth/test_transfer.py` (the new firm learns nothing, only its admin asks, not its own worker; the worker signs and only the personal data is copied, the old firm keeps the worker Inactive, the log; declined or expired copies nothing) and the browser check "transfer".
 

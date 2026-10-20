@@ -150,6 +150,11 @@ class Doc:
     def delete(self):
         self.db.data.pop(self.path, None)
 
+    def create(self, d):
+        if self.path in self.db.data:
+            raise ValueError("Already exists")
+        self.db.data[self.path] = dict(d)
+
     def collection(self, name):
         return Coll(self.db, self.path + (name,))
 
