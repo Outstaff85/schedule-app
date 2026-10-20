@@ -312,6 +312,13 @@ def outcome_dir(v):
     return s if _attempt_id(parts[4]) else None
 
 
+def attempts_wanted(tenant_id, collects):
+    """Whether a login's attempts are kept: not for a firm whose full-document collection the
+    super-admin turned off (Admin → Scanner — the attempts are photos of its documents too); a login
+    with no firm (the super-admin in the lab) always."""
+    return not tenant_id or bool(collects)
+
+
 def attempts_since(stats):
     return int(stats.get("attemptsSince") or 0)
 
