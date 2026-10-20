@@ -715,11 +715,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const files = [new File([Uint8Array.from(atob(jpg), c => c.charCodeAt(0))], 'a.jpg', {type: 'image/jpeg'}), new File([pdf], 'b.pdf', {type: 'application/pdf'})];
     const out = [];
     try { for await (const [url, tag] of fw.pickedPictures(files)) out.push(tag + ' ' + url.slice(0, 10)); } catch (e) { out.push('error ' + e.message); }
-    return {out, accept: input.accept, multiple: input.multiple, button: input.parentElement.textContent.trim()};
+    // the other documents on a photo must have a document's shape: this frame (two corners on one point,
+    // from a real scan) was cut into a smeared third page; a skewed card is still one
+    const shape = [fw.docShape([[0.255, 0.162], [0.997, 0], [0.248, 0.425], [0.255, 0.163]], 1002, 1045),
+      fw.docShape([[0.687, 0.461], [0.936, 0.462], [0.938, 0.795], [0.537, 0.803]], 1600, 1200)];
+    return {out, shape, accept: input.accept, multiple: input.multiple, button: input.parentElement.textContent.trim()};
   }, [JPG, PDF2]);
   ok(picked.multiple && /application\/pdf/.test(picked.accept) && picked.button === 'Photo or PDF…'
     && picked.out.join('|') === 'file 1 of 2 blob:http:|file 2 of 2, page 1 of 2 data:image|file 2 of 2, page 2 of 2 data:image',
     'scan window: the lab\'s Photo or PDF… takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+  ok(picked.shape.join() === 'false,true', 'scan window: another document found on a photo needs a document\'s shape (no triangle, no sliver) ' + JSON.stringify(picked.shape));
   ok(kept.hidden && kept.same && kept.shown && kept.over && kept.tap && kept.closed,
     'scan window: the lab page is kept loaded after the window closes and shown again over the window\'s slot (no new load), a tap there reaching it ' + JSON.stringify(kept));
   // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
