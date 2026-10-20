@@ -26,7 +26,10 @@ The owner's scheme:
 | Form 101 and the contract | the signed PDFs, built once at signing | Storage, the worker's documents |
 | The one PDF of everything | not kept: put together on request | — |
 
-## D1 — scans as separate JPEG pages
+## D1 — scans as separate JPEG pages — built (2026-10-20); the old sidecars' split waits for the owner's yes
+
+Built as docs/contracts.md → Scanned pages: every new save stores pages and the signature as files; a worker still on the old sidecar is read from it, and split into pages on its next save. The one-time split of every old sidecar (`scripts/migrate/scan_pages.py`, the workflow *Split the old scan sidecars into pages*) is run as `dry-run` first; `apply` and `cleanup` only with the owner's yes.
+
 
 - Every scanned page is stored as its own JPEG, listed in the worker record with its kind (`id_front`, `id_back`, `sefach`, `passport`, `other`) and date.
 - This replaces the sidecar JSON with the pictures inside, which is a third heavier and has to be loaded whole.

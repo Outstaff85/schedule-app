@@ -33,7 +33,7 @@ export async function readScan(pages: InPage[], progress: (label: string, pct: n
   last = res.pages;
   lastRead = { record: res.record, reads: res.pages.filter(p => !p.primary).map(p => p.read) };
   const front = res.pages.find(p => p.primary)!;
-  window.__aiScanImage = { b64: front.b64, mediaType: front.mediaType };
+  window.__aiScanImage = { b64: front.b64, mediaType: front.mediaType, kind: front.kind };
   window.__aiPacketOtherPages = res.pages.filter(p => !p.primary).map(p => ({ b64: p.b64, mediaType: p.mediaType, kind: p.kind, contract: p.contract }));
   return { record: res.record, reads: res.pages.filter(p => !p.primary).map(p => p.read) };
 }

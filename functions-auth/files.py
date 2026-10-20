@@ -7,7 +7,13 @@ decide who may write). Reading the sidecar back and deleting a file go
 through here instead: a browser download from the bucket needs a CORS setup
 on the bucket, which this way never has to be made by hand.
 
+  loadWorkerPages   {fileIds: [<storage path>, …]} -> {ok, pages: [{fileId, b64, mediaType}], missing: [<path>]}
+                    the worker's scanned pages (pages/, one JPEG each) and signature
+                    (signature/, a PNG) — docs/contracts.md → Scanned pages; at most
+                    MAX_PAGES at once, each path checked like any file
   loadWorkerAssets  {fileId: <storage path>} -> {ok, scanB64, scanMediaType, sigPng, extraPages}
+                    the old sidecar (one JSON with the pictures inside), read until the
+                    worker's sidecar is split into pages (scripts/migrate/scan_pages.py)
   deleteWorkerDoc   {fileId: <storage path>} -> {ok: true}
 
 A fileId is the object's path, tenants/<tenantId>/workers/...; only a path in
@@ -19,9 +25,11 @@ delete_tenant_files(bucket, tenant_id) removes every file of a firm; main.py
 calls it after users_admin deleteTenant.
 """
 
+import base64
 import json
 
-ACTIONS = ("loadWorkerAssets", "deleteWorkerDoc")
+ACTIONS = ("loadWorkerAssets", "loadWorkerPages", "deleteWorkerDoc")
+MAX_PAGES = 20
 MANAGER_ROLES = ("superadmin", "tenant_admin", "staff", "hr")
 
 E_NOT_FIRM = "The file doesn't belong to this firm"
@@ -33,6 +41,16 @@ E_NO_RIGHT = "No rights to workers"
 def _path_ok(path, tenant_id):
     return (bool(tenant_id) and path.startswith("tenants/" + tenant_id + "/workers/")
             and ".." not in path.split("/") and "//" not in path)
+
+
+def _page_path_ok(path):
+    """A scanned page or a signature: tenants/<t>/workers/<w>/{pages|signature}/<file>."""
+    parts = path.split("/")
+    return len(parts) == 6 and parts[4] in ("pages", "signature")
+
+
+def _media_type(path):
+    return "image/png" if path.lower().endswith(".png") else "image/jpeg"
 
 
 def _workers_writer(caller):
@@ -51,15 +69,40 @@ def run(bucket, caller, body, worker_hr=None):
         return {"error": "Unknown action"}
     if caller.get("role") not in MANAGER_ROLES:
         return {"error": "Not available for this role"}
+
+    def allowed(path):
+        if not _path_ok(path, caller.get("tenantId")):
+            return False
+        if caller.get("role") == "hr" and caller.get("own"):
+            wid = path.split("/")[3] if len(path.split("/")) > 3 else ""
+            if not worker_hr or not wid or worker_hr(wid) != caller.get("uid"):
+                return False
+        return True
+
+    if action == "loadWorkerPages":
+        ids = body.get("fileIds")
+        if not isinstance(ids, list) or not ids:
+            return {"error": E_NO_FILE}
+        if len(ids) > MAX_PAGES:
+            return {"error": "Too many files"}
+        ids = [str(x or "") for x in ids]
+        if not all(_page_path_ok(p) and allowed(p) for p in ids):
+            return {"error": E_NOT_FIRM}
+        pages, missing = [], []
+        for p in ids:
+            blob = bucket.blob(p)
+            if not blob.exists():
+                missing.append(p)
+                continue
+            pages.append({"fileId": p, "b64": base64.b64encode(blob.download_as_bytes()).decode("ascii"),
+                          "mediaType": _media_type(p)})
+        return {"ok": True, "pages": pages, "missing": missing}
+
     path = str(body.get("fileId") or "")
     if not path:
         return {"error": E_NO_FILE}
-    if not _path_ok(path, caller.get("tenantId")):
+    if not allowed(path):
         return {"error": E_NOT_FIRM}
-    if caller.get("role") == "hr" and caller.get("own"):
-        wid = path.split("/")[3] if len(path.split("/")) > 3 else ""
-        if not worker_hr or not wid or worker_hr(wid) != caller.get("uid"):
-            return {"error": E_NOT_FIRM}
     blob = bucket.blob(path)
     if action == "deleteWorkerDoc":
         if not _workers_writer(caller):

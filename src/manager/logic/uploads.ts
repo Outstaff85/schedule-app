@@ -15,19 +15,33 @@ export interface UploadPage extends UploadImage { text: string; fileName: string
 
 export const UPLOAD_MAX_DIM = 1800;
 export function downscaleForUpload(b64: string, mediaType: string): Promise<UploadImage> {
+  return shrinkImage(b64, mediaType, UPLOAD_MAX_DIM, 0.9, false);
+}
+// A scanned page kept in Storage (docs/contracts.md → Scanned pages): a JPEG
+// at most PAGE_MAX_DIM on the long side (~300–600 KB) — enough to print it in
+// a PDF at 200 dpi and to read it again.
+export const PAGE_MAX_DIM = 2000;
+export function pageForStorage(b64: string, mediaType: string): Promise<UploadImage> {
+  return shrinkImage(b64, mediaType, PAGE_MAX_DIM, 0.85, true);
+}
+// Shrinks an image to maxDim on its long side, as a JPEG; never upscales.
+// A smaller image stays as it is, unless `jpeg` asks for a JPEG whatever it
+// was. Any failure falls through to the original image.
+function shrinkImage(b64: string, mediaType: string, maxDim: number, quality: number, jpeg: boolean): Promise<UploadImage> {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
       try {
         const iw = img.naturalWidth, ih = img.naturalHeight;
-        const scale = Math.min(1, UPLOAD_MAX_DIM / Math.max(iw, ih, 1));
-        if (scale >= 1) { resolve({b64, mediaType}); return; }
+        const scale = Math.min(1, maxDim / Math.max(iw, ih, 1));
+        if (scale >= 1 && (!jpeg || mediaType === 'image/jpeg')) { resolve({b64, mediaType}); return; }
         const cv = document.createElement('canvas');
         cv.width = Math.round(iw * scale); cv.height = Math.round(ih * scale);
         const ctx = cv.getContext('2d')!;
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
         ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, cv.width, cv.height);
-        resolve({b64: cv.toDataURL('image/jpeg', 0.9).split(',')[1], mediaType: 'image/jpeg'});
+        resolve({b64: cv.toDataURL('image/jpeg', quality).split(',')[1], mediaType: 'image/jpeg'});
       } catch { resolve({b64, mediaType}); }
     };
     img.onerror = () => resolve({b64, mediaType});

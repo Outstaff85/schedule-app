@@ -152,6 +152,8 @@ export type DatedChange = { workerId: string; date: string; shift: DayShift | nu
 
 /** A worker record as stored (docs/workers.md → Data: the worker record); the window reads and writes these fields. */
 export type WorkerDoc = { id: string; type: string; name?: string; fileId?: string; url?: string; mediaType?: string; uploadedAt?: string; expiry?: string };
+/** A scanned page kept as its own JPEG in Storage (docs/contracts.md → Scanned pages). */
+export type ScanPage = { fileId: string; kind: 'id_front' | 'id_back' | 'sefach' | 'passport' | 'other'; primary?: boolean; savedAt: string };
 export type Child = { name: string; idNo: string; dob: string };
 export type WorkerRecord = {
   id: string;
@@ -193,7 +195,11 @@ export type WorkerRecord = {
   spouseIncome?: string;
   docUrl?: string;
   docSavedAt?: string;
+  /** the old scan sidecar (one JSON with the pictures), read until it is split into `scanPages` */
   assetsFileId?: string;
+  scanPages?: ScanPage[];
+  sigFileId?: string;
+  sigSavedAt?: string;
   docs?: WorkerDoc[];
   /** display only, from a scan: the ID checksum failed / fields whose two reads differ */
   idChecksumOk?: boolean;
@@ -291,7 +297,7 @@ export type WorkerBridge = {
   removeDocs(workerId: string, docIds: string[]): void;
   /** a scan field found from the card: saved on the worker (`name` rebuilt) */
   setScanField(workerId: string, key: string, value: string): void;
-  /** rebuilds the Form 101 from the stored sidecar (`regenerateWorkerDoc`) */
+  /** rebuilds the Form 101 from the stored pages and signature (`regenerateWorkerDoc`) */
   regenerateDoc(workerId: string, sig?: string | null): Promise<boolean>;
   /** searches the worker's scan (`findScanFields`; editId null: the scan in memory of a new worker) */
   findScanFields(editId: string | null, keys: string[], docType: string): Promise<Record<string, ScanHit> | null>;

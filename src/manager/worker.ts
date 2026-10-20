@@ -45,6 +45,10 @@ export function workerDocId(w: WorkerRecord): string {
   const m = LEGACY_DOC_IN_ADDRESS.exec(w.address || '');
   return m ? m[1] : '';
 }
+/** The worker has a stored scan: its pages (`scanPages`), or the old sidecar not yet split into pages. */
+export function workerHasScan(w: Pick<WorkerRecord, 'scanPages' | 'assetsFileId'> | null | undefined): boolean {
+  return !!w && ((Array.isArray(w.scanPages) && w.scanPages.length > 0) || !!w.assetsFileId);
+}
 export function workerAddress(w: WorkerRecord): string {
   const addr = w.address || '';
   if (w.docId) return addr;
