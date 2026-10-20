@@ -39,6 +39,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `scanPages` | the scanned pages, each its own JPEG in Storage: `[{fileId, kind, primary?, savedAt}]` — `kind` one of `id_front`, `id_back`, `sefach`, `passport`, `other`; the ID card or passport first (`primary`) ([contracts.md](contracts.md) → Scanned pages) |
 | `sigFileId`, `sigSavedAt` | the signature, a PNG in Storage, and when it was stored |
 | `assetsFileId` | the old scan sidecar (scan + signature + extra pages in one JSON), read until it is split into `scanPages` (`scripts/migrate/scan_pages.py`); gone once the worker's pages are saved again |
+| `contractCategory`, `contractTemplateId`, `contractTerms` | the contract's category, a template picked for this worker alone (empty: the category's default), the worker's own terms for `{{terms_1}}`…`{{terms_5}}` (empty ones at the end dropped) — [contracts.md](contracts.md) → The worker's contract |
 | `assetsMigratedFrom` | the sidecar a worker's pages were split from, until the migration's cleanup deletes it |
 | `docHasSignature`, `docExtraPages` | written by `aiFillForm101()` on each successful save |
 | `docUploadFailed` | last PDF upload failed |
@@ -118,6 +119,7 @@ One form for add, edit and post-scan review (`WorkerEditor`, React Hook Form; 68
   - **Weekly schedule.** Behind a toggle. It is only written on save if it was opened: a new worker gets all days off, an existing one keeps their shifts.
   - **Contract-expiry warning.** Behind a toggle; opening it turns the warning on (`expiryEnabled`); it says in red when the start date is empty.
   - **Spouse and children.** Two buttons side by side, each opening a framed panel: the spouse fields and the children rows (the name across, then ID / passport, date of birth and delete). The buttons show "✓" for a filled-in spouse and the number of children. Picking "married" opens the spouse panel.
+  - **Contract** (its own section, between Documents and Form 101; `ContractSection`, `src/manager/WorkerContract.tsx`): the contract's category (`#wContractCategory`, the firm's categories offered), the template (`#wContractTemplate`: the category's default, or another for this worker alone), the worker's own terms (`#wTerms1`…`#wTerms5`) and, for a saved worker, **A contract for this worker only** (the upload window of Contract templates, the template kept as the worker's own and picked). The firm's templates load when the section is first opened ([contracts.md](contracts.md) → The worker's contract).
   - **Signature, notes.** No colour picker — a new worker gets the next `WORKER_COLORS` colour (`blankWorkerDefaults`), an edited one keeps its colour; the signature pad ([form101.md](form101.md)); notes; a new punch-link token (`regenerateWorkerToken(wid)`: asks, saves, the window shows the new link).
 
 ### Saving (`saveWorker()`, `src/manager/worker-save.ts`)

@@ -10,6 +10,8 @@
 export const FORM101_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/fill_form_101';
 // The scanner's training examples and their counts (docs/scan-plan.md → S6).
 export const SCAN_FEEDBACK_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/scan_feedback';
+// Contract templates: made light, their marks, filled (functions/contracts.py; docs/contracts.md).
+export const CONTRACTS_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/contract_templates';
 // The AI reads (firestore-backend.js sends them).
 export const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
 export const USERS_ADMIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';

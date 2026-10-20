@@ -10,7 +10,7 @@ import * as React from 'react';
 import {
   IconAlertCircle, IconAlertTriangle, IconBuildingSkyscraper, IconClipboardText, IconDownload, IconEdit, IconHistory, IconMapPin,
   IconStopwatch, IconTrash, IconUsers,
-  IconAdjustmentsHorizontal, IconFlask,
+  IconAdjustmentsHorizontal, IconFlask, IconFileText,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -40,11 +40,13 @@ import { FirmsPane } from './Firms';
 import { UsersPane } from './Users';
 import { LogsPane } from './Logs';
 import { ScanAdmin } from './ScanAdmin';
+import { ContractTemplatesPane } from './ContractTemplates';
 
 const PANES: { k: AdminPane; label: string; icon: React.ReactNode }[] = [
   { k: 'punchlog', label: 'Punch Log', icon: <IconClipboardText /> },
   { k: 'firms', label: 'Firms', icon: <IconBuildingSkyscraper /> },
   { k: 'users', label: 'Users', icon: <IconUsers /> },
+  { k: 'contracts', label: 'Contract templates', icon: <IconFileText /> },
   { k: 'errors', label: 'Errors', icon: <IconAlertCircle /> },
   { k: 'timings', label: 'Timings', icon: <IconStopwatch /> },
   { k: 'scanner', label: 'Scanner', icon: <IconAdjustmentsHorizontal /> },
@@ -54,13 +56,14 @@ const SUBTITLES: Record<AdminPane, string> = {
   punchlog: 'Punch log — view, edit and export all attendance records',
   firms: 'Firm details — the employer block printed on every Form 101',
   users: 'Staff, HR and supplier logins for this firm',
+  contracts: "The firm's contracts, filled with each worker's data and signed with Form 101",
   errors: 'Client-side errors by period, every firm',
   timings: 'How long login, app open and scans take (real devices, every firm)',
   scanner: "The scanner's own models: their training, how they are used, the documents collected",
 };
 /** The large tiles while no section is chosen (the UI audit): the three sections an owner uses, and
  * the super-admin's Scanner (its bell notices open it too). */
-const TILES: AdminPane[] = ['punchlog', 'firms', 'users', 'scanner'];
+const TILES: AdminPane[] = ['punchlog', 'firms', 'users', 'contracts', 'scanner'];
 
 // The filters and the view stay while the app is open (the tab is drawn again on every render()).
 let keptFilters: LogFilters = NO_FILTERS;
@@ -84,7 +87,7 @@ export function Admin({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }
         <div className="grid gap-x-3 min-[701px]:grid-cols-3" data-testid="admin-tiles">
           {PANES.filter(p => TILES.includes(p.k) && snap.panes.includes(p.k)).map(p => (
             <Plate key={p.k} data-testid="admin-tile" data-k={p.k} size="lg" className="mb-2" icon={p.icon}
-              color={p.k === 'firms' && snap.firmIncomplete ? 'var(--warn)' : p.k === 'punchlog' ? 'var(--info)' : p.k === 'firms' ? 'var(--ok)' : 'var(--accent)'}
+              color={p.k === 'firms' && snap.firmIncomplete ? 'var(--warn)' : p.k === 'punchlog' || p.k === 'contracts' ? 'var(--info)' : p.k === 'firms' ? 'var(--ok)' : 'var(--accent)'}
               title={tr(p.label)} sub={<span className="block whitespace-normal">{tr(SUBTITLES[p.k])}</span>}
               onOpen={() => api.setAdminPane(p.k)} />
           ))}
@@ -101,6 +104,7 @@ export function Admin({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }
       {pane === 'users' && <UsersPane snap={snap} api={api} />}
       {(pane === 'errors' || pane === 'timings') && <LogsPane key={pane} snap={snap} api={api} />}
       {pane === 'scanner' && <ScanAdmin snap={snap} api={api} />}
+      {pane === 'contracts' && <ContractTemplatesPane api={api} />}
     </div>
   );
 }

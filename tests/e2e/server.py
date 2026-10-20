@@ -14,6 +14,22 @@ _orig_bucket = _st.bucket
 main.storage.bucket = lambda name=None: _orig_bucket('demo-schedule.appspot.com')
 from flask import Flask
 app = Flask(__name__)
+# The contract templates (functions/contracts.py — the us-central1 codebase, without its
+# deploy-only imports): the same gate as functions/main.py, the emulators' Firestore and Storage.
+sys.path.append(os.path.join(_HERE, '..', '..', 'functions'))
+import contracts as _contracts, gate as _gate
+def contract_templates(request):
+    body = request.get_json(silent=True, force=True) or {}
+    if body.get('ping') is True:
+        return app.response_class(json.dumps({'ok': True, 'warm': True}), mimetype='application/json')
+    status, error, claims = _gate.claims_of(request.headers, lambda t: main.auth.verify_id_token(t, check_revoked=True))
+    if status:
+        return app.response_class(json.dumps({'error': error}), status=status, mimetype='application/json')
+    try:
+        out = _contracts.run(DB, _orig_bucket('demo-schedule.appspot.com'), claims, body)
+    except ValueError as e:
+        return app.response_class(json.dumps({'error': str(e)}), status=400, mimetype='application/json')
+    return app.response_class(json.dumps(out, default=str), mimetype='application/json')
 
 # Anthropic stand-in for aiFindField: finds the city (ישוב), nothing else.
 CALLS = []
@@ -118,6 +134,16 @@ class H(BaseHTTPRequestHandler):
                 open(os.path.join(out, 'client-signed-month.pdf'), 'wb').write(pdf)
             status, data = 200, json.dumps({'signed': sg, 'size': len(pdf), 'head': pdf[:8].decode('latin1'), 'pages': pdf.count(b'/Type /Page /'),
                                             'jpegs': pdf.count(b'/Filter /DCTDecode')}, default=str).encode()
+        elif self.path == '/contractPdf':
+            # A contract template with marks typed in its text (docs/contracts.md): a Hebrew line, a Latin one, a typo.
+            import pymupdf
+            doc = pymupdf.open(); pg = doc.new_page()
+            pg.insert_htmlbox(pymupdf.Rect(40, 60, 550, 160), '<p dir="rtl" style="font-size:12pt">אני {{full_name}} ת.ז. {{id}}' + '&nbsp;' * 12 + 'מסכים. {{tpyo}}</p>')
+            pg.insert_text((50, 250), 'Name: {{given}} {{surname}}   Signature: {{signature}}   Date: {{sign_date}}', fontsize=12)
+            status, data = 200, doc.tobytes()
+        elif self.path == '/contractTemplates':
+            rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream()]
+            status, data = 200, json.dumps(rows, default=str).encode()
         elif self.path.startswith('/lang/'):
             DB.collection('tenants').document(T1).set({'language': self.path[6:]}, merge=True)
             status, data = 200, b'{"ok":true}'
@@ -125,7 +151,7 @@ class H(BaseHTTPRequestHandler):
             docs = [d.to_dict() for d in DB.collection('tenants').document(T1).collection('punches').stream()]
             status, data = 200, json.dumps({'n': len(docs), 'ids': sorted(d['id'] if isinstance(d.get('id'), str) else str(d.get('id')) for d in docs), 'days': [d.get('day') for d in docs]}).encode()
         else:
-            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read, '/weather': main.weather}[self.path]
+            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read, '/weather': main.weather, '/contract_templates': contract_templates}[self.path]
             hdr = {'Content-Type': 'application/json'}
             if self.headers.get('Authorization'): hdr['Authorization'] = self.headers['Authorization']
             with app.test_request_context('/', method='POST', data=raw, headers=hdr):

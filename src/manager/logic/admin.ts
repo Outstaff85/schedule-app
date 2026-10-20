@@ -56,10 +56,13 @@ export function loadFirmsCache(): Rec[] | null { try { const v = JSON.parse(loca
 // Punch Log for everyone who reaches the tab (it needs the `workers`
 // section); Firms and Users for an owner or a super-admin; Errors and
 // Timings for a super-admin (gated server-side too).
-export function adminPanes(): ('punchlog' | 'firms' | 'users' | 'errors' | 'timings' | 'scanner')[] {
+export function adminPanes(): ('punchlog' | 'firms' | 'users' | 'contracts' | 'errors' | 'timings' | 'scanner')[] {
   const s = getSession(); if (!s) return [];
   const isSuper = s.role === 'superadmin', isAdminRole = isSuper || s.role === 'tenant_admin';
-  return [...(['punchlog'] as const), ...(isAdminRole ? (['firms', 'users'] as const) : []), ...(isSuper ? (['errors', 'timings', 'scanner'] as const) : [])];
+  // Contract templates: the firm's admin, or a super-admin inside a firm (docs/contracts.md).
+  const contracts = s.role === 'tenant_admin' || (isSuper && !!s.viewingTenantId);
+  return [...(['punchlog'] as const), ...(isAdminRole ? (['firms', 'users'] as const) : []), ...(contracts ? (['contracts'] as const) : []),
+    ...(isSuper ? (['errors', 'timings', 'scanner'] as const) : [])];
 }
 /** The firm whose logins the Users section manages. */
 export function activeTenantIdForAdmin(): string | null {

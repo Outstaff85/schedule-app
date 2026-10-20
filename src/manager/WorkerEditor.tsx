@@ -1,7 +1,7 @@
 // The worker window (docs/workers.md → Worker modal), drawn in React into the
 // page's #workerModal (stage 6c-2): one form for add, edit and the review after
 // a scan, as section plates in the owner's fixed order — Person, Address,
-// Work, Documents, Form 101, Access. Form 101 labels and values are Hebrew; a
+// Work, Documents, Contract (docs/contracts.md), Form 101, Access. Form 101 labels and values are Hebrew; a
 // foreign passport's names stay Latin. No Save button: the page's overlay
 // saves it when closed by a tap outside (`__onUserClose` → saveWorker, here
 // `save`). The scan fields a scan left empty are framed; a tap searches the
@@ -36,8 +36,9 @@ import { Line, TodayPin } from './pieces';
 import { hoursShort } from './today';
 import {
   DAYS_EN, DAYS_HE, HEALTH_FUND_LABELS, INCOME_LABELS, MARITAL_LABELS, OTHER_INCOME_LABELS, SCAN_FIELDS, SEX_LABELS, SPOUSE_INCOME_LABELS,
-  WORKER_DOC_TYPES, fmtDMY, formOf, type FormKey, type WorkerForm,
+  WORKER_DOC_TYPES, contractTerms, fmtDMY, formOf, type FormKey, type WorkerForm,
 } from './worker';
+import { ContractSection } from './WorkerContract';
 import { saveWorker, type EditorState } from './worker-save';
 
 /** A scan field's mark: empty and searchable, searching, not found, "check" (two reads differ), found (green for a moment). */
@@ -474,6 +475,13 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
                   act={x ? <Button size="sm" onClick={() => api.openDocUpload(w.id)}>{tr('Renew')}</Button> : null} />; })}
               <Button className="mt-1 justify-self-start" onClick={() => api.openDocUpload(w.id)}><IconUpload className="size-4" />{tr('Add document')}</Button>
             </> : <div className="text-[13px] text-ink-2">{tr('Documents are added on the worker card after the worker is saved.')}</div>}
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="contract" data-sec="contract" color={v.contractTemplateId || v.contractCategory || contractTerms(v).length ? 'var(--ok)' : 'var(--neutral)'}>
+          <AccordionTrigger icon={<IconFileCertificate />} summary={summary([v.contractCategory, ...contractTerms(v)])}>{tr('Contract')}</AccordionTrigger>
+          <AccordionContent {...body('contract')}>
+            <ContractSection v={v} set={set} workerId={editId} opened={open.includes('contract')} toast={m => api.toast(m)} />
           </AccordionContent>
         </AccordionItem>
 

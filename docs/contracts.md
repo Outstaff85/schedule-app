@@ -29,6 +29,44 @@ Once, by the workflow **Split the old scan sidecars into pages** (`.github/workf
 
 `apply` and `cleanup` change real workers' data: they are run only with the owner's yes, after a `dry-run`. Tests: `tests/auth/test_migrate_pages.py`.
 
-### Tests
+### Tests (D1)
 
 `tests/auth/test_files.py` (`loadWorkerPages`: one call, a missing page, only pages and signatures of the firm, an own-workers HR), `tests/auth/test_migrate_pages.py`, and the browser test "scan pages" (`tests/e2e/main.test.js`: a new worker from a scan stores its pages and signature, the card's field search and a rebuild read them back, a rescan keeps the stored ספח, a worker on the old sidecar is split on its rebuild, deleting the worker deletes them).
+
+## Contract templates (D2)
+
+A firm's contract is a PDF with **marks** typed in its text: `{{given}}`, `{{id}}`, `{{signature}}`… — Latin letters in double braces, no spaces (the full list: `MARKS` in `functions/contracts.py` and `src/manager/contracts.ts`, as docs/contracts-plan.md → D2 → The marks). In Word the marks are typed as plain text and the file saved with File → Save as → PDF; blanks after a mark (spaces up to the next letter) are the room a long value may take.
+
+### The server (`functions/contracts.py`, the `contract_templates` function)
+
+- **Marks** (`find_marks`): a mark is its name with two braces on each side, found character by character, so a Hebrew line whose text the PDF keeps in visual order (the braces come out mirrored, apart from the name) is read too. Each is kept with its place, the text's size and the line's direction (Hebrew → right to left). A name in braces that is no mark is listed as unknown (a typo).
+- **Made light** (`light`): `subset_fonts` (only the letters each font needs), `rewrite_images` (pictures over 200 dpi down to 200, JPEG 80), the XML metadata dropped, saved with `garbage=4`, `deflate`, `clean` (when that wins nothing, the cleaned original or the file as it came). Then checked: every page rendered at 100 dpi has a mean difference of at most 6 per channel (14 on a page with a picture) from the original, and every mark is still found — otherwise the upload is refused with the reason and nothing is stored. A page with no text and a picture on most of it is a **picture page** (`picture_pages`): its marks are placed by hand. Over 25 MB or 30 pages: refused.
+- **Admin → Errors:** a refused upload, and a light template still over 1 MB (`HEAVY_BYTES`, with the reasons: pages that are pictures, whole fonts, big pictures), write an `errors` entry (`page: contracts`, the firm, the name, both sizes); the upload itself shows no warning beyond "still heavy".
+- **Filling** (`fill(template, values, placed, signature)`): each found mark is whited out (a redaction that keeps pictures and lines) and its value written in its place with the Heebo font — Hebrew through `bidi.get_display` —, anchored right in a Hebrew line and left otherwise, shrunk (to 70 % of the text's size at most) to fit the mark and the blank after it; `{{signature}}` gets the signature PNG fitted above the mark (blank without one). A mark placed by hand (`placed`: page, x, y, w, h in points from the page's top left) is filled the same way, without whiting out. An empty value is printed empty.
+- **Actions** (`run`, a manager-side login of the firm — `functions/gate.py`; a super-admin in the firm it views, `asTenantId`):
+
+  | Action | Who | Does |
+  |---|---|---|
+  | `list` `{workerId?}` | any manager login | the firm's templates (not a worker's own, unless that worker's id is given), sorted by category and name; `canManage` |
+  | `file` `{id, sample?}` | any manager login | the template's PDF, or its sample filled with made-up data (`SAMPLE_VALUES`, a made-up signature) |
+  | `prepare` `{pdfBase64, name}` | owner, super-admin | made light and checked → `{lightBase64, sampleBase64, origSize, lightSize, marks, unknown, pictures, pages: [{w, h, png}], heavy}` (the pages small, for placing marks by hand) |
+  | `sample` `{pdfBase64, placed}` | owner, super-admin | the sample again, with the marks placed by hand |
+  | `save` `{pdfBase64, name, category, placed, origSize, workerId?, replaceId?}` | owner, super-admin | the light PDF to Storage `tenants/<t>/contracts/<id>/<ms>.pdf` and the record `tenants/<t>/contractTemplates/<id>`; the first of a category is its default; a worker's own is never a default; `replaceId` = a new version (`version` + 1, the old file deleted) |
+  | `update` `{id, name?, category?, isDefault?}` | owner, super-admin | rename, another category (no longer the default), make the category's default (the old one stops being it) |
+  | `delete` `{id}` | owner, super-admin | the record and its file; a default passes to another template of its category |
+
+- No client reads or writes `contractTemplates` or `contracts/` (no rule grants them): everything goes through the function.
+
+### Admin → Contract templates (`src/manager/ContractTemplates.tsx`)
+
+- A `Plate` per firm template (`PagedList`): the name (and its version from 2 on), the category and **Default** chips, the size, the date added, how many signed it (`signedCount`, counted from D3), unknown marks in amber. A tap opens its sample (`file` with `sample`, in a new tab); a double click / ✎ renames it; ⋮: Edit (the name), Category, Make default (when it is not), Replace file, Delete (the Undo snack, then `delete`).
+- **New template** (`.og-new`) picks a PDF → the upload window (`UploadWindow`): "Making the file light…", then both sizes ("Made light: 2.4 MB → 180 KB"), the name and the category (the firm's categories offered), the marks found as chips, the unknown ones, the picture pages, **Open the sample**, and Save. **Place a mark by hand** shows the pages (the picture pages always): pick a mark and its width, tap where it goes; each placed mark is a chip (✕ removes it) and a box on the page, and the sample is made again.
+- Sends waiting for a signature on a deleted template (D3) are not there yet.
+
+## The worker's contract (D2)
+
+On the worker (`src/manager/WorkerContract.tsx`, the worker window's **Contract** section — docs/workers.md): `contractCategory`, `contractTemplateId` (empty: the category's default, `defaultFor`) and `contractTerms` (the worker's own `{{terms_1}}`…`{{terms_5}}`). **A contract for this worker only** uploads a template through the same window, kept with `workerId` (listed only with that worker, never a default) and picked for the worker. A changed or replaced template reaches only new signings (D3).
+
+### Tests (D2)
+
+`tests/auth/test_contracts.py` (marks in both directions and a typo; made light, same look, pictures shrunk; not a PDF refused; a picture page; filling, also by hand, and the signature; the actions — prepare, save, defaults, a worker's own, another firm sees none, staff may not manage, a new version, delete; Admin → Errors entries), and the browser check "contract templates" (`tests/e2e/main.test.js`: the upload made light with its marks — the Hebrew line too — and the typo, the sample, Save as the category's default, a tap opens the sample, the worker window's Contract section saved, ⋮ and Delete through Undo).
