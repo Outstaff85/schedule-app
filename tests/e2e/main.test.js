@@ -2299,6 +2299,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'user form: the template picked sets the role and shows its flat ticks read-only ' + JSON.stringify(uf));
   await sleep(150);
   await (await q.$('#userFormOverlay .modal')).screenshot({path: SP + '/user-form-supplier.png'}).catch(()=>{});
+  // On a phone the window stays inside the screen: a long Rights summary truncates instead of widening it.
+  await q.click('#userFormModal [data-testid="user-template"]'); await q.click('[role="option"][data-tid="supplier"]'); await sleep(150);
+  const vp0 = q.viewportSize();
+  await q.setViewportSize({width: 360, height: 800}); await sleep(300);
+  const ufw = await q.evaluate(() => { const w = document.querySelector('#userFormModal [data-testid="user-window"]'); return {sw: w.scrollWidth, cw: w.clientWidth}; });
+  await q.setViewportSize(vp0); await sleep(150);
+  ok(ufw.sw <= ufw.cw, 'user form: on a phone the window is no wider than the screen ' + JSON.stringify(ufw));
   await q.evaluate(() => closeModal('userFormOverlay'));
   // A kept login opens the portal at once: the login screen never shows on a reload.
   await p.reload({waitUntil: 'domcontentloaded'});

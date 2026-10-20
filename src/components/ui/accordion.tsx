@@ -6,8 +6,9 @@ import { Accordion as AccordionPrimitive } from 'radix-ui';
 import { IconChevronDown } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 
-function Accordion(props: React.ComponentProps<typeof AccordionPrimitive.Root>) {
-  return <AccordionPrimitive.Root data-slot="accordion" {...props} />;
+// min-w-0: in a grid or flex parent a long summary line truncates instead of widening the window.
+function Accordion({ className, ...props }: React.ComponentProps<typeof AccordionPrimitive.Root>) {
+  return <AccordionPrimitive.Root data-slot="accordion" className={cn('min-w-0', className)} {...props} />;
 }
 
 function AccordionItem({ className, color, style, ...props }: React.ComponentProps<typeof AccordionPrimitive.Item> & { color?: string }) {

@@ -36,7 +36,7 @@ The React components every new page is built from (react-migration-plan.md → s
 | `tabs.tsx` | `Tabs`, `TabsList`, `TabsTrigger` (`count` → red pill), `TabsContent` | glass pills, the underline under the active one; up to 4 |
 | `toggle-group.tsx` | `ToggleGroup`, `ToggleGroupItem` | the segmented switch of a window (Info / Docs / Hours, ₪/h or ₪/day) |
 | `button-group.tsx` | `ButtonGroup` (`attached`) | buttons that belong together |
-| `accordion.tsx`, `collapsible.tsx` | `Accordion*` (`AccordionItem color`, `AccordionTrigger icon summary badge`), `Collapsible*` | the accordion is the editor's section plates (Editors.md) |
+| `accordion.tsx`, `collapsible.tsx` | `Accordion*` (`AccordionItem color`, `AccordionTrigger icon summary badge`), `Collapsible*` | the accordion is the editor's section plates (Editors.md); its root is `min-w-0`, so a long summary line truncates instead of widening a window on a phone |
 | `tooltip.tsx`, `scroll-area.tsx` | `Tooltip*`, `TooltipProvider`, `ScrollArea`, `ScrollBar` | |
 | `popover.tsx`, `dropdown-menu.tsx` | `Popover*` (`tail`), `DropdownMenu*` (`DropdownMenuItem destructive`) | menu glass with a tail; the dropdown is the RowMenu: Delete last, in red-soft, under a `DropdownMenuSeparator` |
 | `dialog.tsx`, `drawer.tsx`, `sheet.tsx` | `Dialog*`, `Drawer*`, `Sheet*` (`side`) | windows: closed by the backdrop (and Escape; a swipe down for the Drawer); **no ✕ and no Cancel** — shadcn's close button is left out. Use `shared/Window`, which picks Drawer or Dialog |
