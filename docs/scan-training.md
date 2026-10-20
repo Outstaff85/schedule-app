@@ -36,7 +36,7 @@ On **Done**, every page the server found is sent in the background to the functi
 
 ## 2. Where it is kept
 
-`scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`, the files through `functions/datastore.py`; a manager login's ID token). **Where the files go** (docs/hf-plan.md → H7): the **private** Hugging Face bucket `OutStaff/scanner-data` (the secret `HF_DATA_TOKEN`, declared on `scan_feedback` — a token that may only write there; never public); a write the bucket refuses (out of reach, no token) goes to Firebase instead, as before H7, so nothing is lost:
+`scan_feedback` (`functions/main.py`, checks in `functions/feedback.py`, the files through `functions/datastore.py`; a manager login's ID token; its actions: `add` — the examples above, `document` — a full document (below), `attempt` / `attemptOutcome` — every scan attempt (S8, below), `stats`, `mode`, `settings` / `setSettings`). **Where the files go** (docs/hf-plan.md → H7): the **private** Hugging Face bucket `OutStaff/scanner-data` (the secret `HF_DATA_TOKEN`, declared on `scan_feedback` — a token that may only write there; never public); a write the bucket refuses (out of reach, no token) goes to Firebase instead, as before H7, so nothing is lost:
 
 | | the private bucket | Firebase (until the token is there, and what is not moved yet) |
 |---|---|---|
@@ -110,7 +110,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 |---|---|
 | page kinds, their examples, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx` (`classify`, `examples`), `src/scan/server.ts` (`sendFeedback`, `doctypeMode`, `sendScanDocument`) — the pages are cut by the lab's page (`scan/`), so they send document type examples only (`source: "page"`), no corner examples |
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
-| the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`) |
+| the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`, `scanAttemptsNotice` — S8, at 15 new attempts) |
 | the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
 | full documents (H8a) | `src/scan-process/session.ts` (`scanDocument`), `src/scan/server.ts` (`sendScanDocument`), `src/manager/worker-save.ts`, `functions/feedback.py` (`check_document`, `document_record`), `functions/main.py` (`_scan_document`, `collects_documents`) |
 | the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh` |
