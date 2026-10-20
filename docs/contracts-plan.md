@@ -141,6 +141,10 @@ The owner's rule: when a worker moves to another firm, everything under the old 
 - A `.docx` with the same marks can be uploaded as it is, as well as a PDF.
 - On upload only, it is turned into a PDF by LibreOffice (headless, Hebrew right to left) in a small Cloud Run service. The call carries the user's ID token and the firm is checked. Its first start after idle takes ~5–10 s, once per upload.
 - From then on it is a PDF template: made light, its marks found (D2). The `.docx` is not kept. The signing never waits for LibreOffice.
+- **In the background:** the upload returns at once and the template's line says **Preparing…**; the admin goes on working. When it is ready, the line shows its sample and sizes, and a toast says so. A failure is the line's message and an Admin → Errors entry.
+- **Several files at once:** the list takes several files in one pick. Each file is its own call, all sent at once (`Promise.all`).
+  - LibreOffice converts one file at a time per process and is not safe with two conversions sharing one profile, so the service runs one conversion per instance (`concurrency=1`, `cpu=1`). Cloud Run starts up to 5 instances side by side (`max-instances=5`), so 5 files convert at the same time.
+  - The making light and the mark search (D2, the PyMuPDF function) take many calls on one instance (`cpu=1`, `concurrency=20`, no shared state per request).
 
 ## Order
 
