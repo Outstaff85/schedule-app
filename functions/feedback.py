@@ -14,7 +14,10 @@ MOVED_MIN = 0.005          # corners moved less than this: the model was right (
 RETRAIN_AT = 200           # new kept examples that make the retraining due
 DOCTYPE_AT = 100           # page copies of each document type that make the first document type model due
 KEEP_DAYS = 365
-SOURCES = ("model", "phone", "more", "photo", "whole")
+SOURCES = ("model", "phone", "more", "photo", "whole", "page")
+# "page": a page as the phone cut it (the scanner lab's page in the scan window) — only its document type
+# teaches; it carries no corners (sent as the whole page) and never counts toward the edges retraining.
+WHOLE = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
 DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 DOCTYPES_TRAINED = DOCTYPES[:5]  # the types the document type model must have enough of ("other" is rare by design)
 # The names an example had before H0 (docs/hf-plan.md): a phone with the old app, or a queued example, still sends them.
@@ -59,15 +62,17 @@ def check(example):
     if not isinstance(example, dict):
         return None, "not an object"
     example = {**{new: example[old] for old, new in OLD_NAMES.items() if old in example and new not in example}, **example}
+    source = example.get("source") if example.get("source") in SOURCES else "model"
+    if source == "page":
+        example = {**example, "edgesModel": WHOLE, "edgesFixed": WHOLE, "image": None}
     model, fixed = _corners(example.get("edgesModel")), _corners(example.get("edgesFixed"))
     if not model or not fixed:
         return None, "bad corners"
-    source = example.get("source") if example.get("source") in SOURCES else "model"
     version = str(example.get("model") or "base-v1")[:40]
     shift = round(moved(model, fixed), 5)
     image = None
     keep_right = example.get("keep") is True and shift < MOVED_MIN
-    if shift >= MOVED_MIN or keep_right:  # a corrected page, or one in five the model got right, carries its copy
+    if source != "page" and (shift >= MOVED_MIN or keep_right):  # a corrected page, or one in five the model got right, carries its copy
         try:
             base64.b64decode(str(example.get("image") or ""), validate=True)
         except Exception:
@@ -100,6 +105,12 @@ def kept(ex):
 def correction(ex):
     """Whether the example corrects the model (counts toward retraining); a kept right one does not."""
     return ex["moved"] >= MOVED_MIN or (ex["doctypeModel"] is not None and ex["doctypeFixed"] != ex["doctypeModel"])
+
+
+def edges_correction(ex):
+    """Whether the example counts toward the document edges retraining (edgesSince): its corners moved, or —
+    from the old scan window, which showed the model's corners — its document type changed; a phone-cut page never."""
+    return ex["source"] != "page" and correction(ex)
 
 
 def edges_since(stats):

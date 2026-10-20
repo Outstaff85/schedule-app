@@ -629,10 +629,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
-    feedbackCalls.push(JSON.parse(r.request().postData() || '{}'));
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true})});
+    const body = JSON.parse(r.request().postData() || '{}');
+    feedbackCalls.push(body);
+    // Admin → Scanner set to Mixed: a page the document type model is sure of needs no Haiku
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'mode' ? {ok: true, doctypeMode: 'mixed'} : {ok: true})});
   });
-  await p.evaluate(() => { window.__scanGoing = startNewScan(); });
+  await p.evaluate(() => { localStorage.removeItem('scanFeedbackQueue'); window.__scanGoing = startNewScan(); });
   await p.waitForSelector('[data-testid="scanner"]');
   const lab = await p.evaluate(async () => {
     const f = document.querySelector('[data-testid="scan-lab-frame"]');
@@ -642,7 +644,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // the lab page's shot: first one page, then (its corners refined, a second document found) two
   // the second page another picture (the ספח), so Haiku's mocked kind follows the page, not the call's order
   const JPG2 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD2yiiiv2Q/kM//2Q==';
-  const post = (key, n) => p.evaluate(([pics, key, n]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x)}, location.origin), [[JPG, JPG2], key, n]);
+  // the document type model's answers (embed.js): sure of the ID card, none on the ספח (Haiku types it)
+  const answers = [{doctype: 'id_front', conf: 0.97, turn: 0, turnConf: 0.99}, null];
+  const post = (key, n) => p.evaluate(([pics, key, n, answers]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x), answers: answers.slice(0, n)}, location.origin), [[JPG, JPG2], key, n, answers]);
   await post('s1', 1);
   await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 1, null, {timeout: 15000}).catch(() => {});
   await post('s1', 2);
@@ -671,6 +675,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   await p.waitForTimeout(500);
+  // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
+  // by Haiku and changed to Contract — with a copy of the page
+  const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
+  const exOk = ex.length === 2 && ex.every(e => e.source === 'page')
+    && ex[0].doctypeBy === 'model' && ex[0].doctypeModel === 'id_front' && ex[0].doctypeFixed === 'id_front'
+    && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage;
+  ok(exOk && kindCalls === 1 && feedbackCalls.some(c => c.action === 'mode'),
+    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep}))}));
   const docCall = feedbackCalls.find(c => c.action === 'document') || {};
   ok(docCall.workerId === 'w-test' && (docCall.pages || []).length === 1 && docCall.pages[0].primary && docCall.pages[0].doctype === 'id_front' && docCall.pages[0].b64
     && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',

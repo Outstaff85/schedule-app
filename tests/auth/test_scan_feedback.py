@@ -168,3 +168,21 @@ def test_a_shadow_answer_is_kept_and_counted_against_haiku():
     assert feedback.shadow_counts(e) == {"shadowPages": 1, "shadowModelRight": 1, "shadowHaikuRight": 0}
     e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="sefach", doctypeShadow="bogus"))
     assert e["doctypeShadow"] is None and feedback.shadow_counts(e) == {}
+
+
+def test_a_phone_cut_page_teaches_only_its_document_type():
+    # the scan window's page (the scanner lab cut it): no corners, no edges copy, never an edges correction
+    e, why = feedback.check({"source": "page", "image": JPG, "doctypeModel": "sefach", "doctypeFixed": "contract", "doctypeBy": "haiku", "pageImage": JPG})
+    assert why is None and e["image"] is None and e["moved"] == 0 and e["edgesModel"] == feedback.WHOLE
+    assert feedback.kept(e) and feedback.correction(e) and not feedback.edges_correction(e)
+    e, why = feedback.check({"source": "page", "doctypeModel": "id_front", "doctypeBy": "model", "keep": True, "pageImage": JPG})
+    assert why is None and e["right"] and e["pageImage"] and e["doctypeBy"] == "model" and not feedback.correction(e)
+    e, why = feedback.check({"source": "page", "doctypeModel": "id_front"})
+    assert why is None and not feedback.kept(e)
+    assert feedback.check({"source": "page", "doctypeModel": "id_front", "doctypeFixed": "sefach"})[1] == "a changed document type needs a small JPEG of the page"
+
+
+def test_a_corner_fix_from_the_old_window_still_counts_toward_the_edges_retraining():
+    fixed = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.95]]
+    e, _ = feedback.check(ex(edgesFixed=fixed))
+    assert feedback.edges_correction(e)

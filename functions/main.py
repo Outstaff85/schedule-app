@@ -656,12 +656,11 @@ def _model_bucket(storage):
 HF_DATA_TOKEN = SecretParam("HF_DATA_TOKEN")
 
 
-# How the document type model is used (Admin → Scanner, docs/hf-plan.md → The way a model replaces
-# the AI): "off" — not run; "shadow" — run beside Haiku, its answer only recorded (doctypeShadow),
-# never trusted; "mixed" — a page it is sure of needs no Haiku. scanSettings/current.doctypeMode,
-# read at most once a minute; shadow until the super-admin moves it on.
+# How the scan window uses the document type model on the phone (Admin → Scanner, docs/hf-plan.md →
+# The way a model replaces the AI): "off" — not used; "shadow" — Haiku types the page, the model's
+# answer only recorded (doctypeShadow), never trusted; "mixed" — a page it is sure of needs no Haiku.
+# scanSettings/current.doctypeMode, read by the scan window ("mode"); shadow until the super-admin moves it on.
 DOCTYPE_MODES = ("off", "shadow", "mixed")
-_settings = {"at": 0.0, "doctypeMode": "shadow"}
 
 
 def _json(obj, status=200):
@@ -687,7 +686,6 @@ def _scan_settings(payload, db):
             if mode not in DOCTYPE_MODES:
                 return _json({"error": "unknown mode"}, 400)
             ref.set({"doctypeMode": mode}, merge=True)
-            _settings["at"] = 0.0
         for tid, on in (payload.get("collect") or {}).items():
             if isinstance(tid, str) and tid and isinstance(on, bool):
                 db.collection("tenants").document(tid).collection("settings").document("scan").set({"collectDocuments": on}, merge=True)
@@ -751,6 +749,9 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             if claims.get("role") != "superadmin":
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
             return _scan_settings(payload, db)
+        if payload.get("action") == "mode":  # the scan window (any manager login): how to use the document type model
+            cur = db.collection("scanSettings").document("current").get().to_dict() or {}
+            return _json({"ok": True, "doctypeMode": cur.get("doctypeMode") if cur.get("doctypeMode") in DOCTYPE_MODES else "shadow"})
         if payload.get("action") == "stats":
             if claims.get("role") != "superadmin":
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
@@ -797,7 +798,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             else:
                 ref.set(rec)
             kept += 1
-            fixes += feedback.correction(ex)
+            fixes += feedback.edges_correction(ex)
             moved_sum += ex["moved"]
         # edgesSince counts the corrections only: they make a retraining due, the kept right pages do not
         # doctypesSince: the page copies of each document type (by the type the user left), for the document type model

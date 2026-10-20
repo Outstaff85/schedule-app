@@ -49,7 +49,7 @@ What is in Firebase moves to the bucket with `scripts/scan-train/move_data_to_hf
 
 - the copies → (above);
 - the record → `edgesModel`, `edgesFixed`, `moved`, `doctypeModel`, `doctypeFixed`, `doctypeBy` (who gave `doctypeModel`: `haiku` or `model`), `right` (a page the model got right, kept as a sample), `source`, `model` (the model version that answered), `tenantId`, `image`, `pageImage`, `createdAt`, `deleteAt`;
-- the counts → Firestore `scanTrainingStats/current`: `edgesSince` (corrections since the last training — the kept right pages do not count), `kept`, `right`, `movedSum`, `doctypesSince` (the page copies of each kind, by the kind the user left — for the document type model), and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
+- the counts → Firestore `scanTrainingStats/current`: `edgesSince` (corner corrections since the last training — the kept right pages and the scan window's `page` examples do not count), `kept`, `right`, `movedSum`, `doctypesSince` (the page copies of each kind, by the kind the user left — for the document type model), and after a training `lastTrainedAt`, `lastVersion`, `lastReport`.
 
 **Names (docs/hf-plan.md → H0, 2026-10-19):** the fields say which model they teach — `edges*` the document edges model, `doctype*` the document type model. Before H0 they were `cornersModel` / `cornersFixed`, `kindModel` / `kindFixed` / `kindBy`, `newSince`, `kindsSince`, `lastKindsTrainedAt` / `lastKindsReport`. `scripts/scan-train/rename_fields.py --apply` has run (2026-10-19; nothing was stored under the old names); the old names are still read, for a phone with the old app: `scan_feedback` takes an example under either name (a phone with the old app, a queued example), the counters add the old one to the new (`feedback.edges_since`, `feedback.doctype_counts`), the pulls map an old record (`common.named`), and a publish clears the old counters.
 
@@ -80,7 +80,7 @@ The skill `.claude/skills/scan-train/SKILL.md`, run in Claude Code on the owner'
 
 When the bell says **Enough pages for the document type model** (every kind but "Other" has 100 page copies), `/scan-train` runs its page-kind steps:
 1. **`pull_doctypes.py`** — every kept page copy with the kind the user left (and the one Haiku or the model gave); the same one in seven is the exam.
-2. **`train_doctypes.py`** — two models from ImageNet weights (timm): the phone's (EfficientNet-Lite0, `doctype-lite.onnx`) and the server's (Lite2, `doctype.onnx`), each with two answers: the kind (6) and the turn the page needs (4) — the turn learned by showing every upright copy at a random quarter turn. Exported to ONNX and checked.
+2. **`train_doctypes.py`** — two models from ImageNet weights (timm): the phone's (EfficientNet-Lite0, `doctype-lite.onnx`) and the server's (Lite2, `doctype.onnx` — no server code runs it since 2026-10-19; the phone's is the one at work), each with two answers: the kind (6) and the turn the page needs (4) — the turn learned by showing every upright copy at a random quarter turn. Exported to ONNX and checked.
 3. **`exam_doctypes.py`** — on the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and the site's way (the model where sure, Haiku elsewhere) against Haiku alone. A worse model → the next size up (Lite1, Lite2… — owner, 2026-10-19), trained and examined again.
 4. **The owner decides** — `publish.py` puts the models into the next version beside the document edges models (the counter `doctypesSince` reset), or `clean.py`.
 
@@ -105,7 +105,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 
 | What | Where |
 |---|---|
-| page kinds, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx`, `src/scan/server.ts` (the scan window no longer sends corner or kind examples: since 2026-10-19 the scanner is the lab's page, `scan/`) |
+| page kinds, their examples, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx` (`classify`, `examples`), `src/scan/server.ts` (`sendFeedback`, `doctypeMode`, `sendScanDocument`) — the pages are cut by the lab's page (`scan/`), so they send document type examples only (`source: "page"`), no corner examples |
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
 | the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`) |
 | the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
@@ -113,6 +113,6 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 | the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh` |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
 | training | `scripts/scan-train/` (corners: `pull.py`, `train.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
-| the document type models at work | `scan-lab/index.html` (`doctypeNote`), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
+| the document type models at work | `scan-lab/index.html` (`doctypeNote`, `doctypeSess`), `scan/embed.js` (`answer` — each posted page's), `src/scan/Scanner.tsx` (Off / Shadow / Mixed), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
 | tests | `tests/auth/test_scan_feedback.py`, the browser test "scan window corners and kinds" (`tests/e2e/main.test.js`) |
