@@ -51,7 +51,7 @@ The owner's scheme:
 - **The same signature and date go into both PDFs.** The two are built on the server in parallel (two calls at once; the function declared `cpu=1`, `concurrency=20`), in the background: the save does not wait.
 - The signed PDFs are stored in the worker's documents: Form 101, and `contract` with the template's name and version.
 - They are **never rebuilt** afterwards.
-  - `regenerateWorkerDoc` stops rebuilding signed forms. `regenerateAllWorkerDocs` runs only for the firm's details, by the admin's choice (D4).
+  - `regenerateWorkerDoc` and `regenerateAllWorkerDocs` stop rebuilding signed forms.
   - A later change to a template never touches signed contracts.
 - Scanned paper contracts stay as they are (docs/scan.md → Contracts).
 
@@ -61,12 +61,8 @@ The owner's scheme:
 2. Until the worker signs, the old signed documents stay, so the worker is never without signed documents.
 3. When the worker signs, the new Form 101 and contract are stored and the old ones are deleted.
 
-- **A change to the firm's own details** (name, address, phone, deductions file) asks the firm's admin, on saving the firm profile, which way to go (owner, 2026-10-20):
-  - **Ask every worker to sign again**: every worker with signed documents gets the **needs a new signature** mark, as for a worker's own change.
-  - **Apply without new signatures**: every worker's Form 101 and contract are rebuilt in the background with the new firm details. Each worker's own signature and signing date are kept, and the old PDFs are replaced. This is the one case where a signed document is rebuilt.
-
-  Advice shown with the choice: when the employer itself is another company (a new name or deductions file), a contract with another company needs the workers' new signatures.
-- **Before deleting old Forms 101:** check with the firm's accountant whether old forms must be kept for some years. If so, the old ones go to a hidden archive instead of being deleted.
+- **A change to the firm's own details** (name, address, phone, deductions file) does not ask the workers to sign again. The new details go into the next signing (owner, 2026-10-20).
+- **Before deleting old Forms 101:** check with the firm's accountant whether old forms must be kept for some years. If so, the old ones are not deleted but go to a hidden archive under the worker (owner, 2026-10-20).
 
 ## D5 — "Download data" on the worker card
 
@@ -80,8 +76,28 @@ The owner's scheme:
 - Built from the stored signed PDFs and the JPEG pages. The joined file is not stored.
 - The summary never shows pay or rates unless the login may see pay. Its labels are Hebrew, as Form 101's.
 
+## D6 — a worker moves to another firm (a copy, with the worker's consent)
+
+The owner's rule: when a worker moves to another firm, everything under the old firm stays there; the worker's data is copied to the new firm and signed for it; and only when the worker approves it in their own page (owner, 2026-10-20).
+
+1. **The new firm asks.** Its admin uses **Add a worker from another firm** with the worker's ID or passport number.
+   - The new firm learns nothing about the worker until the worker approves; it sees only "Request sent".
+   - The old firm sees nothing of the new firm.
+2. **The worker approves in their own page** (the punch page, `/punch` — the worker's own link). It shows **[new firm] asks to take your details**, and below it:
+   - the new firm's Form 101 and contract, filled with the worker's data and the new firm's details, to scroll through;
+   - one signature with the date (as D3), which is both the consent and the signing.
+
+   A worker who does not approve leaves nothing copied; the request expires after 14 days.
+3. **The copy** (a server function, run only on a signed approval):
+   - the new firm gets a new worker record: the personal and family fields, the scanned pages (D1) and the signature;
+   - the new firm gets the newly signed Form 101 and contract;
+   - nothing else is copied: no hours, pay, rates, clients, supplier, HR, punch-link token or notes.
+4. **The old firm** keeps the worker as they were: the record, the documents, the hours. The worker is set Inactive there with **Moved to another firm**, without the new firm's name.
+
+- The firms stay apart. Only the server copies, only after the worker's own signed approval, and each copy is logged (who, when, from which firm to which).
+
 ## Order
 
-D1 → D2 → D3 → D4 → D5.
+D1 → D2 → D3 → D4 → D5 → D6.
 
 Each stage brings its own docs (docs/form101.md, docs/workers.md and a new docs/contracts.md), browser checks and Hebrew dictionary entries.
