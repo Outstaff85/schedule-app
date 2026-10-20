@@ -23,7 +23,7 @@ import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-
 import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, WorkerDoc } from './bridge';
 import { HoursStatusChip, NoticeChipsAll, WorkerHeadLine } from './worker-head';
-import { INCOME_LABELS, OTHER_INCOME_LABELS, WORKER_DOC_TYPES, fmtDMY, missingScanKeys, recordScanValues, scanLabel, workerAddress, workerDocId } from './worker';
+import { INCOME_LABELS, OTHER_INCOME_LABELS, WORKER_DOC_TYPES, fmtDMY, missingScanKeys, recordScanValues, scanLabel, workerAddress, workerDocId, workerHasScan } from './worker';
 import { hoursShort } from './today';
 
 type Pane = 'info' | 'docs' | 'hours';
@@ -54,7 +54,7 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
   const [all, setAll] = React.useState(false);
   const [state, setState] = React.useState<Record<string, 'busy' | 'none'>>({});
   if (!keys.length) return null;
-  const can = !!w.assetsFileId;
+  const can = workerHasScan(w);
   const SHOW = 3, more = keys.length - SHOW;
   // A long list shows its first 3 rows; the rest open with "Show N more".
   const open = all || more <= 1;

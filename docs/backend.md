@@ -29,7 +29,7 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 
 Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own-workers HR's punch queries) and `clientId + ts` (the client portal's month); pendingHours `status + createdAt desc`; a single-field override on `workers.token` with collection-group scope (needed by `punch`).
 
-**Storage:** `tenants/<t>/workers/<workerId>/{form101|assets|docs}/<ms>-<name>`; a client's signed months at `tenants/<t>/clients/<clientId>/documents/hours-<YYYY-MM>-signed.pdf` (written only by the `hours` function's `sign`, read by the managers — `storageUrl(path)`). The object path is the file id kept on the worker (`docFileId`, `assetsFileId`, `docs[].fileId`); the PDF and documents also get a download URL (`docUrl`, `docs[].url`), the sidecar does not.
+**Storage:** `tenants/<t>/workers/<workerId>/{form101|pages|signature|assets|docs}/<ms>-<name>` (`pages/` one JPEG per scanned page, `signature/` the signature's PNG, `assets/` the old scan sidecar until it is split — [contracts.md](contracts.md) → Scanned pages); a client's signed months at `tenants/<t>/clients/<clientId>/documents/hours-<YYYY-MM>-signed.pdf` (written only by the `hours` function's `sign`, read by the managers — `storageUrl(path)`). The object path is the file id kept on the worker (`docFileId`, `assetsFileId`, `docs[].fileId`); the PDF and documents also get a download URL (`docUrl`, `docs[].url`), the sidecar does not.
 
 ## Browser data layer (`firestore-backend.js`)
 
@@ -58,7 +58,7 @@ It returns:
 | `punchesBetween(t, from, to)` | one read of `[from, to)` |
 | `punchesOfBatch(t, batchId)` | punches with ids starting `imp-<batchId>-` |
 | `savePunch` / `updatePunch` / `deletePunch` | `savePunch` stamps the worker's current `hrId` (`punchDoc`, from the last load/save — `workerHr`); `updatePunch` writes only `type, time, site, notes, clientId`, `ts` (the punch window moves it with an edited time — the live sync rebuilds `time` from `ts`) and `editedAt` |
-| `uploadWorkerFile(t, body, onProgress)` | `saveWorkerDoc` → `form101/`, `saveWorkerAssets` → `assets/` (a JSON `{scanB64, scanMediaType, sigPng, extraPages}`; at least one of `scanB64` or `sigPng` must be provided, so the sidecar may hold only a signature when a worker is added without a scan), `saveWorkerFile` → `docs/`; `uploadBytesResumable` with real byte progress; returns `{ok, id: path, url}` (no url for the sidecar); an own-workers HR's files carry `hrId` in their metadata |
+| `uploadWorkerFile(t, body, onProgress)` | `saveWorkerDoc` → `form101/`, `saveWorkerPage` `{fileBase64, kind, index}` → `pages/<ms>-<index>-<kind>.jpg` (one scanned page, a JPEG), `saveWorkerSignature` `{fileBase64}` → `signature/<ms>-signature.png`, `saveWorkerFile` → `docs/`; `saveWorkerAssets` → `assets/` (the old sidecar, a JSON `{scanB64, scanMediaType, sigPng, extraPages}`) is kept only for the browser tests of the old read — the app no longer writes it; `uploadBytesResumable` with real byte progress; returns `{ok, id: path, url}` (no url for a page, the signature or the sidecar); an own-workers HR's files carry `hrId` in their metadata |
 | `storageUrl(path)` | a download URL for a file in the firm's Storage (`storage.rules`: the firm's managers read); used for a client's signed month (`openSignedHours`, the `hours` function's `sign`) |
 | `handleAction(action, params, ctx)` | answers one named data action (below) with a JSON reply, or `null` when there is no such action |
 
@@ -68,7 +68,7 @@ It returns:
 - Any other action before the sign-in → the session-expired error.
 - Users and firms (`listTenants, setTenantActive, deleteTenant, createUser, updateTenant, loadTenantProfile, listUsers, createTenantUser, updateUser, resetUserPassword, deleteUser, checkWorkerDoc, updateMyName, updateMyLanguage, updateMyTheme, listTemplates, saveTemplate, deleteTemplate`) → `users_admin` with the ID token.
 - The AI actions (`aiReadDoc, aiReadSefach, aiDetectAlign, aiVerifyField, aiVerifyFields, aiReadHoursTable, aiFindField`) → `ai_read`.
-- `loadWorkerAssets` / `deleteWorkerDoc` → `users_admin` for a `tenants/…` id. Any other id: delete answers `{ok:true}` (nothing of ours to delete), load answers "File not found".
+- `loadWorkerPages` / `loadWorkerAssets` / `deleteWorkerDoc` → `users_admin` for `tenants/…` ids. Any other id: delete answers `{ok:true}` (nothing of ours to delete), a load answers "File not found".
 - `resetLogs` — super-admin only: deletes every `errors` and `timings` document (all firms, all periods; batches of 400) → `{ok, errors, timings}` (the counts).
 - `loadErrors` / `loadTimings` — super-admin only, newest first. With `from` / `to` (ISO times; the panes' period picker) only that period, up to 2000 errors / 5000 timings; without them the newest 100 / 500.
 - `loadSchedule` / `loadPunchLog` for another firm (super-admin summary): `loadSchedule(t, false)`; punches from the 1st of this month minus 7 days (`punchesOnce`).
@@ -118,11 +118,12 @@ Minting custom tokens needs the runtime service account to hold "Service Account
 
 ### `files.py` — reading and deleting Storage files
 
-`users_admin` actions `loadWorkerAssets` and `deleteWorkerDoc` with `{fileId: <storage path>}`:
+`users_admin` actions `loadWorkerPages` with `{fileIds: [<storage path>, …]}`, `loadWorkerAssets` and `deleteWorkerDoc` with `{fileId: <storage path>}`:
 - manager roles (and `hr`) only; the path must be under `tenants/<caller's firm>/workers/` (no `..`, no `//`);
 - an own-workers HR only for a worker whose `hrId` is its uid (`worker_hr(wid)` reads the worker in `main.py`);
 - delete needs superadmin, `tenant_admin`, or staff / hr with `workers`;
-- `loadWorkerAssets` returns `{ok, scanB64, scanMediaType, sigPng, extraPages}`.
+- `loadWorkerPages` returns `{ok, pages: [{fileId, b64, mediaType}], missing: [<path>]}`: a worker's scanned pages and signature in one call, at most 20 (`MAX_PAGES`), each path only under `pages/` or `signature/` of a worker of the firm — one path that is not refuses the whole call ([contracts.md](contracts.md) → Scanned pages);
+- `loadWorkerAssets` returns `{ok, scanB64, scanMediaType, sigPng, extraPages}` — the old sidecar, read until the worker's is split into pages.
 
 `delete_tenant_files(bucket, tenantId)` deletes everything under `tenants/<tenantId>/` (refuses an empty id or one with `/`).
 

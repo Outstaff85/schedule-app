@@ -118,7 +118,7 @@ The page's logic that decides or computes without drawing is in `src/manager/log
   - An action nothing answers → `{error:'Unknown action: …'}`; an exception → `{error:'Firestore: …'}`.
   - A call slower than 2500 ms (`SLOW_API_CALL_MS`) goes to Timings as `gs:<action>`. An AI reply's `_meta` (from `ai_read`) is taken off the reply and kept in that measurement's details, with the request's `part`.
   - A reply whose `error` is exactly `SESSION_EXPIRED_ERROR` (the functions refused the Firebase ID token — signed out, or revoked after a rights change) clears the session and reloads to the login screen. Telemetry and login never trigger this.
-- **Uploads:** `uploadWorkerFile(body, onProgress)` — `saveWorkerDoc` / `saveWorkerAssets` / `saveWorkerFile` go to Storage through `firestore-backend.js`, with real byte progress, and reply `{ok, id, url}`. The replaced file (`previousFileId`) is deleted afterwards (`gsDeleteWorkerDoc`). `DOC_STORE` = `'Firebase Storage'` names the store in the UI. `__uploadsInFlight` counts running uploads; a new-version reload waits for it to reach 0.
+- **Uploads:** `uploadWorkerFile(body, onProgress)` — `saveWorkerDoc` / `saveWorkerPage` / `saveWorkerSignature` / `saveWorkerFile` go to Storage through `firestore-backend.js`, with real byte progress, and reply `{ok, id, url}`. The replaced file (`previousFileId`) is deleted afterwards (`gsDeleteWorkerDoc`). `DOC_STORE` = `'Firebase Storage'` names the store in the UI. `__uploadsInFlight` counts running uploads; a new-version reload waits for it to reach 0.
 
 ## Loading and saving data
 

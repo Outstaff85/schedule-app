@@ -3,8 +3,8 @@
 // the completeness of its documents. Pure: the worker in, the answer out.
 import { tr } from './i18n';
 import type { Rec } from '../data/state';
-export { workerDocId, workerAddress, WORKER_DOC_TYPES } from '../worker';
-import { workerDocId, WORKER_DOC_TYPES } from '../worker';
+export { workerDocId, workerAddress, workerHasScan, WORKER_DOC_TYPES } from '../worker';
+import { workerDocId, workerHasScan, WORKER_DOC_TYPES } from '../worker';
 
 /** Where worker files are kept, as the UI names it. */
 export const DOC_STORE = 'Firebase Storage';
@@ -38,8 +38,7 @@ export function workerExpiryStatus(w: Rec | null | undefined): {level: 'warning'
 // One status per worker, used by the Workers list badge, the worker card and
 // the "Documents incomplete" filter.
 //   missing — ID/passport number (workerDocId), Form 101 PDF (w.docUrl), the
-//     raw scan (w.assetsFileId — the sidecar is only written when a scan
-//     exists), signature and, for an Israeli ID, the ספח page. Signature /
+//     scan (workerHasScan: its stored pages, or the old sidecar), signature and, for an Israeli ID, the ספח page. Signature /
 //     ספח are only known for documents saved since these flags existed
 //     (w.docHasSignature / w.docExtraPages, set by aiFillForm101()); older
 //     records are treated as unknown, not missing.
@@ -80,7 +79,7 @@ export function workerDocStatus(w: Rec) {
   const missing: string[] = [];
   if (!workerDocId(w as Parameters<typeof workerDocId>[0])) missing.push(tr('ID/passport no.'));
   if (!w.docUrl) missing.push(tr('Form 101'));
-  if (!w.assetsFileId) missing.push(tr('document scan'));
+  if (!workerHasScan(w)) missing.push(tr('document scan'));
   if (w.docHasSignature === false) missing.push(tr('signature'));
   if ((w.docType || 'israeli_id') === 'israeli_id' && w.docExtraPages === 0) missing.push(tr('ספח (ID appendix)'));
   let expiry: {level: 'error' | 'warn'; date: Date; text: string} | null = null;

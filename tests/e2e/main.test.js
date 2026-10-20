@@ -978,6 +978,64 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(up.a.ok && /\/assets\//.test(up.a.id) && !up.a.url, 'upload: sidecar to Storage, no URL');
   ok(up.back.ok && up.back.scanB64 === 'SCAN' && up.back.extraPages.length === 1, 'loadWorkerAssets reads the sidecar back');
   ok(up.del.ok && up.old.ok, 'deleteWorkerDoc: Storage file deleted; a non-Storage id is a no-op');
+  // Scan pages (docs/contracts.md → Scanned pages, D1): each page its own JPEG, the signature a PNG.
+  await p.route(/cloudfunctions\.net\/fill_form_101$/, r => r.fulfill({status: 200, contentType: 'application/json',
+    body: JSON.stringify({pdfBase64: btoa('%PDF-1.4 test'), fileName: 'f101.pdf', firmMissing: []})}));
+  const sp = await p.evaluate(async ([jpg, jpg2]) => {
+    const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const load = async ids => (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerPages', fileIds: ids})})).json();
+    const id = 'wpages' + Date.now();
+    workers.push({id, name:'Pages Test', docType:'israeli_id', docGiven:'Pages', docSurname:'Test', clientIds:[], schedule:[]});
+    const w = () => workers.find(x => x.id === id);
+    // 1. a new worker from a scan: the front, the ספח and the signature
+    window.__aiScanImage = {b64: jpg, mediaType:'image/jpeg', kind:'id_front'};
+    window.__aiPacketOtherPages = [{b64: jpg2, mediaType:'image/jpeg', kind:'sefach'}];
+    window.__wCapturedSigPng = 'data:image/png;base64,' + PNG;
+    const ok1 = await autoUploadWithRetry(true, id);
+    const r = {ok1, kinds: (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(','), sig: !!w().sigFileId && !!w().sigSavedAt,
+      noSidecar: !w().assetsFileId, paths: (w().scanPages || []).every(x => /\/workers\/wpages\d+\/pages\/\d+-\d-(id_front|sefach)\.jpg$/.test(x.fileId)),
+      sigPath: /\/signature\/\d+-signature\.png$/.test(w().sigFileId || ''), hasSig: w().docHasSignature, extra: w().docExtraPages};
+    const first = w().scanPages.slice(), firstSig = w().sigFileId;
+    const back = await load([...first.map(x => x.fileId), firstSig]);
+    r.back = back.ok && back.pages.length === 3 && back.pages[0].b64 === jpg && back.pages[1].b64 === jpg2 && back.pages[2].mediaType === 'image/png' && back.pages[2].b64 === PNG;
+    // 2. a rescan of the front only: the ספח and the signature are kept as stored, the old front is deleted
+    window.__aiScanImage = {b64: jpg2, mediaType:'image/jpeg', kind:'id_front'};
+    window.__aiPacketOtherPages = [];
+    const ok2 = await autoUploadWithRetry(true, id);
+    const now = w().scanPages;
+    r.rescan = ok2 && now.length === 2 && now[0].fileId !== first[0].fileId && now[1].fileId === first[1].fileId && w().sigFileId === firstSig && w().docHasSignature === true;
+    const gone = await load([first[0].fileId]);
+    r.oldFrontGone = gone.ok && gone.missing.length === 1;
+    // 3. a worker still on the old sidecar is split into pages on its rebuild; the sidecar goes
+    window.__aiScanImage = null; window.__aiPacketOtherPages = [];
+    const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:id, scanB64:jpg, scanMediaType:'image/jpeg', sigPng:'data:image/png;base64,' + PNG, extraPages:[{b64:jpg2, mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
+    const before = w().scanPages.map(x => x.fileId).concat(w().sigFileId);
+    delete w().scanPages; delete w().sigFileId; delete w().sigSavedAt; w().assetsFileId = a.id;
+    // the card's field search reads the old sidecar too
+    r.legacyRead = !!(await ManagerBridge.findScanFields(id, ['city'], 'israeli_id'));
+    const ok3 = await regenerateWorkerDoc(id);
+    const side = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerAssets', fileId:a.id})})).json();
+    r.split = ok3 && !w().assetsFileId && (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(',') === 'id_front*,other' && !!w().sigFileId && side.error === 'File not found';
+    // the split pages are readable; a rebuild of a split worker reads them and stores nothing new
+    const keep = w().scanPages.map(x => x.fileId).join();
+    const ok4 = await regenerateWorkerDoc(id);
+    r.rebuild = ok4 && w().scanPages.map(x => x.fileId).join() === keep;
+    r.newRead = !!(await ManagerBridge.findScanFields(id, ['city'], 'israeli_id'));
+    // 4. deleting the worker deletes its pages and signature
+    const all = w().scanPages.map(x => x.fileId).concat(w().sigFileId);
+    ManagerBridge.deleteWorkers([id]);
+    let after = null;
+    for (let i = 0; i < 40; i++) { after = await load(all); if (after.ok && after.missing.length === all.length) break; await new Promise(res => setTimeout(res, 200)); }
+    r.deleted = after.ok && after.missing.length === all.length && !workers.some(x => x.id === id);
+    r.before = before.length;
+    return r;
+  }, [JPG, JPG2]);
+  await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  ok(sp.ok1 && sp.kinds === 'id_front*,sefach' && sp.sig && sp.noSidecar && sp.paths && sp.sigPath && sp.hasSig === true && sp.extra === 1 && sp.back,
+    'scan pages: a new worker from a scan stores each page as its own JPEG (with its kind, the ID card first) and the signature as a PNG, read back in one call ' + JSON.stringify(sp));
+  ok(sp.rescan && sp.oldFrontGone, 'scan pages: a rescan of the front keeps the stored ספח and signature, the replaced front is deleted ' + JSON.stringify(sp));
+  ok(sp.legacyRead && sp.split && sp.rebuild && sp.newRead, 'scan pages: a worker on the old sidecar is read, and split into pages on its rebuild (the sidecar deleted); a later rebuild reads the pages ' + JSON.stringify(sp));
+  ok(sp.deleted, 'scan pages: deleting the worker deletes its pages and signature ' + JSON.stringify(sp));
   // Admin pane: users through the dispatcher
   ok(await p.evaluate(async () => { const j = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'listUsers'})})).json(); return (j.users||[]).some(u=>u.username==='sup1'); }), 'owner: listUsers via the dispatcher');
   ok(await p.evaluate(async () => (await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'nope'})})).json()).error === 'Unknown action: nope'), 'unknown action answers an error');
