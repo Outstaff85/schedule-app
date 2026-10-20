@@ -45,7 +45,7 @@ The owner's scheme:
 
   The admin sees the sample PDF of the light one with both sizes ("2.4 MB → 180 KB") and saves it; only the light one is stored, and the original is dropped. If the check fails, the upload says why, and nothing is stored.
   - **Heavy templates go to Admin → Errors** (owner, 2026-10-20), with no warning at upload. A template still over 1 MB after it was made light, or one whose making light failed its check, writes an entry there: the firm, the template's name, both sizes and the reason (whole fonts, big pictures, pages that are pictures). The super-admin sees it and fixes the template when needed.
-  - A page that is only a picture (a scan, Print to PDF) has no text to find marks in; the upload says so.
+  - **A page that is only a picture** (a scan, Print to PDF) goes through the same making light (owner, 2026-10-20): its picture is straightened and cut by the scanner's own way when it is a photo, then shrunk to 200 dpi, JPEG (a scanned A4 page ~200–300 KB). It has no text to find marks in, so its marks are **placed by hand**: the upload shows the page, and the admin taps where each value goes and picks the mark (`{{given}}`, `{{signature}}`…), with its width. The places are stored with the template and filled exactly like found marks. A text page can use the same placing too, for a mark the search missed.
   - A Word file (`.docx`) is not taken: it is saved as PDF in Word first (D6 dropped).
 - **Templates:** several per firm, in Admin; a firm sees only its own.
 - **On upload:** the site lists the marks it found and the unknown ones, and shows a sample PDF filled with made-up data.
