@@ -63,7 +63,7 @@ jobs:
 
       # LibreOffice for the Word templates' conversion (services/docx2pdf, docs/contracts.md → Word templates)
       - name: LibreOffice
-        run: which soffice || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libreoffice-writer-nogui fonts-culmus)
+        run: which soffice || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libreoffice-writer-nogui fonts-dejavu-core)
 
       - name: Python for the functions
         run: |
