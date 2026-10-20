@@ -721,11 +721,15 @@ def _scan_attempts(payload, claims, db, stats_ref, storage):
     """Every scan attempt (S8): {"action": "attempt", "attempts": [...]} from the scanner on the
     site or in the lab, sent as each attempt is decided (any manager login). Each goes to
     attempts/new/<source>/<YYYY-MM-DD>/<id>/ (picture.jpg + answer.json) and counts toward the
-    training (attemptsSince). → the folder of each kept attempt, for a later outcome."""
+    training (attemptsSince); none for a firm whose collection is off (collects_documents). → the
+    folder of each kept attempt, for a later outcome."""
     from firebase_admin import firestore
     attempts = payload.get("attempts")
     if not isinstance(attempts, list) or not attempts:
         return _json({"error": "no attempts"}, 400)
+    tenant = claims.get("tenantId") or ""
+    if not feedback.attempts_wanted(tenant, tenant and collects_documents(db, tenant)):
+        return _json({"ok": True, "kept": 0, "refused": 0, "dirs": {}, "why": "off for this firm"})
     now = datetime.datetime.now(datetime.timezone.utc)
     bucket = []
     fb = lambda: bucket[0] if bucket else (bucket.append(_model_bucket(storage)) or bucket[0])

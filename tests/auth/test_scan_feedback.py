@@ -257,3 +257,8 @@ def test_a_training_is_due_at_15_attempts():
     assert feedback.ATTEMPTS_AT == 15
     assert not feedback.attempts_due({"attemptsSince": 14}) and feedback.attempts_due({"attemptsSince": 15})
     assert feedback.attempts_since({}) == 0
+
+
+def test_a_firm_with_its_collection_off_sends_no_attempts():
+    assert feedback.attempts_wanted("t1", True) and not feedback.attempts_wanted("t1", False)
+    assert feedback.attempts_wanted("", False)  # the super-admin in the lab
