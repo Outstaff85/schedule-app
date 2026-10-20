@@ -28,10 +28,13 @@ async function fetchModel(name, onProgress) {
 
 // GPU first when asked, else CPU; the warm-up run compiles the GPU shaders now
 // rather than at the first camera frame or the capture.
-async function openSession(model, want, onStatus, onLog) {
+// gpuLayout: the GPU memory layout that worked on this device last time (the page remembers it), tried
+// first — a phone whose GPU gets one layout wrong then skips starting, warming and checking it on every open.
+async function openSession(model, want, onStatus, onLog, gpuLayout) {
   const bytes = await fetchModel(model, (got, total) => onStatus('Downloading ' + model + ': ' + (got / 1e6).toFixed(1) + (total ? ' / ' + (total / 1e6).toFixed(1) : '') + ' MB', total ? got / total : 0));
   // On the GPU both memory layouts are tried: some phone GPUs return zeros with one of them.
-  const order = (want === 'auto' ? ['webgpu', 'wasm'] : [want]).flatMap(ep => ep === 'webgpu' ? [['webgpu', 'NHWC'], ['webgpu', 'NCHW']] : [[ep]]);
+  const layouts = gpuLayout === 'NCHW' ? ['NCHW', 'NHWC'] : ['NHWC', 'NCHW'];
+  const order = (want === 'auto' ? ['webgpu', 'wasm'] : [want]).flatMap(ep => ep === 'webgpu' ? layouts.map(l => ['webgpu', l]) : [[ep]]);
   let gpuWrong = false;
   for (const [ep, layout] of order) {
     if (ep === 'webgpu' && !(self.navigator && navigator.gpu)) { onLog('WebGPU is not available here'); continue; }
@@ -50,7 +53,7 @@ async function openSession(model, want, onStatus, onLog) {
         onLog('GPU check, ' + model + ', layout ' + layout + ': ' + (t.ok ? 'right — used' : 'wrong on this GPU — not used') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
         if (!t.ok) { try { sess.release(); } catch (e) {} gpuWrong = true; continue; }
       }
-      return { sess, ep };
+      return { sess, ep, layout: ep === 'webgpu' ? layout : null };
     } catch (e) {
       onLog('Could not start ' + model + ' on ' + name + ': ' + (e && e.message || e));
       if (want !== 'auto' && !(ep === 'webgpu' && layout === 'NHWC')) throw e;

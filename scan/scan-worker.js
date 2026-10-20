@@ -12,11 +12,11 @@ self.onmessage = async ({ data: m }) => {
     if (m.type === 'load') {
       ort.env.wasm.numThreads = m.threads;
       const onStatus = (text, frac) => say('status', { text, frac }), onLog = text => say('log', { text });
-      const a = await openSession(m.live, m.want, onStatus, onLog);
+      const a = await openSession(m.live, m.want, onStatus, onLog, m.layout);
       live = a.sess;
-      const b = m.cap ? await openSession(m.cap, m.want, onStatus, onLog) : a; cap = b.sess;
+      const b = m.cap ? await openSession(m.cap, m.want, onStatus, onLog, m.layout) : a; cap = b.sess;
       if (m.face) { onStatus('Loading the face finder…', 1); face = await ort.InferenceSession.create(await fetchModel('yunet.onnx', () => {}), { executionProviders: ['wasm'] }); }
-      say('reply', { id: m.id, ep: a.ep + (b.ep !== a.ep ? '/' + b.ep : '') });
+      say('reply', { id: m.id, ep: a.ep + (b.ep !== a.ep ? '/' + b.ep : ''), layout: a.layout || b.layout });
     } else if (m.type === 'detect') {
       const t = performance.now();
       let rgba;
