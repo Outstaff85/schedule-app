@@ -42,7 +42,10 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 export const listTemplates = (workerId?: string) =>
   call<{ templates: ContractTemplate[]; canManage: boolean }>({ action: 'list', ...(workerId ? { workerId } : {}) });
 export const templateFile = (id: string, sample = false) => call<{ pdfBase64: string; name: string }>({ action: 'file', id, sample });
-export const prepareTemplate = (pdfBase64: string, name: string) => call<Prepared>({ action: 'prepare', pdfBase64, name });
+/** A PDF, or a Word file (.docx — the server has it turned into a PDF first, D7). */
+export const prepareTemplate = (b64: string, name: string, word = false) => call<Prepared>({ action: 'prepare', [word ? 'docxBase64' : 'pdfBase64']: b64, name });
+export const isWordFile = (f: File) => /\.docx$/i.test(f.name) || f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+export const TEMPLATE_ACCEPT = 'application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export const sampleTemplate = (pdfBase64: string, placed: Placed[]) => call<{ sampleBase64: string }>({ action: 'sample', pdfBase64, placed });
 export const saveTemplate = (b: { pdfBase64: string; name: string; category?: string; placed?: Placed[]; origSize?: number; workerId?: string; replaceId?: string }) =>
   call<{ template: ContractTemplate }>({ action: 'save', ...b });

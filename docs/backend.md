@@ -27,7 +27,8 @@ Project `schedule-odinson`; Firestore and the `functions-auth` functions in **eu
 | `weatherCache/{lat_lng}` | `kind, temp, at` — the weather of an area (lat / lng rounded to 0.1°), kept 30 minutes | `weather` |
 | `tenants/{t}/contractTemplates/{id}` | a contract template: `name, category, isDefault, fileId` (its light PDF in Storage), `size, origSize, pages, version, marks, unknown, placed, pictures, workerId` (a worker's own), `signedCount, createdAt, updatedAt, createdBy` ([contracts.md](contracts.md)) | the `contract_templates` function only |
 | `tenants/{t}/signRequests/{id}` | a send of Form 101 and the contract to sign: `workerId, hrId, status` (sent → signing → signed; replaced, withdrawn), `way, templateId, templateName, templateVersion, templatePath` (the frozen copy), `placed, values, form101, signDate, dateFixed, sentAt, sentBy, signedAt` (server time), `sigPath, parts {form101, contract}, appliedAt`, `printHash, printPay, printMarks` (what the documents print about the worker — D4) ([contracts.md](contracts.md) → Signing) | the `sign_documents` function only |
-| `transferRequests/{id}`, `transferLog/{auto}` | a firm's request for a worker of another firm (`fromTenant, fromWorker, toTenant, toName, status` asked → signing → done; declined, expired, replaced, `askedAt, askedBy, expiresAt, newWorkerId, signDate, signedAt, sigPath, parts`) and each copy made ([contracts.md](contracts.md) → Moving to another firm) | the `sign_documents` function only |
+| `transferRequests/{id}`, `transferLog/{requestId}` | a firm's request for a worker of another firm (`fromTenant, fromWorker, toTenant, toName, status` asked → signing → done; declined, expired, replaced, `askedAt, askedBy, expiresAt, newWorkerId, signDate, signedAt, sigPath, parts`) and each copy made — created once, the copy's lock ([contracts.md](contracts.md) → Moving to another firm) | the `sign_documents` function only |
+| `appConfig/docx2pdf` | `{url}` — the docx2pdf Cloud Run service's address, written by its deploy | the deploy workflow only |
 | `errors/{auto}`, `timings/{auto}` | telemetry rows (`when, page, role, worker, message, source, stack` / `when, kind, totalMs, tenantId, user, role, details`) | any signed-in caller; login refusals by `login` |
 
 Indexes (`firestore.indexes.json`): punches `workerId + ts`, `hrId + ts` (an own-workers HR's punch queries) and `clientId + ts` (the client portal's month); pendingHours `status + createdAt desc`; a single-field override on `workers.token` with collection-group scope (needed by `punch`).
@@ -213,6 +214,10 @@ Conditions for `concurrency` > 1: requests run in threads of one process, so a h
 - `preprocess_scan` — removed on 2026-10-19 (the site's scanner is the lab's page; [scan.md](scan.md) → Server-side finding — removed).
 
 All answer `{"ping":true}` at once (warm-up, no sign-in needed) and parse the body with `force=True`. Every other call must carry `Authorization: Bearer <Firebase ID token>` of a manager-side login (`superadmin`, `tenant_admin`, `staff`, `hr`): `functions/gate.py` (`check()`, the token verified with `verify_id_token(check_revoked=True)`) answers 401 for a missing, invalid or revoked token and 403 for any other role (supplier, client); `tests/auth/test_scan_gate.py` checks it. The callers send the token from `idToken()` of `firestore-backend.js` (`scan_feedback` in `src/scan/server.ts`, the Form 101 build in `src/manager/page/scan.ts`). `functions/venv` must exist before `firebase deploy --only functions` from a local machine (`python -m venv venv && pip install -r requirements.txt`); CI builds its own. `functions/assets/` holds the PDF template and font the function uses.
+
+## Cloud Run — `services/docx2pdf` (europe-west3)
+
+LibreOffice (headless) for Word contract templates: `POST {docxBase64}` with a firm admin's or the super-admin's ID token → `{pdfBase64}`; concurrency 1, cpu 1, max 5 instances; deployed by `deploy-docx2pdf.yml`, its address in Firestore `appConfig/docx2pdf.url` for `contract_templates` ([contracts.md](contracts.md) → Word templates). `services/` is never served by Hosting.
 
 ## Security rules
 

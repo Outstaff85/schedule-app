@@ -131,6 +131,10 @@ def find_marks(doc):
             n = m.group(1)
             if n not in names:
                 names.append(n)
+        # A Hebrew line may come out with its letters interleaved (LibreOffice's PDF): every known
+        # mark whose name is in the text is a candidate; the braces around it decide (_braces).
+        if "{" in text or "}" in text:
+            names += [n for n in MARKS if n in text and n not in names]
         chars = None
         for name in names:
             if name not in MARKS:
@@ -415,8 +419,43 @@ def _sizes(a, b):
     return kb(a) + " → " + kb(b)
 
 
-def run(db, bucket, claims, body):
-    """One action of the `contracts` function. claims: the caller's verified token claims."""
+E_NO_DOCX = "Word files can't be converted yet — in Word, save it as PDF and upload that"
+
+
+def docx_service_url(db):
+    """The docx2pdf Cloud Run service's address, written by its deploy (appConfig/docx2pdf.url); '' until then."""
+    try:
+        return str((db.collection("appConfig").document("docx2pdf").get().to_dict() or {}).get("url") or "")
+    except Exception:
+        return ""
+
+
+def convert_docx(db, data, authorization):
+    """A .docx to PDF through the docx2pdf service (D7), with the caller's own ID token; raises ValueError."""
+    import json as _json
+    import urllib.request
+    url = docx_service_url(db)
+    if not url:
+        raise ValueError(E_NO_DOCX)
+    req = urllib.request.Request(url, data=_json.dumps({"docxBase64": base64.b64encode(data).decode()}).encode(),
+                                 headers={"Content-Type": "application/json", "Authorization": authorization or ""}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=110) as r:
+            out = _json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        try:
+            out = _json.loads(e.read().decode("utf-8"))  # an HTTP error with the service's reason
+        except Exception:
+            raise ValueError("Converting the Word file failed: " + str(e)[:200])
+    if not out.get("ok"):
+        raise ValueError(out.get("error") or "Converting the Word file failed")
+    return base64.b64decode(out["pdfBase64"])
+
+
+def run(db, bucket, claims, body, authorization="", docx=None):
+    """One action of the `contract_templates` function. claims: the caller's verified token claims;
+    authorization: the caller's own "Bearer <ID token>", forwarded to the docx2pdf service for a Word file
+    (docx: a stand-in converter for the tests)."""
     action = str(body.get("action") or "")
     role = claims.get("role")
     tenant = body.get("asTenantId") if role == "superadmin" else claims.get("tenantId")
@@ -455,6 +494,9 @@ def run(db, bucket, claims, body):
         data = _b64(body.get("pdfBase64"))
         name = _clean(body.get("name"), 120) or "contract"
         try:
+            if body.get("docxBase64"):  # a Word file (D7): turned into a PDF first, then the same way
+                raw = _b64(body.get("docxBase64"))
+                data = (docx or (lambda d: convert_docx(db, d, authorization)))(raw)
             out, info = light(data)
         except ValueError as e:
             log_error(db, tenant, "Contract template not made light: " + str(e) + " — " + name + " (" + _sizes(len(data), len(data)) + ")",

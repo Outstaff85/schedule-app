@@ -26,7 +26,7 @@ import { undoDelete } from '@/components/shared/undo';
 import { Field } from './ClientEditor';
 import { readFileB64 } from './logic/uploads';
 import {
-  MARKS, deleteTemplate, listTemplates, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sizeText, templateFile, updateTemplate,
+  MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, listTemplates, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sizeText, templateFile, updateTemplate,
   type ContractTemplate, type Placed, type Prepared,
 } from './contracts';
 
@@ -46,6 +46,25 @@ function useTemplates(workerId?: string) {
 
 const dateText = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(uiLocale()) : '');
 
+type Pending = { key: string; name: string; error?: string };
+/** Several files at once (D7): each is its own call, all sent at once; a ready one is saved as it is and the list
+ * read again (a toast says so); a failed one stays as a red line with its reason (the server writes Admin → Errors). */
+function prepareInBackground(files: File[], api: Api, setPending: React.Dispatch<React.SetStateAction<Pending[]>>, load: () => void) {
+  const items = files.map(f => ({ key: f.name + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 6), name: f.name.replace(/\.(pdf|docx)$/i, ''), file: f }));
+  setPending(list => [...list, ...items.map(({ key, name }) => ({ key, name }))]);
+  void Promise.all(items.map(async it => {
+    try {
+      const p = await prepareTemplate(await readFileB64(it.file), it.file.name, isWordFile(it.file));
+      await saveTemplate({ pdfBase64: p.lightBase64, name: it.name, origSize: p.origSize });
+      setPending(list => list.filter(x => x.key !== it.key));
+      api.toast(tr('Template ready: {0} ({1} → {2})', { 0: it.name, 1: sizeText(p.origSize), 2: sizeText(p.lightSize) }));
+      load();
+    } catch (e: any) {
+      setPending(list => list.map(x => (x.key === it.key ? { ...x, error: String(e?.message || e) } : x)));
+    }
+  }));
+}
+
 export function ContractTemplatesPane({ api }: { api: Api }) {
   const { list, error, load } = useTemplates();
   const [, redraw] = React.useReducer((n: number) => n + 1, 0);
@@ -53,6 +72,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   const [edit, setEdit] = React.useState<{ t: ContractTemplate; what: 'name' | 'category' } | null>(null);
   const pick = React.useRef<HTMLInputElement>(null);
   const replaceFor = React.useRef<ContractTemplate | null>(null);
+  const [pending, setPending] = React.useState<Pending[]>([]);
   if (error && !list) return <p className="text-[13px] text-bad" data-testid="contracts-error">{tr(error)}</p>;
   if (!list) return <div className="grid gap-2" aria-busy="true" data-testid="contracts-loading">{[0, 1].map(i => <Skeleton key={i} className="h-[62px]" />)}</div>;
   const firm = list.filter(t => !t.workerId && !hidden.has(t.id));
@@ -92,8 +112,19 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
       <Section label={<span className="inline-flex items-center gap-1.5"><IconFileText className="size-4" />{tr('Contract templates')}</span>} count={firm.length}
         tools={<Button variant="primary" size="sm" className="og-new" data-testid="contract-new" onClick={() => { replaceFor.current = null; pick.current?.click(); }}>
           <IconPlus className="size-4" />{tr('New template')}</Button>}>
-        <input ref={pick} type="file" accept="application/pdf,.pdf" className="hidden" data-testid="contract-file"
-          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setUpload({ file: f, replace: replaceFor.current || undefined }); }} />
+        <input ref={pick} type="file" accept={TEMPLATE_ACCEPT} multiple className="hidden" data-testid="contract-file"
+          onChange={e => {
+            const files = [...(e.target.files || [])]; e.target.value = '';
+            // one file: the upload window; several: each prepared and saved in the background (D7)
+            if (files.length === 1) setUpload({ file: files[0], replace: replaceFor.current || undefined });
+            else if (files.length > 1) prepareInBackground(files, api, setPending, load);
+          }} />
+        {pending.map(p => (
+          <Plate key={p.key} data-testid="contract-pending" data-state={p.error ? 'error' : 'busy'} className="mb-1.5" color={p.error ? 'var(--bad)' : 'var(--neutral)'}
+            icon={p.error ? <IconAlertTriangle /> : <IconLoader2 className="animate-spin" />} title={p.name}
+            sub={p.error ? <span className="whitespace-normal text-bad">{tr(p.error)}</span> : tr('Preparing…')}
+            onDelete={p.error ? () => setPending(list => list.filter(x => x.key !== p.key)) : undefined} />
+        ))}
         <PagedList items={firm} render={row}
           empty={<Empty data-testid="contracts-empty"><EmptyMedia><IconFileText /></EmptyMedia><EmptyTitle>{tr('No contract templates yet. Save the contract from Word as PDF, with marks like {{given}}, and add it here.')}</EmptyTitle></Empty>} />
       </Section>
@@ -134,14 +165,14 @@ export function UploadWindow({ file, replace, categories, api, workerId, onClose
 }) {
   const [prep, setPrep] = React.useState<Prepared | null>(null);
   const [err, setErr] = React.useState('');
-  const [name, setName] = React.useState(replace ? replace.name : file.name.replace(/\.pdf$/i, ''));
+  const [name, setName] = React.useState(replace ? replace.name : file.name.replace(/\.(pdf|docx)$/i, ''));
   const [category, setCategory] = React.useState(replace ? replace.category || '' : '');
   const [placed, setPlaced] = React.useState<Placed[]>(replace?.placed || []);
   const [sample, setSample] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   React.useEffect(() => {
     let live = true;
-    readFileB64(file).then(b64 => prepareTemplate(b64, file.name)).then(p => { if (live) { setPrep(p); setSample(p.sampleBase64); } },
+    readFileB64(file).then(b64 => prepareTemplate(b64, file.name, isWordFile(file))).then(p => { if (live) { setPrep(p); setSample(p.sampleBase64); } },
       e => { if (live) setErr(String(e?.message || e)); });
     return () => { live = false; };
   }, [file]);

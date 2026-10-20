@@ -1519,5 +1519,8 @@
   "Read its Form 101 and contract, then approve with your signature": "קראו את טופס 101 והחוזה שלה, ואשרו בחתימתכם",
   "Your details are copied to {0} only if you sign. Nothing is copied if you decline.": "פרטיך יועתקו ל{0} רק אם תחתמו. אם תסרבו — דבר לא יועתק.",
   "Signed — your details were sent to {0}.": "נחתם — פרטיך נשלחו ל{0}.",
-  "Declined — nothing was copied.": "סורב — דבר לא הועתק."
+  "Declined — nothing was copied.": "סורב — דבר לא הועתק.",
+  "Template ready: {0} ({1} → {2})": "התבנית מוכנה: {0} ({1} ← {2})",
+  "Preparing…": "בהכנה…",
+  "Word files can't be converted yet — in Word, save it as PDF and upload that": "עדיין אי אפשר להמיר קבצי Word — שמרו אותו ב-Word כ-PDF והעלו אותו"
 }

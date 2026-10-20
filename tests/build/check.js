@@ -38,7 +38,7 @@ function walk(dir, base = '') {
     else if (!fs.readFileSync(to).equals(fs.readFileSync(path.join(ROOT, f)))) errs.push(`dist/${f} differs from ${f}`);
   }
   const built = walk(DIST);
-  const never = /^(functions|functions-auth|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
+  const never = /^(functions|functions-auth|services|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
   for (const f of built) if (never.test(f)) errs.push(`dist/${f} must never be served`);
   for (const [page, what] of [['next/index.html', 'the /next page'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app']]) {
     const file = path.join(DIST, page);

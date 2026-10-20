@@ -120,6 +120,28 @@ def test_the_worker_signs_and_only_the_personal_data_is_copied():
     assert w(db, bucket, {"action": "mine"})["transfer"] is None
 
 
+def test_two_builds_finishing_together_copy_once():
+    db, bucket = _setup()
+    signing.run(db, bucket, ADMIN2, {"action": "transferAsk", "docNumber": "123456782"}, build101)
+    w(db, bucket, {"action": "sign", "signaturePng": base64.b64encode(PNG).decode()})
+    rid = next(p[1] for p, d in db.data.items() if p[0] == "transferRequests")
+    req = db.data[("transferRequests", rid)]
+    # both parts already there (the other build wrote its part a moment ago) and still "signing"
+    w(db, bucket, {"action": "build", "which": "form101"})
+    req["parts"]["contract"] = dict(req["parts"]["form101"])
+    req["status"] = "signing"
+    copies = []
+    orig = transfer._copy
+    transfer._copy = lambda *a: copies.append(1) or orig(*a)
+    try:
+        w(db, bucket, {"action": "build", "which": "contract"})
+        req["status"] = "signing"  # the other call read "signing" too
+        w(db, bucket, {"action": "build", "which": "form101"})
+    finally:
+        transfer._copy = orig
+    assert len(copies) == 1 and len([p for p in db.data if p[0] == "transferLog"]) == 1
+
+
 def test_declined_or_expired_copies_nothing():
     db, bucket = _setup()
     signing.run(db, bucket, ADMIN2, {"action": "transferAsk", "docNumber": "123456782"}, build101)
