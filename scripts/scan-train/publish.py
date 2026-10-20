@@ -7,14 +7,47 @@ has one), the face finder too. The counters are reset (scanTrainingStats/current
 after the edges, doctypesSince after the document types; their names before H0 are cleared
 too), the lab is pointed at the new version (scripts/scan-lab/models-version — committed and
 deployed by the skill; the site follows only after the owner tried it in the lab), and the
-copies on this PC are deleted. Needs the owner's HF token on the PC (`hf auth login`)."""
+copies on this PC are deleted. The scan attempts this run trained on (S8, pull.py's attempts.json)
+move from attempts/new/ to attempts/used/v<N>/, so the next run takes only new ones, and
+attemptsSince is reset. Needs the owner's HF token on the PC (`hf auth login`)."""
 import argparse
 import datetime
+import pathlib
 import shutil
 
 from google.cloud import firestore
 
-from common import DOCTYPE_MODELS, DOCTYPES, KEEP, MODELS, REPO, ROOT, WORK, bucket, db, model_path, next_version, read_json, version_of
+from common import DATA, DOCTYPE_MODELS, DOCTYPES, KEEP, MODELS, REPO, ROOT, WORK, bucket, db, model_path, next_version, read_json, version_of
+
+
+def used_path(path, v):
+    """attempts/new/<source>/<date>/<id>/<file> → attempts/used/<v>/<source>/<date>/<id>/<file>."""
+    return "attempts/used/" + v + "/" + path[len("attempts/new/"):]
+
+
+def move_attempts(v):
+    """The attempts trained on: attempts/new/ → attempts/used/<v>/, in the bucket and in Firebase Storage."""
+    path = WORK / "attempts.json"
+    folders = read_json(path) if path.exists() else []
+    if not folders:
+        return 0
+    from huggingface_hub import HfApi
+    api = HfApi()
+    for d in folders:
+        try:
+            files = [f.path for f in api.list_bucket_tree(DATA, prefix=d + "/", recursive=True)]
+        except Exception:
+            files = []
+        if files:
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp:
+                api.download_bucket_files(DATA, [(f, f"{tmp}/{i}") for i, f in enumerate(files)])
+                api.batch_bucket_files(DATA, add=[(pathlib.Path(f"{tmp}/{i}").read_bytes(), used_path(f, v)) for i, f in enumerate(files)])
+            api.batch_bucket_files(DATA, delete=files)
+        b = bucket()
+        for blob in list(b.list_blobs(prefix="training/" + d + "/")):
+            b.rename_blob(blob, "training/" + used_path(blob.name[len("training/"):], v))
+    return len(folders)
 
 
 def main():
@@ -64,6 +97,9 @@ def main():
         stats.update({"edgesSince": 0, "newSince": firestore.DELETE_FIELD, "lastTrainedAt": now, "lastReport": edges})
     if doctypes:
         stats.update({"doctypesSince": {k: 0 for k in DOCTYPES}, "kindsSince": firestore.DELETE_FIELD, "lastDoctypesTrainedAt": now, "lastDoctypesReport": doctypes})
+    moved = move_attempts(v)
+    if moved:
+        stats["attemptsSince"] = firestore.Increment(-moved)  # the attempts that came in since the pull stay counted
     db().collection("scanTrainingStats").document("current").set(stats, merge=True)
     (ROOT / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
     shutil.rmtree(WORK, ignore_errors=True)
