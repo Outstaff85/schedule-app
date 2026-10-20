@@ -55,13 +55,52 @@ The owner's scheme:
     - Sends still waiting for a signature on it are withdrawn; those workers are marked **needs sending again**.
   - A worker's own one-off templates (above) are listed in that worker's window, not here.
 - **On upload:** the site lists the marks it found and the unknown ones, and shows a sample PDF filled with made-up data.
-- **The first marks:**
-  - the worker's names, ID or passport number, birth date, address, phone, start date;
-  - the rate, filled only for a login allowed to see pay;
-  - the firm's name and details;
-  - the client or site;
-  - the signature and the signing date.
+- **The marks** (owner, 2026-10-20). They are written in Latin letters, in double braces, with no spaces. A Hebrew mark could come out of the PDF's text with its letters reversed, so Latin is the safe form. Each value is printed in Hebrew, as on Form 101, except a foreign passport's names, which are printed in Latin.
 
+  | Mark | Filled with |
+  |---|---|
+  | **Worker** | |
+  | `{{given}}` | given name |
+  | `{{surname}}` | surname |
+  | `{{full_name}}` | given name and surname |
+  | `{{id}}` | ID or passport number |
+  | `{{id_type}}` | ת.ז. or דרכון |
+  | `{{id_expiry}}` | the ID's or passport's expiry date |
+  | `{{dob}}` | date of birth |
+  | `{{sex}}` | זכר / נקבה |
+  | `{{marital}}` | marital status |
+  | `{{phone}}` | phone |
+  | `{{address}}` | street and house number |
+  | `{{city}}` | city |
+  | `{{full_address}}` | street, house number, city |
+  | `{{health_fund}}` | health fund |
+  | **Work** | |
+  | `{{start_date}}` | start date |
+  | `{{end_date}}` | contract end (start date + the contract's months), when set |
+  | `{{contract_months}}` | the contract's length in months, when set |
+  | `{{site}}` | the client or site (several: joined by commas) |
+  | `{{supplier}}` | the supplier, when there is one |
+  | `{{schedule}}` | the weekly hours (days and times) |
+  | **Pay** — filled only when the login sending it may see pay (`seePay`); otherwise the send is refused, as for the date | |
+  | `{{rate}}` | the worker's rate (₪ per hour, or per day for daily pay) |
+  | `{{pay_mode}}` | שעתי / יומי |
+  | `{{ot_rate}}` | overtime rate |
+  | `{{shabbat_rate}}` | Shabbat rate |
+  | `{{travel}}` | travel allowance (per day, or per month) |
+  | `{{bank}}` | bank, branch and account number |
+  | **Firm** | |
+  | `{{company}}` | the firm's name |
+  | `{{company_address}}` | the firm's address |
+  | `{{company_phone}}` | the firm's phone |
+  | `{{deductions_file}}` | the deductions file number |
+  | **The worker's own terms** | |
+  | `{{terms_1}}` … `{{terms_5}}` | the worker's own text fields (above) |
+  | **Signing** | |
+  | `{{signature}}` | the worker's signature (a picture, fitted to the mark's place) |
+  | `{{sign_date}}` | the signing date (D3) |
+  | `{{today}}` | the date the document is built |
+
+  An unknown mark (a typo) is listed on upload and placed by hand or fixed in the file. A mark whose value is empty for a worker (no supplier, say) is printed empty.
 ### Fitting the contract to a worker or a category (owner, 2026-10-20)
 
 Contracts can be added and changed at any time; whatever goes in, the output always goes through the same processing (made light, the marks filled, frozen at signing).
