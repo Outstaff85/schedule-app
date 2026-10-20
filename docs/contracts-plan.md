@@ -148,7 +148,7 @@ Built as docs/contracts.md → Signing. A login sees pay when it is the owner or
   - A later change to a template never touches signed contracts.
 - Scanned paper contracts stay as they are (docs/scan.md → Contracts).
 
-## D4 — data changed → a new signature, the old documents replaced — built (2026-10-20)
+## D4 — data changed → a new signature, the old documents replaced — built and merged (2026-10-20)
 
 Built as docs/contracts.md → A new signature after a change.
 
@@ -160,7 +160,10 @@ Built as docs/contracts.md → A new signature after a change.
 - **A change to the firm's own details** (name, address, phone, deductions file) does not ask the workers to sign again. The new details go into the next signing (owner, 2026-10-20).
 - **The old documents are deleted** when the new ones are signed. No accountant's check is needed and there is no archive (owner, 2026-10-20).
 
-## D5 — "Download data" on the worker card
+## D5 — "Download data" on the worker card — built (2026-10-20)
+
+Built as docs/contracts.md → Download data.
+
 
 - One PDF, put together on request, in this order:
   1. a summary of the worker's data (owner, 2026-10-20): names, ID or passport number and its expiry, birth date, phone, address, start date, clients or site, supplier, the signing date, and the list of the documents that follow;

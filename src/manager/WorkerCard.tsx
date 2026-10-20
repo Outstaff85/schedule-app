@@ -8,7 +8,7 @@
 import * as React from 'react';
 import {
   IconAlertTriangle, IconCash, IconChevronDown, IconCircleCheck, IconDotsVertical, IconDownload, IconFile, IconFileCertificate,
-  IconFileExport, IconFileUpload, IconFiles, IconFolder, IconIdBadge2, IconLink, IconLoader2, IconPencil, IconScan, IconSearch, IconSend, IconSignature, IconUpload,
+  IconFileDownload, IconFileExport, IconFileUpload, IconFiles, IconFolder, IconIdBadge2, IconLink, IconLoader2, IconPencil, IconScan, IconSearch, IconSend, IconSignature, IconUpload,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,15 @@ import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-
 import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
 import { SignWindow, takeSign } from './SignWindow';
+import { signCall } from './logic/signing';
+import { openPdf } from './contracts';
+
+/** Download data (docs/contracts.md → Download data): one PDF of everything kept under the worker, put together on the server now. */
+async function downloadData(id: string, api: ManagerBridge) {
+  api.toast(tr('Putting the documents together…'));
+  try { const r = await signCall<{ pdfBase64: string; name: string }>({ action: 'bundle', workerId: id }); openPdf(r.pdfBase64, r.name); }
+  catch (e: any) { api.toast(tr('Download failed: {0}', { 0: String(e?.message || e) }), 5000); }
+}
 import { HoursStatusChip, NoticeChipsAll, WorkerHeadLine } from './worker-head';
 import { INCOME_LABELS, OTHER_INCOME_LABELS, WORKER_DOC_TYPES, fmtDMY, missingScanKeys, recordScanValues, scanLabel, workerAddress, workerDocId, workerHasScan } from './worker';
 import { hoursShort } from './today';
@@ -177,6 +186,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
     ...(snap.canPay ? [{ icon: <IconCash />, label: tr('Pay'), run: () => api.payFromCard(w.id) }] : []),
     ...(can ? [{ icon: <IconUpload />, label: tr('Add document'), run: () => api.openDocUpload(w.id) }] : []),
     ...(w.docUrl ? [{ icon: <IconDownload />, label: tr('Download document'), run: () => window.open(w.docUrl, '_blank', 'noopener') }] : []),
+    { icon: <IconFileDownload />, label: tr('Download data'), run: () => void downloadData(w.id, api) },
     ...(can ? [{ icon: <IconFileUpload />, label: tr('Upload hours'), run: () => api.openHoursImport(w.id) }] : []),
     ...(can && snap.canExport ? [{ icon: <IconFileExport />, label: tr('Export hours'), run: () => api.openHoursExport(w.id) }] : []),
     ...(can ? [{ icon: <IconLink />, label: tr('Punch link'), run: () => api.copyLink(w.id) }] : []),

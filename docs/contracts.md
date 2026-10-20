@@ -103,3 +103,16 @@ Form 101 and the worker's contract are signed **once**, with the same signature 
 - **Until the worker signs**, the old signed documents stay. **When the worker signs**, the new Form 101 and contract replace them and the old ones are deleted — no archive (owner, 2026-10-20; `adoptSigned`, Signing above).
 
 Tests: `tests/auth/test_signing.py` (the hash kept with the send, pay only for a login that sees pay) and the browser check "new signature (D4)".
+
+## Download data (D5)
+
+**Download data** in the worker card's ⋮ (any login that sees the worker) asks `sign_documents` `bundle` `{workerId}` (`bundle` in `functions/signing.py`; a staff or HR login needs the Workers tab, an own-workers HR only its own workers) and opens the PDF it returns. It is put together now and not kept:
+
+1. a summary page — the names, the ID or passport number and its expiry, the date of birth, the phone, the address, the start date, the clients, the supplier, the signing date, and the list of the documents that follow; Hebrew labels, right to left; never pay or rates;
+2. Form 101 (the stored one, `docFileId`);
+3. the contract (the signed one first);
+4. the ID card or passport pages, 5. the ספח, 6. the other documents (visa, work permit, other, an older contract), then the other scanned pages.
+
+A PDF document goes in as it is; a picture gets a page of its own.
+
+Tests: `tests/auth/test_signing.py` (the order, never pay, who may) and the browser check "download data".
