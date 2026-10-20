@@ -38,7 +38,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
-      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read|weather)$/) || [])[1];
+      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read|weather|contract_templates)$/) || [])[1];
       if (fn) {
         if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
         const h = r.request().headers();
@@ -1064,6 +1064,65 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(sp.rescan && sp.oldFrontGone, 'scan pages: a rescan of the front keeps the stored ספח and signature, the replaced front is deleted ' + JSON.stringify(sp));
   ok(sp.legacyRead && sp.split && sp.rebuild && sp.newRead, 'scan pages: a worker on the old sidecar is read, and split into pages on its rebuild (the sidecar deleted); a later rebuild reads the pages ' + JSON.stringify(sp));
   ok(sp.deleted, 'scan pages: deleting the worker deletes its pages and signature ' + JSON.stringify(sp));
+  // Contract templates (docs/contracts.md → Contract templates, D2): Admin → Contract templates, a PDF made light, its marks, the sample, Save.
+  const cpdf2 = Buffer.from(await (await fetch('http://127.0.0.1:5055/contractPdf', {method: 'POST'})).arrayBuffer());
+  await p.evaluate(() => { window.__opened = []; window.__origOpen = window.open; window.open = (u) => { window.__opened.push(String(u)); return {}; }; switchTab('admin'); switchAdminPane('contracts'); });
+  await p.waitForSelector('[data-testid="contracts-empty"]', {timeout: 30000});
+  const ctTiles = await p.evaluate(() => { switchAdminPane(null); return [...document.querySelectorAll('[data-testid="admin-tile"]')].map(t => t.dataset.k).join(); });
+  await p.evaluate(() => switchAdminPane('contracts'));
+  await p.waitForSelector('[data-testid="contracts-empty"]');
+  await p.setInputFiles('[data-testid="contract-file"]', {name: 'Hourly contract.pdf', mimeType: 'application/pdf', buffer: cpdf2});
+  await p.waitForSelector('[data-testid="contract-upload"][data-state="ready"]', {timeout: 60000});
+  const ct = await p.evaluate(async () => {
+    const r = {sizes: document.querySelector('[data-testid="contract-sizes"]').innerText,
+      marks: [...document.querySelectorAll('[data-testid="contract-marks"] [data-mark]')].map(b => b.dataset.mark).join(),
+      unknown: (document.querySelector('[data-testid="contract-unknown"]') || {}).innerText || '', name: T.val('') };
+    r.name = document.querySelector('[data-testid="contract-name"]').value;
+    T.fill('[data-testid="contract-category-input"]', 'hourly'); await T.tick(50);
+    document.querySelector('[data-testid="contract-sample"]').click();
+    r.sampleOpened = window.__opened.length === 1 && /^blob:/.test(window.__opened[0]);
+    document.querySelector('[data-testid="contract-save"]').click();
+    await T.until(() => document.querySelector('[data-testid="contract-row"]'), 20000);
+    const row = document.querySelector('[data-testid="contract-row"]');
+    r.row = row.innerText; r.def = !!row.querySelector('[data-testid="contract-default"]');
+    r.cat = (row.querySelector('[data-testid="contract-category"]') || {}).innerText;
+    T.tap('[data-testid="contract-row"]');
+    await T.until(() => window.__opened.length === 2, 20000);
+    r.tapSample = /^blob:/.test(window.__opened[1] || '');
+    return r;
+  });
+  const ctStored = await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json();
+  ok(/→/.test(ct.sizes) && ct.marks === 'given,surname,full_name,id,signature,sign_date' && /tpyo/.test(ct.unknown) && ct.name === 'Hourly contract' && ct.sampleOpened,
+    'contract templates: a PDF is made light (both sizes), its marks found — the Hebrew line too — and a typo listed; the sample opens ' + JSON.stringify(ct));
+  ok(ct.def && ct.cat === 'hourly' && /Hourly contract/.test(ct.row) && /0 signed/.test(ct.row) && ct.tapSample && /contracts/.test(ctTiles)
+    && ctStored.length === 1 && /^tenants\/tenant-one\/contracts\//.test(ctStored[0].fileId) && ctStored[0].category === 'hourly' && ctStored[0].isDefault,
+    'contract templates: saved — the category\'s default, its line shows the category, size, date and signed count; a tap opens its sample; an Admin tile ' + JSON.stringify({ct, ctTiles, stored: ctStored.map(x => ({f: x.fileId, c: x.category, d: x.isDefault}))}));
+  // The worker window's Contract section: the category's default, the worker's own terms saved on the worker.
+  const wct = await p.evaluate(async () => {
+    openEditWorker(1); await T.tick(100);
+    document.querySelector('[data-sec="contract"] button').click();
+    await T.until(() => /Hourly contract/.test((document.getElementById('wContractTemplate') || {}).innerText || '') || false, 3000);
+    T.fill('wContractCategory', 'hourly'); await T.tick(50);
+    await T.until(() => /The default: Hourly contract/.test(document.getElementById('wContractTemplate').innerText), 15000);
+    const r = {trigger: document.getElementById('wContractTemplate').innerText};
+    T.fill('wTerms1', 'Trial period: 3 months'); await T.tick(50);
+    await saveWorker(); await T.tick(300);
+    const w = workers[1];
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(200);
+    r.saved = w.contractCategory === 'hourly' && JSON.stringify(w.contractTerms) === '["Trial period: 3 months"]' && !w.contractTemplateId;
+    return r;
+  });
+  ok(wct.saved && /The default: Hourly contract/.test(wct.trigger), 'contract templates: the worker window\'s Contract section — the category\'s default, the worker\'s own terms saved ' + JSON.stringify(wct));
+  // Delete through ⋮ and the Undo snack: the template and its file go.
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('contracts'); });
+  await p.waitForSelector('[data-testid="contract-row"]');
+  await p.click('[data-testid="contract-row"] button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  const ctMenu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Delete")');
+  await p.waitForTimeout(6500);
+  const ctAfter = await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json();
+  ok(ctMenu === 'Edit,Category,Replace file,Delete' && ctAfter.length === 0, 'contract templates: ⋮ holds Edit (the name), Category, Replace file, Delete; Delete goes through the Undo snack ' + JSON.stringify({ctMenu, after: ctAfter.length}));
+  await p.evaluate(() => { window.open = window.__origOpen; window.__opened = undefined; switchAdminPane(null); switchTab('schedule'); });
   // Admin pane: users through the dispatcher
   ok(await p.evaluate(async () => { const j = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'listUsers'})})).json(); return (j.users||[]).some(u=>u.username==='sup1'); }), 'owner: listUsers via the dispatcher');
   ok(await p.evaluate(async () => (await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'nope'})})).json()).error === 'Unknown action: nope'), 'unknown action answers an error');
@@ -1143,8 +1202,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchAdminPane('punchlog'); await new Promise(r => setTimeout(r, 250)); // the checks below go on in the Punch Log
     return back; });
   // A super-admin also gets the Scanner lab tile (it opens /scan-lab/ in a new tab).
-  ok(at.tiles === 'punchlog,firms,users' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
-    'admin: three tiles while no section is chosen (and the Scanner and the Scanner lab for a super-admin), a tile opens its section, the breadcrumb "Admin › Punch Log", the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
+  ok(at.tiles === 'punchlog,firms,users,contracts' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
+    'admin: four tiles while no section is chosen — Contract templates the fourth (and the Scanner and the Scanner lab for a super-admin), a tile opens its section, the breadcrumb "Admin › Punch Log", the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
   // The filters: Radix selects — the date list is newest day first; the client filter uses the punch's own clientId.
   const pickFilter = async (k, label) => {
     await p.click(PL + ' [data-testid="punch-filter-' + k + '"]'); await p.waitForSelector('[role="option"]');
@@ -1555,8 +1614,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     for(let i = 0; i < 3; i++){ await wait(150); document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); }
     return r;
   });
-  ok(ed.worker.join() === 'person,address,work,documents,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
-    'editors: the worker editor is section plates (Person · Address · Work · Documents · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
+  ok(ed.worker.join() === 'person,address,work,documents,contract,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
+    'editors: the worker editor is section plates (Person · Address · Work · Documents · Contract · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
   ok(ed.client.join() === 'client,place,rates' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.noRole,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).

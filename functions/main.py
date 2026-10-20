@@ -25,6 +25,7 @@ from firebase_admin import auth as fb_auth
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+import contracts
 import datastore
 import feedback
 import gate
@@ -856,5 +857,36 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         update.update({k: firestore.Increment(n) for k, n in shadow.items()})
         stats_ref.set(update, merge=True)
         return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+# ===== Contract templates (contracts.py; docs/contracts.md → Contract templates) =====
+
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
+    memory=options.MemoryOption.GB_1,
+    cpu=1,
+    concurrency=20,
+    timeout_sec=120,
+)
+def contract_templates(req: https_fn.Request) -> https_fn.Response:
+    """Admin → Contract templates: {"action": "list" | "file" | "prepare" | "sample" | "save" |
+    "update" | "delete", …} from a manager login of the firm (contracts.run). No shared state per
+    request: the uploads of several files are sent at once (CLAUDE.md → Parallel AI calls)."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    try:
+        payload = req.get_json(silent=True, force=True) or {}
+        pong = _ping_response(payload)
+        if pong:
+            return pong
+        status, error, claims = gate.claims_of(req.headers, _verify_token)
+        if status:
+            return _json({"error": error}, status)
+        from firebase_admin import firestore, storage
+        return _json(contracts.run(firestore.client(), _model_bucket(storage), claims, payload))
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
     except Exception as e:
         return _json({"error": str(e)}, 500)

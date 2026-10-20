@@ -15,6 +15,8 @@ export type WorkerForm = {
   expiryEnabled: boolean; expiryMonths: string; expiryWarnMonths: string; notes: string;
   incomeType: string; otherIncomeType: string;
   spouseSurname: string; spouseGiven: string; spouseId: string; spouseDob: string; spouseIncome: string;
+  /** the contract (docs/contracts.md → The worker's contract): its category, a template for this worker alone ('' = the category's default), the worker's own terms */
+  contractCategory: string; contractTemplateId: string; terms1: string; terms2: string; terms3: string; terms4: string; terms5: string;
 };
 export type FormKey = keyof WorkerForm;
 
@@ -86,6 +88,8 @@ export function formOf(w: WorkerRecord): WorkerForm {
     expiryEnabled: !!w.expiryEnabled, expiryMonths: String(w.expiryMonths || 9), expiryWarnMonths: String(w.expiryWarnMonths ?? 1), notes: w.notes || '',
     incomeType: w.incomeType || 'monthly', otherIncomeType: w.otherIncomeType || 'none',
     spouseSurname: w.spouseSurname || '', spouseGiven: w.spouseGiven || '', spouseId: w.spouseId || '', spouseDob: w.spouseDob || '', spouseIncome: w.spouseIncome || '',
+    contractCategory: w.contractCategory || '', contractTemplateId: w.contractTemplateId || '',
+    ...(Object.fromEntries([0, 1, 2, 3, 4].map(i => ['terms' + (i + 1), (w.contractTerms || [])[i] || ''])) as Pick<WorkerForm, 'terms1' | 'terms2' | 'terms3' | 'terms4' | 'terms5'>),
   };
 }
 
@@ -115,7 +119,15 @@ export function commonFields(v: WorkerForm, o: {
     spouseSurname, spouseGiven, spouseId, spouseDob: t(v.spouseDob), spouseIncome: v.spouseIncome || '',
     supplierId: v.supplierId || null,
     docType: o.docType,
+    contractCategory: t(v.contractCategory), contractTemplateId: v.contractTemplateId || '', contractTerms: contractTerms(v),
   };
+}
+
+/** The worker's own terms ({{terms_1}}…{{terms_5}}), without the empty ones at the end. */
+export function contractTerms(v: Pick<WorkerForm, 'terms1' | 'terms2' | 'terms3' | 'terms4' | 'terms5'>): string[] {
+  const out = [v.terms1, v.terms2, v.terms3, v.terms4, v.terms5].map(s => String(s || '').trim());
+  while (out.length && !out[out.length - 1]) out.pop();
+  return out;
 }
 
 const norm = (v: unknown) => (v == null || v === '' || (Array.isArray(v) && !v.length) ? '' : JSON.stringify(v));

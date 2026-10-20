@@ -36,7 +36,10 @@ Built as docs/contracts.md → Scanned pages: every new save stores pages and th
 - The existing workers' sidecars are split into pages once, by a migration.
 - Form 101, the contract and the joined PDF read the pages from here.
 
-## D2 — contract templates (PDF first)
+## D2 — contract templates (PDF first) — built (2026-10-20)
+
+Built as docs/contracts.md → Contract templates and The worker's contract. A picture page is shrunk to 200 dpi but not straightened by the server (the scanner runs on the phone); its marks are placed by hand. Managing templates is for the firm's admin and the super-admin.
+
 
 - The firm uploads its contract as a **PDF** with marks written in the text, for example:
   - `{{given}}`, `{{surname}}`, `{{id}}`, `{{start_date}}`, `{{company}}`;

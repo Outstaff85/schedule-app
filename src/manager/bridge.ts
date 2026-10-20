@@ -198,6 +198,9 @@ export type WorkerRecord = {
   /** the old scan sidecar (one JSON with the pictures), read until it is split into `scanPages` */
   assetsFileId?: string;
   scanPages?: ScanPage[];
+  contractCategory?: string;
+  contractTemplateId?: string;
+  contractTerms?: string[];
   sigFileId?: string;
   sigSavedAt?: string;
   docs?: WorkerDoc[];
@@ -603,7 +606,7 @@ export type AccountingSnapshot = {
 
 // ── Admin (stage 6f) ──
 
-export type AdminPane = 'punchlog' | 'firms' | 'users' | 'errors' | 'timings' | 'scanner';
+export type AdminPane = 'punchlog' | 'firms' | 'users' | 'contracts' | 'errors' | 'timings' | 'scanner';
 
 /** A punch as the log shows it: as stored, with its site worked out (`punchSite`). */
 export type AdminPunch = {

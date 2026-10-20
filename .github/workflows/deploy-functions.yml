@@ -55,7 +55,7 @@ jobs:
       - name: Test login and user management on the emulators
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi
           firebase emulators:exec --only firestore,auth --project demo-schedule "$RUNNER_TEMP/testvenv/bin/python -m pytest tests/auth -q"
 
       - name: Write service account credentials
