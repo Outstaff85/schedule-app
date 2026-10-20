@@ -137,9 +137,9 @@ Every attempt made by anyone who scans becomes a training example with no extra 
 - **Sent at once:** each attempt goes in the background right after it is made, as one JSON request to `scan_feedback` with a new action `attempt`. The request carries the user's ID token. The server checks only that it is a signed-in login of a firm (any role, as S6), so that no stranger can fill the bucket with junk or poisoned examples, and records the firm (`tenantId`) and where the attempt came from (`source`: `site` / `lab`).
   - Nothing is kept on the phone when the network is up.
 - **No network:** the attempt waits in a small queue on the phone (IndexedDB) and goes with the next attempt or when the network is back.
-  - At most **15** attempts wait; the oldest is dropped beyond that.
+  - At most **5** attempts (pages) wait; the oldest is dropped beyond that (owner, 2026-10-20).
   - An attempt waits at most **1 hour**, then it is dropped.
-  - The scanner shows **In queue: N / 15** while anything waits.
+  - The scanner shows **In queue: N / 5** while anything waits.
 - **Where it is kept:** only the private Hugging Face bucket `OutStaff/scanner-data` (never a public repo), with the server's write-only token, as the site's examples. The attempts have their own folders and are never mixed with S6's examples:
   - new attempts go to `attempts/new/<source>/<YYYY-MM-DD>/<id>/` (`picture.jpg` + `answer.json`), where `<source>` is `site` or `lab`;
   - after a training uses them, `publish.py` moves them to `attempts/used/v<N>/`, so the next run takes only the new ones.
