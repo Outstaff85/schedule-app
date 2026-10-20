@@ -231,6 +231,10 @@ def run(db, bucket, claims, body, build101, server_time=None):
         rows.sort(key=lambda r: str(r.get("sentAt") or ""), reverse=True)
         return {"ok": True, "requests": rows[:300]}
 
+    if action == "transferAsk":  # D6: add a worker from another firm (transfer.py)
+        import transfer
+        return transfer.ask(db, claims, tenant, body)
+
     if action == "bundle":
         if role in ("staff", "hr") and "workers" not in rights_of(claims):
             return {"error": E_NO_RIGHT}
@@ -299,6 +303,9 @@ def run_worker(db, bucket, body, build101, server_time=None, finder=None):
     tenant, wid, worker = (finder or find_worker)(db, body.get("token"))
     if not tenant:
         return {"error": E_LINK}
+    if body.get("transfer"):  # another firm asks to take the worker's details (D6, transfer.py)
+        import transfer
+        return transfer.run_worker(db, bucket, tenant, wid, worker, body, build101, server_time)
     rid, req = _current(db, tenant, wid)
     action = str(body.get("action") or "")
     if action == "mine":

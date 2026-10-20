@@ -8,8 +8,8 @@ import { useVersionWatch } from '@/lib/version-watch';
 import { init, reportError, showInvalidLink, usePunch } from './core';
 import { PunchScreen } from './PunchScreen';
 import { HoursSheet, ScheduleSheet, useSheetClose } from './Sheets';
-import { DocumentsSheet } from './Documents';
-import { loadSignState } from './sign';
+import { DocumentsSheet, TransferSheet } from './Documents';
+import { loadSignState, loadTransferState } from './sign';
 
 const watched = () => [location.pathname, '/og.css'];
 
@@ -21,7 +21,7 @@ export function App() {
   useVersionWatch(watched);
   useSheetClose();
   // documents to sign: read once the worker is known (and again when it changes)
-  React.useEffect(() => { if (s.worker) void loadSignState(); }, [s.worker?.token]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (s.worker) { void loadSignState(); void loadTransferState(); } }, [s.worker?.token]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (started) return;
     started = true;
@@ -42,6 +42,7 @@ export function App() {
       {s.worker && s.screen !== 'invalid' && <ScheduleSheet hidden={s.screen !== 'schedule'} />}
       {s.worker && s.screen !== 'invalid' && <HoursSheet hidden={s.screen !== 'hours'} />}
       {s.worker && s.screen !== 'invalid' && <DocumentsSheet hidden={s.screen !== 'documents'} />}
+      {s.worker && s.screen !== 'invalid' && <TransferSheet hidden={s.screen !== 'transfer'} />}
       {s.queued > 0 && (
         <div id="offlineBadge" data-testid="offline-badge" style={{ position: 'fixed', top: 'max(env(safe-area-inset-top,12px),12px)', left: '50%', transform: 'translateX(-50%)', background: 'rgba(245,166,35,0.95)', backdropFilter: 'blur(8px)', color: '#fff', fontSize: 13, fontWeight: 700, padding: '7px 18px', borderRadius: 100, zIndex: 999, display: 'flex', alignItems: 'center', gap: 6 }}>
           {s.queued > 1 ? tr('📶 Offline — {0} punches queued', { 0: s.queued }) : tr('📶 Offline — 1 punch queued')}

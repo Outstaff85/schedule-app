@@ -1210,6 +1210,37 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /50/.test(first)};
   });
   ok(d5.pages >= 4 && d5.name && d5.sign && !d5.pay, 'download data: one PDF — the summary (names, the signing date, never pay) then Form 101, the contract, the scanned pages ' + JSON.stringify(d5));
+  // D6: a worker of firm two moves to this firm — the request, the worker's consent and signing in their own page, the copy.
+  await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });
+  await p.click('[data-testid="workers-transfer"]');
+  await p.fill('#transferNo', '039337423');
+  await p.click('[data-testid="transfer-send"]');
+  await p.waitForSelector('[data-testid="transfer-sent"]', {timeout: 20000});
+  await p.keyboard.press('Escape'); await sleep(300);
+  const tPage = await page(ctx);
+  await tPage.goto(BASE + 'worker-punch.html?t=tok-9');
+  await tPage.waitForSelector('[data-testid="tile-transfer"]', {timeout: 30000});
+  const tTile = await tPage.evaluate(() => document.querySelector('[data-testid="tile-transfer"]').innerText);
+  await tPage.click('[data-testid="tile-transfer"]');
+  ok(await waitFor(tPage, () => [...document.querySelectorAll('#screenTransfer [data-testid="pdf-doc"]')].filter(d => Number(d.dataset.pages) > 0).length === 2, 40000),
+    'transfer: the worker\'s page shows the new firm\'s Form 101 and contract, filled');
+  await tPage.evaluate(() => document.querySelector('#screenTransfer [data-testid="pdf-end"]').scrollIntoView());
+  await tPage.waitForSelector('#screenTransfer [data-testid="sign-button"]', {timeout: 10000});
+  const tPad = await tPage.$('#screenTransfer [data-testid="sign-documents"] canvas:not([data-page])');
+  const tBb = await tPad.boundingBox();
+  await tPage.mouse.move(tBb.x + 20, tBb.y + 30); await tPage.mouse.down();
+  for (let i = 1; i <= 10; i++) await tPage.mouse.move(tBb.x + 20 + i * 15, tBb.y + 30 + (i % 2 ? 15 : -10));
+  await tPage.mouse.up();
+  await tPage.click('#screenTransfer [data-testid="sign-button"]');
+  await tPage.waitForSelector('[data-testid="transfer-done"]', {timeout: 60000});
+  await tPage.close();
+  const tState = await (await fetch('http://127.0.0.1:5055/transferState', {method: 'POST'})).json();
+  const tNew = tState.moved[0] || {};
+  ok(/Firm One/.test(tTile) && tState.moved.length === 1 && tNew.docId === '039337423' && !(tNew.clientIds || []).length && !tNew.notes && tNew.token !== 'tok-9' && tNew.signedAt && (tNew.docs || [])[0]?.signed
+    && tState.old.status === 'fired' && tState.old.movedToOtherFirm && tState.old.clientIds[0] === 'c9' && tState.reqs.includes('done') && tState.log === 1,
+    'transfer: the request, the worker approves by signing; only the personal data and the signed documents are copied, the old firm keeps the worker as Inactive, the copy is logged ' + JSON.stringify({tTile, n: tState.moved.length, tNew: {docId: tNew.docId, clients: tNew.clientIds, notes: tNew.notes, tok: tNew.token}, old: tState.old, reqs: tState.reqs, log: tState.log}));
+  await fetch('http://127.0.0.1:5055/transferCleanup', {method: 'POST'});
   // In person, on the manager's phone: Dana signs in the window.
   await p.evaluate(() => { switchTab('workers'); openWorkerCard(workers.findIndex(w => w.id === 'w2')); });
   await p.waitForSelector('[data-testid="card-sign"]');
