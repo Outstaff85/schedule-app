@@ -119,6 +119,16 @@ def test_which_template_a_picture_shows_and_the_exam_split():
     assert midv_mrz.is_exam("80") and midv_mrz.is_exam("99") and not midv_mrz.is_exam("79")
 
 
+def test_the_edges_exam_keeps_whole_documents_apart():
+    # MIDV-2020's documents 80–99 and SmartDoc's fifth page of each kind are the exam: every photo, scan and frame of them
+    m = lambda i, src="midv-2020/photo": {"id": f"midv-midv-2020-photo-images-alb_id-{i}", "midv": True, "source": src}
+    assert midv.open_exam(m("80")) and midv.open_exam(m("99")) and not midv.open_exam(m("79"))
+    assert midv.open_exam(m("85", "midv-2020/scan_rotated")) and not midv.open_exam(m("85", "midv-500"))
+    sd = lambda doc: {"id": f"smartdoc-background03-{doc}-frame_0012", "smartdoc": True}
+    assert midv.open_exam(sd("tax005")) and midv.open_exam(sd("datasheet005")) and not midv.open_exam(sd("tax004"))
+    assert not midv.open_exam({"id": "a-user-page-80", "exam": False})   # the users' own exam is pull.py's
+
+
 def test_the_work_folder_can_be_on_another_disk(monkeypatch, tmp_path):
     # SCAN_TRAIN_HOME moves every copy (another disk); without it, ~/.scan-train
     spec = importlib.util.spec_from_file_location("home_t", HERE / "home.py")
