@@ -5,7 +5,10 @@ values taken where their check digit is right) — and compared with what the us
 AI had filled in (scanned). On the made-up lines its check figures come from train_mrz.py.
 Writes ~/.scan-train/report_mrz.json: "publish" when the made-up lines are read well enough and, on the
 real passports, it is right at least as often as the AI (or there are none yet: then the shadow on the
-site examines it).
+site examines it). With MIDV-2020's exam passports (midv_mrz.py: real photos and scans of mock passports,
+never trained on), the same is done on them — the zone found, line 2 read right, every check-digit field
+right — and reported beside (MIDV's figures inform the owner; the decision stays the made-up lines and
+the real passports the site collected).
 
   python exam_mrz.py
 """
@@ -53,6 +56,29 @@ def compare(got, saved):
     return len(keys), sum(norm(got[k]) == norm(saved[k]) for k in keys)
 
 
+def midv_exam(sess):
+    """MIDV-2020's exam passports: {"midvPages", "midvZoneFound", "midvLine2Right", "midvFieldsAllRight"}, or {}."""
+    folder = WORK / "midv-mrz" / "exam"
+    if not (folder / "exam.json").exists():
+        return {}
+    pages = json.loads((folder / "exam.json").read_text(encoding="utf-8"))
+    n = found = line2 = all_right = 0
+    for e in pages:
+        gray = cv2.imread(str(folder / e["page"]), cv2.IMREAD_GRAYSCALE)
+        if gray is None:
+            continue
+        n += 1
+        lines = find_lines(gray)
+        if not lines:
+            continue
+        found += 1
+        texts = [decode(sess.run(None, {"img": line_input(l)[None]})[0][0]) for l in lines]
+        line2 += texts[1] == e["lines"][1]
+        want = fields(e["lines"][1])
+        all_right += bool(want) and fields(texts[1]) == want
+    return {"midvPages": n, "midvZoneFound": found, "midvLine2Right": line2, "midvFieldsAllRight": all_right}
+
+
 def main():
     model = WORK / "new" / "mrz.onnx"
     if not model.exists():
@@ -96,7 +122,7 @@ def main():
     report = {"madeUpLinesRight": train["linesRight"], "madeUpCharsWrong": train["charsWrong"],
               "passports": n, "zoneFound": found, "passportsAllRight": all_right, "fieldsRight": fields_right, "fieldsCompared": fields_n,
               "aiPassportsAllRight": ai_right, "aiFieldsRight": ai_fields_right, "aiFieldsCompared": ai_n,
-              "missed": misses[:50], "publish": synth_ok and real_ok}
+              "missed": misses[:50], "publish": synth_ok and real_ok, **midv_exam(sess)}
     write_json(WORK / "report_mrz.json", report)
     print(f"Made-up lines: {train['linesRight']:.1%} read right ({train['charsWrong']:.2%} of the characters wrong; needed {SYNTH_AT:.0%})")
     if n:
@@ -104,6 +130,11 @@ def main():
               f"the AI: {ai_right} ({ai_fields_right}/{ai_n} fields)")
     else:
         print("Real passports: none collected yet — the shadow on the site will compare it with the AI")
+    if report.get("midvPages"):
+        m = report["midvPages"]
+        print(f"MIDV-2020 exam passports (real photos and scans): {m}; the zone found on {report['midvZoneFound']}; "
+              f"line 2 read right on {report['midvLine2Right']} ({report['midvLine2Right'] / m:.0%}); "
+              f"every check-digit field right on {report['midvFieldsAllRight']} ({report['midvFieldsAllRight'] / m:.0%})")
     print("YES — worth publishing to the lab" if report["publish"] else "NO — do not publish")
 
 

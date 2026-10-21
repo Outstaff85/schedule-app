@@ -30,7 +30,7 @@ from synth import order_corners
 
 OUT = pathlib.Path.home() / ".scan-train" / "midv"   # common.WORK (not imported: no Google packages needed)
 FTP_HOST = "smartengines.com"
-MIDV2020 = ("photo.tar", "scan_rotated.tar", "scan_upright.tar")
+MIDV2020 = ("templates.tar", "photo.tar", "scan_rotated.tar", "scan_upright.tar")   # templates: the passports' zone text (midv_mrz.py)
 MIDV2020_CLIPS = ("clips.tar",)
 MIDV500_DIR, MIDV2019_DIR = "midv-500/dataset", "midv-500/extra/midv-2019/dataset"
 LONG = 640
@@ -151,10 +151,9 @@ def _image_for(ann_path, name, index):
     return max(found, key=near)
 
 
-def build(src, out, clip_step=3):
-    import cv2
-    (out / "img").mkdir(parents=True, exist_ok=True)
-    ex, outside = [], 0
+def pictures(src, clip_step=3):
+    """Every annotated picture under src: (annotation file, picture, its corners in pixels — the
+    document's own top-left first, as MIDV gives them), every clip_step-th frame of a clip."""
     index = {}
     for p in pathlib.Path(src).rglob("*"):
         if p.suffix.lower() in IMAGES:
@@ -169,27 +168,39 @@ def build(src, out, clip_step=3):
             if img_path is None:
                 continue
             rel = img_path.relative_to(src)
-            is_clip = "clips" in rel.parts or "ground_truth" in ann_path.parts
-            if is_clip and clip_step > 1:
+            if (is_clip(rel, ann_path)) and clip_step > 1:
                 digits = "".join(c for c in img_path.stem if c.isdigit())
                 n = int(digits) if digits else 0
                 if (n // (6 if "clips" in rel.parts else 1)) % clip_step:
                     continue   # the next frames of a clip are nearly the same picture
-            img = cv2.imread(str(img_path))
-            if img is None:
-                continue
-            h, w = img.shape[:2]
-            fixed = normalised(quad, w, h)
-            if fixed is None:
-                outside += 1
-                continue
-            s = LONG / max(w, h)
-            small = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
-            eid = "midv-" + "-".join(rel.with_suffix("").parts)
-            f = out / "img" / f"{eid}.jpg"
-            cv2.imwrite(str(f), small, [cv2.IMWRITE_JPEG_QUALITY, 92])
-            ex.append({"id": eid, "file": str(f), "model": None, "fixed": fixed, "moved": 0, "exam": False,
-                       "midv": True, "kind": kind_of(rel), "source": "/".join(rel.parts[:2])})
+            yield ann_path, img_path, quad
+
+
+def is_clip(rel, ann_path):
+    return "clips" in rel.parts or "ground_truth" in ann_path.parts
+
+
+def build(src, out, clip_step=3):
+    import cv2
+    (out / "img").mkdir(parents=True, exist_ok=True)
+    ex, outside = [], 0
+    for ann_path, img_path, quad in pictures(src, clip_step):
+        rel = img_path.relative_to(src)
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
+        h, w = img.shape[:2]
+        fixed = normalised(quad, w, h)
+        if fixed is None:
+            outside += 1
+            continue
+        s = LONG / max(w, h)
+        small = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
+        eid = "midv-" + "-".join(rel.with_suffix("").parts)
+        f = out / "img" / f"{eid}.jpg"
+        cv2.imwrite(str(f), small, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        ex.append({"id": eid, "file": str(f), "model": None, "fixed": fixed, "moved": 0, "exam": False,
+                   "midv": True, "kind": kind_of(rel), "source": "/".join(rel.parts[:2])})
     (out / "examples.json").write_text(json.dumps(ex), encoding="utf-8")
     return ex, outside
 

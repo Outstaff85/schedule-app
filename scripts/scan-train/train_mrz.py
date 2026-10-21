@@ -4,10 +4,13 @@ a two-way LSTM, CTC) learns to read one MRZ line from the made-up lines synth_li
 blurred, small, noisy, squeezed into JPEG, tilted, with a bit of the next line in the crop. No real
 passport is needed to train (exam_mrz.py examines it on the real ones the site collected). Exported
 to ONNX (mrzmodel.py: input "img" [1,1,32,512], output "logits" [1,128,38]) and checked to answer like
-the trained model. Writes ~/.scan-train/new/mrz.onnx and report_mrz_train.json.
+the trained model. With --midv, the real zone lines cut from MIDV-2020's passport photos and scans
+(midv_mrz.py: ~/.scan-train/midv-mrz/train/) are added, each shown --midv-repeat times an epoch.
+Writes ~/.scan-train/new/mrz.onnx and report_mrz_train.json.
 
   python synth_lines.py mrz --count 100000      # first
   python train_mrz.py                           # ~10-20 min on the 4070
+  python train_mrz.py --midv                    # + MIDV-2020's real lines (after midv_mrz.py)
 """
 import argparse
 import io
@@ -84,8 +87,8 @@ def worse(gray, rng, other=None):
 
 
 class Lines(torch.utils.data.Dataset):
-    def __init__(self, items, train, seed=0):
-        self.items, self.train, self.seed = items, train, seed
+    def __init__(self, items, train, seed=0, real=frozenset()):
+        self.items, self.train, self.seed, self.real = items, train, seed, real
 
     def __len__(self):
         return len(self.items)
@@ -94,7 +97,10 @@ class Lines(torch.utils.data.Dataset):
         rng = random.Random((self.seed, i, torch.initial_seed()).__hash__() if self.train else i)
         p, t = self.items[i]
         g = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
-        if self.train:
+        if self.train and p in self.real:
+            if rng.random() < 0.5:               # a real photo's line: already a phone's; sometimes a little worse
+                g = worse(g, rng)
+        elif self.train:
             other = cv2.imread(str(self.items[rng.randrange(len(self.items))][0]), cv2.IMREAD_GRAYSCALE)
             g = worse(g, rng, other)
         else:
@@ -156,6 +162,8 @@ def main():
     ap.add_argument("--epochs", type=int, default=12)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--midv", action="store_true", help="add MIDV-2020's real zone lines (midv_mrz.py)")
+    ap.add_argument("--midv-repeat", type=int, default=8, help="how many times an epoch each real line is shown")
     a = ap.parse_args()
     items = load(pathlib.Path(a.data))
     if len(items) < 1000:
@@ -163,11 +171,19 @@ def main():
     random.Random(0).shuffle(items)
     n_val = max(500, len(items) // 50)
     val, train = items[:n_val], items[n_val:]
+    real = []
+    if a.midv:
+        folder = WORK / "midv-mrz" / "train"
+        if not (folder / "labels.tsv").exists():
+            raise SystemExit(f"no {folder / 'labels.tsv'} — run midv_mrz.py first")
+        real = load(folder)
+        train = train + real * a.midv_repeat
+        print(f"+ {len(real)} real zone lines from MIDV-2020, each {a.midv_repeat} times an epoch")
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(train)} lines to train on, {len(val)} to check, on the {dev}")
     net = MrzNet().to(dev)
     print(f"{sum(p.numel() for p in net.parameters()) / 1e6:.2f} M weights")
-    tl = torch.utils.data.DataLoader(Lines(train, True), a.batch, shuffle=True, num_workers=a.workers, collate_fn=collate, drop_last=True)
+    tl = torch.utils.data.DataLoader(Lines(train, True, real=frozenset(p for p, _ in real)), a.batch, shuffle=True, num_workers=a.workers, collate_fn=collate, drop_last=True)
     vl = torch.utils.data.DataLoader(Lines(val, False), 128, num_workers=a.workers, collate_fn=collate)
     opt = torch.optim.AdamW(net.parameters(), 1e-3, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=a.epochs * len(tl))
@@ -192,7 +208,7 @@ def main():
     net.load_state_dict(best[1])
     acc, cer = evaluate(net.to(dev), vl, dev)
     diff = export(net, WORK / "new" / "mrz.onnx")
-    report = {"linesRight": acc, "charsWrong": cer, "trainLines": len(train), "checkLines": len(val), "onnxDiff": diff}
+    report = {"linesRight": acc, "charsWrong": cer, "trainLines": len(train), "checkLines": len(val), "midvLines": len(real), "onnxDiff": diff}
     (WORK / "report_mrz_train.json").write_text(json.dumps(report, indent=1))
     print(f"mrz.onnx written: on made-up lines {acc:.1%} of the lines right ({cer:.2%} of the characters wrong)")
 
