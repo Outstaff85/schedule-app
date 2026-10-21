@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
 import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
-import { continueLab, labDeleted, labFix, showLab, sleepLab } from './lab';
+import { continueLab, labDeleted, labDone, labFix, showLab, sleepLab } from './lab';
 import { loadBatches, saveBatches } from './store';
 
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype };
@@ -204,6 +204,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       footer={<Button variant="primary" data-testid="scan-done" disabled={!kept.length || finishing}
         onClick={async () => {
           setFinishing(true);
+          labDone(); // the kept attempts go for training
           sleepLab(); // the camera stops
           // waits for the pages' kinds
           while (batchesRef.current.some(b => b.pages.some(p => p.doctypePending))) await new Promise(r => setTimeout(r, 100));

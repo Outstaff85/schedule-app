@@ -458,10 +458,23 @@ function cornerEditor(frame, start) {
     draw();
   });
 }
+// In the site's scan window a kept attempt is sent only when the user taps Done (owner, 2026-10-21): until
+// then it waits here (heldForDone) — a window closed without Done sends nothing. The lab itself has no Done:
+// there Looks good sends it at once.
+var holdForDone = false;  // set by scan/embed.js in the site's frame
+var heldForDone = [];  // (var: the browser tests read it)
 function decideAttempts(outcome) {
   const list = onScreen; onScreen = [];
   if (outcome === 'retaken' && list.length) retakeGroup = list[0].group;
-  for (const a of list) { a.outcome = outcome; void queueAttempt(a); }
+  for (const a of list) {
+    a.outcome = outcome;
+    if (outcome === 'kept' && holdForDone) heldForDone.push(a); else void queueAttempt(a);
+  }
+}
+function doneAttempts() {
+  decideAttempts('kept');
+  const list = heldForDone; heldForDone = [];
+  for (const a of list) void queueAttempt(a);
 }
 function trainDb() {
   return new Promise((ok, no) => { const r = indexedDB.open('scanAttempts', 1); r.onupgradeneeded = () => r.result.createObjectStore('queue', { keyPath: 'a.id' }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
@@ -478,6 +491,8 @@ async function queueAttempt(a) {
 }
 async function attemptPageDeleted(id, pg) {
   if (!id) return;
+  const held = heldForDone.find(a => a.id === id) || onScreen.find(a => a.id === id);
+  if (held) { held.deletedPages.push(pg); return; }  // not sent yet: it goes with its deleted pages
   const dir = attemptDirs.get(id);
   if (dir) { await trainPost({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {}); return; }
   if (flushing) { lateDeletes.set(id, [...(lateDeletes.get(id) || []), pg]); return; }  // on its way: told once its folder is known
