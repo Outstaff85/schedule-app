@@ -10,12 +10,12 @@ import re
 
 from google.cloud import firestore, storage
 
+from home import DATA, WORK  # ~/.scan-train (or SCAN_TRAIN_HOME): examples, models, report — deleted by publish/clean; DATA: the private bucket
+
 PROJECT = "schedule-odinson"
 BUCKETS = ["schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com"]
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-WORK = pathlib.Path.home() / ".scan-train"            # examples, models, report — deleted by publish/clean
 REPO = "OutStaff/scanner-models"                       # the models' home on Hugging Face (public)
-DATA = "OutStaff/scanner-data"                         # the training data on Hugging Face (a PRIVATE bucket, docs/hf-plan.md → H7)
 MODELS = ("edges-lite.onnx", "edges.onnx")            # the document edges models trained (the face finder is not)
 KEEP = ("face.onnx",)                                 # carried to a new version as it is
 # a model file's name in a version not moved to Hugging Face yet (Storage), by its name today
@@ -130,12 +130,12 @@ def data_file(path, dest):
         return False
 
 
-KEPT = ("midv", "smartdoc")  # public datasets (midv.py, smartdoc.py), no worker's data: large downloads kept between trainings
+KEPT = ("midv", "midv-mrz", "smartdoc")  # public datasets (midv.py, smartdoc.py), no worker's data: large downloads kept between trainings
 
 
 def clear_work():
     """Every copy on this PC deleted (the workers' documents, the new models, the made-up photos) —
-    but the MIDV and SmartDoc downloads."""
+    but the MIDV and SmartDoc sets."""
     if not WORK.exists():
         return
     for p in WORK.iterdir():

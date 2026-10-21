@@ -13,7 +13,8 @@ Nothing is uploaded.
   python midv.py --download midv2020                  # photos and scans → ~/.scan-train/midv/raw/
   python midv.py --download midv2020 --clips          # + the video frames (a very large download)
   python midv.py --download midv500                   # MIDV-500's 50 documents (video frames)
-  python midv.py                                      # → ~/.scan-train/midv/img/, examples.json
+  python midv.py                                      # → ~/.scan-train/midv/img/, examples.json (+ midv_mrz.py's)
+  python midv.py --download midv2020 --drop-raw       # the same, then the download deleted (only the sets kept)
   python midv.py --src D:/datasets/midv-2020          # from a copy already downloaded
 
 The data's terms: docs/scan-training.md → MIDV (the source images are Wikimedia Commons samples,
@@ -26,9 +27,10 @@ import tarfile
 import zipfile
 
 
+from home import WORK
 from synth import order_corners
 
-OUT = pathlib.Path.home() / ".scan-train" / "midv"   # common.WORK (not imported: no Google packages needed)
+OUT = WORK / "midv"   # kept by common.clear_work
 FTP_HOST = "smartengines.com"
 MIDV2020 = ("templates.tar", "photo.tar", "scan_rotated.tar", "scan_upright.tar")   # templates: the passports' zone text (midv_mrz.py)
 MIDV2020_CLIPS = ("clips.tar",)
@@ -211,6 +213,7 @@ def main():
     ap.add_argument("--clips", action="store_true", help="MIDV-2020's video frames too (a very large download)")
     ap.add_argument("--src", help="the downloaded MIDV folders (default ~/.scan-train/midv/raw)")
     ap.add_argument("--clip-step", type=int, default=3, help="every n-th annotated frame of a clip")
+    ap.add_argument("--drop-raw", action="store_true", help="delete the download once the sets are made (they are all training needs)")
     a = ap.parse_args()
     raw = pathlib.Path(a.src) if a.src else OUT / "raw"
     if a.download:
@@ -221,6 +224,19 @@ def main():
         by[e["kind"]] = by.get(e["kind"], 0) + 1
     print(f"{len(ex)} pictures in {OUT} ({', '.join(f'{k} {n}' for k, n in sorted(by.items()))}); "
           f"{outside} left out: the document goes out of the picture")
+    import midv_mrz   # the passports' zone lines too, while the download is here (it needs the templates)
+    try:
+        lines, pages = midv_mrz.build(raw, midv_mrz.OUT, a.clip_step if a.clips else 0)
+        print(f"{lines} zone lines to train on, {pages} passport pages for the exam in {midv_mrz.OUT}")
+    except SystemExit as e:
+        print(f"no zone lines: {e}")
+    if a.drop_raw:
+        if a.src:
+            print(f"--drop-raw does not delete a folder given with --src ({raw})")
+        else:
+            import shutil
+            shutil.rmtree(raw, ignore_errors=True)
+            print(f"deleted the download {raw}; the sets stay")
 
 
 if __name__ == "__main__":

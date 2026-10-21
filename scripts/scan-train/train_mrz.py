@@ -23,9 +23,9 @@ import numpy as np
 import torch
 from torch import nn
 
+from home import WORK
 from mrzmodel import CHARS, H, W, decode, line_input
 
-WORK = pathlib.Path.home() / ".scan-train"
 
 
 class MrzNet(nn.Module):

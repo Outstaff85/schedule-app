@@ -21,9 +21,10 @@ import json
 import pathlib
 import re
 
+from home import WORK
 from midv import OUT as MIDV, is_clip, pictures
 
-OUT = pathlib.Path.home() / ".scan-train" / "midv-mrz"   # common.WORK / "midv-mrz" (rebuilt from the MIDV download)
+OUT = WORK / "midv-mrz"   # kept by common.clear_work
 TYPES = ("alb_id", "aze_passport", "esp_id", "est_id", "fin_id", "grc_passport", "lva_passport",
          "rus_internalpassport", "srb_passport", "svk_id")
 EXAM_FROM = 80          # documents 80–99 of each kind: the exam

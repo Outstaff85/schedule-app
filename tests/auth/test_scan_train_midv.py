@@ -117,3 +117,16 @@ def test_which_template_a_picture_shows_and_the_exam_split():
                                 p("clips/images/grc_passport/07/000013.jpg")) == "07"
     assert midv_mrz.type_of("midv-2020/photo/images/lva_passport/00.jpg") == "lva_passport"
     assert midv_mrz.is_exam("80") and midv_mrz.is_exam("99") and not midv_mrz.is_exam("79")
+
+
+def test_the_work_folder_can_be_on_another_disk(monkeypatch, tmp_path):
+    # SCAN_TRAIN_HOME moves every copy (another disk); without it, ~/.scan-train
+    spec = importlib.util.spec_from_file_location("home_t", HERE / "home.py")
+    monkeypatch.setenv("SCAN_TRAIN_HOME", str(tmp_path / "scan-train"))
+    home = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(home)
+    assert home.WORK == tmp_path / "scan-train"
+    monkeypatch.delenv("SCAN_TRAIN_HOME")
+    home = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(home)
+    assert home.WORK == pathlib.Path.home() / ".scan-train" and home.DATA == "OutStaff/scanner-data"
