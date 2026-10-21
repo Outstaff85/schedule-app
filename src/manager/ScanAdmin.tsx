@@ -43,6 +43,7 @@ export function ScanAdmin({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   const docMin = Math.min(...DOCTYPES.map(k => Number(docs[k] || 0)));
   const shadowPages = Number(s.shadowPages || 0);
   const mrzPassports = Number(s.mrzShadowPassports || 0);
+  const heCards = Number(s.heShadowCards || 0);
   const firms = (snap.firms || []).map(f => ({ id: f.tenantId, name: f.companyName || f.tenantId }));
   for (const id of Object.keys(set?.collect || {})) if (!firms.some(f => f.id === id)) firms.push({ id, name: id });
 
@@ -90,6 +91,15 @@ export function ScanAdmin({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
           {mrzPassports
             ? tr('In shadow: {0} passports — the reader right on {1}, the AI on {2}', { 0: mrzPassports, 1: pct(Number(s.mrzShadowRight || 0), mrzPassports), 2: pct(Number(s.mrzAiRight || 0), mrzPassports) })
             : tr('No passport read in shadow yet (the reader reads once a version has one).')}
+        </p>
+      </Section>
+
+      <Section label={tr('Hebrew field reader')} panel>
+        <p className="mb-2 text-sm text-muted-foreground">{tr('The firm\'s own small model reads an Israeli ID card\'s names, ID number and dates beside the AI, only compared: on each saved ID card, did it get the fields the user kept?')}</p>
+        <p className="text-sm" data-testid="scan-he">
+          {heCards
+            ? tr('In shadow: {0} ID cards — the reader right on {1}, the AI on {2}', { 0: heCards, 1: pct(Number(s.heShadowRight || 0), heCards), 2: pct(Number(s.heAiRight || 0), heCards) })
+            : tr('No ID card read in shadow yet (the reader reads once a version has one).')}
         </p>
       </Section>
 

@@ -361,7 +361,11 @@ const DOCTYPE_NAMES = { id_front: 'ID card', id_back: 'ID card back', sefach: 'A
     const mj = r.ok ? await r.json() : {}; modelsVersion = String(mj.version || '');
     if (mj.doctype) { doctypeSess = await ort.InferenceSession.create(await fetchModel('doctype.onnx', () => {}), { executionProviders: ['wasm'] }); log('Document type model loaded'); }
     if (mj.mrz) { mrzSess = await ort.InferenceSession.create(await fetchModel('mrz.onnx', () => {}), { executionProviders: ['wasm'] }); log('Passport zone reader loaded'); }
-  } catch (e) { log('Document type model / passport zone reader: ' + (e && e.message || e)); }
+    if (mj.he) {
+      const lr = await fetch('/scan-lab/he-layouts.json', { cache: 'no-cache' });
+      if (lr.ok) { heLayouts = await lr.json(); heSess = await ort.InferenceSession.create(await fetchModel('he.onnx', () => {}), { executionProviders: ['wasm'] }); log('Hebrew field reader loaded'); }
+    }
+  } catch (e) { log('Document type model / passport zone reader / Hebrew field reader: ' + (e && e.message || e)); }
 })();
 // The passport zone reader (docs/hf-plan.md → H8b), when this lab's model version has one ("mrz" in
 // models.json): on every shot the page's two lowest lines that run across most of its width are read —
@@ -446,6 +450,79 @@ async function mrzNote(canvas) {
     const ok = [[0, 9], [13, 19], [21, 27]].filter(([a, b]) => String(chk(l2.slice(a, b))) === l2[b]).length;
     return '; zone: ' + lines[1] + ' (' + ok + '/3 check digits right, ' + Math.round(performance.now() - t0) + ' ms)';
   } catch (e) { return '; the passport zone reader failed: ' + (e && e.message || e); }
+}
+// The Hebrew field reader (docs/hf-plan.md → H8c), when this lab's model version has one ("he" in
+// models.json, with he-layouts.json): on a cut page shaped like an ID card, the fields of each card layout
+// (the new card's, the old one's — boxes as shares of the card, scripts/scan-train/hemodel.py layouts) are
+// read with the same input and decoding as the passport zone reader, set back into writing order
+// (heLogical — hemodel.logical_simple, mirrored), and the layout whose ID number's check digit agrees is
+// kept. heRead(canvas) → {layout, surname, given, idNo, dob, expiry, idOk}, {} when the page is no card,
+// null with no reader. Only compared beside the AI's read (the site's shadow), never used for the worker.
+var heSess = null, heLayouts = null;  // (var: scan/embed.js reads them)
+const HE_CHARS = 'אבגדהוזחטיכךלמםנןסעפףצץקרשת0123456789 .,/-\'"()';
+function heLogical(shown) {
+  if (!/[א-ת]/.test(shown)) return shown;
+  let out = '', run = '';
+  for (const c of [...shown].reverse()) {
+    if (/[0-9]/.test(c) || (run && './-'.includes(c))) { run += c; continue; }
+    if (run) { out += [...run].reverse().join(''); run = ''; }
+    out += c;
+  }
+  return out + [...run].reverse().join('');
+}
+function heIdOk(s) {
+  const d = (s || '').replace(/\D/g, '');
+  if (d.length !== 9) return false;
+  let t = 0;
+  for (let i = 0; i < 9; i++) { const v = +d[i] * (1 + i % 2); t += Math.floor(v / 10) + v % 10; }
+  return t % 10 === 0;
+}
+async function heLine(canvas, box) {
+  const W = canvas.width, H = canvas.height, [bx, by, bw, bh] = box;
+  const x0 = Math.max(0, (bx - 0.015 * bw) * W), y0 = Math.max(0, (by - 0.25 * bh) * H);
+  const x1 = Math.min(W, (bx + bw * 1.015) * W), y1 = Math.min(H, (by + bh * 1.25) * H);
+  const w = x1 - x0, h = y1 - y0;
+  if (w < 4 || h < 4) return '';
+  const nw = Math.max(1, Math.min(MRZ_W, Math.round(w * MRZ_H / h)));
+  const c = document.createElement('canvas'); c.width = MRZ_W; c.height = MRZ_H;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#fff'; g.fillRect(0, 0, MRZ_W, MRZ_H); g.imageSmoothingQuality = 'high';
+  g.drawImage(canvas, x0, y0, w, h, 0, 0, nw, MRZ_H);
+  const px = g.getImageData(0, 0, MRZ_W, MRZ_H).data, f = new Float32Array(MRZ_W * MRZ_H);
+  for (let i = 0; i < f.length; i++) f[i] = (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]) / 255;
+  const out = await heSess.run({ [heSess.inputNames[0]]: new ort.Tensor('float32', f, [1, 1, MRZ_H, MRZ_W]) });
+  const lg = out[heSess.outputNames[0]], T = lg.dims[1], C = lg.dims[2];
+  let s = '', prev = 0;
+  for (let t = 0; t < T; t++) {
+    let best = 0; for (let c2 = 1; c2 < C; c2++) if (lg.data[t * C + c2] > lg.data[t * C + best]) best = c2;
+    if (best !== prev && best !== 0) s += HE_CHARS[best - 1];
+    prev = best;
+  }
+  return heLogical(s.trim());
+}
+async function heRead(canvas) {
+  if (!heSess || !heLayouts || !canvas) return null;
+  const r = canvas.width / Math.max(1, canvas.height);
+  if (r < 1.35 || r > 1.85) return {};  // an ID card is 85.6 × 54 mm
+  const isDate = s => /^\d{1,2}[./]\d{1,2}[./](19|20)\d\d$/.test(s || '');
+  let best = null, bestScore = -1;
+  for (const [layout, fields] of Object.entries(heLayouts)) {
+    const got = { layout };
+    for (const fl of fields) got[fl.role] = await heLine(canvas, fl.box);
+    got.idOk = heIdOk(got.idNo);
+    const score = (got.idOk ? 4 : 0) + (isDate(got.dob) ? 1 : 0) + (isDate(got.expiry) ? 1 : 0) + (/[א-ת]/.test(got.surname || '') ? 0.5 : 0);
+    if (score > bestScore) { best = got; bestScore = score; }
+  }
+  return best || {};
+}
+// The lab's readout of a shot's Hebrew fields.
+async function heNote(canvas) {
+  try {
+    const t0 = performance.now(), f = await heRead(canvas);
+    if (f === null || !f.layout) return '';
+    return '; Hebrew fields (' + f.layout + ' card): ' + [f.surname, f.given].filter(Boolean).join(' ') +
+      ', ID ' + (f.idNo || '—') + (f.idOk ? ' ✓' : ' ✗') + ', born ' + (f.dob || '—') + ' (' + Math.round(performance.now() - t0) + ' ms)';
+  } catch (e) { return '; the Hebrew field reader failed: ' + (e && e.message || e); }
 }
 async function doctypeNote(canvas) {
   if (!doctypeSess || !canvas) return '';
@@ -719,7 +796,7 @@ async function takeShot() {
   if (!pageMore && !picking) { keepCurrent(false); batchLabel = 'Camera'; }  // a camera shot is a batch of its own; the one on screen folds
   if (!(await put(livePts))) return;
   const ms = Math.round(performance.now() - t0); $('sCap').textContent = ms;
-  const kn = await doctypeNote(put.canvas) + await mrzNote(put.canvas);
+  const kn = await doctypeNote(put.canvas) + await mrzNote(put.canvas) + await heNote(put.canvas);
   $('shot').hidden = false; $('shot').scrollIntoView({ behavior: 'smooth' });
   const refine = engine.hasCap() && !shotWhole;  // a PDF page taken whole: nothing to refine, no other documents
   $('hint').textContent = 'Captured by the live frame (' + ms + ' ms)' + turnNote() + kn + (refine ? ' — refining the corners…' : ' — Retake for another');

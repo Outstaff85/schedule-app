@@ -24,6 +24,8 @@ export type ScanDocument = {
   read: Record<string, unknown>; reads: (Record<string, unknown> | null)[]; scanned: Record<string, unknown>; saved: Record<string, unknown>;
   /** the passport zone reader's lines and values on the primary page, in shadow (H8b) */
   mrzShadow?: Record<string, unknown>;
+  /** the Hebrew field reader's fields on the primary ID card, in shadow (H8c) */
+  heShadow?: Record<string, unknown>;
 };
 export async function sendScanDocument(doc: ScanDocument): Promise<void> {
   try { await post(SCAN_FEEDBACK_FN_URL, { action: 'document', ...doc }); } catch { /* offline or refused: this one is not collected */ }

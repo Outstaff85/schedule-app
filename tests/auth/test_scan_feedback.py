@@ -183,6 +183,28 @@ def test_the_passport_zone_readers_shadow_is_kept_and_counted_against_the_ai():
     assert "mrzShadow" not in d and feedback.mrz_counts(d) == {}
 
 
+def test_the_hebrew_field_readers_shadow_is_kept_and_counted_against_the_ai():
+    he = {"layout": "new", "idOk": True, "docSurname": "כהן", "docGiven": "דוד", "docId": "123456782",
+          "docDob": "01/02/1990", "docExpiry": "", "bogus": "no"}
+    saved = {"docType": "israeli_id", "docSurname": "כהן", "docGiven": "דוד", "docId": "123456782", "docDob": "01/02/1990"}
+    d, _ = feedback.check_document(doc(saved=saved, scanned=dict(saved, docSurname="כחן"), heShadow=he))
+    h = d["heShadow"]
+    assert h == {"layout": "new", "idOk": True, "docSurname": "כהן", "docGiven": "דוד", "docId": "123456782", "docDob": "01/02/1990"}
+    assert feedback.document_record(d, "t1", "now", "x", ["p1", "p2"])["heShadow"] == h
+    assert feedback.he_counts(d) == {"heShadowCards": 1, "heShadowRight": 1, "heAiRight": 0}
+    # the reader missed the ID number: wrong; quote marks' forms and spaces do not count
+    d, _ = feedback.check_document(doc(saved=dict(saved, docSurname="בן־ג'ורג'"), scanned=dict(saved, docSurname="בן־ג׳ורג׳"),
+                                       heShadow=dict(he, docId="123456781", docSurname="בן־ג’ורג’")))
+    assert feedback.he_counts(d) == {"heShadowCards": 1, "heShadowRight": 0, "heAiRight": 1}
+    # a passport, no layout or no reader: nothing counted
+    d, _ = feedback.check_document(doc(saved=dict(saved, docType="passport"), scanned=saved, heShadow=he))
+    assert feedback.he_counts(d) == {}
+    d, _ = feedback.check_document(doc(saved=saved, scanned=saved, heShadow=dict(he, layout="")))
+    assert "heShadow" not in d and feedback.he_counts(d) == {}
+    d, _ = feedback.check_document(doc(heShadow="nope"))
+    assert "heShadow" not in d and feedback.he_counts(d) == {}
+
+
 def test_a_shadow_answer_is_kept_and_counted_against_haiku():
     e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="sefach", doctypeShadow="sefach"))
     assert e["doctypeShadow"] == "sefach" and feedback.shadow_counts(e) == {"shadowPages": 1, "shadowModelRight": 1, "shadowHaikuRight": 1}

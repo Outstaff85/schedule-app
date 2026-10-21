@@ -19,10 +19,10 @@ if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py"
 # files named by what they do; Firebase Storage (the old names) only while a version is not moved there yet.
 HF="https://huggingface.co/OutStaff/scanner-models/resolve/$SCAN_MODELS_VERSION"
 hfname() { case "$1" in sa24.onnx) echo edges.onnx;; lite.onnx) echo edges-lite.onnx;; yunet640.onnx) echo face.onnx;; *) echo "$1";; esac; }
-fromhf() {
+fromhf() {  # NAME [the least size in bytes: 100 kB, a model; a small file passes its own]
   for i in 1 2 3; do
     code=$(curl -sSL -o "$CACHE/$1.part" -w '%{http_code}' "$HF/$(hfname "$1")" || echo 000)
-    if [ "$code" = 200 ] && [ "$(stat -c %s "$CACHE/$1.part")" -gt 100000 ]; then mv "$CACHE/$1.part" "$CACHE/$1"; echo "from Hugging Face: $(hfname "$1")"; return 0; fi
+    if [ "$code" = 200 ] && [ "$(stat -c %s "$CACHE/$1.part")" -gt "${2:-100000}" ]; then mv "$CACHE/$1.part" "$CACHE/$1"; echo "from Hugging Face: $(hfname "$1")"; return 0; fi
     rm -f "$CACHE/$1.part"
     case "$code" in 401|403|404) return 1;; esac  # not there: the version is not moved yet
     sleep $((i * 5))
@@ -63,13 +63,18 @@ fi
 # The passport zone reader (docs/hf-plan.md → H8b): only once this version has one (mrz.onnx on Hugging Face).
 MRZ=false
 if { [ -s "$CACHE/mrz.onnx" ] || fromhf mrz.onnx; }; then cp "$CACHE/mrz.onnx" "$OUT/mrz.onnx"; MRZ=true; fi
-# models.json: the version, whether a document type model and a passport zone reader are there, and each model file's fingerprint
+# The Hebrew field reader (docs/hf-plan.md → H8c) and the card layouts it reads: only once this version has both.
+HE=false
+if { [ -s "$CACHE/he.onnx" ] || fromhf he.onnx; } && { [ -s "$CACHE/he-layouts.json" ] || fromhf he-layouts.json 10; }; then
+  cp "$CACHE/he.onnx" "$CACHE/he-layouts.json" "$OUT/"; HE=true
+fi
+# models.json: the version, whether a document type model, a passport zone reader and a Hebrew field reader are there, and each model file's fingerprint
 # (sha256, 16 hex) — the phone keeps a model by it and asks the server nothing while it is the same.
-python - "$OUT" "$SCAN_MODELS_VERSION" "$DOCTYPE" "$MRZ" <<'PY'
+python - "$OUT" "$SCAN_MODELS_VERSION" "$DOCTYPE" "$MRZ" "$HE" <<'PY'
 import hashlib, json, pathlib, sys
-out, version, doctype, mrz = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3] == "true", sys.argv[4] == "true"
+out, version, doctype, mrz, he = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3] == "true", sys.argv[4] == "true", sys.argv[5] == "true"
 files = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()[:16] for f in sorted(out.glob("*.onnx"))}
-(out / "models.json").write_text(json.dumps({"version": version, "doctype": doctype, "mrz": mrz, "files": files}) + "\n")
+(out / "models.json").write_text(json.dumps({"version": version, "doctype": doctype, "mrz": mrz, "he": he, "files": files}) + "\n")
 PY
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).

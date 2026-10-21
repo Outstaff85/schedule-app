@@ -658,7 +658,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // the passport zone reader's lines on the first page (embed.js; docs/hf-plan.md → H8b), read with an O for a 0
   // in the number and in the birth date — the parser mends them by position and by the check digit
   const zones = [['P<UKRBONDARENKO<<ANDREI<NATALIIA<<<<<<<<<<<<', 'NW259O50<6UKR84O3124M29051983631000292908728'], null];
-  const post = (key, n) => p.evaluate(([pics, key, n, answers, zones]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x), answers: answers.slice(0, n), mrz: zones.slice(0, n)}, location.origin), [[JPG, JPG2], key, n, answers, zones]);
+  // the Hebrew field reader's fields on the first page (embed.js; docs/hf-plan.md → H8c), as the card prints them
+  const hes = [{layout: 'new', surname: 'כהן', given: 'דוד', idNo: '1 2345678 2', dob: '1.2.1990', idOk: true}, null];
+  const post = (key, n) => p.evaluate(([pics, key, n, answers, zones, hes]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x), answers: answers.slice(0, n), mrz: zones.slice(0, n), he: hes.slice(0, n)}, location.origin), [[JPG, JPG2], key, n, answers, zones, hes]);
   await post('s1', 1);
   await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 1, null, {timeout: 15000}).catch(() => {});
   await post('s1', 2);
@@ -849,6 +851,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok((zs.lines || []).length === 2 && zs.docId === 'NW259050' && zs.docDob === '12/03/1984' && zs.docExpiry === '19/05/2029' && zs.docSex === 'M'
     && zs.docSurname === 'BONDARENKO' && zs.docGiven === 'ANDREI NATALIIA' && zs.nationality === 'UKR' && zs.allChecks === true,
     'scan, the passport zone reader in shadow (H8b): the lab\'s lines on the primary page go with the document, mended (O → 0) and taken where the check digits agree ' + JSON.stringify(zs));
+  const hs = docCall.heShadow || {};
+  ok(hs.layout === 'new' && hs.idOk === true && hs.docSurname === 'כהן' && hs.docGiven === 'דוד' && hs.docId === '123456782' && hs.docDob === '01/02/1990' && !('docExpiry' in hs),
+    'scan, the Hebrew field reader in shadow (H8c): the lab\'s fields on the primary page go with the document in the worker fields\' forms ' + JSON.stringify(hs));
   ok(docCall.workerId === 'w-test' && (docCall.pages || []).length === 1 && docCall.pages[0].primary && docCall.pages[0].doctype === 'id_front' && docCall.pages[0].b64
     && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',
     'scan, the save after it: the document goes to scan_feedback (H8a) — its own pages (not the contract), the AI\'s read, the fields the scan filled and the ones saved '
@@ -2291,7 +2296,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:SFCORS});
     const b = JSON.parse(r.request().postData() || '{}'); sfCalls.push(b);
     if (b.action === 'stats') return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, due: false, edgesSince: 42, doctypesDue: false,
-      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8, mrzShadowPassports: 4, mrzShadowRight: 3, mrzAiRight: 2}})});
+      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8, mrzShadowPassports: 4, mrzShadowRight: 3, mrzAiRight: 2, heShadowCards: 5, heShadowRight: 4, heAiRight: 3}})});
     if (b.action === 'setSettings') { if (b.doctypeMode) sfSet.doctypeMode = b.doctypeMode; Object.assign(sfSet.collect, b.collect || {}); }
     return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, ...sfSet})});
   });
@@ -2303,6 +2308,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       mode: (root.querySelector('[data-testid="scan-doctype-mode"] [data-state="on"]') || {dataset: {}}).dataset.v,
       shadow: root.querySelector('[data-testid="scan-shadow"]').textContent,
       mrz: root.querySelector('[data-testid="scan-mrz"]').textContent,
+      he: root.querySelector('[data-testid="scan-he"]').textContent,
       on: root.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state')};
   }));
   await p.screenshot({path: SP + '/scan-admin.png'});
@@ -2313,9 +2319,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       && r.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state') === 'unchecked'; }, 8000);
   sa.sent = sfCalls.filter(c => c.action === 'setSettings').map(c => JSON.stringify(c.doctypeMode || c.collect)).join(' ');
   await p.unroute(/cloudfunctions\.net\/scan_feedback$/);
-  ok(sa.shown && sa.figs === '42/20,5/20,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && sa.on === 'checked'
+  ok(sa.shown && sa.figs === '42/20,5/20,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && /5 ID cards/.test(sa.he) && /80%/.test(sa.he) && /60%/.test(sa.he) && sa.on === 'checked'
     && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
-    'Admin → Scanner: the figures, the shadow, the passport zone reader\'s shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
+    'Admin → Scanner: the figures, the shadow, the passport zone reader\'s and the Hebrew field reader\'s shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
     const items = [];
