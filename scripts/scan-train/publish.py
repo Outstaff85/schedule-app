@@ -13,11 +13,10 @@ attemptsSince is reset. Needs the owner's HF token on the PC (`hf auth login`)."
 import argparse
 import datetime
 import pathlib
-import shutil
 
 from google.cloud import firestore
 
-from common import DATA, DOCTYPE_MODELS, DOCTYPES, KEEP, MODELS, MRZ_MODEL, REPO, ROOT, WORK, bucket, db, model_path, next_version, read_json, version_of
+from common import DATA, DOCTYPE_MODELS, DOCTYPES, KEEP, MODELS, MRZ_MODEL, REPO, ROOT, WORK, bucket, clear_work, db, model_path, next_version, read_json, version_of
 
 
 def used_path(path, v):
@@ -119,7 +118,7 @@ def main():
         stats["attemptsSince"] = firestore.Increment(-moved)  # the attempts that came in since the pull stay counted
     db().collection("scanTrainingStats").document("current").set(stats, merge=True)
     (ROOT / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
-    shutil.rmtree(WORK, ignore_errors=True)
+    clear_work()
     what = " and ".join(x for x, on in (("the document edges models", edges), ("the document type models", doctypes), ("the passport zone reader", mrz)) if on)
     print(f"Published as {v} on Hugging Face (https://huggingface.co/{REPO}/tree/{v}; {what} new); "
           f"the lab now names {v} (scripts/scan-lab/models-version); the copies on this PC are deleted.")
