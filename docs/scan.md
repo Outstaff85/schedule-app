@@ -59,7 +59,7 @@ A `Window` (a bottom sheet on a phone) — `Scanner.tsx`:
 
 ## Reading (`src/scan-process/`)
 
-`readScan(pages, progress)` (`session.ts`) runs `readPages()` (`read.ts`) over the scanner's pages `{b64, mediaType, kind, upright}` (`upright`: turned by its face, or with a kind — Haiku turned it):
+`readScan(pages, progress)` (`session.ts`) runs `readPages()` (`read.ts`) over the scanner's pages `{b64, mediaType, kind, upright, mrz?}` (`upright`: turned by its face, or with a kind — Haiku turned it; `mrz`: the passport zone reader's lines on the page, posted by `scan/embed.js` in the `scan-pages` message's `mrz` array — only kept for the shadow below):
 
 1. **Turn:** a page with no face and no kind asks `aiDetectAlign` for its turn and kind (all such pages at once) and is turned (`rotateImage`).
 2. **Primary:** the first page that is not a contract / other (`isNonIdKind`) and that `aiReadDoc` reads as an `israeli_id` or `passport` is the primary. Page 1's read starts as soon as it is upright; as soon as it says ID card or passport, the following pages' reads start too (in the background, `extraReadWanted` with that read), while page 1's digits and text are re-read zoomed (`verifyDigitFields`, `verifyIdChecksum`, Zoomed re-reads below). Then `initPrimary()`.
@@ -127,6 +127,8 @@ Either way, a draft from `rescanFromWorkerModal()` is then put back (`applyWorke
 ### Scan again
 
 `sessionPages()` (`session.ts`) gives this session's pages, the primary first, as the scanner's starting pages; Done reads the whole set again through the same cache, so only the added or re-cut pages cost AI calls, and the record is rebuilt from every page's read — a page removed takes its data with it.
+
+**The passport zone reader in shadow** (`mrz.ts`, docs/hf-plan.md → H8b): `readScan` keeps the primary page's zone lines; `scanDocument` (the save after a scan, H8a) parses them — `parseMrz` finds the two TD3 lines (the last two that look like one: long, with fillers, the first starting with P), mends misreads by position (a letter where a digit must be: O → 0, I → 1…; a run of K / C among fillers → <; the number by one look-alike swapped until its check digit agrees) and gives a value only where its check digit is right (`mrzCheck`, ICAO weights 7 3 1); `mrzFields` turns it into the worker fields' forms (`docId`, `docDob` / `docExpiry` DD/MM/YYYY, `docSex`, names, `nationality`, `allChecks`) — sent as `mrzShadow` with the document, never put into the worker window.
 
 ## Contracts
 
