@@ -770,20 +770,26 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     fw.decideAttempts('kept');
     await new Promise(res => setTimeout(res, 2500));
     await fw.flushAttempts();
-    await fw.attemptPageDeleted(b.id, 1);
-    return {a: a.id, b: b.id, group: b.group === a.group, size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b.picture), ch => ch.charCodeAt(0))))};
+    return {held: fw.heldForDone.length, a: a.id, b: b.id, group: b.group === a.group, size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b.picture), ch => ch.charCodeAt(0))))};
   });
+  // a kept attempt waits for the window's Done (owner, 2026-10-21); then it goes
+  att.held = att.held === 1 && !feedbackCalls.some(c => c.action === 'attempt' && (c.attempts || []).some(x => x.id === att.b));
+  await p.evaluate(async id => {
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
+    fw.doneAttempts(); await fw.flushAttempts();
+    await fw.attemptPageDeleted(id, 1);
+  }, att.b);
   const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
   const atA = sent.find(x => x.id === att.a) || {}, atB = sent.find(x => x.id === att.b) || {};
   const outc = feedbackCalls.find(c => c.action === 'attemptOutcome') || {};
-  ok(att.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
+  ok(att.held && att.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
     && att.size === '{"h":1200,"w":1600}' && outc.dir === 'attempts/new/site/2026-10-20/' + att.b && outc.outcome === 'deleted' && outc.page === 1,
-    'scan attempts: each sent for training as it is decided (a retake and the next shot one group, the photo at most 1600 px), a page deleted later told by its folder '
+    'scan attempts: a retake sent at once, a kept one only on Done (a retake and the next shot one group, the photo at most 1600 px), a page deleted later told by its folder '
     + JSON.stringify({att, a: {o: atA.outcome, g: atA.group}, b: {o: atB.outcome, g: atB.group, p: atB.pages}, outc}));
   attemptsOffline = true;
   const queue = await p.evaluate(async () => {
     const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    for (let i = 0; i < 7; i++) { const c = fw.document.createElement('canvas'); c.width = 40; c.height = 30; fw.newAttempt(c, 40, 30, 'photo'); fw.decideAttempts('kept'); await fw.flushAttempts(); }
+    for (let i = 0; i < 7; i++) { const c = fw.document.createElement('canvas'); c.width = 40; c.height = 30; fw.newAttempt(c, 40, 30, 'photo'); fw.doneAttempts(); await fw.flushAttempts(); }
     await fw.flushAttempts();
     const r = {waiting: (await fw.queued()).length, shown: fw.document.getElementById('train').textContent};
     return r;
@@ -817,7 +823,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.closed = await T.until(() => !fd.getElementById('cornerEditor'), 2000);
     r.fixed = a.edgesFixed && a.edgesFixed[0].map(v => Math.round(v * 100)).join();
     r.id = a.id;
-    fw.decideAttempts('kept'); await fw.flushAttempts();
+    fw.doneAttempts(); await fw.flushAttempts();
     T.esc(); await going;
     return r;
   });

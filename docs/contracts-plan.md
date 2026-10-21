@@ -1,6 +1,6 @@
 # Signed documents plan: Form 101 and the contract under one signature, one PDF per worker
 
-**Status:** built — D0–D7 merged (2026-10-20); waiting on the owner: the old scan sidecars' split (`apply`, D1) and the Google Cloud rights for the docx2pdf service (D7). What is built is described in docs/contracts.md.
+**Status:** built — D0–D7 merged (2026-10-20); the docx2pdf service deployed (2026-10-21, after the owner granted its rights). The old scan sidecars are not split (owner, 2026-10-21: no): they stay and are read as before, each worker's split on its next save. What is built is described in docs/contracts.md.
 
 The owner's scheme:
 - The Form 101 template never changes.
@@ -26,7 +26,7 @@ The owner's scheme:
 | Form 101 and the contract | the signed PDFs, built once at signing | Storage, the worker's documents |
 | The one PDF of everything | not kept: put together on request | — |
 
-## D1 — scans as separate JPEG pages — built and merged (2026-10-20); the old sidecars' split waits for the owner's yes (dry-run: 5 workers, 6 pages, 3 signatures)
+## D1 — scans as separate JPEG pages — built and merged (2026-10-20); the old sidecars are not split at once (owner, 2026-10-21)
 
 Built as docs/contracts.md → Scanned pages: every new save stores pages and the signature as files; a worker still on the old sidecar is read from it, and split into pages on its next save. The one-time split of every old sidecar (`scripts/migrate/scan_pages.py`, the workflow *Split the old scan sidecars into pages*) is run as `dry-run` first; `apply` and `cleanup` only with the owner's yes.
 

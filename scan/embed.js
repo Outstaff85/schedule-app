@@ -5,6 +5,7 @@
 // (docs/scan.md → The scan window). Nothing else changes.
 (() => {
   if (new URLSearchParams(location.search).get('embed') !== '1' || window.parent === window) return;
+  holdForDone = true;  // the kept attempts wait for the window's Done (doneAttempts)
   const css = document.createElement('style');
   // the window shows the pages itself (one preview, the batches' lines): the lab's own are hidden
   css.textContent = 'h1,.row:first-of-type,.stats,#log,label.btn:has(#useWorker),label.btn:has(#follow),#shot,#kept{display:none!important}' +
@@ -61,13 +62,14 @@
   window.addEventListener('message', e => {
     if (e.origin !== location.origin || !e.data) return;
     if (e.data.type === 'scan-sleep') {
-      decideAttempts('kept');  // the window closed on them: they stay in its batches
       $('stop').click(); shotId++;
       $('video').hidden = true; $('still').hidden = true; $('shot').hidden = true;
       $('shotMore').textContent = ''; $('shot2note').textContent = ''; $('hint').textContent = ''; $('kept').textContent = '';
     } else if (e.data.type === 'scan-fix') {
       const img = shownImgs().find(i => i.dataset.att === e.data.att && +(i.dataset.pg || 0) === +e.data.pg);
       if (img) void fixCorners(img);
+    } else if (e.data.type === 'scan-done') {
+      doneAttempts();  // Done: the kept attempts go for training (docs/scan-plan.md → S8)
     } else if (e.data.type === 'scan-deleted') {
       for (const p of e.data.pages || []) void attemptPageDeleted(p.att, p.pg);
     } else if (e.data.type === 'scan-continue') {

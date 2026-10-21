@@ -55,6 +55,11 @@ export function labDeleted(pages: { att?: string; pg?: number }[]) {
   if (list.length) frame?.contentWindow?.postMessage({ type: 'scan-deleted', pages: list }, location.origin);
 }
 
+/** Done: the scan's kept attempts go for training (scan/embed.js → doneAttempts; docs/scan-plan.md → S8). */
+export function labDone() {
+  frame?.contentWindow?.postMessage({ type: 'scan-done' }, location.origin);
+}
+
 /** Stops the lab page's camera (the page stays loaded and shown). */
 export function sleepLab() {
   frame?.contentWindow?.postMessage({ type: 'scan-sleep' }, location.origin);
