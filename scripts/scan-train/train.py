@@ -3,7 +3,8 @@ lab uses them now — scripts/scan-lab/models-version) are fine-tuned on the exa
 the ONNX model is turned into PyTorch (onnx2torch; checked to give the same answer),
 taught to put each corner's heatmap peak where the user put the corner, and exported
 back to ONNX (checked again). Batch norms stay as they are (few examples). The GPU is
-used when there is one (CUDA). Writes ~/.scan-train/new/<model>.onnx."""
+used when there is one (CUDA). With --synth N, N made-up photos (synth_docs.py) are added to the
+users' examples (never to the exam). Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
 import random
 
@@ -103,9 +104,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="*", default=list(MODELS))
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
+    ap.add_argument("--synth", type=int, default=0, help="made-up photos (synth_docs.py) added, at random")
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
-    ex = [e for e in read_json(WORK / "examples.json") if not e["exam"]]
+    ex = [e for e in read_json(WORK / "examples.json") if not e["exam"]] if (WORK / "examples.json").exists() else []
+    if a.synth:
+        made = WORK / "synth" / "docs" / "examples.json"
+        if not made.exists():
+            raise SystemExit("no made-up photos — run synth_docs.py first")
+        syn = read_json(made)
+        ex += random.sample(syn, min(a.synth, len(syn)))
     if not ex:
         raise SystemExit("no examples to train on — run pull.py first")
     X, Y = load(ex)

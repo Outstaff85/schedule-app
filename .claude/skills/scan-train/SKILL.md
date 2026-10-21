@@ -28,6 +28,8 @@ All end in the same step 5: one new version holds whatever was trained; the rest
 `python scripts/scan-train/pull.py` — prints how many examples (and how many came from the scan attempts, S8), how many kept apart for the exam. Fewer than ~100 to train on: tell the owner it is early and ask whether to go on.
 
 ## 3. Train
+With few examples (or when the owner asks), made-up photos first: `pip install -r scripts/scan-train/requirements-synth.txt` once, then `python scripts/scan-train/synth_docs.py --count 20000` (add `--backgrounds <folder>` if the owner has photos of tables and floors; `--count 40 --show` to look at them first, `~/.scan-train/synth/docs/show/`), and train with `--synth N` — about as many as the real examples, at most 3 times as many (docs/scan-training.md → Made-up document photos).
+
 `python scripts/scan-train/train.py` — both document edges models (`edges-lite.onnx` for the phone's live frame, `edges.onnx` for the server), starting from the lab's current version (`scripts/scan-lab/models-version`). ~15–30 min on the 4070. Each epoch prints its loss; it must go down.
 
 ## 4. Exam
