@@ -24,6 +24,8 @@ OLD_FILES = {"edges.onnx": "sa24.onnx", "edges-lite.onnx": "lite.onnx", "face.on
 # [1,3,256,256] RGB 0..1; outputs "doctype" [1,6] and "turn" [1,4] (scripts/scan-train/docfind.py doctype_of).
 DOCTYPE_MODELS = {"doctype-lite.onnx": "tf_efficientnet_lite0", "doctype.onnx": "tf_efficientnet_lite2"}
 DOCTYPE_SIZES = [f"tf_efficientnet_lite{i}" for i in range(5)]
+# The passport zone reader (docs/hf-plan.md → H8b; mrzmodel.py): trained on made-up lines (synth_lines.py, train_mrz.py)
+MRZ_MODEL = "mrz.onnx"
 DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 # A record's field names before H0 (docs/hf-plan.md) → today's: records not yet renamed by rename_fields.py
 OLD_NAMES = {"cornersModel": "edgesModel", "cornersFixed": "edgesFixed", "kindModel": "doctypeModel", "kindFixed": "doctypeFixed", "kindBy": "doctypeBy"}

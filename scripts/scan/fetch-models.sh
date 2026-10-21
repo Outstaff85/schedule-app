@@ -60,13 +60,16 @@ DOCTYPE=false
 if { [ -s "$CACHE/doctype-lite.onnx" ] || fromhf doctype-lite.onnx || { [ -n "$STORE" ] && python "$HERE/model_store.py" get doctype-lite.onnx "$CACHE/doctype-lite.onnx"; }; }; then
   cp "$CACHE/doctype-lite.onnx" "$OUT/doctype.onnx"; DOCTYPE=true
 fi
-# models.json: the version, whether a document type model is there, and each model file's fingerprint
+# The passport zone reader (docs/hf-plan.md → H8b): only once this version has one (mrz.onnx on Hugging Face).
+MRZ=false
+if { [ -s "$CACHE/mrz.onnx" ] || fromhf mrz.onnx; }; then cp "$CACHE/mrz.onnx" "$OUT/mrz.onnx"; MRZ=true; fi
+# models.json: the version, whether a document type model and a passport zone reader are there, and each model file's fingerprint
 # (sha256, 16 hex) — the phone keeps a model by it and asks the server nothing while it is the same.
-python - "$OUT" "$SCAN_MODELS_VERSION" "$DOCTYPE" <<'PY'
+python - "$OUT" "$SCAN_MODELS_VERSION" "$DOCTYPE" "$MRZ" <<'PY'
 import hashlib, json, pathlib, sys
-out, version, doctype = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3] == "true"
+out, version, doctype, mrz = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3] == "true", sys.argv[4] == "true"
 files = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()[:16] for f in sorted(out.glob("*.onnx"))}
-(out / "models.json").write_text(json.dumps({"version": version, "doctype": doctype, "files": files}) + "\n")
+(out / "models.json").write_text(json.dumps({"version": version, "doctype": doctype, "mrz": mrz, "files": files}) + "\n")
 PY
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).

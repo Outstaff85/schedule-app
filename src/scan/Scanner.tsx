@@ -20,7 +20,8 @@ import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './ser
 import { continueLab, labDeleted, labDone, labFix, showLab, sleepLab } from './lab';
 import { loadBatches, saveBatches } from './store';
 
-export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype };
+/** mrz: the passport zone reader's lines on the page (docs/hf-plan.md → H8b) — only kept beside the AI's read. */
+export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype; mrz?: string[] };
 // Each page has its kind: Haiku's or the model's (doctypeModel, doctypeBy) and the one shown, which a tap can change;
 // in shadow the model's answer is only kept (doctypeShadow) for the example. part: the posted key it came under.
 type Page = ScannedPage & { uid: number; part?: string; att?: string; pg?: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype };
@@ -30,7 +31,7 @@ type Batch = { key: string; source: 'camera' | 'file' | 'before'; kept: boolean;
 /** The document type model's answer on a page (scan/embed.js), when this version has the model. */
 type Answer = { doctype: Doctype; conf: number; turn: number; turnConf: number } | null;
 /** The lab page's pages of one shot or one part of a pick (scan/embed.js). */
-type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[]; attempts?: { att: string; pg: number }[] };
+type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[]; mrz?: (string[] | null)[]; attempts?: { att: string; pg: number }[] };
 /** How sure the model must be of the type and the turn for Mixed to skip Haiku (as the server's docfind.DOCTYPE_SURE was). */
 const SURE = 0.9;
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
@@ -144,7 +145,8 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
     const { kind, rotate } = sure ? { kind: a!.doctype, rotate: a!.turn } : await detectDoctype(pg.b64, pg.mediaType);
     const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, doctypeBy: sure ? 'model' : 'haiku',
       ...(m === 'shadow' && a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { doctypeShadow: a.doctype } : {}) };
-    if ([90, 180, 270].includes(rotate)) { try { patch.b64 = await rotateImage(pg.b64, pg.mediaType, rotate); patch.mediaType = 'image/jpeg'; } catch { /* kept as cut */ } }
+    // a page turned here was read by the zone reader on its side: its lines say nothing
+    if ([90, 180, 270].includes(rotate)) { try { patch.b64 = await rotateImage(pg.b64, pg.mediaType, rotate); patch.mediaType = 'image/jpeg'; patch.mrz = undefined; } catch { /* kept as cut */ } }
     setPage(pg.uid, patch);
   });
 
@@ -156,9 +158,11 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
       const m = e.data as Posted;
       if (e.origin !== location.origin || !m || m.type !== 'scan-pages' || !Array.isArray(m.pages) || typeof m.key !== 'string') return;
       const from = Array.isArray(m.attempts) ? m.attempts : [];
-      const pages: Page[] = m.pages.map((u, i) => ({ u, a: from[i] })).filter(({ u }) => typeof u === 'string' && u.startsWith('data:image/')).map(({ u, a }) => ({
+      const zones = Array.isArray(m.mrz) ? m.mrz : [];
+      const pages: Page[] = m.pages.map((u, i) => ({ u, a: from[i], z: zones[i] })).filter(({ u }) => typeof u === 'string' && u.startsWith('data:image/')).map(({ u, a, z }) => ({
         uid: ++nextUid, part: m.key, b64: u.split(',')[1], mediaType: u.slice(5, u.indexOf(';')), turn: -1, blurry: false, doctypePending: true,
         ...(a && typeof a.att === 'string' && a.att ? { att: a.att, pg: Number(a.pg) || 0 } : {}),
+        ...(Array.isArray(z) ? { mrz: z.filter(t => typeof t === 'string').slice(0, 2).map(t => t.slice(0, 60)) } : {}),
       }));
       if (!pages.length) return;
       const key = m.key.split('.')[0], source = key.startsWith('f') ? 'file' : 'camera';
@@ -210,7 +214,7 @@ export function Scanner({ open, onDone, onClose, initial, read }: {
           while (batchesRef.current.some(b => b.pages.some(p => p.doctypePending))) await new Promise(r => setTimeout(r, 100));
           const list = batchesRef.current.flatMap(b => b.pages);
           void examples(list).then(sendFeedback); // in the background, queued when offline
-          const out = list.filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind }) => ({ b64, mediaType, turn, blurry, kind }));
+          const out = list.filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind, mrz }) => ({ b64, mediaType, turn, blurry, kind, ...(mrz ? { mrz } : {}) }));
           if (read) {
             setReading({ label: tr('Reading the pages…'), pct: 2 });
             let err: string | null;

@@ -203,15 +203,58 @@ def check_document(p):
     if not saved:
         return None, "nothing saved"
     corrected = sorted(k for k in set(scanned) | set(saved) if str(scanned.get(k, "")) != str(saved.get(k, "")))
-    return {"pages": out, "read": read, "reads": reads, "scanned": scanned, "saved": saved, "corrected": corrected,
-            "workerId": str(p.get("workerId") or "")[:64]}, None
+    doc = {"pages": out, "read": read, "reads": reads, "scanned": scanned, "saved": saved, "corrected": corrected,
+           "workerId": str(p.get("workerId") or "")[:64]}
+    zone = mrz_shadow(p.get("mrzShadow"))
+    if zone is not None:
+        doc["mrzShadow"] = zone
+    return doc, None
+
+
+# ---------- the passport zone reader in shadow (docs/hf-plan.md → H8b) ----------
+# The phone's own small model reads a passport's zone beside the AI; its answer on the primary page
+# is kept with the full document, never used for the worker. MRZ_COMPARED: the fields it is judged on.
+MRZ_COMPARED = ("docId", "docDob", "docExpiry", "docSex")
+_MRZ_KEYS = ("docId", "docDob", "docExpiry", "docSex", "docSurname", "docGiven", "nationality")
+
+
+def mrz_shadow(v):
+    """The zone reader's answer as sent (src/scan-process/session.ts scanDocument), cleaned: its lines
+    (two at most) and the values it took from them; None when there is none."""
+    if not isinstance(v, dict) or not isinstance(v.get("lines"), list):
+        return None
+    out = {"lines": [str(x)[:60] for x in v["lines"][:2] if isinstance(x, str)], "allChecks": v.get("allChecks") is True}
+    for k in _MRZ_KEYS:
+        if isinstance(v.get(k), str) and v[k].strip():
+            out[k] = v[k].strip()[:60]
+    return out
+
+
+def _same(a, b):
+    return str(a or "").replace(" ", "").upper() == str(b or "").replace(" ", "").upper()
+
+
+def mrz_counts(doc):
+    """What a full document tells about the zone reader in shadow: {mrzShadowPassports: 1,
+    mrzShadowRight: the reader got every compared field the user kept, mrzAiRight: the AI did} — the
+    fields the user kept a value for (a passport number only on a passport: an Israeli's docId is the
+    ID number); nothing when the reader did not read it or no field can be compared."""
+    zone, saved, scanned = doc.get("mrzShadow"), doc.get("saved") or {}, doc.get("scanned") or {}
+    if zone is None:
+        return {}
+    keys = [k for k in MRZ_COMPARED if saved.get(k) and not (k == "docId" and saved.get("docType") != "passport")]
+    if not keys or not (saved.get("docType") == "passport" or (doc.get("read") or {}).get("mrzLine2")):
+        return {}
+    return {"mrzShadowPassports": 1, "mrzShadowRight": int(all(_same(zone.get(k), saved[k]) for k in keys)),
+            "mrzAiRight": int(all(_same(scanned.get(k), saved[k]) for k in keys))}
 
 
 def document_record(doc, tenant_id, now, doc_id, page_paths):
     """The record kept beside a document's pages."""
     return {"id": doc_id, "tenantId": tenant_id or "", "workerId": doc["workerId"], "createdAt": now,
             "pages": [{"path": path, "doctype": pg["doctype"], "primary": pg["primary"]} for path, pg in zip(page_paths, doc["pages"])],
-            "read": doc["read"], "reads": doc["reads"], "scanned": doc["scanned"], "saved": doc["saved"], "corrected": doc["corrected"]}
+            "read": doc["read"], "reads": doc["reads"], "scanned": doc["scanned"], "saved": doc["saved"], "corrected": doc["corrected"],
+            **({"mrzShadow": doc["mrzShadow"]} if "mrzShadow" in doc else {})}
 
 
 # ---------- every scan attempt (docs/scan-plan.md → S8) ----------

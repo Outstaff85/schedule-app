@@ -161,6 +161,28 @@ def test_a_full_document_is_refused_without_pages_or_saved_fields():
     assert feedback.check_document(doc(pages=[{"b64": DOC_JPG}] * 7))[1] == "no pages"
 
 
+def test_the_passport_zone_readers_shadow_is_kept_and_counted_against_the_ai():
+    zone = {"lines": ["P<UKRSHEVCHENKO<<OKSANA" + "<" * 21, "x" * 80, "third"], "docId": "FA123456", "docDob": "01/02/1990",
+            "docExpiry": "03/04/2030", "docSex": "F", "allChecks": True, "bogus": "no"}
+    saved = {"docType": "passport", "docId": "FA123456", "docDob": "01/02/1990", "docExpiry": "03/04/2030", "docSex": "F", "docGiven": "OKSANA"}
+    d, _ = feedback.check_document(doc(saved=saved, scanned=dict(saved, docExpiry="04/03/2030"), mrzShadow=zone))
+    z = d["mrzShadow"]
+    assert len(z["lines"]) == 2 and len(z["lines"][1]) == 60 and z["allChecks"] is True and "bogus" not in z
+    assert feedback.document_record(d, "t1", "now", "x", ["p1", "p2"])["mrzShadow"] == z
+    assert feedback.mrz_counts(d) == {"mrzShadowPassports": 1, "mrzShadowRight": 1, "mrzAiRight": 0}
+    # the reader missed the birth date: wrong; an Israeli's docId (the ID number) is not compared
+    d, _ = feedback.check_document(doc(saved=saved, scanned=saved, mrzShadow=dict(zone, docDob="")))
+    assert feedback.mrz_counts(d) == {"mrzShadowPassports": 1, "mrzShadowRight": 0, "mrzAiRight": 1}
+    il = {"docType": "israeli_id", "docId": "123456782", "docDob": "01/02/1990"}
+    d, _ = feedback.check_document(doc(saved=il, scanned=il, read={"mrzLine2": "x"}, mrzShadow={"lines": [], "docDob": "01/02/1990"}))
+    assert feedback.mrz_counts(d) == {"mrzShadowPassports": 1, "mrzShadowRight": 1, "mrzAiRight": 1}
+    # an ID card with no zone, or no reader: nothing counted, nothing kept
+    d, _ = feedback.check_document(doc(saved=il, scanned=il, mrzShadow={"lines": []}))
+    assert feedback.mrz_counts(d) == {}
+    d, _ = feedback.check_document(doc(mrzShadow="nope"))
+    assert "mrzShadow" not in d and feedback.mrz_counts(d) == {}
+
+
 def test_a_shadow_answer_is_kept_and_counted_against_haiku():
     e, _ = feedback.check(ex(image=None, doctypeModel="sefach", doctypeFixed="sefach", doctypeShadow="sefach"))
     assert e["doctypeShadow"] == "sefach" and feedback.shadow_counts(e) == {"shadowPages": 1, "shadowModelRight": 1, "shadowHaikuRight": 1}

@@ -1522,5 +1522,9 @@
   "Declined — nothing was copied.": "סורב — דבר לא הועתק.",
   "Template ready: {0} ({1} → {2})": "התבנית מוכנה: {0} ({1} ← {2})",
   "Preparing…": "בהכנה…",
-  "Word files can't be converted yet — in Word, save it as PDF and upload that": "עדיין אי אפשר להמיר קבצי Word — שמרו אותו ב-Word כ-PDF והעלו אותו"
+  "Word files can't be converted yet — in Word, save it as PDF and upload that": "עדיין אי אפשר להמיר קבצי Word — שמרו אותו ב-Word כ-PDF והעלו אותו",
+  "Passport zone reader": "קורא אזור הדרכון",
+  "The firm's own small model reads the two lines at the bottom of a passport beside the AI, only compared: on each saved passport, did it get the number, the dates and the sex the user kept?": "המודל הקטן של החברה קורא את שתי השורות בתחתית הדרכון לצד הבינה המלאכותית, רק להשוואה: בכל דרכון שנשמר, האם קרא נכון את המספר, התאריכים והמין שהמשתמש השאיר?",
+  "In shadow: {0} passports — the reader right on {1}, the AI on {2}": "בצל: {0} דרכונים — הקורא צדק ב-{1}, הבינה המלאכותית ב-{2}",
+  "No passport read in shadow yet (the reader reads once a version has one).": "עדיין לא נקרא דרכון בצל (הקורא קורא כשיש לגרסה קורא)."
 }

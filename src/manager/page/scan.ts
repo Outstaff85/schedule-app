@@ -45,7 +45,7 @@ export async function openNewScan(sameSession?: boolean){
   let found: any=null;
   const pages=await openScanner({initial,read:async(list,progress)=>{
     // a page whose kind came from the scanner was also turned by it: only a page with no face and no kind is turned here
-    found=await readScan(list.map(p=>({b64:p.b64,mediaType:p.mediaType,kind:p.kind||null,upright:p.turn>=0||!!p.kind})),progress);
+    found=await readScan(list.map(p=>({b64:p.b64,mediaType:p.mediaType,kind:p.kind||null,upright:p.turn>=0||!!p.kind,...(p.mrz?{mrz:p.mrz}:{})})),progress);
     return found?null:tr('No ID card or passport was found in the pages — add a photo of one');
   }});
   if(!pages||!found) return;

@@ -1,7 +1,8 @@
 // Admin → Scanner (docs/hf-plan.md → Admin → Scanner; a super-admin's): where each of the
 // scanner's own models stands — the examples collected for it, the versions in the lab and on
 // the site (Hugging Face) —, how the document type model is used (Off / Shadow: it reads beside
-// Haiku, only compared / Mixed: a page it is sure of needs no Haiku), the shadow's figures, and
+// Haiku, only compared / Mixed: a page it is sure of needs no Haiku), the shadow's figures, the
+// passport zone reader's figures in shadow (H8b: right on how many saved passports, against the AI), and
 // which firms' full documents are collected for the field reader model (on unless turned off).
 // The figures and the settings come from scan_feedback (src/scan/server.ts).
 import * as React from 'react';
@@ -41,6 +42,7 @@ export function ScanAdmin({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   const docs = stats?.doctypes || {};
   const docMin = Math.min(...DOCTYPES.map(k => Number(docs[k] || 0)));
   const shadowPages = Number(s.shadowPages || 0);
+  const mrzPassports = Number(s.mrzShadowPassports || 0);
   const firms = (snap.firms || []).map(f => ({ id: f.tenantId, name: f.companyName || f.tenantId }));
   for (const id of Object.keys(set?.collect || {})) if (!firms.some(f => f.id === id)) firms.push({ id, name: id });
 
@@ -79,6 +81,15 @@ export function ScanAdmin({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
           {shadowPages
             ? tr('In shadow: {0} pages — the model right on {1}, Haiku on {2}', { 0: shadowPages, 1: pct(Number(s.shadowModelRight || 0), shadowPages), 2: pct(Number(s.shadowHaikuRight || 0), shadowPages) })
             : tr('No page read in shadow yet (the model reads once a version has one).')}
+        </p>
+      </Section>
+
+      <Section label={tr('Passport zone reader')} panel>
+        <p className="mb-2 text-sm text-muted-foreground">{tr('The firm\'s own small model reads the two lines at the bottom of a passport beside the AI, only compared: on each saved passport, did it get the number, the dates and the sex the user kept?')}</p>
+        <p className="text-sm" data-testid="scan-mrz">
+          {mrzPassports
+            ? tr('In shadow: {0} passports — the reader right on {1}, the AI on {2}', { 0: mrzPassports, 1: pct(Number(s.mrzShadowRight || 0), mrzPassports), 2: pct(Number(s.mrzAiRight || 0), mrzPassports) })
+            : tr('No passport read in shadow yet (the reader reads once a version has one).')}
         </p>
       </Section>
 

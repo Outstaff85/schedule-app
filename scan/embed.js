@@ -1,7 +1,7 @@
 // The site's scan window (src/scan/Scanner.tsx) opens this page — the scanner lab's own, copied as it
 // is — in a frame with ?embed=1. The one file the site adds: it hides the lab's tools and figures and
 // posts each shot's cut pages (and each picked file's, as each is done) to the window, with the document type model's
-// answer on each when this version has the model; it stops the camera when the window closes
+// answer and the passport zone reader's lines on each when this version has them; it stops the camera when the window closes
 // (docs/scan.md → The scan window). Nothing else changes.
 (() => {
   if (new URLSearchParams(location.search).get('embed') !== '1' || window.parent === window) return;
@@ -28,6 +28,17 @@
       return { doctype: NAMES[k], conf: kp[k], turn: t * 90, turnConf: tp[t] };
     } catch { return null; }
   };
+  // The passport zone reader's lines on a page (the lab's mrzRead; docs/hf-plan.md → H8b): null while this
+  // version has no reader, [] when no zone was found — kept beside the AI's read, never used for the worker.
+  const zone = async src => {
+    if (typeof mrzSess === 'undefined' || !mrzSess) return null;
+    try {
+      const im = new Image(); im.src = src; await im.decode();
+      const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+      c.getContext('2d').drawImage(im, 0, 0);
+      return await mrzRead(c);
+    } catch { return null; }
+  };
   const shownImgs = () => ($('shot').hidden ? [] : [$('shotImg'), ...$('shotMore').querySelectorAll('img')]).filter(i => i.src && i.src.startsWith('data:image/'));
   // each page carries its attempt (the lab's training, docs/scan-plan.md → S8): the window tells back which
   // were deleted ('scan-deleted') and which page's corners to fix ('scan-fix'); a fixed page is posted again
@@ -40,7 +51,8 @@
     posted.set(key, imgs);
     const pages = imgs.map(i => i.src), from = imgs.map(i => ({ att: i.dataset.att || '', pg: +(i.dataset.pg || 0) }));
     const answers = await Promise.all(pages.map(answer));
-    window.parent.postMessage({ type: 'scan-pages', key, pages, answers, attempts: from }, location.origin);
+    const mrz = await Promise.all(pages.map(zone));
+    window.parent.postMessage({ type: 'scan-pages', key, pages, answers, mrz, attempts: from }, location.origin);
   };
   // A camera shot: its pages (again under the same key when its corners are refined).
   const send = async key => { const imgs = shownImgs(); if (imgs.length) await post(key, imgs); };
