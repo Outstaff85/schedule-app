@@ -86,13 +86,15 @@ def build(raw, out, step=3):
             continue
         s = LONG / max(w, h)
         small = cv2.resize(img, (round(w * s), round(h * s)), interpolation=cv2.INTER_AREA)
+        doc = [[x / w, y / h] for x, y in quad]   # the page's own top-left first: its upright page (synth_pages.py)
         if (frame_no(path) // max(step, 1)) % 2:
             small, fixed = cv2.rotate(small, cv2.ROTATE_90_CLOCKWISE), turned(fixed)
+            doc = [[1 - y, x] for x, y in doc]
         eid = "smartdoc-" + "-".join(pathlib.Path(path).with_suffix("").parts)
         f = out / "img" / f"{eid}.jpg"
         cv2.imwrite(str(f), small, [cv2.IMWRITE_JPEG_QUALITY, 92])
         ex.append({"id": eid, "file": str(f), "model": None, "fixed": fixed, "moved": 0, "exam": False,
-                   "smartdoc": True, "kind": kind, "source": pathlib.Path(path).parts[0]})
+                   "smartdoc": True, "kind": kind, "source": pathlib.Path(path).parts[0], "doc": doc})
     (out / "examples.json").write_text(json.dumps(ex), encoding="utf-8")
     return ex, outside
 

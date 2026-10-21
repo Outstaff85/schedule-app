@@ -5,11 +5,16 @@ learned for free: every copy is stored upright and is shown turned by a random q
 turn, with the turn back as its answer. The ImageNet normalization is inside the model, so
 it takes the page as RGB 0..1 like the document edges models. Exported to ONNX (input "img"
 [1,3,256,256]; outputs "doctype", "turn" — probabilities) and checked to answer like the
-trained model. Writes ~/.scan-train/new/doctype-lite.onnx and doctype.onnx.
+trained model. With --synth N, N made-up upright pages (synth_pages.py) are added to the site's page
+copies — or train alone while the site has collected none yet; the exam stays the site's pages.
+Each epoch's progress is saved (checkpoint.py: --resume goes on with a run that stopped, --more trains
+further from the last run's weights).
+Writes ~/.scan-train/new/doctype-lite.onnx and doctype.onnx.
 
   python train_doctypes.py                                    # both, the default sizes
   python train_doctypes.py --phone tf_efficientnet_lite1     # the next size up for the phone
   python train_doctypes.py --only server
+  python train_doctypes.py --synth 6000                        # + the made-up pages (synth_pages.py)
 """
 import argparse
 import random
@@ -22,6 +27,7 @@ import timm
 import torch
 from torch import nn
 
+import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
 
 S = 256
@@ -80,26 +86,34 @@ def batch(X, Y, idx, augment):
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(ks), torch.tensor(ts)
 
 
-def train_one(name, arch, X, Y, epochs, dev, pretrained=True):
-    net = DoctypeNet(arch, pretrained).to(dev)
+def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None):
+    info = {"model": name, "arch": arch}
+    ck = checkpoint.begin(name, args, info)
+    epochs = checkpoint.epochs_of(ck, args, epochs)
+    net = DoctypeNet(arch, pretrained and ck is None).to(dev)   # saved weights need no ImageNet download
     counts = Counter(Y)
     weights = torch.tensor([1 / np.sqrt(max(1, counts.get(i, 0))) for i in range(len(DOCTYPES))], dtype=torch.float32)
     ce_kind, ce_turn = nn.CrossEntropyLoss(weight=(weights / weights.mean()).to(dev)), nn.CrossEntropyLoss()
     opt = torch.optim.AdamW(net.parameters(), 3e-4, weight_decay=1e-4)
     steps = epochs * ((len(X) + 31) // 32)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-4, total_steps=max(1, steps), pct_start=0.15)
+    first, _ = checkpoint.restore(ck, args, net, opt, sched)
     order = list(range(len(X)))
-    for ep in range(epochs):
-        random.shuffle(order)
-        net.train()
-        total = 0.0
-        for k in range(0, len(order), 32):
-            xb, kb, tb = batch(X, Y, order[k:k + 32], True)
-            lk, lt = net.logits(xb.to(dev))
-            loss = ce_kind(lk, kb.to(dev)) + ce_turn(lt, tb.to(dev))
-            opt.zero_grad(); loss.backward(); opt.step(); sched.step()
-            total += float(loss.detach()) * len(xb)
+    for ep in range(first, epochs):
+        try:
+            random.shuffle(order)
+            net.train()
+            total = 0.0
+            for k in range(0, len(order), 32):
+                xb, kb, tb = batch(X, Y, order[k:k + 32], True)
+                lk, lt = net.logits(xb.to(dev))
+                loss = ce_kind(lk, kb.to(dev)) + ce_turn(lt, tb.to(dev))
+                opt.zero_grad(); loss.backward(); opt.step(); sched.step()
+                total += float(loss.detach()) * len(xb)
+        except KeyboardInterrupt:
+            checkpoint.stopped(name, ep)
         print(f"  {name} ({arch}) epoch {ep + 1}/{epochs}: loss {total / len(order):.4f}")
+        checkpoint.save(name, info, net, opt, sched, ep + 1, epochs)
     dst = WORK / "new" / name
     dst.parent.mkdir(parents=True, exist_ok=True)
     net = net.cpu().eval()
@@ -119,11 +133,19 @@ def main():
     ap.add_argument("--only", choices=("phone", "server"))
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
     ap.add_argument("--scratch", action="store_true", help="random weights, no download — only to test the steps, never for a model to publish")
+    ap.add_argument("--synth", type=int, default=0, help="made-up pages (synth_pages.py) added, at random")
+    checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
-    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]]
+    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]] if (WORK / "doctypes.json").exists() else []
+    if a.synth:
+        made = WORK / "synth" / "pages" / "pages.json"
+        if not made.exists():
+            raise SystemExit("no made-up pages — run synth_pages.py first")
+        pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1])} for e in read_json(made)]
+        ex += random.sample(pages, min(a.synth, len(pages)))
     if not ex:
-        raise SystemExit("no page copies to train on — run pull_doctypes.py first")
+        raise SystemExit("no page copies to train on — run pull_doctypes.py (or synth_pages.py and --synth) first")
     X, Y = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} page copies, on {dev}")
@@ -131,7 +153,7 @@ def main():
     if a.only:
         jobs = {k: v for k, v in jobs.items() if (k == "doctype-lite.onnx") == (a.only == "phone")}
     for name, arch in jobs.items():
-        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch)
+        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a)
     prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
     write_json(WORK / "new" / "doctypes-arch.json", {**prev, **jobs})
 

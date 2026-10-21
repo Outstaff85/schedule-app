@@ -3,7 +3,8 @@ lab uses them now — scripts/scan-lab/models-version) are fine-tuned on the exa
 the ONNX model is turned into PyTorch (onnx2torch; checked to give the same answer),
 taught to put each corner's heatmap peak where the user put the corner, and exported
 back to ONNX (checked again). Batch norms stay as they are (few examples). The GPU is
-used when there is one (CUDA). With --synth N, N made-up photos (synth_docs.py), with --midv N, N MIDV
+used when there is one (CUDA). Each epoch's progress is saved (checkpoint.py): --resume goes on with a
+run that stopped, --more trains further from the last run's weights. With --synth N, N made-up photos (synth_docs.py), with --midv N, N MIDV
 photos (midv.py), and with --smartdoc N, N SmartDoc frames (smartdoc.py) are added to the users' examples (never to the exam). Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
 import pathlib
@@ -16,6 +17,7 @@ import onnx2torch
 import onnxruntime as ort
 import torch
 
+import checkpoint
 from common import MODELS, WORK, model_path, read_json, version_of
 
 S, H, SIGMA = 256, 128, 2.4  # the spread of the models' own corner spots (measured)
@@ -65,7 +67,7 @@ def batch(X, Y, idx, augment):
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(np.stack(ys))
 
 
-def train_one(name, base, X, Y, epochs, dev):
+def train_one(name, base, X, Y, epochs, dev, args):
     src = model_path(base, name)
     proto = onnx.load(str(src))
     inp, outname = proto.graph.input[0].name, proto.graph.output[0].name
@@ -75,21 +77,37 @@ def train_one(name, base, X, Y, epochs, dev):
     with torch.no_grad():
         got = net.eval()(torch.from_numpy(probe).to(dev)).cpu().numpy()
     assert np.abs(got - ref).max() < 1e-3, "the PyTorch copy does not answer like the model"
+    info = {"model": name, "base": base}
+    ck = checkpoint.begin(name, args, info)
+    epochs = checkpoint.epochs_of(ck, args, epochs)
     opt = torch.optim.Adam(net.parameters(), LR[name])
+    first, _ = checkpoint.restore(ck, args, net, opt)
     order = list(range(len(X)))
-    for ep in range(epochs):
-        random.shuffle(order)
-        net.eval()  # batch norms keep their statistics; the weights still learn
-        total = 0.0
-        for k in range(0, len(order), 16):
-            xb, yb = batch(X, Y, order[k:k + 16], True)
-            out = net(xb.to(dev))
-            yb = yb.to(dev)
-            # the spots count, not the empty background: plain MSE would rather lower every peak
-            loss = (((out - yb) ** 2) * (1 + 20 * yb)).mean() * 1000
-            opt.zero_grad(); loss.backward(); opt.step()
-            total += float(loss.detach()) * len(xb)
-        print(f"  {name} epoch {ep + 1}/{epochs}: loss {total / len(order):.4f}")
+    for ep in range(first, epochs):
+        try:
+            one_epoch(name, net, opt, X, Y, order, dev, ep, epochs)
+        except KeyboardInterrupt:
+            checkpoint.stopped(name, ep)
+        checkpoint.save(name, info, net, opt, None, ep + 1, epochs)
+    export(name, net, probe, inp, outname)
+
+
+def one_epoch(name, net, opt, X, Y, order, dev, ep, epochs):
+    random.shuffle(order)
+    net.eval()  # batch norms keep their statistics; the weights still learn
+    total = 0.0
+    for k in range(0, len(order), 16):
+        xb, yb = batch(X, Y, order[k:k + 16], True)
+        out = net(xb.to(dev))
+        yb = yb.to(dev)
+        # the spots count, not the empty background: plain MSE would rather lower every peak
+        loss = (((out - yb) ** 2) * (1 + 20 * yb)).mean() * 1000
+        opt.zero_grad(); loss.backward(); opt.step()
+        total += float(loss.detach()) * len(xb)
+    print(f"  {name} epoch {ep + 1}/{epochs}: loss {total / len(order):.4f}")
+
+
+def export(name, net, probe, inp, outname):
     dst = WORK / "new" / name
     dst.parent.mkdir(parents=True, exist_ok=True)
     net = net.cpu().eval()
@@ -108,6 +126,7 @@ def main():
     ap.add_argument("--synth", type=int, default=0, help="made-up photos (synth_docs.py) added, at random")
     ap.add_argument("--midv", type=int, default=0, help="MIDV photos (midv.py) added, at random")
     ap.add_argument("--smartdoc", type=int, default=0, help="SmartDoc frames (smartdoc.py) added, at random")
+    checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
     ex = [e for e in read_json(WORK / "examples.json") if not e["exam"]] if (WORK / "examples.json").exists() else []
@@ -127,7 +146,7 @@ def main():
     base = version_of("scan-lab")
     print(f"{len(X)} examples, base models {base}, on {dev}")
     for name in a.models:
-        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev)
+        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a)
 
 
 if __name__ == "__main__":

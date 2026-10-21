@@ -24,13 +24,13 @@ def line_input(gray):
     return (out.astype(np.float32) / 255.0)[None]
 
 
-def decode(logits):
-    """Greedy CTC: [T, 38] → the text."""
+def decode(logits, chars=CHARS):
+    """Greedy CTC: [T, len(chars) + 1] → the text (the Hebrew field reader passes its own chars, hemodel.py)."""
     best = np.asarray(logits).argmax(-1)
     out, prev = [], 0
     for k in best:
         if k != prev and k != 0:
-            out.append(CHARS[k - 1])
+            out.append(chars[k - 1])
         prev = k
     return "".join(out)
 

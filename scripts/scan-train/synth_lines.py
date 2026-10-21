@@ -37,7 +37,8 @@ def _pillow_compat():
 
 def hebrew_fonts():
     found = [str(p) for p in (pathlib.Path("C:/Windows/Fonts") / n for n in WIN_HE) if p.exists()]
-    return found or [str(p) for p in pathlib.Path("/usr/share/fonts").rglob("*.ttf") if "DejaVuSans" in p.name][:2]
+    return found or [str(p) for p in pathlib.Path("/usr/share/fonts").rglob("*.ttf")
+                     if p.name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "FreeSans.ttf", "FreeSansBold.ttf")]   # ones with Hebrew
 
 
 def _batch(job):

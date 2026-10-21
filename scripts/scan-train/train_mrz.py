@@ -6,7 +6,8 @@ passport is needed to train (exam_mrz.py examines it on the real ones the site c
 to ONNX (mrzmodel.py: input "img" [1,1,32,512], output "logits" [1,128,38]) and checked to answer like
 the trained model. With --midv, the real zone lines cut from MIDV-2020's passport photos and scans
 (midv_mrz.py: ~/.scan-train/midv-mrz/train/) are added, each shown --midv-repeat times an epoch.
-Writes ~/.scan-train/new/mrz.onnx and report_mrz_train.json.
+Writes ~/.scan-train/new/mrz.onnx and report_mrz_train.json. (`fit` below is the Hebrew field reader's
+training, train_he.py: its progress goes through checkpoint.py.)
 
 The weights are kept between trainings in ~/.scan-train/mrz-ckpt/ (made-up and public lines only, no
 worker's data: clean.py and publish.py leave it): best.pt — the best weights so far, which the next
@@ -32,6 +33,7 @@ import numpy as np
 import torch
 from torch import nn
 
+import checkpoint
 from home import WORK
 from mrzmodel import CHARS, H, W, decode, line_input
 
@@ -40,7 +42,7 @@ CKPT = WORK / "mrz-ckpt"
 
 
 class MrzNet(nn.Module):
-    def __init__(self):
+    def __init__(self, n_out=len(CHARS) + 1):   # the Hebrew field reader (train_he.py) has its own characters
         super().__init__()
 
         def block(i, o, pool):
@@ -48,7 +50,7 @@ class MrzNet(nn.Module):
         self.conv = nn.Sequential(*block(1, 32, (2, 2)), *block(32, 64, (2, 2)), *block(64, 96, None), *block(96, 96, (2, 1)),
                                   *block(96, 128, None), *block(128, 128, (2, 1)), nn.Conv2d(128, 128, (2, 1)), nn.ReLU(inplace=True))
         self.rnn = nn.LSTM(128, 96, bidirectional=True, batch_first=True)
-        self.out = nn.Linear(192, len(CHARS) + 1)
+        self.out = nn.Linear(192, n_out)
 
     def forward(self, img):                     # [B,1,32,512] → [B,128,38]
         f = self.conv(img).squeeze(2).permute(0, 2, 1)   # [B,128,128]: 128 columns
@@ -98,8 +100,8 @@ def worse(gray, rng, other=None):
 
 
 class Lines(torch.utils.data.Dataset):
-    def __init__(self, items, train, seed=0, real=frozenset()):
-        self.items, self.train, self.seed, self.real = items, train, seed, real
+    def __init__(self, items, train, seed=0, real=frozenset(), chars=CHARS):
+        self.items, self.train, self.seed, self.real, self.chars = items, train, seed, real, chars
 
     def __len__(self):
         return len(self.items)
@@ -108,8 +110,8 @@ class Lines(torch.utils.data.Dataset):
         rng = random.Random((self.seed, i, torch.initial_seed()).__hash__() if self.train else i)
         p, t = self.items[i]
         g = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
-        if self.train and p in self.real:
-            if rng.random() < 0.5:               # a real photo's line: already a phone's; sometimes a little worse
+        if p in self.real:                       # a real photo's line: already a phone's — sometimes a little worse
+            if self.train and rng.random() < 0.5:   # when learning, never when checked
                 g = worse(g, rng)
         elif self.train:
             other = cv2.imread(str(self.items[rng.randrange(len(self.items))][0]), cv2.IMREAD_GRAYSCALE)
@@ -117,7 +119,7 @@ class Lines(torch.utils.data.Dataset):
         else:
             g = worse(g, rng)                    # the check lines are made worse too, the same way each time
         x = torch.from_numpy(line_input(g))
-        y = torch.tensor([CHARS.index(c) + 1 for c in t], dtype=torch.long)
+        y = torch.tensor([self.chars.index(c) + 1 for c in t], dtype=torch.long)
         return x, y
 
 
@@ -126,15 +128,15 @@ def collate(batch):
     return torch.stack(xs), torch.cat(ys), torch.tensor([len(y) for y in ys]), list(ys)
 
 
-def evaluate(net, loader, dev):
+def evaluate(net, loader, dev, alphabet=CHARS):
     net.eval()
     right = total = chars = wrong = 0
     with torch.no_grad():
         for x, _, _, ys in loader:
             out = net(x.to(dev)).cpu().numpy()
             for o, y in zip(out, ys):
-                t = "".join(CHARS[k - 1] for k in y.tolist())
-                r = decode(o)
+                t = "".join(alphabet[k - 1] for k in y.tolist())
+                r = decode(o, alphabet)
                 right += r == t
                 total += 1
                 chars += len(t)
@@ -149,6 +151,41 @@ def edit_distance(a, b):
         for j, cb in enumerate(b, 1):
             prev, d[j] = d[j], min(d[j] + 1, d[j - 1] + 1, prev + (ca != cb))
     return d[-1]
+
+
+def fit(name, info, net, tl, vl, dev, epochs, args, alphabet=CHARS, what="lines right"):
+    """CTC training of a line reader (the zone reader, the Hebrew field reader), each epoch's progress saved
+    (checkpoint.py: --resume, --more); → the net with its best weights on the check lines."""
+    ck = checkpoint.begin(name, args, info)
+    epochs = checkpoint.epochs_of(ck, args, epochs)
+    opt = torch.optim.AdamW(net.parameters(), 1e-3, weight_decay=1e-4)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=epochs * len(tl))
+    first, best = checkpoint.restore(ck, args, net, opt, sched)
+    best = best or {"score": -1.0, "net": None}
+    ctc = nn.CTCLoss(blank=0, zero_infinity=True)
+    for ep in range(first, epochs):
+        try:
+            net.train()
+            total = 0.0
+            for x, y, ly, _ in tl:
+                lp = net(x.to(dev)).log_softmax(-1).permute(1, 0, 2)   # [T,B,C]
+                loss = ctc(lp, y.to(dev), torch.full((x.shape[0],), lp.shape[0], dtype=torch.long), ly.to(dev))
+                opt.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(net.parameters(), 5)
+                opt.step()
+                sched.step()
+                total += loss.item()
+            acc, cer = evaluate(net, vl, dev, alphabet)
+        except KeyboardInterrupt:
+            checkpoint.stopped(name, ep)
+        print(f"epoch {ep + 1}/{epochs}: loss {total / len(tl):.3f}, {what} {acc:.1%}, characters wrong {cer:.2%}")
+        if acc > best["score"]:
+            best = {"score": acc, "net": {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}}
+        checkpoint.save(name, info, net, opt, sched, ep + 1, epochs, best)
+    if best["net"] is not None:
+        net.load_state_dict(best["net"])
+    return net
 
 
 def export(net, path):

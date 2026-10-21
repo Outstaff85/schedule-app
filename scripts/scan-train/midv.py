@@ -202,7 +202,8 @@ def build(src, out, clip_step=3):
         f = out / "img" / f"{eid}.jpg"
         cv2.imwrite(str(f), small, [cv2.IMWRITE_JPEG_QUALITY, 92])
         ex.append({"id": eid, "file": str(f), "model": None, "fixed": fixed, "moved": 0, "exam": False,
-                   "midv": True, "kind": kind_of(rel), "source": "/".join(rel.parts[:2])})
+                   "midv": True, "kind": kind_of(rel), "source": "/".join(rel.parts[:2]),
+                   "doc": [[x / w, y / h] for x, y in quad]})   # the document's own top-left first: its upright page (synth_pages.py)
     (out / "examples.json").write_text(json.dumps(ex), encoding="utf-8")
     return ex, outside
 
