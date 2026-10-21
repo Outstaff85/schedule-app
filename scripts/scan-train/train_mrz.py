@@ -97,8 +97,8 @@ class Lines(torch.utils.data.Dataset):
         rng = random.Random((self.seed, i, torch.initial_seed()).__hash__() if self.train else i)
         p, t = self.items[i]
         g = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
-        if self.train and p in self.real:
-            if rng.random() < 0.5:               # a real photo's line: already a phone's; sometimes a little worse
+        if p in self.real:                       # a real photo's line: already a phone's — sometimes a little worse
+            if self.train and rng.random() < 0.5:   # when learning, never when checked
                 g = worse(g, rng)
         elif self.train:
             other = cv2.imread(str(self.items[rng.randrange(len(self.items))][0]), cv2.IMREAD_GRAYSCALE)

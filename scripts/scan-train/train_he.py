@@ -87,7 +87,7 @@ def main():
     real = frozenset(p for p, _, _ in fields)   # already a phone's crop: made worse only half the time
     tl = torch.utils.data.DataLoader(Lines(items, True, real=real, chars=hemodel.CHARS), a.batch, shuffle=True,
                                      num_workers=a.workers, collate_fn=collate, drop_last=True)
-    vl = torch.utils.data.DataLoader(Lines([(p, t) for p, t, _ in checks][:2000], False, chars=hemodel.CHARS), 128,
+    vl = torch.utils.data.DataLoader(Lines([(p, t) for p, t, _ in checks][:2000], False, real=frozenset(p for p, _, _ in checks), chars=hemodel.CHARS), 128,
                                      num_workers=a.workers, collate_fn=collate)
     opt = torch.optim.AdamW(net.parameters(), 1e-3, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=a.epochs * len(tl))
