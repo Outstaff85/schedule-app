@@ -115,15 +115,15 @@ def collate(batch):
     return torch.stack(xs), torch.cat(ys), torch.tensor([len(y) for y in ys]), list(ys)
 
 
-def evaluate(net, loader, dev, chars=CHARS):
+def evaluate(net, loader, dev, alphabet=CHARS):
     net.eval()
     right = total = chars = wrong = 0
     with torch.no_grad():
         for x, _, _, ys in loader:
             out = net(x.to(dev)).cpu().numpy()
             for o, y in zip(out, ys):
-                t = "".join(chars[k - 1] for k in y.tolist())
-                r = decode(o, chars)
+                t = "".join(alphabet[k - 1] for k in y.tolist())
+                r = decode(o, alphabet)
                 right += r == t
                 total += 1
                 chars += len(t)
