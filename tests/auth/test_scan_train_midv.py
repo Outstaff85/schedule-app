@@ -63,3 +63,24 @@ def test_a_turned_smartdoc_frame_keeps_its_corners():
     got = smartdoc.turned(c)
     want = [[0.2, 0.3], [0.8, 0.3], [0.8, 0.6], [0.2, 0.6]]
     assert all(abs(a - b) < 1e-9 for p, q in zip(got, want) for a, b in zip(p, q))
+
+
+def test_the_owners_own_pages_in_the_bucket():
+    # pull_templates.py copies templates/<kind>/<picture> — not a deeper folder, an unknown kind or another file
+    import types
+    saved = sys.modules.get("common")
+    sys.modules["common"] = types.SimpleNamespace(DATA="x/y", WORK=pathlib.Path("/tmp"))
+    try:
+        spec = importlib.util.spec_from_file_location("pull_templates", HERE / "pull_templates.py")
+        pt = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pt)
+    finally:
+        if saved is None:
+            sys.modules.pop("common", None)
+        else:
+            sys.modules["common"] = saved
+    paths = ["templates/id_front/new_type.jpg", "templates/sefach/sefah.JPG", "templates/id_back/back.png",
+             "templates/id_front/notes.txt", "templates/visa/a.jpg", "templates/id_front/old/a.jpg", "documents/t/2026-10/x/page-0.jpg"]
+    assert pt.own_pages(paths) == [("templates/id_front/new_type.jpg", "id_front", "new_type.jpg"),
+                                   ("templates/sefach/sefah.JPG", "sefach", "sefah.JPG"),
+                                   ("templates/id_back/back.png", "id_back", "back.png")]
