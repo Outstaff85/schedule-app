@@ -25,6 +25,9 @@ All end in the same step 5: one new version holds whatever was trained; the rest
 - Hugging Face, the models' home (`OutStaff/scanner-models`, public; docs/hf-plan.md): the owner's token on the PC — `hf auth whoami` must say `OutStaff` (else the owner runs `hf auth login`; the token is never pasted in chat). The owner's PC keeps it in `H:\hf\home` (`HF_HOME`).
 - Once, before the first training on Hugging Face: `python scripts/scan-train/move_to_hf.py --apply` (the versions still in Storage go to Hugging Face as tags) and `python scripts/scan-train/rename_fields.py --apply` (the records collected before H0 get today's names). Each says what it would do without `--apply`; both are safe to run again.
 
+## Stopped in the middle
+Every training saves its progress after each epoch (`~/.scan-train/checkpoints/`). If one stopped (Ctrl+C, a crash, the PC turned off), run the same command again with `--resume`; to train a model further from where its last run ended, `--more` (docs/scan-training.md → Stopped and picked up again).
+
 ## 2. Download the examples
 `python scripts/scan-train/pull.py` — prints how many examples (and how many came from the scan attempts, S8), how many kept apart for the exam. Fewer than ~100 to train on: tell the owner it is early and ask whether to go on.
 

@@ -6,7 +6,8 @@ passport is needed to train (exam_mrz.py examines it on the real ones the site c
 to ONNX (mrzmodel.py: input "img" [1,1,32,512], output "logits" [1,128,38]) and checked to answer like
 the trained model. With --midv, the real zone lines cut from MIDV-2020's passport photos and scans
 (midv_mrz.py: ~/.scan-train/midv-mrz/train/) are added, each shown --midv-repeat times an epoch.
-Writes ~/.scan-train/new/mrz.onnx and report_mrz_train.json.
+Each epoch's progress is saved (checkpoint.py): --resume goes on with a run that stopped, --more trains
+further from the last run's best weights. Writes ~/.scan-train/new/mrz.onnx and report_mrz_train.json.
 
   python synth_lines.py mrz --count 100000      # first
   python train_mrz.py                           # ~10-20 min on the 4070
@@ -23,6 +24,7 @@ import numpy as np
 import torch
 from torch import nn
 
+import checkpoint
 from home import WORK
 from mrzmodel import CHARS, H, W, decode, line_input
 
@@ -140,6 +142,41 @@ def edit_distance(a, b):
     return d[-1]
 
 
+def fit(name, info, net, tl, vl, dev, epochs, args, alphabet=CHARS, what="lines right"):
+    """CTC training of a line reader (the zone reader, the Hebrew field reader), each epoch's progress saved
+    (checkpoint.py: --resume, --more); → the net with its best weights on the check lines."""
+    ck = checkpoint.begin(name, args, info)
+    epochs = checkpoint.epochs_of(ck, args, epochs)
+    opt = torch.optim.AdamW(net.parameters(), 1e-3, weight_decay=1e-4)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=epochs * len(tl))
+    first, best = checkpoint.restore(ck, args, net, opt, sched)
+    best = best or {"score": -1.0, "net": None}
+    ctc = nn.CTCLoss(blank=0, zero_infinity=True)
+    for ep in range(first, epochs):
+        try:
+            net.train()
+            total = 0.0
+            for x, y, ly, _ in tl:
+                lp = net(x.to(dev)).log_softmax(-1).permute(1, 0, 2)   # [T,B,C]
+                loss = ctc(lp, y.to(dev), torch.full((x.shape[0],), lp.shape[0], dtype=torch.long), ly.to(dev))
+                opt.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(net.parameters(), 5)
+                opt.step()
+                sched.step()
+                total += loss.item()
+            acc, cer = evaluate(net, vl, dev, alphabet)
+        except KeyboardInterrupt:
+            checkpoint.stopped(name, ep)
+        print(f"epoch {ep + 1}/{epochs}: loss {total / len(tl):.3f}, {what} {acc:.1%}, characters wrong {cer:.2%}")
+        if acc > best["score"]:
+            best = {"score": acc, "net": {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}}
+        checkpoint.save(name, info, net, opt, sched, ep + 1, epochs, best)
+    if best["net"] is not None:
+        net.load_state_dict(best["net"])
+    return net
+
+
 def export(net, path):
     net = net.cpu().eval()
     x = torch.rand(1, 1, H, W)
@@ -164,6 +201,7 @@ def main():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--midv", action="store_true", help="add MIDV-2020's real zone lines (midv_mrz.py)")
     ap.add_argument("--midv-repeat", type=int, default=8, help="how many times an epoch each real line is shown")
+    checkpoint.add_args(ap)
     a = ap.parse_args()
     items = load(pathlib.Path(a.data))
     if len(items) < 1000:
@@ -185,27 +223,7 @@ def main():
     print(f"{sum(p.numel() for p in net.parameters()) / 1e6:.2f} M weights")
     tl = torch.utils.data.DataLoader(Lines(train, True, real=frozenset(p for p, _ in real)), a.batch, shuffle=True, num_workers=a.workers, collate_fn=collate, drop_last=True)
     vl = torch.utils.data.DataLoader(Lines(val, False), 128, num_workers=a.workers, collate_fn=collate)
-    opt = torch.optim.AdamW(net.parameters(), 1e-3, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=a.epochs * len(tl))
-    ctc = nn.CTCLoss(blank=0, zero_infinity=True)
-    best = (-1.0, None)
-    for ep in range(a.epochs):
-        net.train()
-        total = 0.0
-        for x, y, ly, _ in tl:
-            lp = net(x.to(dev)).log_softmax(-1).permute(1, 0, 2)   # [T,B,C]
-            loss = ctc(lp, y.to(dev), torch.full((x.shape[0],), lp.shape[0], dtype=torch.long), ly.to(dev))
-            opt.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(net.parameters(), 5)
-            opt.step()
-            sched.step()
-            total += loss.item()
-        acc, cer = evaluate(net, vl, dev)
-        print(f"epoch {ep + 1}/{a.epochs}: loss {total / len(tl):.3f}, lines right {acc:.1%}, characters wrong {cer:.2%}")
-        if acc > best[0]:
-            best = (acc, {k: v.detach().cpu().clone() for k, v in net.state_dict().items()})
-    net.load_state_dict(best[1])
+    net = fit("mrz", {"model": "mrz"}, net, tl, vl, dev, a.epochs, a)
     acc, cer = evaluate(net.to(dev), vl, dev)
     diff = export(net, WORK / "new" / "mrz.onnx")
     report = {"linesRight": acc, "charsWrong": cer, "trainLines": len(train), "checkLines": len(val), "midvLines": len(real), "onnxDiff": diff}

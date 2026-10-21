@@ -8,7 +8,8 @@ its back or a ספח from
 It is checked on the other made-up pages (synth_fields.py --check: …/he-fields/check/) — every field read
 right, by kind, and the ID numbers whose check digit agrees. Labels are taught in the visual order
 (hemodel.visual). Exported to ONNX (input "img" [1,1,32,512], output "logits" [1,128,len(CHARS)+1]) and
-checked. Writes ~/.scan-train/new/he.onnx and report_he.json. The real ID cards the site collects (H8a, each
+checked. Each epoch's progress is saved (checkpoint.py: --resume, --more). Writes
+~/.scan-train/new/he.onnx and report_he.json. The real ID cards the site collects (H8a, each
 with its fields' boxes and the values the user kept) are its exam once there are enough.
 
   python synth_fields.py --count 3000 && python synth_fields.py --count 300 --check
@@ -22,13 +23,13 @@ from collections import Counter
 
 import cv2
 import torch
-from torch import nn
 
 import hemodel
 from home import WORK
 from mrzmodel import decode, line_input
 from synth import valid_israeli_id
-from train_mrz import Lines, MrzNet, collate, evaluate, export
+import checkpoint
+from train_mrz import Lines, MrzNet, collate, export, fit
 
 READ_AT = 0.9   # the share of check fields a model must read right
 
@@ -72,6 +73,7 @@ def main():
     ap.add_argument("--epochs", type=int, default=16)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--workers", type=int, default=4)
+    checkpoint.add_args(ap)
     a = ap.parse_args()
     fields = load(WORK / "synth" / "he-fields" / "train")
     lines = load(WORK / "synth" / "he")
@@ -89,27 +91,7 @@ def main():
                                      num_workers=a.workers, collate_fn=collate, drop_last=True)
     vl = torch.utils.data.DataLoader(Lines([(p, t) for p, t, _ in checks][:2000], False, real=frozenset(p for p, _, _ in checks), chars=hemodel.CHARS), 128,
                                      num_workers=a.workers, collate_fn=collate)
-    opt = torch.optim.AdamW(net.parameters(), 1e-3, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=a.epochs * len(tl))
-    ctc = nn.CTCLoss(blank=0, zero_infinity=True)
-    best = (-1.0, None)
-    for ep in range(a.epochs):
-        net.train()
-        total = 0.0
-        for x, y, ly, _ in tl:
-            lp = net(x.to(dev)).log_softmax(-1).permute(1, 0, 2)
-            loss = ctc(lp, y.to(dev), torch.full((x.shape[0],), lp.shape[0], dtype=torch.long), ly.to(dev))
-            opt.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(net.parameters(), 5)
-            opt.step()
-            sched.step()
-            total += loss.item()
-        acc, cer = evaluate(net, vl, dev, hemodel.CHARS)
-        print(f"epoch {ep + 1}/{a.epochs}: loss {total / len(tl):.3f}, check fields right {acc:.1%}, characters wrong {cer:.2%}")
-        if acc > best[0]:
-            best = (acc, {k: v.detach().cpu().clone() for k, v in net.state_dict().items()})
-    net.load_state_dict(best[1])
+    net = fit("he", {"model": "he"}, net, tl, vl, dev, a.epochs, a, hemodel.CHARS, "check fields right")
     report = check(net.to(dev), checks, dev)
     report["onnxDiff"] = export(net, WORK / "new" / "he.onnx")
     report["trainFields"], report["trainLines"] = len(fields), len(lines)

@@ -130,12 +130,12 @@ def data_file(path, dest):
         return False
 
 
-KEPT = ("midv", "midv-mrz", "smartdoc")  # public datasets (midv.py, smartdoc.py), no worker's data: large downloads kept between trainings
+KEPT = ("midv", "midv-mrz", "smartdoc", "checkpoints")  # public datasets (no worker's data: large downloads) and the trainings' progress (checkpoint.py), kept between trainings
 
 
 def clear_work():
     """Every copy on this PC deleted (the workers' documents, the new models, the made-up photos) —
-    but the MIDV and SmartDoc sets."""
+    but the MIDV and SmartDoc sets and the trainings' progress."""
     if not WORK.exists():
         return
     for p in WORK.iterdir():
