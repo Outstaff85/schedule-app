@@ -9,7 +9,8 @@ It is checked on the other made-up pages (synth_fields.py --check: …/he-fields
 right, by kind, and the ID numbers whose check digit agrees. Labels are taught in the visual order
 (hemodel.visual). Exported to ONNX (input "img" [1,1,32,512], output "logits" [1,128,len(CHARS)+1]) and
 checked. Each epoch's progress is saved (checkpoint.py: --resume, --more). Writes
-~/.scan-train/new/he.onnx and report_he.json. The real ID cards the site collects (H8a, each
+~/.scan-train/new/he.onnx, he-layouts.json (the card layouts the phone reads, hemodel.layouts) and
+report_he.json; publish.py puts both files into the version when the check says YES (--force-he else). The real ID cards the site collects (H8a, each
 with its fields' boxes and the values the user kept) are its exam once there are enough.
 
   python synth_fields.py --count 3000 && python synth_fields.py --count 300 --check
@@ -18,6 +19,7 @@ with its fields' boxes and the values the user kept) are its exam once there are
 """
 import argparse
 import json
+import pathlib
 import random
 from collections import Counter
 
@@ -94,6 +96,8 @@ def main():
     net = fit("he", {"model": "he"}, net, tl, vl, dev, a.epochs, a, hemodel.CHARS, "check fields right")
     report = check(net.to(dev), checks, dev)
     report["onnxDiff"] = export(net, WORK / "new" / "he.onnx")
+    marks = json.loads((pathlib.Path(__file__).resolve().parent / "template_fields.json").read_text(encoding="utf-8"))
+    (WORK / "new" / "he-layouts.json").write_text(json.dumps(hemodel.layouts(marks)), encoding="utf-8")   # where the phone reads
     report["trainFields"], report["trainLines"] = len(fields), len(lines)
     report["publish"] = report["fieldsRight"] >= READ_AT
     (WORK / "report_he.json").write_text(json.dumps(report, indent=1, ensure_ascii=False))

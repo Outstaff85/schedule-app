@@ -68,3 +68,20 @@ def test_the_marked_fields_of_the_owners_pages():
         for b in [spec.get("photo"), spec.get("crop")] + list(spec.get("scramble") or []) + list(spec.get("erase") or []):
             if b:
                 assert all(0 <= v <= 1 for v in b) and b[0] + b[2] <= 1.001 and b[1] + b[3] <= 1.001
+
+
+def test_the_phone_reads_where_the_marked_pages_say_and_in_the_same_order():
+    marks = json.loads((HERE / "template_fields.json").read_text(encoding="utf-8"))
+    lay = hemodel.layouts(marks)
+    assert set(lay) == set(hemodel.LAYOUT_PAGES)
+    for name, boxes in lay.items():
+        roles = [b["role"] for b in boxes]
+        assert len(roles) == len(set(roles)) and {"surname", "given", "idNo", "dob"} <= set(roles), (name, roles)
+        assert all(r in hemodel.ROLES and len(b["box"]) == 4 for r, b in zip(roles, boxes))
+    rng = random.Random(5)
+    for k in ("surname", "given", "idNo", "date", "street", "city"):
+        for _ in range(100):
+            v = synth.field_value(k, rng)
+            if hemodel.readable(v):
+                shown = hemodel.visual(v)
+                assert hemodel.logical_simple(shown) == hemodel.logical(shown) == v, (k, v)

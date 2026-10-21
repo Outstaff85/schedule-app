@@ -10,13 +10,15 @@
 // (docs/backend.md → Parallel AI calls); sending them in parallel changes the time, never
 // the number of AI calls. Every read is kept by the page's image (cache): a scan read
 // again after pages were added, removed or re-cut reads only the pages that changed.
+import type { HeFields } from '../scan/Scanner';
 import { tr } from '@/lib/i18n';
 import { extraReadWanted, initPrimary, isNonIdKind, mergePage } from './merge';
 import { verifyDigitFields, verifyIdChecksum } from './verify';
 import type { Box, Img, Job, Rec, Verifier } from './types';
 
-/** mrz: the passport zone reader's lines on the page (the scanner's; only kept for its shadow — session.ts). */
-export type InPage = Img & { kind: string | null; upright: boolean; mrz?: string[] };
+/** mrz: the passport zone reader's lines on the page, he: the Hebrew field reader's fields (the scanner's; only
+ * kept for their shadow — session.ts). */
+export type InPage = Img & { kind: string | null; upright: boolean; mrz?: string[]; he?: HeFields };
 export type OutPage = Img & {
   kind: string | null;
   /** the page's own read (the primary's: its verified read), null when not read */

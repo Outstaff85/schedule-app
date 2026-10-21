@@ -140,12 +140,15 @@ The passport's machine-readable zone (two lines of 44, ICAO 9303 — the same in
 
 The same made-up lines serve the field reader model later (H8c): `synth_lines.py he` draws Hebrew ID card fields (names, ID numbers with a right check digit, dates, streets, cities) in the PC's Hebrew fonts (Windows: Arial, David, Miriam, Narkisim), in logical order in `labels.tsv`.
 
-### The Hebrew field reader (H8c — trained on the PC; not on the phone yet)
+### The Hebrew field reader (H8c — trained on the PC, read on the phone in shadow)
 
 The fields of an Israeli ID card, its back and a ספח (names, ID numbers, dates, the Hebrew-calendar dates, sex, address, city, a spouse's and children's) are read by the AI today; the firm's own reader starts on made-up fields (docs/hf-plan.md → H8c):
 1. **`synth_fields.py --count 3000`** — the owner's marked real pages made other people's (`template_vary.py`), made like a phone's cut page (smaller, blurred, noisy, unevenly lit, JPEG), and every field cut out a little off with its text and kind (`~/.scan-train/synth/he-fields/train/`, `labels.tsv`); **`--count 300 --check`** draws other pages (another seed) to measure on. Optionally `synth_lines.py he` (more names, streets, cities and dates in the PC's fonts).
 2. **`train_he.py`** — the passport zone reader's small CRNN (`train_mrz.MrzNet`, CTC; `hemodel.py`: Hebrew letters, digits and the marks printed, `CHARS`) learns the fields in the visual order (`hemodel.visual`; `logical` turns an answer back), the cut fields made worse only half the time (they are a phone's already), the made-up lines like the zone's. Exported to ONNX (`he.onnx`: input `img` [1,1,32,512], output `logits` [1,128,len(CHARS)+1]) and checked on the check fields: every field read right, by kind, the ID numbers whose check digit agrees (`report_he.json`; "YES" at ≥ 90 %).
-Not yet: its exam on the site's real ID cards (H8a keeps each read's `fieldBoxes` and the values the user kept — the exam once there are enough), the phone's side (finding the fields on the cut page, reading them in shadow beside the AI) and `publish.py` carrying `he.onnx` — the next steps of H8c.
+   It also writes `he-layouts.json` — where the phone reads (`hemodel.layouts`: of the new and the old ID card's marked page in `template_fields.json`, the boxes of the surname, the given name, the ID number and the dates marked `same: dob` / `expiry`).
+3. **The owner decides** — `publish.py` puts `he.onnx` and `he-layouts.json` together (and `report_he.json`) into the next version (`--force-he` for a model the check rejected), or `clean.py`. The lab runs it from its version (each shot of an ID card shows the fields read); the site, once its version holds it, reads every ID card in shadow beside the AI — Admin → Scanner → Hebrew field reader shows how often each got the fields the user kept (docs/scan.md → The scan window).
+
+Not yet: its exam on the site's real ID cards (H8a keeps each read's `fieldBoxes` and the values the user kept — the exam once there are enough).
 
 ## 5. Lab first, then the site
 

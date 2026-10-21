@@ -208,6 +208,9 @@ def check_document(p):
     zone = mrz_shadow(p.get("mrzShadow"))
     if zone is not None:
         doc["mrzShadow"] = zone
+    fields = he_shadow(p.get("heShadow"))
+    if fields is not None:
+        doc["heShadow"] = fields
     return doc, None
 
 
@@ -249,12 +252,57 @@ def mrz_counts(doc):
             "mrzAiRight": int(all(_same(scanned.get(k), saved[k]) for k in keys))}
 
 
+# ---------- the Hebrew field reader in shadow (docs/hf-plan.md → H8c) ----------
+# The phone's own small model reads an Israeli ID card's fields beside the AI (the card layouts of the version,
+# scan-lab/index.html heRead); its answer on the primary page is kept with the full document, never used for
+# the worker. HE_COMPARED: the fields it is judged on.
+HE_COMPARED = ("docSurname", "docGiven", "docId", "docDob", "docExpiry")
+
+
+def he_shadow(v):
+    """The field reader's answer as sent (src/scan-process/session.ts scanDocument), cleaned: the card layout it
+    found, whether its ID number's check digit agrees, and the fields it read; None when there is none."""
+    if not isinstance(v, dict) or not isinstance(v.get("layout"), str) or not v["layout"].strip():
+        return None
+    out = {"layout": v["layout"].strip()[:20], "idOk": v.get("idOk") is True}
+    for k in HE_COMPARED:
+        if isinstance(v.get(k), str) and v[k].strip():
+            out[k] = v[k].strip()[:60]
+    return out
+
+
+def _same_he(a, b):
+    """Two values of a Hebrew card's field alike: spaces and the quote marks' forms (' ’ ׳, " ״) aside."""
+    def norm(s):
+        s = str(s or "").replace(" ", "")
+        for q, r in (("’", "'"), ("׳", "'"), ("״", '"'), ("”", '"'), ("“", '"')):
+            s = s.replace(q, r)
+        return s.upper()
+    return norm(a) == norm(b)
+
+
+def he_counts(doc):
+    """What a full document tells about the field reader in shadow: {heShadowCards: 1, heShadowRight: the
+    reader got every compared field the user kept, heAiRight: the AI did} — on an Israeli ID card (the saved
+    docType israeli_id), the fields the user kept a value for; nothing when the reader did not read the card
+    or no field can be compared."""
+    fields, saved, scanned = doc.get("heShadow"), doc.get("saved") or {}, doc.get("scanned") or {}
+    if fields is None or saved.get("docType") != "israeli_id":
+        return {}
+    keys = [k for k in HE_COMPARED if saved.get(k)]
+    if not keys:
+        return {}
+    return {"heShadowCards": 1, "heShadowRight": int(all(_same_he(fields.get(k), saved[k]) for k in keys)),
+            "heAiRight": int(all(_same_he(scanned.get(k), saved[k]) for k in keys))}
+
+
 def document_record(doc, tenant_id, now, doc_id, page_paths):
     """The record kept beside a document's pages."""
     return {"id": doc_id, "tenantId": tenant_id or "", "workerId": doc["workerId"], "createdAt": now,
             "pages": [{"path": path, "doctype": pg["doctype"], "primary": pg["primary"]} for path, pg in zip(page_paths, doc["pages"])],
             "read": doc["read"], "reads": doc["reads"], "scanned": doc["scanned"], "saved": doc["saved"], "corrected": doc["corrected"],
-            **({"mrzShadow": doc["mrzShadow"]} if "mrzShadow" in doc else {})}
+            **({"mrzShadow": doc["mrzShadow"]} if "mrzShadow" in doc else {}),
+            **({"heShadow": doc["heShadow"]} if "heShadow" in doc else {})}
 
 
 # ---------- every scan attempt (docs/scan-plan.md → S8) ----------

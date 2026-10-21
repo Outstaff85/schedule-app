@@ -27,6 +27,7 @@ DOCTYPE_MODELS = {"doctype-lite.onnx": "tf_efficientnet_lite0", "doctype.onnx": 
 DOCTYPE_SIZES = [f"tf_efficientnet_lite{i}" for i in range(5)]
 # The passport zone reader (docs/hf-plan.md → H8b; mrzmodel.py): trained on made-up lines (synth_lines.py, train_mrz.py)
 MRZ_MODEL = "mrz.onnx"
+HE_FILES = ("he.onnx", "he-layouts.json")             # the Hebrew field reader and where it reads on a card (train_he.py; H8c)
 DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 # A record's field names before H0 (docs/hf-plan.md) → today's: records not yet renamed by rename_fields.py
 OLD_NAMES = {"cornersModel": "edgesModel", "cornersFixed": "edgesFixed", "kindModel": "doctypeModel", "kindFixed": "doctypeFixed", "kindBy": "doctypeBy"}
