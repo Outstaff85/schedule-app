@@ -84,3 +84,49 @@ def test_the_owners_own_pages_in_the_bucket():
     assert pt.own_pages(paths) == [("templates/id_front/new_type.jpg", "id_front", "new_type.jpg"),
                                    ("templates/sefach/sefah.JPG", "sefach", "sefah.JPG"),
                                    ("templates/id_back/back.png", "id_back", "back.png")]
+
+
+_mz = importlib.util.spec_from_file_location("midv_mrz", HERE / "midv_mrz.py")
+midv_mrz = importlib.util.module_from_spec(_mz)
+_mz.loader.exec_module(midv_mrz)
+
+L1 = "P<AZESPECIMEN<<ANAR<<<<<<<<<<<<<<<<<<<<<<<<<"
+L2 = "C012345678AZE8001014M3001014<<<<<<<<<<<<<<04"
+
+
+def test_a_templates_zone_lines_by_their_values():
+    def rect(x, y, w, h, **attrs):
+        return {"shape_attributes": {"name": "rect", "x": x, "y": y, "width": w, "height": h}, "region_attributes": attrs}
+    ann = {"_via_img_metadata": {
+        "00.jpg1": {"filename": "00.jpg", "regions": [rect(10, 700, 1000, 40, field_name="line_b", value=L2),
+                                                     rect(10, 640, 1000, 40, field_name="line_a", value=L1),
+                                                     rect(400, 100, 300, 40, field_name="surname", value="SPECIMEN")]},
+        "01.jpg1": {"filename": "01.jpg", "regions": [rect(10, 640, 1000, 100, field_name="mrz", value=L1 + "\n" + L2)]},
+        "02.jpg1": {"filename": "02.jpg", "regions": [rect(10, 640, 1000, 40, field_name="mrz", value=L1)]}}}
+    z = midv_mrz.zones(ann)
+    assert z["00.jpg"] == [((10.0, 640.0, 1000.0, 40.0), L1), ((10.0, 700.0, 1000.0, 40.0), L2)]   # top to bottom
+    assert z["01.jpg"] == [((10.0, 640.0, 1000.0, 50.0), L1), ((10.0, 690.0, 1000.0, 50.0), L2)]   # one field, split
+    assert "02.jpg" not in z                                                                       # one line only
+
+
+def test_which_template_a_picture_shows_and_the_exam_split():
+    p = pathlib.Path
+    assert midv_mrz.template_id(p("photo/images/aze_passport/85.jpg"), p("photo/annotations/aze_passport.json"),
+                                p("photo/images/aze_passport/85.jpg")) == "85"
+    assert midv_mrz.template_id(p("clips/images/grc_passport/07/000013.jpg"), p("clips/annotations/grc_passport/07.json"),
+                                p("clips/images/grc_passport/07/000013.jpg")) == "07"
+    assert midv_mrz.type_of("midv-2020/photo/images/lva_passport/00.jpg") == "lva_passport"
+    assert midv_mrz.is_exam("80") and midv_mrz.is_exam("99") and not midv_mrz.is_exam("79")
+
+
+def test_the_work_folder_can_be_on_another_disk(monkeypatch, tmp_path):
+    # SCAN_TRAIN_HOME moves every copy (another disk); without it, ~/.scan-train
+    spec = importlib.util.spec_from_file_location("home_t", HERE / "home.py")
+    monkeypatch.setenv("SCAN_TRAIN_HOME", str(tmp_path / "scan-train"))
+    home = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(home)
+    assert home.WORK == tmp_path / "scan-train"
+    monkeypatch.delenv("SCAN_TRAIN_HOME")
+    home = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(home)
+    assert home.WORK == pathlib.Path.home() / ".scan-train" and home.DATA == "OutStaff/scanner-data"

@@ -16,10 +16,11 @@ import os
 import pathlib
 import random
 
+from home import WORK
 from synth import lines
 
 HERE = pathlib.Path(__file__).resolve().parent
-OUT = pathlib.Path.home() / ".scan-train" / "synth"
+OUT = WORK / "synth"
 MRZ_FONTS = [HERE / "fonts" / "OCRB.otf"]
 WIN_HE = ("arial.ttf", "arialbd.ttf", "david.ttf", "davidbd.ttf", "mriam.ttf", "nrkis.ttf", "frank.ttf", "tahoma.ttf")
 

@@ -40,17 +40,18 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 import synth
+from home import WORK
 from synth_lines import hebrew_fonts
 
 HERE = pathlib.Path(__file__).resolve().parent
-OUT = pathlib.Path.home() / ".scan-train" / "synth" / "docs"
+OUT = WORK / "synth" / "docs"
 OCRB = HERE / "fonts" / "OCRB.otf"
 PX = 10            # pixels per millimetre of the flat documents
 LONG = 640         # the saved photo's long side (the model sees it squeezed to 256×256)
 SIZES = ((960, 1280), (1280, 960), (720, 1280), (1080, 1080), (1200, 900), (900, 1200))
 KINDS = {"id_front": 0.24, "id_back": 0.16, "passport": 0.3, "sefach": 0.2, "insert": 0.1}
 NONE_SHARE, PAINTED_SHARE = 0.05, 0.1
-TEMPLATES = pathlib.Path.home() / ".scan-train" / "templates"   # common.WORK / "templates" (deleted by clean / publish)
+TEMPLATES = WORK / "templates"   # deleted by clean / publish
 TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert")
 WIDTH = {"id_front": 85.6, "id_back": 85.6, "passport": 125.0}  # mm; a sheet keeps its own size
 WIN_LATIN = ("arial.ttf", "arialbd.ttf", "times.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf", "segoeui.ttf")

@@ -6,6 +6,7 @@ back to ONNX (checked again). Batch norms stay as they are (few examples). The G
 used when there is one (CUDA). With --synth N, N made-up photos (synth_docs.py), with --midv N, N MIDV
 photos (midv.py), and with --smartdoc N, N SmartDoc frames (smartdoc.py) are added to the users' examples (never to the exam). Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
+import pathlib
 import random
 
 import cv2
@@ -117,7 +118,7 @@ def main():
         more = WORK / folder / "examples.json"
         if not more.exists():
             raise SystemExit(f"no {folder} examples — run {how} first")
-        more = read_json(more)
+        more = [{**e, "file": str(WORK / folder / "img" / pathlib.Path(e["file"]).name)} for e in read_json(more)]  # wherever the set was made (another PC, datasets_hf.py)
         ex += random.sample(more, min(n, len(more)))
     if not ex:
         raise SystemExit("no examples to train on — run pull.py first")

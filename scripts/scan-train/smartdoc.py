@@ -11,6 +11,7 @@ left out, every third frame of a clip, half of them turned a quarter (the frames
 
   python smartdoc.py --download          # → ~/.scan-train/smartdoc/raw/, then the examples
   python smartdoc.py                     # the examples again (another --step)
+  python smartdoc.py --download --drop-raw   # the same, then the download deleted (only the set kept)
 
 Attribution (CC BY 4.0): J.-C. Burie, J. Chazalon, M. Coustaty, S. Eskenazi, M. M. Luqman, M. Mehri,
 N. Nayef, J.-M. Ogier, S. Prum, M. Rusiñol: "ICDAR2015 Competition on Smartphone Document Capture
@@ -24,10 +25,11 @@ import pathlib
 import tarfile
 import urllib.request
 
+from home import WORK
 from midv import LONG, normalised
 from synth import order_corners
 
-OUT = pathlib.Path.home() / ".scan-train" / "smartdoc"   # common.WORK / "smartdoc" (kept by common.clear_work)
+OUT = WORK / "smartdoc"   # kept by common.clear_work
 URL = "https://github.com/jchazalon/smartdoc15-ch1-dataset/releases/download/v2.0.0/frames.tar.gz"
 CORNERS = ("tl", "tr", "br", "bl")   # the page's own top-left first, clockwise (the file lists tl, bl, br, tr)
 
@@ -99,12 +101,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--download", action="store_true")
     ap.add_argument("--step", type=int, default=3, help="every n-th frame of a clip")
+    ap.add_argument("--drop-raw", action="store_true", help="delete the download once the set is made")
     a = ap.parse_args()
     raw = OUT / "raw"
     if a.download:
         download(raw)
     ex, outside = build(raw, OUT, a.step)
     print(f"{len(ex)} frames in {OUT}; {outside} left out: the page goes out of the frame")
+    if a.drop_raw:
+        import shutil
+        shutil.rmtree(raw, ignore_errors=True)
+        print(f"deleted the download {raw}; the set stays")
 
 
 if __name__ == "__main__":
