@@ -7,6 +7,13 @@ so its four corners are known exactly. Then what a phone does to a photo: a shad
 uneven light, a glare on a card, a finger on an edge, blur, noise, JPEG (Albumentations — colours
 and quality only, never the geometry, so the corners stay true).
 
+Real pages can be laid the same way (--templates, ~/.scan-train/templates/<kind>/: the cut pages of
+the documents the site collected — pull_templates.py — or the owner's own photos of Israeli
+documents, cut straight): a template is laid on the made-up photos like a drawn document, with its
+face and text washed out (a worker's data; --sharp keeps them), so a few real pages teach the
+models how the firm's own documents look at the edge — the card's colour, the laminate, the ספח's
+paper.
+
 Some photos teach the other cases the site's examples teach: the first document found painted
 over in the border's colour (as the next document search sees it — pull.painted) and "nothing
 here" (no document; empty maps, as a deleted page).
@@ -16,6 +23,7 @@ photos again, so only this script is kept.
 
   python synth_docs.py --count 20000                         # → ~/.scan-train/synth/docs/
   python synth_docs.py --count 20000 --backgrounds D:/backgrounds   # own table / floor photos too
+  python synth_docs.py --count 20000 --templates             # + the real pages in ~/.scan-train/templates/
   python synth_docs.py --count 40 --show                     # + show/: the corners drawn, to look at
 
 Writes <out>/img/<n>.jpg (the long side 640) and <out>/examples.json in pull.py's form (fixed:
@@ -42,6 +50,9 @@ LONG = 640         # the saved photo's long side (the model sees it squeezed to 
 SIZES = ((960, 1280), (1280, 960), (720, 1280), (1080, 1080), (1200, 900), (900, 1200))
 KINDS = {"id_front": 0.24, "id_back": 0.16, "passport": 0.3, "sefach": 0.2, "insert": 0.1}
 NONE_SHARE, PAINTED_SHARE = 0.05, 0.1
+TEMPLATES = pathlib.Path.home() / ".scan-train" / "templates"   # common.WORK / "templates" (deleted by clean / publish)
+TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert")
+WIDTH = {"id_front": 85.6, "id_back": 85.6, "passport": 125.0}  # mm; a sheet keeps its own size
 WIN_LATIN = ("arial.ttf", "arialbd.ttf", "times.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf", "segoeui.ttf")
 RTL = features.check("raqm")   # without libraqm (Pillow on Windows) the Hebrew is put in visual order by python-bidi
 
@@ -324,6 +335,53 @@ def folded(rng, im):
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
+def templates_in(folder):
+    """The real pages: [(path, kind)] — the kind by the folder each lies in (id_front, id_back,
+    passport, sefach, insert; any other folder: a sheet)."""
+    folder = pathlib.Path(folder)
+    if not folder.is_dir():
+        return []
+    out = []
+    for p in sorted(folder.rglob("*")):
+        if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            k = p.parent.name if p.parent.name in TEMPLATE_KINDS else "insert"
+            out.append((str(p), k))
+    return out
+
+
+def washed(rng, F, im, kind):
+    """A real page with its data washed out: everything blurred past reading (the layout's colours
+    stay), then made-up text laid on it so it still looks printed."""
+    w, h = im.size
+    small = im.resize((max(8, w // 28), max(8, h // 28)), Image.BILINEAR)
+    im = small.resize((w, h), Image.BICUBIC).filter(ImageFilter.GaussianBlur(2))
+    d = ImageDraw.Draw(im)
+    sz = max(14, h // 22)
+    for _ in range(rng.randint(4, 10)):
+        x, y = rng.randint(int(w * 0.35), int(w * 0.95)), rng.randint(int(h * 0.1), int(h * 0.85))
+        t = he_value(rng, rng.choice(("given", "surname", "city", "date", "idNo")))
+        put(d, (x, y), t, F.get("hebrew", sz, rng), (25, 25, 35), True)
+    return im
+
+
+def template(rng, F, path, kind, sharp):
+    """A real page as a document to lay: (RGBA, its rect) — at the drawn documents' scale, a card's
+    corners rounded, its colours a little changed."""
+    im = Image.open(path).convert("RGB")
+    w, h = im.size
+    if w < h and kind in WIDTH:
+        im, (w, h) = im.rotate(90, expand=True), (h, w)   # a card or a passport page lies wide
+    tw = int(WIDTH.get(kind, rng.uniform(140, 200)) * PX)
+    im = im.resize((tw, max(8, round(h * tw / w))), Image.LANCZOS)
+    if not sharp:
+        im = washed(rng, F, im, kind)
+    a = np.asarray(im).astype(np.float32) * np.array([rng.uniform(0.9, 1.1) for _ in range(3)], np.float32)
+    im = Image.fromarray(np.clip(a + rng.uniform(-12, 12), 0, 255).astype(np.uint8))
+    if kind.startswith("id"):
+        return rounded(im, 3 * PX), (0, 0, im.size[0], im.size[1])
+    return (folded(rng, im) if kind in ("sefach", "insert") else im).convert("RGBA"), (0, 0, im.size[0], im.size[1])
+
+
 DRAW = {"id_front": id_front, "id_back": id_back, "passport": passport, "sefach": sefach, "insert": insert}
 
 
@@ -445,29 +503,39 @@ def border_colour(img):
     return [int(v) for v in np.median(border, axis=0)]
 
 
-def photo(rng, F, photos):
+def document(rng, F, tpl):
+    """A document to lay: (RGBA, rect, kind, card) — a real page (tpl: (pages, share, sharp)) or a drawn one."""
+    pages, share, sharp = tpl
+    if pages and rng.random() < share:
+        path, kind = rng.choice(pages)
+        doc, rect = template(rng, F, path, kind, sharp)
+        return doc, rect, "template:" + kind, kind.startswith("id")
+    kind = rng.choices(list(KINDS), list(KINDS.values()))[0]
+    doc, rect = DRAW[kind](rng, F)
+    return doc, rect, kind, kind.startswith("id")
+
+
+def photo(rng, F, photos, tpl=((), 0, False)):
     """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind)."""
     W, H = rng.choice(SIZES)
     img = background(rng, W, H, photos)
-    kind = rng.choices(list(KINDS), list(KINDS.values()))[0]
     none = rng.random() < NONE_SHARE
     two = not none and rng.random() < PAINTED_SHARE   # another document found first, painted over
     quad = painted = None
     if not none:
-        doc, rect = DRAW[kind](rng, F)
+        doc, rect, kind, card = document(rng, F, tpl)
         quad = synth.scene_quad(rng, (rect[2] - rect[0]) / (rect[3] - rect[1]), W, H, fill=(0.15, 0.45) if two else (0.18, 0.8))
         none = quad is None
     if two and quad:
-        k2 = rng.choice(list(DRAW))
-        d2, r2 = DRAW[k2](rng, F)
+        d2, r2, _, card2 = document(rng, F, tpl)
         for _ in range(10):
             q2 = synth.scene_quad(rng, (r2[2] - r2[0]) / (r2[3] - r2[1]), W, H, fill=(0.1, 0.3))
             if q2 and not _overlaps(quad, q2, W, H):
-                lay(rng, img, d2, r2, q2, k2.startswith("id"))
+                lay(rng, img, d2, r2, q2, card2)
                 painted = [q2]
                 break
     if quad:
-        lay(rng, img, doc, rect, quad, kind.startswith("id"))
+        lay(rng, img, doc, rect, quad, card)
         if rng.random() < 0.25:
             finger(rng, img, quad)
     if painted:
@@ -491,12 +559,12 @@ def _overlaps(a, b, W, H):
 
 
 def _batch(job):
-    seed, start, n, folder, latin, hebrew, photos, show = job
+    seed, start, n, folder, latin, hebrew, photos, show, tpl = job
     F = Fonts(latin, hebrew)
     out = []
     for i in range(start, start + n):
         rng = random.Random(seed * 1_000_003 + i)
-        img, corners, kind = photo(rng, F, photos)
+        img, corners, kind = photo(rng, F, photos, tpl)
         f = pathlib.Path(folder) / "img" / f"{i}.jpg"
         cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         if show:
@@ -512,7 +580,7 @@ def _batch(job):
     return out
 
 
-def draw(count, out, seed=1, jobs=1, photos=(), show=False, latin=None, hebrew=None):
+def draw(count, out, seed=1, jobs=1, photos=(), show=False, latin=None, hebrew=None, tpl=((), 0, False)):
     folder = pathlib.Path(out)
     (folder / "img").mkdir(parents=True, exist_ok=True)
     if show:
@@ -520,7 +588,7 @@ def draw(count, out, seed=1, jobs=1, photos=(), show=False, latin=None, hebrew=N
     latin, hebrew = latin or latin_fonts(), hebrew or hebrew_fonts()
     if not latin or not hebrew:
         raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
-    work = [(seed, s, min(200, count - s), str(folder), latin, hebrew, list(photos), show) for s in range(0, count, 200)]
+    work = [(seed, s, min(200, count - s), str(folder), latin, hebrew, list(photos), show, tpl) for s in range(0, count, 200)]
     if jobs > 1:
         from multiprocessing import Pool
         with Pool(jobs) as pool:
@@ -540,13 +608,20 @@ def main():
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
     ap.add_argument("--backgrounds", help="a folder of background photos (tables, floors, cloths — no documents in them)")
     ap.add_argument("--show", action="store_true", help="also show/<n>.jpg with the corners drawn (green; red: the first)")
+    ap.add_argument("--templates", nargs="?", const=str(TEMPLATES), help="real pages laid like the drawn ones "
+                    "(a folder with id_front/, id_back/, passport/, sefach/, insert/; default ~/.scan-train/templates)")
+    ap.add_argument("--template-share", type=float, default=0.4, help="the share of photos with a real page")
+    ap.add_argument("--sharp", action="store_true", help="keep the real pages' face and text as they are (not washed out)")
     ap.add_argument("--latin", nargs="*")
     ap.add_argument("--hebrew", nargs="*")
     a = ap.parse_args()
     photos = []
     if a.backgrounds:
         photos = [str(p) for p in pathlib.Path(a.backgrounds).rglob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
-    folder, ex = draw(a.count, a.out, a.seed, a.jobs, photos, a.show, a.latin, a.hebrew)
+    pages = templates_in(a.templates) if a.templates else []
+    if a.templates and not pages:
+        raise SystemExit(f"no pages in {a.templates} — run pull_templates.py or put photos into its id_front/, sefach/… folders")
+    folder, ex = draw(a.count, a.out, a.seed, a.jobs, photos, a.show, a.latin, a.hebrew, (pages, a.template_share, a.sharp))
     by = {}
     for e in ex:
         by[e["kind"]] = by.get(e["kind"], 0) + 1

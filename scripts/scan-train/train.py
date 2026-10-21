@@ -3,8 +3,8 @@ lab uses them now — scripts/scan-lab/models-version) are fine-tuned on the exa
 the ONNX model is turned into PyTorch (onnx2torch; checked to give the same answer),
 taught to put each corner's heatmap peak where the user put the corner, and exported
 back to ONNX (checked again). Batch norms stay as they are (few examples). The GPU is
-used when there is one (CUDA). With --synth N, N made-up photos (synth_docs.py), and with --midv N,
-N MIDV photos (midv.py) are added to the users' examples (never to the exam). Writes ~/.scan-train/new/<model>.onnx."""
+used when there is one (CUDA). With --synth N, N made-up photos (synth_docs.py), with --midv N, N MIDV
+photos (midv.py), and with --smartdoc N, N SmartDoc frames (smartdoc.py) are added to the users' examples (never to the exam). Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
 import random
 
@@ -106,10 +106,12 @@ def main():
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
     ap.add_argument("--synth", type=int, default=0, help="made-up photos (synth_docs.py) added, at random")
     ap.add_argument("--midv", type=int, default=0, help="MIDV photos (midv.py) added, at random")
+    ap.add_argument("--smartdoc", type=int, default=0, help="SmartDoc frames (smartdoc.py) added, at random")
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
     ex = [e for e in read_json(WORK / "examples.json") if not e["exam"]] if (WORK / "examples.json").exists() else []
-    for n, folder, how in ((a.synth, "synth/docs", "synth_docs.py"), (a.midv, "midv", "midv.py")):
+    for n, folder, how in ((a.synth, "synth/docs", "synth_docs.py"), (a.midv, "midv", "midv.py"),
+                            (a.smartdoc, "smartdoc", "smartdoc.py")):
         if not n:
             continue
         more = WORK / folder / "examples.json"
