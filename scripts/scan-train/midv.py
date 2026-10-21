@@ -23,6 +23,7 @@ import argparse
 import ftplib
 import json
 import pathlib
+import re
 import tarfile
 import zipfile
 
@@ -40,6 +41,21 @@ IMAGES = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 
 
 # ---------- reading the annotations (pure: tested without OpenCV) ----------
+
+MIDV_EXAM_FROM = 80  # MIDV-2020's documents 80–99 of each kind: the exam (as midv_mrz.py splits them)
+
+
+def open_exam(e):
+    """An example of an open set kept for the edges exam, never trained on — by its document, so no
+    photo, scan or frame of an exam document is learned: MIDV-2020's documents 80–99 of each kind,
+    and SmartDoc's fifth page of each kind (datasheet005, letter005…) on every background."""
+    if e.get("midv"):
+        m = re.search(r"-(\d{2})$", e["id"])
+        return bool(m) and e.get("source", "").startswith("midv-2020") and int(m.group(1)) >= MIDV_EXAM_FROM
+    if e.get("smartdoc"):
+        return re.search(r"-[a-z]+005-", e["id"]) is not None
+    return False
+
 
 def _poly(shape):
     """A VIA polygon / polyline → its points, or None."""

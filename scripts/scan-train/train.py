@@ -5,7 +5,8 @@ taught to put each corner's heatmap peak where the user put the corner, and expo
 back to ONNX (checked again). Batch norms stay as they are (few examples). The GPU is
 used when there is one (CUDA). Each epoch's progress is saved (checkpoint.py): --resume goes on with a
 run that stopped, --more trains further from the last run's weights. With --synth N, N made-up photos (synth_docs.py), with --midv N, N MIDV
-photos (midv.py), and with --smartdoc N, N SmartDoc frames (smartdoc.py) are added to the users' examples (never to the exam). Writes ~/.scan-train/new/<model>.onnx."""
+photos (midv.py), and with --smartdoc N, N SmartDoc frames (smartdoc.py) are added to the users' examples (never to the exam;
+nor MIDV's and SmartDoc's exam documents, midv.open_exam). Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
 import pathlib
 import random
@@ -18,6 +19,7 @@ import onnxruntime as ort
 import torch
 
 import checkpoint
+from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
 
 S, H, SIGMA = 256, 128, 2.4  # the spread of the models' own corner spots (measured)
@@ -71,12 +73,13 @@ def train_one(name, base, X, Y, epochs, dev, args):
     src = model_path(base, name)
     proto = onnx.load(str(src))
     inp, outname = proto.graph.input[0].name, proto.graph.output[0].name
-    net = onnx2torch.convert(proto).to(dev)
+    net = onnx2torch.convert(proto)
     probe = np.random.rand(1, 3, S, S).astype(np.float32)
     ref = ort.InferenceSession(str(src)).run(None, {inp: probe})[0]
-    with torch.no_grad():
-        got = net.eval()(torch.from_numpy(probe).to(dev)).cpu().numpy()
+    with torch.no_grad():  # checked on the CPU: the GPU's TF32 convolutions differ by ~3e-3, not the copy
+        got = net.eval()(torch.from_numpy(probe)).numpy()
     assert np.abs(got - ref).max() < 1e-3, "the PyTorch copy does not answer like the model"
+    net = net.to(dev)
     info = {"model": name, "base": base}
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
@@ -137,7 +140,8 @@ def main():
         more = WORK / folder / "examples.json"
         if not more.exists():
             raise SystemExit(f"no {folder} examples — run {how} first")
-        more = [{**e, "file": str(WORK / folder / "img" / pathlib.Path(e["file"]).name)} for e in read_json(more)]  # wherever the set was made (another PC, datasets_hf.py)
+        more = [{**e, "file": str(WORK / folder / "img" / pathlib.Path(e["file"]).name)} for e in read_json(more)  # wherever the set was made (another PC, datasets_hf.py)
+                if not open_exam(e)]  # the exam's documents are never trained on
         ex += random.sample(more, min(n, len(more)))
     if not ex:
         raise SystemExit("no examples to train on — run pull.py first")
