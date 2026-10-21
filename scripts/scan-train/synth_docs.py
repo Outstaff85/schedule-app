@@ -53,8 +53,9 @@ SIZES = ((960, 1280), (1280, 960), (720, 1280), (1080, 1080), (1200, 900), (900,
 KINDS = {"id_front": 0.24, "id_back": 0.16, "passport": 0.3, "sefach": 0.2, "insert": 0.1}
 NONE_SHARE, PAINTED_SHARE = 0.05, 0.1
 TEMPLATES = WORK / "templates"   # deleted by clean / publish
-TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert")
-WIDTH = {"id_front": 85.6, "id_back": 85.6, "passport": 125.0}  # mm; a sheet keeps its own size
+TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence")   # a licence: "other" to the page kinds
+WIDTH = {"id_front": 85.6, "id_back": 85.6, "licence": 85.6, "passport": 125.0}  # mm; a sheet keeps its own size
+CARDS = ("id_front", "id_back", "licence")   # ID-1 cards: rounded corners, a laminate's glare
 WIN_LATIN = ("arial.ttf", "arialbd.ttf", "times.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf", "segoeui.ttf")
 RTL = features.check("raqm")   # without libraqm (Pillow on Windows) the Hebrew is put in visual order by python-bidi
 
@@ -346,9 +347,17 @@ def templates_in(folder):
     out = []
     for p in sorted(folder.rglob("*")):
         if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
-            k = p.parent.name if p.parent.name in TEMPLATE_KINDS else "insert"
-            out.append((str(p), k))
+            import template_vary
+            k = template_vary.kind_of(p, p.parent.name if p.parent.name in TEMPLATE_KINDS else "insert")
+            out.append((str(p), k if k in TEMPLATE_KINDS else "insert"))
     return out
+
+
+def kind_of_page(path, wanted):
+    """A real page's own template kind (a licence, a loose sheet) — for the page kind it was picked as."""
+    import template_vary
+    p = pathlib.Path(path)
+    return template_vary.kind_of(p, p.parent.name if p.parent.name in TEMPLATE_KINDS else ("insert" if wanted == "other" else wanted))
 
 
 def washed(rng, F, im, kind):
@@ -372,17 +381,20 @@ def template(rng, F, path, kind, sharp):
     out; at the drawn documents' scale, a card's corners rounded, its colours a little changed."""
     import template_vary
     spec = template_vary.spec_for(path)
-    im = template_vary.vary(rng, F.hebrew, path, spec)[0] if spec else Image.open(path).convert("RGB")
+    if spec and spec.get("fields"):
+        im = template_vary.vary(rng, F.hebrew, path, spec)[0]
+    else:
+        im = Image.fromarray(cv2.cvtColor(template_vary.load_page(path, spec), cv2.COLOR_BGR2RGB))
     w, h = im.size
     if w < h and kind in WIDTH:
         im, (w, h) = im.rotate(90, expand=True), (h, w)   # a card or a passport page lies wide
     tw = int(WIDTH.get(kind, rng.uniform(140, 200)) * PX)
     im = im.resize((tw, max(8, round(h * tw / w))), Image.LANCZOS)
-    if not sharp and not spec:
+    if not sharp and not (spec and spec.get("fields")):
         im = washed(rng, F, im, kind)
     a = np.asarray(im).astype(np.float32) * np.array([rng.uniform(0.9, 1.1) for _ in range(3)], np.float32)
     im = Image.fromarray(np.clip(a + rng.uniform(-12, 12), 0, 255).astype(np.uint8))
-    if kind.startswith("id"):
+    if kind in CARDS:
         return rounded(im, 3 * PX), (0, 0, im.size[0], im.size[1])
     return (folded(rng, im) if kind in ("sefach", "insert") else im).convert("RGBA"), (0, 0, im.size[0], im.size[1])
 
@@ -514,7 +526,7 @@ def document(rng, F, tpl):
     if pages and rng.random() < share:
         path, kind = rng.choice(pages)
         doc, rect = template(rng, F, path, kind, sharp)
-        return doc, rect, "template:" + kind, kind.startswith("id")
+        return doc, rect, "template:" + kind, kind in CARDS
     kind = rng.choices(list(KINDS), list(KINDS.values()))[0]
     doc, rect = DRAW[kind](rng, F)
     return doc, rect, kind, kind.startswith("id")

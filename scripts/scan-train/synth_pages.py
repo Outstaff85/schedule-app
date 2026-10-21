@@ -122,14 +122,14 @@ def _batch(job):
     F = sd.Fonts(latin, hebrew)
     by_kind = {}
     for path, k in pages:
-        by_kind.setdefault(k, []).append(path)
+        by_kind.setdefault("other" if k in ("insert", "licence") else k, []).append(path)   # a loose sheet or a licence: "other"
     out = []
     for i in range(start, start + n):
         rng = random.Random(seed * 1_000_003 + i)
         kind = rng.choices(list(SHARE), list(SHARE.values()))[0]
         pick = rng.random()
         if kind in by_kind and pick < 0.45:      # a real page of the owner's, made another person's
-            img = cv2.cvtColor(np.asarray(sd.template(rng, F, rng.choice(by_kind[kind]), kind, False)[0].convert("RGB")), cv2.COLOR_RGB2BGR)
+            img = cv2.cvtColor(np.asarray(sd.template(rng, F, *(lambda p: (p, sd.kind_of_page(p, kind)))(rng.choice(by_kind[kind])), False)[0].convert("RGB")), cv2.COLOR_RGB2BGR)
             source = "template"
         elif real and pick < 0.7 and any(k == kind for _, _, k in real):
             f, doc, _ = rng.choice([r for r in real if r[2] == kind])

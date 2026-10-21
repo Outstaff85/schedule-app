@@ -251,7 +251,8 @@ HE_SEX = ("זכר", "נקבה")
 HE_MARITAL = ("רווק", "רווקה", "נשוי", "נשואה", "גרוש", "גרושה", "אלמן", "אלמנה")
 HE_COUNTRIES = ("ישראל", "ברית המועצות", "אוקראינה", "רוסיה", "בלרוס", "מולדובה", "אתיופיה", "מרוקו", "צרפת",
                 "ארצות הברית", "ארגנטינה", "רומניה", "עיראק", "תימן", "גאורגיה", "אוזבקיסטן")
-FIELD_KINDS = ("surname", "given", "idNo", "date", "hedate", "sex", "marital", "city", "street", "country", "digits")
+FIELD_KINDS = ("surname", "given", "idNo", "date", "hedate", "sex", "marital", "city", "street", "country", "digits",
+               "address", "latin")
 
 
 def he_date(rng):
@@ -285,4 +286,8 @@ def field_value(kind, rng, n=None):
         return rng.choice(HE_COUNTRIES)
     if kind == "digits":
         return "".join(rng.choice("0123456789") for _ in range(n or rng.randint(1, 9)))
+    if kind == "address":   # a driving licence's: the street, the house's number, the city
+        return f"{rng.choice(HE_STREETS)} {rng.randint(1, 180)} {rng.choice(HE_CITIES)}"
+    if kind == "latin":     # a name in Latin letters (a driving licence prints them under the Hebrew)
+        return rng.choice(SURNAMES + GIVEN)
     raise ValueError(kind)

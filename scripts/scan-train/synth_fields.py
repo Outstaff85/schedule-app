@@ -95,7 +95,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
     ap.add_argument("--fonts", nargs="*", help="Hebrew fonts (default: the PC's)")
     a = ap.parse_args()
-    pages = [(p, k) for p, k in templates_in(a.templates) if template_vary.spec_for(p)]
+    pages = [(p, k) for p, k in templates_in(a.templates) if (template_vary.spec_for(p) or {}).get("fields")]
     if not pages:
         raise SystemExit(f"no marked real page in {a.templates} — run pull_templates.py (template_fields.json names the marked ones)")
     fonts = a.fonts or hebrew_fonts()

@@ -42,6 +42,9 @@ def test_the_reader_holds_every_value_in_both_orders():
     for k in synth.FIELD_KINDS:
         for _ in range(200):
             t = synth.field_value(k, rng, 4)
+            if k == "latin":
+                assert not hemodel.readable(t)   # Latin names: not the Hebrew reader's
+                continue
             assert hemodel.readable(t), (k, t)
             assert hemodel.logical(hemodel.visual(t)) == t
     assert hemodel.OUT == len(hemodel.CHARS) + 1 and len(set(hemodel.CHARS)) == len(hemodel.CHARS)
@@ -51,14 +54,17 @@ def test_the_marked_fields_of_the_owners_pages():
     marks = json.loads((HERE / "template_fields.json").read_text(encoding="utf-8"))
     assert marks
     for name, spec in marks.items():
-        assert name.split("/")[0] in ("id_front", "id_back", "passport", "sefach", "insert"), name
+        assert name.split("/")[0] in ("id_front", "id_back", "passport", "sefach", "insert", "licence"), name
+        assert spec.get("kind", "id_front") in ("id_front", "id_back", "passport", "sefach", "insert", "licence"), name
+        assert spec.get("turn", 0) in (0, 1, 2, 3), name
         same = {}
-        for f in spec["fields"]:
+        for f in spec.get("fields", []):
+            assert f.get("align", "right") in ("left", "right"), (name, f)
             assert f["kind"] in synth.FIELD_KINDS, (name, f)
             x, y, w, h = f["box"]
             assert 0 <= x and 0 <= y and w > 0 and h > 0 and x + w <= 1.001 and y + h <= 1.001, (name, f)
             if "same" in f:   # one value printed in several places: always the same kind
                 assert same.setdefault(f["same"], f["kind"]) == f["kind"], (name, f)
-        for b in [spec.get("photo")] + list(spec.get("scramble") or []) + list(spec.get("erase") or []):
+        for b in [spec.get("photo"), spec.get("crop")] + list(spec.get("scramble") or []) + list(spec.get("erase") or []):
             if b:
                 assert all(0 <= v <= 1 for v in b) and b[0] + b[2] <= 1.001 and b[1] + b[3] <= 1.001

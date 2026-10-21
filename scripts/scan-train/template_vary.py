@@ -3,7 +3,7 @@ a real Israeli ID card, its back or a ספח whose fields are marked in template
 box as a share of the page, its kind, and — "same" — the fields that print one value, as the holder's ID
 number on every part of a ספח) has every field's text rubbed out (the printed marks inpainted, the card's
 ground kept) and a made-up value of its kind (synth.field_value) printed in its place, right-aligned as
-the card prints it, in a Hebrew font of the PC, the colour of the text it replaced; the holder's photo
+the card prints it (left-aligned where the entry says "align": "left"), in a Hebrew font of the PC, the colour of the text it replaced; the holder's photo
 becomes a shape, a code box is scrambled ("scramble") and a number printed sideways is only rubbed out
 ("erase"). So no data of the real holder stays, and each call gives
 another person's document — with every field's text and box known, for the field reader too.
@@ -11,8 +11,11 @@ another person's document — with every field's text and box known, for the fie
   vary(rng, fonts, "templates/id_front/own-new_type.jpg", spec) → (page, [(kind, text, (x, y, w, h))])
 
 template_fields.json is keyed by "<kind>/<file name>" as the owner uploaded it (templates/<kind>/<name>
-in the private bucket; pull_templates.py copies it as own-<name>). A page with no entry there is laid
-washed out, as before (synth_docs.washed)."""
+in the private bucket; pull_templates.py copies it as own-<name>). An entry may also fix the page before
+anything else: "crop" (the document's box on the upload, shares — a photo with some table around it),
+"turn" (clockwise quarter turns that set it upright) and "kind" (its type when it was uploaded into
+another kind's folder: a passport among the ID cards). A page with no fields marked is laid washed out,
+as before (synth_docs.washed)."""
 import json
 import pathlib
 
@@ -42,9 +45,40 @@ def spec_for(path):
     return specs().get(f"{p.parent.name}/{name}")
 
 
+def kind_of(path, folder_kind):
+    """A page's type: its entry's "kind" when it has one, else the folder it was uploaded into."""
+    spec = spec_for(path) or {}
+    return spec.get("kind") or folder_kind
+
+
+def load_page(path, spec=None):
+    """The upload as a page (BGR): cut to its entry's "crop", turned upright by its "turn"."""
+    img = cv2.imread(str(path))
+    if img is None:
+        raise ValueError(f"cannot read {path}")
+    spec = spec or {}
+    if spec.get("crop"):
+        H, W = img.shape[:2]
+        x, y, w, h = _px(spec["crop"], W, H)
+        img = img[y:y + h, x:x + w]
+    k = int(spec.get("turn") or 0) % 4
+    if k:
+        img = cv2.rotate(img, (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE)[k - 1])
+    return img
+
+
 def _px(box, W, H):
     x, y, w, h = box
     return int(x * W), int(y * H), max(1, int(w * W)), max(1, int(h * H))
+
+
+def _grown(box, W, H):
+    """A box a little bigger to rub out in: a mark marked a little off still goes (a fifth of its height,
+    a twentieth of its width each way)."""
+    x, y, w, h = box
+    dx, dy = int(w * 0.05) + 1, int(h * 0.2) + 1
+    x0, y0 = max(0, x - dx), max(0, y - dy)
+    return x0, y0, min(W, x + w + dx) - x0, min(H, y + h + dy) - y0
 
 
 def rub_out(img, boxes):
@@ -102,15 +136,14 @@ def _shown(text):
 def vary(rng, fonts, path, spec):
     """The template at path with every marked field's value made up: (RGB PIL page, [(kind, text, box px)])."""
     from synth_docs import RTL, portrait
-    img = cv2.imread(str(path))
-    if img is None:
-        raise ValueError(f"cannot read {path}")
+    img = load_page(path, spec)
     s = max(1.0, WIDTH / img.shape[1])
     if s > 1:
         img = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
     H, W = img.shape[:2]
     boxes = [_px(f["box"], W, H) for f in spec["fields"]]
-    img, colour = rub_out(img, boxes + [_px(b, W, H) for b in spec.get("erase") or []])   # erase: rubbed out, nothing printed
+    rub = [_grown(b, W, H) for b in boxes + [_px(b, W, H) for b in spec.get("erase") or []]]   # erase: rubbed out, nothing printed
+    img, colour = rub_out(img, rub)
     for b in spec.get("scramble") or []:   # a printed code (it holds the real holder's data): random squares
         x, y, w, h = _px(b, W, H)
         n = 16
@@ -138,7 +171,10 @@ def vary(rng, fonts, path, spec):
                 same[key] = text
         font = fit_font(fonts, rng, text, w, h)
         kw = {"direction": "rtl"} if RTL and any("֐" <= c <= "׿" for c in text) else {}
-        d.text((x + w - 2, y + h / 2), _shown(text), font=font, fill=(*ink, 255), anchor="rm", **kw)
+        if f.get("align") == "left":   # a driving licence prints its values from the left, after their numbers
+            d.text((x + 2, y + h / 2), _shown(text), font=font, fill=(*ink, 255), anchor="lm", **kw)
+        else:
+            d.text((x + w - 2, y + h / 2), _shown(text), font=font, fill=(*ink, 255), anchor="rm", **kw)
         out.append((kind, text, (x, y, w, h)))
     layer = layer.filter(ImageFilter.GaussianBlur(rng.uniform(0.3, 0.9) * s))
     page = Image.alpha_composite(page.convert("RGBA"), layer).convert("RGB")
