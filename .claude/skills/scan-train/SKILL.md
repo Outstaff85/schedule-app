@@ -46,7 +46,7 @@ With few examples (or when the owner asks), made-up photos first: `pip install -
 1. Once: `pip install --no-deps trdg==1.8.0` and `pip install -r scripts/scan-train/requirements-synth.txt` in the same `.venv`.
 2. `python scripts/scan-train/synth_lines.py mrz --count 100000` — the made-up zone lines (OCR-B, on every core; ~5–10 min) into `~/.scan-train/synth/mrz/`. Nothing of it is uploaded.
    With MIDV downloaded (step 3), also `python scripts/scan-train/midv_mrz.py` — real zone lines of MIDV-2020's mock passports for training, and exam pages (docs/scan-training.md → The passport zone reader); then train with `train_mrz.py --midv`.
-3. `python scripts/scan-train/train_mrz.py` — the small CRNN (`mrz.onnx`), ~10–20 min on the 4070; each epoch prints the lines read right on the check lines — it must go up to ≥ 95 %.
+3. `python scripts/scan-train/train_mrz.py` — the small CRNN (`mrz.onnx`), ~10–20 min on the 4070; each epoch prints the lines read right on the check lines — it must go up to ≥ 95 %. It starts from the best weights of the trainings before (`~/.scan-train/mrz-ckpt/best.pt`, kept by `clean.py` / `publish.py`; `--fresh` from random weights); a stopped training goes on with `--resume`.
 4. `python scripts/scan-train/exam_mrz.py` — the made-up check lines and the real passports collected (H8a), against the AI; with `midv_mrz.py` run, also MIDV-2020's exam passports (real photos never trained on). Show the owner in plain words; "NO" → more lines (`--count 200000`) or more epochs (`train_mrz.py --epochs 20`), then the exam again.
 
 ## 5. The owner decides
