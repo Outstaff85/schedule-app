@@ -29,7 +29,7 @@ from mrzmodel import CHARS, H, W, decode, line_input
 
 
 class MrzNet(nn.Module):
-    def __init__(self):
+    def __init__(self, n_out=len(CHARS) + 1):   # the Hebrew field reader (train_he.py) has its own characters
         super().__init__()
 
         def block(i, o, pool):
@@ -37,7 +37,7 @@ class MrzNet(nn.Module):
         self.conv = nn.Sequential(*block(1, 32, (2, 2)), *block(32, 64, (2, 2)), *block(64, 96, None), *block(96, 96, (2, 1)),
                                   *block(96, 128, None), *block(128, 128, (2, 1)), nn.Conv2d(128, 128, (2, 1)), nn.ReLU(inplace=True))
         self.rnn = nn.LSTM(128, 96, bidirectional=True, batch_first=True)
-        self.out = nn.Linear(192, len(CHARS) + 1)
+        self.out = nn.Linear(192, n_out)
 
     def forward(self, img):                     # [B,1,32,512] → [B,128,38]
         f = self.conv(img).squeeze(2).permute(0, 2, 1)   # [B,128,128]: 128 columns
@@ -87,8 +87,8 @@ def worse(gray, rng, other=None):
 
 
 class Lines(torch.utils.data.Dataset):
-    def __init__(self, items, train, seed=0, real=frozenset()):
-        self.items, self.train, self.seed, self.real = items, train, seed, real
+    def __init__(self, items, train, seed=0, real=frozenset(), chars=CHARS):
+        self.items, self.train, self.seed, self.real, self.chars = items, train, seed, real, chars
 
     def __len__(self):
         return len(self.items)
@@ -106,7 +106,7 @@ class Lines(torch.utils.data.Dataset):
         else:
             g = worse(g, rng)                    # the check lines are made worse too, the same way each time
         x = torch.from_numpy(line_input(g))
-        y = torch.tensor([CHARS.index(c) + 1 for c in t], dtype=torch.long)
+        y = torch.tensor([self.chars.index(c) + 1 for c in t], dtype=torch.long)
         return x, y
 
 
@@ -115,15 +115,15 @@ def collate(batch):
     return torch.stack(xs), torch.cat(ys), torch.tensor([len(y) for y in ys]), list(ys)
 
 
-def evaluate(net, loader, dev):
+def evaluate(net, loader, dev, chars=CHARS):
     net.eval()
     right = total = chars = wrong = 0
     with torch.no_grad():
         for x, _, _, ys in loader:
             out = net(x.to(dev)).cpu().numpy()
             for o, y in zip(out, ys):
-                t = "".join(CHARS[k - 1] for k in y.tolist())
-                r = decode(o)
+                t = "".join(chars[k - 1] for k in y.tolist())
+                r = decode(o, chars)
                 right += r == t
                 total += 1
                 chars += len(t)

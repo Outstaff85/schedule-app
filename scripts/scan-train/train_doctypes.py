@@ -5,11 +5,14 @@ learned for free: every copy is stored upright and is shown turned by a random q
 turn, with the turn back as its answer. The ImageNet normalization is inside the model, so
 it takes the page as RGB 0..1 like the document edges models. Exported to ONNX (input "img"
 [1,3,256,256]; outputs "doctype", "turn" — probabilities) and checked to answer like the
-trained model. Writes ~/.scan-train/new/doctype-lite.onnx and doctype.onnx.
+trained model. With --synth N, N made-up upright pages (synth_pages.py) are added to the site's page
+copies — or train alone while the site has collected none yet; the exam stays the site's pages.
+Writes ~/.scan-train/new/doctype-lite.onnx and doctype.onnx.
 
   python train_doctypes.py                                    # both, the default sizes
   python train_doctypes.py --phone tf_efficientnet_lite1     # the next size up for the phone
   python train_doctypes.py --only server
+  python train_doctypes.py --synth 6000                        # + the made-up pages (synth_pages.py)
 """
 import argparse
 import random
@@ -119,11 +122,18 @@ def main():
     ap.add_argument("--only", choices=("phone", "server"))
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
     ap.add_argument("--scratch", action="store_true", help="random weights, no download — only to test the steps, never for a model to publish")
+    ap.add_argument("--synth", type=int, default=0, help="made-up pages (synth_pages.py) added, at random")
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
-    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]]
+    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]] if (WORK / "doctypes.json").exists() else []
+    if a.synth:
+        made = WORK / "synth" / "pages" / "pages.json"
+        if not made.exists():
+            raise SystemExit("no made-up pages — run synth_pages.py first")
+        pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1])} for e in read_json(made)]
+        ex += random.sample(pages, min(a.synth, len(pages)))
     if not ex:
-        raise SystemExit("no page copies to train on — run pull_doctypes.py first")
+        raise SystemExit("no page copies to train on — run pull_doctypes.py (or synth_pages.py and --synth) first")
     X, Y = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} page copies, on {dev}")

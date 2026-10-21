@@ -239,3 +239,50 @@ def scene_quad(rng, aspect, W, H, fill=(0.18, 0.8), margin=0.01, tilt=0.09):
         if all(margin * W <= x <= (1 - margin) * W and margin * H <= y <= (1 - margin) * H for x, y in q):
             return q
     return None
+
+
+# ---------- a field of an Israeli ID card, its back or a ספח, by its kind (template_vary.py) ----------
+HE_MONTHS = ("תשרי", "חשון", "כסלו", "טבת", "שבט", "אדר", "ניסן", "אייר", "סיון", "תמוז", "אב", "אלול")
+HE_YEARS = ("התש\"ל", "התשל\"ה", "התש\"מ", "התשמ\"ה", "התשמ\"ט", "התש\"נ", "התשנ\"ו", "התש\"ס", "התשס\"ה", "התש\"ע",
+            "התשע\"ה", "התשע\"ט", "התש\"פ", "התשפ\"ג", "התשפ\"ה", "התשפ\"ו", "התשפ\"ח", "התש\"צ", "התשצ\"ה")
+HE_DAYS = ("א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ז'", "ח'", "ט'", "י'", "י\"א", "י\"ב", "י\"ג", "י\"ד", "ט\"ו", "ט\"ז",
+           "י\"ז", "י\"ח", "י\"ט", "כ'", "כ\"א", "כ\"ב", "כ\"ג", "כ\"ד", "כ\"ה", "כ\"ו", "כ\"ז", "כ\"ח", "כ\"ט", "ל'")
+HE_SEX = ("זכר", "נקבה")
+HE_MARITAL = ("רווק", "רווקה", "נשוי", "נשואה", "גרוש", "גרושה", "אלמן", "אלמנה")
+HE_COUNTRIES = ("ישראל", "ברית המועצות", "אוקראינה", "רוסיה", "בלרוס", "מולדובה", "אתיופיה", "מרוקו", "צרפת",
+                "ארצות הברית", "ארגנטינה", "רומניה", "עיראק", "תימן", "גאורגיה", "אוזבקיסטן")
+FIELD_KINDS = ("surname", "given", "idNo", "date", "hedate", "sex", "marital", "city", "street", "country", "digits")
+
+
+def he_date(rng):
+    """A Hebrew calendar date as an ID card prints it (made up: day, month and year apart)."""
+    return f"{rng.choice(HE_DAYS)} ב{rng.choice(HE_MONTHS)} {rng.choice(HE_YEARS)}"
+
+
+def field_value(kind, rng, n=None):
+    """A made-up value of a field kind (FIELD_KINDS), as printed on the document; digits: n of them."""
+    if kind == "surname":
+        return rng.choice(HE_SURNAMES)
+    if kind == "given":
+        return rng.choice(HE_GIVEN) + ("" if rng.random() < 0.85 else " " + rng.choice(HE_GIVEN))
+    if kind == "idNo":
+        i = israeli_id(rng)
+        return f"{i[0]} {i[1:8]} {i[8]}" if rng.random() < 0.85 else i
+    if kind == "date":
+        y, m, d = _yymmdd(rng, 1950, 2036)
+        return f"{d:02d}.{m:02d}.{y}" if rng.random() < 0.85 else f"{d}.{m}.{y}"
+    if kind == "hedate":
+        return he_date(rng)
+    if kind == "sex":
+        return rng.choice(HE_SEX)
+    if kind == "marital":
+        return rng.choice(HE_MARITAL)
+    if kind == "city":
+        return rng.choice(HE_CITIES)
+    if kind == "street":
+        return rng.choice(HE_STREETS)
+    if kind == "country":
+        return rng.choice(HE_COUNTRIES)
+    if kind == "digits":
+        return "".join(rng.choice("0123456789") for _ in range(n or rng.randint(1, 9)))
+    raise ValueError(kind)

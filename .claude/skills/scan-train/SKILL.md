@@ -42,12 +42,19 @@ With few examples (or when the owner asks), made-up photos first: `pip install -
 3. `python scripts/scan-train/exam_doctypes.py` — the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and **the site's way** (the model where sure, Haiku elsewhere) against **Haiku alone**. Show the owner this in plain words.
 4. When it says a model is worse, it prints the next size up (owner, 2026-10-19: Lite0 → Lite1 → Lite2… until the result is right): run that `train_doctypes.py --only phone --phone tf_efficientnet_lite1` (or `--only server --server …`), then `exam_doctypes.py` again. At Lite4 and still worse: more page copies are needed — `clean.py`, and wait for the bell.
 
+   Before the site has its own page copies (or beside them): `python scripts/scan-train/synth_pages.py --count 6000` (made-up pages of every kind — drawn, the owner's real pages made other people's, SmartDoc, MIDV), then `train_doctypes.py --synth 6000`. With no page copies from the site the exam has nothing to measure: say so, and that the lab (then the site's shadow against Haiku) shows how it does.
+
 ## 4c. Passport zone reader (H8b)
 1. Once: `pip install --no-deps trdg==1.8.0` and `pip install -r scripts/scan-train/requirements-synth.txt` in the same `.venv`.
 2. `python scripts/scan-train/synth_lines.py mrz --count 100000` — the made-up zone lines (OCR-B, on every core; ~5–10 min) into `~/.scan-train/synth/mrz/`. Nothing of it is uploaded.
    With MIDV downloaded (step 3), also `python scripts/scan-train/midv_mrz.py` — real zone lines of MIDV-2020's mock passports for training, and exam pages (docs/scan-training.md → The passport zone reader); then train with `train_mrz.py --midv`.
 3. `python scripts/scan-train/train_mrz.py` — the small CRNN (`mrz.onnx`), ~10–20 min on the 4070; each epoch prints the lines read right on the check lines — it must go up to ≥ 95 %.
 4. `python scripts/scan-train/exam_mrz.py` — the made-up check lines and the real passports collected (H8a), against the AI; with `midv_mrz.py` run, also MIDV-2020's exam passports (real photos never trained on). Show the owner in plain words; "NO" → more lines (`--count 200000`) or more epochs (`train_mrz.py --epochs 20`), then the exam again.
+
+## 4d. Hebrew field reader (H8c — on the PC only for now; when the owner asks)
+1. `python scripts/scan-train/pull_templates.py` (the owner's marked pages; `template_fields.json` names them).
+2. `python scripts/scan-train/synth_fields.py --count 3000` and `python scripts/scan-train/synth_fields.py --count 300 --check`.
+3. `python scripts/scan-train/train_he.py` (~10–20 min on the 4070) — the check fields read right, by kind, and the ID numbers with a right check digit. Show the owner; "NO" → more pages (`--count 6000`) or epochs (`--epochs 30`). `he.onnx` is not published yet: the phone's side is the next step of H8c (say so).
 
 ## 5. The owner decides
 - **Yes** → `python scripts/scan-train/publish.py`: the new version goes to Hugging Face as one commit tagged `v<N>` (https://huggingface.co/OutStaff/scanner-models/tree/v<N>, with the reports; every model not retrained is carried over from the lab's version), the bell's counters are reset (`edgesSince` after the edges, `doctypesSince` after the document types), `scripts/scan-lab/models-version` names `v<N>`, the scan attempts trained on move to `attempts/used/v<N>/` (`attemptsSince` lowered by them), the copies on the PC are deleted. Document type models whose exam said "not worth publishing" are left out unless the owner explicitly says to publish them anyway (`--force-doctypes`); the same for the passport zone reader (`--force-mrz`).

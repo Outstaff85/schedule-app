@@ -9,8 +9,9 @@ and quality only, never the geometry, so the corners stay true).
 
 Real pages can be laid the same way (--templates, ~/.scan-train/templates/<kind>/: the cut pages of
 the documents the site collected — pull_templates.py — or the owner's own photos of Israeli
-documents, cut straight): a template is laid on the made-up photos like a drawn document, with its
-face and text washed out (a worker's data; --sharp keeps them), so a few real pages teach the
+documents, cut straight): a template is laid on the made-up photos like a drawn document — another
+person's each time when its fields are marked (template_fields.json, template_vary.py: every value made
+up, the photo a shape), else with its face and text washed out (a worker's data; --sharp keeps them), so a few real pages teach the
 models how the firm's own documents look at the edge — the card's colour, the laminate, the ספח's
 paper.
 
@@ -366,15 +367,18 @@ def washed(rng, F, im, kind):
 
 
 def template(rng, F, path, kind, sharp):
-    """A real page as a document to lay: (RGBA, its rect) — at the drawn documents' scale, a card's
-    corners rounded, its colours a little changed."""
-    im = Image.open(path).convert("RGB")
+    """A real page as a document to lay: (RGBA, its rect) — another person's document when its fields are
+    marked (template_vary.py: every value made up, the photo a shape), else the page with its data washed
+    out; at the drawn documents' scale, a card's corners rounded, its colours a little changed."""
+    import template_vary
+    spec = template_vary.spec_for(path)
+    im = template_vary.vary(rng, F.hebrew, path, spec)[0] if spec else Image.open(path).convert("RGB")
     w, h = im.size
     if w < h and kind in WIDTH:
         im, (w, h) = im.rotate(90, expand=True), (h, w)   # a card or a passport page lies wide
     tw = int(WIDTH.get(kind, rng.uniform(140, 200)) * PX)
     im = im.resize((tw, max(8, round(h * tw / w))), Image.LANCZOS)
-    if not sharp:
+    if not sharp and not spec:
         im = washed(rng, F, im, kind)
     a = np.asarray(im).astype(np.float32) * np.array([rng.uniform(0.9, 1.1) for _ in range(3)], np.float32)
     im = Image.fromarray(np.clip(a + rng.uniform(-12, 12), 0, 255).astype(np.uint8))
