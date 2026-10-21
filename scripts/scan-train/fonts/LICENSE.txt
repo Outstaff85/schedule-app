@@ -1,0 +1,5 @@
+OCRB.otf — the OCR-B font by Matthew Skala (2012), from the Metafont sources by Norbert Schwarz
+(1995, 2010); as packaged by Debian/Ubuntu (fonts-ocr-b 0.3~dfsg1-1).
+  Matthew Skala: "This file is released to the public domain by its author."
+  Norbert Schwarz: "You may freely use, modify and/or distribute this file, without limitation."
+Used only on the owner's PC to draw made-up passport zones for training (synth_lines.py); never served.

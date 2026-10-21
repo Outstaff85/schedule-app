@@ -9,10 +9,11 @@ The whole process (what is collected, where it is kept, why each step): docs/sca
 
 The site collects every page whose corners a user corrected (`scan_feedback`, Firestore `scanTraining`, Storage `training/scan/`). This skill turns them into a new model version. **The lab learns first, the site follows**: a new version is only ever given to the lab here; the site gets it later, after the owner tried it in the lab (step 7). Talk to the owner in Russian.
 
-Two kinds of training, run one or both (the bell says which is due):
+Three kinds of training, run one or more (the bell says which is due; the passport zone reader when the owner asks):
 - **Document edges** (S6, "Time to retrain the document edges model") — steps 2–4.
 - **Document types** (S7, "Enough pages to train the document type model") — step 4b.
-Both end in the same step 5: one new version holds whatever was trained; the rest is carried over.
+- **Passport zone reader** (docs/hf-plan.md → H8b, made-up lines only) — step 4c.
+All end in the same step 5: one new version holds whatever was trained; the rest is carried over.
 
 ## 1. Check the PC
 - `nvidia-smi` — the RTX 4070 must be listed (training on the CPU works but takes hours; say so and ask).
@@ -38,8 +39,14 @@ Both end in the same step 5: one new version holds whatever was trained; the res
 3. `python scripts/scan-train/exam_doctypes.py` — the exam pages: kind right, how many it is sure of (≥ 90 %) and how right those are, the turn right, and **the site's way** (the model where sure, Haiku elsewhere) against **Haiku alone**. Show the owner this in plain words.
 4. When it says a model is worse, it prints the next size up (owner, 2026-10-19: Lite0 → Lite1 → Lite2… until the result is right): run that `train_doctypes.py --only phone --phone tf_efficientnet_lite1` (or `--only server --server …`), then `exam_doctypes.py` again. At Lite4 and still worse: more page copies are needed — `clean.py`, and wait for the bell.
 
+## 4c. Passport zone reader (H8b)
+1. Once: `pip install --no-deps trdg==1.8.0` and `pip install -r scripts/scan-train/requirements-synth.txt` in the same `.venv`.
+2. `python scripts/scan-train/synth_lines.py mrz --count 100000` — the made-up zone lines (OCR-B, on every core; ~5–10 min) into `~/.scan-train/synth/mrz/`. Nothing of it is uploaded.
+3. `python scripts/scan-train/train_mrz.py` — the small CRNN (`mrz.onnx`), ~10–20 min on the 4070; each epoch prints the lines read right on the check lines — it must go up to ≥ 95 %.
+4. `python scripts/scan-train/exam_mrz.py` — the made-up check lines and the real passports collected (H8a), against the AI. Show the owner in plain words; "NO" → more lines (`--count 200000`) or more epochs (`train_mrz.py --epochs 20`), then the exam again.
+
 ## 5. The owner decides
-- **Yes** → `python scripts/scan-train/publish.py`: the new version goes to Hugging Face as one commit tagged `v<N>` (https://huggingface.co/OutStaff/scanner-models/tree/v<N>, with the reports; every model not retrained is carried over from the lab's version), the bell's counters are reset (`edgesSince` after the edges, `doctypesSince` after the document types), `scripts/scan-lab/models-version` names `v<N>`, the scan attempts trained on move to `attempts/used/v<N>/` (`attemptsSince` lowered by them), the copies on the PC are deleted. Document type models whose exam said "not worth publishing" are left out unless the owner explicitly says to publish them anyway (`--force-doctypes`).
+- **Yes** → `python scripts/scan-train/publish.py`: the new version goes to Hugging Face as one commit tagged `v<N>` (https://huggingface.co/OutStaff/scanner-models/tree/v<N>, with the reports; every model not retrained is carried over from the lab's version), the bell's counters are reset (`edgesSince` after the edges, `doctypesSince` after the document types), `scripts/scan-lab/models-version` names `v<N>`, the scan attempts trained on move to `attempts/used/v<N>/` (`attemptsSince` lowered by them), the copies on the PC are deleted. Document type models whose exam said "not worth publishing" are left out unless the owner explicitly says to publish them anyway (`--force-doctypes`); the same for the passport zone reader (`--force-mrz`).
 - **No** → `python scripts/scan-train/clean.py` (deletes the copies; nothing changes on Hugging Face).
 
 ## 6. Give the new version to the lab
