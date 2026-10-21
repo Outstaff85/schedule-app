@@ -59,7 +59,10 @@ DOCTYPE=false
 if { [ -s "$CACHE/doctype-lite.onnx" ] || fromhf doctype-lite.onnx || { [ -n "$STORE" ] && python "$HERE/model_store.py" get doctype-lite.onnx "$CACHE/doctype-lite.onnx"; }; }; then
   cp "$CACHE/doctype-lite.onnx" "$OUT/doctype.onnx"; DOCTYPE=true
 fi
-printf '{"version":"%s","doctype":%s}\n' "$SCAN_MODELS_VERSION" "$DOCTYPE" > "$OUT/models.json"
+# The passport zone reader (docs/hf-plan.md → H8b): only once this version has one (mrz.onnx on Hugging Face).
+MRZ=false
+if { [ -s "$CACHE/mrz.onnx" ] || fromhf mrz.onnx; }; then cp "$CACHE/mrz.onnx" "$OUT/mrz.onnx"; MRZ=true; fi
+printf '{"version":"%s","doctype":%s,"mrz":%s}\n' "$SCAN_MODELS_VERSION" "$DOCTYPE" "$MRZ" > "$OUT/models.json"
 # The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).

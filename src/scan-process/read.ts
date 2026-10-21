@@ -15,7 +15,8 @@ import { extraReadWanted, initPrimary, isNonIdKind, mergePage } from './merge';
 import { verifyDigitFields, verifyIdChecksum } from './verify';
 import type { Box, Img, Job, Rec, Verifier } from './types';
 
-export type InPage = Img & { kind: string | null; upright: boolean };
+/** mrz: the passport zone reader's lines on the page (the scanner's; only kept for its shadow — session.ts). */
+export type InPage = Img & { kind: string | null; upright: boolean; mrz?: string[] };
 export type OutPage = Img & {
   kind: string | null;
   /** the page's own read (the primary's: its verified read), null when not read */

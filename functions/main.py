@@ -713,7 +713,8 @@ def _scan_document(payload, claims, db, stats_ref, storage):
     paths = datastore.put([(f"{base}/page-{i + 1}.jpg", pg["image"]) for i, pg in enumerate(doc["pages"])], lambda: _model_bucket(storage))
     datastore.put([(f"{base}/record.json", datastore.as_json(feedback.document_record(doc, tenant, now, doc_id, paths)))], lambda: _model_bucket(storage))
     stats_ref.set({"documentsSince": firestore.Increment(1), "documents": firestore.Increment(1),
-                   "fieldsCorrected": firestore.Increment(len(doc["corrected"])), "updatedAt": now}, merge=True)
+                   "fieldsCorrected": firestore.Increment(len(doc["corrected"])), "updatedAt": now,
+                   **{k: firestore.Increment(n) for k, n in feedback.mrz_counts(doc).items()}}, merge=True)
     return _json({"ok": True, "kept": True})
 
 
@@ -773,8 +774,9 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     """The scanner's training examples (feedback.py; docs/scan-plan.md → S6).
     {"action": "add", "examples": [...]} from the scan window's Done (any manager
     login): pages whose corners the user moved are kept, the rest only counted.
-    {"action": "document", "pages", "read", "reads", "scanned", "saved", "workerId"} from the
-    save of the worker window after a scan: a full document for the field reader model (H8a).
+    {"action": "document", "pages", "read", "reads", "scanned", "saved", "workerId", "mrzShadow"?} from the
+    save of the worker window after a scan: a full document for the field reader model (H8a), with the
+    passport zone reader's answer in shadow (H8b; counted: mrzShadowPassports / mrzShadowRight / mrzAiRight).
     {"action": "attempt", "attempts": [...]} / {"action": "attemptOutcome", "dir", "outcome"} from
     the scanner (S8): every scan attempt, for the training.
     {"action": "stats"} (a super-admin): the counts, and whether retraining is due.

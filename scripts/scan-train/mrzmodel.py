@@ -35,23 +35,37 @@ def decode(logits):
     return "".join(out)
 
 
+FILLED = 0.35
+
+
+def dark_marks(gray, r=15, c=15):
+    """255 where a pixel is darker than the mean of its (2r+1)² neighbourhood (the part inside the
+    picture) by c, else 0 — the lab's mrzFind computes it the same way."""
+    g = gray.astype(np.float64)
+    h, w = g.shape
+    s = np.zeros((h + 1, w + 1))
+    s[1:, 1:] = g.cumsum(0).cumsum(1)
+    ys, xs = np.arange(h), np.arange(w)
+    y0, y1 = np.clip(ys - r, 0, h), np.clip(ys + r + 1, 0, h)
+    x0, x1 = np.clip(xs - r, 0, w), np.clip(xs + r + 1, 0, w)
+    total = s[y1][:, x1] - s[y0][:, x1] - s[y1][:, x0] + s[y0][:, x0]
+    mean = total / ((y1 - y0)[:, None] * (x1 - x0)[None, :])
+    return np.where(g <= mean - c, 255, 0).astype(np.uint8)
+
+
 def find_lines(gray):
     """A passport page, upright (uint8 grey) → the two MRZ lines' pictures [line 1, line 2], or [] when
     none is found. The zone is the page's lowest two text lines that run across most of its width: in
     the lower 45 % of the page, the dark marks of each pixel row (an adaptive threshold) are counted,
-    rows with marks over at least 55 % of the width are text, and the last two bands of such rows are
+    rows whose dark marks (dark_marks, then joined along the row) fill at least 35 % of the width are text (a zone line's letters, joined, fill most of it; scattered specks do not), and the last two bands of such rows are
     the lines, each cut with a little margin."""
     import cv2
     h, w = gray.shape[:2]
     top = int(h * 0.55)
     part = gray[top:]
-    bw = cv2.adaptiveThreshold(part, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 31, 15)
+    bw = dark_marks(part)
     bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (max(3, w // 60), 1)))
-    cols = np.zeros(bw.shape[0], np.float32)
-    for y in range(bw.shape[0]):
-        xs = np.flatnonzero(bw[y])
-        cols[y] = (xs[-1] - xs[0]) / w if xs.size > w * 0.08 else 0.0
-    text = cols >= 0.55
+    text = (bw > 0).sum(1) >= FILLED * w
     bands, y = [], 0
     while y < len(text):
         if text[y]:
