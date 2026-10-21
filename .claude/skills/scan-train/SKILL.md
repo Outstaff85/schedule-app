@@ -26,7 +26,7 @@ All end in the same step 5: one new version holds whatever was trained; the rest
 - Once, before the first training on Hugging Face: `python scripts/scan-train/move_to_hf.py --apply` (the versions still in Storage go to Hugging Face as tags) and `python scripts/scan-train/rename_fields.py --apply` (the records collected before H0 get today's names). Each says what it would do without `--apply`; both are safe to run again.
 
 ## Stopped in the middle
-Every training saves its progress after each epoch (`~/.scan-train/checkpoints/`). If one stopped (Ctrl+C, a crash, the PC turned off), run the same command again with `--resume`; to train a model further from where its last run ended, `--more` (docs/scan-training.md → Stopped and picked up again).
+Every training saves its progress after each epoch (`~/.scan-train/checkpoints/`; the passport zone reader in `~/.scan-train/mrz-ckpt/`). If one stopped (Ctrl+C, a crash, the PC turned off), run the same command again with `--resume`; to train the edges, document type or Hebrew model further from where its last run ended, `--more` (the zone reader starts from its best weights by itself; `--fresh` for random ones) (docs/scan-training.md → Stopped and picked up again).
 
 ## 2. Download the examples
 `python scripts/scan-train/pull.py` — prints how many examples (and how many came from the scan attempts, S8), how many kept apart for the exam. Fewer than ~100 to train on: tell the owner it is early and ask whether to go on.
@@ -51,7 +51,7 @@ With few examples (or when the owner asks), made-up photos first: `pip install -
 1. Once: `pip install --no-deps trdg==1.8.0` and `pip install -r scripts/scan-train/requirements-synth.txt` in the same `.venv`.
 2. `python scripts/scan-train/synth_lines.py mrz --count 100000` — the made-up zone lines (OCR-B, on every core; ~5–10 min) into `~/.scan-train/synth/mrz/`. Nothing of it is uploaded.
    With MIDV downloaded (step 3), also `python scripts/scan-train/midv_mrz.py` — real zone lines of MIDV-2020's mock passports for training, and exam pages (docs/scan-training.md → The passport zone reader); then train with `train_mrz.py --midv`.
-3. `python scripts/scan-train/train_mrz.py` — the small CRNN (`mrz.onnx`), ~10–20 min on the 4070; each epoch prints the lines read right on the check lines — it must go up to ≥ 95 %.
+3. `python scripts/scan-train/train_mrz.py` — the small CRNN (`mrz.onnx`), ~10–20 min on the 4070; each epoch prints the lines read right on the check lines — it must go up to ≥ 95 %. It starts from the best weights of the trainings before (`~/.scan-train/mrz-ckpt/best.pt`, kept by `clean.py` / `publish.py`; `--fresh` from random weights); a stopped training goes on with `--resume`.
 4. `python scripts/scan-train/exam_mrz.py` — the made-up check lines and the real passports collected (H8a), against the AI; with `midv_mrz.py` run, also MIDV-2020's exam passports (real photos never trained on). Show the owner in plain words; "NO" → more lines (`--count 200000`) or more epochs (`train_mrz.py --epochs 20`), then the exam again.
 
 ## 4d. Hebrew field reader (H8c — on the PC only for now; when the owner asks)
