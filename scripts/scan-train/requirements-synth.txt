@@ -1,4 +1,5 @@
-# The made-up lines for the scanner's text readers (synth_lines.py; docs/scan-training.md → 6).
+# The made-up lines for the scanner's text readers (synth_lines.py) and the made-up document photos
+# for the document edges models (synth_docs.py; docs/scan-training.md → 4).
 # TRDG itself goes in without its pinned old dependencies (they do not install on a new Python):
 #   pip install --no-deps trdg==1.8.0
 #   pip install -r requirements-synth.txt
@@ -9,3 +10,5 @@ opencv-python-headless
 wikipedia
 tqdm
 requests
+# the photos' colours and quality (synth_docs.py): 2.0.8 is the last MIT release (AlbumentationsX after it is AGPL)
+albumentations==2.0.8

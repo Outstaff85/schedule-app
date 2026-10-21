@@ -7,6 +7,7 @@ are common ones put together at random. Pure — no fonts, no images, so the rul
   lines("mrz", 1000, seed=1)       # → [(text, fields)], line 1 and line 2 of each passport in turn
   lines("he", 1000, seed=1)        # → [(text, {"kind": …})], logical order (right to left as read)
 """
+import math
 import random
 
 # ---------- the passport's machine-readable zone (TD3: two lines of 44) ----------
@@ -183,3 +184,58 @@ def lines(kind, n, seed=0):
             out.append((t, {"kind": k}))
         return out
     raise ValueError(kind)
+
+
+# ---------- where a made-up document lies on a made-up photo (synth_docs.py) ----------
+# The documents' sides as cut (docfind.RATIOS): an ID card (ID-1), a passport's data page (ID-3);
+# the ספח is a folded sheet whose part photographed varies.
+DOC_SIDES = {"id_front": (85.6, 54.0), "id_back": (85.6, 54.0), "passport": (125.0, 88.0)}
+
+
+def order_corners(pts):
+    """Four points as the document edges model gives them — top-left, top-right, bottom-right,
+    bottom-left of the photo (the page is turned upright later, by its face): clockwise on the
+    screen from the one with the smallest x + y."""
+    cx, cy = sum(p[0] for p in pts) / 4, sum(p[1] for p in pts) / 4
+    cw = sorted(pts, key=lambda p: math.atan2(p[1] - cy, p[0] - cx))   # y down: rising angle = clockwise
+    k = min(range(4), key=lambda i: cw[i][0] + cw[i][1])
+    return [list(cw[(k + i) % 4]) for i in range(4)]
+
+
+def _convex(q):
+    sg = 0
+    for i in range(4):
+        a, b, c = q[i], q[(i + 1) % 4], q[(i + 2) % 4]
+        z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+        if z == 0 or (sg and (z > 0) != (sg > 0)):
+            return False
+        sg = z
+    return True
+
+
+def _area(q):
+    return abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))) / 2
+
+
+def scene_quad(rng, aspect, W, H, fill=(0.18, 0.8), margin=0.01, tilt=0.09):
+    """Where a flat document of the given aspect (width / height) lands on a W×H photo: its corners
+    in pixels, in the document's own order (its top-left first, clockwise) — turned mostly by a
+    quarter turn and a little, seen at a slant (each corner moved up to `tilt` of its size), filling
+    `fill` of the photo, every corner at least `margin` inside. None when no try fits."""
+    for _ in range(60):
+        area = rng.uniform(*fill) * W * H
+        h = math.sqrt(area / aspect)
+        w = h * aspect
+        a = rng.choice((0, 0, 0, 90, 90, 180, 270)) + rng.gauss(0, 10 if rng.random() < 0.8 else 25)
+        ca, sa = math.cos(math.radians(a)), math.sin(math.radians(a))
+        cx, cy = rng.uniform(0.3, 0.7) * W, rng.uniform(0.3, 0.7) * H
+        q = []
+        for x, y in ((-w / 2, -h / 2), (w / 2, -h / 2), (w / 2, h / 2), (-w / 2, h / 2)):
+            x += rng.uniform(-tilt, tilt) * w
+            y += rng.uniform(-tilt, tilt) * h
+            q.append([cx + x * ca - y * sa, cy + x * sa + y * ca])
+        if not _convex(q) or _area(q) < 0.1 * W * H:
+            continue
+        if all(margin * W <= x <= (1 - margin) * W and margin * H <= y <= (1 - margin) * H for x, y in q):
+            return q
+    return None

@@ -1,8 +1,6 @@
 """When the owner says no to a training: the examples' copies and the new models are
-deleted from this PC; nothing in Storage changes."""
-import shutil
+deleted from this PC (the MIDV download is kept: common.clear_work); nothing in Storage changes."""
+from common import WORK, clear_work
 
-from common import WORK
-
-shutil.rmtree(WORK, ignore_errors=True)
-print(f"Deleted {WORK}")
+clear_work()
+print(f"Deleted the copies in {WORK}")

@@ -52,3 +52,22 @@ def test_the_same_seed_draws_the_same_lines():
     assert synth.lines("mrz", 50, seed=2) == synth.lines("mrz", 50, seed=2) != synth.lines("mrz", 50, seed=3)
     mrz = synth.lines("mrz", 10, seed=1)
     assert [i["line"] for _, i in mrz] == [1, 2] * 5
+
+
+def test_the_corners_are_ordered_as_the_model_gives_them():
+    # top-left of the photo first, then clockwise on the screen, whatever order they come in
+    sq = [[0.2, 0.1], [0.8, 0.15], [0.75, 0.9], [0.25, 0.85]]
+    for k in range(4):
+        assert synth.order_corners(sq[k:] + sq[:k]) == sq
+        assert synth.order_corners(list(reversed(sq[k:] + sq[:k]))) == sq
+
+
+def test_a_made_up_document_lies_inside_the_photo_and_is_convex():
+    rng = random.Random(5)
+    for _ in range(500):
+        W, H = rng.choice(((960, 1280), (1280, 960), (720, 1280)))
+        q = synth.scene_quad(rng, rng.choice((85.6 / 54, 125 / 88, 0.8)), W, H)
+        assert q is not None and synth._convex(q)
+        assert all(0.01 * W <= x <= 0.99 * W and 0.01 * H <= y <= 0.99 * H for x, y in q)
+        assert synth._area(q) >= 0.1 * W * H
+    assert synth.scene_quad(random.Random(1), 1.5, 900, 1200) == synth.scene_quad(random.Random(1), 1.5, 900, 1200)
