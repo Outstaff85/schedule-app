@@ -9,7 +9,7 @@
   const css = document.createElement('style');
   // the window shows the pages itself (one preview, the batches' lines): the lab's own are hidden
   css.textContent = 'h1,.row:first-of-type,.stats,#log,label.btn:has(#useWorker),label.btn:has(#follow),#shot,#kept{display:none!important}' +
-    'body{padding:0 0 12px;background:transparent}';
+    'html{background:transparent}body{padding:0 0 12px;background:transparent}body::before{display:none}';  // the window's own glass shows through
   document.head.appendChild(css);
   const $ = id => document.getElementById(id);
   // The document type model's answer on a page, as the lab's doctypeNote reads it (doctypeSess: the

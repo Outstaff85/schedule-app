@@ -56,6 +56,7 @@ Proven on the owner's Android phone with the scanner lab (see below, 2026-10-18)
 - **Upright:** the straightened shot is turned upright by the face on the document — a small face finder (YuNet, MIT, 0.2 MB, run at 320×320 — `scripts/scan-lab/yunet_dyn.py` frees its fixed 640 input) is run on all 4 quarter-turns (a first-turn shortcut was tried and dropped: the finder places the eyes above the mouth even on an upside-down face, so only comparing the 4 turns is right) and the turn with a face whose eyes are above its mouth wins (40 of 40 turned right on the owner's photos). A document with no face (the ספח) keeps its turn on the phone and is set upright on the server with its reading. A text-direction model (RapidOrientation) was tried and dropped: it takes upright Hebrew documents for upside down.
 
 ### Scanner lab (`/scan-lab/`)
+The page is drawn in the site's design (`/og.css` and `/fonts/fonts.css`: the ground, glass controls, plates, tick tiles, the flowing progress line; the live frame in the app's green, the corner editor a glass sheet), so its copy in the scan window looks like the rest of the site.
 
 A standing tool kept in the repo for trying and tuning the scanner's on-device part on a real phone, so S2b and later changes start from it, not from scratch.
 

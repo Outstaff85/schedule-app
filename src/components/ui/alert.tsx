@@ -8,10 +8,10 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        info: 'shadow-[inset_4px_0_0_var(--accent)] [&>svg]:text-info',
-        ok: 'shadow-[inset_4px_0_0_var(--green)] [&>svg]:text-ok',
-        warn: 'shadow-[inset_4px_0_0_var(--amber)] [&>svg]:text-warn',
-        bad: 'shadow-[inset_4px_0_0_var(--red)] [&>svg]:text-bad',
+        info: 'shadow-[inset_4px_0_0_var(--accent),var(--shadow-plate)] [&>svg]:text-info',
+        ok: 'shadow-[inset_4px_0_0_var(--green),var(--shadow-plate)] [&>svg]:text-ok',
+        warn: 'shadow-[inset_4px_0_0_var(--amber),var(--shadow-plate)] [&>svg]:text-warn',
+        bad: 'shadow-[inset_4px_0_0_var(--red),var(--shadow-plate)] [&>svg]:text-bad',
       },
     },
     defaultVariants: { variant: 'info' },

@@ -9,7 +9,7 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 ## Ground and colors
 - (Dark theme values; the light theme's are in `tokens.json` → `"light"`, see Light theme below.)
 - Background: deep ground `#10141f` with three soft, wide radial blobs — indigo `rgba(79,70,229,.50)` top left, cyan `rgba(6,182,212,.36)` right, pink `rgba(219,39,119,.34)` bottom.
-- Glass for controls (buttons, tabs, menus, bars, sheets: white 12–28 % fill + backdrop blur, 1px white 28 % edge). Solid plates `#1b1e29` for content.
+- Glass for controls (buttons, tabs, menus, bars, sheets: white 12–28 % fill + backdrop blur, 1px white 28 % edge). Plates for content (their look — fill, light, shadow — comes from the design system's tokens: `--plate-grad`, `--shadow-plate`).
 - Status colors: green `#6dd6a0` OK, blue `#4f8ef7` info / night, amber `#f5a623` attention, red `#ff5f6d` problem.
 - Hours and money figures: one soft green `#9fe6c0` (DM Mono), also shift times in an opened Schedule day.
 
@@ -22,7 +22,7 @@ The look the user chose on 2026-10-12 for every page (manager app, supplier port
 - ⋮ opens a glass popover with a tail pointing at the button; Delete last, in soft red, under a divider.
 
 ## Plates (every list)
-- Solid plate, radius 16, 4px status bar on the left; the name in medium weight (500, owner 2026-10-13). **No letters avatar** (owner 2026-10-13): the plate starts with the name. Icon avatars (firms, alerts, documents) and section icons in editors stay in the bar's color.
+- Plate (its fill from the design system's tokens), radius 16, 4px status bar on the left; the name in medium weight (500, owner 2026-10-13). **No letters avatar** (owner 2026-10-13): the plate starts with the name. Icon avatars (firms, alerts, documents) and section icons in editors stay in the bar's color.
 - Worker plate: the full name (owner 2026-10-13; cut with … when it does not fit, never under the chips or the figures); notice chips right after the name (one chip with its word + "+N"; red urgent, amber attention: visa, missing documents, contract ending, no punch today…); a tap on a chip opens the notices sheet (avatar, full name, site, today's punch, hours, one plate per notice with its action: Renew, Upload, Extend, Call; "Open worker card"). Under the name: site · today's punch ("● In 07:58" green, "● No punch" red, "Out 22:00", "On vacation"). At the right: the month's hours (green figure, no box), then a bare ⋮ (thin dots, no box).
 - Swipe left reveals Edit and Delete. Delete never asks: the plate collapses and a glass "Undo" snack runs 5 s with the gradient timer line; the real delete is sent when the timer ends.
 - **Select in every list** (owner 2026-10-13, replacing "always on"): a Select button above the list, no boxes by default; a tap slides the drawn-tick boxes in, the line reads "N selected · Select all · Done", a tap on a plate ticks it, and a glass bar shows below (count, the list's bulk actions, Delete, ✕). Swipe is off while selecting.

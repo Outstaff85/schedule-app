@@ -17,6 +17,8 @@
   --surface-2:#181c27;
   --surface-3:#1e2333;
   --plate:#1b1e29;
+  --plate-top:#222840;
+  --plate-bottom:#141823;
   --plate-on:#1f2a2c;
   --tick-on:#1b2a28;
   --glass:rgba(255,255,255,0.12);
@@ -53,6 +55,7 @@
   --shadow-glass:0 8px 24px rgba(0,0,0,0.25);
   --shadow-pop:0 16px 40px rgba(0,0,0,0.45);
   --shadow-uline:0 0 10px rgba(34,211,238,0.55), 0 0 4px rgba(244,114,182,0.5);
+  --shadow-plate:inset 0 1px 0 rgba(255,255,255,0.10), 0 8px 20px rgba(0,0,0,0.35);
   --font-sans:"DM Sans", "Heebo", Arial, sans-serif;
   --font-mono:"DM Mono", ui-monospace, monospace;
 }
@@ -65,6 +68,8 @@
   --surface-2:#ffffff;
   --surface-3:#e8ecf4;
   --plate:#ffffff;
+  --plate-top:#ffffff;
+  --plate-bottom:#eef1f7;
   --plate-on:#e1f3ea;
   --tick-on:#dcf2e6;
   --glass:rgba(255,255,255,0.62);
@@ -91,6 +96,7 @@
   --shadow-glass:0 8px 24px rgba(20,24,40,0.10);
   --shadow-pop:0 16px 40px rgba(20,24,40,0.18);
   --shadow-uline:0 0 8px rgba(8,145,178,0.35), 0 0 3px rgba(219,39,119,0.3);
+  --shadow-plate:inset 0 1px 0 rgba(255,255,255,0.9), 0 6px 16px rgba(20,24,40,0.10);
 }
 /* tokens:end */
 /* ── Odinson Glass foundation (docs/redesign.md): the ground, glass, plates,
@@ -114,6 +120,10 @@
 :root[data-theme="light"] .og-cover{background-attachment:fixed;}
 :root[data-theme="light"] .gbtn::before{box-shadow:var(--shadow-uline);}
 html{background:var(--ground);}
+/* Plates and windows: a soft gradient (plate-top → plate-bottom) over the solid --plate, a line of light on
+   the top edge and a soft shadow (--shadow-plate); windows the same gradient from the top down. */
+:root{--plate-grad:linear-gradient(135deg,var(--plate-top),var(--plate-bottom));--sheet-grad:linear-gradient(180deg,var(--plate-top) 0,var(--plate-bottom) 60%);}
+.bg-plate,.bg-card{background-image:var(--plate-grad);}
 body{background:transparent;}
 body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 15% 10%,rgba(79,70,229,.50) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(6,182,212,.36) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(219,39,119,.34) 0,transparent 56%),var(--ground);}
 /* A full-screen cover over the app (the super-admin's Firms landing): the same blob ground, fixed. */
@@ -135,7 +145,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .gbtn.on::before{transform:scaleX(1);}
 /* Plates: the solid content tile, a 4px status bar (--c) on the left; figures
    (hours, money) in one soft green. */
-.plate{position:relative;display:flex;align-items:center;gap:12px;padding:11px 8px 11px 14px;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--ok));}
+.plate{position:relative;display:flex;align-items:center;gap:12px;padding:11px 8px 11px 14px;background-color:var(--plate);background-image:var(--plate-grad);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--ok)),var(--shadow-plate);}
 .fig{font-family:'DM Mono',ui-monospace,monospace;color:var(--fig);}
 /* The Language button (top right of every page) and its sheet. */
 .lang-btn{height:40px;width:40px;padding:0;gap:0;border-radius:14px;font-size:13px;flex:none;justify-content:center;}
@@ -184,7 +194,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-acts button{width:56px;border-radius:12px;border:1px solid var(--glass-edge);background:var(--glass);color:var(--ink);font:600 11px var(--font-sans);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer}
 .og-acts .del{color:var(--red-soft);background:rgba(255,95,109,.22)}
 .og-acts svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}
-.og-plate{position:relative;display:flex;align-items:center;gap:var(--space-3);padding:11px 8px 11px var(--space-4);background:var(--plate);border-radius:var(--radius-lg);box-shadow:inset 4px 0 0 var(--bar,var(--green));transition:transform .28s var(--og-ease);touch-action:pan-y;cursor:pointer;user-select:none}
+.og-plate{position:relative;display:flex;align-items:center;gap:var(--space-3);padding:11px 8px 11px var(--space-4);background-color:var(--plate);background-image:var(--plate-grad);border-radius:var(--radius-lg);box-shadow:inset 4px 0 0 var(--bar,var(--green)),var(--shadow-plate);transition:transform .28s var(--og-ease);touch-action:pan-y;cursor:pointer;user-select:none}
 .og-plate.drag{transition:none}
 .og-plate.on{background:var(--plate-on)}
 .og-kb{position:relative;width:32px;height:32px;border:0;border-radius:var(--radius-sm);background:none;color:var(--ink-2);font-size:18px;cursor:pointer}
@@ -200,8 +210,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
    "N selected · Select all · Done" and the glass bulk bar (.sel-bar). No
    letters avatar: the plate starts with the name. ── */
 :root{--neutral:#6b7189;--bar-gap:16px;}
-.t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background:var(--plate);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral));margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
-.t3-line:hover{background:#20242f;}
+.t3-line{position:relative;gap:12px;padding:11px 8px 11px 14px;border-left:0;background-color:var(--plate);background-image:var(--plate-grad);border-radius:16px;box-shadow:inset 4px 0 0 var(--c,var(--neutral)),var(--shadow-plate);margin-bottom:8px;transition:transform .28s cubic-bezier(.3,.7,.3,1),background .2s;}
+.t3-line:hover{filter:brightness(1.08);}
 .t3-line>.n,.t3-line>.r{position:relative;z-index:1;}
 .t3-line .n b{font-size:16px;font-weight:500;}
 .t3-line>.n{min-width:0;}
@@ -273,7 +283,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 /* ── Part 7: the light theme's looks that no token carries (docs/redesign.md →
    Light theme): solid dark fills of og.css and the brand gradients drawn for
    the dark ground. ── */
-:root[data-theme="light"] .t3-line:hover{background:#f3f5f9;}
+:root[data-theme="light"] .t3-line:hover{filter:brightness(.98);}
 :root[data-theme="light"] .og-snack,:root[data-theme="light"] .sel-bar{box-shadow:var(--shadow-pop);}
 :root[data-theme="light"] .og-acts{background:rgba(20,24,40,.08);}
 :root[data-theme="light"] .og-box::after{border-color:var(--tick-mark);}
