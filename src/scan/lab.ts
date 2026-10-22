@@ -6,6 +6,13 @@
 const KEEP_MS = 3 * 60 * 1000;
 let frame: HTMLIFrameElement | null = null;
 let timer = 0;
+let loaded = false;
+const waiting: unknown[] = [];
+/** A message to the lab page, kept until the page has loaded. */
+function toLab(m: unknown) {
+  if (frame && loaded) frame.contentWindow?.postMessage(m, location.origin);
+  else if (frame) waiting.push(m);
+}
 
 /** Shows the lab page over `slot` (made once, then kept) until the returned function is called. */
 export function showLab(slot: HTMLElement, title: string): () => void {
@@ -17,6 +24,7 @@ export function showLab(slot: HTMLElement, title: string): () => void {
     frame.dataset.testid = 'scan-lab-frame';
     frame.setAttribute('data-vaul-no-drag', '');
     frame.className = 'rounded-lg border-0 bg-background';
+    frame.addEventListener('load', () => { loaded = true; for (const m of waiting.splice(0)) frame?.contentWindow?.postMessage(m, location.origin); });
     // above the window (z-50); its own pointer events, as a modal window turns them off around it
     Object.assign(frame.style, { position: 'fixed', zIndex: '51', pointerEvents: 'auto' });
     document.body.append(frame);
@@ -65,10 +73,19 @@ export function sleepLab() {
   frame?.contentWindow?.postMessage({ type: 'scan-sleep' }, location.origin);
 }
 
+/** The Camera tab is shown: the lab's camera starts (once its model is ready). */
+export function startLab() { toLab({ type: 'scan-start' }); }
+/** The window's shutter: the lab's Capture (or its camera starts, when it has stopped). */
+export function snapLab() { toLab({ type: 'scan-snap' }); }
+/** The window's Auto: the lab takes the shot by itself when the document holds still. */
+export function autoLab(on: boolean) { toLab({ type: 'scan-auto', on }); }
+/** Files picked in the window (photos, PDFs): handed to the lab's own picker, which cuts their pages. */
+export function filesLab(files: File[]) { if (files.length) toLab({ type: 'scan-files', files }); }
+
 function hideLab() {
   if (!frame) return;
   frame.style.visibility = 'hidden';
   sleepLab();
   window.clearTimeout(timer);
-  timer = window.setTimeout(() => { frame?.remove(); frame = null; }, KEEP_MS);
+  timer = window.setTimeout(() => { frame?.remove(); frame = null; loaded = false; waiting.length = 0; }, KEEP_MS);
 }

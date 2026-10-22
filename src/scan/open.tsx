@@ -30,7 +30,7 @@ export function openScanner(opts: { initial?: ScannedPage[]; read?: ReadFn } = {
       root!.render(<React.StrictMode><TooltipProvider><Scanner key={key} open={false} onDone={() => {}} onClose={() => {}} /></TooltipProvider></React.StrictMode>);
       resolve(pages);
     };
-    root!.render(<React.StrictMode><TooltipProvider><Scanner key={key} open initial={opts.initial} read={opts.read} onDone={p => end(p)} onClose={() => end(null)} /></TooltipProvider></React.StrictMode>);
+    root!.render(<React.StrictMode><TooltipProvider><Scanner key={key} open initial={opts.initial} read={opts.read} superAdmin={!!api?.admin().isSuper} onDone={p => end(p)} onClose={() => end(null)} /></TooltipProvider></React.StrictMode>);
   });
 }
 
