@@ -24,7 +24,7 @@ jobs:
   tests:
     # pinned: ubuntu-latest became 26.04 (2026-10-21), where Playwright 1.56 installs no Chromium
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45   # ~10 min as a rule; a slow runner's apt-get took 17 min alone (2026-10-22)
     steps:
       - uses: actions/checkout@v4
 
@@ -63,8 +63,32 @@ jobs:
         run: node tests/scan/compare.test.mjs
 
       # LibreOffice for the Word templates' conversion (services/docx2pdf, docs/contracts.md → Word templates)
+      # its packages kept between runs: the runners' Ubuntu mirror was down to ~40 KB/s (2026-10-22) and
+      # the 60 MB of them took the whole job's time; a kept package is not downloaded again
+      - name: LibreOffice packages kept
+        id: lo-debs
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/lo-debs
+          key: lo-debs-noble-1
       - name: LibreOffice
-        run: which soffice || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libreoffice-writer-nogui fonts-dejavu-core)
+        id: lo
+        run: |
+          mkdir -p ~/lo-debs
+          if ! which soffice; then
+            sudo apt-get update -q
+            sudo cp ~/lo-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+            sudo apt-get install -y -q --no-install-recommends -o Acquire::Retries=3 libreoffice-writer-nogui fonts-dejavu-core
+            cp /var/cache/apt/archives/*.deb ~/lo-debs/ 2>/dev/null || true
+          fi
+          echo "debs=$(ls ~/lo-debs/*.deb 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
+
+      - name: LibreOffice packages kept for the next runs
+        if: steps.lo-debs.outputs.cache-hit != 'true' && steps.lo.outputs.debs != '0'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/lo-debs
+          key: lo-debs-noble-1
 
       - name: Python for the functions
         run: |

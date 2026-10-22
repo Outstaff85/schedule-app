@@ -150,6 +150,7 @@ def main():
     ap.add_argument("--synth", type=int, default=0, help="made-up photos (synth_docs.py) added, at random")
     ap.add_argument("--midv", type=int, default=0, help="MIDV photos (midv.py) added, at random")
     ap.add_argument("--smartdoc", type=int, default=0, help="SmartDoc frames (smartdoc.py) added, at random")
+    ap.add_argument("--base", default="", help="the version whose models are trained further (default: the lab's, scripts/scan-lab/models-version)")
     checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
@@ -168,7 +169,7 @@ def main():
         raise SystemExit("no examples to train on — run pull.py first")
     X, Y = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    base = version_of("scan-lab")
+    base = a.base or version_of("scan-lab")
     print(f"{len(X)} examples, base models {base}, on {dev}")
     for name in a.models:
         train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a)
