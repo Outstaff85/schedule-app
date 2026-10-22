@@ -147,11 +147,11 @@ function pageEngine() {
     stop() {},
   };
 }
-function workerEngine(threads, dir = ORT_DIR) {
+function workerEngine(threads, dir = ORT_DIR, onHang = onStuck) {
   const w = new Worker('/scan/scan-worker.js?ort=' + dir), waiting = new Map(); let n = 0, two = false, heard = performance.now();
   const failAll = why => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
   // A worker that says nothing for 30 s while loading is taken as stuck.
-  const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 25000) { failAll('no answer for 25 s'); onStuck(); } }, 1000);
+  const watch = setInterval(() => { if (waiting.size && performance.now() - heard > 25000) { failAll('no answer for 25 s'); onHang(); } }, 1000);
   w.onmessage = ({ data: m }) => {
     heard = performance.now();
     if (m.type === 'status') status(m.text, m.frac);
@@ -186,7 +186,7 @@ function onStuck() {
   log('The model stopped answering on "' + (w ? w.label : engineWay) + '" — it starts again on the next way');
   noteFail(w ? w.label : engineWay, 'stopped answering while scanning');
   stuckWays.add(engineWay);
-  const old = engine; engine = null; engineKey = '';
+  const old = engine; engine = null; engineKey = ''; dropFileThreads();
   try { old.stop(); } catch (e) {}
 }
 
@@ -263,6 +263,7 @@ async function startSession() {
   const key = $('model').value + '|' + want + '|' + inWorker;
   if (engine && engineKey === key) return;
   if (engine) engine.stop();
+  dropFileThreads();
   engine = null; $('sBackend').textContent = 'loading…'; $('startCam').disabled = true; status('Preparing the model…', 0);
   const t0 = performance.now();
   let ways = WAYS.filter(w => (inWorker || !w.worker) && (want === 'auto' || w.ep === want || (want === 'webgpu' && false)));
@@ -881,15 +882,15 @@ function docShape(q, w, h) {
     return deg >= 35 && deg <= 145;
   });
 }
-async function findNext(frame, w, h, found) {
+async function findNext(frame, w, h, found, eng = engine) {
   const fresh = q => docShape(q, w, h) && found.every(f => quadIoU(q, f) <= 0.3);
   const tryIt = async (which, src, sw, sh, map) => {
-    const { res } = await engine.detect(which, { rgba: smallRGBA(src, sw, sh) });
+    const { res } = await eng.detect(which, { rgba: smallRGBA(src, sw, sh) });
     if (!goodQuad(res)) return null;
     const q = res.pts.map(map);
     return fresh(q) ? q : null;
   };
-  const models = engine.hasCap() ? ['cap', 'live'] : ['live'];
+  const models = eng.hasCap() ? ['cap', 'live'] : ['live'];
   // the found ones painted over in the colour of the photo's border
   const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(frame, 0, 0);
   const t = document.createElement('canvas'); t.width = t.height = 32; const tg = t.getContext('2d'); tg.drawImage(frame, 0, 0, 32, 32);
@@ -1067,33 +1068,88 @@ function whiteEdges(img) {
   }
   return n && white / n >= 0.97;
 }
-async function pickPicture(url, before, pdfPage) {
-  const img = $('still'); img.src = url; await img.decode();
-  img.hidden = false; $('video').hidden = true;
-  const boxes = photosOnPage(img), page = await new Promise(r => { const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0); r(c); });
-  const parts = boxes.length ? boxes : [null];
+// Picked files are worked on by several background threads at once (owner, 2026-10-22): the model's work
+// on a picture (its photos inside a white page, each one's corners, the other documents on it, the cut and
+// the upright turn) needs nothing from the other pictures, so the main engine's capture thread and up to
+// two more threads with the accurate model each take a picture (analyzePicture); the pages are then shown
+// strictly in the files' order (showPicture). Inside one picture the steps stay in turn: the next document
+// is looked for with the ones found painted over. No GPU: a still goes to the accurate model on the CPU.
+let fileThreads = [], fileThreadsFor = null;
+function dropFileThreads() { for (const t of fileThreads) { t.dead = true; t.stop(); } fileThreads = []; fileThreadsFor = null; }
+async function fileEngines() {
+  if (fileThreadsFor !== engine) {
+    dropFileThreads();
+    fileThreadsFor = engine;
+    const cores = navigator.hardwareConcurrency || 2, mem = navigator.deviceMemory || 4;
+    // each thread holds its own copy of the accurate model (~80 MB at work): none on a phone short of memory
+    const extra = mem < 4 ? 0 : Math.max(0, Math.min(2, Math.floor(cores / 2) - 1));
+    const [live, cap] = $('model').value.split('+'), name = cap || live;
+    await Promise.all(Array.from({ length: extra }, async (_, k) => {
+      let me = null;
+      const e = workerEngine(1, ORT_DIR, () => { log('A file thread stopped answering — its pictures go to the main thread'); if (me) me.dead = true; e.stop(); });
+      try {
+        await e.load(name, null, 'wasm', true);
+        me = { detect: (which, input) => e.detect('live', input), warp: e.warp, hasCap: () => false, stop: () => e.stop(), label: 'file thread ' + (k + 1) };
+        fileThreads[k] = me;
+      } catch (err) { e.stop(); noteFail('File thread ' + (k + 1), err && err.message || err); }
+    }));
+    if (extra) log('Picked files: ' + (1 + fileThreads.length) + ' threads at once');
+  }
+  fileThreads = fileThreads.filter(Boolean);
+  return 1 + fileThreads.length;
+}
+const toCanvas = out => { const c = document.createElement('canvas'); c.width = out.width; c.height = out.height; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0); return c; };
+// One picture on one engine, no screen: [{frame, w, h, whole, docs: [{pts, out}]}] — a part per photo inside a
+// white page (else the picture itself); a PDF page made on a computer is taken whole; a picture with no
+// document frame in it is the page as it is.
+async function analyzePicture(url, pdfPage, eng) {
+  const img = new Image(); img.src = url; await img.decode();
+  const page = document.createElement('canvas'); page.width = img.naturalWidth; page.height = img.naturalHeight; page.getContext('2d').drawImage(img, 0, 0);
+  const boxes = photosOnPage(img), parts = [];
   if (boxes.length) log('Photos inside a white page: ' + boxes.map(b => (b[2] - b[0]) + '×' + (b[3] - b[1]) + ' at ' + b[0] + ',' + b[1]).join('; ') + ' of ' + page.width + '×' + page.height);
+  for (const box of boxes.length ? boxes : [null]) {
+    let frame = page;
+    if (box) { const [x0, y0, x1, y1] = box; frame = document.createElement('canvas'); frame.width = x1 - x0; frame.height = y1 - y0; frame.getContext('2d').drawImage(page, x0, y0, frame.width, frame.height, 0, 0, frame.width, frame.height); }
+    const w = frame.width, h = frame.height, pix = frame.getContext('2d').getImageData(0, 0, w, h).data;
+    const whole = pdfPage && !box && whiteEdges(img);
+    let first = WHOLE_PAGE;
+    if (!whole) { const { res } = await eng.detect(eng.hasCap() ? 'cap' : 'live', { rgba: smallRGBA(frame, w, h) }); if (!res.pts.some(p => !p)) first = res.pts; }
+    const docs = [{ pts: first, out: await eng.warp(pix.slice(), w, h, first, true) }];
+    if (!whole) {
+      const found = [first];
+      for (let n = 1; n < 4; n++) {
+        const q = await findNext(frame, w, h, found, eng);
+        if (!q) break;
+        found.push(q); docs.push({ pts: q, out: await eng.warp(pix.slice(), w, h, q, true) });
+      }
+    }
+    parts.push({ frame, w, h, whole, docs });
+  }
+  return parts;
+}
+// A worked picture onto the list, after `before` pages: its pages, its attempt (S8) and the readouts.
+async function showPicture(url, parts, before) {
+  const img = $('still'); img.src = url; await img.decode(); img.hidden = false; $('video').hidden = true;
   let pages = before;
-  for (const box of parts) {
-    if (box) {
-      const [x0, y0, x1, y1] = box, c = document.createElement('canvas'); c.width = x1 - x0; c.height = y1 - y0;
-      c.getContext('2d').drawImage(page, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
-      img.src = c.toDataURL('image/jpeg', 0.95); await img.decode();
+  for (const part of parts) {
+    const att = newAttempt(part.frame, part.w, part.h, part.whole ? 'pdf' : 'photo');
+    att.edgesModel = part.whole ? null : part.docs[0].pts.map(p => p.slice());
+    let kn = '';
+    for (let i = 0; i < part.docs.length; i++) {
+      const d = part.docs[i], oc = toCanvas(d.out);
+      if (i === 0) { lastTurn = d.out.turn; if (d.out.turnError) log('Face finder: ' + d.out.turnError); kn = await doctypeNote(oc) + await mrzNote(oc) + await heNote(oc); }
+      let el;
+      if (pages === 0) el = $('shotImg');
+      else { el = new Image(); el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(el); }
+      el.src = oc.toDataURL('image/jpeg', 0.9); el.dataset.att = att.id; el.dataset.pg = String(i);
+      if (i > 0) att.edgesMore.push(d.pts.map(p => p.slice()));
+      pages++;
     }
-    $('sRes').textContent = img.naturalWidth + '×' + img.naturalHeight;
-    if (pdfPage && !box && whiteEdges(img)) {
-      lastRes = { pts: [[0, 0], [1, 0], [1, 1], [0, 1]], conf: 1 };
-      pageMore = pages > 0; shotWhole = true;
-      try { await showShot(); } finally { shotWhole = false; pageMore = false; }
-      pages++; continue;
-    }
-    lastRes = null; await runOnce(img, img.naturalWidth, img.naturalHeight, img);
-    // A picture with no document frame in it is a document already cut to its edges (a scan, a
-    // screenshot, a card photographed edge to edge): the whole picture is the page.
-    if (!lastRes || lastRes.pts.some(p => !p)) lastRes = { pts: [[0, 0], [1, 0], [1, 1], [0, 1]], conf: 1 };
-    if (lastRes && !lastRes.pts.some(p => !p)) {
-      pageMore = pages > 0; await showShot(); pageMore = false; pages++;
-    }
+    att.pages = part.docs.length;
+    $('sRes').textContent = part.w + '×' + part.h;
+    lastRes = { pts: part.docs[0].pts, conf: 1 }; shown = part.whole ? null : part.docs[0].pts.map(p => p.slice()); drawPts(shown, true, img);
+    $('shot').hidden = false;
+    $('hint').textContent = (part.docs.length > 1 ? part.docs.length + ' documents on this photo' : 'One document on this photo') + turnNote() + kn;
   }
   return pages;
 }
@@ -1104,27 +1160,48 @@ $('file').onchange = async e => {
   const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
   running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
   keepCurrent(); batchLabel = files.map(f => f.name).join(', ') || 'Files'; picking = true;
-  let pages = 0;
+  // lanes: lane 0 is the main engine, lane k its file thread k (the main engine when that one failed); a lane
+  // takes one picture at a time
+  const t0 = performance.now(), lanes = await fileEngines(), free = [...Array(lanes).keys()], waiting = [];
+  const take = () => free.length ? Promise.resolve(free.shift()) : new Promise(r => waiting.push(r));
+  const give = k => { const r = waiting.shift(); r ? r(k) : free.push(k); };
+  const engineOf = async k => { const t = k && fileThreads[k - 1]; if (t && !t.dead) return t; if (!engine) await ensureSession(); return engine; };
+  // a picture whose thread failed is worked again on the main engine (started again when it was the one that hung)
+  const work = async (url, pdfPage) => {
+    const k = await take();
+    try {
+      const eng = await engineOf(k);
+      try { return await analyzePicture(url, pdfPage, eng); }
+      catch (err) {
+        log('Picked file on ' + (eng.label || 'the main thread') + ': ' + (err && err.message || err) + ' — again on the main thread');
+        if (!engine || eng === engine) await ensureSession();
+        return await analyzePicture(url, pdfPage, engine);
+      }
+    } finally { give(k); }
+  };
+  let pages = 0, order = Promise.resolve(), n = 0, failed = false;
   try {
     for await (const [url, tag, pdfPage] of pickedPictures(files)) {
-      $('status').textContent = 'Working on ' + tag + '…';
-      const kept = $('shotMore').children.length, shot = !$('shot').hidden;
-      try { pages = await pickPicture(url, pages, pdfPage); }
-      catch (err) {
-        if (engine) throw err;
-        // the model was dropped (onStuck): what this picture had added goes, it starts again, and the picture is done again
-        log('Picked file: ' + (err && err.message || err) + ' — again on the next way');
-        while ($('shotMore').children.length > kept) $('shotMore').lastChild.remove();
-        if (!shot) $('shot').hidden = true;
-        await ensureSession(); pages = await pickPicture(url, pages, pdfPage);
-      }
-      window.dispatchEvent(new Event('lab-picked'));
+      const done = work(url, pdfPage);
+      done.catch(() => {});
+      const k = ++n;
+      // shown in the files' order, each as soon as it and the ones before it are done
+      order = order.then(async () => {
+        if (failed) return;
+        $('status').textContent = 'Working on ' + tag + '…';
+        try { pages = await showPicture(url, await done, pages); window.dispatchEvent(new Event('lab-picked')); }
+        catch (err) { failed = true; log('Picked file ' + k + ': ' + (err && err.message || err)); $('hint').textContent = 'A file could not be worked on — see the log'; }
+      });
+      // one picture at most waiting for a free lane (the next ones are not even opened yet: memory)
+      while (waiting.length) await new Promise(r => setTimeout(r, 20));
     }
   } catch (err) { log('Picked file: ' + (err && err.message || err)); $('hint').textContent = 'A file could not be opened — see the log'; }
+  await order;
   // every page on the list (the other documents found on a photo too)
   const total = $('shot').hidden ? 0 : 1 + $('shotMore').querySelectorAll('img').length;
   picking = false;
   $('status').textContent = total + ' page(s) from ' + files.length + ' file(s)';
+  log('Picked files: ' + total + ' page(s) from ' + files.length + ' file(s) in ' + Math.round(performance.now() - t0) + ' ms on ' + lanes + ' thread(s)');
   if (total > 1) $('shot2note').textContent = total + ' page(s) from ' + files.length + ' file(s):';
 };
 // Switching the model, GPU / CPU or the thread: nothing of the old way stays on screen —

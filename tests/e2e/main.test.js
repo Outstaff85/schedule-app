@@ -763,9 +763,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(picked.multiple && picked.accept === '' && picked.one && picked.button === 'Photos or PDF…'
     && picked.out.join('|') === 'file 1 of 2 blob:http:|file 2 of 2, page 1 of 2 data:image|file 2 of 2, page 2 of 2 data:image',
     'scan window: the lab\'s one Photos or PDF… (no file type: the phone\'s file chooser, photos and PDFs side by side) takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+  // Picked files are worked on by several threads at once (analyzePicture on any engine, no screen): a stand-in
+  // engine finds one document and no more; a picture with no frame found is the page as it is
+  const apic = await p.evaluate(async jpg => {
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
+    const calls = [];
+    const stub = (pts) => ({ hasCap: () => false, detect: async (which, input) => { calls.push(which + ':' + input.rgba.length); return { res: calls.length === 1 ? { pts, conf: 0.9 } : { pts: [null, null, null, null], conf: 0 }, ms: 1 }; },
+      warp: async (rgba, w, h, q) => ({ width: 4, height: 3, data: new Uint8ClampedArray(48).buffer, turn: 0 }) });
+    const url = 'data:image/jpeg;base64,' + jpg;
+    const one = await fw.analyzePicture(url, false, stub([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]));
+    calls.length = 0;
+    const none = await fw.analyzePicture(url, false, stub([null, null, null, null]));
+    return {parts: one.length, docs: one[0].docs.length, first: one[0].docs[0].pts[2].join(), whole: none[0].docs[0].pts.map(q => q.join()).join(';'), size: [one[0].w, one[0].h].join('x'), threads: typeof fw.fileEngines};
+  }, JPG);
+  ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.threads === 'function',
+    'scanner lab, picked files: a picture is worked on any engine with no screen (its threads run several at once) — the document found, else the picture as it is ' + JSON.stringify(apic));
   // Why a way to run the models failed is kept on the phone (the last 8) and shown in the log when the lab opens;
   // the way that worked is remembered for a day only
-  const fails = await p.evaluate(() => {
+  const wayFails = await p.evaluate(() => {
     const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, ls = fw.localStorage;
     ls.removeItem('scanWayFails');
     fw.noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
@@ -777,8 +792,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {n: list.length, kinds: [fw.failKind('WebGPU device was lost'), fw.failKind('RangeError: Array buffer allocation failed'), fw.failKind('no answer for 25 s'), fw.failKind('model download failed: HTTP 404')].join(),
       last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)};
   });
-  ok(fails.n === 8 && fails.kinds === 'GPU,memory,hang,error' && fails.last === 'hang' && fails.shown,
-    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the log ' + JSON.stringify(fails));
+  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,memory,hang,error' && wayFails.last === 'hang' && wayFails.shown,
+    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the log ' + JSON.stringify(wayFails));
   // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
   // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
   // a kept page deleted later is told by its folder; with no network they wait on the phone, 5 at most
