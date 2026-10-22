@@ -32,7 +32,6 @@ the corners 0..1, top-left first clockwise as the model gives them; null: nothin
 Needs: pip install -r requirements-synth.txt."""
 import argparse
 import json
-import os
 import pathlib
 import random
 
@@ -41,7 +40,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 import synth
-from home import WORK
+from home import WORK, gentle
 from synth_lines import hebrew_fonts
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -622,7 +621,7 @@ def main():
     ap.add_argument("--count", type=int, default=20000)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default=str(OUT))
-    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    ap.add_argument("--jobs", type=int, default=gentle())
     ap.add_argument("--backgrounds", help="a folder of background photos (tables, floors, cloths — no documents in them)")
     ap.add_argument("--show", action="store_true", help="also show/<n>.jpg with the corners drawn (green; red: the first)")
     ap.add_argument("--templates", nargs="?", const=str(TEMPLATES), help="real pages laid like the drawn ones "

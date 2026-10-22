@@ -29,6 +29,7 @@ from torch import nn
 
 import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
+from home import gentle
 
 S = 256
 EPOCHS = {"doctype-lite.onnx": 20, "doctype.onnx": 16}
@@ -127,6 +128,7 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None):
 
 
 def main():
+    gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
     ap.add_argument("--phone", default=DOCTYPE_MODELS["doctype-lite.onnx"], choices=DOCTYPE_SIZES, help="the phone's model size")
     ap.add_argument("--server", default=DOCTYPE_MODELS["doctype.onnx"], choices=DOCTYPE_SIZES, help="the server's model size")

@@ -140,3 +140,13 @@ def test_the_work_folder_can_be_on_another_disk(monkeypatch, tmp_path):
     home = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(home)
     assert home.WORK == pathlib.Path.home() / ".scan-train" and home.DATA == "OutStaff/scanner-data"
+
+
+def test_drawing_leaves_the_first_core_free():
+    # gentle() (home.py): off logical cores 0 and 1, two processes fewer than the cores
+    spec = importlib.util.spec_from_file_location("home_g", HERE / "home.py")
+    home = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(home)
+    assert home.spare_cores(16) == (set(range(2, 16)), 14)
+    assert home.spare_cores(4) == ({2, 3}, 2)
+    assert home.spare_cores(2) == ({0, 1}, 1) and home.spare_cores(1) == ({0}, 1)

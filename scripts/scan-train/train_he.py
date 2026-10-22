@@ -27,7 +27,7 @@ import cv2
 import torch
 
 import hemodel
-from home import WORK
+from home import WORK, gentle
 from mrzmodel import decode, line_input
 from synth import valid_israeli_id
 import checkpoint
@@ -71,6 +71,7 @@ def check(net, rows, dev):
 
 
 def main():
+    gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
     ap.add_argument("--epochs", type=int, default=16)
     ap.add_argument("--batch", type=int, default=64)

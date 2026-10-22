@@ -10,14 +10,13 @@ made up), and nothing is uploaded: the same seed draws the same fields again.
 
 Writes <n>.png (grey) and labels.tsv (file, text as written, kind)."""
 import argparse
-import os
 import pathlib
 import random
 
 import cv2
 import numpy as np
 
-from home import WORK
+from home import WORK, gentle
 from synth_docs import TEMPLATES, templates_in
 from synth_lines import hebrew_fonts
 
@@ -92,7 +91,7 @@ def main():
     ap.add_argument("--check", action="store_true", help="the check set: other pages, another seed")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--templates", default=str(TEMPLATES), help="the real pages (pull_templates.py)")
-    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    ap.add_argument("--jobs", type=int, default=gentle())
     ap.add_argument("--fonts", nargs="*", help="Hebrew fonts (default: the PC's)")
     a = ap.parse_args()
     pages = [(p, k) for p, k in templates_in(a.templates) if (template_vary.spec_for(p) or {}).get("fields")]
