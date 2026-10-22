@@ -22,6 +22,7 @@ import checkpoint
 from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
 from home import gentle
+from onnxbatch import free_batch
 
 S, H, SIGMA = 256, 128, 2.4  # the spread of the models' own corner spots (measured)
 EPOCHS = {"edges-lite.onnx": 24, "edges.onnx": 12}
@@ -73,6 +74,7 @@ def batch(X, Y, idx, augment):
 def train_one(name, base, X, Y, epochs, dev, args):
     src = model_path(base, name)
     proto = onnx.load(str(src))
+    free_batch(proto)  # trained in batches of 16: a version exported with its batch baked in as 1 (v3) is set free
     inp, outname = proto.graph.input[0].name, proto.graph.output[0].name
     net = onnx2torch.convert(proto)
     probe = np.random.rand(1, 3, S, S).astype(np.float32)
@@ -125,9 +127,18 @@ def export(name, net, probe, inp, outname):
     net = net.cpu().eval()
     with torch.no_grad():
         want = net(torch.from_numpy(probe)).numpy()
-    torch.onnx.export(net, torch.from_numpy(probe), str(dst), input_names=[inp], output_names=[outname], opset_version=17, dynamo=False)
+    torch.onnx.export(net, torch.from_numpy(probe), str(dst), input_names=[inp], output_names=[outname], opset_version=17, dynamo=False,
+                      dynamic_axes={inp: {0: "batch"}, outname: {0: "batch"}})
+    proto = onnx.load(str(dst))
+    if free_batch(proto):  # a batch of 1 the export still folded into a shape: the next run trains it in batches too
+        onnx.save(proto, str(dst))
     back = ort.InferenceSession(str(dst)).run(None, {inp: probe})[0]
     assert np.abs(back - want).max() < 1e-3, "the exported model does not answer like the trained one"
+    two = np.concatenate([probe, probe[:, :, ::-1].copy()])
+    with torch.no_grad():
+        want2 = net(torch.from_numpy(two)).numpy()
+    back2 = ort.InferenceSession(str(dst)).run(None, {inp: two})[0]
+    assert np.abs(back2 - want2).max() < 1e-3, "the exported model does not answer a batch of two"
     print(f"  {name} → {dst}")
 
 
