@@ -72,25 +72,55 @@ async function detectRGBA(sess, rgba) {
   return corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
 }
 
-// Each of the 4 heatmaps: the blob around its peak (>= 0.3), its centre.
-function corners(hm) {
-  const pts = [], confs = [];
-  for (let k = 0; k < 4; k++) {
-    const off = k * H * H; let mi = 0, mv = -1;
-    for (let i = 0; i < H * H; i++) { const v = hm[off + i]; if (v > mv) { mv = v; mi = i; } }
-    confs.push(mv);
-    if (mv < 0.3) { pts.push(null); continue; }
+// Each of the 4 heatmaps: up to 3 spots (>= 0.3 and at least half its highest), each the centre of the blob
+// around it. The four corners are then picked together: with two documents on a picture every heatmap has a
+// spot on each, and its highest spots alone can put one corner on one document and three on the other (an
+// ID card below its ספח, 2026-10-22). The convex frame with the highest spots wins, a frame whose opposite
+// sides differ more than 1.6× counted down (a document seen in perspective rarely has such sides). One spot
+// on each heatmap: that frame, as before. (The same in scripts/scan-train/docfind.py corners.)
+const PEAKS = 3, PEAK_R = 6, BLOB_R = 10, SIDES = 1.6;
+function spotsOf(hm, off) {
+  const out = [], gone = new Uint8Array(H * H);
+  let top = -1;
+  for (let i = 0; i < H * H; i++) if (hm[off + i] > top) top = hm[off + i];
+  for (let n = 0; n < PEAKS; n++) {
+    let mi = -1, mv = -1;
+    for (let i = 0; i < H * H; i++) if (!gone[i] && hm[off + i] > mv) { mv = hm[off + i]; mi = i; }
+    if (mi < 0 || mv < 0.3 || mv < top * 0.5) break;
+    const px = mi % H, py = (mi / H) | 0;
     const seen = new Uint8Array(H * H), q = [mi]; seen[mi] = 1; let sx = 0, sy = 0, sw = 0;
     while (q.length) {
       const i = q.pop(), x = i % H, y = (i / H) | 0, v = hm[off + i]; sx += x * v; sy += y * v; sw += v;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= H || ny >= H) continue;
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= H || ny >= H || Math.abs(nx - px) > BLOB_R || Math.abs(ny - py) > BLOB_R) continue;
         const j = ny * H + nx; if (!seen[j] && hm[off + j] >= 0.3) { seen[j] = 1; q.push(j); }
       }
     }
-    pts.push([(sx / sw + 0.5) / H, (sy / sw + 0.5) / H]);
+    out.push({ p: [(sx / sw + 0.5) / H, (sy / sw + 0.5) / H], v: mv });
+    for (let y = Math.max(0, py - PEAK_R); y <= Math.min(H - 1, py + PEAK_R); y++) for (let x = Math.max(0, px - PEAK_R); x <= Math.min(H - 1, px + PEAK_R); x++) gone[y * H + x] = 1;
   }
-  return { pts, conf: Math.min(...confs) };
+  return { spots: out, top };
+}
+function frameScore(c) {
+  const q = c.map(s => s.p); let sg = 0;
+  for (let i = 0; i < 4; i++) {
+    const [a, b, d] = [q[i], q[(i + 1) % 4], q[(i + 2) % 4]], z = (b[0] - a[0]) * (d[1] - b[1]) - (b[1] - a[1]) * (d[0] - b[0]);
+    if (!z || (sg && Math.sign(z) !== sg)) return -1;
+    sg = Math.sign(z);
+  }
+  const len = i => Math.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1]);
+  const even = (a, b) => { const r = Math.max(a, b) / Math.max(1e-6, Math.min(a, b)); return r > SIDES ? (SIDES / r) ** 2 : 1; };
+  return c.reduce((s, x) => s + x.v, 0) * even(len(0), len(2)) * even(len(1), len(3));
+}
+function corners(hm) {
+  const all = [0, 1, 2, 3].map(k => spotsOf(hm, k * H * H)), conf0 = Math.min(...all.map(a => a.top));
+  if (all.some(a => !a.spots.length)) return { pts: all.map(a => a.spots.length ? a.spots[0].p : null), conf: conf0 };
+  let best = all.map(a => a.spots[0]), bestScore = frameScore(best);
+  for (const s0 of all[0].spots) for (const s1 of all[1].spots) for (const s2 of all[2].spots) for (const s3 of all[3].spots) {
+    const c = [s0, s1, s2, s3], sc = frameScore(c);
+    if (sc > bestScore) { best = c; bestScore = sc; }
+  }
+  return { pts: best.map(s => s.p), conf: Math.min(...best.map(s => s.v)) };
 }
 
 function homography(from, to) {

@@ -41,8 +41,9 @@
   .bar i{display:block;height:100%;width:0;border-radius:4px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;box-shadow:var(--shadow-uline)}
   .kept{background:var(--plate);background-image:var(--plate-grad);border-radius:16px;box-shadow:inset 4px 0 0 var(--ok),var(--shadow-plate);margin:8px 0;padding:8px 8px 8px 14px}
   .kept-head{display:flex;align-items:center;gap:8px;margin:0}
-  .kept-head .open{flex:1;justify-content:flex-start;text-align:left;display:flex;align-items:center;gap:8px;background:none;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;padding:4px}
+  .kept-head .open{flex:1;min-width:0;justify-content:flex-start;text-align:left;display:flex;align-items:center;gap:8px;background:none;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;padding:4px}
   .kept-head .open img{height:36px;width:auto;border-radius:6px}
+  .kept-head .open span{min-width:0;overflow-wrap:anywhere}
   .kept-body{display:grid;gap:10px;margin-top:8px}
   .kept-page{position:relative}
   .kept-page img{width:100%;border-radius:12px;display:block}
@@ -171,7 +172,9 @@ function workerEngine(threads, dir = ORT_DIR, onHang = onStuck) {
     else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); if (p) m.error ? p.reject(new Error(m.error)) : p.resolve(m); }  // a late answer to a call given up on: dropped
   };
   w.onerror = e => { log('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
-  const call = (msg, transfer) => new Promise((resolve, reject) => { msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
+  // a request to a thread that had nothing to do starts the clock again: an idle thread says nothing, so
+  // its first request after 25 s was taken as stuck at once (every picked file, 2026-10-22)
+  const call = (msg, transfer) => new Promise((resolve, reject) => { if (!waiting.size) heard = performance.now(); msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
   return {
     async load(liveName, capName, want, withFace = true) {
       two = !!capName;
@@ -985,7 +988,8 @@ async function findNext(frame, w, h, found, eng = engine) {
   const pg = pc.getContext('2d'); pg.fillStyle = g.fillStyle; pg.fillRect(0, 0, pc.width, pc.height); pg.drawImage(c, P, P);
   const clamp = v => Math.min(1, Math.max(0, v));
   for (const m of models) { const q = await tryIt(m, pc, pc.width, pc.height, ([x, y]) => [clamp((x * pc.width - P) / w), clamp((y * pc.height - P) / h)]); if (q) return q; }
-  // the widest strip left beside the first
+  // the widest strip left beside the first (none found yet: nothing beside)
+  if (!found.length) return null;
   const q1 = found[0], xs = q1.map(p => p[0]), ys = q1.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const strips = [[0, 0, 1, y0], [0, y1, 1, 1], [0, 0, x0, 1], [x1, 0, 1, 1]].filter(([a, b, c2, d2]) => c2 - a >= 0.25 && d2 - b >= 0.2)
     .sort((p, q) => (q[2] - q[0]) * (q[3] - q[1]) - (p[2] - p[0]) * (p[3] - p[1]));
@@ -1193,7 +1197,13 @@ async function analyzePicture(url, pdfPage, eng, onStep = () => {}) {
     // a frame found, in the whole picture's shares (a photo cut out of a white page lies at its box)
     const onPicture = q => q.map(([x, y]) => box ? [(box[0] + x * w) / page.width, (box[1] + y * h) / page.height] : [x, y]);
     onStep('finding', null);
-    if (!whole) { const { res } = await eng.detect(eng.hasCap() ? 'cap' : 'live', { rgba: smallRGBA(frame, w, h) }); if (!res.pts.some(p => !p)) first = res.pts; }
+    // the first frame is checked like the others (a sure, convex frame of a document's shape); none such:
+    // looked for again as the next ones are, and only then the whole picture (its corners fixed by hand)
+    if (!whole) {
+      const { res } = await eng.detect(eng.hasCap() ? 'cap' : 'live', { rgba: smallRGBA(frame, w, h) });
+      if (goodQuad(res) && docShape(res.pts, w, h)) first = res.pts;
+      else { const q = await findNext(frame, w, h, [], eng); if (q) first = q; else log('No document frame found on a picked picture — the whole picture taken'); }
+    }
     onStep('cutting', onPicture(first));
     const docs = [{ pts: first, out: await eng.warp(pix.slice(), w, h, first, true) }];
     if (!whole) {
@@ -1248,6 +1258,7 @@ $('file').onchange = async e => {
   const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
   running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureCap();
   keepCurrent(); batchLabel = files.map(f => f.name).join(', ') || 'Files'; picking = true;
+  $('hint').textContent = '';  // not the camera's last words ("move the phone back")
   // lanes: lane 0 is the main engine, lane k its file thread k (the main engine when that one failed); a lane
   // takes one picture at a time
   // lanes: 0 is the main engine; 1 the file thread, once a second picture has started it (growFiles)

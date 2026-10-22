@@ -17,6 +17,7 @@ with the accurate model in full precision:
 Pure numpy / OpenCV / ONNX Runtime: the sessions are passed in, so the tests run
 it with the real models or with stand-ins.
 """
+import itertools
 from functools import cmp_to_key
 
 import numpy as np
@@ -55,23 +56,63 @@ def detect(sess, img):
     return corners(hm)
 
 
-def corners(hm):
-    """Each of the 4 heatmaps: the weighted centre of the blob around its peak (>= 0.3)."""
-    pts, confs = [], []
-    for k in range(4):
-        m = hm[k]
-        confs.append(float(m.max()))
-        if m.max() < 0.3:
-            pts.append(None)
-            continue
-        n, lab = cv2.connectedComponents((m >= 0.3).astype(np.uint8), connectivity=4)
-        py, px = np.unravel_index(int(np.argmax(m)), m.shape)
-        sel = lab == lab[py, px]
-        w = m * sel
-        ys, xs = np.mgrid[0:m.shape[0], 0:m.shape[1]]
+PEAKS, PEAK_R, BLOB_R, SIDES = 3, 6, 10, 1.6
+
+
+def _spots(m):
+    """Up to PEAKS spots of one heatmap (>= 0.3 and at least half its highest): (centre of the blob
+    around it, within BLOB_R, in 0..1; its value)."""
+    out, left, top = [], m.copy(), float(m.max())
+    n, lab = cv2.connectedComponents((m >= 0.3).astype(np.uint8), connectivity=4)
+    ys, xs = np.mgrid[0:m.shape[0], 0:m.shape[1]]
+    for _ in range(PEAKS):
+        i = int(np.argmax(left))
+        py, px = np.unravel_index(i, m.shape)
+        v = float(left[py, px])
+        if v < 0.3 or v < top * 0.5:
+            break
+        near = (np.abs(xs - px) <= BLOB_R) & (np.abs(ys - py) <= BLOB_R)
+        w = m * (lab == lab[py, px]) * near
         sw = float(w.sum())
-        pts.append([(float((xs * w).sum()) / sw + 0.5) / m.shape[1], (float((ys * w).sum()) / sw + 0.5) / m.shape[0]])
-    return (None if any(p is None for p in pts) else np.array(pts, np.float64)), min(confs)
+        out.append(([(float((xs * w).sum()) / sw + 0.5) / m.shape[1], (float((ys * w).sum()) / sw + 0.5) / m.shape[0]], v))
+        left[max(0, py - PEAK_R):py + PEAK_R + 1, max(0, px - PEAK_R):px + PEAK_R + 1] = 0
+    return out, top
+
+
+def _frame_score(c):
+    q = [p for p, _ in c]
+    sg = 0
+    for i in range(4):
+        a, b, d = q[i], q[(i + 1) % 4], q[(i + 2) % 4]
+        z = (b[0] - a[0]) * (d[1] - b[1]) - (b[1] - a[1]) * (d[0] - b[0])
+        if not z or (sg and np.sign(z) != sg):
+            return -1.0
+        sg = np.sign(z)
+    side = [float(np.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1])) for i in range(4)]
+
+    def even(a, b):
+        r = max(a, b) / max(1e-6, min(a, b))
+        return (SIDES / r) ** 2 if r > SIDES else 1.0
+    return sum(v for _, v in c) * even(side[0], side[2]) * even(side[1], side[3])
+
+
+def corners(hm):
+    """The 4 corners picked together from up to PEAKS spots of each heatmap: with two documents on a
+    picture every heatmap has a spot on each, and the highest spots alone can put one corner on one
+    document and three on the other (an ID card below its ספח, 2026-10-22). The convex frame with the
+    highest spots wins, a frame whose opposite sides differ more than SIDES× counted down. One spot on
+    each heatmap: that frame, as before. The phone does the same (scan-lab/scan-core.js corners)."""
+    found = [_spots(hm[k]) for k in range(4)]
+    conf0 = min(top for _, top in found)
+    if any(not s for s, _ in found):
+        return None, conf0
+    best = [s[0] for s, _ in found]
+    best_score = _frame_score(best)
+    for c in itertools.product(*(s for s, _ in found)):
+        sc = _frame_score(c)
+        if sc > best_score:
+            best, best_score = list(c), sc
+    return np.array([p for p, _ in best], np.float64), min(v for _, v in best)
 
 
 def quad_area(q):

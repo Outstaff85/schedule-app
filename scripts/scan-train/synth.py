@@ -262,6 +262,32 @@ def scene_quad(rng, aspect, W, H, fill=(0.18, 0.8), margin=0.01, tilt=0.09):
     return None
 
 
+def card_on_sheet(rng, sheet, sheet_aspect, card_aspect, size=(0.3, 0.6), turn=8):
+    """Where an ID card lying on a sheet (its ספח) lands on the photo: a card-shaped rect in the sheet's own
+    plane, `size` of the sheet's width, a little turned (up to `turn`°), anywhere on it, carried onto the
+    photo through the sheet's corners (`sheet` as scene_quad gives them: its own top-left first). → the
+    card's corners in pixels, its own top-left first; None when it does not fit on the sheet."""
+    for _ in range(20):
+        fw = rng.uniform(*size)
+        fh = fw * sheet_aspect / card_aspect
+        if fh > 0.85:
+            continue
+        u0, v0 = rng.uniform(0.05, 0.95 - fw), rng.uniform(0.05, 0.95 - fh)
+        cu, cv = u0 + fw / 2, v0 + fh / 2
+        a = math.radians(rng.uniform(-turn, turn))
+        ca, sa = math.cos(a), math.sin(a)
+        uv = []
+        for du, dv in ((-fw / 2, -fh / 2), (fw / 2, -fh / 2), (fw / 2, fh / 2), (-fw / 2, fh / 2)):
+            x, y = du * sheet_aspect, dv   # turned in the sheet's real proportions
+            uv.append((cu + (x * ca - y * sa) / sheet_aspect, cv + x * sa + y * ca))
+        if not all(0.02 <= u <= 0.98 and 0.02 <= v <= 0.98 for u, v in uv):
+            continue
+        (ax, ay), (bx, by), (cx, cy), (dx, dy) = sheet
+        return [[(1 - u) * (1 - v) * ax + u * (1 - v) * bx + u * v * cx + (1 - u) * v * dx,
+                 (1 - u) * (1 - v) * ay + u * (1 - v) * by + u * v * cy + (1 - u) * v * dy] for u, v in uv]
+    return None
+
+
 # ---------- a field of an Israeli ID card, its back or a ספח, by its kind (template_vary.py) ----------
 HE_MONTHS = ("תשרי", "חשון", "כסלו", "טבת", "שבט", "אדר", "ניסן", "אייר", "סיון", "תמוז", "אב", "אלול")
 HE_YEARS = ("התש\"ל", "התשל\"ה", "התש\"מ", "התשמ\"ה", "התשמ\"ט", "התש\"נ", "התשנ\"ו", "התש\"ס", "התשס\"ה", "התש\"ע",

@@ -53,6 +53,11 @@ LONG = 640         # the saved photo's long side (the model sees it squeezed to 
 SIZES = ((960, 1280), (1280, 960), (720, 1280), (1080, 1080), (1200, 900), (900, 1200))
 KINDS = {"id_front": 0.24, "id_back": 0.16, "passport": 0.3, "sefach": 0.2, "insert": 0.1}
 NONE_SHARE, PAINTED_SHARE = 0.05, 0.1
+# Two documents in sight (owner, 2026-10-22: an ID card below or on its ספח got one corner on one and three
+# on the other): a sheet with a card on it or beside it; the answer is the larger document, whole — the
+# scanner finds the other one next (findNext / findInside).
+PAIR_SHARE, PAIR_ON = 0.15, 0.6
+SHEETS = ("sefach", "insert")
 TEMPLATES = WORK / "templates"   # deleted by clean / publish
 TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence")   # a licence: "other" to the page kinds
 WIDTH = {"id_front": 85.6, "id_back": 85.6, "licence": 85.6, "passport": 125.0}  # mm; a sheet keeps its own size
@@ -521,16 +526,24 @@ def border_colour(img):
     return [int(v) for v in np.median(border, axis=0)]
 
 
-def document(rng, F, tpl):
-    """A document to lay: (RGBA, rect, kind, card) — a real page (tpl: (pages, share, sharp)) or a drawn one."""
+def document(rng, F, tpl, kinds=None):
+    """A document to lay: (RGBA, rect, kind, card) — a real page (tpl: (pages, share, sharp)) or a drawn one;
+    `kinds`: only these kinds (a sheet, a card)."""
     pages, share, sharp = tpl
+    if kinds:
+        pages = [pg for pg in pages if pg[1] in kinds]
     if pages and rng.random() < share:
         path, kind = rng.choice(pages)
         doc, rect = template(rng, F, path, kind, sharp)
         return doc, rect, "template:" + kind, kind in CARDS
-    kind = rng.choices(list(KINDS), list(KINDS.values()))[0]
+    names = [k for k in KINDS if not kinds or k in kinds]
+    kind = rng.choices(names, [KINDS[k] for k in names])[0]
     doc, rect = DRAW[kind](rng, F)
     return doc, rect, kind, kind.startswith("id")
+
+
+def _area(q):
+    return abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))) / 2
 
 
 def photo(rng, F, photos, tpl=((), 0, False)):
@@ -539,10 +552,12 @@ def photo(rng, F, photos, tpl=((), 0, False)):
     img = background(rng, W, H, photos)
     none = rng.random() < NONE_SHARE
     two = not none and rng.random() < PAINTED_SHARE   # another document found first, painted over
+    pair = not none and not two and rng.random() < PAIR_SHARE   # a card on the sheet or beside it, both in sight
     quad = painted = None
     if not none:
-        doc, rect, kind, card = document(rng, F, tpl)
-        quad = synth.scene_quad(rng, (rect[2] - rect[0]) / (rect[3] - rect[1]), W, H, fill=(0.15, 0.45) if two else (0.18, 0.8))
+        doc, rect, kind, card = document(rng, F, tpl, SHEETS if pair else None)
+        quad = synth.scene_quad(rng, (rect[2] - rect[0]) / (rect[3] - rect[1]), W, H,
+                                fill=(0.15, 0.45) if two else (0.3, 0.7) if pair else (0.18, 0.8))
         none = quad is None
     if two and quad:
         d2, r2, _, card2 = document(rng, F, tpl)
@@ -556,6 +571,23 @@ def photo(rng, F, photos, tpl=((), 0, False)):
         lay(rng, img, doc, rect, quad, card)
         if rng.random() < 0.25:
             finger(rng, img, quad)
+    if pair and quad:
+        d2, r2, k2, card2 = document(rng, F, tpl, CARDS)
+        a1, a2 = (rect[2] - rect[0]) / (rect[3] - rect[1]), (r2[2] - r2[0]) / (r2[3] - r2[1])
+        q2 = None
+        if rng.random() < PAIR_ON:
+            q2 = synth.card_on_sheet(rng, quad, a1, a2)
+        else:
+            for _ in range(10):
+                q2 = synth.scene_quad(rng, a2, W, H, fill=(0.1, 0.22))
+                if q2 and not _overlaps(quad, q2, W, H):
+                    break
+                q2 = None
+        if q2:
+            lay(rng, img, d2, r2, q2, card2)
+            if _area(q2) > _area(quad):   # the answer: the larger document, whole
+                quad, kind = q2, k2
+            kind += "+2"
     if painted:
         col = border_colour(img)
         for q in painted:
