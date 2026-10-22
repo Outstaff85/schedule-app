@@ -62,6 +62,9 @@ jobs:
       - name: Scan process (the old reading vs src/scan-process/)
         run: node tests/scan/compare.test.mjs
 
+      - name: Scanner corners (scan-lab/scan-core.js and scan/scan-core.js)
+        run: node tests/scan/corners.test.mjs
+
       # LibreOffice for the Word templates' conversion (services/docx2pdf, docs/contracts.md → Word templates)
       # its packages kept between runs: the runners' Ubuntu mirror was down to ~40 KB/s (2026-10-22) and
       # the 60 MB of them took the whole job's time; a kept package is not downloaded again
