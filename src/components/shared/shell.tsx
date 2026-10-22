@@ -128,7 +128,7 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
             type="button"
             onClick={() => { setMoreOpen(false); pick(s.key); }}
             className="relative flex h-12 items-center gap-3 rounded-lg bg-plate px-4 text-left text-[15px] font-semibold [&_svg]:size-5"
-            style={{ boxShadow: `inset 4px 0 0 ${s.color}` }}
+            style={{ boxShadow: `inset 4px 0 0 ${s.color}, var(--shadow-plate)` }}
           >
             <span style={{ color: s.color }}>{s.icon}</span>
             <span className="flex-1">{s.label}</span>

@@ -4,38 +4,50 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Scanner lab</title>
+<meta name="theme-color" content="#10141f">
+<script>/* The theme before the first draw (docs/redesign.md → Light theme; src/lib/theme.ts): Dark by default, Light, or System — the device's setting. */try{var t=localStorage.getItem('uiTheme');if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){}</script>
+<!-- Odinson Glass, as on every page of the site (og.css: the ground with its blobs, glass, plates, the fonts) -->
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/og.css">
 <!-- The scanner lab (docs/scan-plan.md → Scanner lab; Admin → Scanner lab, super-admin):
      runs the scanner's on-device models on this phone's camera and photos — the
      live frame, the shot, the upright turn — and shows how fast and how sure they
      are. The models and ONNX Runtime are put next to it at deploy (deploy.yml). -->
 <style>
-  :root{--bg:#10141f;--plate:#1b1e29;--ink:#fff;--ink2:#a3a9bb;--ok:#6dd6a0;--warn:#f5a623;--bad:#ff5f6d;--line:rgba(255,255,255,.14)}
+  /* The lab's own looks over og.css's tokens: glass controls, solid plates, the flowing line for progress. */
+  :root{--ink2:var(--ink-2);--line:rgba(var(--tint),.14)}
   *{box-sizing:border-box}
   [hidden]{display:none!important}
-  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,Arial,sans-serif;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 24px max(12px,env(safe-area-inset-left))}
-  h1{font-size:18px;margin:0 0 10px}
+  body{margin:0;color:var(--ink);font:15px/1.4 'DM Sans','Heebo',Arial,sans-serif;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 24px max(14px,env(safe-area-inset-left))}
+  h1{font-size:19px;line-height:24px;font-weight:600;margin:0 0 12px}
   .row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
-  select,button,label.btn{font:inherit;color:var(--ink);background:var(--plate);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
-  button.primary{background:#2563eb;border-color:transparent;font-weight:600}
-  button:disabled{opacity:.4}
-  .stage{position:relative;width:100%;background:#000;border-radius:14px;overflow:hidden}
+  select,button,label.btn{font:600 14px 'DM Sans','Heebo',Arial,sans-serif;color:var(--ink);background:var(--glass);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--glass-edge);border-radius:16px;min-height:42px;padding:0 16px;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer;-webkit-tap-highlight-color:transparent}
+  button,label.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+  select{padding-right:10px}
+  select option{background:var(--surface-2);color:var(--ink)}
+  button.primary{background:rgba(var(--tint),.28)}
+  button:disabled{opacity:.4;cursor:default}
+  button:focus-visible,select:focus-visible,label.btn:focus-within{outline:2px solid var(--uline-2);outline-offset:2px}
+  input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--green)}
+  .stage{position:relative;width:100%;background:#000;border:1px solid var(--line);border-radius:16px;overflow:hidden}
   video,#still{display:block;width:100%;height:auto}
   #overlay{position:absolute;inset:0;width:100%;height:100%}
-  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}
-  .stat{background:var(--plate);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
-  .stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
-  .stat span{color:var(--ink2);font-size:12px}
-  #log{white-space:pre-wrap;color:var(--ink2);font-size:12px;margin-top:10px}
-  .bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0 10px}
-  .bar i{display:block;height:100%;width:0;background:#2563eb}
-  .kept{background:var(--plate);border:1px solid var(--line);border-radius:12px;margin:8px 0;padding:8px}
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+  .stat{background:var(--plate);background-image:var(--plate-grad);box-shadow:var(--shadow-plate);border-radius:16px;padding:10px 14px}
+  .stat b{display:block;font:500 20px/26px 'DM Mono',ui-monospace,monospace;color:var(--fig)}
+  .stat span{color:var(--ink2);font-size:12px;line-height:16px}
+  #log{white-space:pre-wrap;color:var(--ink2);font:12px/16px 'DM Mono',ui-monospace,monospace;margin-top:10px}
+  .bar{height:4px;background:var(--line);border-radius:4px;overflow:hidden;margin:6px 0 10px}
+  .bar i{display:block;height:100%;width:0;border-radius:4px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;box-shadow:var(--shadow-uline)}
+  .kept{background:var(--plate);background-image:var(--plate-grad);border-radius:16px;box-shadow:inset 4px 0 0 var(--ok),var(--shadow-plate);margin:8px 0;padding:8px 8px 8px 14px}
   .kept-head{display:flex;align-items:center;gap:8px;margin:0}
-  .kept-head .open{flex:1;text-align:left;display:flex;align-items:center;gap:8px;background:none;border:0;padding:4px}
+  .kept-head .open{flex:1;justify-content:flex-start;text-align:left;display:flex;align-items:center;gap:8px;background:none;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;padding:4px}
   .kept-head .open img{height:36px;width:auto;border-radius:6px}
   .kept-body{display:grid;gap:10px;margin-top:8px}
   .kept-page{position:relative}
-  .kept-page img{width:100%;border-radius:10px;display:block}
-  .kept-page button{position:absolute;top:6px;right:6px;padding:4px 10px}
+  .kept-page img{width:100%;border-radius:12px;display:block}
+  .kept-page button{position:absolute;top:6px;right:6px;min-height:34px;padding:0 12px}
+  @media (prefers-reduced-motion:reduce){.bar i{animation:none}}
 </style>
 </head>
 <body>
@@ -319,9 +331,9 @@ function drawPts(pts, ok, el) {
   const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
   if (!pts) return;
   // A thin line, no corner dots: red while searching, green once it sits on the edges.
-  g.lineWidth = 2 * dpr; g.lineJoin = 'round'; g.strokeStyle = ok ? '#4ade80' : '#ef4444';
+  g.lineWidth = 2 * dpr; g.lineJoin = 'round'; g.strokeStyle = ok ? '#6dd6a0' : '#ff5f6d';
   g.beginPath(); pts.forEach(([x, y], i) => { const X = x * c.width, Y = y * c.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath();
-  if (ok) { g.fillStyle = 'rgba(74,222,128,.12)'; g.fill(); }
+  if (ok) { g.fillStyle = 'rgba(109,214,160,.12)'; g.fill(); }
   g.stroke();
 }
 // Every screen frame the drawn frame glides toward the latest model result;
@@ -610,11 +622,11 @@ async function fixCorners(img) {
 function cornerEditor(frame, start) {
   return new Promise(done => {
     const box = document.createElement('div');
-    box.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.85);display:flex;flex-direction:column;gap:10px;padding:12px;touch-action:none';
-    const note = document.createElement('div'); note.style.cssText = 'color:#fff;font-size:14px'; note.textContent = 'Drag each corner to the document\'s corner';
+    box.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(16,20,31,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);display:flex;flex-direction:column;gap:12px;padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));touch-action:none';
+    const note = document.createElement('div'); note.style.cssText = 'align-self:center;color:#fff;font:600 14px \'DM Sans\',Arial,sans-serif;padding:9px 16px;border-radius:999px;background:rgba(30,35,51,.75);border:1px solid rgba(255,255,255,.28)'; note.textContent = 'Drag each corner to the document\'s corner';
     const wrap = document.createElement('div'); wrap.style.cssText = 'position:relative;flex:1;min-height:0';
     const cv = document.createElement('canvas'); cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
-    const row = document.createElement('div'); row.className = 'row';
+    const row = document.createElement('div'); row.className = 'row'; row.style.justifyContent = 'space-between'; row.style.margin = '0';
     const ok = document.createElement('button'); ok.className = 'primary'; ok.textContent = 'Apply'; box.id = 'cornerEditor';
     const no = document.createElement('button'); no.textContent = 'Cancel';
     row.append(ok, no); wrap.append(cv); box.append(note, wrap, row); document.body.append(box);
@@ -624,8 +636,8 @@ function cornerEditor(frame, start) {
     const g = cv.getContext('2d');
     const draw = () => {
       g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height); g.drawImage(frame, ox, oy, iw, ih);
-      g.strokeStyle = '#3ad29f'; g.lineWidth = 2; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo : g.moveTo).call(g, ox + x * iw, oy + y * ih)); g.closePath(); g.stroke();
-      for (const [x, y] of pts) { g.beginPath(); g.arc(ox + x * iw, oy + y * ih, 14, 0, 7); g.fillStyle = 'rgba(58,210,159,.35)'; g.fill(); g.stroke(); }
+      g.strokeStyle = '#22d3ee'; g.lineWidth = 2.5; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo : g.moveTo).call(g, ox + x * iw, oy + y * ih)); g.closePath(); g.stroke();
+      for (const [x, y] of pts) { g.beginPath(); g.arc(ox + x * iw, oy + y * ih, 14, 0, 7); g.fillStyle = 'rgba(34,211,238,.25)'; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke(); g.strokeStyle = '#22d3ee'; g.lineWidth = 2.5; }
     };
     let drag = -1;
     const at = e => { const b = cv.getBoundingClientRect(); return [(e.clientX - b.left - ox) / iw, (e.clientY - b.top - oy) / ih]; };
