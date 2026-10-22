@@ -8,7 +8,9 @@ are common ones put together at random. Pure — no fonts, no images, so the rul
   lines("he", 1000, seed=1)        # → [(text, {"kind": …})], logical order (right to left as read)
 """
 import math
+import pathlib
 import random
+import zlib
 
 # ---------- the passport's machine-readable zone (TD3: two lines of 44) ----------
 MRZ_LEN = 44
@@ -184,6 +186,18 @@ def lines(kind, n, seed=0):
             out.append((t, {"kind": k}))
         return out
     raise ValueError(kind)
+
+
+# ---------- the owner's real pages kept apart for the exam (synth_docs.py --exam, exam.py) ----------
+EXAM_EVERY = 6   # about one real page in six (by its kind folder and file name: always the same ones)
+
+
+def held_out(path):
+    """Is this real page (a template) kept apart for the exam (exam.py's "your documents" set)? Chosen by its
+    kind folder and file name, so always the same pages (of the owner's 22: six — ID cards new and old, a
+    passport, two ספחים): never laid on a training photo by synth_docs.py, only on its exam photos (--exam)."""
+    p = pathlib.Path(path)
+    return zlib.crc32(f"exam:0{p.parent.name}/{p.name}".encode("utf-8")) % EXAM_EVERY == 0
 
 
 # ---------- where a made-up document lies on a made-up photo (synth_docs.py) ----------
