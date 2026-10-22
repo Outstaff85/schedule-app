@@ -79,3 +79,26 @@ def test_the_same_real_pages_are_kept_apart_for_the_exam():
     assert kept == [n for n in names if synth.held_out("C:/other/templates/" + n)]   # by the folder and name only
     assert 0.1 < len(kept) / len(names) < 0.25
     assert synth.held_out("t/id_front/own-old_type.jpg") and not synth.held_out("t/id_front/own-new_type.jpg")
+
+
+def test_a_card_on_its_sheet_lies_inside_it():
+    # two documents in sight (synth_docs.py PAIR_SHARE): the card lies wholly on the sheet, smaller, convex
+    rng = random.Random(11)
+    placed = 0
+    for _ in range(300):
+        W, H = rng.choice(((960, 1280), (1280, 960)))
+        sheet_aspect = rng.choice((1.42, 0.7, 1.0))
+        sheet = synth.scene_quad(rng, sheet_aspect, W, H, fill=(0.3, 0.7))
+        card = synth.card_on_sheet(rng, sheet, sheet_aspect, 85.6 / 54)
+        if card is None:
+            continue
+        placed += 1
+        assert synth._convex(card) and synth._area(card) < 0.5 * synth._area(sheet)
+        for x, y in card:   # every corner of the card inside the sheet
+            inside = False
+            for i in range(4):
+                (x1, y1), (x2, y2) = sheet[i], sheet[(i + 1) % 4]
+                if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+                    inside = not inside
+            assert inside
+    assert placed > 250
