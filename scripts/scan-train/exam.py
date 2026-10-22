@@ -1,6 +1,7 @@
 """Step 3 of /scan-train: the exam — the examples kept apart (never trained on) are
 read by the old models (the lab's version) and the new ones, set by set: the users' own pages
-kept apart (pull.py), and up to OPEN_N photos of each open set's exam documents (MIDV-2020's
+kept apart (pull.py), made-up photos of the owner's real pages kept apart from the training (synth_docs.py
+--templates --exam: one page in five, by its name), and up to OPEN_N photos of each open set's exam documents (MIDV-2020's
 documents 80–99, SmartDoc's fifth page of each kind: midv.open_exam — real photos of documents
 never trained on, so the exam means something before the site has collected pages). For each
 model and set: the
@@ -30,7 +31,8 @@ import docfind  # the corner reading (once the server's, kept here for the exam)
 
 SHOWN = 10  # pages in the picture report
 OPEN_N = 300  # photos of each open set's exam documents examined
-SETS = {"users": "the users' pages", "midv": "MIDV-2020 exam documents", "smartdoc": "SmartDoc exam pages"}
+SETS = {"users": "the users' pages", "templates": "your documents (made-up photos of the real pages kept apart)",
+        "midv": "MIDV-2020 exam documents", "smartdoc": "SmartDoc exam pages"}
 
 
 def read_all(path, examples):
@@ -93,6 +95,13 @@ def report_page(report, shown):
 <h2>The {len(shown)} pages where the models differ most</h2>{"".join(rows)}"""
 
 
+def templates_set():
+    """The exam photos of the owner's real pages kept apart (synth_docs.py --templates --exam: never laid on a
+    training photo); [] when not drawn here."""
+    f = WORK / "synth" / "docs-exam" / "examples.json"
+    return read_json(f) if f.exists() else []
+
+
 def open_set(folder):
     """Up to OPEN_N of an open set's exam examples (midv.open_exam), the same ones every time; [] when not made here."""
     f = WORK / folder / "examples.json"
@@ -104,7 +113,7 @@ def open_set(folder):
 
 def main():
     ex = read_json(WORK / "examples.json") if (WORK / "examples.json").exists() else []
-    sets = {"users": [e for e in ex if e["exam"]], "midv": open_set("midv"), "smartdoc": open_set("smartdoc")}
+    sets = {"users": [e for e in ex if e["exam"]], "templates": templates_set(), "midv": open_set("midv"), "smartdoc": open_set("smartdoc")}
     sets = {s: pages for s, pages in sets.items() if pages}
     base = version_of("scan-lab")
     report = {"base": base, "examples": len(ex), "exam": sum(map(len, sets.values())), "sets": {s: len(p) for s, p in sets.items()}, "models": {}}

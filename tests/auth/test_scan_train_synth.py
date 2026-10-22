@@ -71,3 +71,11 @@ def test_a_made_up_document_lies_inside_the_photo_and_is_convex():
         assert all(0.01 * W <= x <= 0.99 * W and 0.01 * H <= y <= 0.99 * H for x, y in q)
         assert synth._area(q) >= 0.1 * W * H
     assert synth.scene_quad(random.Random(1), 1.5, 900, 1200) == synth.scene_quad(random.Random(1), 1.5, 900, 1200)
+
+
+def test_the_same_real_pages_are_kept_apart_for_the_exam():
+    names = [f"{k}/own-{i}.jpg" for k in ("id_front", "sefach", "passport") for i in range(200)]
+    kept = [n for n in names if synth.held_out("/home/x/templates/" + n)]
+    assert kept == [n for n in names if synth.held_out("C:/other/templates/" + n)]   # by the folder and name only
+    assert 0.1 < len(kept) / len(names) < 0.25
+    assert synth.held_out("t/id_front/own-old_type.jpg") and not synth.held_out("t/id_front/own-new_type.jpg")
