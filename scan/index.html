@@ -246,15 +246,18 @@ function showFails() {
 // turn (2–3 frames worked on at once), the accurate model has its own thread,
 // so a capture never stops the live frame. Phones that refuse CPU threads
 // inside a background thread still run several background threads.
-function poolEngine(nLive = POOL, liveEp = null, capEp = null) {
-  const lives = Array.from({ length: nLive }, () => workerEngine(1, liveEp === 'webgpu' ? GPU_ORT : ORT_DIR)), capE = workerEngine(1), free = lives.slice();
+// shared: the accurate model's thread already loaded (capThread — loaded first, picked files use it at
+// once); the pool then loads only its live threads and never stops the shared one.
+function poolEngine(nLive = POOL, liveEp = null, capEp = null, shared = null) {
+  const lives = Array.from({ length: nLive }, () => workerEngine(1, liveEp === 'webgpu' ? GPU_ORT : ORT_DIR)), capE = shared || workerEngine(1), free = lives.slice();
   let two = false;
   return {
     size: nLive,
+    shared: !!shared,
     async load(liveName, capName, want) {
       two = !!capName;
-      const eps = await Promise.all(lives.map((e, i) => e.load(liveName, null, liveEp || want, !two && i === 0)).concat(two ? [capE.load(capName, null, capEp || want, true)] : []));
-      return eps[0] + (two && eps[eps.length - 1] !== eps[0] ? '/' + eps[eps.length - 1] : '');
+      const eps = await Promise.all(lives.map((e, i) => e.load(liveName, null, liveEp || want, !two && i === 0)).concat(two && !shared ? [capE.load(capName, null, capEp || want, true)] : []));
+      return eps[0] + (two && (shared || eps[eps.length - 1] !== eps[0]) ? '/' + (shared ? 'wasm' : eps[eps.length - 1]) : '');
     },
     hasCap: () => two,
     async detect(which, input) {
@@ -263,8 +266,38 @@ function poolEngine(nLive = POOL, liveEp = null, capEp = null) {
       try { return await e.detect('live', input); } finally { if (!free.includes(e)) free.push(e); }
     },
     warp: (rgba, w, h, pts, upright) => (two ? capE : lives[0]).warp(rgba, w, h, pts, upright),
-    stop() { lives.forEach(e => e.stop()); capE.stop(); },
+    stop() { lives.forEach(e => e.stop()); if (!shared) capE.stop(); },
   };
+}
+
+// The accurate model's thread is started first, on the CPU (owner, 2026-10-22): picked photos and PDFs need
+// only it, so they can go in a few seconds after the page opens; the live frame's models (the GPU's light
+// one) are loaded after it, in the background when nothing is being worked on, or when the camera starts,
+// and they share this thread for the shot — one copy of the accurate model. ensureCap() → the thread
+// (a capture-only engine for analyzePicture), started again when it failed or the model was changed.
+let capThread = null, capFor = '', capLoading = null;
+function capOnly(e) { return { detect: (which, input) => e.detect('live', input), warp: e.warp, hasCap: () => false, stop: () => e.stop(), raw: e, label: 'the capture thread' }; }
+function ensureCap() {
+  const [live, cap] = $('model').value.split('+'), name = cap || live;
+  if (capThread && capFor === name) return Promise.resolve(capThread);
+  if (capLoading && capFor === name) return capLoading;
+  if (capThread) { capThread.stop(); capThread = null; }
+  capFor = name;
+  const t0 = performance.now();
+  status('Preparing the accurate model…', 0);
+  const e = workerEngine(1, ORT_DIR, () => {
+    log('The capture thread stopped answering — it starts again');
+    noteFail('Capture thread', 'stopped answering');
+    if (capThread && capThread.raw === e) capThread = null;
+    e.stop(); onStuck();
+  });
+  capLoading = e.load(name, null, 'wasm', true).then(() => {
+    capThread = capOnly(e);
+    log('The accurate model is ready (' + ((performance.now() - t0) / 1000).toFixed(1) + ' s) — photos and PDFs can go in');
+    if (!engine) status('Ready for photos and PDFs — the camera\'s model is loading…', 1);
+    return capThread;
+  }, err => { e.stop(); noteFail('Capture thread', err && err.message || err); throw err; }).finally(() => { capLoading = null; });
+  return capLoading;
 }
 
 // One start of the model at a time (the live frame and a picked file may both ask).
@@ -286,7 +319,8 @@ async function startSession() {
   let e = null, used = null;
   for (const w of ways) {
     status('Trying ' + w.label + '…', 0);
-    const cand = w.gpuLive ? poolEngine(2, 'webgpu', 'wasm') : w.pool ? poolEngine() : w.worker ? workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : ORT_DIR) : pageEngine();
+    const shared = cap && (w.gpuLive || w.pool) ? await ensureCap().then(t => t.raw, () => null) : null;
+    const cand = w.gpuLive ? poolEngine(2, 'webgpu', 'wasm', shared) : w.pool ? poolEngine(POOL, null, null, shared) : w.worker ? workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : ORT_DIR) : pageEngine();
     try { await cand.load(live, cap, w.ep); e = cand; used = w; break; }
     catch (err) { cand.stop(); noteFail(w.label, err && err.message || err); log('Trying the next way'); }
   }
@@ -614,9 +648,9 @@ async function fixCorners(img) {
   if (pg) { while (a.edgesMoreFixed.length < a.edgesMore.length) a.edgesMoreFixed.push(null); a.edgesMoreFixed[pg - 1] = pts; } else a.edgesFixed = pts;
   log('Corners fixed by hand (page ' + (pg + 1) + ')');
   try {
-    if (!engine) await ensureSession();
+    const eng = engine || await ensureCap();
     const pix = f.frame.getContext('2d').getImageData(0, 0, f.w, f.h).data;
-    const out = await engine.warp(pix, f.w, f.h, pts, true);
+    const out = await eng.warp(pix, f.w, f.h, pts, true);
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
     img.src = oc.toDataURL('image/jpeg', 0.9);
@@ -1212,7 +1246,7 @@ async function showPicture(url, parts, before) {
 // the one on screen folds into a line first, so photos and then PDFs from another folder go in one after the other.
 $('file').onchange = async e => {
   const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
-  running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureSession();
+  running = false; while (inFlight) await new Promise(r => setTimeout(r, 10)); await ensureCap();
   keepCurrent(); batchLabel = files.map(f => f.name).join(', ') || 'Files'; picking = true;
   // lanes: lane 0 is the main engine, lane k its file thread k (the main engine when that one failed); a lane
   // takes one picture at a time
@@ -1221,7 +1255,8 @@ $('file').onchange = async e => {
   const take = () => free.length ? Promise.resolve(free.shift()) : new Promise(r => waiting.push(r));
   const give = k => { const r = waiting.shift(); r ? r(k) : free.push(k); };
   const addLane = k => { if (!lanes.has(k)) { lanes.add(k); give(k); } };
-  const engineOf = async k => { const t = k && fileThreads[k - 1]; if (t && !t.dead) return t; if (!engine) await ensureSession(); return engine; };
+  // lane 0: the whole engine when it shares the capture thread (its light model also looks for more documents), else the capture thread
+  const engineOf = async k => { const t = k && fileThreads[k - 1]; if (t && !t.dead) return t; return engine && engine.shared ? engine : ensureCap(); };
   // a picture whose thread failed is worked again on the main engine (started again when it was the one that hung)
   // what is being done is shown on the picture that goes on the list next (as a shot is): the picture, the
   // frame of each document as it is found, and what is going on; the pages join the list below as each is done
@@ -1241,8 +1276,7 @@ $('file').onchange = async e => {
       try { return await analyzePicture(url, pdfPage, eng, step); }
       catch (err) {
         log('Picked file on ' + (eng.label || 'the main thread') + ': ' + (err && err.message || err) + ' — again on the main thread');
-        if (!engine || eng === engine) await ensureSession();
-        return await analyzePicture(url, pdfPage, engine, step);
+        return await analyzePicture(url, pdfPage, await engineOf(0), step);
       }
     } finally { give(k); }
   };
@@ -1291,8 +1325,12 @@ log('CPU engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || O
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
 log('CPU: ' + (navigator.hardwareConcurrency || '?') + ' cores' + (navigator.deviceMemory ? ', memory ' + navigator.deviceMemory + ' GB' : '') + '; several background threads of one thread each are used' + (self.crossOriginIsolated ? '' : ' (one core each: this page is not cross-origin isolated)'));
 showFails();
-// The models are fetched as soon as the page opens; the camera button waits for them.
-ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
+// The accurate model first (photos and PDFs can go in), then the camera's models in the background once
+// nothing is being worked on; the camera button waits for them.
+ensureCap().catch(e => log('Accurate model: ' + (e && e.message || e))).finally(async () => {
+  while (picking) await new Promise(r => setTimeout(r, 300));
+  ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
+});
 </script>
 <script src="/scan/embed.js"></script>
 </body>
