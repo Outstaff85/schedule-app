@@ -715,15 +715,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const batches = await p.evaluate(async ([a, b]) => {
     const post = (key, pic) => window.postMessage({type: 'scan-pages', key, pages: ['data:image/jpeg;base64,' + pic]}, location.origin);
     const n = sel => document.querySelectorAll(sel).length;
+    // the window's two tabs (variant C): Camera (the lab, its bar, New pages) and Pages (the folded batches, counted on the tab)
+    const tab = name => { const t = document.querySelector('[data-testid="scan-tab-' + name + '"]'); t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); t.focus(); };
+    const onPages = () => (document.querySelector('[data-testid="scan-tab-pages"]').textContent.match(/\d+/) || ['0'])[0];
     const r = {};
     let going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
     post('s91', a);
     r.preview = await T.until(() => n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
     post('f91.1', b);
-    r.foldedByNew = await T.until(() => n('[data-testid="scan-batch"]') === 1 && n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
+    r.foldedByNew = await T.until(() => onPages() === '1' && n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
     document.querySelector('[data-testid="scan-keep"]').click();
-    r.foldedByKeep = await T.until(() => n('[data-testid="scan-batch"]') === 2 && !document.querySelector('[data-testid="scan-preview"]'), 4000);
+    r.foldedByKeep = await T.until(() => onPages() === '2' && !document.querySelector('[data-testid="scan-preview"]'), 4000);
+    // the bar: Auto is handed to the lab page's own Auto capture
+    const frameAuto = () => document.querySelector('[data-testid="scan-lab-frame"]').contentWindow.document.getElementById('auto').checked;
+    document.querySelector('[data-testid="scan-auto"]').click();
+    r.autoOff = await T.until(() => !frameAuto(), 3000);
+    document.querySelector('[data-testid="scan-auto"]').click();
+    r.autoOn = await T.until(() => frameAuto(), 3000);
+    tab('pages');
+    r.pagesTab = await T.until(() => n('[data-testid="scan-batch"]') === 2 && !document.querySelector('[data-testid="scan-lab-slot"]'), 4000);
+    r.camHidden = await T.until(() => document.querySelector('[data-testid="scan-lab-frame"]').style.visibility === 'hidden', 3000);
     T.tap('[data-testid="scan-batch"]');
     r.unfolds = await T.until(() => { const d = document.querySelector('[data-testid="scan-batch"] [data-no-tap]'); return !!d && d.offsetHeight > 0 && getComputedStyle(d).opacity === '1'; }, 4000);
     r.done = document.querySelector('[data-testid="scan-done"]').textContent;
@@ -732,13 +744,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await new Promise(res => setTimeout(res, 500)); // the window gone, as a person opens it again
     going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
+    tab('pages');
     r.restored = await T.until(() => n('[data-testid="scan-batch"]') === 2, 4000);
     T.esc(); await going;
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
     return r;
   }, [JPG, JPG2]);
-  ok(batches.preview && batches.foldedByNew && batches.foldedByKeep && batches.unfolds && /2/.test(batches.done) && batches.restored,
-    'scan window, batches: the last one under New pages, folded by the next one and by Looks good, a line unfolds on a tap, kept on the phone after the window closes ' + JSON.stringify(batches));
+  ok(batches.preview && batches.foldedByNew && batches.foldedByKeep && batches.autoOff && batches.autoOn && batches.pagesTab && batches.camHidden && batches.unfolds && /2/.test(batches.done) && batches.restored,
+    'scan window, batches: the last one under New pages, folded by the next one and by Looks good (counted on the Pages tab), Auto reaches the lab, the Pages tab lists them (the camera hidden), a line unfolds on a tap, kept on the phone after the window closes ' + JSON.stringify(batches));
   // The lab's Photo or PDF…: several files at once, a PDF split into its pages (pdf.js), in the files' order
   const PDF2 = (() => {
     const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',

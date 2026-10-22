@@ -1,5 +1,6 @@
 // The site's scan window (src/scan/Scanner.tsx) opens this page — the scanner lab's own, copied as it
-// is — in a frame with ?embed=1. The one file the site adds: it hides the lab's tools and figures and
+// is — in a frame with ?embed=1. The one file the site adds: it hides the lab's tools, buttons, texts and figures (the
+// window's Camera tab drives it: scan-start, scan-snap, scan-auto, scan-files) and
 // posts each shot's cut pages (and each picked file's, as each is done) to the window, with the document type model's
 // answer, the passport zone reader's lines and the Hebrew field reader's fields on each when this version has them; it stops the camera when the window closes
 // (docs/scan.md → The scan window). Nothing else changes.
@@ -8,7 +9,7 @@
   holdForDone = true;  // the kept attempts wait for the window's Done (doneAttempts)
   const css = document.createElement('style');
   // the window shows the pages itself (one preview, the batches' lines): the lab's own are hidden
-  css.textContent = 'h1,.row:first-of-type,.stats,#log,label.btn:has(#useWorker),label.btn:has(#follow),#shot,#kept{display:none!important}' +
+  css.textContent = 'h1,.row:first-of-type,.row:has(#startCam),#status,#train,.stats,#log,label.btn:has(#useWorker),label.btn:has(#follow),#shot,#kept{display:none!important}' +
     'html{background:transparent}body{padding:0 0 12px;background:transparent}body::before{display:none}';  // the window's own glass shows through
   document.head.appendChild(css);
   const $ = id => document.getElementById(id);
@@ -96,11 +97,33 @@
       doneAttempts();  // Done: the kept attempts go for training (docs/scan-plan.md → S8)
     } else if (e.data.type === 'scan-deleted') {
       for (const p of e.data.pages || []) void attemptPageDeleted(p.att, p.pg);
+    } else if (e.data.type === 'scan-start') {
+      void startCamera();  // the window's Camera tab is shown: the camera starts once the model is ready
+    } else if (e.data.type === 'scan-snap') {
+      if ($('video').hidden) void startCamera(); else $('snap').click();
+    } else if (e.data.type === 'scan-auto') {
+      $('auto').checked = !!e.data.on;
+    } else if (e.data.type === 'scan-files') {
+      // files picked in the window (its Photos or PDF button): handed to the lab's own picker
+      const dt = new DataTransfer();
+      for (const f of e.data.files || []) if (f instanceof File) dt.items.add(f);
+      if (dt.files.length) { $('file').files = dt.files; $('file').dispatchEvent(new Event('change')); }
     } else if (e.data.type === 'scan-continue') {
       if (e.data.discard) { decideAttempts('retaken'); shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; }
       $('keep').click();
     }
   });
+  // The lab's Start camera, once its model is ready (the button is off while the model starts): the window's
+  // controls stand in for the lab's own, hidden here.
+  let starting = false;
+  const startCamera = async () => {
+    if (starting || !$('video').hidden) return;
+    starting = true;
+    try {
+      for (let i = 0; i < 300 && $('startCam').disabled; i++) await new Promise(r => setTimeout(r, 100));
+      if ($('video').hidden && !$('startCam').disabled) $('startCam').click();
+    } finally { starting = false; }
+  };
   const shot = window.showShot;
   window.showShot = async () => { const key = 's' + (++shots); await shot(); if (!fileKey) await send(key); };
   // a pick is a batch of its own (the lab folds the one on screen first): its pages from the first
