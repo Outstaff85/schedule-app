@@ -26,6 +26,7 @@ photos again, so only this script is kept.
   python synth_docs.py --count 20000 --backgrounds D:/backgrounds   # own table / floor photos too
   python synth_docs.py --count 20000 --templates             # + the real pages in ~/.scan-train/templates/
   python synth_docs.py --count 40 --show                     # + show/: the corners drawn, to look at
+  python synth_docs.py --templates --exam                    # the exam photos of the real pages kept apart (exam.py)
 
 Writes <out>/img/<n>.jpg (the long side 640) and <out>/examples.json in pull.py's form (fixed:
 the corners 0..1, top-left first clockwise as the model gives them; null: nothing here).
@@ -45,6 +46,7 @@ from synth_lines import hebrew_fonts
 
 HERE = pathlib.Path(__file__).resolve().parent
 OUT = WORK / "synth" / "docs"
+EXAM_OUT = WORK / "synth" / "docs-exam"   # the exam photos of the real pages kept apart (exam.py)
 OCRB = HERE / "fonts" / "OCRB.otf"
 PX = 10            # pixels per millimetre of the flat documents
 LONG = 640         # the saved photo's long side (the model sees it squeezed to 256×256)
@@ -628,6 +630,8 @@ def main():
                     "(a folder with id_front/, id_back/, passport/, sefach/, insert/; default ~/.scan-train/templates)")
     ap.add_argument("--template-share", type=float, default=0.4, help="the share of photos with a real page")
     ap.add_argument("--sharp", action="store_true", help="keep the real pages' face and text as they are (not washed out)")
+    ap.add_argument("--exam", action="store_true", help="the exam photos: only the real pages kept apart (synth.held_out), "
+                    "every photo with one; default out ~/.scan-train/synth/docs-exam, 300 photos, its own seed")
     ap.add_argument("--latin", nargs="*")
     ap.add_argument("--hebrew", nargs="*")
     a = ap.parse_args()
@@ -637,6 +641,21 @@ def main():
     pages = templates_in(a.templates) if a.templates else []
     if a.templates and not pages:
         raise SystemExit(f"no pages in {a.templates} — run pull_templates.py or put photos into its id_front/, sefach/… folders")
+    kept = [pg for pg in pages if synth.held_out(pg[0])]
+    if a.exam:
+        if not kept:
+            raise SystemExit("no real page is kept apart for the exam — put more pages into the templates folder")
+        if a.out == str(OUT):
+            a.out = str(EXAM_OUT)
+        if a.count == 20000:
+            a.count = 300
+        if a.seed == 1:
+            a.seed = 7
+        pages, a.template_share = kept, 1.0
+        print(f"exam photos from {len(kept)} real pages kept apart: " + ", ".join(pathlib.Path(p).name for p, _ in kept))
+    elif kept:
+        pages = [pg for pg in pages if not synth.held_out(pg[0])]
+        print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), {len(pages)} laid here")
     folder, ex = draw(a.count, a.out, a.seed, a.jobs, photos, a.show, a.latin, a.hebrew, (pages, a.template_share, a.sharp))
     by = {}
     for e in ex:
