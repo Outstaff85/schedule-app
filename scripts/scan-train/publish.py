@@ -7,8 +7,8 @@ reader only when that version has one), the face finder too. The counters are re
 after the edges, doctypesSince after the document types; their names before H0 are cleared
 too), the lab is pointed at the new version (scripts/scan-lab/models-version — committed and
 deployed by the skill; the site follows only after the owner tried it in the lab), and the
-copies on this PC are deleted. The scan attempts this run trained on (S8, pull.py's attempts.json)
-move from attempts/new/ to attempts/used/v<N>/, so the next run takes only new ones, and
+copies on this PC are deleted (--keep-copies: kept, for a training still to come). With the edges
+published, the scan attempts this run trained on (S8, pull.py's attempts.json) move from attempts/new/ to attempts/used/v<N>/, so the next run takes only new ones, and
 attemptsSince is reset. Needs the owner's HF token on the PC (`hf auth login`)."""
 import argparse
 import datetime
@@ -53,6 +53,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--force-doctypes", action="store_true", help="publish document type models the exam called not worth it (the owner's explicit call)")
     ap.add_argument("--force-mrz", action="store_true", help="publish a passport zone reader the exam called not worth it (the owner's explicit call)")
+    ap.add_argument("--keep-copies", action="store_true", help="keep the copies on this PC (the examples, templates and made-up photos for a training still to come)")
     ap.add_argument("--force-he", action="store_true", help="publish a Hebrew field reader its check called not ready (the owner's explicit call)")
     a = ap.parse_args()
     edges = read_json(WORK / "report.json") if (WORK / "report.json").exists() else None
@@ -131,15 +132,16 @@ def main():
         stats.update({"lastMrzTrainedAt": now, "lastMrzReport": mrz})
     if he:
         stats.update({"lastHeTrainedAt": now, "lastHeReport": he})
-    moved = move_attempts(v)
+    moved = move_attempts(v) if edges else 0   # the attempts are the edges' examples: used only once the edges are trained on them
     if moved:
         stats["attemptsSince"] = firestore.Increment(-moved)  # the attempts that came in since the pull stay counted
     db().collection("scanTrainingStats").document("current").set(stats, merge=True)
     (ROOT / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
-    clear_work()
+    if not a.keep_copies:
+        clear_work()
     what = " and ".join(x for x, on in (("the document edges models", edges), ("the document type models", doctypes), ("the passport zone reader", mrz), ("the Hebrew field reader", he)) if on)
     print(f"Published as {v} on Hugging Face (https://huggingface.co/{REPO}/tree/{v}; {what} new); "
-          f"the lab now names {v} (scripts/scan-lab/models-version); the copies on this PC are deleted.")
+          f"the lab now names {v} (scripts/scan-lab/models-version); " + ("the copies on this PC are kept." if a.keep_copies else "the copies on this PC are deleted."))
 
 
 if __name__ == "__main__":

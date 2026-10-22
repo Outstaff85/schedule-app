@@ -58,7 +58,8 @@ def find_lines(gray):
     none is found. The zone is the page's lowest two text lines that run across most of its width: in
     the lower 45 % of the page, the dark marks of each pixel row (an adaptive threshold) are counted,
     rows whose dark marks (dark_marks, then joined along the row) fill at least 35 % of the width are text (a zone line's letters, joined, fill most of it; scattered specks do not), and the last two bands of such rows are
-    the lines, each cut with a little margin."""
+    the lines, each cut with a little margin; a last band less than half as tall as the one above it is the page's
+    edge, not a line (both zone lines are the same height), and is left out."""
     import cv2
     h, w = gray.shape[:2]
     top = int(h * 0.55)
@@ -75,6 +76,8 @@ def find_lines(gray):
             if y - s >= max(4, h // 150):
                 bands.append((s, y))
         y += 1
+    while len(bands) > 2 and 2 * (bands[-1][1] - bands[-1][0]) < bands[-2][1] - bands[-2][0]:
+        bands.pop()                              # a thin band below the zone (the page's dark edge), not its line 2
     if len(bands) < 2:
         return []
     (a0, a1), (b0, b1) = bands[-2], bands[-1]
