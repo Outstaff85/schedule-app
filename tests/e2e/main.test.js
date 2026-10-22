@@ -774,10 +774,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const one = await fw.analyzePicture(url, false, stub([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]));
     calls.length = 0;
     const none = await fw.analyzePicture(url, false, stub([null, null, null, null]));
-    return {parts: one.length, docs: one[0].docs.length, first: one[0].docs[0].pts[2].join(), whole: none[0].docs[0].pts.map(q => q.join()).join(';'), size: [one[0].w, one[0].h].join('x'), threads: typeof fw.fileEngines};
+    // a document lying on the one found: looked for on that one's cut, its corners taken back onto the photo
+    const outer = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
+    const inner = {hasCap: () => false, detect: async () => ({res: {pts: [[0.25, 0.5], [0.75, 0.5], [0.75, 0.8], [0.25, 0.8]], conf: 0.9}, ms: 1}),
+      warp: async () => ({width: 800, height: 500, data: new Uint8ClampedArray(800 * 500 * 4).buffer, turn: 0})};
+    const c = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, inner, [outer]);
+    const big = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, {...inner, detect: async () => ({res: {pts: [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]], conf: 0.9}, ms: 1})}, [outer]);
+    return {parts: one.length, docs: one[0].docs.length, first: one[0].docs[0].pts[2].join(), whole: none[0].docs[0].pts.map(q => q.join()).join(';'), size: [one[0].w, one[0].h].join('x'), threads: typeof fw.fileEngines,
+      inside: c && c.map(q => q.map(v => Math.round(v * 100)).join()).join(';'), big};
   }, JPG);
-  ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.threads === 'function',
-    'scanner lab, picked files: a picture is worked on any engine with no screen (its threads run several at once) — the document found, else the picture as it is ' + JSON.stringify(apic));
+  ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.threads === 'function'
+    && apic.inside === '30,50;70,50;70,74;30,74' && apic.big === null,
+    'scanner lab, picked files: a picture is worked on any engine with no screen (its threads run several at once) — the document found, else the picture as it is; a document lying on another is found on its cut and taken back onto the photo, one covering it all is not ' + JSON.stringify(apic));
   // Why a way to run the models failed is kept on the phone (the last 8) and shown in the log when the lab opens;
   // the way that worked is remembered for a day only
   const wayFails = await p.evaluate(() => {

@@ -54,3 +54,15 @@ def test_a_retake_with_no_corners_moved_is_only_a_hard_exam_page():
 def test_a_picture_taken_whole_teaches_nothing():
     assert attempts.examples_of({"outcome": "kept", "edgesModel": None}) == []
     assert attempts.examples_of({"outcome": "retaken", "edgesModel": None}) == []
+
+
+def test_a_document_lying_on_another_is_not_painted_over_with_it():
+    sefach = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    card = [[0.3, 0.55], [0.7, 0.55], [0.7, 0.8], [0.3, 0.8]]
+    beside = [[0.92, 0.1], [0.99, 0.1], [0.99, 0.3], [0.92, 0.3]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesMore": [beside, card]})
+    assert kinds(ex) == [("edges", 0), ("edges", 1), ("edges", 2)]
+    assert ex[2]["target"] == card and ex[2]["paint"] == [beside]
+    # deleted, it teaches nothing ("nothing here" would be said of the photo with the sefach on it)
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesMore": [card], "deletedPages": [1]})
+    assert kinds(ex) == [("edges", 0)]
