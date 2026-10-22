@@ -15,7 +15,7 @@ It is the target for the redesign of every page (manager app, supplier portal, c
 ## Visual foundations
 
 - **Ground:** a deep `ground` with three soft, wide radial blobs (indigo top left at ~42%, cyan right and pink bottom at ~30%, fading over 52–55%). Calm and dark; the blobs are light, never content.
-- **Glass for controls, solid for content.** Buttons, tabs, menus, the Select bar, the Undo snack and sheets are glass (`glass*` tokens + backdrop blur). Plates and tick tiles are solid `plate` so names stay readable.
+- **Glass for controls, solid for content.** Buttons, tabs, menus, the Select bar, the Undo snack and sheets are glass (`glass*` tokens + backdrop blur). Plates are solid enough that names stay readable: a soft gradient `plate-top` → `plate-bottom` over `plate`, with `shadow-plate` (light on the top edge, a soft shadow below); windows the same gradient from the top down (owner 2026-10-22, "3e with 3b shading" — the default for every page). Tick tiles stay solid `plate`.
 - **One highlight:** the animated underline, a 3px line in a flowing `uline-1 → uline-2 → uline-3` gradient with a soft glow (`shadow-uline`). It springs in (overshoot) on hover, focus and the active state of buttons, tabs, ⋮ and Undo; the same gradient runs as a 3px line on the left of a hovered menu item and as the Undo timer.
 - **Status by the plate bar:** `green` OK, `accent` info, `amber` attention, `red` problem. Never color a whole plate.
 - **Shape:** radius-lg (16) for buttons, plates, popovers; radius-md (14) for tabs and ticks; avatars are discs.

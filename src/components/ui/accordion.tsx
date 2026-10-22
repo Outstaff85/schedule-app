@@ -16,7 +16,7 @@ function AccordionItem({ className, color, style, ...props }: React.ComponentPro
     <AccordionPrimitive.Item
       data-slot="accordion-item"
       className={cn('mb-2 overflow-hidden rounded-lg bg-plate', className)}
-      style={{ boxShadow: `inset 4px 0 0 ${color || 'var(--neutral)'}`, ['--c' as string]: color || 'var(--neutral)', ...style }}
+      style={{ boxShadow: `inset 4px 0 0 ${color || 'var(--neutral)'}, var(--shadow-plate)`, ['--c' as string]: color || 'var(--neutral)', ...style }}
       {...props}
     />
   );

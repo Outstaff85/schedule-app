@@ -412,7 +412,7 @@ html,body{
 .pp-tile-v{font-size:14px;font-weight:700;color:var(--ink)}
 .pp-tile-v.fig{font:700 18px 'DM Mono',ui-monospace,monospace;color:var(--fig)}
 .pp-tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(34,211,238,.2);color:var(--cyan-text);margin-left:2px}
-.sched-notice{border-radius:14px!important;background:var(--plate)!important;border:0!important;box-shadow:inset 4px 0 0 var(--warn)}
+.sched-notice{border-radius:14px!important;background:var(--plate)!important;background-image:var(--plate-grad)!important;border:0!important;box-shadow:inset 4px 0 0 var(--warn),var(--shadow-plate)}
 #screenSchedule,#screenHours{top:max(env(safe-area-inset-top,0px),10px);border-radius:22px 22px 0 0;background:var(--glass-dark)!important;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-top:1px solid rgba(var(--tint),.2)}
 /* The sheets close like every sheet (stage 13): no ✕ — a tap on the grab bar,
    a swipe down from the top of the sheet, or Escape. */
@@ -423,8 +423,8 @@ html,body{
 .shift-bar{border-radius:7px}
 .shift-bar.dated{outline:none;position:relative}
 .shift-bar.dated::after{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:#22d3ee;box-shadow:0 0 6px #22d3ee}
-.sched-sum div,.sched-detail{background:var(--plate)!important;border:0!important;border-radius:14px!important}
-.hours-shift{background:var(--plate);border-radius:14px;border-bottom:0!important;margin-bottom:6px;padding:0 10px;box-shadow:inset 3px 0 0 var(--ok)}
+.sched-sum div,.sched-detail{background:var(--plate)!important;background-image:var(--plate-grad)!important;border:0!important;border-radius:14px!important}
+.hours-shift{background:var(--plate);background-image:var(--plate-grad);border-radius:14px;border-bottom:0!important;margin-bottom:6px;padding:0 10px;box-shadow:inset 3px 0 0 var(--ok),var(--shadow-plate)}
 .hours-row .h{color:var(--fig)}
 /* My Schedule / My Hours (redesign gaps, mockup 08): figures on top, day and
    shift plates (a date box, the text, hours in green), the current shift cyan
@@ -433,7 +433,7 @@ html,body{
 .sched-legend{margin:10px 0 12px}
 .sched-legend i.dot{width:8px;height:8px;border-radius:50%;background:#22d3ee;box-shadow:0 0 6px #22d3ee}
 .sp-list{display:flex;flex-direction:column;gap:6px}
-.sp-plate{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:14px;background:var(--plate);box-shadow:inset 4px 0 0 var(--c,var(--ok));cursor:pointer}
+.sp-plate{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:14px;background:var(--plate);background-image:var(--plate-grad);box-shadow:inset 4px 0 0 var(--c,var(--ok)),var(--shadow-plate);cursor:pointer}
 .sp-plate.today{box-shadow:inset 4px 0 0 var(--c,var(--ok)),0 0 0 1.5px rgba(79,142,247,.7)}
 .sp-plate.sel{background:#222634}
 .sp-dd{width:38px;flex:none;text-align:center;font-size:11px;color:var(--text2);line-height:1.1;text-transform:capitalize}
@@ -443,7 +443,7 @@ html,body{
 .sp-tx em{font-style:normal;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(34,211,238,.2);color:var(--cyan-text)}
 .sp-h{font:700 14px 'DM Mono',ui-monospace,monospace;color:var(--fig)}
 .gbtn.sp-more{height:36px;font-size:13px}
-.hours-shift{box-shadow:inset 4px 0 0 var(--c,var(--ok))!important;padding:0 10px 0 14px!important}
+.hours-shift{box-shadow:inset 4px 0 0 var(--c,var(--ok)),var(--shadow-plate)!important;padding:0 10px 0 14px!important}
 .hours-shift .sp-tx{font-family:inherit}
 .hours-shift.live{background:#1a2a30}
 .hours-shift.live .sp-tx small{color:var(--cyan-text)}
@@ -550,7 +550,7 @@ svg.ti{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125e
 
 /* GPS off or blocked (docs/punch.md): the notice under the location pill (a tap opens the
    steps), and the button's "Turn on GPS" face — it opens the same steps on a tap. */
-.gps-notice{display:flex;align-items:center;gap:8px;width:100%;max-width:340px;margin:0 auto 12px;padding:9px 12px;border:0;border-radius:14px;background:var(--plate);box-shadow:inset 4px 0 0 var(--bad);color:var(--red-text);font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+.gps-notice{display:flex;align-items:center;gap:8px;width:100%;max-width:340px;margin:0 auto 12px;padding:9px 12px;border:0;border-radius:14px;background:var(--plate);background-image:var(--plate-grad);box-shadow:inset 4px 0 0 var(--bad);color:var(--red-text);font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
 .gps-notice span{flex:1}
 .gps-notice .go{flex:none;opacity:.85;font-size:12px;white-space:nowrap}
 .big-punch-btn.disabled.gps{cursor:pointer;color:var(--red-text);border-color:var(--bad)}
