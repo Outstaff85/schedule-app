@@ -763,6 +763,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(picked.multiple && picked.accept === '' && picked.one && picked.button === 'Photos or PDF…'
     && picked.out.join('|') === 'file 1 of 2 blob:http:|file 2 of 2, page 1 of 2 data:image|file 2 of 2, page 2 of 2 data:image',
     'scan window: the lab\'s one Photos or PDF… (no file type: the phone\'s file chooser, photos and PDFs side by side) takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+  // Why a way to run the models failed is kept on the phone (the last 8) and shown in the log when the lab opens;
+  // the way that worked is remembered for a day only
+  const fails = await p.evaluate(() => {
+    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, ls = fw.localStorage;
+    ls.removeItem('scanWayFails');
+    fw.noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
+    fw.noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
+    for (let i = 0; i < 9; i++) fw.noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    const list = JSON.parse(ls.getItem('scanWayFails'));
+    fw.showFails();
+    const logText = fw.document.getElementById('log').textContent;
+    return {n: list.length, kinds: [fw.failKind('WebGPU device was lost'), fw.failKind('RangeError: Array buffer allocation failed'), fw.failKind('no answer for 25 s'), fw.failKind('model download failed: HTTP 404')].join(),
+      last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)};
+  });
+  ok(fails.n === 8 && fails.kinds === 'GPU,memory,hang,error' && fails.last === 'hang' && fails.shown,
+    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the log ' + JSON.stringify(fails));
   // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
   // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
   // a kept page deleted later is told by its folder; with no network they wait on the phone, 5 at most

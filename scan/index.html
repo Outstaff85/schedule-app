@@ -184,6 +184,7 @@ function onStuck() {
   if (!engine) return;
   const w = WAYS.find(x => x.id === engineWay);
   log('The model stopped answering on "' + (w ? w.label : engineWay) + '" — it starts again on the next way');
+  noteFail(w ? w.label : engineWay, 'stopped answering while scanning');
   stuckWays.add(engineWay);
   const old = engine; engine = null; engineKey = '';
   try { old.stop(); } catch (e) {}
@@ -201,8 +202,40 @@ const WAYS = [
   { id: 'bg-cpu1', label: 'CPU ×1 · bg', worker: true, ep: 'wasm', threads: 1 },
   { id: 'page-cpu', label: 'CPU ×' + THREADS + ' · page', worker: false, ep: 'wasm', threads: THREADS },
 ];
-const WAY_KEY = 'scanTestWay3';
-const remembered = { get: () => { try { return localStorage.getItem(WAY_KEY); } catch (e) { return null; } }, set: v => { try { localStorage.setItem(WAY_KEY, v); } catch (e) {} } };
+// The way that worked is remembered for a day only: a way that failed once (a busy phone, a deploy
+// half done) is tried again the next day, so a one-off failure does not keep the phone on a slow way.
+const WAY_KEY = 'scanTestWay4', WAY_DAY = 24 * 3600 * 1000;
+const remembered = {
+  get: () => { try { const v = JSON.parse(localStorage.getItem(WAY_KEY) || 'null'); return v && Date.now() - v.at < WAY_DAY ? v.id : null; } catch (e) { return null; } },
+  set: v => { try { localStorage.setItem(WAY_KEY, JSON.stringify({ id: v, at: Date.now() })); } catch (e) {} },
+};
+// Why a way failed on this device, kept on it (the last 8): shown in the log when the page opens, so a way
+// that keeps failing — and why: memory, a hang, the GPU, another error — can be seen on the phone itself.
+const FAIL_KEY = 'scanWayFails';
+function failKind(text) {
+  const t = String(text || '');
+  if (/memory|alloc|oom|out of range|rangeerror|bad_alloc/i.test(t)) return 'memory';
+  if (/no answer|silent|timed? ?out|stopped answering/i.test(t)) return 'hang';
+  if (/webgpu|gpu|adapter|device (was )?lost|shader/i.test(t)) return 'GPU';
+  return 'error';
+}
+function noteFail(label, text) {
+  const kind = failKind(text);
+  log('Failed — ' + label + ': ' + kind + ' (' + String(text || '').slice(0, 160) + ')');
+  try {
+    const list = JSON.parse(localStorage.getItem(FAIL_KEY) || '[]');
+    list.push({ at: new Date().toISOString(), way: label, kind, text: String(text || '').slice(0, 160), mem: navigator.deviceMemory || null });
+    localStorage.setItem(FAIL_KEY, JSON.stringify(list.slice(-8)));
+  } catch (e) {}
+}
+function showFails() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(FAIL_KEY) || '[]'); } catch (e) {}
+  if (!list.length) { log('No way has failed on this device yet'); return; }
+  // the log shows the newest line on top: the failures oldest first, then their heading above them
+  for (const f of list) log('  ' + f.at.slice(0, 16).replace('T', ' ') + ' — ' + f.way + ': ' + f.kind + ' (' + f.text + ')' + (f.mem ? ', memory ' + f.mem + ' GB' : ''));
+  log('Earlier failures on this device (last ' + list.length + ', newest on top):');
+}
 
 // Several single-thread background threads: the live frames go to them in
 // turn (2–3 frames worked on at once), the accurate model has its own thread,
@@ -252,7 +285,7 @@ async function startSession() {
     status('Trying ' + w.label + '…', 0);
     const cand = w.gpuLive ? poolEngine(2, 'webgpu', 'wasm') : w.pool ? poolEngine() : w.worker ? workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : ORT_DIR) : pageEngine();
     try { await cand.load(live, cap, w.ep); e = cand; used = w; break; }
-    catch (err) { cand.stop(); log(w.label + ': ' + (err && err.message || err) + ' — trying the next way'); }
+    catch (err) { cand.stop(); noteFail(w.label, err && err.message || err); log('Trying the next way'); }
   }
   if (!e) { $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw new Error('no way to run the model'); }
   // remembered for the next open — not a way taken only because another hung on this page (onStuck): that is for this page only
@@ -1123,7 +1156,8 @@ $('engine').value = ORT_DIR === 'ort130' ? '130' : '122';
 $('engine').onchange = () => { location.search = '?ort=' + $('engine').value + '&v=' + Date.now(); };
 log('CPU engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || ORT_DIR) + ', GPU engine: 1.30.0');
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
-log('CPU: ' + (navigator.hardwareConcurrency || '?') + ' cores; several background threads of one thread each are used');
+log('CPU: ' + (navigator.hardwareConcurrency || '?') + ' cores' + (navigator.deviceMemory ? ', memory ' + navigator.deviceMemory + ' GB' : '') + '; several background threads of one thread each are used' + (self.crossOriginIsolated ? '' : ' (one core each: this page is not cross-origin isolated)'));
+showFails();
 // The models are fetched as soon as the page opens; the camera button waits for them.
 ensureSession().catch(e => log('Model: ' + (e && e.message || e)));
 </script>
