@@ -1530,5 +1530,11 @@
   "Hebrew field reader": "קורא השדות בעברית",
   "The firm's own small model reads an Israeli ID card's names, ID number and dates beside the AI, only compared: on each saved ID card, did it get the fields the user kept?": "המודל הקטן של החברה קורא את השמות, מספר הזהות והתאריכים בתעודת זהות ישראלית לצד הבינה המלאכותית, רק להשוואה: בכל תעודת זהות שנשמרה, האם קרא נכון את השדות שהמשתמש השאיר?",
   "In shadow: {0} ID cards — the reader right on {1}, the AI on {2}": "בצל: {0} תעודות זהות — הקורא צדק ב-{1}, הבינה המלאכותית ב-{2}",
-  "No ID card read in shadow yet (the reader reads once a version has one).": "עדיין לא נקראה תעודת זהות בצל (הקורא קורא כשיש לגרסה קורא)."
+  "No ID card read in shadow yet (the reader reads once a version has one).": "עדיין לא נקראה תעודת זהות בצל (הקורא קורא כשיש לגרסה קורא).",
+  "Pages": "דפים",
+  "Auto": "אוטומטי",
+  "model": "מודל",
+  "model ✓": "מודל ✓",
+  "model ≠ AI": "מודל ≠ AI",
+  "No pages yet: take a picture or pick photos on the Camera tab": "עדיין אין דפים: צלמו או בחרו תמונות בלשונית המצלמה"
 }
