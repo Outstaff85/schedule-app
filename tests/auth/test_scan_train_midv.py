@@ -150,3 +150,21 @@ def test_drawing_leaves_the_first_core_free():
     assert home.spare_cores(16) == (set(range(2, 16)), 14)
     assert home.spare_cores(4) == ({2, 3}, 2)
     assert home.spare_cores(2) == ({0, 1}, 1) and home.spare_cores(1) == ({0}, 1)
+
+
+def test_the_zone_is_not_the_pages_dark_edge():
+    # find_lines (mrzmodel.py; the lab's mrzFind the same): a thin dark band at the page's bottom edge
+    # is not the zone's line 2 — both lines are the same height
+    import numpy as np
+    spec = importlib.util.spec_from_file_location("mrzmodel_t", HERE / "mrzmodel.py")
+    mm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mm)
+    page = np.full((700, 1000), 230, np.uint8)
+    for y in (560, 610):                                   # the zone's two lines: letters 22 px tall
+        for x in range(40, 960, 21):
+            page[y:y + 22, x:x + 15] = 20
+    edge = page.copy()
+    edge[694:] = 20                                        # the page's dark edge, 6 px
+    for p in (page, edge):
+        lines = mm.find_lines(p)
+        assert len(lines) == 2 and all(l.shape[0] >= 22 for l in lines)

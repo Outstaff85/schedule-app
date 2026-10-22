@@ -420,6 +420,8 @@ function mrzFind(canvas) {
     const s = y; while (y < ph && filled[y]) y++;
     if (y - s >= minH) bands.push([s, y]);
   }
+  // a thin band below the zone (the page's dark edge) is not its line 2: both lines are the same height
+  while (bands.length > 2 && 2 * (bands[bands.length - 1][1] - bands[bands.length - 1][0]) < bands[bands.length - 2][1] - bands[bands.length - 2][0]) bands.pop();
   if (bands.length < 2) return [];
   return bands.slice(-2).map(([s, e]) => {
     const m = Math.max(2, Math.floor((e - s) / 4)), ys = Math.max(0, s - m), ye = Math.min(ph, e + m);

@@ -3,12 +3,12 @@ the real passports the site collected (the full documents, H8a: documents/…/re
 the way the phone will run it (mrzmodel.py: the two lowest lines of the primary page, each read, line 2's
 values taken where their check digit is right) — and compared with what the user saved and with what the
 AI had filled in (scanned). On the made-up lines its check figures come from train_mrz.py.
-Writes ~/.scan-train/report_mrz.json: "publish" when the made-up lines are read well enough and, on the
-real passports, it is right at least as often as the AI (or there are none yet: then the shadow on the
-site examines it). With MIDV-2020's exam passports (midv_mrz.py: real photos and scans of mock passports,
-never trained on), the same is done on them — the zone found, line 2 read right, every check-digit field
-right — and reported beside (MIDV's figures inform the owner; the decision stays the made-up lines and
-the real passports the site collected).
+Writes ~/.scan-train/report_mrz.json: "publish" when the made-up lines are read well enough (SYNTH_AT),
+MIDV-2020's exam passports (midv_mrz.py: real photos and scans of mock passports, never trained on; the
+zone found, line 2 read right, every check-digit field right) have every check-digit field right often
+enough (MIDV_AT), and, on the real passports, it is right at least as often as the AI (or there are none
+yet: then the shadow on the site examines it). The real photos decide more than the made-up lines (owner,
+2026-10-22): many made-up check lines are made so small and blurred that a person cannot read them either.
 
   python exam_mrz.py
 """
@@ -22,7 +22,8 @@ import onnxruntime as ort
 from common import DATA, WORK, write_json
 from mrzmodel import decode, fields, find_lines, line_input
 
-SYNTH_AT = 0.95       # the share of made-up lines read right that a model must reach
+SYNTH_AT = 0.93       # the share of made-up lines read right that a model must reach
+MIDV_AT = 0.95        # the share of MIDV's exam passports with every check-digit field right
 COMPARED = ("docId", "docDob", "docExpiry", "docSex")
 
 
@@ -119,10 +120,12 @@ def main():
                 misses.append(r.get("id"))
     synth_ok = train["linesRight"] >= SYNTH_AT
     real_ok = n == 0 or all_right >= ai_right
+    midv = midv_exam(sess)
+    midv_ok = not midv.get("midvPages") or midv["midvFieldsAllRight"] >= MIDV_AT * midv["midvPages"]
     report = {"madeUpLinesRight": train["linesRight"], "madeUpCharsWrong": train["charsWrong"],
               "passports": n, "zoneFound": found, "passportsAllRight": all_right, "fieldsRight": fields_right, "fieldsCompared": fields_n,
               "aiPassportsAllRight": ai_right, "aiFieldsRight": ai_fields_right, "aiFieldsCompared": ai_n,
-              "missed": misses[:50], "publish": synth_ok and real_ok, **midv_exam(sess)}
+              "missed": misses[:50], "publish": synth_ok and real_ok and midv_ok, **midv}
     write_json(WORK / "report_mrz.json", report)
     print(f"Made-up lines: {train['linesRight']:.1%} read right ({train['charsWrong']:.2%} of the characters wrong; needed {SYNTH_AT:.0%})")
     if n:
@@ -134,7 +137,7 @@ def main():
         m = report["midvPages"]
         print(f"MIDV-2020 exam passports (real photos and scans): {m}; the zone found on {report['midvZoneFound']}; "
               f"line 2 read right on {report['midvLine2Right']} ({report['midvLine2Right'] / m:.0%}); "
-              f"every check-digit field right on {report['midvFieldsAllRight']} ({report['midvFieldsAllRight'] / m:.0%})")
+              f"every check-digit field right on {report['midvFieldsAllRight']} ({report['midvFieldsAllRight'] / m:.0%}; needed {MIDV_AT:.0%})")
     print("YES — worth publishing to the lab" if report["publish"] else "NO — do not publish")
 
 
