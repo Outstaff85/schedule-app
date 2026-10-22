@@ -24,7 +24,7 @@ jobs:
   tests:
     # pinned: ubuntu-latest became 26.04 (2026-10-21), where Playwright 1.56 installs no Chromium
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45   # ~10 min as a rule; a slow runner's apt-get took 17 min alone (2026-10-22)
     steps:
       - uses: actions/checkout@v4
 
