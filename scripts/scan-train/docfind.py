@@ -30,6 +30,14 @@ REST_BUSY = 0.3   # photos_on_page: most of a white page outside its photos is w
 
 # ---------- corners ----------
 
+def quad_error(pts, right):
+    """The farthest corner's distance (0..1 of the photo) between two quads, whichever corner each
+    starts from (both clockwise): a document turned near 45° has two "top-left" corners, and the
+    cut page is turned upright after anyway (owner, 2026-10-22)."""
+    p, r = np.asarray(pts, float), np.asarray(right, float)
+    return float(min(np.hypot(*(np.roll(p, k, 0) - r).T).max() for k in range(4)))
+
+
 def detect(sess, img):
     """The document edges model on a BGR image: (pts 4×2 in 0..1 or None, conf). sess may be a
     list of models (the accurate one, then the light one): the first that is sure wins."""

@@ -168,3 +168,15 @@ def test_the_zone_is_not_the_pages_dark_edge():
     for p in (page, edge):
         lines = mm.find_lines(p)
         assert len(lines) == 2 and all(l.shape[0] >= 22 for l in lines)
+
+
+def test_the_edges_exam_takes_any_first_corner():
+    # docfind.quad_error: a document turned near 45° has two "top-left" corners — the same quad
+    # started from another corner is right; a quad turned the other way round is not
+    spec = importlib.util.spec_from_file_location("docfind_t", HERE / "docfind.py")
+    df = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(df)
+    right = [[0.5, 0.1], [0.9, 0.5], [0.5, 0.9], [0.1, 0.5]]
+    assert df.quad_error(right[1:] + right[:1], right) == 0.0
+    assert df.quad_error([[0.51, 0.1], [0.9, 0.5], [0.5, 0.9], [0.1, 0.5]], right) < 0.011
+    assert df.quad_error(right[::-1], right) > 0.5

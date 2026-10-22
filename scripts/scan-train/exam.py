@@ -48,7 +48,7 @@ def read_all(path, examples):
 
 
 def err(pts, right):
-    return 1.0 if pts is None else float(max(np.hypot(p[0] - q[0], p[1] - q[1]) for p, q in zip(pts, right)))
+    return 1.0 if pts is None else docfind.quad_error(pts, right)   # whichever corner the model starts from
 
 
 def score(answers, examples):
