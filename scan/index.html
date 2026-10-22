@@ -193,8 +193,8 @@ function onStuck() {
 // The ways to run, best first. Each is tried in turn: a way that fails or goes
 // silent for 25 s is dropped (with its throwaway background thread), the next
 // starts clean. A GPU that hangs or computes wrong was seen on a phone, and a
-// phone may refuse CPU threads inside a background thread. The way that worked
-// is remembered on this device, so the next open starts with it.
+// phone may refuse CPU threads inside a background thread. Nothing is remembered
+// between opens (owner, 2026-10-22): every open tries the best way first.
 const WAYS = [
   { id: 'bg-gpulive', label: 'GPU live + CPU capture · bg', worker: true, gpuLive: true, ep: 'wasm', threads: 1 },
   { id: 'bg-pool', label: 'CPU · ' + POOL + ' bg threads + 1', worker: true, pool: true, ep: 'wasm', threads: 1 },
@@ -202,13 +202,6 @@ const WAYS = [
   { id: 'bg-cpu1', label: 'CPU ×1 · bg', worker: true, ep: 'wasm', threads: 1 },
   { id: 'page-cpu', label: 'CPU ×' + THREADS + ' · page', worker: false, ep: 'wasm', threads: THREADS },
 ];
-// The way that worked is remembered for a day only: a way that failed once (a busy phone, a deploy
-// half done) is tried again the next day, so a one-off failure does not keep the phone on a slow way.
-const WAY_KEY = 'scanTestWay4', WAY_DAY = 24 * 3600 * 1000;
-const remembered = {
-  get: () => { try { const v = JSON.parse(localStorage.getItem(WAY_KEY) || 'null'); return v && Date.now() - v.at < WAY_DAY ? v.id : null; } catch (e) { return null; } },
-  set: v => { try { localStorage.setItem(WAY_KEY, JSON.stringify({ id: v, at: Date.now() })); } catch (e) {} },
-};
 // Why a way failed on this device, kept on it (the last 8): shown in the log when the page opens, so a way
 // that keeps failing — and why: memory, a hang, the GPU, another error — can be seen on the phone itself.
 const FAIL_KEY = 'scanWayFails';
@@ -277,9 +270,6 @@ async function startSession() {
   if (want === 'webgpu') ways = inWorker ? [{ id: 'bg-gpu', label: 'GPU · bg', worker: true, ep: 'webgpu', threads: 1 }] : [{ id: 'page-gpu', label: 'GPU · page', worker: false, ep: 'webgpu', threads: 1 }];
   if (want === 'wasm') ways = ways.filter(w => !w.gpuLive);
   if (ways.some(w => !stuckWays.has(w.id))) ways = ways.filter(w => !stuckWays.has(w.id));
-  let last = remembered.get();
-  const at = ways.findIndex(w => w.id === last);
-  if (want === 'auto' && at > 0) { log('Starting with "' + ways[at].label + '" — it worked on this device last time (pick another option to retry all)'); ways = ways.slice(at); }
   let e = null, used = null;
   for (const w of ways) {
     status('Trying ' + w.label + '…', 0);
@@ -288,8 +278,6 @@ async function startSession() {
     catch (err) { cand.stop(); noteFail(w.label, err && err.message || err); log('Trying the next way'); }
   }
   if (!e) { $('sBackend').textContent = 'failed'; status('The model could not start — see the log below'); $('startCam').disabled = false; throw new Error('no way to run the model'); }
-  // remembered for the next open — not a way taken only because another hung on this page (onStuck): that is for this page only
-  if (want === 'auto' && !stuckWays.size) remembered.set(used.id);
   $('useWorker').checked = used.worker;
   $('sBackend').textContent = used.label;
   log('Live ' + live + (cap ? ', capture ' + cap : '') + ' running as ' + used.label);
