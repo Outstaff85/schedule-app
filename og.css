@@ -120,9 +120,8 @@
 :root[data-theme="light"] .og-cover{background-attachment:fixed;}
 :root[data-theme="light"] .gbtn::before{box-shadow:var(--shadow-uline);}
 html{background:var(--ground);}
-/* Plates and windows (owner 2026-10-22, style "3e with 3b shading" — docs/redesign.md → Owner overrides): a
-   soft gradient (plate-top → plate-bottom) over the solid --plate, a line of light on the top edge and a soft
-   shadow (--shadow-plate); windows the same gradient from the top down. The default for every page. */
+/* Plates and windows: a soft gradient (plate-top → plate-bottom) over the solid --plate, a line of light on
+   the top edge and a soft shadow (--shadow-plate); windows the same gradient from the top down. */
 :root{--plate-grad:linear-gradient(135deg,var(--plate-top),var(--plate-bottom));--sheet-grad:linear-gradient(180deg,var(--plate-top) 0,var(--plate-bottom) 60%);}
 .bg-plate,.bg-card{background-image:var(--plate-grad);}
 body{background:transparent;}
