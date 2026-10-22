@@ -34,7 +34,7 @@ import torch
 from torch import nn
 
 import checkpoint
-from home import WORK
+from home import WORK, gentle
 from mrzmodel import CHARS, H, W, decode, line_input
 
 CKPT = WORK / "mrz-ckpt"
@@ -210,6 +210,7 @@ def is_check(text):
 
 
 def main():
+    gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(WORK / "synth" / "mrz"))
     ap.add_argument("--epochs", type=int, default=12)

@@ -12,11 +12,10 @@ The passport zone's font is OCR-B (fonts/OCRB.otf: Matthew Skala's, public domai
 fonts are the PC's own (Windows: Arial, David, Miriam, Narkisim — whichever are there).
 Needs: pip install -r requirements-synth.txt."""
 import argparse
-import os
 import pathlib
 import random
 
-from home import WORK
+from home import WORK, gentle
 from synth import lines
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -92,7 +91,7 @@ def main():
     ap.add_argument("--count", type=int, default=100000)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default=str(OUT))
-    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="processes drawing at once")
+    ap.add_argument("--jobs", type=int, default=gentle(), help="processes drawing at once")
     ap.add_argument("--fonts", nargs="*", help="font files (default: OCR-B for mrz, the PC's Hebrew fonts for he)")
     a = ap.parse_args()
     fonts = a.fonts or ([str(f) for f in MRZ_FONTS] if a.kind == "mrz" else hebrew_fonts())

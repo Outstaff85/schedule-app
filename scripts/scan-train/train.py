@@ -21,6 +21,7 @@ import torch
 import checkpoint
 from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
+from home import gentle
 
 S, H, SIGMA = 256, 128, 2.4  # the spread of the models' own corner spots (measured)
 EPOCHS = {"edges-lite.onnx": 24, "edges.onnx": 12}
@@ -123,6 +124,7 @@ def export(name, net, probe, inp, outname):
 
 
 def main():
+    gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="*", default=list(MODELS))
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")

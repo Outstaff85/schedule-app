@@ -15,7 +15,6 @@ Each a little changed (light, blur, noise, JPEG, a cut a little off); the model 
 """
 import argparse
 import json
-import os
 import pathlib
 import random
 
@@ -24,7 +23,7 @@ import numpy as np
 from PIL import ImageDraw
 
 import synth_docs as sd
-from home import WORK
+from home import WORK, gentle
 
 OUT = WORK / "synth" / "pages"
 LONG = 512
@@ -152,7 +151,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--count", type=int, default=6000)
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    ap.add_argument("--jobs", type=int, default=gentle())
     ap.add_argument("--templates", default=str(sd.TEMPLATES), help="the owner's real pages (pull_templates.py)")
     a = ap.parse_args()
     (OUT / "img").mkdir(parents=True, exist_ok=True)
