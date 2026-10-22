@@ -793,7 +793,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       warp: async () => ({width: 800, height: 500, data: new Uint8ClampedArray(800 * 500 * 4).buffer, turn: 0})};
     const c = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, inner, [outer]);
     const big = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, {...inner, detect: async () => ({res: {pts: [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]], conf: 0.9}, ms: 1})}, [outer]);
-    return {parts: one.length, docs: one[0].docs.length, first: one[0].docs[0].pts[2].join(), whole: none[0].docs[0].pts.map(q => q.join()).join(';'), size: [one[0].w, one[0].h].join('x'), threads: typeof fw.fileEngines,
+    return {parts: one.length, docs: one[0].docs.length, first: one[0].docs[0].pts[2].join(), whole: none[0].docs[0].pts.map(q => q.join()).join(';'), size: [one[0].w, one[0].h].join('x'), threads: typeof fw.growFiles,
       inside: c && c.map(q => q.map(v => Math.round(v * 100)).join()).join(';'), big};
   }, JPG);
   ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.threads === 'function'
