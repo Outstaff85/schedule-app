@@ -69,7 +69,7 @@ jobs:
       - name: Python for the functions
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi flask
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi flask opencv-python-headless
 
       - name: Rules tests
         working-directory: tests/rules
