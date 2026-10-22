@@ -96,6 +96,15 @@ def train_one(name, base, X, Y, epochs, dev, args):
     export(name, net, probe, inp, outname)
 
 
+def corner_loss(out, yb):
+    """The heatmaps' error, the spots counted, not the empty background (plain MSE would rather lower
+    every peak) — against the right corners started from whichever corner fits best (each example its
+    own): near 45° the photo's "top-left" is either of two corners, and a fixed order taught the model
+    to put its first corner between them (MIDV's turned scans, owner 2026-10-22)."""
+    per = [(((out - y) ** 2) * (1 + 20 * y)).mean((1, 2, 3)) for y in (torch.roll(yb, k, 1) for k in range(4))]
+    return torch.stack(per, 1).min(1).values.mean() * 1000
+
+
 def one_epoch(name, net, opt, X, Y, order, dev, ep, epochs):
     random.shuffle(order)
     net.eval()  # batch norms keep their statistics; the weights still learn
@@ -104,8 +113,7 @@ def one_epoch(name, net, opt, X, Y, order, dev, ep, epochs):
         xb, yb = batch(X, Y, order[k:k + 16], True)
         out = net(xb.to(dev))
         yb = yb.to(dev)
-        # the spots count, not the empty background: plain MSE would rather lower every peak
-        loss = (((out - yb) ** 2) * (1 + 20 * yb)).mean() * 1000
+        loss = corner_loss(out, yb)
         opt.zero_grad(); loss.backward(); opt.step()
         total += float(loss.detach()) * len(xb)
     print(f"  {name} epoch {ep + 1}/{epochs}: loss {total / len(order):.4f}")

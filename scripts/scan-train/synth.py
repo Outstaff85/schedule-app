@@ -231,16 +231,23 @@ def _area(q):
     return abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))) / 2
 
 
+TURNED_ANY = 0.15   # documents turned by any angle (the edges model learns them: its loss takes any first corner)
+
+
 def scene_quad(rng, aspect, W, H, fill=(0.18, 0.8), margin=0.01, tilt=0.09):
     """Where a flat document of the given aspect (width / height) lands on a W×H photo: its corners
     in pixels, in the document's own order (its top-left first, clockwise) — turned mostly by a
-    quarter turn and a little, seen at a slant (each corner moved up to `tilt` of its size), filling
+    quarter turn and a little — one in TURNED_ANY by any angle, as a page lies on a scanner's glass —,
+    seen at a slant (each corner moved up to `tilt` of its size), filling
     `fill` of the photo, every corner at least `margin` inside. None when no try fits."""
     for _ in range(60):
         area = rng.uniform(*fill) * W * H
         h = math.sqrt(area / aspect)
         w = h * aspect
-        a = rng.choice((0, 0, 0, 90, 90, 180, 270)) + rng.gauss(0, 10 if rng.random() < 0.8 else 25)
+        if rng.random() < TURNED_ANY:
+            a = rng.uniform(0, 360)
+        else:
+            a = rng.choice((0, 0, 0, 90, 90, 180, 270)) + rng.gauss(0, 10 if rng.random() < 0.8 else 25)
         ca, sa = math.cos(math.radians(a)), math.sin(math.radians(a))
         cx, cy = rng.uniform(0.3, 0.7) * W, rng.uniform(0.3, 0.7) * H
         q = []
