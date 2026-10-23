@@ -143,7 +143,15 @@ ort.env.wasm.numThreads = THREADS;
 const POOL = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
 
 const STEADY_MS = 1000, MOVE = 0.02, LOCK_MS = 250;  // green after 0.25 s on the edges, the shot after 1 s
+// The frame sticks once green (owner, 2026-10-24: it kept moving and the 1 s countdown kept starting again):
+// an answer within HOLD of it leaves it where it is, a weak or missed answer is outlived for MISS_MS (a blur,
+// a glare), and the follow between answers starts the countdown again only when the document went DRIFT away
+// since it stuck, or jumped (JERK in one camera frame) — not on every tremble of the hand.
+const HOLD = 0.04, MISS_MS = 600, DRIFT = 0.03, JERK = 0.02;
 let smooth = null, steadySince = 0, lastRes = null, target = null, shown = null;
+let anchor = null, missSince = 0, smoothConf = 0;
+const farthest = (a, b) => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
+function restartSteady(now) { steadySince = now; anchor = smooth && smooth.map(p => p.slice()); }
 let fails = 0, engine = null, engineKey = '', running = false, stream = null, inFlight = 0, lastSent = 0, seq = 0, applied = 0;
 let engineWay = null;  // the way the model runs on now (WAYS below)
 const stuckWays = new Set();  // ways whose background thread stopped answering on this page: not tried again
@@ -367,11 +375,15 @@ function rgbaOf(input) {
 
 // Average the corners over frames so the frame does not jitter; a big jump resets it.
 function smoothen(res) {
-  if (res.pts.some(p => !p) || res.conf < 0.5) { smooth = null; steadySince = 0; return res; }
-  const move = smooth ? Math.max(...res.pts.map((p, i) => Math.hypot(p[0] - smooth[i][0], p[1] - smooth[i][1]))) : 1;
-  const now = performance.now();
-  if (move > MOVE * 3 || !smooth) { smooth = res.pts.map(p => p.slice()); steadySince = now; }
-  else { smooth = smooth.map((q, i) => [q[0] * 0.6 + res.pts[i][0] * 0.4, q[1] * 0.6 + res.pts[i][1] * 0.4]); if (move > MOVE) steadySince = now; }
+  const now = performance.now(), stuck = smooth && now - steadySince >= LOCK_MS;
+  if (res.pts.some(p => !p) || res.conf < 0.5) {
+    if (stuck && now - (missSince || (missSince = now)) < MISS_MS) return { pts: smooth, conf: smoothConf, steady: now - steadySince, held: true };
+    smooth = anchor = null; steadySince = missSince = 0; return res;
+  }
+  missSince = 0; smoothConf = res.conf;
+  const move = smooth ? farthest(res.pts, smooth) : 1;
+  if (move > MOVE * 3 || !smooth) { smooth = res.pts.map(p => p.slice()); restartSteady(now); }
+  else if (!(stuck && move <= HOLD)) { smooth = smooth.map((q, i) => [q[0] * 0.6 + res.pts[i][0] * 0.4, q[1] * 0.6 + res.pts[i][1] * 0.4]); if (move > MOVE) restartSteady(now); }
   return { pts: smooth, conf: res.conf, steady: now - steadySince };
 }
 
@@ -428,7 +440,7 @@ async function runOnce(src, w, h, el) {
   const missing = raw.pts.filter(p => !p).length;
   $('hint').textContent = missing ? (missing === 4 ? 'No document in the frame' : missing + ' corner(s) outside the frame — move the phone back')
     : res.conf < 0.5 ? 'Edges not clear — more light, a darker background' : res.steady != null && res.steady < STEADY_MS ? 'Hold still… ' + ((STEADY_MS - res.steady) / 1000).toFixed(1) + ' s' : 'Found';
-  if (isVideo && $('auto').checked && res.steady >= STEADY_MS) showShot();
+  if (isVideo && $('auto').checked && res.steady >= STEADY_MS && !res.held) showShot();
 }
 
 // Freeze the frame, take the exact corners from the accurate model, straighten.
@@ -1030,7 +1042,8 @@ function followLoop() {
       if (smooth) smooth = r.apply(smooth);
       if (shown) shown = r.apply(shown);
       if (lastRes && !lastRes.pts.some(p => !p)) lastRes = { ...lastRes, pts: r.apply(lastRes.pts) };
-      if (r.moved > 0.004) steadySince = performance.now();  // the phone or the document moves: not still
+      // the phone or the document moved: not still (a tremble moves the stuck frame with it, the countdown goes on)
+      if (r.moved > JERK || (anchor && smooth && farthest(smooth, anchor) > DRIFT)) restartSteady(performance.now());
       const now = performance.now(); followTimes.push(now); while (followTimes.length && now - followTimes[0] > 1000) followTimes.shift();
       followMs.push(now - t); if (followMs.length > 30) followMs.shift();
       $('sTrack').textContent = followTimes.length; $('sTrackMs').textContent = Math.round(followMs.reduce((a, b) => a + b, 0) / followMs.length);
