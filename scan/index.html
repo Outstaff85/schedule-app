@@ -1221,7 +1221,7 @@ async function analyzePicture(url, pdfPage, eng, onStep = () => {}) {
         if (c) { onStep('cutting', onPicture(c)); found.push(c); docs.push({ pts: c, out: await eng.warp(pix.slice(), w, h, c, true) }); }
       }
     }
-    parts.push({ frame, w, h, whole, docs });
+    parts.push({ frame, w, h, whole, docs, onPicture });
   }
   return parts;
 }
@@ -1245,7 +1245,7 @@ async function showPicture(url, parts, before) {
     }
     att.pages = part.docs.length;
     $('sRes').textContent = part.w + '×' + part.h;
-    lastRes = { pts: part.docs[0].pts, conf: 1 }; shown = part.whole ? null : part.docs[0].pts.map(p => p.slice()); drawPts(shown, true, img);
+    lastRes = { pts: part.docs[0].pts, conf: 1 }; shown = part.whole ? null : part.onPicture(part.docs[0].pts); drawPts(shown, true, img);  // drawn on the whole picture: a photo cut out of a white page lies at its box
     $('shot').hidden = false;
     $('hint').textContent = (part.docs.length > 1 ? part.docs.length + ' documents on this photo' : 'One document on this photo') + turnNote() + kn;
   }
