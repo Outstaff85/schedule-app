@@ -138,6 +138,10 @@ if (typeof ort === 'undefined') logErr('ONNX Runtime did not load (ort.all.min.j
 ort.env.wasm.wasmPaths = location.origin + '/scan/' + ORT_DIR + '/';
 // Several CPU threads need a cross-origin isolated page (COOP/COEP headers); /scan/ is not isolated, so 1.
 const THREADS = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+// The accurate model's thread runs on THREADS cores when the page is cross-origin isolated (the lab's headers,
+// owner 2026-10-24: a picked photo took 4.4 s on one core); a thread of several cores that stops answering
+// (seen on Android Chrome before, 2026-10-22) starts again on one core for the rest of this page.
+let capCores = THREADS;
 ort.env.wasm.numThreads = THREADS;
 // Background threads for the live frame when the pool is used.
 const POOL = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
@@ -301,18 +305,20 @@ function ensureCap() {
   capFor = name;
   const t0 = performance.now();
   status('Preparing the accurate model…', 0);
-  const e = workerEngine(1, ORT_DIR, () => {
-    logErr('The capture thread stopped answering — it starts again');
-    noteFail('Capture thread', 'stopped answering');
+  const cores = capCores;
+  const e = workerEngine(cores, ORT_DIR, () => {
+    if (cores > 1) capCores = 1;
+    logErr('The capture thread stopped answering — it starts again' + (cores > 1 ? ' on one core' : ''));
+    noteFail('Capture thread' + (cores > 1 ? ' ×' + cores : ''), 'stopped answering');
     if (capThread && capThread.raw === e) capThread = null;
     e.stop(); onStuck();
   });
   capLoading = e.load(name, null, 'wasm', true).then(() => {
     capThread = capOnly(e);
-    log('The accurate model is ready (' + ((performance.now() - t0) / 1000).toFixed(1) + ' s) — photos and PDFs can go in');
+    log('The accurate model is ready (' + ((performance.now() - t0) / 1000).toFixed(1) + ' s, ' + cores + (cores > 1 ? ' cores' : ' core') + ') — photos and PDFs can go in');
     if (!engine) status('Ready for photos and PDFs — the camera\'s model is loading…', 1);
     return capThread;
-  }, err => { e.stop(); noteFail('Capture thread', err && err.message || err); throw err; }).finally(() => { capLoading = null; });
+  }, err => { e.stop(); if (cores > 1) capCores = 1; noteFail('Capture thread' + (cores > 1 ? ' ×' + cores : ''), err && err.message || err); throw err; }).finally(() => { capLoading = null; });
   return capLoading;
 }
 
@@ -1347,7 +1353,7 @@ $('engine').value = ORT_DIR === 'ort130' ? '130' : '122';
 $('engine').onchange = () => { location.search = '?ort=' + $('engine').value + '&v=' + Date.now(); };
 log('CPU engine: ONNX Runtime ' + (ort.env.versions && ort.env.versions.web || ORT_DIR) + ', GPU engine: 1.30.0');
 log('GPU (WebGPU) in this browser: ' + (navigator.gpu ? 'yes' : 'no'));
-log('CPU: ' + (navigator.hardwareConcurrency || '?') + ' cores' + (navigator.deviceMemory ? ', memory ' + navigator.deviceMemory + ' GB' : '') + '; several background threads of one thread each are used' + (self.crossOriginIsolated ? '' : ' (one core each: this page is not cross-origin isolated)'));
+log('CPU: ' + (navigator.hardwareConcurrency || '?') + ' cores' + (navigator.deviceMemory ? ', memory ' + navigator.deviceMemory + ' GB' : '') + '; ' + (self.crossOriginIsolated ? 'cross-origin isolated: the accurate model runs on ' + THREADS + ' cores' : 'several background threads of one thread each are used (one core each: this page is not cross-origin isolated)'));
 showFails();
 // The accurate model first (photos and PDFs can go in), then the camera's models in the background once
 // nothing is being worked on; the camera button waits for them.
