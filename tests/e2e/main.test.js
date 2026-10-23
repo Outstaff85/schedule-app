@@ -799,7 +799,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.threads === 'function'
     && apic.inside === '30,50;70,50;70,74;30,74' && apic.big === null,
     'scanner lab, picked files: a picture is worked on any engine with no screen (its threads run several at once) — the document found, else the picture as it is; a document lying on another is found on its cut and taken back onto the photo, one covering it all is not ' + JSON.stringify(apic));
-  // Why a way to run the models failed is kept on the phone (the last 8) and shown in the log when the lab opens;
+  // Why a way to run the models failed is kept on the phone (the last 8) and shown when the lab opens — in the
+  // Errors block, with each new failure and its time, apart from the loading log;
   // the way that worked is remembered for a day only
   const wayFails = await p.evaluate(() => {
     const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, ls = fw.localStorage;
@@ -808,13 +809,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     fw.noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
     for (let i = 0; i < 9; i++) fw.noteFail('CPU ×1 · bg', 'no answer for 25 s');
     const list = JSON.parse(ls.getItem('scanWayFails'));
+    fw.document.getElementById('errs').textContent = ''; fw.document.getElementById('log').textContent = '';
+    fw.noteFail('CPU ×1 · bg', 'no answer for 25 s');
     fw.showFails();
-    const logText = fw.document.getElementById('log').textContent;
+    const logText = fw.document.getElementById('errs').textContent, loading = fw.document.getElementById('log').textContent;
     return {n: list.length, kinds: [fw.failKind('WebGPU device was lost'), fw.failKind('RangeError: Array buffer allocation failed'), fw.failKind('no answer for 25 s'), fw.failKind('model download failed: HTTP 404')].join(),
-      last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)};
+      last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)
+        && /^\d\d:\d\d:\d\d Failed — CPU ×1/m.test(logText) && !/Fail/.test(loading)};
   });
   ok(wayFails.n === 8 && wayFails.kinds === 'GPU,memory,hang,error' && wayFails.last === 'hang' && wayFails.shown,
-    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the log ' + JSON.stringify(wayFails));
+    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the Errors block, apart from the loading log ' + JSON.stringify(wayFails));
   // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
   // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
   // a kept page deleted later is told by its folder; with no network they wait on the phone, 5 at most
