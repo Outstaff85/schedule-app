@@ -9,7 +9,7 @@
   holdForDone = true;  // the kept attempts wait for the window's Done (doneAttempts)
   const css = document.createElement('style');
   // the window shows the pages itself (one preview, the batches' lines): the lab's own are hidden
-  css.textContent = 'h1,.row:first-of-type,.row:has(#startCam),#status,#train,.stats,#log,label.btn:has(#useWorker),label.btn:has(#follow),#shot,#kept{display:none!important}' +
+  css.textContent = 'h1,.row:first-of-type,.row:has(#startCam),#status,#train,.stats,#log,#logs,label.btn:has(#useWorker),label.btn:has(#follow),#shot,#kept{display:none!important}' +
     'html{background:transparent}body{padding:0 0 12px;background:transparent}body::before{display:none}';  // the window's own glass shows through
   document.head.appendChild(css);
   const $ = id => document.getElementById(id);

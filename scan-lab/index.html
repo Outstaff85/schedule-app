@@ -36,7 +36,10 @@
   .stat{background:var(--plate);background-image:var(--plate-grad);box-shadow:var(--shadow-plate);border-radius:16px;padding:10px 14px}
   .stat b{display:block;font:500 20px/26px 'DM Mono',ui-monospace,monospace;color:var(--fig)}
   .stat span{color:var(--ink2);font-size:12px;line-height:16px}
-  #log{white-space:pre-wrap;color:var(--ink2);font:12px/16px 'DM Mono',ui-monospace,monospace;margin-top:10px}
+  #log,#errs{white-space:pre-wrap;color:var(--ink2);font:12px/16px 'DM Mono',ui-monospace,monospace;margin-top:4px}
+  #errs{color:var(--red-text)}
+  #errs:empty::before{content:'No errors';color:var(--ink2)}
+  .loghead{color:var(--ink);font-size:13px;font-weight:600;margin:14px 0 0}
   .bar{height:4px;background:var(--line);border-radius:4px;overflow:hidden;margin:6px 0 10px}
   .bar i{display:block;height:100%;width:0;border-radius:4px;background:var(--uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;box-shadow:var(--shadow-uline)}
   .kept{background:var(--plate);background-image:var(--plate-grad);border-radius:16px;box-shadow:inset 4px 0 0 var(--ok),var(--shadow-plate);margin:8px 0;padding:8px 8px 8px 14px}
@@ -106,7 +109,12 @@
   <div class="stat"><b id="sTrack">—</b><span>frame follows, frames/s</span></div>
   <div class="stat"><b id="sTrackMs">—</b><span>follow, ms per frame</span></div>
 </div>
+<div id="logs">
+<div class="loghead">Errors</div>
+<div id="errs"></div>
+<div class="loghead">Loading and work</div>
 <div id="log"></div>
+</div>
 
 <script>
 // The ONNX Runtime build for the CPU: 1.22.0 (faster and smoother there than 1.30); ?ort=130 picks 1.30.0.
@@ -119,10 +127,14 @@ document.write('<script src="/scan-lab/' + ORT_DIR + '/ort.all.min.js"><\/script
 <script>
 const $ = id => document.getElementById(id);
 const log = t => { $('log').textContent = t + '\n' + $('log').textContent; };
+// Errors apart from the loading log (owner, 2026-10-24): each with its time, newest on top.
+const logErr = t => { $('errs').textContent = new Date().toTimeString().slice(0, 8) + ' ' + t + '\n' + $('errs').textContent; };
+// a line from scan-core.js / the worker (one onLog for both): its failures go to the errors
+const logAny = t => (/^Could not start|wrong on this GPU|^WebGPU is not available/.test(t) ? logErr : log)(t);
 const status = (t, frac) => { $('status').textContent = t; if (frac != null) $('prog').style.width = Math.round(frac * 100) + '%'; };
-window.addEventListener('error', e => log('Page error: ' + e.message));
-window.addEventListener('unhandledrejection', e => log('Error: ' + (e.reason && e.reason.message || e.reason)));
-if (typeof ort === 'undefined') log('ONNX Runtime did not load (ort.all.min.js)');
+window.addEventListener('error', e => logErr('Page error: ' + e.message));
+window.addEventListener('unhandledrejection', e => logErr('Error: ' + (e.reason && e.reason.message || e.reason)));
+if (typeof ort === 'undefined') logErr('ONNX Runtime did not load (ort.all.min.js)');
 ort.env.wasm.wasmPaths = location.origin + '/scan-lab/' + ORT_DIR + '/';
 // Several CPU threads need a cross-origin isolated page (COOP/COEP headers); /scan-lab/ is not isolated, so 1.
 const THREADS = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
@@ -148,8 +160,8 @@ function pageEngine() {
   let live = null, cap = null, face = null;
   return {
     async load(liveName, capName, want, withFace) {
-      const a = await openSession(liveName, want, status, log, gpuLayout.get()); live = a.sess;
-      const b = capName ? await openSession(capName, want, status, log, gpuLayout.get()) : a; cap = b.sess;
+      const a = await openSession(liveName, want, status, logAny, gpuLayout.get()); live = a.sess;
+      const b = capName ? await openSession(capName, want, status, logAny, gpuLayout.get()) : a; cap = b.sess;
       gpuLayout.set(a.layout || b.layout);
       if (withFace !== false) face = await ort.InferenceSession.create(await fetchModel('yunet.onnx', () => {}), { executionProviders: ['wasm'] });
       return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
@@ -168,10 +180,10 @@ function workerEngine(threads, dir = ORT_DIR, onHang = onStuck) {
   w.onmessage = ({ data: m }) => {
     heard = performance.now();
     if (m.type === 'status') status(m.text, m.frac);
-    else if (m.type === 'log') log(m.text);
+    else if (m.type === 'log') logAny(m.text);
     else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); if (p) m.error ? p.reject(new Error(m.error)) : p.resolve(m); }  // a late answer to a call given up on: dropped
   };
-  w.onerror = e => { log('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
+  w.onerror = e => { logErr('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
   // a request to a thread that had nothing to do starts the clock again: an idle thread says nothing, so
   // its first request after 25 s was taken as stuck at once (every picked file, 2026-10-22)
   const call = (msg, transfer) => new Promise((resolve, reject) => { if (!waiting.size) heard = performance.now(); msg.id = ++n; waiting.set(msg.id, { resolve, reject }); w.postMessage(msg, transfer || []); });
@@ -198,7 +210,7 @@ function workerEngine(threads, dir = ORT_DIR, onHang = onStuck) {
 function onStuck() {
   if (!engine) return;
   const w = WAYS.find(x => x.id === engineWay);
-  log('The model stopped answering on "' + (w ? w.label : engineWay) + '" — it starts again on the next way');
+  logErr('The model stopped answering on "' + (w ? w.label : engineWay) + '" — it starts again on the next way');
   noteFail(w ? w.label : engineWay, 'stopped answering while scanning');
   stuckWays.add(engineWay);
   const old = engine; engine = null; engineKey = ''; dropFileThreads();
@@ -229,7 +241,7 @@ function failKind(text) {
 }
 function noteFail(label, text) {
   const kind = failKind(text);
-  log('Failed — ' + label + ': ' + kind + ' (' + String(text || '').slice(0, 160) + ')');
+  logErr('Failed — ' + label + ': ' + kind + ' (' + String(text || '').slice(0, 160) + ')');
   try {
     const list = JSON.parse(localStorage.getItem(FAIL_KEY) || '[]');
     list.push({ at: new Date().toISOString(), way: label, kind, text: String(text || '').slice(0, 160), mem: navigator.deviceMemory || null });
@@ -239,10 +251,11 @@ function noteFail(label, text) {
 function showFails() {
   let list = [];
   try { list = JSON.parse(localStorage.getItem(FAIL_KEY) || '[]'); } catch (e) {}
-  if (!list.length) { log('No way has failed on this device yet'); return; }
-  // the log shows the newest line on top: the failures oldest first, then their heading above them
-  for (const f of list) log('  ' + f.at.slice(0, 16).replace('T', ' ') + ' — ' + f.way + ': ' + f.kind + ' (' + f.text + ')' + (f.mem ? ', memory ' + f.mem + ' GB' : ''));
-  log('Earlier failures on this device (last ' + list.length + ', newest on top):');
+  if (!list.length) return;
+  // in the errors, newest on top: the failures oldest first, then their heading above them
+  const add = t => { $('errs').textContent = t + '\n' + $('errs').textContent; };
+  for (const f of list) add('  ' + f.at.slice(0, 16).replace('T', ' ') + ' — ' + f.way + ': ' + f.kind + ' (' + f.text + ')' + (f.mem ? ', memory ' + f.mem + ' GB' : ''));
+  add('Earlier failures on this device (last ' + list.length + ', newest on top):');
 }
 
 // Several single-thread background threads: the live frames go to them in
@@ -289,7 +302,7 @@ function ensureCap() {
   const t0 = performance.now();
   status('Preparing the accurate model…', 0);
   const e = workerEngine(1, ORT_DIR, () => {
-    log('The capture thread stopped answering — it starts again');
+    logErr('The capture thread stopped answering — it starts again');
     noteFail('Capture thread', 'stopped answering');
     if (capThread && capThread.raw === e) capThread = null;
     e.stop(); onStuck();
@@ -343,7 +356,7 @@ let bitmapOk = typeof createImageBitmap === 'function';
 async function frameInput(src, w, h) {
   if (bitmapOk) {
     try { return { bitmap: await createImageBitmap(src, { resizeWidth: S, resizeHeight: S, resizeQuality: 'low' }) }; }
-    catch (e) { if (e && e.name === 'InvalidStateError') return null; bitmapOk = false; log('Frame scaling on the GPU is not available here: ' + (e && e.message || e)); }
+    catch (e) { if (e && e.name === 'InvalidStateError') return null; bitmapOk = false; logErr('Frame scaling on the GPU is not available here: ' + (e && e.message || e)); }
   }
   return { rgba: smallRGBA(src, w, h) };
 }
@@ -657,7 +670,7 @@ async function fixCorners(img) {
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
     img.src = oc.toDataURL('image/jpeg', 0.9);
-  } catch (e) { log('The page could not be cut again: ' + (e && e.message || e)); return; }
+  } catch (e) { logErr('The page could not be cut again: ' + (e && e.message || e)); return; }
   window.dispatchEvent(new CustomEvent('lab-fixed', { detail: img }));
 }
 function cornerEditor(frame, start) {
@@ -839,7 +852,7 @@ const turnNote = () => lastTurn === -2 ? '; the face finder failed (see the log)
 async function showShot() {
   try { await takeShot(); }
   catch (e) {
-    log('Shot failed: ' + (e && e.message || e));
+    logErr('Shot failed: ' + (e && e.message || e));
     $('hint').textContent = 'The shot failed — see the log; the camera goes on';
     if ($('video').srcObject && !$('video').hidden) { smooth = null; steadySince = 0; running = true; loop(); startFollow(); }
   }
@@ -854,7 +867,7 @@ async function takeShot() {
   const pix = fctx.getImageData(0, 0, w, h).data;
   const put = async pts => {
     const out = await engine.warp(pix.slice(), w, h, pts, true);
-    lastTurn = out.turn; if (out.turnError) log('Face finder: ' + out.turnError);
+    lastTurn = out.turn; if (out.turnError) logErr('Face finder: ' + out.turnError);
     if (id !== shotId) return false;
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
@@ -1040,7 +1053,7 @@ function loop() {
     inFlight++; lastSent = now;
     runOnce(v, v.videoWidth, v.videoHeight, v).then(() => { fails = 0; }).catch(e => {
       if (!running || v.hidden) return;
-      log('Frame error: ' + (e && e.message || e)); if (++fails >= 5) { running = false; log('Stopped after 5 failed frames'); }
+      logErr('Frame error: ' + (e && e.message || e)); if (++fails >= 5) { running = false; logErr('Stopped after 5 failed frames'); }
     }).finally(() => { inFlight--; });
   }
   requestAnimationFrame(loop);
@@ -1053,7 +1066,7 @@ $('startCam').onclick = async () => {
     const v = $('video'); v.srcObject = stream; v.hidden = false; $('still').hidden = true; await v.play();
     $('sRes').textContent = v.videoWidth + '×' + v.videoHeight;
     running = true; loop(); startFollow();
-  } catch (e) { log('Camera / model error: ' + (e && e.message || e)); }
+  } catch (e) { logErr('Camera / model error: ' + (e && e.message || e)); }
 };
 $('keep').onclick = () => { keepCurrent(); smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } };
 $('retake').onclick = () => { decideAttempts('retaken'); shotId++; $('shot').hidden = true; $('shotMore').textContent = ''; $('shot2note').textContent = ''; smooth = null; steadySince = 0; target = shown = null; if (stream) { running = true; loop(); startFollow(); } else $('startCam').click(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
@@ -1169,7 +1182,7 @@ function growFiles(onLane) {
   if (mem < 4 || cores < 4) return;  // each thread holds its own copy of the accurate model (~80 MB at work)
   const [live, cap] = $('model').value.split('+'), name = cap || live;
   let me = null;
-  const e = workerEngine(1, ORT_DIR, () => { log('The file thread stopped answering — its pictures go to the main thread'); if (me) me.dead = true; e.stop(); });
+  const e = workerEngine(1, ORT_DIR, () => { logErr('The file thread stopped answering — its pictures go to the main thread'); if (me) me.dead = true; e.stop(); });
   const forEngine = engine;
   e.load(name, null, 'wasm', true).then(() => {
     if (fileThreadsFor !== forEngine) { e.stop(); return; }
@@ -1235,7 +1248,7 @@ async function showPicture(url, parts, before) {
     let kn = '';
     for (let i = 0; i < part.docs.length; i++) {
       const d = part.docs[i], oc = toCanvas(d.out);
-      if (i === 0) { lastTurn = d.out.turn; if (d.out.turnError) log('Face finder: ' + d.out.turnError); kn = await doctypeNote(oc) + await mrzNote(oc) + await heNote(oc); }
+      if (i === 0) { lastTurn = d.out.turn; if (d.out.turnError) logErr('Face finder: ' + d.out.turnError); kn = await doctypeNote(oc) + await mrzNote(oc) + await heNote(oc); }
       let el;
       if (pages === 0) el = $('shotImg');
       else { el = new Image(); el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(el); }
@@ -1303,12 +1316,12 @@ $('file').onchange = async e => {
         if (failed) return;
         $('status').textContent = 'Working on ' + tag + '…';
         try { pages = await showPicture(url, await done, pages); next = k + 1; window.dispatchEvent(new Event('lab-picked')); }
-        catch (err) { failed = true; log('Picked file ' + k + ': ' + (err && err.message || err)); $('hint').textContent = 'A file could not be worked on — see the log'; }
+        catch (err) { failed = true; logErr('Picked file ' + k + ': ' + (err && err.message || err)); $('hint').textContent = 'A file could not be worked on — see the log'; }
       });
       // one picture at most waiting for a free lane (the next ones are not even opened yet: memory)
       while (waiting.length) await new Promise(r => setTimeout(r, 20));
     }
-  } catch (err) { log('Picked file: ' + (err && err.message || err)); $('hint').textContent = 'A file could not be opened — see the log'; }
+  } catch (err) { logErr('Picked file: ' + (err && err.message || err)); $('hint').textContent = 'A file could not be opened — see the log'; }
   await order;
   // every page on the list (the other documents found on a photo too)
   const total = $('shot').hidden ? 0 : 1 + $('shotMore').querySelectorAll('img').length;
