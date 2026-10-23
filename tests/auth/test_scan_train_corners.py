@@ -18,6 +18,9 @@ H, SIGMA = 128, 2.4
 # the accurate model's spots on the owner's picture: (x, y, height) for each corner's heatmap
 TWO_DOCS = [[(0.07, 0.29, 0.70), (0.21, 0.59, 0.63)],   # top-left: the ספח's corner highest, the card's second
             [(0.80, 0.58, 0.89)], [(0.80, 0.78, 0.80)], [(0.21, 0.75, 0.77), (0.04, 0.84, 0.48)]]
+# the owner's ספח with its ID card above it (2026-10-23): the card's top-right spot a little higher than the ספח's
+CARD_ABOVE = [[(0.04, 0.44, 0.94), (0.29, 0.18, 0.88)], [(0.78, 0.17, 0.92), (0.98, 0.43, 0.91)],
+              [(0.99, 0.96, 0.81)], [(0.03, 0.98, 0.64)]]
 ONE_DOC = [[(0.10, 0.12, 0.9)], [(0.90, 0.15, 0.8)], [(0.88, 0.85, 0.85)], [(0.12, 0.88, 0.9)]]
 
 
@@ -34,6 +37,11 @@ def test_two_documents_one_frame():
     pts, conf = docfind.corners(maps(TWO_DOCS))
     assert np.allclose(pts, [[0.21, 0.59], [0.80, 0.58], [0.80, 0.78], [0.21, 0.75]], atol=0.01)   # the card, whole
     assert abs(conf - 0.63) < 0.03
+
+
+def test_a_card_above_its_sheet_not_mixed():
+    pts, _ = docfind.corners(maps(CARD_ABOVE))
+    assert np.allclose(pts, [[0.04, 0.44], [0.98, 0.43], [0.99, 0.96], [0.03, 0.98]], atol=0.01)   # the ספח, its sides parallel
 
 
 def test_one_document_as_before():

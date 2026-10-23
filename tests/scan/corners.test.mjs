@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 
 const H = 128, SIGMA = 2.4;
 const TWO_DOCS = [[[0.07, 0.29, 0.70], [0.21, 0.59, 0.63]], [[0.80, 0.58, 0.89]], [[0.80, 0.78, 0.80]], [[0.21, 0.75, 0.77], [0.04, 0.84, 0.48]]];
+// the owner's ספח with its ID card above it (2026-10-23): the card's top-right spot a little higher than the ספח's
+const CARD_ABOVE = [[[0.04, 0.44, 0.94], [0.29, 0.18, 0.88]], [[0.78, 0.17, 0.92], [0.98, 0.43, 0.91]], [[0.99, 0.96, 0.81]], [[0.03, 0.98, 0.64]]];
 const ONE_DOC = [[[0.10, 0.12, 0.9]], [[0.90, 0.15, 0.8]], [[0.88, 0.85, 0.85]], [[0.12, 0.88, 0.9]]];
 
 function maps(spots) {
@@ -28,6 +30,8 @@ for (const file of ['scan-lab/scan-core.js', 'scan/scan-core.js']) {
   const two = ctx.corners(maps(TWO_DOCS));
   assert.ok(near(two.pts, [[0.21, 0.59], [0.80, 0.58], [0.80, 0.78], [0.21, 0.75]]), file + ': two documents → the card, whole: ' + JSON.stringify(two.pts));
   assert.ok(Math.abs(two.conf - 0.63) < 0.03, file + ': conf ' + two.conf);
+  const above = ctx.corners(maps(CARD_ABOVE));
+  assert.ok(near(above.pts, [[0.04, 0.44], [0.98, 0.43], [0.99, 0.96], [0.03, 0.98]]), file + ': a card above its ספח → the ספח, not three of its corners and one of the card: ' + JSON.stringify(above.pts));
   const one = ctx.corners(maps(ONE_DOC));
   assert.ok(near(one.pts, ONE_DOC.map(([[x, y]]) => [x, y])), file + ': one document as before: ' + JSON.stringify(one.pts));
   const weak = maps(ONE_DOC); for (let i = 2 * H * H; i < 3 * H * H; i++) weak[i] *= 0.2;

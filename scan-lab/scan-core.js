@@ -76,9 +76,10 @@ async function detectRGBA(sess, rgba) {
 // around it. The four corners are then picked together: with two documents on a picture every heatmap has a
 // spot on each, and its highest spots alone can put one corner on one document and three on the other (an
 // ID card below its ספח, 2026-10-22). The convex frame with the highest spots wins, a frame whose opposite
-// sides differ more than 1.6× counted down (a document seen in perspective rarely has such sides). One spot
+// sides differ more than 1.6× counted down (a document seen in perspective rarely has such sides), and one with both
+// pairs of sides more than 5° from parallel (mixed of two documents) by cos^4 of the rest. One spot
 // on each heatmap: that frame, as before. (The same in scripts/scan-train/docfind.py corners.)
-const PEAKS = 3, PEAK_R = 6, BLOB_R = 10, SIDES = 1.6;
+const PEAKS = 3, PEAK_R = 6, BLOB_R = 10, SIDES = 1.6, PAR = 4, FREE = 5 * Math.PI / 180;
 function spotsOf(hm, off) {
   const out = [], gone = new Uint8Array(H * H);
   let top = -1;
@@ -110,7 +111,12 @@ function frameScore(c) {
   }
   const len = i => Math.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1]);
   const even = (a, b) => { const r = Math.max(a, b) / Math.max(1e-6, Math.min(a, b)); return r > SIDES ? (SIDES / r) ** 2 : 1; };
-  return c.reduce((s, x) => s + x.v, 0) * even(len(0), len(2)) * even(len(1), len(3));
+  const ang = i => Math.atan2(q[(i + 1) % 4][1] - q[i][1], q[(i + 1) % 4][0] - q[i][0]);
+  // how far opposite sides are from parallel (they run opposite ways): a page in perspective keeps one pair
+  // near parallel; a frame with both pairs off is counted down by cos^4 of the smaller one beyond FREE
+  const off = (a, b) => { const d = Math.abs(ang(a) - ang(b) - Math.PI) % (2 * Math.PI); return Math.min(d, 2 * Math.PI - d); };
+  const par = Math.max(0, Math.cos(Math.max(0, Math.min(off(0, 2), off(1, 3)) - FREE))) ** PAR;
+  return c.reduce((s, x) => s + x.v, 0) * even(len(0), len(2)) * even(len(1), len(3)) * par;
 }
 function corners(hm) {
   const all = [0, 1, 2, 3].map(k => spotsOf(hm, k * H * H)), conf0 = Math.min(...all.map(a => a.top));
