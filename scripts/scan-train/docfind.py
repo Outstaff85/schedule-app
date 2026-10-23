@@ -56,7 +56,7 @@ def detect(sess, img):
     return corners(hm)
 
 
-PEAKS, PEAK_R, BLOB_R, SIDES = 3, 6, 10, 1.6
+PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE = 3, 6, 10, 1.6, 4, np.radians(5)
 
 
 def _spots(m):
@@ -93,14 +93,24 @@ def _frame_score(c):
     def even(a, b):
         r = max(a, b) / max(1e-6, min(a, b))
         return (SIDES / r) ** 2 if r > SIDES else 1.0
-    return sum(v for _, v in c) * even(side[0], side[2]) * even(side[1], side[3])
+    def ang(i):
+        return np.arctan2(q[(i + 1) % 4][1] - q[i][1], q[(i + 1) % 4][0] - q[i][0])
+
+    def off(a, b):   # how far opposite sides are from parallel (they run opposite ways)
+        d = abs(ang(a) - ang(b) - np.pi) % (2 * np.pi)
+        return min(d, 2 * np.pi - d)
+    # a page in perspective keeps one pair of sides near parallel; a frame with both pairs off is
+    # counted down by cos^PAR of the smaller one beyond FREE
+    par = max(0.0, float(np.cos(max(0.0, min(off(0, 2), off(1, 3)) - FREE)))) ** PAR
+    return sum(v for _, v in c) * even(side[0], side[2]) * even(side[1], side[3]) * par
 
 
 def corners(hm):
     """The 4 corners picked together from up to PEAKS spots of each heatmap: with two documents on a
     picture every heatmap has a spot on each, and the highest spots alone can put one corner on one
     document and three on the other (an ID card below its ספח, 2026-10-22). The convex frame with the
-    highest spots wins, a frame whose opposite sides differ more than SIDES× counted down. One spot on
+    highest spots wins, a frame whose opposite sides differ more than SIDES× counted down, and one with both
+    pairs of sides more than FREE from parallel (a frame mixed of two documents) by cos^PAR of the rest. One spot on
     each heatmap: that frame, as before. The phone does the same (scan-lab/scan-core.js corners)."""
     found = [_spots(hm[k]) for k in range(4)]
     conf0 = min(top for _, top in found)
