@@ -1196,7 +1196,23 @@ function toCanvas(out) { const c = document.createElement('canvas'); c.width = o
 // One picture on one engine, no screen: [{frame, w, h, whole, docs: [{pts, out}]}] — a part per photo inside a
 // white page (else the picture itself); a PDF page made on a computer is taken whole; a picture with no
 // document frame in it is the page as it is.
-async function analyzePicture(url, pdfPage, eng, onStep = () => {}) {
+// Where a picture's time goes (owner, 2026-10-24: one photo took 4.4 s): each step's time and model runs,
+// in the log as the picture is shown (parts.timing).
+function pictureTimer(eng) {
+  const steps = new Map(); let step = 'open', t = performance.now();
+  const at = name => { const now = performance.now(), x = steps.get(step) || { ms: 0, runs: 0 }; x.ms += now - t; steps.set(step, x); step = name; t = now; };
+  const runs = () => { const x = steps.get(step) || { ms: 0, runs: 0 }; x.runs++; steps.set(step, x); };
+  const timed = Object.assign({}, eng, { detect: (which, input) => { runs(); return eng.detect(which, input); } });
+  const text = () => {
+    at(step);
+    let all = 0; const parts = [];
+    for (const [name, x] of steps) { all += x.ms; if (x.ms >= 1) parts.push(name + ' ' + Math.round(x.ms) + (x.runs ? ' (' + x.runs + (x.runs > 1 ? ' runs' : ' run') + ')' : '')); }
+    return parts.join('; ') + '; all ' + Math.round(all);
+  };
+  return { eng: timed, at, text };
+}
+async function analyzePicture(url, pdfPage, eng0, onStep = () => {}) {
+  const tm = pictureTimer(eng0), eng = tm.eng;
   const img = new Image(); img.src = url; await img.decode();
   const page = document.createElement('canvas'); page.width = img.naturalWidth; page.height = img.naturalHeight; page.getContext('2d').drawImage(img, 0, 0);
   const boxes = photosOnPage(img), parts = [];
@@ -1210,6 +1226,7 @@ async function analyzePicture(url, pdfPage, eng, onStep = () => {}) {
     // a frame found, in the whole picture's shares (a photo cut out of a white page lies at its box)
     const onPicture = q => q.map(([x, y]) => box ? [(box[0] + x * w) / page.width, (box[1] + y * h) / page.height] : [x, y]);
     onStep('finding', null);
+    tm.at('first document');
     // the first frame is checked like the others (a sure, convex frame of a document's shape); none such:
     // looked for again as the next ones are, and only then the whole picture (its corners fixed by hand)
     if (!whole) {
@@ -1218,37 +1235,43 @@ async function analyzePicture(url, pdfPage, eng, onStep = () => {}) {
       else { const q = await findNext(frame, w, h, [], eng); if (q) first = q; else log('No document frame found on a picked picture — the whole picture taken'); }
     }
     onStep('cutting', onPicture(first));
+    tm.at('cut and upright turn');
     const docs = [{ pts: first, out: await eng.warp(pix.slice(), w, h, first, true) }];
     if (!whole) {
       const found = [first];
       for (let n = 1; n < 4; n++) {
+        tm.at('looking for more');
         const q = await findNext(frame, w, h, found, eng);
         if (!q) break;
         onStep('cutting', onPicture(q));
+        tm.at('cut and upright turn');
         found.push(q); docs.push({ pts: q, out: await eng.warp(pix.slice(), w, h, q, true) });
       }
       // a document lying on one found (an ID card on its ספח)
       for (const q of found.slice()) {
         if (found.length >= MAX_DOCS) break;
+        tm.at('a document lying on one');
         const c = await findInside(pix, w, h, q, eng, found);
-        if (c) { onStep('cutting', onPicture(c)); found.push(c); docs.push({ pts: c, out: await eng.warp(pix.slice(), w, h, c, true) }); }
+        if (c) { onStep('cutting', onPicture(c)); tm.at('cut and upright turn'); found.push(c); docs.push({ pts: c, out: await eng.warp(pix.slice(), w, h, c, true) }); }
       }
     }
     parts.push({ frame, w, h, whole, docs, onPicture });
+    tm.at('open');
   }
+  parts.timing = tm.text();
   return parts;
 }
 // A worked picture onto the list, after `before` pages: its pages, its attempt (S8) and the readouts.
 async function showPicture(url, parts, before) {
   const img = $('still'); img.src = url; await img.decode(); img.hidden = false; $('video').hidden = true;
-  let pages = before;
+  let pages = before, readMs = 0;
   for (const part of parts) {
     const att = newAttempt(part.frame, part.w, part.h, part.whole ? 'pdf' : 'photo');
     att.edgesModel = part.whole ? null : part.docs[0].pts.map(p => p.slice());
     let kn = '';
     for (let i = 0; i < part.docs.length; i++) {
       const d = part.docs[i], oc = toCanvas(d.out);
-      if (i === 0) { lastTurn = d.out.turn; if (d.out.turnError) logErr('Face finder: ' + d.out.turnError); kn = await doctypeNote(oc) + await mrzNote(oc) + await heNote(oc); }
+      if (i === 0) { lastTurn = d.out.turn; if (d.out.turnError) logErr('Face finder: ' + d.out.turnError); const t = performance.now(); kn = await doctypeNote(oc) + await mrzNote(oc) + await heNote(oc); readMs += performance.now() - t; }
       let el;
       if (pages === 0) el = $('shotImg');
       else { el = new Image(); el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(el); }
@@ -1262,6 +1285,7 @@ async function showPicture(url, parts, before) {
     $('shot').hidden = false;
     $('hint').textContent = (part.docs.length > 1 ? part.docs.length + ' documents on this photo' : 'One document on this photo') + turnNote() + kn;
   }
+  if (parts.timing) log('Picture timing, ms: ' + parts.timing + (readMs >= 1 ? '; then the readouts (type, passport zone, Hebrew) ' + Math.round(readMs) : ''));
   return pages;
 }
 // Photos or PDF…: no file type set, so the phone opens its file chooser, where photos and PDFs are side by
