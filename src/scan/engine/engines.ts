@@ -395,6 +395,20 @@ export class Engines {
     this.setState({ phase: 'ready', label: used.label, worker: used.worker, loadSeconds: (this.env.now() - t0) / 1000 });
   }
 
+  /** An engine given from outside in place of the ways — the browser tests' stand-in with fixed answers
+   *  (src/scan/hooks.ts stubEngine; CI has no models): the live frame, the shot, its capture thread and picked
+   *  files run on it as on a way that started, until the settings change (the next start tries the ways). */
+  useEngine(e: LoadableEngine, label: string): void {
+    if (this.engine && this.engine !== e) this.engine.stop();
+    if (this.capThread && this.capThread.raw !== e) this.capThread.stop();
+    const { model, backend, cpuDir } = this.settings;
+    this.engine = e; this.engineWay = 'given';
+    this.engineKey = model + '|' + backend + '|' + this.inWorkerNow() + '|' + cpuDir;
+    this.capThread = this.capOnly(e); this.capFor = this.capKey().key; this.capLoading = null;
+    this.log.log('Live and capture running as ' + label);
+    this.setState({ phase: 'ready', label, worker: false, loadSeconds: 0 });
+  }
+
   /** The file threads left (the engine changed, or it stuck). */
   dropFileThreads(): void { for (const t of this.fileThreads) { t.dead = true; t.stop(); } this.fileThreads = []; this.fileThreadsFor = null; this.fileThreadsCap = ''; }
 
