@@ -18,7 +18,7 @@ function walk(dir, base = '') {
 
 (async () => {
   if (!fs.existsSync(DIST)) { console.log('dist/ is missing: run `npm run build` at the repo root first'); process.exit(1); }
-  const { staticFiles } = await import(path.join(ROOT, 'scripts', 'static-files.mjs'));
+  const { staticFiles } = await import(require('url').pathToFileURL(path.join(ROOT, 'scripts', 'static-files.mjs')).href);
   const errs = [];
   const old = staticFiles(ROOT);
   for (const f of ['service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
