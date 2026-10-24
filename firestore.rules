@@ -7,7 +7,7 @@ rules_version = '2';
 //   role      'superadmin' | 'tenant_admin' | 'staff' | 'hr' | 'supplier' | 'client'
 //   tenantId  the caller's firm (absent for a superadmin)
 //   rt        staff / hr / supplier / client: its flat rights
-//             (docs/permissions-plan.md) — tabs, actions, what is shown
+//             (docs/admin.md → Permission templates) — tabs, actions, what is shown
 //   own       hr only: true = "only own workers" (docs/admin.md → HR)
 //   supplierId  only for role 'supplier'
 //   clientId    only for role 'client' (the client portal goes through a function too)
@@ -43,7 +43,7 @@ service cloud.firestore {
     function member(t) { return signedIn() && request.auth.token.tenantId == t; }
     function isTenantAdmin(t) { return member(t) && role() == 'tenant_admin'; }
     function isAdmin(t) { return isSuper() || isTenantAdmin(t); }
-    // The flat rights (claim rt, docs/permissions-plan.md): every check of a
+    // The flat rights (claim rt, docs/admin.md → Permission templates): every check of a
     // staff / HR login below is one right of that list — a tab (schedule,
     // workers, clients, suppliers), an edit (editSchedule, editWorkers,
     // editPunches) or Edit pay (editPay). A token without rt has none.

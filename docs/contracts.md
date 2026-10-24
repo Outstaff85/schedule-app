@@ -1,6 +1,6 @@
 # Signed documents
 
-What is kept under a worker for Form 101 and the contract, and how it is signed. The plan, stage by stage, is [contracts-plan.md](contracts-plan.md); this file describes what is built.
+What is kept under a worker for Form 101 and the contract, and how it is signed. The plan it was built from, stage by stage (D0–D7, done), is archived as [archive/docs/contracts-plan.md](../archive/docs/contracts-plan.md); this file describes what is built.
 
 ## Scanned pages (D1)
 
@@ -35,7 +35,56 @@ Once, by the workflow **Split the old scan sidecars into pages** (`.github/workf
 
 ## Contract templates (D2)
 
-A firm's contract is a PDF with **marks** typed in its text: `{{given}}`, `{{id}}`, `{{signature}}`… — Latin letters in double braces, no spaces (the full list: `MARKS` in `functions/contracts.py` and `src/manager/contracts.ts`, as docs/contracts-plan.md → D2 → The marks). In Word the marks are typed as plain text and the file saved with File → Save as → PDF; blanks after a mark (spaces up to the next letter) are the room a long value may take.
+A firm's contract is a PDF with **marks** typed in its text: `{{given}}`, `{{id}}`, `{{signature}}`… — Latin letters in double braces, no spaces (the full list: `MARKS` in `functions/contracts.py` and `src/manager/contracts.ts`, as the table under The marks below). In Word the marks are typed as plain text and the file saved with File → Save as → PDF; blanks after a mark (spaces up to the next letter) are the room a long value may take.
+
+### The marks
+
+They are written in Latin letters, in double braces, with no spaces. A Hebrew mark could come out of the PDF's text with its letters reversed, so Latin is the safe form. Each value is printed in Hebrew, as on Form 101, except a foreign passport's names, which are printed in Latin.
+
+| Mark | Filled with |
+|---|---|
+| **Worker** | |
+| `{{given}}` | given name |
+| `{{surname}}` | surname |
+| `{{full_name}}` | given name and surname |
+| `{{id}}` | ID or passport number |
+| `{{id_type}}` | ת.ז. or דרכון |
+| `{{id_expiry}}` | the ID's or passport's expiry date |
+| `{{dob}}` | date of birth |
+| `{{sex}}` | זכר / נקבה |
+| `{{marital}}` | marital status |
+| `{{phone}}` | phone |
+| `{{address}}` | street and house number |
+| `{{city}}` | city |
+| `{{full_address}}` | street, house number, city |
+| `{{health_fund}}` | health fund |
+| **Work** | |
+| `{{start_date}}` | start date |
+| `{{end_date}}` | contract end (start date + the contract's months), when set |
+| `{{contract_months}}` | the contract's length in months, when set |
+| `{{site}}` | the client or site (several: joined by commas) |
+| `{{supplier}}` | the supplier, when there is one |
+| `{{schedule}}` | the weekly hours (days and times) |
+| **Pay** — filled only when the login sending it may see pay (`seePay`); otherwise the send is refused, as for the date | |
+| `{{rate}}` | the worker's rate (₪ per hour, or per day for daily pay) |
+| `{{pay_mode}}` | שעתי / יומי |
+| `{{ot_rate}}` | overtime rate |
+| `{{shabbat_rate}}` | Shabbat rate |
+| `{{travel}}` | travel allowance (per day, or per month) |
+| `{{bank}}` | bank, branch and account number |
+| **Firm** | |
+| `{{company}}` | the firm's name |
+| `{{company_address}}` | the firm's address |
+| `{{company_phone}}` | the firm's phone |
+| `{{deductions_file}}` | the deductions file number |
+| **The worker's own terms** | |
+| `{{terms_1}}` … `{{terms_5}}` | the worker's own text fields (above) |
+| **Signing** | |
+| `{{signature}}` | the worker's signature (a picture, fitted to the mark's place) |
+| `{{sign_date}}` | the signing date (D3) |
+| `{{today}}` | the date the document is built |
+
+An unknown mark (a typo) is listed on upload and placed by hand or fixed in the file. A mark whose value is empty for a worker (no supplier, say) is printed empty.
 
 ### The server (`functions/contracts.py`, the `contract_templates` function)
 
@@ -61,7 +110,7 @@ A firm's contract is a PDF with **marks** typed in its text: `{{given}}`, `{{id}
 
 - A `Plate` per firm template (`PagedList`): the name (and its version from 2 on), the category and **Default** chips, the size, the date added, how many signed it (`signedCount`, counted from D3), unknown marks in amber. A tap opens its sample (`file` with `sample`, in a new tab); a double click / ✎ renames it; ⋮: Edit (the name), Category, Make default (when it is not), Replace file, Delete (the Undo snack, then `delete`).
 - **New template** (`.og-new`) picks a PDF → the upload window (`UploadWindow`): "Making the file light…", then both sizes ("Made light: 2.4 MB → 180 KB"), the name and the category (the firm's categories offered), the marks found as chips, the unknown ones, the picture pages, **Open the sample**, and Save. **Place a mark by hand** shows the pages (the picture pages always): pick a mark and its width, tap where it goes; each placed mark is a chip (✕ removes it) and a box on the page, and the sample is made again.
-- Sends waiting for a signature on a deleted template (D3) are not there yet.
+- Deleting a template withdraws the sends still waiting for a signature on it (Signing → `send` below).
 
 ## The worker's contract (D2)
 
@@ -78,7 +127,7 @@ Form 101 and the worker's contract are signed **once**, with the same signature 
 ### The manager's side
 
 - **Documents to sign** on the worker card (`card-sign`, a login that edits workers) opens the sign window (`src/manager/SignWindow.tsx`). It reads `ManagerBridge.signContext(id)` — the saved worker, Form 101's values (`form101Payload`), the contract's mark values (`contractValues`, `src/manager/logic/contract-values.ts`: Hebrew as Form 101, a passport's names Latin; the pay marks only for a login that sees pay, `canSeePay`), the punch link and its WhatsApp link — and the templates (`list` with the worker): the worker's own pick, else its category's default, is chosen first.
-- **The signing date:** the day of signing by default; a login with the right **Set the signing date** (`canSetSignDate`: the owner, the super-admin, or the template's `setSignDate` tick — docs/permissions-plan.md) picks it in the window. The worker never changes it.
+- **The signing date:** the day of signing by default; a login with the right **Set the signing date** (`canSetSignDate`: the owner, the super-admin, or the template's `setSignDate` tick — archive/docs/permissions-plan.md) picks it in the window. The worker never changes it.
 - **Send to sign** (`send`, way `remote`): the request waits in the worker's own page; the window shows the link with **Send on WhatsApp** and Copy. **Sign here** (way `person`): both documents filled, in the window (`SignDocuments`), one signature → `sign`, the window closes at once and the two PDFs are built in the background (`buildSigned`: `build` form101 and contract at once), then taken onto the worker.
 - **On the worker** (`src/manager/logic/signing.ts`): the firm's requests are read when the Workers tab is drawn (at most once a minute; `loadSignRequests`) and after a signing; the card shows **Sent to sign**, **Signed <date>** or **Needs sending again** (the template was deleted before the signature). A signed request not taken yet is put on the worker once (`adoptSigned`): Form 101 as `docUrl` / `docFileId`, the contract as a `docs` entry with `signed: true`, `signedAt`, `signDate`, `signedRequestId`, the signature (`sigFileId`); the replaced signed Form 101 and contract are deleted; then `applied`.
 - **Never built again:** a worker with `signedAt` keeps its signed Form 101 — no rebuild after an edit or a firm change, a rescan stores only its pages (docs/form101.md → When it is built). A later change to a template never touches signed contracts.

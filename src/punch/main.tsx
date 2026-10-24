@@ -1,4 +1,4 @@
-// /punch — the worker punch page (docs/punch.md, react-migration-plan.md → stage 5).
+// /punch — the worker punch page (docs/punch.md, archive/docs/react-migration-plan.md → stage 5).
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/styles/globals.css';

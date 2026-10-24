@@ -1,6 +1,6 @@
 # Suppliers
 
-Suppliers are staffing agencies a worker comes through. This file covers the Suppliers tab and window, and how suppliers feed the rest of the app. Since stage 6d the tab and its window are React inside the manager page (`src/manager/Clients.tsx` → `Suppliers`, `SupplierEditor.tsx`, the rules in `clients.ts`; [build.md](build.md) → The manager's React pieces); the records, the figures and the saves stay in `schedule-manager.html` (`ManagerBridge`). The supplier's own login page is [supplier-portal.md](supplier-portal.md).
+Suppliers are staffing agencies a worker comes through. This file covers the Suppliers tab and window, and how suppliers feed the rest of the app. Since stage 6d the tab and its window are React inside the manager page (`src/manager/Clients.tsx` → `Suppliers`, `SupplierEditor.tsx`, the rules in `clients.ts`; [build.md](build.md) → The manager's React pieces); the records, the figures and the saves stay in the page's modules (`src/manager/page/suppliers.ts` — `commitSupplier` —, `bridge.ts`; `ManagerBridge`). A supplier's own login: [portals.md](portals.md).
 
 ## Data
 
@@ -28,6 +28,6 @@ A worker links to **one** supplier through `w.supplierId` (set in the worker mod
   A supplier never affects what the worker is paid. See [accounting.md](accounting.md).
 - **Exports:** the punch CSV, the salary export and the Excel Statistics sheet carry a Supplier column.
 - **Logins:**
-  - a user with role `supplier` and a `supplierId` signs in to `/supplier` ([supplier-portal.md](supplier-portal.md));
+  - a user with role `supplier` and a `supplierId` signs in to `/supplier` ([portals.md](portals.md));
   - that user is created in Admin → Users ([admin.md](admin.md));
   - the supplier portal gets only its own workers, with no wage, client billing or GPS fields.

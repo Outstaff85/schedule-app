@@ -33,9 +33,9 @@ The bell's notices become "Time to retrain the document edges model" and "Enough
 
 ```
  PHONE (site, scanner)                       SERVER (Cloud Functions)
- edges (light) · type of document  ──pages──▶ preprocess_scan: edges, cut, type ◀── models from the
- worker window                     ──read───▶ ai_read: Sonnet / Haiku               Firebase mirror
- Done / Save                       ──examples▶ scan_feedback ──write only──┐       (site's version only)
+ edges, cut, type of document      (on the phone: the server runs no scanner model since 2026-10-19)
+ worker window                     ──read───▶ ai_read: Sonnet / Haiku
+ Done / Save                       ──examples▶ scan_feedback ──write only──┐
         ▲ models at deploy                                                  ▼
  HF OutStaff/scanner-models (PUBLIC)  ◀── publish ── OWNER'S PC: /scan-train ◀── HF OutStaff/scanner-data
  tags base-v1, v2, … + exam reports                  download, train, exam, yes    (PRIVATE bucket)
@@ -79,7 +79,7 @@ A script copies every version from Firebase Storage `models/scan/<version>/` to 
 `scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh` (`model_store.py`): download the tag named in `models-version` from HF; the authors' links stay only for `base-v1`.
 
 ### H4 — the server's mirror and warm-up (removed 2026-10-19 with `preprocess_scan`: the site's scanner is the lab's page)
-The functions' deploy copies the site's version (`functions/scan_models_version.txt`) from HF to Firebase `models/scan/<version>/` when it is not there yet, and deletes the other versions there. `functions/main.py` loads them from Firebase as now (`_scan_models`, `_kind_model`), now when the instance starts (warm-up).
+Nothing of it is left: the server runs no scanner model (the site's scanner is the lab's page, run on the phone). `functions/scan_models_version.txt` stays only as the version written into each training example (`MODEL_PREFIX` in `functions/main.py`, `tests/auth/test_scan_feedback.py`; docs/scan-training.md → model versions).
 
 ### H5 — `/scan-train` on HF
 `publish.py` uploads a new version to `scanner-models` in one commit with the tag `v<N>` (the next number from the tags; nothing is copied — a tag holds every file); the exam reports beside it; the pulls read from the bucket; training uses HF's pretrained weights on the PC's GPU.

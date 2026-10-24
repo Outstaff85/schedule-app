@@ -886,7 +886,7 @@ export async function initFirestoreBackend() {
     currentUser: (): {uid: string} | null => auth.currentUser,
     idToken: (): Promise<string | null> => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
     // The flat rights of this login as its ID token has them (claim rt,
-    // docs/permissions-plan.md); null for an owner or a superadmin.
+    // docs/admin.md → Permission templates); null for an owner or a superadmin.
     rights: async (): Promise<string[] | null> => { const v = (await myClaims()).rt; return Array.isArray(v) ? v : null; },
     signOut: (): Promise<void> => { if (punchUnsub) punchUnsub(); claimsFor = null; claims = {}; return authMod.signOut(auth); },
   };

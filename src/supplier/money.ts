@@ -1,4 +1,4 @@
-// The supplier's hours, pay and commission (docs/supplier-portal.md → My Hours).
+// The supplier's hours, pay and commission (docs/portals.md → Supplier login).
 // Hours and pay come only from the one payroll copy (src/lib/payroll.ts) with
 // this page's clients (the firm's clients with their worker-pay rates only),
 // so a worker's pay is the same figure as in the manager's Salary table.

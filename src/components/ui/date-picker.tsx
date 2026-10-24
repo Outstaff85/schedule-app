@@ -1,5 +1,5 @@
 // Date Picker: the Calendar inside a Popover — it replaces every type="date"
-// field (react-migration-plan.md). The field shows the date as dd/mm/yyyy (the
+// field (archive/docs/react-migration-plan.md). The field shows the date as dd/mm/yyyy (the
 // app's numeric date); the value is a local YYYY-MM-DD string, like the data.
 import * as React from 'react';
 import { format, parse, isValid } from 'date-fns';

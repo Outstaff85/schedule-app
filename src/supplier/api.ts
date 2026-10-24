@@ -1,4 +1,4 @@
-// The supplier portal's data (docs/supplier-portal.md): its own session key,
+// The supplier portal's data (docs/portals.md): its own session key,
 // and every call to the `supplier` function (functions-auth/portal.py) with
 // the Firebase ID token. That function hands out only this supplier's own
 // workers and punches through its allow-lists (no client billing, GPS,

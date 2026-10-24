@@ -6,7 +6,7 @@ One screen, one Cloud Function and one store for every login that reviews its wo
 
 ## Ticks (from the flat rights, claim `rt` — `hour_ticks`, `HOUR_OF`)
 
-`HOUR_PERMS` in `functions-auth/core.py` (and `HOUR_PERM_LABELS` in the manager app), each given by one right — hours by **Hours**, approve / dispute / fix by **Approve / Dispute / Fix hours**, schedule by **Schedule**, export by **Export**:
+`HOUR_PERMS` in `functions-auth/core.py` (the Users list shows a login's hours ticks from its flat rights, `HOUR_RIGHTS` in `src/manager/Users.tsx`), each given by one right — hours by **Hours**, approve / dispute / fix by **Approve / Dispute / Fix hours**, schedule by **Schedule**, export by **Export**:
 
 - **hours** — see the month's shifts (in / out / hours per day);
 - **approve** — approve a day, several ticked days at once (Select for a login with this tick — owner 2026-10-13: a Select button above the days; after it "N selected · Select all · Done" and a tick box on every day still waiting / changed / whose fix was rejected; a tap on the day or its box ticks it, the day's own buttons stay; with a tick the glass bar shows — its Approve sends their lines in one `approve` (`approveSelected` in `HoursReview.tsx`), ✕ clears the ticks), or the whole month at once;
@@ -34,7 +34,7 @@ Store: `tenants/{t}/hourApprovals/{kind}_{ownerId}_{YYYY-MM}` = `{kind, ownerId,
 
 ## The screen in the new stack (`src/hours-review/`)
 
-The screen of the client portal (stage 3 of [react-migration-plan.md](react-migration-plan.md)), of the supplier portal's Approvals tab (stage 4) and of an HR in the manager app (Accounting, stage 6e). The old pages' copy, `hours-review.js`, was removed with stage 6e.
+The screen of a client's and a supplier's Hours tab and of an HR's Hours tab, all inside the manager app (built in stages 3, 4 and 6e of [react-migration-plan.md](../archive/docs/react-migration-plan.md)). The old pages' copy, `hours-review.js`, was removed with stage 6e.
 
 - `hours.ts` — the data: `HOURS_FN_URL`; the reply types (`HoursData`: `month, perms, owner, workers, punches, days`); `monthKey(offset)` / `monthStart(key)` (date-fns); `can(data, tick)`; `monthDays(data)` (the shift pairing of `src/lib/payroll.ts`, a row per worker and day with its `line` — the same lines as the owner's `hourDayLines`); `dayState(data, row)`; `PICKABLE`; `STATES` (colour, label, pill); `planned(worker, date)`.
 - `HoursReview.tsx` — `HoursReview({call, hideOwner, sign?})`; `call(body)` posts to the `hours` function (the page's own, with its ID token). The state (month, tab, data) lives outside React (`useSyncExternalStore`), so a language change redraws without a new load; `hoursReviewReload()` reloads, `useHoursOwner()` gives the header its client. Tabs **Hours** / **Schedule** (ui Tabs) by their ticks; month arrows (no future months). **Hours**: the Figures (approved, waiting, disputed or changed, fixes proposed); the status plate ("N of M days approved" …, **Export**, **Approve the month** — asks first in an Alert Dialog); the total; **Select** (`useSelection` over the pickable days: a tap ticks a day, the bulk bar's **Approve** sends their lines in one `approve`); a Section per worker (name, days, hours), paged by 10 (`PagedList`), a Plate per day — the date, the state pill, the shifts, the hours, the bar in the state's colour, the state's note under it; its ⋮ holds Approve this day / Dispute this day / Propose a fix by the ticks, and a tap opens the fix (else the dispute). The dispute and fix windows (`Window`) have no buttons: closing one sends (dispute: empty = take it back; fix: only when a time differs from the punches; a day with several shifts first picks the shift). **Schedule**: a Section per worker with a Table of its planned days (today in accent). With `sign` (a client) see Signing the month below. Plates and controls carry `data-day-key` / `data-state` / `data-testid` for the browser tests.
@@ -47,8 +47,8 @@ The screen of the client portal (stage 3 of [react-migration-plan.md](react-migr
 
 Where it runs:
 
-- **Client portal** — the whole page, the React screen ([client-portal.md](client-portal.md)).
-- **Supplier portal** — the **Approvals** tab, the React screen (`HoursReview`, [supplier-portal.md](supplier-portal.md)), shown with an hours or schedule tick.
+- **A client login** — its one tab, Hours, inside the manager app ([portals.md](portals.md) → Client login).
+- **A supplier login** — its **Hours** tab inside the manager app (`HoursReview`, [portals.md](portals.md) → Supplier login), shown with an hours or schedule tick.
 - **Manager app, an HR login** — its **Hours** tab (`#hoursRoot` → `HoursTab`, `#accSecReview`: the React `HoursReview` over the page's `hoursCall`, `ManagerBridge.hoursCall`), shown with an hours or schedule tick (`hrHourReview()`).
 
 ## Accounting → Hours approvals (the owner)

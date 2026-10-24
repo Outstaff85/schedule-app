@@ -117,7 +117,7 @@ def claims_for(user):
     role = _norm_role(user.get("role"))
     claims = {"role": role}
     if role in ROLES_SUB:
-        # rt: the flat rights (docs/permissions-plan.md) — the one thing the
+        # rt: the flat rights (docs/admin.md → Permission templates) — the one thing the
         # rules and the functions check.
         claims["rt"] = _user_rights(role, user)
     if role == "hr":
@@ -247,7 +247,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "tenantId": tenant_id,
         "supplierId": user.get("supplierId") or None,
         "clientId": claims.get("clientId"),
-        # the flat rights (docs/permissions-plan.md); None: an owner or a superadmin
+        # the flat rights (docs/admin.md → Permission templates); None: an owner or a superadmin
         "rights": claims.get("rt"),
         "ownOnly": claims.get("own", False),
         "commissionRate": claims.get("hrc", 0),
@@ -580,7 +580,7 @@ TEMPLATE_RIGHTS = ("rights", "ownOnly")
 E_PICK_TEMPLATE = "Pick a template"
 E_TEMPLATE_NOT_FOUND = "Template not found"
 E_TEMPLATE_ROLE = "The template is for another role"
-# The flat list of rights (docs/permissions-plan.md): one tick, one thing —
+# The flat list of rights (docs/admin.md → Permission templates): one tick, one thing —
 # a tab, an action, or what is shown. Whose workers an HR works with is ownOnly.
 RIGHT_TABS = ("today", "schedule", "workers", "clients", "suppliers", "accounting", "punchlog", "commission", "hours")
 RIGHT_ACTIONS = ("editSchedule", "editWorkers", "editPunches", "editPay", "export", "approveHours", "disputeHours", "fixHours",
@@ -687,7 +687,7 @@ def _load_template(db, tid, role=None):
 # such doc's flat rights, worked out one to one from those fields, and
 # deletes them; appMeta/rights remembers it is done. A session signed in
 # before the flat rights has no `rt` claim and the app sends it to the
-# sign-in (docs/permissions-plan.md → Done after the plan).
+# sign-in (archive/docs/permissions-plan.md → Done after the plan).
 
 OLD_RIGHT_FIELDS = ("permissions", "editPerms", "hourPerms", "supplierSections", "showPay")
 _OLD_SECTIONS = ("schedule", "workers", "clients", "suppliers", "accounting", "exports")

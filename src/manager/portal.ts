@@ -1,5 +1,5 @@
-// A supplier or client login inside the manager app (docs/permissions-plan.md
-// → stage 3): the same frame, its own tabs, its data only through the
+// A supplier or client login inside the manager app (docs/portals.md):
+// the same frame, its own tabs, its data only through the
 // `supplier` / `hours` functions — the page loads no firm data for it and
 // never reads Firestore. Pure: what tabs a login gets and which portal view
 // each frame tab is.

@@ -1,6 +1,6 @@
 // shadcn/ui Alert Dialog: the one window that asks before acting — only for
 // irreversible actions (Clear Log and the like). An ordinary delete never asks:
-// it uses the Undo snack (react-migration-plan.md, CLAUDE.md → List look).
+// it uses the Undo snack (archive/docs/react-migration-plan.md, CLAUDE.md → List look).
 // It does not close on the backdrop: the answer is one of its two buttons.
 import * as React from 'react';
 import { AlertDialog as AlertDialogPrimitive } from 'radix-ui';

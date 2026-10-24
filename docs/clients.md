@@ -64,5 +64,5 @@ React since stage 8e-3, drawn into the page's `#mapPickModal`; the page opens th
 - **Workers:** assigned with the chip picker in the worker modal ([workers.md](workers.md)).
 - **Pay and billing:** `effectiveRates()` and `clientBillPay()`, and the Accounting rate matrix and "Billable by client" table ([accounting.md](accounting.md)).
 - **Punch page:** the geofence ([punch.md](punch.md)).
-- **Supplier portal:** sees a client only as `{id, name, object}` ([supplier-portal.md](supplier-portal.md)).
+- **Supplier portal:** sees a client only as `{id, name, object}` ([portals.md](portals.md)).
 - **Isolation:** no client-facing surface ever shows supplier data.

@@ -1,12 +1,20 @@
-# Supplier login (inside the manager app; screens in `src/supplier/`)
+# Supplier and client logins (inside the manager app)
 
-A supplier (staffing agency) login. Since 2026-10-19 (docs/permissions-plan.md → stages 3–4) it works **inside the manager app**, in the same frame, with its own tabs; its screens are the code in `src/supplier/`. The real boundary is on the server — the supplier gets data only through the `supplier` function's allow-lists and can only write through narrow actions; nothing reads Firestore for it.
+A supplier (a staffing agency) and a client of the firm (a site where its workers work) sign in with their own logins on the one sign-in page and work **inside the manager app**, in the same frame, with their own tabs (since 2026-10-19; the plan it came from, done, is [archive/docs/permissions-plan.md](../archive/docs/permissions-plan.md) → stages 3–4). Nothing reads Firestore for them: the real boundary is on the server — a supplier gets data only through the `supplier` function's allow-lists and writes only through narrow actions; a client gets everything from the `hours` function. Who creates these logins and how: [admin.md](admin.md) → Users pane.
 
-Forms on React Hook Form + Zod, the pay table on TanStack Table (the Data Table), reads through TanStack Query; SheetJS from cdnjs, loaded only when an Excel export or the timesheet import needs it (`loadScript(XLSX_URL)`).
+## What both share
 
-Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The supplier entity and commission: [suppliers.md](suppliers.md), [accounting.md](accounting.md).
+- **The gate.** After the sign-in the manager page's gate runs `startPortal` (`src/manager/page/gate.ts`) instead of the app's start — no firm data is loaded. It writes the role's session key (`supplierPortal_session` / `clientPortal_session`), checks the Firebase sign-in (`loadFirestoreBackend().currentUser()`; gone or another user's → the sign-in), reads the login's flat rights from the ID token (`rights()`, claim `rt`) and gives the frame the role's tabs (`portalTabs(role, rights)`, `src/manager/portal.ts`).
+- **The view.** `PortalView` (`src/manager/Portal.tsx`) draws the open tab into the page's `#sectionPortal` (`switchTab` and `render()` draw only that while a supplier or client is signed in, `nav.ts`); a session error in a reply signs out. A reload opens the first tab.
+- **The frame** is the manager app's: the side menu / bottom bar with the role's tabs, the Language button (the pick kept on the device and the account) and the account menu (the person's name, the firm · supplier or client, the theme, **Sign out** → both sessions and the Firebase sign-in end, the sign-in opens).
+- **`/supplier` and `/client`** (`supplier-portal.html`, `client-portal.html`, small static pages kept for bookmarks and installed apps) only send to `/schedule-manager.html`; a session key kept from the old portals is taken over by the gate (`adoptPortalSession`; `clearPortalSessions` at sign-out).
+- **Hours review:** both review hours on the shared screen `HoursReview`, `src/hours-review/` ([hours-review.md](hours-review.md) — the ticks, the `hours` function, the per-day approve / dispute / fix, the owner's side).
 
-## Files
+## Supplier login (screens in `src/supplier/`)
+
+Forms on React Hook Form + Zod, the pay table on TanStack Table (the Data Table), reads through TanStack Query; SheetJS from cdnjs, loaded only when an Excel export or the timesheet import needs it (`loadScript(XLSX_URL)`). The supplier entity and commission: [suppliers.md](suppliers.md), [accounting.md](accounting.md).
+
+### Files
 
 | File | What |
 |---|---|
@@ -19,15 +27,13 @@ Who creates a supplier login and how: [admin.md](admin.md) → Users pane. The s
 | `src/supplier/store.ts` | the screen state outside React (the month, the picked workers, the shift rows being typed) — it outlives a language change |
 | `src/supplier/Dashboard.tsx`, `Workers.tsx`, `Hours.tsx` | the screens |
 
-## Session, tabs and requests
+### Session, tabs and requests
 
 - **One login for every role:** after the sign-in the manager page's gate runs `startPortal` instead of the app's start — no firm data is loaded. It writes the screens' session key `localStorage.supplierPortal_session` (`{uid, role, tenantId, supplierId, username, rights}`), checks the Firebase sign-in (gone or another user's → the sign-in) and reads the login's flat rights from the ID token (`rights()`, claim `rt`).
 - **The tabs** (`portalTabs(role, rights)`): **Today** (the dashboard), **Workers**, **Commission** (its hours and pay), and with Hours or Schedule **Hours** (the hours review) — each by its right. Each is drawn into the page's `#sectionPortal` (`switchTab` and `render()` draw only that while a supplier is signed in, `nav.ts`).
-- **The frame** is the manager app's: the side menu / bottom bar, the Language button, the account menu (the person's name, the firm · supplier, the theme, **Sign out** → both sessions and the Firebase sign-in end).
 - **Requests:** `supplierCall(body)` (`api.ts`) posts to the `supplier` function (`SUPPLIER_FN_URL`, europe-west3) with `Authorization: Bearer <Firebase ID token>` and resolves with the JSON reply; a session error in the reply signs out. Actions: `loadSchedule`, `loadPunchLog`, `supplierAddWorker` (the server also gives the new worker its punch-link `token`, which no supplier reply carries), `supplierUpdateWorker`, `supplierDeleteWorker`, `supplierSubmitHours`, `supplierListHours`.
-- **`/supplier`** (`supplier-portal.html`, a small static page kept for bookmarks and installed apps) only sends to `/schedule-manager.html`; a `supplierPortal_session` kept from the old portal is taken over by the gate (`adoptPortalSession`).
 
-## Data (`useSupplierData()`)
+### Data (`useSupplierData()`)
 
 One TanStack Query read (`['supplier', 'data']`): `loadSchedule` and `loadPunchLog` in parallel → `{workers, clients, punches, showPay, commission}`. It is cached across a language change (the page is redrawn, the data is not loaded again) and refreshed (`refreshData()`) after every write. What the server sends a supplier (`functions-auth/portal.py` `strip_worker`):
 
@@ -38,7 +44,7 @@ One TanStack Query read (`['supplier', 'data']`): `loadSchedule` and `loadPunchL
 - **suppliers** — always empty;
 - **punches** — only this supplier's workers, only `id, workerId, workerName, type, time, date, site, clientId` (plus `ts`); no GPS, distance or notes. The last 13 months (the query itself is bounded by `ts`).
 
-## Tabs
+### Tabs
 
 The tabs a supplier login may use are its template's ticks (Today, Workers, Commission, Hours — its flat rights, claim `rt`, read by `rights()` in `firestore-backend.js`): a tab without its tick is hidden (the frame tabs above). The `supplier` function enforces it from the token's flat rights (claim `rt`, `core.caller_rights`): worker add / edit / delete need **Workers**, sending and listing hours **Commission**, the pay inputs **See workers' pay** — else "Not allowed for this login". A reload opens the first tab.
 
@@ -54,11 +60,11 @@ The tabs a supplier login may use are its template's ticks (Today, Workers, Comm
 
 Hours use `groupPunchesIntoShifts` / `analyzeDayPunches` (the short check: no warnings, no rounding) from `src/lib/payroll.ts`. Pay uses the same pay functions as the manager app (`effectiveRates`, `shiftPayFor`, `isDailyPay`, `dailyRate`, `dayOverride`, `localYMD` — imported from `src/lib/payroll.ts` with this page's `clients`, docs/accounting.md → Payroll module), so a worker's pay is the same figure as in the manager's Salary table. Commission is independent of pay (`myMonthCommission`): a worker with an override of his own (`hasOwnCommission`: `supplierRate`, or `supplierDayRate` for a daily-paid worker) uses `myCommission` — days × `supplierDayRate`, else hours × `supplierRate`; otherwise each shift is priced by the supplier's own rate on its date (`myRateOn` / `myShiftCommission`, copies of the manager app's `supplierRateOn` / `supplierShiftCommission`: by the hour, by the day once per day, or 5 ₪/h).
 
-## Windows
+### Windows
 
 The worker window closes like every window: a tap outside it (or a swipe down on a phone), no ✕ or Cancel button ([components.md](components.md) → `Window`).
 
-## What a supplier can write
+### What a supplier can write
 
 Only these actions:
 - `supplierAddWorker` — a new worker with `supplierId` forced to the caller's own, `clientIds: []`, `schedule: []`, `createdAt` (now, ISO — the "NEW" badge for 3 days, shown in the app and in the portal's worker list), and only the editable fields;
@@ -67,3 +73,20 @@ Only these actions:
 - editable fields (`SUPPLIER_EDITABLE`): `docGiven, docSurname, phone, docId, address, houseNumber, city, docDob, docSex, maritalStatus, healthFund, startDate, notes, status`; `name` is rebuilt from given name + surname.
 
 A supplier cannot call `saveSchedule`, the app's hours-import actions (it sends hours only through `supplierSubmitHours`) or the AI reads (refused on the server), and has no client billing data to show; wages only with "sees pay". The page never reads Firestore: `tests/e2e/main.test.js` checks the `supplier` function's replies for tokens, client billing and GPS.
+
+## Client login
+
+A client login reviews its workers' hours, with one tab, **Hours**. A client must never see wages, rates, suppliers, GPS or documents, and Firestore rules can't hide fields — so nothing reads Firestore for it: everything comes from the `hours` Cloud Function and is drawn by the shared hours screen, `src/hours-review/` ([hours-review.md](hours-review.md) — the ticks, the function, the per-day approve / dispute / fix, the owner's side).
+
+### Logins
+
+- Made in the manager app: Admin → Users → New user, a **Client** template (the template says the role and its rights — the default Client template: Hours, Approve / Dispute / Fix hours), then the client (the user window's client picker, `src/manager/Users.tsx`). "Only own workers" is on and locked.
+- Server side (`core.py`): `create_tenant_user` / `update_user` take a Client template with `clientId` (required); `claims_for` gives it `role: 'client'`, `clientId` and `rt` (its flat rights). The login reply carries `clientId` and `rights`.
+- The Users list shows a client login as "(client)" with its client and its hours ticks.
+- `firestore.rules`: no rule lets a `client` role read or write anything (tested in `rules.test.mjs`).
+
+### In the manager app
+
+- **The gate.** One login page for every role: after the sign-in the manager page's gate runs `startPortal` (`src/manager/page/gate.ts`) instead of the app's start — no firm data is loaded. It writes the client's session key `clientPortal_session` = `{uid, role:'client', tenantId, clientId, username}`, checks the Firebase sign-in (`loadFirestoreBackend().currentUser()`; gone or another user's → the sign-in), and gives the frame one tab, Hours (`portalTabs`, `src/manager/portal.ts`).
+- **The tab.** `PortalView` (`src/manager/Portal.tsx`), drawn into the page's `#sectionPortal`: `HoursReview` with its client named on top and `sign={signer: the login's name}` — the approved month is signed with a finger and kept as a PDF with the client's documents ([hours-review.md](hours-review.md) → Signing the month); its `call` posts to the `hours` function with the ID token; a session error in the reply signs out.
+- What a client receives is only the `hours` function's reply for its client (names, shifts at its site, its day entries, when and by whom the month was signed) — the page reads nothing else; `tests/e2e/main.test.js` checks the replies and the page for money, suppliers, GPS, files and tokens, and that no firm data is loaded.

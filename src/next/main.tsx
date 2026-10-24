@@ -1,5 +1,5 @@
 // /next — the new stack's component gallery (docs/components.md,
-// react-migration-plan.md → stage 1). Not linked from the app.
+// archive/docs/react-migration-plan.md → stage 1). Not linked from the app.
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/styles/globals.css';

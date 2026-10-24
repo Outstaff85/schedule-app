@@ -7,7 +7,7 @@
 // the tabs from tabAllowed()).
 import { getSession } from '../data/session';
 
-// The page's section names → the flat rights (docs/permissions-plan.md):
+// The page's section names → the flat rights (docs/admin.md → Permission templates):
 // an HR's Accounting is its Commission tab.
 const SECTION_RIGHT: Record<string, string> = { exports: 'export', payEdit: 'editPay' };
 /** The flat rights of a staff / HR / supplier / client session (the login reply's rights); [] when it has none. */

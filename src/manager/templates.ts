@@ -2,7 +2,7 @@
 // every firm, edited only by a super-admin (saveTemplate / deleteTemplate —
 // functions-auth/core.py); a firm's owner puts each login on one, and the
 // login's role and rights are the template's. The rights are one flat list
-// (docs/permissions-plan.md): a tick is one tab, one action or one thing
+// (docs/admin.md → Permission templates): a tick is one tab, one action or one thing
 // shown, and depends on no other. The list is read once (`listTemplates`)
 // and kept here for the Users section and the user window.
 import { useSyncExternalStore } from 'react';

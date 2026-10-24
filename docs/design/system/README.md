@@ -26,7 +26,7 @@ It is the target for the redesign of every page (manager app, supplier portal, c
 1. **One primary button per screen.** At most one or two glass secondaries next to it; everything else goes under the header ⋮.
 2. **Extra actions live under a vertical ⋮** (RowMenu): a glass popover with a tail. Delete is always last, in `red-soft`, under a hairline.
 3. **Every list is plates.** Tap reads (opens the card), double click / long press edits, swipe left reveals Edit / Delete.
-4. **Every list can Select.** Header ⋮ → Select… turns on SelectMode: drawn-tick boxes, Select all, glass bulk bar.
+4. **Every list can Select.** A **Select** button above the list (owner's override, docs/redesign.md → Owner overrides; `SelectBar` / `useSelection`, docs/components.md) turns on SelectMode: drawn-tick boxes, Select all, glass bulk bar.
 5. **Delete with Undo,** never a confirm dialog: the plate collapses, the UndoSnack runs 5 seconds.
 6. **Checkboxes are tick tiles** whose check draws itself.
 7. **Windows are bottom sheets on a phone**, closed by the backdrop or a swipe down; no close buttons.
