@@ -875,7 +875,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.autoOn = await T.until(() => H.session().auto === true, 3000);
     r.done = document.querySelector('[data-testid="scan-done"]').textContent;
     await T.tick(700); // kept on the phone a moment after a change
-    T.esc(); r.closed = (await going) === null;
+    T.esc(); await going; r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000);
     r.camOff = !H.session().camera.on;
     await T.tick(500); // the window gone, as a person opens it again
     going = startNewScan();
@@ -1009,8 +1009,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
     const a = await H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
-    await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 1, 15000);
-    document.querySelector('[data-testid="scan-thumb"]').click();
+    // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
+    await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length === 1, 15000);
+    document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
     const r = {button: await T.until(() => document.querySelector('[data-testid="page-fix"]'), 4000)};
     document.querySelector('[data-testid="page-fix"]').click();
     r.editor = await T.until(() => document.querySelector('[data-testid="corner-canvas"][data-fit]'), 4000);
