@@ -1,10 +1,12 @@
 // The full-screen scanner on both surfaces (docs/scan-plan.md → S9, package 9; docs/tests.md), in Chromium at a
 // phone's size (390×844, touch), with the real camera path running in the page: the camera is a canvas stream
 // (a getUserMedia stand-in, which records what it was asked for) showing two documents on a dark table, and the
-// models are stand-ins with fixed answers (src/scan/hooks.ts stubEngine — the largest bright document of every
-// frame it is given — and stubReaders — the document type by the page's shape, a passport zone, Hebrew fields),
-// so the live frame, the status line, the green frame, the Auto shot, its other document, the corner editor and
-// picked pictures all run for real. The three screens of the mockup the owner approved (2026-10-24) are checked
+// models are stand-ins with fixed answers (src/scan/hooks.ts stubWorkers — the engine's background threads speak
+// worker.ts's messages and answer the largest bright document of every frame handed over — and stubReaders — the
+// document type by the page's shape, a passport zone, Hebrew fields), so the engine's ways (the capture thread,
+// the pool of live threads sharing it, the bitmaps handed over, the 25 s watchdog and the next way), the live
+// frame, the status line, the green frame, the Auto shot, its other document, the corner editor and picked
+// pictures all run for real, on a phone with 8 cores and 8 GB. The three screens of the mockup the owner approved (2026-10-24) are checked
 // and kept as screenshots: the camera with the status line, the pages' strip, the bar and Done; a page opened
 // large with its type chips, Fix corners, Delete and Looks good; the lab with its tools drawer.
 //  - the site: the manager's scan window (src/scan/Scanner.tsx) on the site's surface (/scan/), signed in as the
@@ -42,7 +44,7 @@ const READS = {
     await ctx.route('**/*', async r => {
       const u = r.request().url();
       // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose models never
-      // start (every way fails, as with no models) — the stand-in engine is put in their place (stubEngine)
+      // start (every way fails, as with no models) — then the threads' stand-ins are put in (stubWorkers)
       if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.mjs$/.test(u)) return r.fulfill({status: 200, contentType: 'text/javascript',
         body: "export const env={wasm:{},webgpu:{}};export function Tensor(){};export const InferenceSession={create:async()=>{throw new Error('no models in the tests')}};"});
       if (u.startsWith('http://127.0.0.1')) return r.continue();
@@ -68,6 +70,9 @@ const READS = {
         rect: sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return {l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom)}; },
       };
       localStorage.setItem('fsEmulator', '127.0.0.1');
+      // a phone with 8 cores and 8 GB: the engine's pool runs 3 live threads beside the capture thread
+      Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', {get: () => 8, configurable: true});
+      Object.defineProperty(Navigator.prototype, 'deviceMemory', {get: () => 8, configurable: true});
       window.FIREBASE_WEB_CONFIG = {apiKey: 'fake-key', projectId: 'demo-schedule', authDomain: 'demo-schedule.firebaseapp.com', storageBucket: 'demo-schedule.appspot.com'};
       // The camera: a canvas stream (a phone held upright, 720×1280) of a dark table with two documents on it —
       // a wide card above, a tall page under it —
@@ -103,8 +108,9 @@ const READS = {
     p.on('dialog', d => d.accept());
     return p;
   };
-  // The engine's ways fail here (no models) — once they all settled, the stand-ins take their place and the
-  // camera starts on the screen's video; the status line's words, the frames drawn green and the session's
+  // The engine's ways fail here (no models) — once they all settled, the threads' and readers' stand-ins are put
+  // in (window.__stub drives the threads') and the camera starts on the screen's video: the engine starts its
+  // ways again, now on the stand-in threads; the status line's words, the frames drawn green and the session's
   // statuses are recorded from then on.
   const startCamera = (p, site) => p.evaluate(async ([site, reads]) => {
     const H = site ? await ManagerScan.hooks() : await ScanLab.hooks(), s = site ? H.session() : ScanLab.session, E = s.engines;
@@ -112,7 +118,7 @@ const READS = {
     let since = 0;
     await T.until(() => { if (!settled()) { since = 0; return false; } since = since || Date.now(); return Date.now() - since > 1500; }, 40000);
     const before = E.state.phase;
-    H.stubEngine(s); H.stubReaders(s, reads);
+    window.__stub = H.stubWorkers(s); H.stubReaders(s, reads);
     window.__said = []; window.__keys = []; window.__green = 0; window.__red = 0;
     const pill = () => T.q('[data-testid="scanner"] [data-testid="scan-status"]');
     new MutationObserver(() => { const t = pill() && pill().textContent; if (t && window.__said[window.__said.length - 1] !== t) window.__said.push(t); })
@@ -190,6 +196,10 @@ const READS = {
     r.camera = pages.map(x => x.record.input + ':' + x.record.shot).join();
     r.attempt = pages[0] && pages[0].record.attempt;
     r.ids = T.all('[data-testid="scan-thumb"]').map(e => e.dataset.id);
+    // the way the models ran on: background threads — a pool of live threads beside the shared capture thread
+    const E = s.engines, st = window.__stub.stats, [live, cap] = E.settings.model.split('+');
+    r.engine = {way: E.engineWay, label: E.state.label, worker: E.state.worker, size: E.engine && E.engine.size, shared: E.engine && E.engine.shared};
+    r.threads = {spawned: st.spawned, bitmaps: st.bitmaps, copied: st.copied, maxInFlight: st.maxInFlight, live: st.byModel[live] || {}, cap: st.byModel[cap] || {}};
     return r;
   });
   const green = await greenDrawn(p);
@@ -205,6 +215,11 @@ const READS = {
     && /finding.*hold.*found:1.*captured.*refining.*looking_more:1.*looking_more:2.*found:2/.test(shot.keys) && shot.green > 0 && green > 20,
     'site, the camera: the live frame on the camera stream (the models\' stand-in), the status line "Finding the document…" → "Hold still · 0.x s" → "2 documents found", the frame drawn green once still, the Auto shot, and the second document on the same photo — two thumbnails with their types '
     + JSON.stringify({siteStart, ...shot, greenPixels: green}));
+  const eng = shot.engine || {}, th = shot.threads || {};
+  ok(eng.worker === true && /^bg-(pool|gpulive)$/.test(eng.way || '') && eng.size > 1 && eng.shared === true && th.spawned >= eng.size + 1
+    && th.bitmaps > 0 && th.copied === 0 && th.maxInFlight >= 2 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,
+    'site: the models run in background threads as on a phone — a pool of live threads (several frames at once) beside the shared capture thread, which found and cut the shot\'s pages; every frame handed over as a bitmap (none copied) '
+    + JSON.stringify({engine: eng, threads: th}));
   ok(look.w === 390 && look.h === 844 && look.statusTop && look.doneTopRight && look.stripAboveBar && look.barBottom && look.noScroll && look.bar === 'scan-pick,scan-shutter,scan-auto' && look.video,
     'site, screen 1 at 390×844: the camera fills the screen, the status line on top, Done at the top right, the pages\' strip above the bottom bar (Photos/PDF, the shutter, Auto) ' + JSON.stringify(look));
   const fr = (asked[0] || {}).video || {};
@@ -428,7 +443,7 @@ const READS = {
   const drawer = await p.evaluate(() => {
     const d = T.q('[data-testid="lab-drawer"]'), r = d.getBoundingClientRect();
     const fig = label => { const t = [...d.querySelectorAll('[data-testid="lab-figures"] button')].find(e => e.querySelector(':scope > span').textContent === label); return t ? t.querySelector('b').textContent : null; };
-    return {up: r.bottom >= 843 && r.top < 844 && r.top > 40, scanner: !!T.q('[data-testid="scanner"][data-mode="lab"]'),
+    return {label: ScanLab.session.engines.state.label, up: r.bottom >= 843 && r.top < 844 && r.top > 40, scanner: !!T.q('[data-testid="scanner"][data-mode="lab"]'),
       blocks: ['lab-figures', 'lab-settings', 'lab-readouts', 'lab-errors', 'lab-log'].filter(t => d.querySelector('[data-testid="' + t + '"]')).join(),
       runs: fig('runs on'), ms: fig('ms per frame (model)'), conf: fig('confidence (≥ 0.50 = found)'), fps: fig('camera frames/s'), res: fig('camera resolution'),
       type: (d.querySelector('[data-testid="lab-readout-type"]') || {}).textContent || '', mrz: (d.querySelector('[data-testid="lab-readout-mrz"]') || {}).textContent || '',
@@ -436,7 +451,7 @@ const READS = {
       log: /test stand-in/.test((d.querySelector('[data-testid="lab-log"]') || {}).textContent || '')};
   });
   await p.screenshot({path: SP + '/scanner-lab-drawer.png'});
-  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors,lab-log' && drawer.runs === 'test stand-in' && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
+  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors,lab-log' && drawer.runs === drawer.label && / bg\b| bg threads/.test(drawer.runs || '') && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
     && /^\d+(\.\d)?$/.test(drawer.fps || '') && drawer.res === '720×1280' && /ID card 97%/.test(drawer.type) && /2\/3 check digits right/.test(drawer.mrz) && /L898902C36UTO/.test(drawer.mrz)
     && /ID 1 2345678 2/.test(drawer.he) && /✓/.test(drawer.he) && drawer.heOk && drawer.log,
     'lab, screen 3 at 390×844: the Lab tools drawer pulled up over the scanner — the figures of the camera run (runs on, ms per frame, confidence, frames/s, resolution), the readouts (the type with its %, the passport zone with 2 of 3 check digits right, the Hebrew ID\'s tick), Errors, the log and Settings '
@@ -454,6 +469,34 @@ const READS = {
     return r;
   });
   ok(switched.reset && switched.backend === 'wasm', 'lab, Settings: switching the backend clears the figures of the old way (—) and starts the models on the new one ' + JSON.stringify(switched));
+
+  // A way whose threads stop answering while scanning (a phone's hung GPU): nothing is given up before 25 s;
+  // then the watchdog fails the calls, the way is marked stuck, its threads are ended and the next way starts —
+  // the live frame goes on there (the engine's clock is moved on 26 s instead of waiting)
+  const hang = await p.evaluate(async () => {
+    const s = ScanLab.session, E = s.engines, st = window.__stub, errs = [];
+    const r = {ready: await T.until(() => E.state.phase === 'ready' && !!E.engine && st.stats.detect > 0, 10000)};
+    const way = E.engineWay, label = E.state.label, ended = st.stats.terminated;
+    s.log.on('err', t => errs.push(String(t)));
+    r.way = way; r.label = label;
+    r.hung = st.hang();
+    r.waiting = await T.until(() => st.stats.swallowed > 0, 5000);
+    await T.tick(1500);
+    r.early = errs.some(t => /stopped answering/.test(t)) || E.engineWay !== way;
+    const answered = st.stats.detect;
+    st.skew(26000);
+    r.logged = await T.until(() => errs.some(t => t.includes('stopped answering on "' + label + '"')), 5000);
+    r.stuck = E.stuckWays.has(way);
+    r.next = await T.until(() => E.state.phase === 'ready' && !!E.engineWay && E.engineWay !== way, 10000);
+    r.nextWay = E.engineWay; r.nextWorker = E.state.worker;
+    r.ended = st.stats.terminated - ended;
+    r.again = await T.until(() => st.stats.detect > answered, 5000);
+    r.errs = errs.slice(0, 4);
+    return r;
+  });
+  ok(hang.ready && hang.hung >= 2 && hang.waiting && !hang.early && hang.logged && hang.stuck && hang.next && hang.nextWay === 'bg-cpu' && hang.nextWorker && hang.ended >= hang.hung && hang.again,
+    'lab, the watchdog: the live threads stop answering — nothing given up before 25 s; then "stopped answering", the way marked stuck, its threads ended, the next way (one background thread) started and the live frame going on there '
+    + JSON.stringify(hang));
   const labSite = p.reqs.filter(u => /\/scan\//.test(u)), labOwn = p.reqs.filter(u => /\/scan-lab\//.test(u));
   ok(labSite.length === 0 && labOwn.length > 0,
     'lab: it loads only its own files (/scan-lab/) — no request to the site\'s /scan/ ' + JSON.stringify({site: labSite.slice(0, 5), own: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));

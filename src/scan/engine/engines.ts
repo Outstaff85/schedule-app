@@ -47,7 +47,8 @@ export interface LoadableEngine extends Engine {
 /** The capture thread as an engine of its own (picked files), or a file thread. */
 export interface ThreadEngine extends Engine { label: string; raw?: LoadableEngine; dead?: boolean }
 
-/** A background thread as the engine sees it (a Worker; the tests give a fake). */
+/** A background thread as the engine sees it (a Worker; the browser tests' stand-in speaks the same messages,
+ *  src/scan/hooks.ts stubWorkers). */
 export interface WorkerLike {
   postMessage(m: WorkerIn, transfer?: Transferable[]): void;
   onmessage: ((e: { data: WorkerOut }) => void) | null;
@@ -393,20 +394,6 @@ export class Engines {
     this.engineKey = model + '|' + want + '|' + this.inWorkerNow() + '|' + cpuDir;
     log.status({ key: 'ready' }, 1);
     this.setState({ phase: 'ready', label: used.label, worker: used.worker, loadSeconds: (this.env.now() - t0) / 1000 });
-  }
-
-  /** An engine given from outside in place of the ways — the browser tests' stand-in with fixed answers
-   *  (src/scan/hooks.ts stubEngine; CI has no models): the live frame, the shot, its capture thread and picked
-   *  files run on it as on a way that started, until the settings change (the next start tries the ways). */
-  useEngine(e: LoadableEngine, label: string): void {
-    if (this.engine && this.engine !== e) this.engine.stop();
-    if (this.capThread && this.capThread.raw !== e) this.capThread.stop();
-    const { model, backend, cpuDir } = this.settings;
-    this.engine = e; this.engineWay = 'given';
-    this.engineKey = model + '|' + backend + '|' + this.inWorkerNow() + '|' + cpuDir;
-    this.capThread = this.capOnly(e); this.capFor = this.capKey().key; this.capLoading = null;
-    this.log.log('Live and capture running as ' + label);
-    this.setState({ phase: 'ready', label, worker: false, loadSeconds: 0 });
   }
 
   /** The file threads left (the engine changed, or it stuck). */

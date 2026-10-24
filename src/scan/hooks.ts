@@ -3,9 +3,10 @@
 // document lying on another, picked files in order, a way failure's kind), the kept session, its training
 // attempts, and pages given to the session as its camera would (CI has no camera and no models). Nothing in
 // the app calls them. The scanner lab's page (/scan-next/, src/scan/lab/) loads them too, for its own session
-// (injectInto). stubEngine / stubReaders put stand-ins with fixed answers in place of the models, so the real
-// camera path (tests/e2e/scanner.test.js: a canvas stream for the camera) runs whole in the page: the live
-// frame, the green frame, Auto, the shot and its other documents, picked pictures, the readouts.
+// (injectInto). stubWorkers / stubReaders put stand-ins with fixed answers in place of the models — the corners
+// model behind the real thread protocol (the engine's ways, pool, capture thread and watchdog run as on a
+// phone) —, so the real camera path (tests/e2e/scanner.test.js: a canvas stream for the camera) runs whole:
+// the live frame, the green frame, Auto, the shot and its other documents, picked pictures, the readouts.
 import { keptSession } from './keep';
 import { S, WHOLE_PAGE, docShape, warpRGBA } from './engine/geometry';
 import { analyzePicture, defaultFilesEnv, pickedPictures } from './engine/files';
@@ -13,7 +14,8 @@ import { findInside, type Readouts, type ShotPage, type ShotRecord } from './eng
 import { failKind } from './engine/fails';
 import { mkCanvas } from './engine/upright';
 import { heIdOk, type DoctypeAnswer, type HeRead } from './engine/readers';
-import type { DetectInput, LoadableEngine } from './engine/engines';
+import type { WorkerLike } from './engine/engines';
+import type { WorkerIn, WorkerOut } from './engine/worker';
 import type { Doctype } from './engine/doctypes';
 import type { Pt, Quad } from './engine/types';
 import type { ScanSession } from './engine/session';
@@ -99,30 +101,95 @@ export function brightDocs(px: ArrayLike<number>, w: number, h: number): Quad[] 
   return found.sort((a, b) => b.size - a.size).map(f => f.q);
 }
 
-/** The corners model's stand-in (CI has no models): on every frame it is given — the live frame's, the shot's,
- *  a painted-over photo's, a picked picture's — it answers the largest bright document (brightDocs) sure (0.9),
- *  or no corners; the cut is the page warped as it is (no face to turn it: turn -1). Put in place of the
- *  session's ways (Engines.useEngine), it lasts until the settings change. */
-export function stubEngine(s: ScanSession, ms = 15): void {
-  const pixels = (input: DetectInput): Uint8ClampedArray => {
-    if (input.rgba) return input.rgba;
-    const c = mkCanvas(S, S), g = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
-    g.drawImage(input.bitmap as ImageBitmap, 0, 0, S, S);
-    (input.bitmap as ImageBitmap).close();
-    return g.getImageData(0, 0, S, S).data;
-  };
-  const e: LoadableEngine = {
-    load: async () => 'stand-in',
-    hasCap: () => true,
-    detect: async (_which, input) => {
-      const q = brightDocs(pixels(input), S, S)[0];
-      await new Promise(r => setTimeout(r, ms));
-      return { res: q ? { pts: q, conf: 0.9 } : { pts: [null, null, null, null], conf: 0 }, ms };
+/** What the threads' stand-ins did, for the checks: threads started and ended, the messages each kind got (and
+ *  per model loaded on the thread), the frames that came as bitmaps, the bitmaps and buffers the page sent
+ *  without handing them over (copied, not transferred: 0 when every one was), the calls a stopped thread kept
+ *  unanswered, and the most frames worked on at once. */
+export interface ThreadStats {
+  spawned: number; terminated: number; load: number; detect: number; warp: number; bitmaps: number; copied: number;
+  swallowed: number; inFlight: number; maxInFlight: number; byModel: Record<string, { detect: number; warp: number }>;
+}
+/** The threads' stand-ins as the checks drive them: their figures, hang(model) — the threads holding that model
+ *  (by default the live model) stop answering, as a phone's hung GPU did; returns how many —, and skew(ms) —
+ *  the engine's clock moved on by ms, so a call left unanswered meets the 25 s watchdog without a 25 s wait. */
+export interface StubThreads { stats: ThreadStats; hang(model?: string): number; skew(ms: number): void }
+
+/** The corners model's stand-in behind the real thread protocol (CI has no models): the engine's background
+ *  threads (Engines.env.spawn) become stand-ins that speak worker.ts's messages — 'load' answered with the CPU
+ *  backend after loadMs, 'detect' with the largest bright document of the bitmap or RGBA handed over
+ *  (brightDocs; sure, 0.9; or no corners) after ms, 'warp' with the page warped as it is (no face to turn it:
+ *  turn -1) — each message cloned with its transfer list as postMessage does, so a bitmap or buffer the page
+ *  forgot to hand over shows (stats.copied). The session then starts its ways as on a phone: the capture thread,
+ *  the pool of live threads sharing it, the watchdog, the next way when one stops answering. */
+export function stubWorkers(s: ScanSession, o: { ms?: number; loadMs?: number } = {}): StubThreads {
+  const E = s.engines, ms = o.ms ?? 30, loadMs = o.loadMs ?? 250, all: Fake[] = [];
+  const stats: ThreadStats = { spawned: 0, terminated: 0, load: 0, detect: 0, warp: 0, bitmaps: 0, copied: 0, swallowed: 0, inFlight: 0, maxInFlight: 0, byModel: {} };
+  const sleep = (t: number) => new Promise(r => setTimeout(r, t));
+  class Fake implements WorkerLike {
+    onmessage: WorkerLike['onmessage'] = null;
+    onerror: WorkerLike['onerror'] = null;
+    model = '';
+    hung = false;
+    dead = false;
+    postMessage(m: WorkerIn, transfer: Transferable[] = []): void {
+      if (this.dead) return;
+      const sent = m.type === 'detect' ? m.bitmap || m.rgba : m.type === 'warp' ? m.rgba : undefined;
+      const got = structuredClone(m, { transfer }) as WorkerIn;
+      // handed over: the page's own bitmap is closed (0×0), its buffer emptied
+      if (sent && (sent instanceof ImageBitmap ? sent.width > 0 : (sent as ArrayBuffer).byteLength > 0)) stats.copied++;
+      if (got.type === 'detect' && got.bitmap) stats.bitmaps++;
+      if (this.hung) { stats.swallowed++; return; }
+      void this.answer(got);
+    }
+    terminate(): void { if (!this.dead) { this.dead = true; stats.terminated++; } }
+    private say(m: WorkerOut, transfer: Transferable[] = []): void {
+      if (this.dead) return;
+      const data = structuredClone(m, { transfer }) as WorkerOut;
+      setTimeout(() => { if (!this.dead && this.onmessage) this.onmessage({ data }); }, 0);
+    }
+    private count(kind: 'detect' | 'warp'): void {
+      stats[kind]++;
+      const b = stats.byModel[this.model] || (stats.byModel[this.model] = { detect: 0, warp: 0 });
+      b[kind]++;
+    }
+    private async answer(m: WorkerIn): Promise<void> {
+      if (m.type === 'load') {
+        stats.load++; this.model = m.live;
+        this.say({ type: 'log', text: 'The test stand-in thread loads ' + m.live + (m.cap ? ' + ' + m.cap : '') });
+        await sleep(loadMs);
+        this.say({ type: 'reply', id: m.id, ep: m.want === 'webgpu' ? 'webgpu' : 'wasm', layout: null });
+      } else if (m.type === 'detect') {
+        this.count('detect');
+        stats.inFlight++; stats.maxInFlight = Math.max(stats.maxInFlight, stats.inFlight);
+        try {
+          let px: Uint8ClampedArray;
+          if (m.bitmap) {
+            const c = mkCanvas(S, S), g = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+            g.drawImage(m.bitmap, 0, 0, S, S); m.bitmap.close(); px = g.getImageData(0, 0, S, S).data;
+          } else px = new Uint8ClampedArray(m.rgba as ArrayBuffer);
+          const q = brightDocs(px, S, S)[0];
+          await sleep(ms);
+          this.say({ type: 'reply', id: m.id, res: q ? { pts: q, conf: 0.9 } : { pts: [null, null, null, null], conf: 0 }, ms });
+        } finally { stats.inFlight--; }
+      } else if (m.type === 'warp') {
+        this.count('warp');
+        const out = { ...warpRGBA(new Uint8ClampedArray(m.rgba), m.w, m.h, m.pts), turn: -1 };
+        this.say({ type: 'reply', id: m.id, out }, [out.data.buffer as ArrayBuffer]);
+      }
+    }
+  }
+  E.env.spawn = () => { const f = new Fake(); all.push(f); stats.spawned++; return f; };
+  const realNow = E.env.now;
+  let ahead = 0;
+  return {
+    stats,
+    hang(model = E.settings.model.split('+')[0]) {
+      const hit = all.filter(f => !f.dead && f.model === model);
+      for (const f of hit) f.hung = true;
+      return hit.length;
     },
-    warp: async (rgba, w, h, pts) => ({ ...warpRGBA(rgba, w, h, pts), turn: -1 }),
-    stop: () => {},
+    skew(t) { ahead += t; E.env.now = () => realNow() + ahead; },
   };
-  s.engines.useEngine(e, 'test stand-in');
 }
 
 /** What the readers' stand-ins answer: the document type by the page's shape (a page wider than high, one
