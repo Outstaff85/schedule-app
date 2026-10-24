@@ -655,7 +655,8 @@ def _model_bucket(storage):
 
 
 # The server's Hugging Face token, in Secret Manager (docs/hf-plan.md → H1): it may only write to
-# the private bucket; scan_feedback gets it as the environment variable datastore.py reads.
+# the private bucket (the server never needs to read it back: an attempt's firm is kept in Firestore scanAttempts);
+# scan_feedback gets it as the environment variable datastore.py reads.
 HF_DATA_TOKEN = SecretParam("HF_DATA_TOKEN")
 
 
@@ -723,8 +724,10 @@ def _scan_attempts(payload, claims, db, stats_ref, storage):
     """Every scan attempt (S8): {"action": "attempt", "attempts": [...]} from the scanner on the
     site or in the lab, sent as each attempt is decided (any manager login). Each goes to
     attempts/new/<source>/<YYYY-MM-DD>/<id>/ (picture.jpg + answer.json) and counts toward the
-    training (attemptsSince); none for a firm whose collection is off (collects_documents). → the
-    folder of each kept attempt, for a later outcome."""
+    training (attemptsSince); none for a firm whose collection is off (collects_documents). Each kept one also gets
+    an owner note, Firestore scanAttempts/<feedback.attempt_key(folder)> {tenantId, dir, createdAt}: a later
+    outcome is checked against it (the server's bucket token may only write). → the folder of each kept attempt,
+    for a later outcome."""
     from firebase_admin import firestore
     attempts = payload.get("attempts")
     if not isinstance(attempts, list) or not attempts:
@@ -744,6 +747,7 @@ def _scan_attempts(payload, claims, db, stats_ref, storage):
         base = feedback.attempt_dir(a, now)
         pic = datastore.put([(f"{base}/picture.jpg", a["picture"])], fb)[0]
         datastore.put([(f"{base}/answer.json", datastore.as_json(feedback.attempt_record(a, claims.get("tenantId"), now, pic)))], fb)
+        db.collection("scanAttempts").document(feedback.attempt_key(base)).set({"tenantId": tenant, "dir": base, "createdAt": now})
         dirs[a["id"]] = base
     if dirs:
         stats_ref.set({"attemptsSince": firestore.Increment(len(dirs)), "attempts": firestore.Increment(len(dirs)), "updatedAt": now}, merge=True)
@@ -754,20 +758,32 @@ def _scan_attempts(payload, claims, db, stats_ref, storage):
 OUTCOME_STATUS = {"no such attempt": 404, "not this firm's attempt": 403}
 
 
-def _scan_attempt_outcome(payload, claims, storage):
-    """A later outcome of a kept attempt: {"action": "attemptOutcome", "dir", "outcome", "page"?, "workerId"?} —
-    "deleted" (a page deleted from its batch; page: which, none for all) or "saved" (the worker window saved after
-    the scan, with the worker's id). Only a login of the attempt's own firm (its answer.json's tenantId) may add
-    one → outcome-<time>.json beside it: {outcome, page, workerId, at}."""
-    base = feedback.outcome_dir(payload.get("dir"))
-    if not base or payload.get("outcome") not in feedback.LATER_OUTCOMES:
-        return _json({"error": "bad outcome"}, 400)
-    fb = lambda: _model_bucket(storage)
+def _attempt_owner(db, base, fb):
+    """Who an attempt belongs to → {"tenantId"} or None: its owner note (scanAttempts, written as it was kept), else —
+    an attempt kept before the notes — its answer.json read back where it went (datastore.get: from Firebase, or from
+    the bucket only where the server's token may read it)."""
+    snap = db.collection("scanAttempts").document(feedback.attempt_key(base)).get()
+    note = snap.to_dict() if snap.exists else None
+    if isinstance(note, dict) and note.get("dir") == base:
+        return {"tenantId": note.get("tenantId") or ""}
     raw = datastore.get(f"{base}/answer.json", fb)
     try:
         answer = json.loads(raw) if raw else None
     except ValueError:
-        answer = None
+        return None
+    return answer if isinstance(answer, dict) else None
+
+
+def _scan_attempt_outcome(payload, claims, db, storage):
+    """A later outcome of a kept attempt: {"action": "attemptOutcome", "dir", "outcome", "page"?, "workerId"?} —
+    "deleted" (a page deleted from its batch; page: which, none for all) or "saved" (the worker window saved after
+    the scan, with the worker's id). Only a login of the attempt's own firm (its owner note's tenantId, _attempt_owner)
+    may add one → outcome-<time>.json beside it: {outcome, page, workerId, at}."""
+    base = feedback.outcome_dir(payload.get("dir"))
+    if not base or payload.get("outcome") not in feedback.LATER_OUTCOMES:
+        return _json({"error": "bad outcome"}, 400)
+    fb = lambda: _model_bucket(storage)
+    answer = _attempt_owner(db, base, fb)
     out, why = feedback.check_outcome(payload, claims.get("tenantId"), answer)
     if not out:
         return _json({"error": why}, OUTCOME_STATUS.get(why, 400))
@@ -842,7 +858,7 @@ def _scan_add(payload, claims, db, stats_ref, storage):
     cpu=1,
     concurrency=20,
     timeout_sec=60,
-    secrets=[HF_DATA_TOKEN],  # write-only to the private training-data bucket (datastore.py)
+    secrets=[HF_DATA_TOKEN],  # writes to the private training-data bucket (datastore.py); never needs to read it
 )
 def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     """The scanner's training examples (feedback.py; docs/scan-plan.md → S6).
@@ -889,7 +905,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         if payload.get("action") == "attempt":
             return _scan_attempts(payload, claims, db, stats_ref, storage)
         if payload.get("action") == "attemptOutcome":
-            return _scan_attempt_outcome(payload, claims, storage)
+            return _scan_attempt_outcome(payload, claims, db, storage)
         return _scan_add(payload, claims, db, stats_ref, storage)
     except Exception as e:
         return _json({"error": str(e)}, 500)

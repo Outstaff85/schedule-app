@@ -6,6 +6,7 @@ without a time limit, deleted on request by scripts/scan-train/delete_data.py), 
 counts them in scanTrainingStats/current for the "time to retrain" notices. Pure checks here."""
 import base64
 import datetime
+import hashlib
 import math
 
 MAX_EXAMPLES = 20          # per request
@@ -440,6 +441,12 @@ def outcome_dir(v):
     except ValueError:
         return None
     return s if _attempt_id(parts[4]) else None
+
+
+def attempt_key(base):
+    """The id of an attempt's owner note (Firestore scanAttempts/<id>: {tenantId, dir, createdAt}) — its folder hashed
+    (a folder has slashes, a Firestore id may not)."""
+    return hashlib.sha1(str(base).encode()).hexdigest()
 
 
 def check_outcome(p, tenant_id, answer):

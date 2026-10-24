@@ -1,8 +1,9 @@
 """Where the scanner's training data goes (docs/hf-plan.md → H7, H8a): the private Hugging
-Face bucket BUCKET once the server has its token (the secret HF_DATA_TOKEN — it reaches
-that bucket only), else the project's Firebase Storage under training/ as before. Files are
+Face bucket BUCKET once the server has its token (the secret HF_DATA_TOKEN — it may only
+write there), else the project's Firebase Storage under training/ as before. Files are
 written one request at a time (a bucket has no Git history: a file is added or deleted for
-real); get() reads one back (an attempt's answer.json, for its later outcome). Paths, the same in both:
+real); get() reads one back where it can — from Firebase, or from the bucket only where the token may read (the
+answer.json of an attempt kept before its owner note in Firestore scanAttempts). Paths, the same in both:
   edges/<YYYY-MM>/<id>.jpg      the part of the photo the document edges model saw (256×256)
   doctype/<YYYY-MM>/<id>.jpg    the page, for the document type model (256×256)
   records/<YYYY-MM>/<id>.json   the example's record (bucket only — in Firebase it is Firestore scanTraining/<id>)
@@ -69,7 +70,7 @@ def get(path, fb_bucket=None):
                 dest = pathlib.Path(tmp) / "file"
                 HfApi(token=token()).download_bucket_files(BUCKET, [(path, str(dest))], raise_on_missing_files=True)
                 return dest.read_bytes()
-        except Exception as e:  # not there (a refusal kept it in Firebase), or the bucket out of reach
+        except Exception as e:  # not there (a refusal kept it in Firebase), the bucket out of reach, or a write-only token
             print(f"training data: {path} not read from the Hugging Face bucket ({type(e).__name__})")
     if fb_bucket is None:
         return None

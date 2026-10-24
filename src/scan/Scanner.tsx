@@ -40,15 +40,16 @@ function cleanHe(v: unknown): HeFields | undefined {
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype; mrz?: string[]; he?: HeFields };
 // Each page has its kind: Haiku's or the model's (doctypeModel, doctypeBy) and the one shown, which a tap can change;
 // in shadow the model's answer is only kept (doctypeShadow) for the example. part: the posted key it came under.
-// turnBy: who set the turn the page is at (the same who gave its kind).
-type Page = ScannedPage & { uid: number; part?: string; att?: string; pg?: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype; turnBy?: 'haiku' | 'model' };
+// turnBy: who set the turn the page is at — the face finder when the lab page set it upright by its face (turn ≥ 0),
+// else the same who gave its kind.
+type Page = ScannedPage & { uid: number; part?: string; att?: string; pg?: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype; turnBy?: 'face' | 'haiku' | 'model' };
 let nextUid = 0;
 /** A batch: a camera shot (s<n>), the files of one pick (f<n>, posted in parts f<n>.<i>), or the pages before a Scan again. */
 type Batch = { key: string; source: 'camera' | 'file' | 'before'; kept: boolean; pages: Page[] };
 /** The document type model's answer on a page (scan/embed.js), when this version has the model. */
 type Answer = { doctype: Doctype; conf: number; turn: number; turnConf: number } | null;
 /** The lab page's pages of one shot or one part of a pick (scan/embed.js). */
-type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[]; mrz?: (string[] | null)[]; he?: unknown[]; attempts?: { att: string; pg: number }[] };
+type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[]; mrz?: (string[] | null)[]; he?: unknown[]; attempts?: { att: string; pg: number; turn?: number }[] };
 /** How sure the model must be of the type and the turn for Mixed to skip Haiku (as the server's docfind.DOCTYPE_SURE was). */
 const SURE = 0.9;
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
@@ -170,12 +171,15 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin, work
     setBatches(xs => xs.map(b => ({ ...b, pages: b.pages.filter(p => p.uid !== uid) })).filter(b => b.pages.length));
   };
   // Each new page's kind and turn, all at once: Mixed takes the model's when it is sure of both, else
-  // Haiku's (Shadow keeps the model's answer beside it); a page said to be turned is set upright.
+  // Haiku's (Shadow keeps the model's answer beside it); a page said to be turned is set upright. A page the lab's
+  // face finder already set upright (turn ≥ 0) keeps its turn — the model or Haiku only types it (as the PC's
+  // docfind.with_doctype: the model's turn only for a page with no face).
   const classify = (pages: Page[], answers: Answer[]) => pages.forEach(async (pg, i) => {
-    const m = await mode.current, a = m === 'off' ? null : answers[i] || null;
-    const sure = m === 'mixed' && a && (DOCTYPES as readonly string[]).includes(a.doctype) && a.conf >= SURE && a.turnConf >= SURE;
-    const { kind, rotate } = sure ? { kind: a!.doctype, rotate: a!.turn } : await detectDoctype(pg.b64, pg.mediaType);
-    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, doctypeBy: sure ? 'model' : 'haiku', turnBy: sure ? 'model' : 'haiku',
+    const m = await mode.current, a = m === 'off' ? null : answers[i] || null, faced = pg.turn >= 0;
+    const sure = m === 'mixed' && a && (DOCTYPES as readonly string[]).includes(a.doctype) && a.conf >= SURE && (faced || a.turnConf >= SURE);
+    const said = sure ? { kind: a!.doctype, rotate: a!.turn } : await detectDoctype(pg.b64, pg.mediaType);
+    const kind = said.kind, rotate = faced ? 0 : said.rotate;
+    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, doctypeBy: sure ? 'model' : 'haiku', turnBy: faced ? 'face' : sure ? 'model' : 'haiku',
       ...(a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { modelSaid: a.doctype } : {}),
       ...(m === 'shadow' && a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { doctypeShadow: a.doctype } : {}) };
     // a page turned here was read by the zone reader and the field reader on its side: what they read says nothing
@@ -193,7 +197,9 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin, work
       const from = Array.isArray(m.attempts) ? m.attempts : [];
       const zones = Array.isArray(m.mrz) ? m.mrz : [], fields = Array.isArray(m.he) ? m.he : [];
       const pages: Page[] = m.pages.map((u, i) => ({ u, a: from[i], z: zones[i], f: cleanHe(fields[i]) })).filter(({ u }) => typeof u === 'string' && u.startsWith('data:image/')).map(({ u, a, z, f }) => ({
-        uid: ++nextUid, part: m.key, b64: u.split(',')[1], mediaType: u.slice(5, u.indexOf(';')), turn: -1, blurry: false, doctypePending: true,
+        uid: ++nextUid, part: m.key, b64: u.split(',')[1], mediaType: u.slice(5, u.indexOf(';')), blurry: false, doctypePending: true,
+        // the face finder's turn on the lab page (scan/embed.js): ≥ 0 when the page was set upright by its face
+        turn: a && Number.isInteger(a.turn) && (a.turn as number) >= 0 && (a.turn as number) <= 3 ? (a.turn as number) : -1,
         ...(a && typeof a.att === 'string' && a.att ? { att: a.att, pg: Number(a.pg) || 0 } : {}),
         ...(Array.isArray(z) ? { mrz: z.filter(t => typeof t === 'string').slice(0, 2).map(t => t.slice(0, 60)) } : {}),
         ...(f ? { he: f } : {}),

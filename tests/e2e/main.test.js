@@ -631,7 +631,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: body.image === JPG ? 'id_front' : 'sefach', rotate: 0}})});
+    // the ספח is said to need a quarter turn: the face finder set it upright already (its turn, posted below), so it is not turned
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: body.image === JPG ? 'id_front' : 'sefach', rotate: body.image === JPG ? 0 : 90}})});
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
@@ -660,7 +661,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const zones = [['P<UKRBONDARENKO<<ANDREI<NATALIIA<<<<<<<<<<<<', 'NW259O50<6UKR84O3124M29051983631000292908728'], null];
   // the Hebrew field reader's fields on the first page (embed.js; docs/hf-plan.md → H8c), as the card prints them
   const hes = [{layout: 'new', surname: 'כהן', given: 'דוד', idNo: '1 2345678 2', dob: '1.2.1990', idOk: true}, null];
-  const post = (key, n) => p.evaluate(([pics, key, n, answers, zones, hes]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x), answers: answers.slice(0, n), mrz: zones.slice(0, n), he: hes.slice(0, n)}, location.origin), [[JPG, JPG2], key, n, answers, zones, hes]);
+  // the face finder's turn on each page (embed.js): none on the ID card, the ספח set upright by its face
+  const turns = [{att: '', pg: 0, turn: -1}, {att: '', pg: 1, turn: 0}];
+  const post = (key, n) => p.evaluate(([pics, key, n, answers, zones, hes, turns]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x), answers: answers.slice(0, n), mrz: zones.slice(0, n), he: hes.slice(0, n), attempts: turns.slice(0, n)}, location.origin), [[JPG, JPG2], key, n, answers, zones, hes, turns]);
   await post('s1', 1);
   await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 1, null, {timeout: 15000}).catch(() => {});
   await post('s1', 2);
@@ -683,6 +686,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.given = T.val('wGiven'); r.docId = T.val('wDocId'); r.city = T.val('wCity');
     r.front = !!window.__aiScanImage;
     r.kinds = ['front', ...(window.__aiPacketOtherPages || []).map(x => x.kind + (x.contract ? ':contract' : ''))].join(',');
+    r.otherTail = (window.__aiPacketOtherPages || []).map(x => x.b64.slice(-24));
     // the save after a scan sends the document with what was saved (docs/hf-plan.md → H8a)
     ManagerBridge.sendScanDocument('w-test', {docType: 'israeli_id', docGiven: 'Scanned', docSurname: 'Persson', docId: '123456782'});
     closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
@@ -931,9 +935,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && ex[0].doctypeBy === 'model' && ex[0].doctypeModel === 'id_front' && ex[0].doctypeFixed === 'id_front'
     && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage
     // each carries its scan's session and who set its turn (the training audit, 2026-10-24)
-    && typeof ex[0].sessionId === 'string' && !!ex[0].sessionId && ex[1].sessionId === ex[0].sessionId && ex[0].turnBy === 'model' && ex[1].turnBy === 'haiku';
+    && typeof ex[0].sessionId === 'string' && !!ex[0].sessionId && ex[1].sessionId === ex[0].sessionId && ex[0].turnBy === 'model'
+    // the ספח set upright by the face finder: turnBy "face", and Haiku's quarter turn not applied (the page as posted)
+    && ex[1].turnBy === 'face' && (scw.otherTail || [])[0] === JPG2.slice(-24);
   ok(exOk && kindAtDone === 1 && feedbackCalls.some(c => c.action === 'mode'),
-    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep, session: !!e.sessionId, turnBy: e.turnBy}))}));
+    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep, session: !!e.sessionId, turnBy: e.turnBy})), unturned: (scw.otherTail || [])[0] === JPG2.slice(-24)}));
   const docCall = feedbackCalls.find(c => c.action === 'document') || {};
   const zs = docCall.mrzShadow || {};
   ok((zs.lines || []).length === 2 && zs.docId === 'NW259050' && zs.docDob === '12/03/1984' && zs.docExpiry === '19/05/2029' && zs.docSex === 'M'

@@ -3,7 +3,8 @@ the cut pages of the full documents the site collected (H8a: documents/…/recor
 each with the kind the user left) are copied from the private bucket to
 ~/.scan-train/templates/<kind>/ — ID cards, their backs, passports, ספחים — up to --per pages of each
 kind, the newest first. They are workers' documents: they stay on this PC, synth_docs.py washes out
-their face and text, and clean.py / publish.py delete them with the other copies. The owner's own
+their face and text, and clean.py / publish.py delete them with the other copies; a page pulled before whose document
+is no longer in the bucket (deleted on request, delete_data.py) is deleted here too. The owner's own
 photos of Israeli documents, cut straight, are uploaded to the same private bucket under
 templates/<kind>/ (hf buckets sync <folder> hf://buckets/OutStaff/scanner-data/templates) and copied
 too, every one of them, as own-<name>.
@@ -12,6 +13,8 @@ too, every one of them, as own-<name>.
 """
 import argparse
 import json
+import pathlib
+import re
 import tempfile
 
 from common import DATA, WORK
@@ -19,6 +22,19 @@ from common import DATA, WORK
 KINDS = ("id_front", "id_back", "passport", "sefach")
 OWN_KINDS = KINDS + ("insert",)
 PICTURES = (".jpg", ".jpeg", ".png", ".webp")
+# a page this script pulled: <the document's id (a Firestore id, 20 letters and digits)>-<n>.jpg
+PULLED = re.compile(r"([A-Za-z0-9]{20})-\d+\.jpg")
+
+
+def stale(folder, ids):
+    """The pages pulled before under folder/<kind>/ whose document is no longer in the bucket (ids: the documents
+    there) — the owner's own pages (own-*) and pages put there by hand stay."""
+    out = []
+    for p in pathlib.Path(folder).glob("*/*.jpg"):
+        m = PULLED.fullmatch(p.name)
+        if m and m.group(1) not in ids:
+            out.append(p)
+    return sorted(out)
 
 
 def own_pages(paths):
@@ -43,6 +59,9 @@ def main():
                           if f.path.endswith("/record.json")), key=lambda f: f.split("/")[2], reverse=True)   # documents/<tenant>/<YYYY-MM>/…: the newest months first
     except Exception as e:
         raise SystemExit(f"the private bucket {DATA} cannot be read ({e}) — hf auth login as OutStaff")
+    gone = stale(WORK / "templates", {f.split("/")[3] for f in records if len(f.split("/")) == 5})
+    for p in gone:
+        p.unlink(missing_ok=True)
     want = {k: [] for k in KINDS}
     with tempfile.TemporaryDirectory() as tmp:
         if records:
@@ -67,7 +86,7 @@ def main():
     if pairs:
         api.download_bucket_files(DATA, [(src, str(dest)) for src, dest in pairs])
     print(f"templates in {WORK / 'templates'}: " + ", ".join(f"{k} {len(v)}" for k, v in want.items())
-          + f"; the owner's own pages: {len(mine)}")
+          + f"; the owner's own pages: {len(mine)}; deleted (their document no longer in the bucket): {len(gone)}")
 
 
 if __name__ == "__main__":

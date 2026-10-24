@@ -91,7 +91,7 @@ export async function sendScanDocument(doc: ScanDocument): Promise<void> {
 export type Example = {
   source: 'page'; doctypeModel: string; doctypeFixed: string; doctypeBy: 'haiku' | 'model';
   doctypeShadow?: string; pageImage?: string; keep?: boolean;
-  sessionId?: string; workerId?: string; turnBy?: 'haiku' | 'model';
+  sessionId?: string; workerId?: string; turnBy?: 'face' | 'haiku' | 'model';
 };
 const QUEUE_KEY = 'scanFeedbackQueue', QUEUE_MAX = 60;
 const readQueue = (): Example[] => { try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; } };

@@ -5,6 +5,7 @@ import base64
 import datetime
 import importlib.util
 import pathlib
+import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -389,15 +390,31 @@ class _Ref:
         self.store.append((self.id, rec))
 
 
+class _Note:
+    """An attempt's owner note, Firestore scanAttempts/<id>."""
+    def __init__(self, notes, nid):
+        self.notes, self.nid = notes, nid
+
+    def set(self, rec, merge=False):
+        self.notes[self.nid] = rec
+
+    def get(self):
+        rec = self.notes.get(self.nid)
+        return types.SimpleNamespace(exists=rec is not None, to_dict=lambda: dict(rec) if rec is not None else None)
+
+
 class _Db:
-    def __init__(self):
-        self.records, self.n = [], 0
+    def __init__(self, notes=None):
+        self.records, self.n, self.notes, self._col = [], 0, dict(notes or {}), None
 
     def collection(self, name):
-        assert name == "scanTraining"
+        assert name in ("scanTraining", "scanAttempts")
+        self._col = name
         return self
 
-    def document(self):
+    def document(self, nid=None):
+        if self._col == "scanAttempts":
+            return _Note(self.notes, nid)
         self.n += 1
         return _Ref(self.records, self.n)
 
@@ -453,28 +470,50 @@ def test_a_firm_with_its_collection_off_keeps_no_page_copy(monkeypatch):
     assert j["kept"] == 1 and len(put) == 1 and asked == []
 
 
-def test_a_saved_outcome_is_written_beside_the_attempt_with_the_worker(monkeypatch):
+DIR = "attempts/new/site/2026-10-24/s12"
+
+
+def test_a_kept_attempt_gets_an_owner_note_and_a_saved_outcome_is_checked_against_it_without_reading_the_bucket(monkeypatch):
     import json
-    dir_ = "attempts/new/site/2026-10-24/s12"
     seen = []
-    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or json.dumps({"tenantId": "t1"}).encode())
-    code, j = _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t1"}, None))
-    assert code == 200 and j["ok"] and seen == [dir_ + "/answer.json"]
+    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or None)
+    db = _Db()
+    code, j = _body(main._scan_attempts({"attempts": [att()]}, {"tenantId": "t1"}, db, _Stats(), None))
+    base = j["dirs"]["s12"]
+    assert code == 200 and db.notes == {feedback.attempt_key(base): {"tenantId": "t1", "dir": base, "createdAt": db.notes[feedback.attempt_key(base)]["createdAt"]}}
+    put.clear()
+    code, j = _body(main._scan_attempt_outcome({"dir": base, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t1"}, db, None))
+    assert code == 200 and j["ok"] and seen == []   # the server's bucket token may only write: nothing read back
     (path, data), = put
     rec = json.loads(data)
-    assert path.startswith(dir_ + "/outcome-") and path.endswith(".json")
+    assert path.startswith(base + "/outcome-") and path.endswith(".json")
     assert rec["outcome"] == "saved" and rec["workerId"] == "w1" and rec["page"] is None and rec["at"]
+    assert _body(main._scan_attempt_outcome({"dir": base, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, db, None))[0] == 403
+
+
+def test_an_attempt_kept_before_the_notes_is_checked_by_its_answer_json(monkeypatch):
+    import json
+    seen = []
+    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or json.dumps({"tenantId": "t1"}).encode())
+    code, j = _body(main._scan_attempt_outcome({"dir": DIR, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t1"}, _Db(), None))
+    assert code == 200 and j["ok"] and seen == [DIR + "/answer.json"] and len(put) == 1
+    # a note for another folder under the same key is never taken
+    db = _Db({feedback.attempt_key(DIR): {"tenantId": "t2", "dir": "attempts/new/site/2026-10-24/other"}})
+    assert _body(main._scan_attempt_outcome({"dir": DIR, "outcome": "deleted"}, {"tenantId": "t1"}, db, None))[0] == 200
 
 
 def test_an_outcome_from_another_firm_or_for_no_attempt_is_refused(monkeypatch):
     import json
-    dir_ = "attempts/new/site/2026-10-24/s12"
+    dir_ = DIR
     main, put, _ = _server(monkeypatch, answer=json.dumps({"tenantId": "t1"}).encode())
-    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, None))[0] == 403
-    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved"}, {"tenantId": "t1"}, None))[0] == 400
-    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "kept"}, {"tenantId": "t1"}, None))[0] == 400
-    assert _body(main._scan_attempt_outcome({"dir": "documents/t1/x", "outcome": "deleted"}, {"tenantId": "t1"}, None))[0] == 400
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, _Db(), None))[0] == 403
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "kept"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
+    assert _body(main._scan_attempt_outcome({"dir": "documents/t1/x", "outcome": "deleted"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
     assert put == []
     main, put, _ = _server(monkeypatch, answer=None)
-    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted", "page": 1}, {"tenantId": "t1"}, None))[0] == 404
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted", "page": 1}, {"tenantId": "t1"}, _Db(), None))[0] == 404
+    # the firm in the note decides, not the answer.json
+    db = _Db({feedback.attempt_key(dir_): {"tenantId": "t9", "dir": dir_}})
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted"}, {"tenantId": "t1"}, db, None))[0] == 403
     assert put == []

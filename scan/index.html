@@ -736,7 +736,7 @@ async function fixCorners(img) {
     const out = await eng.warp(pix, f.w, f.h, pts, true);
     const oc = document.createElement('canvas'); oc.width = out.width; oc.height = out.height;
     oc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
-    img.src = oc.toDataURL('image/jpeg', 0.9);
+    img.src = oc.toDataURL('image/jpeg', 0.9); img.dataset.turn = String(out.turn ?? -1);  // cut again: the face finder's turn again
   } catch (e) { logErr('The page could not be cut again: ' + (e && e.message || e)); return; }
   window.dispatchEvent(new CustomEvent('lab-fixed', { detail: img }));
 }
@@ -980,6 +980,7 @@ async function takeShot() {
     const out = await engine.warp(pix.slice(), w, h, q, true);
     if (id !== shotId) return false;
     const im = new Image(); im.src = toCanvas(out).toDataURL('image/jpeg', 0.9); im.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(im);
+    im.dataset.turn = String(out.turn ?? -1);  // the face finder's turn (-1: none): a page it set upright is sent as turnBy "face"
     if (put.att) { put.att.edgesMore.push(q.map(p => p.slice())); put.att.pages = found.length; im.dataset.att = put.att.id; im.dataset.pg = String(found.length - 1); }
     $('shot2note').textContent = 'Found ' + found.length + ' documents so far, looking for more…';
     return true;

@@ -1,8 +1,9 @@
 """Document types, step 2 (docs/scan-plan.md → S7; /scan-train): the phone's document type model
 (doctype-lite.onnx — the only one by default; owner, 2026-10-24) is trained on the page copies — an ImageNet EfficientNet-Lite (timm)
 with two heads: the document type (6) and the clockwise turn the page needs (4). The turn is
-learned for free: every copy is stored upright and is shown turned by a random quarter
-turn, with the turn back as its answer. The ImageNet normalization is inside the model, so
+learned for free: a copy stored upright is shown turned by a random quarter
+turn, with the turn back as its answer; a copy whose turn only the model guessed ("upright": False in doctypes.json,
+pull_doctypes.py) is shown turned too but has no turn answer (TURN_IGNORE) — it teaches the type only. The ImageNet normalization is inside the model, so
 it takes the page as RGB 0..1 like the document edges models. Exported to ONNX (input "img"
 [1,3,256,256]; outputs "doctype", "turn" — probabilities) and checked to answer like the
 trained model. With --synth N, N made-up upright pages (synth_pages.py) are added to the site's page
@@ -35,6 +36,7 @@ from home import drop_report, gentle
 
 S = 256
 EPOCHS = {"doctype-lite.onnx": 20, "doctype.onnx": 16}
+TURN_IGNORE = -100   # the turn answer of a copy not known to lie upright: no loss (CrossEntropyLoss ignore_index)
 
 
 class DoctypeNet(nn.Module):
@@ -58,14 +60,16 @@ class DoctypeNet(nn.Module):
 
 
 def load(examples):
-    X, Y = [], []
+    """→ (pictures, types, upright): upright False for a copy whose turn is not known (no turn answer)."""
+    X, Y, U = [], [], []
     for e in examples:
         img = cv2.imread(e["file"])
         if img is None:
             continue
         X.append(cv2.cvtColor(cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB))
         Y.append(DOCTYPES.index(e["doctype"]))
-    return X, Y
+        U.append(e.get("upright") is not False)   # the made-up pages are drawn upright
+    return X, Y, U
 
 
 def turned(img, k):
@@ -73,7 +77,13 @@ def turned(img, k):
     return np.ascontiguousarray(np.rot90(img, -k)) if k else img
 
 
-def batch(X, Y, idx, augment):
+def turn_answer(k, upright):
+    """The turn answer of a copy shown turned k clockwise quarter turns: the turn that sets it back upright, or
+    TURN_IGNORE when the copy is not known to lie upright."""
+    return (4 - k) % 4 if upright else TURN_IGNORE
+
+
+def batch(X, Y, idx, augment, U=None):
     xs, ks, ts = [], [], []
     for i in idx:
         img = X[i].astype(np.float32)
@@ -85,18 +95,18 @@ def batch(X, Y, idx, augment):
         k = random.randrange(4)
         xs.append(turned(img, k).transpose(2, 0, 1) / 255.0)
         ks.append(Y[i])
-        ts.append((4 - k) % 4)  # the clockwise turn that sets it back upright
+        ts.append(turn_answer(k, U is None or U[i]))  # the clockwise turn that sets it back upright
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(ks), torch.tensor(ts)
 
 
-def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None):
+def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None):
     info = {"model": name, "arch": arch}
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
     net = DoctypeNet(arch, pretrained and ck is None).to(dev)   # saved weights need no ImageNet download
     counts = Counter(Y)
     weights = torch.tensor([1 / np.sqrt(max(1, counts.get(i, 0))) for i in range(len(DOCTYPES))], dtype=torch.float32)
-    ce_kind, ce_turn = nn.CrossEntropyLoss(weight=(weights / weights.mean()).to(dev)), nn.CrossEntropyLoss()
+    ce_kind, ce_turn = nn.CrossEntropyLoss(weight=(weights / weights.mean()).to(dev)), nn.CrossEntropyLoss(ignore_index=TURN_IGNORE)
     opt = torch.optim.AdamW(net.parameters(), 3e-4, weight_decay=1e-4)
     steps = epochs * ((len(X) + 31) // 32)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-4, total_steps=max(1, steps), pct_start=0.15)
@@ -108,9 +118,11 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None):
             net.train()
             total = 0.0
             for k in range(0, len(order), 32):
-                xb, kb, tb = batch(X, Y, order[k:k + 32], True)
+                xb, kb, tb = batch(X, Y, order[k:k + 32], True, U)
                 lk, lt = net.logits(xb.to(dev))
-                loss = ce_kind(lk, kb.to(dev)) + ce_turn(lt, tb.to(dev))
+                loss = ce_kind(lk, kb.to(dev))
+                if bool((tb != TURN_IGNORE).any()):  # a batch with no turn answer at all adds no turn loss (it would be NaN)
+                    loss = loss + ce_turn(lt, tb.to(dev))
                 opt.zero_grad(); loss.backward(); opt.step(); sched.step()
                 total += float(loss.detach()) * len(xb)
         except KeyboardInterrupt:
@@ -152,12 +164,12 @@ def main():
         ex += random.sample(pages, min(a.synth, len(pages)))
     if not ex:
         raise SystemExit("no page copies to train on — run pull_doctypes.py (or synth_pages.py and --synth) first")
-    X, Y = load(ex)
+    X, Y, U = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"{len(X)} page copies, on {dev}")
+    print(f"{len(X)} page copies ({len(U) - sum(U)} with no sure turn: the type only), on {dev}")
     jobs = {"doctype-lite.onnx": a.phone} if a.only == "phone" else {"doctype.onnx": a.server}
     for name, arch in jobs.items():
-        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a)
+        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U)
     prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
     write_json(WORK / "new" / "doctypes-arch.json", {**prev, **jobs})
 

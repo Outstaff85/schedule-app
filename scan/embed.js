@@ -61,7 +61,8 @@
   const posted = new Map();
   const post = async (key, imgs) => {
     posted.set(key, imgs);
-    const pages = imgs.map(i => i.src), from = imgs.map(i => ({ att: i.dataset.att || '', pg: +(i.dataset.pg || 0) }));
+    // each page's attempt and the face finder's turn (≥ 0: the page was set upright by its face; -1: no face found)
+    const pages = imgs.map(i => i.src), from = imgs.map(i => ({ att: i.dataset.att || '', pg: +(i.dataset.pg || 0), turn: +(i.dataset.turn ?? -1) }));
     const answers = await Promise.all(pages.map(answer));
     const mrz = await Promise.all(pages.map(zone));
     const he = await Promise.all(pages.map(fields));
