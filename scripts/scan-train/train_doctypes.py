@@ -26,8 +26,8 @@ The data come as one list (gen/mix.py; docs/scan-training.md → "Real data and 
 made by python -m gen mix --model doctype (refused when made under another heldout.json); the old flags (doctypes.json
 and --synth N) build the same list here. Each real page is repeated --real-repeat K times (capped at 30 % of an epoch),
 a page whose type no one saw (labelBy self) is left out for now, each page's loss is weighed by its weight, the epoch
-kept is the one with the lowest loss on the select set (the real pages of split "select"; never the exam) when it has
-any, and --seed (default: a fresh one, printed and saved in the checkpoint; --resume takes the stopped run's) seeds the
+kept is the one with the lowest loss on the select set (the real pages of split "select", or with fewer than 20 of them the mix's made-up select
+set — gen mix --select-run; never the exam; which set picked it is printed) when it has any, and --seed (default: a fresh one, printed and saved in the checkpoint; --resume takes the stopped run's) seeds the
 run.
 
   python train_doctypes.py                                    # the phone's model, the default size
@@ -196,7 +196,7 @@ def select_loss(net, sel, cw, dev):
 
 
 def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None, data=None, T=None, W=None, R=None,
-              select=None, seed=None):
+              select=None, seed=None, select_what=None):
     """One model trained on the pages: each page's index R[i] times an epoch, its loss weighed by W[i]; select (the
     select set's (X, Y, U, T)): the epoch with the lowest loss on it is the one exported (the last one without)."""
     info = {"model": name, "arch": arch, "data": data, "seed": seed}
@@ -231,13 +231,13 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None,
         print(f"  {name} ({arch}) epoch {ep + 1}/{epochs}: loss {total / len(order):.4f}")
         if select and select[0]:
             score = select_loss(net, select, cw, dev)
-            print(f"  {name} epoch {ep + 1}: select loss {score:.4f} ({len(select[0])} real pages of split select)")
+            print(f"  {name} epoch {ep + 1}: select loss {score:.4f} ({select_what or f'{len(select[0])} real pages of split select'})")
             if best is None or score < best["score"]:
                 best = {"net": {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}, "score": score, "epoch": ep + 1}
         checkpoint.save(name, info, net, opt, sched, ep + 1, epochs, best)
     if best:
         net.load_state_dict(best["net"])
-        print(f"  {name}: the select set picked epoch {best['epoch']} (loss {best['score']:.4f})")
+        print(f"  {name}: the select set ({select_what or 'real pages of split select'}) picked epoch {best['epoch']} (loss {best['score']:.4f})")
     dst = WORK / "new" / name
     dst.parent.mkdir(parents=True, exist_ok=True)
     if name in DOCTYPE_MODELS:
@@ -332,7 +332,8 @@ def main():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} pages ({sum(R)} an epoch; {len(U) - sum(U)} with no known turn: the type only), on {dev}")
     for name, arch in jobs.items():
-        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U, data, T, W, R, sel, seed)
+        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U, data, T, W, R, sel, seed,
+                  gmix.select_words(meta, len(select)))
     prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
     write_json(WORK / "new" / "doctypes-arch.json", {**prev, **jobs})
 

@@ -1,8 +1,10 @@
 // The phone mirror's resamplers against a real browser (docs/scan-training.md → "The phone mirror", docs/tests.md):
-// 20 fixed frames (python -m gen profile --frames) go through the scanner lab's own functions in Chromium — the
-// camera frame's createImageBitmap 'low' (frameInput / rgbaOf), smallRGBA, the document type square (doctypeAnswer),
-// the face finder's letterbox (faceScore, scan-core.js), the Hebrew field lines (heLine, 'high') and the zone's lines
-// (mrzFind / mrzRead) — with their model sessions stubbed to keep the tensors they are given. Then
+// 20 fixed frames (python -m gen profile --frames) go through the scanner lab's own functions in Chromium — the lab's
+// resampling probe itself (probeFrame, the Settings' probe page in scan-lab/index.html): the camera frame's
+// createImageBitmap 'low' (frameInput / rgbaOf), smallRGBA, the document type square (doctypeAnswer), the face finder's
+// letterbox (faceScore, scan-core.js), the Hebrew field lines (heLine, 'high') and the zone's lines (mrzFind / mrzRead)
+// — with stand-in model sessions that keep the tensors they are given; and the probe page's runProbe on two frames picked
+// as files saves probe.json with the user agent and the same outputs. Then
 // `python -m gen profile --from probe.json` measures every phone.py kernel against them, and each path must reach
 // PSNR >= 40 dB with the kernel gen/phone_profile.json records for Chromium. The cut too: the lab's warpRGBA (scan-core.js)
 // cuts a fixed quad out of each of the first 10 frames, and gen/phone.py warp_rgba — the cutter gen/phone_run.py cuts
@@ -47,18 +49,15 @@ function grabLine(src, start) {
   const lab = fs.readFileSync(path.join(ROOT, 'scan-lab', 'index.html'), 'utf8').replace(/\r\n/g, '\n');   // a Windows checkout's CRLF
   const core = fs.readFileSync(path.join(ROOT, 'scan-lab', 'scan-core.js'), 'utf8');
   const code = [
-    'var kept = [];',
     'const ort = { Tensor: class { constructor(type, data, dims) { this.type = type; this.data = data; this.dims = dims; } } };',
     'const small = document.createElement("canvas"); small.width = small.height = S;',
     'const sctx = small.getContext("2d", { willReadFrequently: true });',
     'function logErr() {}',
-    'const stub = outs => ({ inputNames: ["img"], outputNames: ["out"], run: async feeds => { kept.push(Object.values(feeds)[0].data); return outs; } });',
-    'var doctypeSess = stub({ doctype: { data: [1, 0, 0, 0, 0, 0] }, turn: { data: [1, 0, 0, 0] } });',
-    'var heSess = stub({ out: { dims: [1, 1, 48], data: new Float32Array(48) } });',
-    'var mrzSess = stub({ out: { dims: [1, 1, 38], data: new Float32Array(38) } });',
-    'var faceSess = stub(Object.fromEntries([8, 16, 32].flatMap(s => [["cls_" + s, { data: [] }], ["obj_" + s, { data: [] }], ["kps_" + s, { data: [] }]])));',
+    'var statusLines = []; function status(t) { statusLines.push(t); }',
+    'var doctypeSess = null, heSess = null, mrzSess = null;   // the scan\'s own sessions: the probe never uses them',
     grabLine(lab, 'const DOCTYPE_NAMES'), grabLine(lab, 'const MRZ_CHARS'), grabLine(lab, 'const HE_CHARS'), grabLine(lab, 'const HE_MX'), grabLine(lab, 'let bitmapOk'),
-    ...['smallRGBA', 'frameInput', 'rgbaOf', 'mrzFind', 'mrzRead', 'heLogical', 'heLine', 'doctypeAnswer'].map(n => grab(lab, n)),
+    ...['smallRGBA', 'frameInput', 'rgbaOf', 'mrzFind', 'mrzRead', 'heLogical', 'heLine', 'doctypeAnswer', 'probeB64', 'probeFrame', 'runProbe']
+      .map(n => grab(lab, n)),
   ].join('\n');
 
   const browser = await chromium.launch();
@@ -72,27 +71,31 @@ function grabLine(src, start) {
     const quad = n < CUTS ? cutQuads[n] : null;
     const url = 'data:image/png;base64,' + fs.readFileSync(path.join(FRAMES, name)).toString('base64');
     const paths = await page.evaluate(async ({ url, heBoxes, quad }) => {
-      const b64 = a => { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
       const img = new Image(); img.src = url; await img.decode();
-      const w = img.naturalWidth, h = img.naturalHeight;
-      const frame = document.createElement('canvas'); frame.width = w; frame.height = h; frame.getContext('2d').drawImage(img, 0, 0);
-      const out = {};
-      const put = (p, a, shape, dtype, box) => { out[p] = { shape, dtype, b64: b64(a), ...(box ? { box } : {}) }; };
-      put('live', rgbaOf(await frameInput(frame, w, h)), [256, 256, 4], 'uint8');
-      put('capture', smallRGBA(frame, w, h), [256, 256, 4], 'uint8');
-      kept = []; await doctypeAnswer(frame); put('doctype', kept[0], [3, 256, 256], 'float32');
-      kept = []; await faceScore(faceSess, frame); put('face', kept[0], [3, 320, 320], 'float32');
-      for (let i = 0; i < heBoxes.length; i++) { kept = []; await heLine(frame, heBoxes[i]); if (kept.length) put('he:' + i, kept[0], [1, 32, 512], 'float32'); }
-      const boxes = mrzFind(frame); kept = []; await mrzRead(frame);
-      boxes.forEach((b, i) => put('mrz:' + i, kept[i], [1, 32, 512], 'float32', b));
-      if (quad) {   // the lab's cut of the frame's quad (scan-core.js warpRGBA on the frame's pixels)
-        const c = warpRGBA(frame.getContext('2d').getImageData(0, 0, w, h).data, w, h, quad);
-        put('cut', c.data, [c.height, c.width, 4], 'uint8', quad);
-      }
-      return out;
+      const frame = document.createElement('canvas'); frame.width = img.naturalWidth; frame.height = img.naturalHeight;
+      frame.getContext('2d').drawImage(img, 0, 0);
+      return await probeFrame(frame, heBoxes, quad);   // the lab's probe page's own function
     }, { url, heBoxes, quad });
     probe.frames.push({ name, paths });
   }
+  // the probe page as the owner runs it on a phone (Settings → Resampling probe): frames.json and two of its frames
+  // picked as files → probe.json saved, the user agent in it, each frame's outputs those probeFrame gave above
+  const two = frames.slice(0, 2).map(name => ({ name, b64: fs.readFileSync(path.join(FRAMES, name)).toString('base64') }));
+  const meta = JSON.stringify({ frames: two.map(f => f.name), heBoxes, cutQuads });
+  const [download, picked] = await Promise.all([page.waitForEvent('download'), page.evaluate(async ({ two, meta }) => {
+    const bytes = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+    const files = [new File([meta], 'frames.json', { type: 'application/json' }), ...two.map(f => new File([bytes(f.b64)], f.name, { type: 'image/png' }))];
+    const got = await runProbe(files);
+    return { userAgent: got.userAgent, names: got.frames.map(f => f.name), paths: got.frames.map(f => f.paths), status: statusLines.slice(-1)[0] };
+  }, { two, meta })]);
+  assert.equal(download.suggestedFilename(), 'probe.json', 'the probe page does not save probe.json');
+  assert.ok(picked.userAgent && picked.userAgent.includes('Chrome'), 'probe.json does not record the user agent');
+  assert.deepEqual(picked.names, frames.slice(0, 2));
+  for (let n = 0; n < 2; n++) {
+    assert.deepEqual(Object.keys(picked.paths[n]).sort(), Object.keys(probe.frames[n].paths).sort(), 'the probe page measures other paths than probeFrame');
+    for (const k of ['capture', 'doctype', 'face']) assert.equal(picked.paths[n][k].b64, probe.frames[n].paths[k].b64, 'the probe page\'s ' + k + ' output differs');
+  }
+  assert.ok(/probe\.json saved/.test(picked.status), 'the probe page did not say probe.json was saved');
   // findInside's input in a real browser: a cut running past the photo (the lab's warpRGBA leaves that part
   // transparent) drawn by smallRGBA onto the shared canvas after a white picture must read back black there and equal
   // the same cut on a fresh canvas — as gen/phone.py warp_rgba(...)[..., :3] trains it

@@ -6,12 +6,14 @@ verify, QA").
   python -m gen build --model edges --count N --seed S --jobs J --out DIR   # scenes: one camera for table and documents
   python -m gen build --model doctype|he --count N --seed S --jobs J --out DIR   # today's generators + their manifest
   python -m gen build --model doctype,mrz,he,face --count N --seed S --out DIR   # the phone's own cuts (gen/phone_run.py)
+  python -m gen build --model edges|doctype,mrz,he,face --split select   # a made-up select set: its own seeds, the training side
   python -m gen bg add DIR --category auto|<name> [--owner] | bg check | bg split | bg pull | bg push   # the background bank
   python -m gen occluders add DIR --category cup --size-mm 80   # cut-outs laid over documents
   python -m gen verify --run DIR --sample 50    # draw a sample again byte for byte; fail on what the exam keeps
   python -m gen qa --run DIR [--real DIR] [--midv DIR]   # the QA sheet (DIR/qa/index.html), purity.json, the realism panel
   python -m gen real [--out DIR]                # every real labelled picture in one index (DIR/index.jsonl; read-only)
   python -m gen mix --model edges|doctype --synth-run DIR [--real-repeat 30] [--out DIR]   # one training list per model
+      [--hard [mine/hard/pool.jsonl]] [--hard-repeat 3] [--select-run DIR]   # gen mine's hard examples; a made-up select set
   python -m gen profile --frames DIR            # the resampling probe's fixed frames (PNG) and frames.json
   python -m gen profile --from probe.json --frames DIR [--out FILE]   # fit the kernels to a browser's outputs
   python -m gen exam-phone --model edges --count 40 --out DIR   # E4: the lab's edges models, INTER_AREA vs the phone path
@@ -89,6 +91,11 @@ def main(argv=None):
     m.add_argument("--real-repeat", type=int, default=30, help="each real row repeated K times, capped at 30%% of an epoch")
     m.add_argument("--seed", type=int, help="the made-up sample's seed (default: fresh, saved in mix.json)")
     m.add_argument("--out", help="the mix's folder (default <home>/models/<model>)")
+    m.add_argument("--hard", nargs="?", const="", default=None, help="gen mine's hard pool (default <home>/mine/hard/pool.jsonl): "
+                   "its rows of this model repeated more — checked again against today's exam first")
+    m.add_argument("--hard-repeat", type=int, default=3, help="a hard row: this many times its kind's repeat (default 3)")
+    m.add_argument("--select-run", help="a made-up select set (python -m gen build --split select; its QA passed): picks the "
+                   "epoch when the real select rows are fewer than 20")
     p = sub.add_parser("profile", help="the phone's resampling: write the probe's frames, or fit gen/phone_profile.json "
                        "to a probe's outputs (gen/phone.py)")
     p.add_argument("--frames", help="the probe's frames folder: written there without --from, read from there with it")
@@ -152,7 +159,11 @@ def main(argv=None):
         real_main(a.out)
     elif a.command == "mix":
         from .mix import main as mix_main
-        mix_main(a.model, a.real, a.synth_run, a.synth, a.midv, a.smartdoc, a.real_repeat, a.seed, a.out)
+        import pathlib
+        import home as _home
+        hard = (a.hard or str(pathlib.Path(_home.WORK) / "mine" / "hard" / "pool.jsonl")) if a.hard is not None else None
+        mix_main(a.model, a.real, a.synth_run, a.synth, a.midv, a.smartdoc, a.real_repeat, a.seed, a.out,
+                 hard=hard, hard_repeat=a.hard_repeat, select_run=a.select_run)
     elif a.command == "profile":
         return profile(a)
     elif a.command == "bg":

@@ -36,9 +36,10 @@ and camera tilt), and gen real's index (<home>/real, --real) for the real pictur
    and the training-side made-up examples of the given runs that match them. Never an exam id, an exam split key or an
    exam picture: every real candidate's pHash is compared with every exam picture's (gen real's exam and golden rows,
    the exam gen runs' outputs) and one within PHASH_NEAR bits is left out (counted). check_pool says so again before
-   the file is written.
+   the file is written (exam_guard: what it is checked against). gen mix --hard repeats the pool's rows in the next
+   training list, after checking it again against that day's exam (gen/mix.py).
 3. note.txt — a short note to the owner in plain words: what the exams got wrong most, what the next set draws more
-   of, what was too few to judge, the pool's counts, the next command.
+   of, what was too few to judge, the pool's counts, the next commands (the build with --focus, the mix with --hard).
 
 `gen build --focus focus.json` (gen/outputs/edges.py, and the phone's own cuts through it) applies the model's
 multipliers to the recipe weights (a stage's multiplier goes to the recipes that make it: STAGE_RECIPES; class
@@ -429,6 +430,17 @@ def similar_synthetic(recipes, runs, exam_ids):
     return out
 
 
+def exam_guard(rows, runs, real_rows):
+    """What the hard pool must never hold → (exam ids, exam split keys, exam pictures' pHashes): the exam rows' ids, gen
+    real's exam and golden ids and keys, the exam gen runs' scenes, and the pHash of every exam picture this PC holds
+    (exam_pictures). gen mine builds the pool against it; gen mix --hard checks the pool again against today's."""
+    exam_ids = ({str(r.get("id")) for r in rows if r.get("id") is not None}
+                | {str(r.get("id")) for r in real_rows if r.get("split") in gc.EXAM_SIDE} | set(exam_manifests(runs)))
+    exam_keys = {r.get("key") for r in real_rows if r.get("split") in gc.EXAM_SIDE and r.get("key")}
+    exam_hashes = [h for h in (_phash_file(f) for f in exam_pictures(real_rows, runs)) if h]
+    return exam_ids, exam_keys, exam_hashes
+
+
 def check_pool(pool, exam_ids, exam_keys, exam_hashes):
     """SystemExit when the pool holds an exam id, an exam split key or a picture within PHASH_NEAR of an exam picture."""
     for p in pool:
@@ -476,10 +488,7 @@ def mine(paths=None, real=None, prev=None, out=None, work=None):
     # 2. the hard pool
     real_dir = pathlib.Path(real or work / "real")
     real_rows = gr.read_index(real_dir)
-    exam_ids = {str(r.get("id")) for r in rows if r.get("id") is not None} | \
-               {str(r.get("id")) for r in real_rows if r.get("split") in gc.EXAM_SIDE} | set(scenes)
-    exam_keys = {r.get("key") for r in real_rows if r.get("split") in gc.EXAM_SIDE and r.get("key")}
-    exam_hashes = [h for h in (_phash_file(f) for f in exam_pictures(real_rows, runs)) if h]
+    exam_ids, exam_keys, exam_hashes = exam_guard(rows, runs, real_rows)
     pool, left = [], {"examId": 0, "examKey": 0, "nearExam": 0, "unreadable": 0}
     for r, m, why in real_errors(real_rows):
         if str(r.get("id")) in exam_ids:
@@ -555,7 +564,9 @@ def note(focus, out):
                   f"{p['synthetic']} made-up examples like the worst cases; {p['recipes']} recipe(s) to draw more of.",
               f"Left out to keep the exam clean: {lf['examId'] + lf['examKey']} exam examples, {lf['nearExam']} that look like an exam picture"
               + (f", {lf['unreadable']} unreadable" if lf["unreadable"] else "") + ".",
-              "", f"Next: python -m gen build --model edges --focus {pathlib.Path(out) / FOCUS} (and the other models' builds the same way)"]
+              "", f"Next: python -m gen build --model edges --focus {pathlib.Path(out) / FOCUS} (and the other models' builds the same way),",
+              f"then (after its gen qa) python -m gen mix --model edges --synth-run <the new run> --hard {pathlib.Path(out) / 'hard' / POOL} "
+              "(the doctype mix the same way): the hard examples repeated more in the training list"]
     return "\n".join(lines) + "\n"
 
 

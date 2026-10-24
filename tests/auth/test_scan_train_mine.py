@@ -437,6 +437,22 @@ def test_gen_status_names_the_next_step_of_the_flow(tmp_path):
     assert any(x.startswith("edges:") for x in gst.status(tmp_path))
 
 
+def test_gen_status_counts_the_real_passports_and_id_cards_saved_with_their_fields(tmp_path):
+    from gen import status as gst
+    assert any("no gen real index yet" in x for x in gst.model_status(tmp_path, "he")["lines"])
+    doc = lambda i, split, dt: {"id": f"doc-{i}-0", "file": f"img/doc-{i}-0.jpg", "split": split,
+                                "targets": {"fields": {"keys": ["docId"], "docType": dt}}}
+    rows = [doc(1, "train", "israeli_id"), doc(2, "exam", "israeli_id"), doc(3, "golden", "israeli_id"),
+            doc(4, "exam", "passport"), doc(5, "select", "passport")]
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "index.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    he = next(x for x in gst.model_status(tmp_path, "he")["lines"] if x.startswith("real Israeli ID cards"))
+    assert "exam 1, golden 1, train 1" in he and "the exam side 2 of the 30" in he and "realExamined false" in he
+    mrz = next(x for x in gst.model_status(tmp_path, "mrz")["lines"] if x.startswith("real passports"))
+    assert "exam 1, select 1" in mrz and "the exam side 1 of the 30" in mrz
+    assert not any("Israeli ID cards" in x or "passports saved" in x for x in gst.model_status(tmp_path, "edges")["lines"])
+
+
 def test_gen_status_reads_the_same_reports_and_files_as_publish():
     pytest.importorskip("google.cloud.firestore")
     import publish
@@ -464,3 +480,23 @@ def test_the_docs_name_every_gen_command_and_hold_no_russian():
     for p in (HERE / "gen" / "mine.py", HERE / "gen" / "status.py", ROOT / "docs" / "scan-training.md",
               ROOT / ".claude" / "skills" / "scan-train" / "SKILL.md", pathlib.Path(__file__)):
         assert not cyr.search(p.read_text(encoding="utf-8")), p
+
+
+def test_gen_status_and_the_note_name_the_mix_with_the_hard_pool(tmp_path):
+    from gen import mine
+    from gen import status as gst
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "index.jsonl").write_text(json.dumps(_moved("att-1-0")) + "\n", encoding="utf-8")
+    run = tmp_path / "gen" / "runs" / "edges-s1-n10"
+    (run / "qa").mkdir(parents=True)
+    (run / "run.json").write_text(json.dumps({"model": "edges", "split": "train", "fingerprint": "fp"}), encoding="utf-8")
+    (run / "qa" / "purity.json").write_text(json.dumps({"passed": True, "fingerprint": "fp"}), encoding="utf-8")
+    assert "--hard" not in gst.model_status(tmp_path, "edges")["next"]
+    pool = tmp_path / "mine" / "hard" / "pool.jsonl"
+    pool.parent.mkdir(parents=True)
+    pool.write_text("", encoding="utf-8")
+    assert gst.model_status(tmp_path, "edges")["next"] == f"python -m gen mix --model edges --synth-run {run} --hard {pool}"
+    focus = {"runs": 1, "createdAt": "2026-10-24T00:00:00+00:00", "inputs": {"examRows": 0}, "models": {}, "counts": {},
+             "pool": {"real": 0, "synthetic": 0, "recipes": 0, "leftOut": {"examId": 0, "examKey": 0, "nearExam": 0, "unreadable": 0}}}
+    text = mine.note(focus, tmp_path / "mine")
+    assert f"--hard {pool}" in text and "python -m gen mix --model edges" in text

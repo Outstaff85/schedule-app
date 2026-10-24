@@ -219,3 +219,132 @@ def test_a_mix_row_on_the_exam_side_today_is_refused_by_its_id(tmp_path, heldout
     assert manifest.short_id("r7") in manifest.exam_ids(tmp_path)
     with pytest.raises(SystemExit, match="1 rows of the mix are on the exam side today"):
         mix.load(tmp_path / "mix", "edges", work=tmp_path)
+
+
+# ---------- gen mine's hard pool (--hard) ----------
+def _pool(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    return path
+
+
+def test_the_hard_pool_rows_are_repeated_and_change_the_fingerprint(tmp_path, heldout, no_qa):
+    rows = [_row(i) for i in range(8)] + [_row(20, label="self", weight=0.3), _row(30, split="select")]
+    folder = _index(tmp_path, rows)
+    runs = tmp_path / "gen" / "runs"
+    runs.mkdir(parents=True)
+    run = _synth_run(runs, 400)                                    # a training run under <work>/gen/runs: the pool joins it
+    plain = mix.main("edges", folder, run, real_repeat=30, seed=5, out=tmp_path / "plain", work=tmp_path)
+    pool = _pool(tmp_path / "mine" / "hard" / "pool.jsonl", [
+        {"kind": "real", "model": "edges", "id": "att-1-0", "key": "g:1", "phash": None},
+        {"kind": "real", "model": "edges", "id": "att-30-0", "key": "g:30"},        # on the select side today: not trained on
+        {"kind": "real", "model": "edges", "id": "att-20-0", "key": "g:20"},        # a self label: not a person's
+        {"kind": "real", "model": "doctype", "id": "att-2-0", "key": "g:2"},        # another model's
+        {"kind": "recipe", "model": "edges", "want": {"recipe": "pair"}},
+        {"kind": "synthetic", "model": "edges", "run": run.name, "id": "m3", "outputs": ["img/3.jpg"]},
+        {"kind": "synthetic", "model": "edges", "run": "gone", "id": "m4"}])
+    meta = mix.main("edges", folder, run, real_repeat=30, seed=5, out=tmp_path / "hard", work=tmp_path, hard=pool, hard_repeat=3)
+    got, sel, back = mix.load(tmp_path / "hard", "edges", work=tmp_path)
+    by = {r["id"]: r for r in got}
+    k = meta["realRepeat"]
+    assert by["att-1-0"]["repeat"] == 3 * k and by["att-1-0"]["hardPool"] and by["att-2-0"]["repeat"] == k
+    assert by["syn-3"]["repeat"] == 3 and by["syn-3"]["hardPool"] and by["syn-4"].get("repeat", 1) == 1
+    assert meta["realShare"] <= mix.REAL_CAP + 1e-9
+    h = meta["hard"]
+    assert h["real"] == 1 and h["synthetic"] == 1 and h["repeat"] == 3 and h["rows"] == 7
+    assert h["skipped"]["notTraining"] == 1 and h["skipped"]["selfLabel"] == 1 and h["skipped"]["runMissing"] == 1
+    import hashlib
+    assert h["sha256"] == hashlib.sha256(pool.read_bytes()).hexdigest()
+    assert meta["fingerprint"] != plain["fingerprint"] and back["fingerprint"] == mix.fingerprint(got, back)["sha"]
+    # another pool (one more row): another fingerprint, so --resume / --more see the change
+    _pool(pool, [json.loads(x) for x in pool.read_text(encoding="utf-8").splitlines()]
+          + [{"kind": "real", "model": "edges", "id": "att-3-0", "key": "g:3"}])
+    again = mix.main("edges", folder, run, real_repeat=30, seed=5, out=tmp_path / "hard2", work=tmp_path, hard=pool, hard_repeat=3)
+    assert again["fingerprint"] != meta["fingerprint"] and again["hard"]["real"] == 2
+
+
+def test_the_hard_repeat_gives_way_so_the_real_share_stays_under_the_cap():
+    real = [{"id": f"r{i}", "source": "real", "weight": 1.0} for i in range(30)]
+    synth = [{"id": f"s{i}", "source": "synth", "weight": 1.0, "file": f"s{i}"} for i in range(100)]
+    rows, meta = mix.build("edges", real, (), synth, (), 30, hard_ids={f"r{i}" for i in range(10)}, hard_repeat=5)
+    # 30 real rows near the cap of 100 made-up ones (42 real draws at most): the 10 hard ones twice, not 5 times
+    assert meta["realRepeat"] == 1 and meta["hardRepeatUsed"]["real"] == 2 and meta["realShare"] <= mix.REAL_CAP + 1e-9
+    real = [{"id": f"r{i}", "source": "real", "weight": 1.0} for i in range(10)]
+    synth = [{"id": f"s{i}", "source": "synth", "weight": 1.0, "file": f"s{i}"} for i in range(200)]
+    rows, meta = mix.build("edges", real, (), synth, (), 1, hard_ids={"r0", "r1"}, hard_repeat=50)
+    assert meta["realRepeat"] == 1 and 1 < meta["hardRepeatUsed"]["real"] < 50 and meta["realShare"] <= mix.REAL_CAP + 1e-9
+
+
+def test_a_hard_pool_holding_an_exam_id_or_a_picture_like_an_exam_one_is_refused(tmp_path, heldout, no_qa):
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    rows = [_row(i) for i in range(4)] + [_row(9, split="exam", key="g:exam")]
+    folder = _index(tmp_path, rows)
+    pool = _pool(tmp_path / "pool.jsonl", [{"kind": "real", "model": "edges", "id": "att-9-0", "key": "g:other"}])
+    with pytest.raises(SystemExit, match="exam example"):
+        mix.main("edges", folder, None, seed=1, out=tmp_path / "m", work=tmp_path, hard=pool)
+    assert not (tmp_path / "m" / "mix.json").exists()
+    # a training picture that looks like an exam one (the same photo under another id): refused by its pHash
+    pic = (np.random.default_rng(3).random((240, 320, 3)) * 255).astype("uint8")
+    pic = cv2.GaussianBlur(pic, (0, 0), 6)
+    (folder / "img").mkdir(exist_ok=True)
+    cv2.imwrite(str(folder / "img" / "att-9-0.jpg"), pic)
+    twin = tmp_path / "twin.jpg"
+    cv2.imwrite(str(twin), pic)
+    _pool(pool, [{"kind": "real", "model": "edges", "id": "att-1-0", "key": "g:1", "file": str(twin)}])
+    with pytest.raises(SystemExit, match="like an exam one"):
+        mix.main("edges", folder, None, seed=1, out=tmp_path / "m", work=tmp_path, hard=pool)
+    assert not (tmp_path / "m" / "mix.json").exists()
+
+
+# ---------- the made-up select set (gen build --split select, --select-run) ----------
+def _select_run(tmp_path, n):
+    run = tmp_path / "edges-s100001-n300-select"
+    (run / "img").mkdir(parents=True)
+    ex = [{"id": f"gen-100001-{i}", "file": f"img/{i}.jpg", "fixed": Q, "manifest": f"gen-100001-{i}", "split": "select"} for i in range(n)]
+    (run / "examples.json").write_text(json.dumps(ex), encoding="utf-8")
+    (run / "manifest.jsonl").write_text("".join(json.dumps({"id": f"gen-100001-{i}", "index": i, "split": "select"}) + "\n"
+                                                for i in range(n)), encoding="utf-8")
+    (run / "run.json").write_text(json.dumps({"model": "edges", "split": "select", "fingerprint": "s" * 64}), encoding="utf-8")
+    return run
+
+
+def test_with_too_few_real_select_rows_the_made_up_select_set_picks_the_epoch(tmp_path, heldout, no_qa):
+    from gen import manifest
+    folder = _index(tmp_path, [_row(i) for i in range(6)] + [_row(50, split="select"), _row(51, split="select")])
+    run, sel_run = _synth_run(tmp_path, 200), _select_run(tmp_path, 40)
+    plain = mix.main("edges", folder, run, seed=2, out=tmp_path / "plain", work=tmp_path)
+    assert plain["selectFrom"] == "real" and plain["select"] == 2
+    meta = mix.main("edges", folder, run, seed=2, out=tmp_path / "mix", work=tmp_path, select_run=sel_run)
+    got, sel, back = mix.load(tmp_path / "mix", "edges", work=tmp_path)
+    assert meta["selectFrom"] == "synthetic" and meta["selectReal"] == 2 and len(sel) == meta["select"] == 42
+    assert {r["split"] for r in sel} == {"select"} and meta["selectRun"]
+    assert meta["fingerprint"] != plain["fingerprint"]                       # the select set is part of the data
+    assert not {r["id"] for r in got} & {r["id"] for r in sel}               # never in the training rows
+    assert not {manifest.short_id(r["id"]) for r in sel if r["source"] == "synth"} & manifest.exam_ids(tmp_path)
+    assert "the made-up select set" in mix.select_words(back) and "real pages" in mix.select_words(plain)
+    # a select run is never a training list's made-up set
+    with pytest.raises(SystemExit, match="a select run, not a train one"):
+        mix.main("edges", folder, sel_run, seed=2, out=tmp_path / "bad", work=tmp_path)
+    # nor is a training run a select set
+    with pytest.raises(SystemExit, match="not a select one"):
+        mix.main("edges", folder, run, seed=2, out=tmp_path / "bad", work=tmp_path, select_run=run)
+    # enough real select rows: the made-up one is not used
+    many = _index(tmp_path / "many", [_row(i) for i in range(6)] + [_row(100 + i, split="select") for i in range(mix.SELECT_MIN)])
+    meta = mix.main("edges", many, run, seed=2, out=tmp_path / "many-mix", work=tmp_path, select_run=sel_run)
+    assert meta["selectFrom"] == "real" and meta["select"] == mix.SELECT_MIN and "selectRun" not in meta
+
+
+def test_a_select_runs_seeds_are_its_own():
+    from gen.outputs import edges as ge
+    a = types.SimpleNamespace(exam=False, split="select", seed=None, focus=None)
+    assert ge.split_of(a) == "select" and a.seed == ge.SELECT_SEEDS + 1
+    with pytest.raises(SystemExit, match="own range"):
+        ge.split_of(types.SimpleNamespace(exam=False, split="select", seed=7, focus=None))
+    with pytest.raises(SystemExit, match="are the select set"):
+        ge.split_of(types.SimpleNamespace(exam=False, split="train", seed=ge.SELECT_SEEDS + 5, focus=None))
+    with pytest.raises(SystemExit, match="drawn plainly"):
+        ge.split_of(types.SimpleNamespace(exam=False, split="select", seed=None, focus="focus.json"))
+    a = types.SimpleNamespace(exam=False, split="exam", seed=None, focus=None)
+    assert ge.split_of(a) == "exam" and a.exam is True
+    assert ge.split_of(types.SimpleNamespace(exam=False, split=None, seed=1, focus=None)) == "train"

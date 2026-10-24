@@ -458,3 +458,16 @@ def test_a_version_over_a_clean_base_is_not_marked(env, monkeypatch, capsys):
     doctypes_ready(env.work)
     run(monkeypatch, "--doctypes")
     assert "marked" not in capsys.readouterr().out and env.heldout.read_bytes() == held
+
+
+def test_the_hebrew_reader_warns_until_real_cards_examined_it():
+    warned = lambda rep: any("no real ID card examined this reader" in x for x in publish.gate_lines("he", rep))
+    rep = {"publish": True, "failed": []}
+    assert warned(rep)   # a report made before the count: warned
+    assert warned({**rep, "realExamined": False, "realCards": 2, "realCardsNeeded": 30})
+    assert warned({**rep, "realExamined": False, "realCards": 40})   # enough cards, but never examined on them
+    assert warned({**rep, "realExamined": True, "realCards": 12})    # examined on too few
+    assert not warned({**rep, "realExamined": True, "realCards": 30})
+    line = next(x for x in publish.gate_lines("he", {**rep, "realExamined": False, "realCards": 2}) if "real ID card" in x)
+    assert "realExamined false" in line and "2 of 30" in line
+    assert not any("real ID card" in x for x in publish.gate_lines("mrz", {"publish": True, "failed": []}))

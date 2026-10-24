@@ -390,6 +390,28 @@ def read_summary(folder):
         return None
 
 
+# ---------- the real cards and passports saved with their fields (the readers' real exam) ----------
+REAL_NEEDED = 30       # real documents on the exam side a reader's real exam needs (train_he.py; gen status for both)
+FIELD_DOCS = {"he": "israeli_id", "mrz": "passport"}   # the saved worker's docType each reader reads
+
+
+def field_docs(rows, doc_type):
+    """gen real's rows whose saved fields (a document's primary page: targets.fields) are of doc_type (the worker
+    window's docType: israeli_id, passport), by split → {split: n}."""
+    by = {}
+    for r in rows:
+        f = (r.get("targets") or {}).get("fields") or {}
+        if f.get("docType") == doc_type:
+            s = str(r.get("split"))
+            by[s] = by.get(s, 0) + 1
+    return by
+
+
+def exam_side(by):
+    """The exam side's count (the exam and golden) of field_docs' {split: n}."""
+    return sum(n for s, n in by.items() if s in gc.EXAM_SIDE)
+
+
 # ---------- is the pull fresh? ----------
 def newest_day(folders):
     """The newest day among attempt folders (…/<source>/<YYYY-MM-DD>/<id>) → "YYYY-MM-DD" or None."""

@@ -1,6 +1,7 @@
 """Our own cut (docs/scan-training.md → "The phone's own cuts: gen/phone_run.py"): the pages the document type model,
 the passport zone reader, the Hebrew field reader and the face finder's exam learn on are cut by the scanner lab's own
-path, not by the true corners — `python -m gen build --model doctype,mrz,he,face`.
+path, not by the true corners — `python -m gen build --model doctype,mrz,he,face` (`--exam`: the exam's; `--split
+select`: a made-up select set for the document type model's epoch — the edges' select seeds and training side, no --real).
 
 For each scene, made up (gen/scene.py) or real (an attempt's photo with the corners a person kept, --real):
 1. the lab's shot (gen/exam_phone.py shot, the phone path): frame_to_S, the lab's edges-lite on the live frame and
@@ -356,7 +357,10 @@ def real_scenes(work, exam, limit):
 def gen_params(a):
     from home import WORK
     from .outputs import edges as ge
-    a.count = a.count or (300 if a.exam else 2000)
+    split = ge.split_of(a)   # --split select: its own seeds, the training side (ge.gen_params draws it so)
+    if split == "select" and a.real:
+        raise SystemExit("--real is for a training or exam run: the real attempts keep their own split (gen real)")
+    a.count = a.count or (300 if split != "train" else 2000)
     out = a.out
     a.out = a.out or "-"   # edges' default name is not ours
     p = ge.gen_params(a)
@@ -370,7 +374,7 @@ def gen_params(a):
     p.update({"model": MODEL, "generator": GENERATOR, "models": models, "labVersion": version, "edgesSha": edges_sha(paths),
               "faceSha": sha256_of(paths[FACE_FILE]), "editorCap": a.editor_cap, "badShare": a.bad_share,
               "real": real_scenes(WORK, a.exam, a.real),
-              "out": out or str(WORK / "gen" / "runs" / f"cuts-s{seed}-n{p['count']}{'-exam' if a.exam else ''}")})
+              "out": out or str(WORK / "gen" / "runs" / f"cuts-s{seed}-n{p['count']}{'' if split == 'train' else '-' + split}")})
     print(f"the lab's models {version} (edges {p['edgesSha'][:12]}); writers {', '.join(models)}; "
           f"{len(p['real'])} real attempts; editor cuts at most {a.editor_cap:.0%}, bad cuts at most {a.bad_share:.0%}")
     return p

@@ -28,7 +28,10 @@ checked. Each epoch's progress is saved (checkpoint.py: --resume, --more); the c
 (the labels.tsv sha1s, the sizes, the batch and the steps per epoch: data_info), so --resume refuses other data. Writes
 ~/.scan-train/new/he.onnx, he-layouts.json (the card layouts the phone reads, hemodel.layouts) and
 report_he.json; publish.py puts both files into the version when the check says YES (--force-he else). The real ID cards the site collects (H8a, each
-with its fields' boxes and the values the user kept) are its exam once there are enough.
+with its fields' boxes and the values the user kept) are its exam once there are enough: until that exam is built the report
+says so (real_cards: the cards gen real's index holds with their saved fields, by split — realCards on the exam side,
+realCardsNeeded REAL_NEEDED (30), realExamined false and the note "real exam: too few cards (n of 30)"), and publish.py
+warns on it, as on a passport reader no real passport examined.
 
   python synth_fields.py --count 3000 && python synth_fields.py --count 300 --check
   python synth_lines.py he --count 50000          # optional
@@ -228,6 +231,20 @@ def phone_exam_rows(run, work=None):
     return [r for r in load(run / "he") if r[3].get("seen") is not True]
 
 
+def real_cards(work=None, rows=None):
+    """The real ID cards saved with their fields (gen real's index: a document's primary page whose saved docType is
+    israeli_id), by split → the report's real block. The reader is never examined on them yet (realExamined false):
+    the note says how many the exam side holds of the REAL_NEEDED it needs."""
+    from gen import real as greal
+    rows = greal.read_index(pathlib.Path(work or WORK) / "real") if rows is None else rows
+    by = greal.field_docs(rows, greal.FIELD_DOCS["he"])
+    n = greal.exam_side(by)
+    note = (f"real exam: too few cards ({n} of {greal.REAL_NEEDED})" if n < greal.REAL_NEEDED
+            else f"real exam: {n} cards on the exam side, not examined yet (the real-card exam is still to be built)")
+    return {"realCards": n, "realCardsBySplit": dict(sorted(by.items())), "realCardsNeeded": greal.REAL_NEEDED,
+            "realExamined": False, "realNote": note}
+
+
 def check(net, rows, dev, phone_rows=()):
     """The exam: the figures on every check field (for information) and the phone block on the ID card fronts (the
     gate) — over the exam part's rows and the phone's own cuts of the held-out cards (phone_rows)."""
@@ -299,6 +316,7 @@ def main():
     (WORK / "new" / "he-layouts.json").write_text(json.dumps(hemodel.layouts(marks)), encoding="utf-8")   # where the phone reads
     report["trainFields"], report["trainLines"], report["phoneRunFields"] = len(fields), len(lines), len(cut)
     report["phoneExamRun"] = str(a.phone_exam) if a.phone_exam else None
+    report.update(real_cards())   # no real ID card examines the reader yet: the count and the note say so
     report["publish"], report["failed"] = gate(report)
     report["model_sha256"] = model_hashes(HE_FILES, WORK / "new")   # the exact files checked (publish.py checks them)
     (WORK / "report_he.json").write_text(json.dumps(report, indent=1, ensure_ascii=False))
@@ -315,6 +333,8 @@ def print_report(report):
         print(f"  of which the phone's own cuts of the held-out cards: {report['phoneCut']['fields']} fields")
     print(f"  for information: {report['fieldsRight']:.1%} of every check field read right (select: {report['select']['fieldsRight']:.1%}); "
           f"by kind {report['byKind']}" + (f"; not examined: {', '.join(report['notExamined'])}" if report.get("notExamined") else ""))
+    if report.get("realNote"):
+        print(f"  {report['realNote']} — realExamined: false")
     if report["publish"]:
         print("YES — good enough to try (in the lab, then in shadow)")
     else:

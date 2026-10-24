@@ -21,7 +21,8 @@ heldout.json), and the old flags (--synth N, --midv N, --smartdoc N with pull.py
 here. Each real example is repeated --real-repeat K times (capped so the real ones are at most 30 % of an epoch), each
 example's loss is weighed by its weight (a self label — the model's own corners no one moved — 0.3), the counts per
 source and the real share are printed, and the epoch kept is the one with the lowest loss on the select set (the real
-examples of split "select"; never the exam) when it has any. --seed (default: a fresh one, printed and saved in the
+examples of split "select", or with fewer than 20 of them the mix's made-up select set — gen mix --select-run; never the
+exam) when it has any; which set picked it is printed. --seed (default: a fresh one, printed and saved in the
 checkpoint; --resume takes the stopped run's) seeds the shuffling, the augmentation and the old flags' sample. A warning
 is printed when examples.json (or the mix's real index) is older than the newest scan attempt in attempts/new/.
 Writes ~/.scan-train/new/<model>.onnx."""
@@ -139,7 +140,7 @@ def graph_of(name, base, args):
     return saved, {"base": saved, "epochs": prev.get("epoch"), "published": published}
 
 
-def train_one(name, base, X, Y, epochs, dev, args, data=None, W=None, R=None, select=None, seed=None):
+def train_one(name, base, X, Y, epochs, dev, args, data=None, W=None, R=None, select=None, seed=None, select_what=None):
     """One model trained on (X, Y): each example's index R[i] times an epoch, its loss weighed by W[i]; select (Xs, Ys):
     the epoch with the lowest loss on it is the one exported (the last one without)."""
     base, came = graph_of(name, base, args)
@@ -169,13 +170,13 @@ def train_one(name, base, X, Y, epochs, dev, args, data=None, W=None, R=None, se
             checkpoint.stopped(name, ep)
         if select and select[0]:
             score = select_loss(net, select[0], select[1], dev)
-            print(f"  {name} epoch {ep + 1}: select loss {score:.4f} ({len(select[0])} real pages of split select)")
+            print(f"  {name} epoch {ep + 1}: select loss {score:.4f} ({select_what or f'{len(select[0])} real pages of split select'})")
             if best is None or score < best["score"]:
                 best = {"net": {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}, "score": score, "epoch": ep + 1}
         checkpoint.save(name, info, net, opt, None, ep + 1, epochs, best)
     if best:
         net.load_state_dict(best["net"])
-        print(f"  {name}: the select set picked epoch {best['epoch']} (loss {best['score']:.4f})")
+        print(f"  {name}: the select set ({select_what or 'real pages of split select'}) picked epoch {best['epoch']} (loss {best['score']:.4f})")
     export(name, net, probe, inp, outname)
 
 
@@ -307,7 +308,7 @@ def main():
     base = a.base or version_of("scan-lab")
     print(f"{len(X)} examples ({sum(R)} an epoch), base models {base}, on {dev}")
     for name in a.models:
-        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a, data, W, R, sel, seed)
+        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a, data, W, R, sel, seed, gmix.select_words(meta, len(select)))
 
 
 if __name__ == "__main__":

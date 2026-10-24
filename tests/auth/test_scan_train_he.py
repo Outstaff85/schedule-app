@@ -335,3 +335,23 @@ def test_the_phone_exam_takes_a_fresh_cut_run_and_only_unseen_values(tmp_path, m
     (run / "run.json").write_text(json.dumps({"heldoutSha256": "an older heldout.json", "split": "exam"}))
     with pytest.raises(SystemExit, match="draw them again"):
         th.phone_exam_rows(run, tmp_path / "work")
+
+
+def test_the_report_counts_the_real_id_cards_and_says_the_reader_was_never_examined_on_one(tmp_path):
+    # gen real's index: a document's primary page carries its saved fields' keys and docType (gen/real.py)
+    th = _load("train_he")
+    card = lambda i, split, dt="israeli_id": {"id": f"doc-{i}-0", "split": split, "targets": {
+        "doctype": {"doctype": "id_front", "labelBy": "human-saved"}, "fields": {"keys": ["firstName"], "docType": dt}}}
+    rows = [card(1, "train"), card(2, "train"), card(3, "select"), card(4, "exam"), card(5, "golden"), card(6, "exam", "passport"),
+            {"id": "doc-7-1", "split": "exam", "targets": {"doctype": {"doctype": "id_back"}}}]   # no fields: not a card here
+    rep = th.real_cards(rows=rows)
+    assert rep["realCards"] == 2 and rep["realCardsBySplit"] == {"exam": 1, "golden": 1, "select": 1, "train": 2}
+    assert rep["realCardsNeeded"] == 30 and rep["realExamined"] is False
+    assert rep["realNote"] == "real exam: too few cards (2 of 30)"
+    # read from the work folder's real/index.jsonl; none there: zero cards, still not examined
+    assert th.real_cards(tmp_path)["realCards"] == 0 and th.real_cards(tmp_path)["realExamined"] is False
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "index.jsonl").write_text("".join(json.dumps({**card(i, "exam"), "file": f"img/doc-{i}-0.jpg"}) + "\n"
+                                                           for i in range(31)), encoding="utf-8")
+    rep = th.real_cards(tmp_path)
+    assert rep["realCards"] == 31 and rep["realExamined"] is False and "not examined yet" in rep["realNote"]

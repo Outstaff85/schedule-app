@@ -12,7 +12,8 @@ nothing is published. A report is bound to the exact files its exam examined (it
 written by exam.py, exam_doctypes.py, exam_mrz.py and train_he.py): a report written for another file is
 refused ("report_X.json is for a different model; run the exam again"). Each named model's gate is printed first
 (gate_lines: the rules its exam says failed, or that none did, and the warnings — no real passport examined
-(realExamined false), MIDV not examined (midvSkipped), the templates set contaminated, the document type model with no
+(realExamined false), no real ID card examined the Hebrew reader (realExamined false or fewer than 30 real cards on
+the exam side: realCards), MIDV not examined (midvSkipped), the templates set contaminated, the document type model with no
 real page kept apart). A model whose exam said not worth publishing is left out unless forced (--force-edges, --force-doctypes, --force-mrz, --force-he; the owner's
 explicit call); a model is also refused when its new .onnx file is the very file of the lab's version
 (nothing new — the old edges left on the PC, a model already published; its --force-<model> overrides),
@@ -47,6 +48,7 @@ import pathlib
 
 from common import (DATA, DOCTYPE_MODELS, DOCTYPES, HE_FILES, KEEP, MODELS, MRZ_MODEL, REPO, ROOT, WORK, bucket, clear_work, db,
                     model_path, next_version, read_json, sha256_of, version_of)
+from gen.real import REAL_NEEDED
 
 # flag → (its report, what it is, what writes the report, its files in ~/.scan-train/new/)
 REPORTS = {
@@ -211,6 +213,9 @@ def gate_lines(k, report):
             warn.append("MIDV's exam passports were not examined (--no-midv: midvSkipped)")
         if report.get("passportsSkipped"):
             warn.append(f"{report['passportsSkipped']} real passport pages could not be downloaded or read (passportsSkipped)")
+    if k == "he" and (report.get("realExamined") is not True or (report.get("realCards") or 0) < REAL_NEEDED):
+        warn.append(f"no real ID card examined this reader (realExamined {str(report.get('realExamined', False)).lower()}; "
+                    f"real cards on the exam side {report.get('realCards') or 0} of {REAL_NEEDED}): try it in the lab before the site")
     if k == "edges" and report.get("contaminated"):
         warn.append("the templates set is contaminated for " + ", ".join(f"{n} ({', '.join(v)})" for n, v in report["contaminated"].items())
                     + ": never the gate alone")

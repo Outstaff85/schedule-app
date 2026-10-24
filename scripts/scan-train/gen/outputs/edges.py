@@ -4,6 +4,11 @@ documents"): `python -m gen build --model edges`.
   python -m gen build --model edges --count 8000 --seed 1 --jobs 6               # → ~/.scan-train/gen/runs/edges-s1-n8000/
   python -m gen build --model edges --count 300 --exam                           # the exam: held-out pages, exam backgrounds
                                                                                  # and occluders, no PDF (drawn contract / other pages)
+  python -m gen build --model edges --split select                               # a made-up select set: seeds SELECT_SEEDS and up
+                                                                                 # (default 100001), 300 scenes, the training side's
+                                                                                 # pages, backgrounds and occluders; split "select" in
+                                                                                 # its manifest, run.json and entries — gen mix
+                                                                                 # --select-run picks the epoch on it, never trains on it
   python -m gen qa --run ~/.scan-train/gen/runs/edges-s1-n8000                    # the QA sheet before train.py --synth-run
 
 Each scene (gen/scene.py) is written as the phone would keep it: the frame at most 1600 px on its long side, JPEG 0.85
@@ -29,6 +34,7 @@ import numpy as np
 
 MODEL, CHUNK = "edges", 20
 GENERATOR = "gen.outputs.edges"
+SELECT_SEEDS = 100000   # a select run's seeds are SELECT_SEEDS and up, a training or exam run's below: never the same scene
 
 
 def _h(text):
@@ -36,7 +42,7 @@ def _h(text):
 
 
 def gen_args(ap):
-    ap.add_argument("--count", type=int, default=None, help="scenes (default 8000; with --exam 300)")
+    ap.add_argument("--count", type=int, default=None, help="scenes (default 8000; with --exam or --split select 300)")
     ap.add_argument("--seed", type=int, default=None, help="default 1 (with --exam 7)")
     ap.add_argument("--out", default=None, help="default ~/.scan-train/gen/runs/edges-s<seed>-n<count> (with --exam …-exam)")
     ap.add_argument("--jobs", type=int, default=None, help="processes (default: all cores but two, gently)")
@@ -48,6 +54,10 @@ def gen_args(ap):
     ap.add_argument("--partial-weight", type=float, default=0.0, help="partial scenes' weight (0 until the owner confirms the label)")
     ap.add_argument("--sharp", action="store_true", help="keep unmarked real pages' face and text (not washed out)")
     ap.add_argument("--exam", action="store_true", help="the exam: only the real pages kept apart, the exam backgrounds, the check vocabulary")
+    ap.add_argument("--split", choices=("train", "select", "exam"), default=None,
+                    help="train (the default) | select: a made-up select set — its own seeds (%d and up; default %d), "
+                    "the training side's pages and backgrounds, picked on by gen mix --select-run, never trained on | "
+                    "exam (= --exam)" % (SELECT_SEEDS, SELECT_SEEDS + 1))
     ap.add_argument("--focus", help="gen mine's focus.json: draw more of what the exams got wrong (a training run only)")
     ap.add_argument("--focus-model", help="whose multipliers --focus takes (default: edges; the phone's own cuts: the "
                     "first writer it has)")
@@ -67,6 +77,24 @@ def _weights(a):
     return w
 
 
+def split_of(a):
+    """The run's side from --split / --exam (--split exam sets --exam) → train | select | exam; a select run's seed
+    is SELECT_SEEDS and up and a training or exam run's below (SystemExit otherwise), so a select scene is never a
+    training or exam one."""
+    if getattr(a, "split", None) == "exam":
+        a.exam = True
+    split = "exam" if a.exam else (getattr(a, "split", None) or "train")
+    if split == "select":
+        a.seed = a.seed or SELECT_SEEDS + 1
+        if a.seed < SELECT_SEEDS:
+            raise SystemExit(f"--split select: the seed must be {SELECT_SEEDS} or more (the select set's own range)")
+        if getattr(a, "focus", None):
+            raise SystemExit("--focus is for a training run: the select set is drawn plainly")
+    elif a.seed is not None and a.seed >= SELECT_SEEDS:
+        raise SystemExit(f"--seed {a.seed}: seeds from {SELECT_SEEDS} up are the select set's (--split select)")
+    return split
+
+
 def gen_params(a):
     import synth
     import synth_docs as sd
@@ -74,18 +102,19 @@ def gen_params(a):
     from .. import backgrounds as gb
     from .. import common as gc
     from .. import pages as gp
-    split = "exam" if a.exam else "train"
-    count, seed = a.count or (300 if a.exam else 8000), a.seed or (7 if a.exam else 1)
-    out = a.out or str(WORK / "gen" / "runs" / f"edges-s{seed}-n{count}{'-exam' if a.exam else ''}")
+    split = split_of(a)
+    count, seed = a.count or (300 if split != "train" else 8000), a.seed or (7 if a.exam else 1)
+    out = a.out or str(WORK / "gen" / "runs" / f"edges-s{seed}-n{count}{'' if split == 'train' else '-' + split}")
     folder = a.templates or (str(WORK / "templates") if (WORK / "templates").is_dir() else None)
     pages = sd.templates_in(folder) if folder else []
     pages = [pg for pg in pages if (synth.exam_page(pg[0]) if a.exam else not synth.held_out(pg[0]))]
     if a.exam and not pages:
         print("no real page kept apart here: the exam's pages are all drawn (with the check vocabulary)")
-    bank = gb.Bank(WORK, split, a.procedural_share)
+    side = "exam" if split == "exam" else "train"   # a select run draws the training side's pages and backgrounds
+    bank = gb.Bank(WORK, side, a.procedural_share)
     if bank.unsplit:
         print(f"{bank.unsplit} usable background photos are not split yet (on neither side): run python -m gen bg split")
-    occ = gb.Occluders(WORK, split)
+    occ = gb.Occluders(WORK, side)
     pdfs = [] if a.exam else gp.pdf_sources(WORK)   # every PDF is on the training side: the exam's contract / other pages are drawn
     latin, hebrew = a.latin or sd.latin_fonts(), a.hebrew or sd.hebrew_fonts()
     if not latin or not hebrew:
@@ -173,7 +202,8 @@ def entries_of(sc, frame, labels, roles, folder, i, seed, split, meta_common, st
 
     def entry(ident, f, fixed, role, doc=None, up=None, kind="none", **more):
         e = {"id": ident, "file": f, "model": None, "fixed": fixed, "moved": 0, "exam": split == "exam", "synth": True,
-             "kind": kind, "none": fixed is None, "role": role, "recipe": sc.recipe, "manifest": f"gen-{seed}-{i}", **meta_common, **more}
+             "kind": kind, "none": fixed is None, "role": role, "recipe": sc.recipe, "manifest": f"gen-{seed}-{i}", **meta_common, **more,
+             **({"split": split} if split == "select" else {})}
         if fixed is not None:
             e.update({"upright": up, "doc": doc})
         return e
