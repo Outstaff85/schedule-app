@@ -18,9 +18,7 @@ All values go into the template's own AcroForm fields (`Form101Builder`, PyMuPDF
 
 Every writer skips an empty value or a field name the template doesn't have.
 
-`FIELD_RECT_NUDGES` can move a field's rectangle before anything is written; it is empty: every field is filled exactly at its rectangle in the template, and fields are positioned in the PDF itself.
-
-`add_comb_field` / `add_hebrew_field` (create a new field) are not used at the moment: every value has a template field.
+Every field is filled exactly at its rectangle in the template, and fields are positioned in the PDF itself; every value has a template field (the builder creates no field of its own).
 
 Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, y down, `x0,y0,x1,y1`.
 
@@ -35,8 +33,6 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 | `employer_phone` | 131.4,166.8,207.5,180.8 | `phone`, `set_hebrew` 10 |
 | `employer_deductions` | 40.0,167.5,129.4,181.5 | the last 8 digits of `deductionsFileNumber` (the form prints the leading 9), comb 8, size 11 |
 
-`p.firmMissing` (the firm fields that were empty) is passed back unchanged in the reply.
-
 ### Tax year
 
 | Field | Rect | Value |
@@ -49,12 +45,12 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 |---|---|---|
 | `surname` | 316.1,221.2,435.7,235.2 | `p.surname`, `set_hebrew` 11 |
 | `given_name` | 210.9,221.2,311.6,235.2 | `p.given`, `set_hebrew` 11 |
-| `employer_zeut_num` | 439.3,220.9,538.7,234.9 | the **worker's** Israeli ID (`p.no`, digits only), comb 9, size 10 — Israeli ID only. The name is misleading; the field sits under "מספר זהות (9 ספרות)" |
+| `employer_zeut_num` | 439.3,220.9,538.7,234.9 | the **worker's** Israeli ID (`p.no`, digits only, an 8-digit ID zero-padded to 9 — `_israeli_id`), comb 9, size 10 — Israeli ID only. The name is misleading; the field sits under "מספר זהות (9 ספרות)" |
 | `dob` | 119.7,221.2,209.1,235.2 | `p.dob` → `DDMMYYYY` (`_ddmmyyyy`), comb 8, size 10 |
 | `aliyah` | 28.5,220.9,117.9,234.9 | not filled |
 | `passport_no` | 393.1,250.9,538.4,264.9 | `p.no`, comb 13, size 10 — foreign passport only |
-| `addr_street` | 231.4,244.1,389.8,258.1 | the street from `p.address` (`_split_street`: the number may be first or last), `set_hebrew` 11 |
-| `addr_number` | 204.1,243.8,227.1,257.8 | the house number from `p.address`, `set_text_centered` |
+| `addr_street` | 231.4,244.1,389.8,258.1 | `p.street`; without it the street from `p.address` (`_split_street`: the number may be first or last), `set_hebrew` 11 |
+| `addr_number` | 204.1,243.8,227.1,257.8 | `p.houseNumber` as it is (`12א`, `12/3`); without it the number from `p.address`, `set_text_centered` |
 | `addr_city` | 109.3,243.5,199.9,257.5 | `p.city`, `set_hebrew` 11 |
 | `addr_zip` | 30.5,243.8,107.4,257.8 | not filled |
 | `worker_phone` | 83.0,311.9,159.1,325.9 | `p.workerPhone`, `set_hebrew` 10 |
@@ -118,7 +114,7 @@ Spouse income (`SPOUSE_INCOME_CB` by `income`): `none` → `cb_p1_22` (אין ל
 
 | Field | Rect | Value |
 |---|---|---|
-| `id_top2` | 96.3,14.6,172.3,26.6 | `p.no` (the page header), `set_text` 10 |
+| `id_top2` | 96.3,14.6,172.3,26.6 | `p.no` (the page header; an Israeli ID zero-padded to 9 like `employer_zeut_num`), `set_text` 10 |
 | `resident_h` | 510.5,39.9,520.5,49.9 | ח.1 "אני תושב/ת ישראל" — checked for an Israeli ID worker |
 | `cb_p2_1` … `cb_p2_16` | x ≈ 511, y 55–460 | the tax-relief declarations of ח and ט — never checked: a scan can't know them |
 | `sign_date` | 147.4,641.6,223.5,655.6 | `p.signDate` — the app sends the date the worker was first saved (`createdAt`), else today; `set_text` 10 |

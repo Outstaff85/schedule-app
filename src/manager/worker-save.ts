@@ -9,7 +9,7 @@
 // uploads come through the bridge.
 import { tr } from '@/lib/i18n';
 import type { Child, DayShift, ManagerBridge, WorkerRecord } from './bridge';
-import { commonFields, form101Changed, mergeIntoDuplicate, sameFields, workerDocId, type WorkerForm } from './worker';
+import { commonFields, docIdKey, form101Changed, mergeIntoDuplicate, sameFields, workerDocId, type WorkerForm } from './worker';
 
 export type EditorState = { values: WorkerForm; clientIds: string[]; children: Child[]; roster: DayShift[] | null; sig: string | null };
 
@@ -40,7 +40,7 @@ export async function saveWorker(api: ManagerBridge, o: {
   });
   const docId = String(fields.docId || '');
   // The HR field (owner / super-admin only): undefined keeps the worker's HR.
-  const hrPicked = document.getElementById('wHrId') ? values.hrId || null : undefined;
+  let hrPicked = document.getElementById('wHrId') ? values.hrId || null : undefined;
   const hr = api.isHr();
 
   if (editId === null && docId) {
@@ -51,23 +51,31 @@ export async function saveWorker(api: ManagerBridge, o: {
     }
     if (dup) {
       if (!confirm(tr('A worker with this document number already exists: {0}.\nOK — update that worker with the data entered here.\nCancel — go back and edit.', { 0: dup.name || '?' }))) return;
-      fields = mergeIntoDuplicate(fields, dup.clientIds);
+      fields = mergeIntoDuplicate(fields, dup.clientIds, { scanned: api.liveScan() });
       editId = dup.id;
+      // No HR picked in the form: the existing worker keeps its HR.
+      if (!values.hrId) hrPicked = undefined;
       // A live scan in this session → the Form 101 is built from the fresh images.
       if (api.liveScan()) api.setRescanned(dup.id);
     }
   }
-  if (editId !== null && hr && docId) {
+  // An edited number is checked for every login: another worker of the firm with it → not saved.
+  if (editId !== null && docId) {
     const cur = api.record(editId);
-    if (cur && docId !== workerDocId(cur)) {
-      try { if (await api.docExistsInFirm(docId, editId)) { alert(tr('A worker with this document number already exists in the firm.')); return; } } catch { /* offline: go on */ }
+    if (cur && docIdKey(docId) !== docIdKey(workerDocId(cur))) {
+      if (api.findByDocId(docId, editId)) { alert(tr('A worker with this document number already exists in the firm.')); return; }
+      // An own-workers HR has only its own workers here: the server checks the whole firm (yes / no only).
+      if (hr) {
+        try { if (await api.docExistsInFirm(docId, editId)) { alert(tr('A worker with this document number already exists in the firm.')); return; } } catch { /* offline: go on */ }
+      }
     }
   }
 
   if (editId !== null) {
     const prev = api.record(editId);
     if (!prev) { close(); return; }
-    const isId = prev.docType !== 'passport';
+    // The type being saved (a rescan may have found a passport for a worker added as an Israeli ID).
+    const isId = (fields.docType || prev.docType || 'israeli_id') !== 'passport';
     // Closed with nothing changed: nothing to save.
     if (o.auto && sameFields(fields, prev) && !sig && (hrPicked === undefined || (prev.hrId || null) === hrPicked) && api.rescannedId() !== prev.id) { close(); return; }
     const changed = form101Changed(prev, { ...prev, ...fields });

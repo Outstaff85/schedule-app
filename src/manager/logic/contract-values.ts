@@ -85,6 +85,8 @@ function hash(s: string): string {
 export function printHash(form101: Record<string, unknown>, values: Record<string, string>, marks: string[] | null, withPay: boolean): string {
   const f: Record<string, unknown> = { ...form101 };
   delete f.employer; delete f.signDate; delete f.firmMissing; delete f.signaturePngBase64; delete f.extraPages;
+  // street / houseNumber repeat `address` (sent apart for the PDF only): left out, so the hash stays what it was before they were sent.
+  delete f.street; delete f.houseNumber;
   const keys = (marks && marks.length ? marks : Object.keys(values))
     .filter(k => k in values && !FIRM_MARKS.includes(k) && (withPay || !PAY_MARKS.includes(k))).sort();
   const sorted = (o: Record<string, unknown>) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k] ?? null]));

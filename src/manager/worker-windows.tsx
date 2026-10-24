@@ -18,6 +18,7 @@ import { PagedList } from '@/components/shared/paged-list';
 import type { HoursBatch, HoursEntry, ManagerBridge, WorkerHead } from './bridge';
 import { HoursStatusChip, TiIcon, WorkerHeadLine } from './worker-head';
 import { WORKER_DOC_TYPES } from './worker';
+import { isHoursDate } from './logic/dates';
 
 function Title({ children }: { children: React.ReactNode }) {
   return <div className="mb-3 text-lg font-bold text-ink" data-testid="window-title">{children}</div>;
@@ -78,7 +79,10 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
       if (added.length) api.addDocs(wid, added);
       if (failed.length) {
         const msg = tr('{0} file(s) failed: {1}', { 0: failed.length, 1: (failed[0] && failed[0].error) || 'network error' });
-        setStatus(msg); api.reportError(msg, 'saveWorkerFile'); setBusy(false); return;
+        api.reportError(msg, 'saveWorkerFile');
+        // The files already uploaded are kept: Upload again sends only the failed ones.
+        setFiles(files.filter((_, i) => !(results[i] && results[i].ok)));
+        setStatus(msg + ' ' + tr('Upload again sends only the files that failed.')); setBusy(false); return;
       }
       api.closeModal('workerDocOverlay');
       api.toast(tr('{0} document{1} uploaded', { 0: added.length, 1: added.length > 1 ? 's' : '' }));
@@ -125,10 +129,10 @@ export function manualRowsProblem(rows: Row[], daily: boolean, name: string) {
   const bad = rows.map((r, i) => (!r.date || (!daily && (!r.inTime || !r.outTime)) || (!!r.inTime !== !!r.outTime) ? i : -1)).filter(i => i >= 0);
   if (!bad.length) return null;
   const r = rows[bad[0]];
-  const why = !r.date ? 'pick a date'
-    : !daily ? 'enter the in and out times — ' + (name || 'this worker') + ' is paid by the hour (dates only need "₪/day" in the pay window: worker card → Pay)'
-      : 'enter both times, or leave both empty for a whole day';
-  return { rows: bad, text: 'Shift ' + (bad[0] + 1) + ': ' + why };
+  const why = !r.date ? tr('pick a date')
+    : !daily ? tr('enter the in and out times — {0} is paid by the hour (dates only need "₪/day" in the pay window: worker card → Pay)', { 0: name || tr('this worker') })
+      : tr('enter both times, or leave both empty for a whole day');
+  return { rows: bad, text: tr('Shift {0}: {1}', { 0: bad[0] + 1, 1: why }) };
 }
 /** The typed rows ready to send, as {date: dd/MM/yyyy, inTime, outTime}; a daily worker's row with no times is one day, 08:00–16:00. */
 export function manualEntries(rows: Row[], daily: boolean): HoursEntry[] {
@@ -200,7 +204,10 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
       setReading('');
     }
   };
+  // Shifts from the file whose date could not be read as a date: shown in red, nothing is sent.
+  const badDates = entries.filter(en => !isHoursDate(en.date));
   const submit = async () => {
+    if (badDates.length) { api.toast(tr('{0} shift(s) with a date that could not be read — fix the file and choose it again', { 0: badDates.length }), 6000); return; }
     const problem = manualRowsProblem(rows, info.daily, info.name);
     if (problem) { setBad(problem.rows); api.toast(problem.text, 6000); return; }
     setBad([]);
@@ -231,7 +238,10 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
       <div id="hoursImportPreview" className="min-h-5 text-xs text-ink-3">
         {reading || (entries.length > 0 && <>
           <div className="mb-1 text-ink-2">{tr('{0} shift(s) found:', { 0: entries.length })}</div>
-          {entries.slice(0, 10).map((en, i) => <div key={i}>{en.date} · {en.inTime}{en.outTime ? '–' + en.outTime : ' (open)'}</div>)}
+          {badDates.length > 0 && <div data-testid="hours-bad-dates" className="mb-1 text-[var(--red)]">{tr('{0} shift(s) with a date that could not be read — fix the file and choose it again', { 0: badDates.length })}</div>}
+          {[...badDates, ...entries.filter(en => isHoursDate(en.date))].slice(0, 10).map((en, i) => (
+            <div key={i} data-bad={!isHoursDate(en.date) || undefined} className={cn(!isHoursDate(en.date) && 'text-[var(--red)]')}>{en.date || '?'} · {en.inTime}{en.outTime ? '–' + en.outTime : ' ' + tr('(open)')}</div>
+          ))}
           {entries.length > 10 && <div>{tr('…{0} more', { 0: entries.length - 10 })}</div>}
         </>)}
       </div>

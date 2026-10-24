@@ -6,6 +6,7 @@
 // reachable under their old global names through the window accessors below
 // (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
+import { normHoursDate } from '../logic/dates';
 import { byId } from './dom';
 import { getPunchLog } from '../data/punches';
 import { DOC_STORE, WORKER_DOC_TYPES, isActiveWorker, workerDocStatus, workerExpiryStatus } from '../logic/workers';
@@ -173,17 +174,19 @@ export function openHoursImportModal(workerId?: any){
   island()!.openHoursImport(workerId);
   byId('hoursImportOverlay').classList.add('open');
 }
-// Fixed template: a header row containing Date/In/Out (or the same three words in Russian),
-// case-insensitive, in any column order. cellDates:true so an Excel date
-// serial comes back as a real JS Date we can format ourselves, matching the
-// dd/MM/yyyy convention PunchLog itself already uses everywhere else.
+// Fixed template: a header row containing Date and In, Out optional (or the same words in
+// Russian), case-insensitive, in any column order. A spreadsheet's date cells come back as
+// Dates (cellDates); a CSV is read as text (raw), so a day-first date is not taken as m/d.
+// Every date goes through normHoursDate (logic/dates.ts) to dd/MM/yyyy, the punch log's
+// form; one that is not a date is kept as it is, and the window shows it in red and sends nothing.
 export function parseHoursExcelFile(file?: any){
   return loadXlsx().then(()=>new Promise((resolve?: any,reject?: any)=>{
     const reader = new FileReader();
     reader.onerror = ()=>reject(new Error('read failed'));
     reader.onload = ()=>{
       try{
-        const wb = XLSX.read(reader.result as any, {type:'array', cellDates:true});
+        const csv = /\.csv$/i.test(String(file&&file.name||''));
+        const wb = XLSX.read(reader.result as any, csv?{type:'array', raw:true}:{type:'array', cellDates:true});
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const rows: any[] = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
         if(!rows.length){ resolve([]); return; }
@@ -192,10 +195,7 @@ export function parseHoursExcelFile(file?: any){
         const inIdx   = header.findIndex((h?: any)=>['in','вход'].includes(h));
         const outIdx  = header.findIndex((h?: any)=>['out','выход'].includes(h));
         if(dateIdx===-1||inIdx===-1){ reject(new Error('Expected Date/In(/Out) columns')); return; }
-        const fmtDate = (v?: any)=>{
-          if(v instanceof Date) return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
-          return String(v||'').trim();
-        };
+        const fmtDate = (v?: any)=>normHoursDate(v)||String(v==null?'':v).trim();
         const fmtTime = (v?: any)=>{
           if(v instanceof Date) return String(v.getHours()).padStart(2,'0')+':'+String(v.getMinutes()).padStart(2,'0');
           return String(v||'').trim();
@@ -220,7 +220,7 @@ export async function parseHoursImagePage(pg?: any){
   const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'aiReadHoursTable', ...gsAuth(), image:pg.b64, mediaType:pg.mediaType }) });
   const json = await res.json();
   if(json.error) throw new Error(json.error);
-  return json.entries||[];
+  return (json.entries||[]).map((e?: any)=>({...e, date: normHoursDate(e&&e.date)||String((e&&e.date)||'').trim()}));
 }
 // Detail-mode export for one worker (exportShiftsDetail): the month picker is
 // React (src/manager/worker-windows.tsx).

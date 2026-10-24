@@ -5,6 +5,7 @@
 // (CLAUDE.md → UI text language), like the printed form.
 import type { Child, DayShift, WorkerRecord } from './bridge';
 import { localYMD } from '@/lib/payroll';
+import { normDigits } from '@/scan-process/ids';
 
 /** The form's fields, as strings (the inputs' values). */
 export type WorkerForm = {
@@ -95,6 +96,20 @@ export function formOf(w: WorkerRecord): WorkerForm {
 
 const OFF: DayShift = { type: 'off', start: null, end: null };
 
+/** A document number as it is stored and compared: a passport's without spaces, in capitals; an
+ * Israeli ID's digits joined, one typed without its leading 0 (8 digits) padded to 9. */
+export function normDocId(v: string, docType?: string): string {
+  const s = String(v || '').trim();
+  if (docType === 'passport') return s.replace(/\s/g, '').toUpperCase();
+  const d = normDigits(s);
+  return /^\d{8}$/.test(d) ? d.padStart(9, '0') : d;
+}
+/** The key two document numbers are matched by (any type): no spaces or dashes, capitals, no leading zeros. */
+export function docIdKey(v: string): string {
+  const s = String(v || '').replace(/[\s-]/g, '').toUpperCase();
+  return /^\d+$/.test(s) ? s.replace(/^0+/, '') : s;
+}
+
 /** What a save writes onto the record (`commonFields`). The roster only when it was opened. */
 export function commonFields(v: WorkerForm, o: {
   status: string; colorIdx: number; children: Child[]; clientIds: string[]; docType: string;
@@ -110,7 +125,7 @@ export function commonFields(v: WorkerForm, o: {
     name: (docGiven + ' ' + docSurname).trim(), colorIdx: o.colorIdx, phone: t(v.phone), status: o.status,
     startDate, workStartDate: startDate, docSex: v.docSex || '',
     expiryEnabled: !!v.expiryEnabled, expiryMonths: parseInt(v.expiryMonths) || 9, expiryWarnMonths: parseInt(v.expiryWarnMonths) || 0,
-    docId: t(v.docId), address: t(v.address), houseNumber: t(v.houseNumber), city: t(v.city), docDob: t(v.docDob), docExpiry: t(v.docExpiry), notes: t(v.notes),
+    docId: normDocId(v.docId, o.docType), address: t(v.address), houseNumber: t(v.houseNumber), city: t(v.city), docDob: t(v.docDob), docExpiry: t(v.docExpiry), notes: t(v.notes),
     incomeType: v.incomeType || '', otherIncomeType: v.otherIncomeType || '', docSurname, docGiven, maritalStatus, healthFund: v.healthFund || '',
     docChildren: o.children.map(c => ({ name: t(c.name), idNo: t(c.idNo), dob: t(c.dob) })).filter(c => c.name || c.idNo || c.dob),
     clientIds: [...o.clientIds],
@@ -131,9 +146,18 @@ export function contractTerms(v: Pick<WorkerForm, 'terms1' | 'terms2' | 'terms3'
 }
 
 const norm = (v: unknown) => (v == null || v === '' || (Array.isArray(v) && !v.length) ? '' : JSON.stringify(v));
-/** An edit closed with nothing changed in the form's fields. */
-export const sameFields = (fields: Partial<WorkerRecord>, prev: WorkerRecord) =>
-  Object.keys(fields).every(k => norm(fields[k]) === norm(prev[k]));
+/** An edit closed with nothing changed in the form's fields: equal to the record, or to the record's
+ * own form passed through the same save (the form's defaults — a start date of today, the income
+ * types… — are not a change of a record that lacked them). */
+export function sameFields(fields: Partial<WorkerRecord>, prev: WorkerRecord): boolean {
+  if (Object.keys(fields).every(k => norm(fields[k]) === norm(prev[k]))) return true;
+  const base = commonFields(formOf(prev), {
+    status: prev.status || 'active', colorIdx: prev.colorIdx || 0,
+    children: Array.isArray(prev.docChildren) ? prev.docChildren as Child[] : [], clientIds: prev.clientIds || [],
+    docType: prev.docType || 'israeli_id', roster: null, prevSchedule: prev.schedule || null,
+  });
+  return Object.keys(fields).every(k => norm(fields[k]) === norm(base[k]));
+}
 
 /** The fields printed on the Form 101: a change rebuilds the stored PDF. */
 export const FORM101_WATCHED = ['docId', 'address', 'houseNumber', 'city', 'incomeType', 'otherIncomeType',
@@ -142,11 +166,22 @@ export const FORM101_WATCHED = ['docId', 'address', 'houseNumber', 'city', 'inco
 export const form101Changed = (prev: WorkerRecord, next: WorkerRecord) =>
   FORM101_WATCHED.some(f => JSON.stringify(prev[f]) !== JSON.stringify(next[f]));
 
-/** A new worker matching an existing one: only non-empty values overwrite, the roster, status and colour stay, clients merge. */
-export function mergeIntoDuplicate(fields: Partial<WorkerRecord>, dupClientIds: string[]): Partial<WorkerRecord> {
+/** The form's own defaults (a new worker's), which a merge into a duplicate never copies. */
+const DEFAULTED = ['startDate', 'workStartDate', 'expiryEnabled', 'expiryMonths', 'expiryWarnMonths', 'incomeType', 'otherIncomeType', 'maritalStatus'];
+
+/** A new worker matching an existing one: only values the user entered overwrite — not empty ones, nor the
+ * form's defaults (start date, contract warning, income types…), nor the document type unless a scan
+ * found it; the roster, status and colour stay, clients merge. */
+export function mergeIntoDuplicate(fields: Partial<WorkerRecord>, dupClientIds: string[], o: { scanned?: boolean } = {}): Partial<WorkerRecord> {
   const out: Partial<WorkerRecord> = {};
   const blank = (v: unknown) => v === '' || v == null || (Array.isArray(v) && !v.length);
-  Object.keys(fields).forEach(k => { if (!blank(fields[k]) && !['schedule', 'status', 'colorIdx'].includes(k)) out[k] = fields[k]; });
+  const defaults = commonFields(formOf({} as WorkerRecord), { status: 'active', colorIdx: 0, children: [], clientIds: [], docType: 'israeli_id', roster: null, prevSchedule: null });
+  const isDefault = (k: string) => DEFAULTED.includes(k) && norm(fields[k]) === norm(defaults[k]);
+  Object.keys(fields).forEach(k => {
+    if (blank(fields[k]) || ['schedule', 'status', 'colorIdx'].includes(k) || isDefault(k)) return;
+    if (k === 'docType' && !o.scanned) return;
+    out[k] = fields[k];
+  });
   if (out.clientIds) out.clientIds = [...new Set([...dupClientIds, ...out.clientIds])];
   return out;
 }

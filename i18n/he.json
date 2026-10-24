@@ -251,7 +251,6 @@
   "For the period picked in Salary: each HR's workers' hours × the HR's commission (₪/h, set in Admin → Users on the HR); a worker paid by the day counts days × the HR's ₪/day when one is set.": "לתקופה שנבחרה בחישוב השכר: שעות העובדים של כל איש משאבי אנוש × העמלה שלו (₪/ש׳, נקבעת ב-Admin ← Users); עובד בתשלום יומי נספר ימים × ₪/יום של משאבי אנוש, כשהוגדר.",
   "For the period picked in Salary: each supplier's workers' hours × the supplier rate.": "לתקופה שנבחרה בחישוב השכר: שעות העובדים של כל ספק × עמלת הספק (לעובד בתשלום יומי — ימים × ₪/יום, כשהוגדר).",
   "Form 101": "טופס 101",
-  "Form 101 downloaded": "טופס 101 הורד",
   "Fri": "שישי",
   "From 3 hours a visit": "החל מ-3 שעות לביקור",
   "Full document tracking": "מעקב מלא אחר מסמכים",
@@ -1539,5 +1538,12 @@
   "model": "מודל",
   "model ✓": "מודל ✓",
   "model ≠ AI": "מודל ≠ AI",
-  "No pages yet: take a picture or pick photos on the Camera tab": "עדיין אין דפים: צלמו או בחרו תמונות בלשונית המצלמה"
+  "No pages yet: take a picture or pick photos on the Camera tab": "עדיין אין דפים: צלמו או בחרו תמונות בלשונית המצלמה",
+  "Uploading to {0}, please do not close…": "מעלה ל-{0}, נא לא לסגור…",
+  "Uploaded successfully": "הועלה בהצלחה",
+  "enter the in and out times — {0} is paid by the hour (dates only need \"₪/day\" in the pay window: worker card → Pay)": "יש להזין שעת כניסה ויציאה — {0} מקבל/ת שכר לפי שעה (לתאריכים בלבד צריך ״₪/יום״ בחלון השכר: כרטיס העובד ← שכר)",
+  "this worker": "עובד זה",
+  "Upload again sends only the files that failed.": "העלאה חוזרת תשלח רק את הקבצים שנכשלו.",
+  "{0} shift(s) with a date that could not be read — fix the file and choose it again": "{0} משמרות עם תאריך שלא ניתן לקרוא — יש לתקן את הקובץ ולבחור אותו שוב",
+  "(open)": "(פתוחה)"
 }

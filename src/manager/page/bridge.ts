@@ -11,6 +11,7 @@ import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts,
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
+import { docIdKey } from '../worker';
 import { canChange, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
@@ -421,7 +422,8 @@ provideBridge({
   findScanFields:(editId?: any,keys?: any,docType?: any)=>findScanFields(editId?workers.find((x?: any)=>x.id===editId)||null:null,keys,docType),
   rescan:()=>rescanFromWorkerModal(),
   newToken:(id?: any)=>regenerateWorkerToken(id),
-  findByDocId(docId?: any){ const d=workers.find((w?: any)=>workerDocId(w)===docId); return d?{id:d.id, name:d.name||'', clientIds:d.clientIds||[]}:null; },
+  // Another worker with this document number (matched without spaces, dashes or leading zeros); excludeId: the worker being edited.
+  findByDocId(docId?: any,excludeId?: any){ const k=docIdKey(docId); const d=k?workers.find((w?: any)=>w.id!==excludeId&&docIdKey(workerDocId(w))===k):null; return d?{id:d.id, name:d.name||'', clientIds:d.clientIds||[]}:null; },
   isHr:()=>isHrSession(),
   async docExistsInFirm(docId?: any,workerId?: any){
     const r=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'checkWorkerDoc',...gsAuth(),docId,...(workerId?{workerId}:{})})})).json();

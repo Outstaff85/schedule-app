@@ -323,7 +323,7 @@ export type WorkerBridge = {
   rescan(): void;
   newToken(id: string): string | null;
   // saveWorker() (src/manager/worker-save.ts)
-  findByDocId(docId: string): { id: string; name: string; clientIds: string[] } | null;
+  findByDocId(docId: string, excludeId?: string): { id: string; name: string; clientIds: string[] } | null;
   isHr(): boolean;
   /** the server's yes / no across the whole firm (an HR has only its own workers) */
   docExistsInFirm(docId: string, workerId?: string): Promise<boolean>;

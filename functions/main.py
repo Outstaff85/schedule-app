@@ -1,14 +1,16 @@
-"""Fills assets/form101_fillable.pdf with worker/employer data and returns the PDF as
-base64 JSON. Python + PyMuPDF port of the client-side aiFillForm101() in
-schedule-manager.html — see that function's comments for the *why* behind each
-field's rect/size/quirk; this file mirrors it 1:1 unless noted otherwise.
+"""Form 101 (docs/form101.md): `build_form101_pdf` fills assets/form101_fillable.pdf
+with the worker / employer values the manager app sends (`form101Payload`,
+src/manager/logic/form101.ts) and the scanned pages and signature the app keeps in
+Storage (`scanPages`, docs/contracts.md → Scanned pages); `fill_form_101` returns the
+PDF as base64 JSON. Field positions: docs/form101-field-map.md.
 
-Key difference from the pdf-lib version: PyMuPDF's own appearance-stream
-generator does not shape/reorder RTL text at all (confirmed empirically — even
-a single Hebrew word renders letter-reversed). So unlike the JS version, which
-only redraws multi-word Hebrew values (pdf-lib's bug only drops a glyph on
-multi-word text), every Hebrew-capable field here is unconditionally corrected
-with bidi.algorithm.get_display() and drawn by hand — see draw_rtl_text().
+PyMuPDF's own appearance-stream generator does not shape / reorder RTL text, so
+every Hebrew field is corrected with bidi.algorithm.get_display() and drawn by
+hand — see _draw_rtl_text().
+
+The same module also holds the scanner's training-data function (`scan_feedback`)
+and the entry points of the contract templates and the signing (contracts.py,
+signing.py).
 """
 import base64
 import datetime
@@ -44,15 +46,10 @@ OTHER_INCOME_CB = {"monthly": "cb_p1_13", "secondary": "cb_p1_15", "partial": "c
                    "daily": "cb_p1_12", "pension": "cb_p1_14", "scholarship": "cb_p1_16"}
 CHECK_BLUE = (0.09, 0.32, 0.85)
 
-# PDF-embed image optimization (added 2026-09-26, per user request) — applies
-# ONLY here, at final PDF assembly, never earlier in the scan pipeline: OCR
-# (aiReadDoc) and digit-field verification (aiVerifyField) have both already
-# run upstream on the full-resolution scan by the time build_form101_pdf()
-# ever sees it (see docs/scan.md), so shrinking the copy
-# that gets embedded here can't affect field-extraction accuracy — it only
-# affects the generated PDF's file size. The raw, unshrunk scan is preserved
-# separately in the Drive asset sidecar (saveWorkerAssets) for any future
-# regeneration, so this is a one-way, presentation-only downscale.
+# The scanned pages embedded in the PDF are downscaled here, at the PDF's assembly
+# only: the scan was read upstream at full resolution (docs/scan.md), and the
+# pages kept in Storage (`scanPages`) stay as they are for later rebuilds — this
+# only sets the PDF's file size.
 EMBED_DPI = 150  # comfortably legible on paper/screen; far below native phone-camera resolution
 EMBED_JPEG_QUALITY = 82
 
@@ -67,18 +64,6 @@ SIG_RECT = (34.02, 186, 87.99, 15)
 # anywhere upstream (AI extraction, manual entry) to do better without a
 # larger data-model change.
 CHILD_FIELD_SUFFIXES = ["", "1", "2", "3", "4", "5"]
-
-# Small per-field position corrections layered on top of the template's own
-# AcroForm geometry — (dx, dy) in PDF points, added directly to the widget's
-# rect (page-space: x right, y DOWN) before any value is written. This moves
-# the actual field/annotation rectangle itself (so its generated appearance,
-# comb cell spacing, etc. all shift with it), as opposed to nudging where
-# hand-drawn text sits within an unchanged rect — the user specifically
-# wants the former. Add further per-field tweaks here rather than re-editing
-# the PDF template by hand.
-# Empty since 2026-10-05: every field sits exactly at its rectangle in the
-# template, and the user positions the fields in the PDF itself.
-FIELD_RECT_NUDGES = {}
 
 
 def pdf_rect(page_h, x, y_bottom, width, height):
@@ -97,17 +82,6 @@ class Form101Builder:
         for page in self.doc:
             for w in page.widgets():
                 self.widgets[w.field_name] = (page, w)
-        self._apply_rect_nudges()
-
-    def _apply_rect_nudges(self):
-        for name, (dx, dy) in FIELD_RECT_NUDGES.items():
-            entry = self.widgets.get(name)
-            if not entry:
-                continue
-            page, w = entry
-            r = w.rect
-            w.rect = pymupdf.Rect(r.x0 + dx, r.y0 + dy, r.x1 + dx, r.y1 + dy)
-            w.update()
 
     # ---- low-level helpers -------------------------------------------------
 
@@ -147,7 +121,7 @@ class Form101Builder:
         y = rect.y0 + (rect.height - asc) / 2 + asc
         page.insert_text((x, y), disp, fontname=FONT_NAME, fontsize=size, color=(0, 0, 0))
 
-    # ---- field writers (mirror setH/setT/setComb/addNew*Field in the JS) ---
+    # ---- field writers ----
 
     def set_hebrew(self, name, value, size=None):
         """Existing template field with Hebrew/RTL content."""
@@ -218,44 +192,6 @@ class Form101Builder:
         page.draw_line(p1, p2, color=CHECK_BLUE, width=thickness, lineCap=1)
         page.draw_line(p2, p3, color=CHECK_BLUE, width=thickness, lineCap=1)
 
-    def _new_widget(self, page, name, rect, size, comb=False, max_len=None):
-        w = pymupdf.Widget()
-        w.field_name = name
-        w.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
-        w.rect = rect
-        w.text_fontsize = size
-        w.border_width = 0
-        w.fill_color = []
-        if comb:
-            w.field_flags = pymupdf.PDF_TX_FIELD_IS_COMB
-            w.text_maxlen = max_len
-        return w
-
-    def _refetch(self, page, name):
-        # A Widget object just passed to add_widget() keeps xref==0 — any
-        # xref-level op (blanking an appearance, further updates) needs the
-        # "live" Widget PyMuPDF hands back from the page's own widget list.
-        return next(x for x in page.widgets() if x.field_name == name)
-
-    def add_comb_field(self, page_h, page, name, xywh, max_len, size, value):
-        if not value:
-            return
-        rect = pdf_rect(page_h, *xywh)
-        w = self._new_widget(page, name, rect, size, comb=True, max_len=max_len)
-        w.field_value = str(value)[:max_len]
-        page.add_widget(w)
-
-    def add_hebrew_field(self, page_h, page, name, xywh, size, value, right_align=True, bottom_align=False):
-        if not value:
-            return
-        rect = pdf_rect(page_h, *xywh)
-        w = self._new_widget(page, name, rect, size)
-        w.field_value = str(value)
-        page.add_widget(w)
-        live = self._refetch(page, name)
-        self._blank_appearance(page, live)
-        self._draw_rtl_text(page, rect, value, size, right_align, bottom_align)
-
     def finalize(self):
         catalog = self.doc.pdf_catalog()
         # xref_set_key's dotted "AcroForm/NeedAppearances" path only works
@@ -280,8 +216,8 @@ class Form101Builder:
 
 
 def _split_street(addr):
-    """Street name + number can arrive in either order — same heuristic as
-    the JS version's regex split."""
+    """Street name + number in one string (an older caller's `address`): the
+    number may come first or last."""
     m_end = re.match(r"^(.*?)(\d+)\s*$", addr or "")
     if m_end:
         return m_end.group(1).strip(), m_end.group(2).strip()
@@ -376,6 +312,12 @@ def fill_spouse(b, sp):
         b.check(cb)
 
 
+def _israeli_id(no):
+    """An Israeli ID's digits; one typed without its leading 0 (8 digits) is padded to 9."""
+    ident = re.sub(r"\D", "", str(no or ""))
+    return ident.zfill(9) if re.fullmatch(r"\d{8}", ident) else ident
+
+
 def build_form101_pdf(p):
     b = Form101Builder()
     page_h = b.page1.rect.height
@@ -383,6 +325,8 @@ def build_form101_pdf(p):
     surname, given = p.get("surname"), p.get("given")
     dob, sex, no = p.get("dob"), p.get("sex"), p.get("no")
     is_israeli = bool(p.get("isIsraeli"))
+    if is_israeli and no:
+        no = _israeli_id(no) or no
 
     b.set_hebrew("surname", surname, 11)
     b.set_hebrew("given_name", given, 11)
@@ -393,7 +337,6 @@ def build_form101_pdf(p):
     b.set_comb("tax_year", tax_year, 4, 10)
 
     employer = p.get("employer") or {}
-    firm_missing = p.get("firmMissing") or []
     if employer:
         b.set_hebrew("employer_name", employer.get("companyName"), 11)
         addr_parts = [employer.get("street"), employer.get("streetNumber")]
@@ -451,7 +394,7 @@ def build_form101_pdf(p):
             # don't have..." — a strong match for the WORKER's own Israeli ID
             # number rather than an employer field. Using it as such; revisit
             # if the field ever gets renamed to something clearer.
-            b.set_comb("employer_zeut_num", re.sub(r"\D", "", no), 9, 10)
+            b.set_comb("employer_zeut_num", _israeli_id(no), 9, 10)
         marital = p.get("marital")
         if marital:
             b.check(marital)
@@ -470,12 +413,16 @@ def build_form101_pdf(p):
 
     # Address in Israel and children — both document types (a foreign
     # worker fills them in by hand; an Israeli ID worker gets them from the ספח).
-    addr = p.get("address")
-    if addr:
-        street, number = _split_street(addr)
+    # The street and the house number come apart (a number such as "12א" or "12/3" stays
+    # whole); an older caller sends them as one `address`, split by _split_street.
+    if p.get("street") or p.get("houseNumber"):
+        street, number = str(p.get("street") or "").strip(), str(p.get("houseNumber") or "").strip()
+    else:
+        street, number = _split_street(p.get("address")) if p.get("address") else (None, None)
+    if street:
         b.set_hebrew("addr_street", street, 11)
-        if number:
-            b.set_text_centered("addr_number", number)
+    if number:
+        b.set_text_centered("addr_number", number)
     b.set_hebrew("addr_city", p.get("city"), 11)
     for i, c in enumerate((p.get("children") or [])[:len(CHILD_FIELD_SUFFIXES)]):
         suf = CHILD_FIELD_SUFFIXES[i]
@@ -568,7 +515,7 @@ def build_form101_pdf(p):
     parts = [full_name, re.sub(r"[^A-Za-z0-9]", "", str(no or "")).upper(), fn_part(employer.get("companyName"))]
     file_name = " - ".join(x for x in parts if x) + ".pdf"
 
-    return b.finalize(), file_name, firm_missing
+    return b.finalize(), file_name
 
 
 options.set_global_options(region="us-central1")
@@ -618,11 +565,10 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
         denied = _gate_response(req)
         if denied:
             return denied
-        pdf_bytes, file_name, firm_missing = build_form101_pdf(payload)
+        pdf_bytes, file_name = build_form101_pdf(payload)
         body = json.dumps({
             "pdfBase64": base64.b64encode(pdf_bytes).decode(),
             "fileName": file_name,
-            "firmMissing": firm_missing,
         })
         return https_fn.Response(body, status=200, mimetype="application/json")
     except Exception as e:

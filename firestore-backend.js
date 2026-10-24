@@ -603,6 +603,7 @@
 			if (ctx.role === "supplier") return { error: "Not available for the supplier role" };
 			const entries = Array.isArray(params.entries) ? params.entries : [];
 			if (!entries.length) return { error: "No recognized shifts to upload" };
+			if (entries.some((e) => !/^\d{2}\/\d{2}\/\d{4}$/.test(String(e.date || "")))) return { error: "A shift has a date that is not dd/MM/yyyy" };
 			const ref = F.doc(col(t, "pendingHours"));
 			const rows = entries.map((e) => ({
 				rowId: crypto.randomUUID(),
@@ -667,9 +668,10 @@
 			const note = "Imported" + (b.fileName ? " from " + b.fileName : "");
 			const tsFor = (date, time) => {
 				const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date || "");
-				if (!m || !time) return (/* @__PURE__ */ new Date()).toISOString();
-				const [h, mi] = String(time).split(":").map(Number);
-				return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), h || 0, mi || 0).toISOString();
+				const tm = /^(\d{1,2}):(\d{2})/.exec(String(time || "").trim());
+				if (!m || !tm) return null;
+				const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(tm[1]), Number(tm[2]));
+				return isNaN(+d) || d.getDate() !== Number(m[1]) ? null : d.toISOString();
 			};
 			const ddmmyyyy = (d) => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
 			const writes = [];
@@ -678,6 +680,7 @@
 				[["in", r.inTime], ["out", r.outTime]].forEach(([type, time]) => {
 					if (!time) return;
 					let ts = tsFor(r.date, time), date = r.date;
+					if (!ts) return;
 					if (type === "out" && inTs && ts <= inTs) {
 						const next = new Date(ts);
 						next.setDate(next.getDate() + 1);

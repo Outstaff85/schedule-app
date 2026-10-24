@@ -578,6 +578,8 @@ export async function initFirestoreBackend() {
     if (ctx.role === 'supplier') return {error: 'Not available for the supplier role'};
     const entries: Rec[] = Array.isArray(params.entries) ? params.entries : [];
     if (!entries.length) return {error: 'No recognized shifts to upload'};
+    // Only dd/MM/yyyy dates: a shift with another date would not become a punch on its day.
+    if (entries.some(e => !/^\d{2}\/\d{2}\/\d{4}$/.test(String(e.date || '')))) return {error: 'A shift has a date that is not dd/MM/yyyy'};
     const ref = F.doc(col(t,'pendingHours'));
     const rows = entries.map(e => ({rowId: crypto.randomUUID(), workerId: e.workerId || '', clientId: e.clientId || null,
       date: e.date || '', inTime: e.inTime || '', outTime: e.outTime || ''}));
@@ -616,11 +618,13 @@ export async function initFirestoreBackend() {
     const names: Record<string, string> = {}, hrs: Record<string, string | null> = {};
     workersSnap.forEach((d: any) => { names[d.id] = d.data().name || ''; hrs[d.id] = d.data().hrId || null; });
     const note = 'Imported' + (b.fileName ? ' from ' + b.fileName : '');
-    const tsFor = (date: string, time: string) => {
+    // A row whose date or time is not readable makes no punch (null), never one at "now".
+    const tsFor = (date: string, time: string): string | null => {
       const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date || '');
-      if (!m || !time) return new Date().toISOString();
-      const [h, mi] = String(time).split(':').map(Number);
-      return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), h || 0, mi || 0).toISOString();
+      const tm = /^(\d{1,2}):(\d{2})/.exec(String(time || '').trim());
+      if (!m || !tm) return null;
+      const d = new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(tm[1]), Number(tm[2]));
+      return isNaN(+d) || d.getDate() !== Number(m[1]) ? null : d.toISOString();
     };
     const ddmmyyyy = (d: Date) => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
     const writes: [any, Rec][] = [];
@@ -629,6 +633,7 @@ export async function initFirestoreBackend() {
       ([['in', r.inTime], ['out', r.outTime]] as [string, string][]).forEach(([type, time]) => {
         if (!time) return;
         let ts = tsFor(r.date, time), date = r.date;
+        if (!ts) return;
         // A night shift (out at or before in) ends the next day.
         if (type === 'out' && inTs && ts <= inTs) {
           const next = new Date(ts); next.setDate(next.getDate() + 1);
