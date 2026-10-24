@@ -8,6 +8,8 @@
 //  - a weak (missed) answer is held for 600 ms, then the frame goes;
 //  - the accurate model's corners replace the live page (the same page id) only when they moved over 0.002;
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
+//  - Looks good while the shot still looks for more documents: the attempt goes once the search is over, with
+//    every document the shot gave;
 //  - the status keys come out in order (finding, hold with the seconds, found with the count, then the shot's);
 //  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
@@ -143,12 +145,12 @@ function fakeVideo() {
   return v;
 }
 /** A session on the fakes; follow: the scripted follow's step (null: it cannot tell). */
-function setup(script, { follow = () => null, auto = true, delay = null, size = 1, readers = null, getUserMedia = null, ensureSession = null } = {}) {
+function setup(script, { follow = () => null, auto = true, delay = null, size = 1, readers = null, getUserMedia = null, ensureSession = null, lab = false, attemptsEnv = undefined } = {}) {
   const clock = fakeClock(), engine = fakeEngine(script, clock, delay), engines = fakeEngines(engine), asked = [], steps = [];
   if (ensureSession) engines.ensureSession = ensureSession;
   const follower = { resets: 0, reset() { this.resets++; }, since: (t0, pts) => pts, step: async (v, q) => { steps.push(v); return follow(q, clock.t); } };
   let ids = 0;
-  const s = new Sess.ScanSession(Surf.siteSurface(), { engines, readers, env: {
+  const s = new Sess.ScanSession(lab ? Surf.labSurface(async () => 'tok') : Surf.siteSurface(), { engines, readers, attemptsEnv, env: {
     now: clock.now, raf: clock.raf, setTimeout: clock.setTimeout, bitmap: null, follower, newId: () => 'att' + (++ids),
     getUserMedia: getUserMedia ? c => { asked.push(c); return getUserMedia(c); } : async c => { asked.push(c); return { getTracks: () => [{ stop() {} }] }; },
   } });
@@ -303,6 +305,38 @@ for (const inside of [false, true]) {
     return log.pages.length + ' page events';
   });
 }
+
+await run('Looks good while the shot still looks for more documents: the attempt goes once the search is over, with every document', async () => {
+  let next = 1;
+  const script = (call, e) => {
+    if (call.which === 'live' && !e.shooting) return { pts: Q, conf: 0.9 };
+    if (call.afterFlat) return NONE;
+    if (call.which === 'cap' && !e.capped) { e.capped = true; return { pts: Q, conf: 0.9 }; }
+    if (call.which === 'cap') return next < 4 ? { pts: QS[next++], conf: 0.9 } : NONE;
+    return NONE;
+  };
+  const bodies = [];
+  const attemptsEnv = { idb: null, now: () => Date.now(), online: () => true, encode: async c => 'j' + c.width, newId: () => 'x', setTimeout: () => {}, onOnline: () => () => {},
+    fetch: async (url, init) => { const b = JSON.parse(init.body); bodies.push(b); return { ok: true, status: 200, json: async () => (b.action === 'attempt' ? { ok: true, dirs: Object.fromEntries(b.attempts.map(a => [a.id, 'att/' + a.id])) } : { ok: true }) }; } };
+  const { s, clock, log, video, engine } = setup(script, { auto: false, lab: true, attemptsEnv });
+  let keptEarly = false;
+  s.on('page', p => { if (p.pg === 0 && !keptEarly) { keptEarly = true; s.keep(p.id); } });
+  await s.startCamera(video);
+  await clock.runFor(600);
+  engine.shooting = true;
+  let done = null; s.snap().then(n => { done = n; });
+  await clock.runFor(4000, () => done !== null);
+  await flush(40);
+  assert.ok(keptEarly, 'Looks good tapped on the first page as soon as it came');
+  assert.equal(done, 4, 'the search went on: 4 documents');
+  const sent = bodies.filter(b => b.action === 'attempt').flatMap(b => b.attempts);
+  assert.equal(sent.length, 1, 'sent once');
+  assert.equal(sent[0].outcome, 'kept');
+  assert.equal(sent[0].pages, 4, 'with every document the shot gave');
+  assert.equal(sent[0].edgesMore.length, 3);
+  assert.deepEqual(new Set(log.pages.map(p => p.pg)), new Set([0, 1, 2, 3]));
+  return sent[0].pages + ' pages sent';
+});
 
 await run('the drawn frame glides 0.35 of the way toward the answer each screen frame', async () => {
   let jumped = false;

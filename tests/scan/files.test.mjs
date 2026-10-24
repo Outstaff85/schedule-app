@@ -9,12 +9,17 @@
 //  - pickedPictures goes in the files' order, a PDF page by page, a file neither a photo nor a PDF left out;
 //  - session.pick: the pages come out in the files' order when a later picture finishes first (lane 1, the
 //    file thread); the preview switches to the picture being worked on at once; a second pick leaves the first
-//    pick's pages untouched and undecided; a failed lane's picture is worked again on the main engine;
+//    pick's pages untouched and undecided; a failed lane's picture is worked again on the main engine; a
+//    picture's pages are not held up by the readouts of the one before; workPictures opens no more pictures
+//    ahead of the list than there are lanes; a page's record holds no photo;
 //  - session.fix: the corners set by hand go to the attempt and the page is cut again under the same id;
 //    session.remove: the page goes with the attempt's deleted pages and is never given again;
+//  - session.retake on a page already kept sends its pages as deleted; done() / discard() let the pages go and
+//    a scan closed without Done sends nothing at the next Done;
 //  - the attempts: a retake and the next shot share a group; a kept attempt is held until done() on the site and
 //    sent at once in the lab; the queue keeps 5 at most offline and empties when back online; a page deleted
-//    after sending goes as attemptOutcome; the photo is at most 1600 px.
+//    after sending goes as attemptOutcome, one deleted while the queue's write is pending goes with it; the
+//    photo is at most 1600 px.
 //
 //   node tests/scan/files.test.mjs
 import assert from 'node:assert/strict';
@@ -187,9 +192,12 @@ await run('pickedPictures: the files\' order, a PDF page by page, a file neither
 // ── an in-memory IndexedDB stand-in and a stubbed fetch ──
 function fakeIDB() {
   const dbs = new Map();
-  const req = fn => { const r = {}; setImmediate(() => { try { r.result = fn(); if (r.onsuccess) r.onsuccess(); } catch (e) { r.error = e; if (r.onerror) r.onerror(); } }); return r; };
-  return {
+  const req = (fn, gate) => { const r = {}; Promise.resolve(gate).then(() => setImmediate(() => { try { r.result = fn(); if (r.onsuccess) r.onsuccess(); } catch (e) { r.error = e; if (r.onerror) r.onerror(); } })); return r; };
+  const self = {
     dbs,
+    /** A promise a put waits for before it succeeds (a slow write); the row is copied when put is called, as
+     *  IndexedDB does. */
+    putGate: null,
     open(name) {
       const r = {};
       setImmediate(() => {
@@ -200,7 +208,7 @@ function fakeIDB() {
           transaction(n) {
             return { objectStore() {
               const st = db.stores.get(n), key = v => st.keyPath.split('.').reduce((o, k) => o[k], v);
-              return { put: v => req(() => { st.rows.set(key(v), structuredClone(v)); return key(v); }), get: k => req(() => structuredClone(st.rows.get(k))),
+              return { put: v => { const c = structuredClone(v); return req(() => { st.rows.set(key(c), c); return key(c); }, self.putGate); }, get: k => req(() => structuredClone(st.rows.get(k))),
                 getAll: () => req(() => [...st.rows.values()].map(v => structuredClone(v))), delete: k => req(() => { st.rows.delete(k); }) };
             } };
           },
@@ -212,6 +220,7 @@ function fakeIDB() {
       return r;
     },
   };
+  return self;
 }
 function fakeServer() {
   const s = { bodies: [], fail: false, gate: null, dirsFor: id => 'att/' + id };
@@ -379,7 +388,8 @@ await run('session.pick: pages in the files\' order though a later picture finis
   // picture 2 and 3 went to the file thread and were cut before picture 1 on the main engine
   assert.deepEqual(order, ['file warp 44x30', 'file warp 48x30', 'main warp 40x30'], 'a later picture finished first: ' + order.join(', '));
   const firsts = []; for (const p of log.pages) if (!firsts.includes(p.id)) firsts.push(p.id);
-  assert.deepEqual(firsts.map(id => s.pages.get(id).record.frame.tag), ['one.jpg', 'two.jpg', 'three.jpg'], 'shown in the files\' order');
+  assert.deepEqual(firsts.map(id => s.attempts.frameOf(s.pages.get(id).record.attempt).frame.tag), ['one.jpg', 'two.jpg', 'three.jpg'], 'shown in the files\' order');
+  assert.ok([...s.pages.values()].every(p => !('frame' in p.record)), 'the photo is not held by the pages\' record (only by its attempt, the last few)');
   assert.ok(log.preview.length && log.preview[0].url === 'blob:one.jpg' && log.preview[0].stage === 'finding' && log.preview[0].n === 1, 'the preview switches to the first picture at once ' + JSON.stringify(log.preview[0]));
   const urls = [...new Set(log.preview.map(p => p.url))];
   assert.deepEqual(urls, ['blob:one.jpg', 'blob:two.jpg', 'blob:three.jpg'], 'the preview follows the pictures in order');
@@ -489,6 +499,97 @@ await run('session: a shot\'s attempt begins with its first page, its pages a ba
   const sent = sentAttempts(server);
   assert.equal(sent.find(a => a.id === 'shotA').outcome, 'retaken');
   assert.equal(sent.find(a => a.id === 'shotB').group, 'shotA');
+});
+
+await run('attempts: a page deleted while the attempt is being written to the queue is not lost', async () => {
+  const { at, server, idb } = attemptsOn('lab');
+  let open; idb.putGate = new Promise(r => { open = r; });
+  const id = at.newAttempt(frame(60, 40), 60, 40, 'camera');
+  at.decide('kept', [id]);
+  await settle();  // the photo encoded, the write begun (copied) and still pending
+  assert.equal(server.bodies.filter(b => b.action === 'attempt').length, 0, 'not sent while it is being written');
+  await at.pageDeleted(id, 1);
+  open(); await settle();
+  assert.deepEqual(sentAttempts(server).map(a => a.deletedPages), [[1]], 'sent with the page deleted during the write');
+});
+
+await run('session.retake on a page already kept: its pages go to the attempt as deleted pages', async () => {
+  const shotOf = (s, id) => {
+    const rec = { shot: 1, batch: 9, attempt: id, input: 'camera', w: 64, h: 48, edgesModel: Q, edgesMore: [Q], pages: 2, way: 'w', model: 'v5' };
+    s.attempts.newAttempt(photo(64, 48), 64, 48, 'camera', { id, src: rec });
+    for (const pg of [0, 1]) s['putPage']({ id: id + ':' + pg, record: rec, pg, quad: Q, page: { width: 6, height: 4, turn: 0 }, canvas: photo(6, 4), turn: 0, readouts: null, refined: false });
+  };
+  const site = pickSession({ main: fakeEngine('main', 1), file: null });
+  shotOf(site.s, 'shotK');
+  site.s.keep('shotK:0');
+  assert.deepEqual(site.s.retake('shotK:0'), ['shotK:0', 'shotK:1']);
+  site.s.done(); await settle();
+  const a = sentAttempts(site.server).find(x => x.id === 'shotK');
+  assert.equal(a.outcome, 'kept'); assert.deepEqual(a.deletedPages, [0, 1], 'site: held for Done, sent with the pages thrown away');
+  const lab = pickSession({ main: fakeEngine('main', 1), file: null, source: 'lab' });
+  shotOf(lab.s, 'shotL');
+  lab.s.keep('shotL:1'); await settle();
+  lab.s.retake('shotL:1'); await settle();
+  assert.deepEqual(lab.server.bodies.filter(b => b.action === 'attemptOutcome').map(b => b.dir + ' ' + b.outcome + ' ' + b.page), ['att/shotL deleted 0', 'att/shotL deleted 1'], 'lab: sent already, told as deleted');
+});
+
+await run('session.done / discard: the pages let go; a scan closed without Done sends nothing at the next Done', async () => {
+  const { s, server, file1 } = pickSession({ main: fakeEngine('main', 1), file: null });
+  await s.pick([file1('a.jpg'), file1('b.jpg', 44, 30, 2)]);
+  const old = [...s.pages.values()];
+  s.keep(old[0].id);
+  s.discard();
+  assert.equal(s.pages.size, 0, 'discard: no page held');
+  assert.equal(s.fixable(old[1].id), null);
+  assert.equal(s.attempts.frameOf(old[0].record.attempt), undefined, 'discard: no photo held');
+  await s.pick([file1('c.jpg', 50, 30, 3)]);
+  const now = [...s.pages.values()];
+  assert.equal(now.length, 1);
+  s.done(); await settle();
+  assert.deepEqual(sentAttempts(server).map(a => a.id), [now[0].record.attempt], 'only the new scan sent');
+  assert.equal(s.pages.size, 0, 'done: no page held');
+  assert.equal(s.attempts.frameOf(now[0].record.attempt), undefined, 'done: no photo held');
+  s.done(); await settle();
+  assert.equal(sentAttempts(server).length, 1, 'nothing sent twice');
+});
+
+await run('session.pick: a picture\'s pages are not held up by the readouts of the one before; a page deleted before its turn is not read', async () => {
+  let reads = 0;
+  const readers = { info: { version: 'v5' }, load() {}, release() {},
+    doctypeAnswer: async () => { reads++; await new Promise(r => setTimeout(r, 150)); return { doctype: 'passport', conf: 0.9, turn: 0, turnConf: 1, ms: 150, square: null }; },
+    mrzRead: async () => null, heRead: async () => null };
+  const { s, log, file1 } = pickSession({ main: fakeEngine('main', 1), file: null, readers });
+  await s.pick([file1('a.jpg'), file1('b.jpg', 44, 30, 2), file1('c.jpg', 48, 30, 3)]);
+  const firstGiven = id => log.pages.findIndex(p => p.id === id), firstRead = id => log.pages.findIndex(p => p.id === id && p.readouts);
+  const ids = [...new Set(log.pages.map(p => p.id))];
+  assert.equal(ids.length, 3);
+  assert.ok(firstGiven(ids[1]) < firstRead(ids[0]), 'picture 2 given before picture 1 was read: ' + log.pages.map(p => p.id + (p.readouts ? '+r' : '')).join(' '));
+  assert.ok(ids.every(id => s.pages.get(id).readouts), 'every page read by the time the pick is over');
+  assert.equal(reads, 3);
+  // a page deleted before its readouts' turn is not read at all
+  reads = 0;
+  const b = pickSession({ main: fakeEngine('main', 1), file: null, readers });
+  let n = 0;
+  b.s.on('page', p => { if (++n === 2) b.s.remove(p.id); });
+  await b.s.pick([b.file1('a.jpg'), b.file1('b.jpg', 44, 30, 2)]);
+  assert.equal(reads, 1, 'the deleted page was not read');
+});
+
+await run('workPictures: no more pictures opened ahead of the list than there are lanes', async () => {
+  const opened = [];
+  async function* pics() { for (let i = 1; i <= 5; i++) { opened.push(i); yield { url: 'u' + i, file: i, files: 5, page: 1, pages: 1, pdfPage: false }; } }
+  let release; const gate = new Promise(r => { release = r; });
+  const eng = { label: 'main', hasCap: () => false, stop() {} };
+  const shown = [];
+  const run1 = F.workPictures(pics(), {
+    engineOf: async () => eng, growFiles: () => {}, analyze: async pic => ({ parts: [], timing: pic.url }), step: () => {},
+    show: async n => { if (n === 1) await gate; shown.push(n); }, sleep: ms => new Promise(r => setTimeout(r, ms)), log: noLog, err: noLog,
+  });
+  await new Promise(r => setTimeout(r, 120));
+  assert.deepEqual(opened, [1, 2], 'one lane: the second picture waits for the first to be shown');
+  release();
+  const r = await run1;
+  assert.equal(r.count, 5); assert.deepEqual(shown, [1, 2, 3, 4, 5]);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

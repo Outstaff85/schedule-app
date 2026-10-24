@@ -205,15 +205,17 @@ export class Attempts {
     }
   }
 
-  /** Done (the site): every attempt left on the screen kept, and every kept one sent. */
+  /** Done (the site): every attempt left on the screen kept, and every kept one sent; their photos are no longer
+   *  kept (sent: they can no longer be fixed). */
   done(): void {
     this.decide('kept');
     const list = this.heldForDone; this.heldForDone = [];
     for (const l of list) void this.queue(l);
+    this.frames.clear();
   }
 
-  /** The window closed without Done: the attempts on it are forgotten (nothing is sent). */
-  drop(): void { this.onScreen = []; this.heldForDone = []; }
+  /** The window closed without Done: the attempts on it are forgotten (nothing is sent), their photos too. */
+  drop(): void { this.onScreen = []; this.heldForDone = []; this.frames.clear(); this.retakeGroup = null; }
 
   private async data(l: Live): Promise<AttemptData> {
     const src = l.src;
@@ -248,12 +250,17 @@ export class Attempts {
     await this.store('readwrite', s => s.delete(id)).catch(() => {});
   }
 
+  /** Decided: its photo encoded, then written to the queue and sent. It stays in `queuing` until the write is
+   *  over, and is written again when a page was deleted meanwhile (a shares l.a's deletedPages, but the
+   *  IndexedDB write copies it when it begins), so no deleted page is lost on the way. */
   private async queue(l: Live): Promise<void> {
     this.queuing.set(l.a.id, l);
-    let a: AttemptData;
-    try { a = await this.data(l); } finally { this.queuing.delete(l.a.id); }
-    await this.put({ a, at: this.env.now() });
-    await this.flush(a);
+    try {
+      const a = await this.data(l), at = this.env.now();
+      let n = -1;
+      while (n !== a.deletedPages.length) { n = a.deletedPages.length; await this.put({ a, at }); }
+    } finally { this.queuing.delete(l.a.id); }
+    await this.flush();
   }
 
   /** A page of an attempt deleted: with it when not sent yet; told to the server when sent; told once its
@@ -284,7 +291,7 @@ export class Attempts {
   }
 
   /** The queue sent (the old ones dropped: over an hour, or beyond the newest 5); kept when it fails. */
-  flush(_a?: AttemptData): Promise<void> {
+  flush(): Promise<void> {
     if (this.flushing) { this.again = true; return this.flushing; }
     this.flushing = (async () => {
       let items = (await this.queued()).sort((x, y) => x.at - y.at);

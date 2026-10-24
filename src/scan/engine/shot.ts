@@ -48,8 +48,9 @@ export interface Readouts {
   errors: { reader: 'doctype' | 'mrz' | 'he'; text: string }[];
 }
 
-/** One shot: its photo (the attempt's picture, kept for the corner editor), the corners each page was cut by
- *  — the model's, for training: the first document's and the others' — and the way the model ran on. */
+/** One shot: the corners each page was cut by — the model's, for training: the first document's and the
+ *  others' — and the way the model ran on. Its photo is not held here (every page holds its record): it goes to
+ *  its training attempt, which keeps the last few for the corner editor (attempts.ts frameOf). */
 export interface ShotRecord {
   /** The shot's number in this session, its batch (a camera shot is a batch of its own; the pictures of one pick
    *  share theirs) and its training attempt's id. */
@@ -57,7 +58,7 @@ export interface ShotRecord {
   batch: number;
   attempt: string;
   input: 'camera' | 'photo' | 'pdf';
-  frame: OffscreenCanvas;
+  /** The photo's size. */
   w: number;
   h: number;
   edgesModel: Quad | null;
@@ -98,8 +99,8 @@ export interface ShotCtx {
   begin(): number;
   /** A new batch's number (the shot's). */
   batch(): number;
-  /** The shot's first page is cut: its training attempt begins (attempts.ts). */
-  recorded(record: ShotRecord): void;
+  /** The shot's first page is cut: its training attempt begins with its photo (attempts.ts). */
+  recorded(record: ShotRecord, frame: OffscreenCanvas): void;
   /** The shot id now: work for an older one is dropped. */
   current(): number;
   status(s: SessionStatus): void;
@@ -139,14 +140,14 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   if (!v || !engine || !lastRes || lastRes.pts.some(p => !p)) { c.status({ key: 'no_frame' }); return 0; }
   live.running = false;
   const id = c.begin(), t0 = c.now(), { frame, pix, w, h } = freeze(v);
-  const record: ShotRecord = { shot: id, batch: c.batch(), attempt: c.newId(), input: 'camera', frame, w, h, edgesModel: null, edgesMore: [], pages: 1, way: c.way(), model: c.modelVersion() };
+  const record: ShotRecord = { shot: id, batch: c.batch(), attempt: c.newId(), input: 'camera', w, h, edgesModel: null, edgesMore: [], pages: 1, way: c.way(), model: c.modelVersion() };
   let first: ShotPage | null = null;
   const put = async (pts: Quad, refined: boolean): Promise<boolean> => {
     const out = await engine.warp(pix.slice(), w, h, pts, true);
     if (out.turnError) c.log.err('Face finder: ' + out.turnError);
     if (id !== c.current()) return false;
     record.edgesModel = copy(pts);
-    if (!first) c.recorded(record);
+    if (!first) c.recorded(record, frame);
     first = { id: record.attempt + ':0', record, pg: 0, quad: copy(pts), page: info(out), canvas: toCanvas(out), turn: out.turn, readouts: null, refined };
     c.page(first);
     return true;

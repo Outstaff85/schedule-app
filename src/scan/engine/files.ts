@@ -10,7 +10,8 @@
 //    up to MAX_DOCS); each step's time and model runs (pictureTimer) go to the log;
 //  - the pictures are worked on several threads at once (workPictures): lane 0 is the main engine (or its
 //    capture thread), lane 1 the file thread, started when a pick has a second picture (Engines.growFiles); one
-//    picture at most waits for a free lane (the next ones are not even opened: memory); a picture whose thread
+//    picture at most waits for a free lane, and no more pictures are worked ahead of the list than there are
+//    lanes (the next ones are not even opened: memory); a picture whose thread
 //    failed is worked again on the main engine; the pictures are shown strictly in the files' order, each as
 //    soon as it and the ones before it are done.
 import { loadPdfJs } from '@/lib/pdfjs';
@@ -226,8 +227,9 @@ export async function workPictures(pics: AsyncIterable<PickedPicture>, c: LaneCt
         try { await c.show(k, pic, await done); next = k + 1; }
         catch (err) { failed = true; c.err('Picked file ' + k + ': ' + errText(err)); }
       });
-      // one picture at most waiting for a free lane (the next ones are not even opened yet: memory)
-      while (waiting.length) await c.sleep(20);
+      // one picture at most waiting for a free lane, and no more pictures worked ahead of the list than there are
+      // lanes (the next ones are not even opened yet: a worked picture holds its photo and its cut pages)
+      while (!failed && (waiting.length || k - (next - 1) > lanes.size)) await c.sleep(20);
     }
   } catch (err) { openFailed = true; c.err('Picked file: ' + errText(err)); }
   await order;
