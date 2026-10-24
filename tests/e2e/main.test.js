@@ -636,12 +636,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.notSent = (await pend()) === before;
     closeModal('hoursImportOverlay');
     // times in other forms become HH:MM; a day with no times is dropped; a time that is not one is red and nothing is sent
-    const tcsv = 'Date,In,Out
-01/10/2026,8.30,1700
-02/10/2026,8,16:30:00
-03/10/2026,,
-04/10/2026,abc,12:00
-';
+    const tcsv = 'Date,In,Out\n01/10/2026,8.30,1700\n02/10/2026,8,16:30:00\n03/10/2026,,\n04/10/2026,abc,12:00\n';
     r.times = (await parseHoursExcelFile(new File([tcsv], 't.csv'))).map(x => x.inTime + '-' + x.outTime).join();
     openHoursImportModal('w1'); await T.tick(50);
     const inp2 = document.getElementById('hoursImportFile'), dt2 = new DataTransfer();
@@ -3059,8 +3054,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // ── Worker punch link ──
   ctx = await newCtx(); p = await page(ctx);
   const punchReplies = [];
-  // The punch function's replies; `punchTweak` (when set) rewrites a `load` reply on its way to the page.
-  let punchTweak = null;
+  // The punch function's replies; `punchTweak` / `monthTweak` (when set) rewrite a `load` / `myMonth` reply on its way to the page.
+  let punchTweak = null, monthTweak = null;
   await p.route(/cloudfunctions\.net\/punch$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fallback();
     const body = r.request().postData() || '{}', action = JSON.parse(body).action;
@@ -3068,6 +3063,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     let text = await res.text();
     punchReplies.push({action, text});
     if (punchTweak && action === 'load') { const j = JSON.parse(text); punchTweak(j); text = JSON.stringify(j); }
+    if (monthTweak && action === 'myMonth') { const j = JSON.parse(text); monthTweak(j); text = JSON.stringify(j); }
     return r.fulfill({status: res.status, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'}, body: text});
   });
   const punchReady = () => { const s = document.getElementById('screenPunch'), b = document.getElementById('bigPunchBtn'); return !!s && !s.classList.contains('hidden') && !!b && (b.dataset.state === 'in' || b.dataset.state === 'out'); };
@@ -3102,6 +3098,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.reload(); await waitFor(p, punchReady, 15000);
   ok(await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'out' && !localStorage.getItem('punchLog'), 8000),
     'punch: an empty local history and an IN on the server give Punch out');
+  // A manager deletes that IN: the next myMonth reply (My Hours opened) no longer has it, so the button goes back to Punch in.
+  monthTweak = j => { j.punches = []; };
+  await p.click('[data-testid="tile-hours"]');
+  const gone = await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'in', 8000);
+  monthTweak = null;
+  await p.keyboard.press('Escape'); await sleep(400);
+  ok(gone, 'punch: a server punch missing from a newer myMonth reply no longer decides the button (Punch in)');
   await p.evaluate(l => { if (l) localStorage.setItem('punchLog', l); }, keptLog);
   const load0 = JSON.parse((punchReplies.find(x => x.action === 'load') || {text: '{}'}).text);
   await p.click('[data-testid="tile-schedule"]');

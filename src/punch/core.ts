@@ -154,9 +154,26 @@ function dropFromLog(e: PunchEntry) {
 // margin, so last night's IN is there too): another phone's punches, or one a
 // manager added, count for the next IN / OUT as well as this device's history.
 const _serverPunches = new Map<string, { workerId: string; type: string; ts: string; time?: string }>();
-/** Keeps the server's punches of a myMonth reply (figures.ts); redraws when the latest one changed. */
-export function noteServerPunches(list: Record<string, unknown>[] | undefined) {
-  const wid = st.worker?.id, before = lastPunch(wid);
+/** The span a myMonth reply for `month` ('YYYY-MM') surely covers, in ms: the server
+ *  reads [1st − 1 day, next 1st + 1 day) in its own time zone; 14 hours off each end
+ *  keeps the span inside that window whatever the zone. */
+export function serverMonthSpan(month: string): [number, number] | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!m) return null;
+  const y = +m[1], mo = +m[2] - 1, day = 864e5, slack = 14 * 36e5;
+  return [Date.UTC(y, mo, 1) - day + slack, Date.UTC(y, mo + 1, 1) + day - slack];
+}
+/** Keeps the server's punches of a myMonth reply (figures.ts); redraws when the latest one changed.
+ *  The reply is the server's full list for its month: this worker's punches kept from an
+ *  earlier reply in that span and missing now (a manager deleted them) are dropped. */
+export function noteServerPunches(list: Record<string, unknown>[] | undefined, month?: string) {
+  const wid = st.worker?.id, before = lastPunch(wid), span = month ? serverMonthSpan(month) : null;
+  if (span) {
+    _serverPunches.forEach((p, k) => {
+      const t = new Date(p.ts).getTime();
+      if (p.workerId === wid && t >= span[0] && t < span[1]) _serverPunches.delete(k);
+    });
+  }
   (list || []).forEach(p => {
     if (!p || !p.ts || (p.type !== 'in' && p.type !== 'out')) return;
     _serverPunches.set(String(p.workerId) + '|' + String(p.id ?? p.ts), { workerId: String(p.workerId), type: String(p.type), ts: String(p.ts), time: p.time as string | undefined });

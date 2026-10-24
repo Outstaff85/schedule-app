@@ -55,7 +55,7 @@ export async function loadMonth(key: string) {
   try {
     const r = await (await punchFn({ action: 'myMonth', token: wpToken(), month: key })).json();
     hoursData[key] = (r && !r.error) ? r : (hoursData[key] || { failed: true });
-    if (r && !r.error) noteServerPunches(r.punches);
+    if (r && !r.error) noteServerPunches(r.punches, key);
   } catch { hoursData[key] = hoursData[key] && !hoursData[key].failed ? hoursData[key] : { failed: true }; }
   if (hoursData[key].failed) { const l = localMonthData(); if (l.punches!.length) hoursData[key] = l; }
   bump();
@@ -68,7 +68,7 @@ export function refreshTileHours() {
   if (URL_TOKEN && navigator.onLine && Date.now() - _tileAt > 60e3) {
     _tileAt = Date.now();
     punchFn({ action: 'myMonth', token: wpToken(), month: key }).then(r => r.json()).then(r => {
-      if (r && !r.error) { hoursData[key] = r; noteServerPunches(r.punches); try { set({ tileHours: tr('{h}h', { h: myMonthFigures(r, key).hours.toFixed(1) }) }); } catch { /* bad data */ } }
+      if (r && !r.error) { hoursData[key] = r; noteServerPunches(r.punches, key); try { set({ tileHours: tr('{h}h', { h: myMonthFigures(r, key).hours.toFixed(1) }) }); } catch { /* bad data */ } }
     }).catch(() => {});
   }
 }
