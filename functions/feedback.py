@@ -2,8 +2,10 @@
 of a page whose document type was changed, or one right page in five — with the scan's session, the
 worker once known and who set the copy's turn), the full documents saved after a scan (H8a) and every
 scan attempt (S8). scan_feedback (main.py) keeps them in the private Hugging Face bucket (datastore.py;
-without a time limit, deleted on request by scripts/scan-train/delete_data.py), else in Firebase, and
-counts them in scanTrainingStats/current for the "time to retrain" notices. Pure checks here."""
+without a time limit, deleted on request by scripts/scan-train/delete_data.py), else in Firebase until
+moved to the bucket (there a record's deleteAt is +KEEP_DAYS, 365 days: the Firestore TTL policy, and the
+Storage lifecycle rule on training/), and counts them in scanTrainingStats/current for the "time to
+retrain" notices. Pure checks here."""
 import base64
 import datetime
 import hashlib

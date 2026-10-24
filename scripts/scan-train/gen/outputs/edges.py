@@ -48,6 +48,9 @@ def gen_args(ap):
     ap.add_argument("--partial-weight", type=float, default=0.0, help="partial scenes' weight (0 until the owner confirms the label)")
     ap.add_argument("--sharp", action="store_true", help="keep unmarked real pages' face and text (not washed out)")
     ap.add_argument("--exam", action="store_true", help="the exam: only the real pages kept apart, the exam backgrounds, the check vocabulary")
+    ap.add_argument("--focus", help="gen mine's focus.json: draw more of what the exams got wrong (a training run only)")
+    ap.add_argument("--focus-model", help="whose multipliers --focus takes (default: edges; the phone's own cuts: the "
+                    "first writer it has)")
     ap.add_argument("--latin", nargs="*")
     ap.add_argument("--hebrew", nargs="*")
 
@@ -90,15 +93,26 @@ def gen_params(a):
     print(f"pages: {len(pages)} real, {len(pdfs)} PDFs ({'PyMuPDF here' if gp.has_pdf() else 'no PyMuPDF: PDF pages skipped'}); "
           f"backgrounds: {bank.info()['photos']} photos {bank.info()['categories']}; occluders: {len(occ)}")
     keep = ("category", "series", "licence", "size", "widthMm", "text_present", "status", "split")
-    return {"model": MODEL, "generator": GENERATOR, "split": split, "count": count, "seed": seed, "out": out,
+    params = {"model": MODEL, "generator": GENERATOR, "split": split, "count": count, "seed": seed, "out": out,
             "pages": [{"path": p, "sha1": gc.file_sha1(p), "kind": k} for p, k in pages],
             "pdfs": [{"path": p, "sha1": gc.file_sha1(p), "kind": k} for p, k in pdfs],
             "photos": [{"path": e["path"], "sha1": e["sha1"], **{k: e.get(k) for k in keep}} for e in bank.entries],
             "occluders": [{"path": e["path"], "sha1": e["sha1"], "category": e.get("category"), "sizeMm": e.get("sizeMm"),
                            "licence": e.get("licence")} for e in occ.items],
             "weights": _weights(a), "templateShare": a.template_share, "pdfShare": a.pdf_share,
-            "proceduralShare": a.procedural_share, "sharp": a.sharp, "held": bool(a.exam),
+              "proceduralShare": a.procedural_share, "sharp": a.sharp, "held": bool(a.exam),
             "latin": list(latin), "hebrew": list(hebrew)}
+    if getattr(a, "focus", None):
+        if a.exam:
+            raise SystemExit("--focus is for a training run: the exam is drawn the same every time")
+        from .. import mine
+        models = [m for m in str(getattr(a, "models", "") or "").split(",") if m] or [MODEL]
+        got = mine.read_focus(a.focus) or {"models": {}}
+        model = getattr(a, "focus_model", None) or next((m for m in models if m in got["models"]), models[0])
+        rec = mine.focus_params(a.focus, model, params, categories=bank.by.keys())
+        print(f"focus ({model}, run {rec['run']}): recipes {rec['weights']['recipe']}; "
+              f"procedural share {rec['weights']['proceduralShare']}")
+    return params
 
 
 def gen_prepare(folder, params):
@@ -112,10 +126,11 @@ def gen_jobs(params, indices, folder):
 class _Bank:
     """The run's backgrounds as recorded in its params (the same photos when a sample is drawn again)."""
 
-    def __init__(self, photos, share):
+    def __init__(self, photos, share, category_weights=None):
         from ..backgrounds import Bank
         self.b = Bank.__new__(Bank)
         self.b.procedural_share, self.b.by, self.b.entries = share, {}, []
+        self.b.category_weights = category_weights
         for e in photos:
             item = dict(e)
             self.b.entries.append(item)
@@ -201,8 +216,10 @@ def tools(params):
     F = sd.Fonts(params["latin"], params["hebrew"])
     pool = gp.Pool([(e["path"], e["kind"]) for e in params["pages"]], [(e["path"], e["kind"]) for e in params["pdfs"]],
                    held=params.get("held", False), sharp=params.get("sharp", False),
-                   template_share=params.get("templateShare", 0.4), pdf_share=params.get("pdfShare", 0.5))
-    return F, pool, _Bank(params["photos"], params.get("proceduralShare", 0.15)), _Occluders(params.get("occluders") or [])
+                   template_share=params.get("templateShare", 0.4), pdf_share=params.get("pdfShare", 0.5),
+                   kind_weights=params.get("kindWeights"))
+    return F, pool, _Bank(params["photos"], params.get("proceduralShare", 0.15), params.get("bgCategoryWeights")), \
+        _Occluders(params.get("occluders") or [])
 
 
 def scene_of(params, i, F, pool, bank, occ):
@@ -211,7 +228,7 @@ def scene_of(params, i, F, pool, bank, occ):
     from .. import scene as gs
     r = grng.streams(params["seed"], i)
     for _ in range(8):   # a pose that fits: the next draws of the same streams (the same every run)
-        sc = gs.plan(r, pool, F, bank, occ, weights=params["weights"])
+        sc = gs.plan(r, pool, F, bank, occ, weights=params["weights"], tilt_weights=params.get("tiltWeights"))
         if sc is not None:
             return r, sc
     return r, None

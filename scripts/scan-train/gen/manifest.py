@@ -7,7 +7,8 @@ sets: build, verify, QA").
   check), the scene and camera parameters, the labels, labelSource, weight, and each output file with its sha256.
   Hashes only: no file name of a real page, no name or number off a document.
 - run.json: the git commit of scripts/scan-train, the libraries' versions, the sha256 of heldout.json and of the
-  class table (DOCTYPES), the counts, the manifest's sha256 and the data fingerprint (the same seed, count and
+  class table (DOCTYPES), the counts (by class, source, background category, recipe, tilt bucket…), the focus a
+  `gen build --focus` drew by (gen mine's multipliers and the weights they gave), the manifest's sha256 and the data fingerprint (the same seed, count and
   inputs give the same fingerprint, whatever --jobs), and the parameters to draw any example again (gen verify) —
   those name the local files laid, so run.json stays on this PC like the set.
 - data_fingerprint / compare_data: what a training's checkpoint records of its data (checkpoint.py) and how two are
@@ -177,6 +178,13 @@ def counts(rows):
         out["pagesBySource"] = dict(sorted(laid.items()))
         out["backgroundSeries"] = len({(r.get("scene") or {}).get("bgSeries") for r in rows} - {None})
         out["pdfSkipped"] = sum(int((r.get("scene") or {}).get("pdfSkipped") or 0) for r in rows)
+    if any((r.get("camera") or {}).get("tilt") is not None for r in rows):   # the camera's tilt by gen mine's buckets
+        from .mine import tilt_bucket
+        tilt = {}
+        for r in rows:
+            b = str(tilt_bucket((r.get("camera") or {}).get("tilt")))
+            tilt[b] = tilt.get(b, 0) + 1
+        out["byTilt"] = dict(sorted(tilt.items()))
     return out
 
 
@@ -185,6 +193,8 @@ def write_run(folder, model, split, params, rows, manifest_sha):
             "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "git": git_state(), "libraries": libraries(), "heldoutSha256": gc.heldout_sha256(), "doctypesSha256": doctypes_sha256(),
             "counts": counts(rows), "manifestSha256": manifest_sha, "fingerprint": manifest_sha, "params": params}
+    if params.get("focus"):   # gen build --focus: gen mine's multipliers and the weights they gave (also in params)
+        info["focus"] = params["focus"]
     (pathlib.Path(folder) / RUN).write_text(json.dumps(info, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
     return info
 

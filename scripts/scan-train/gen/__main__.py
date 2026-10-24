@@ -16,6 +16,9 @@ verify, QA").
   python -m gen profile --from probe.json --frames DIR [--out FILE]   # fit the kernels to a browser's outputs
   python -m gen exam-phone --model edges --count 40 --out DIR   # E4: the lab's edges models, INTER_AREA vs the phone path
   python -m gen exam-sets [--work DIR]          # the exam sets pinned in exam_sets.json and the rows in exam_rows.jsonl
+  python -m gen mine [--run PATH ...] [--real DIR] [--prev FILE] [--out DIR]   # exam mistakes → focus.json, hard/pool.jsonl, note.txt
+  python -m gen build --model edges --focus DIR/focus.json ...   # the next made-up set drawn by gen mine's weights
+  python -m gen status [--work DIR]             # each model's counters on this PC and the command to run next (read-only)
 """
 import argparse
 import sys
@@ -45,7 +48,7 @@ def main(argv=None):
                    "page is in training, a site page has no side, or heldout.json changed after the exam sets were made")
     s.add_argument("--work", help="the work folder (default SCAN_TRAIN_HOME, else ~/.scan-train)")
     sub.add_parser("build", help="a made-up set through the manifest: --model edges (scenes) | doctype | he (today's) | "
-                   "doctype,mrz,he,face (the phone's own cuts) and the generator's options")
+                   "doctype,mrz,he,face (the phone's own cuts) and the generator's options (scenes: --focus focus.json)")
     b = sub.add_parser("bg", help="the background bank (gen/backgrounds.py): add, check, split, pull, push")
     b.add_argument("action", choices=("add", "check", "split", "pull", "push"))
     b.add_argument("dir", nargs="?", help="add: the folder of photos (copied into <home>/backgrounds unless there)")
@@ -101,7 +104,24 @@ def main(argv=None):
     x = sub.add_parser("exam-sets", help="the exam sets pinned (exam_sets.json: each manifest's sha256 and the heldout.json "
                        "it was pinned under) and the exam rows written (exam_rows.jsonl)")
     x.add_argument("--work", help="the work folder (default SCAN_TRAIN_HOME, else ~/.scan-train)")
+    mn = sub.add_parser("mine", help="the exams' mistakes → sampling multipliers (focus.json) for the next gen build --focus, "
+                        "a pool of hard real examples from the training side (hard/pool.jsonl) and a note to the owner")
+    mn.add_argument("--run", nargs="*", help="exam_rows.jsonl files, folders holding one, and gen runs (manifest.jsonl) — "
+                    "default: the work folder's exam_rows.jsonl and every run under <home>/gen/runs")
+    mn.add_argument("--real", help="gen real's folder (default <home>/real)")
+    mn.add_argument("--prev", help="the last run's focus.json, halved toward 1 (default: the out folder's focus.json)")
+    mn.add_argument("--out", help="the folder (default <home>/mine)")
+    st = sub.add_parser("status", help="each model's counters on this PC and the command to run next (read-only)")
+    st.add_argument("--work", help="the work folder (default SCAN_TRAIN_HOME, else ~/.scan-train)")
     a = ap.parse_args(argv)
+    if a.command == "mine":
+        from .mine import mine
+        mine(a.run, a.real, a.prev, a.out)
+        return 0
+    if a.command == "status":
+        from .status import status
+        print("\n".join(status(a.work)))
+        return 0
     if a.command == "exam-sets":
         from . import common as gc
         from .exam_sets import report as exam_sets_report

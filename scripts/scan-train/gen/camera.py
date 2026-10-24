@@ -124,15 +124,26 @@ def inside(cam, pts, margin=MARGIN):
     return bool(((uv[:, 0] >= mx) & (uv[:, 0] <= cam.W - mx) & (uv[:, 1] >= my) & (uv[:, 1] <= cam.H - my)).all())
 
 
-def sample(rng, pts, partial=False, fov=FOV, distance=DISTANCE, tilt=TILT, tries=40):
+def _tilt(rng, tilt, weights):
+    """The tilt in degrees: uniform over tilt, or (weights {"lo-hi": w}, gen mine's focus) a bucket by its weight, then
+    uniform inside it."""
+    if not weights:
+        return rng.uniform(*tilt)
+    names = sorted(weights, key=lambda k: float(k.split("-")[0]))
+    lo, hi = map(float, rng.choices(names, [weights[k] for k in names])[0].split("-"))
+    return rng.uniform(max(lo, tilt[0]), min(hi, tilt[1]))
+
+
+def sample(rng, pts, partial=False, fov=FOV, distance=DISTANCE, tilt=TILT, tries=40, tilt_weights=None):
     """A camera shooting the plane points pts (N × 2 mm, the documents' corners): every point inside the frame — or,
-    partial, at least one outside and at least one inside. None when no try fits (the documents too big for 55 cm)."""
+    partial, at least one outside and at least one inside. None when no try fits (the documents too big for 55 cm).
+    tilt_weights: the tilt buckets' weights (gen mine's focus; None: uniform)."""
     pts = np.asarray(pts, np.float64)
     lo, hi = pts.min(0), pts.max(0)
     centre, extent = (lo + hi) / 2, float(np.linalg.norm(hi - lo))
     W, H, native = frame_size(rng)
     for _ in range(tries):
-        f, tl, az, rl = rng.uniform(*fov), rng.uniform(*tilt), rng.uniform(0, 360), rng.gauss(0, 6)
+        f, tl, az, rl = rng.uniform(*fov), _tilt(rng, tilt, tilt_weights), rng.uniform(0, 360), rng.gauss(0, 6)
         target = centre + np.array([rng.uniform(-0.12, 0.12), rng.uniform(-0.12, 0.12)]) * extent
 
         def cam(d):

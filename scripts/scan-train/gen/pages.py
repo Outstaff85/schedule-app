@@ -230,8 +230,10 @@ class Pool:
     """Where pages come from for one run: the real pages (templates/, already filtered to the run's side), the PDFs
     and whether values come from the check vocabulary (held: an exam run)."""
 
-    def __init__(self, templates=(), pdfs=(), held=False, sharp=False, template_share=TEMPLATE_SHARE, pdf_share=PDF_SHARE):
+    def __init__(self, templates=(), pdfs=(), held=False, sharp=False, template_share=TEMPLATE_SHARE, pdf_share=PDF_SHARE,
+                 kind_weights=None):
         self.templates, self.pdfs, self.held, self.sharp = list(templates), list(pdfs), held, sharp
+        self.kind_weights = dict(kind_weights) if kind_weights else KIND_WEIGHTS   # gen mine's focus, else the defaults
         self.template_share, self.pdf_share = template_share, pdf_share
         self.by_doctype = {}
         for p, k in self.templates:
@@ -256,4 +258,4 @@ class Pool:
 
     def any(self, rng, F, kinds=None):
         names = [k for k in KIND_WEIGHTS if not kinds or k in kinds]
-        return self.page(rng, F, rng.choices(names, [KIND_WEIGHTS[k] for k in names])[0])
+        return self.page(rng, F, rng.choices(names, [self.kind_weights.get(k, KIND_WEIGHTS[k]) for k in names])[0])

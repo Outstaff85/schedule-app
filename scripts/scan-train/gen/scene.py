@@ -236,10 +236,11 @@ def _worn(rng, page):
     return r / page.ppm
 
 
-def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, force_bend=None):
+def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, force_bend=None, tilt_weights=None):
     """A scene: rngs {"scene", "page"} (random.Random each), pool (gen.pages.Pool), F (synth_docs.Fonts), bank
-    (gen.backgrounds.Bank or None: procedural only), occluders (gen.backgrounds.Occluders or None). None when the
-    camera found no pose (the caller draws the next recipe)."""
+    (gen.backgrounds.Bank or None: procedural only), occluders (gen.backgrounds.Occluders or None), tilt_weights (gen
+    mine's focus: {"0-15": w, ...}, the camera's tilt by bucket; None: uniform). None when the camera found no pose (the
+    caller draws the next recipe)."""
     rs, rp = rngs["scene"], rngs["page"]
     recipe = recipe or pick_recipe(rs, weights)
     docs, worn = [], {}
@@ -284,7 +285,7 @@ def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, fo
     else:
         w, h = rs.uniform(90, 300), rs.uniform(60, 220)
         pts = np.array([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]])
-    cam = gcam.sample(rs, pts, partial=recipe == "partial")
+    cam = gcam.sample(rs, pts, partial=recipe == "partial", tilt_weights=tilt_weights)
     if cam is None or (docs and not all((cam.depth(d.lift(d.boundary(6))) > 1).all() for d in docs)):
         return None
     # the background: on the same plane, at its physical size — no coarser than the frame there

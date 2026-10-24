@@ -1,7 +1,9 @@
 """Real photos of passports' machine-readable zones for the passport zone reader (docs/scan-training.md →
-4, "The passport zone reader"; docs/hf-plan.md → H8b): MIDV-2020's passports (Azerbaijan, Greece,
-Latvia, Serbia, Russia's internal passport) — each one's zone text is in its template's annotation,
-and every photo, scan and video frame of it has the document's corners. Each picture is cut flat by
+4, "The passport zone reader"; docs/hf-plan.md → H8b): MIDV-2020's passports whose zone text is in
+their template's annotation — Azerbaijan, Greece, Latvia and Serbia (aze, grc, lva, srb: the only kinds
+in midv-mrz/; Russia's internal passport is in TYPES, but zones() finds no zone line in its annotation,
+so it gives none) — and every photo, scan and video frame of one has the document's corners (the video
+frames only with --clip-step N, 0 by default). Each picture is cut flat by
 its corners the way the scanner cuts a page (the document's own top-left first, at the template's
 size), then:
 - **train** (documents 00–69 of each kind): the two zone lines cut out where the template has them,

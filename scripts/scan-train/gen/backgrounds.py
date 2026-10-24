@@ -528,7 +528,7 @@ class Bank:
     def __init__(self, work=None, split="train", procedural_share=PROCEDURAL_SHARE, names=("backgrounds", "backgrounds-own")):
         import home
         work = pathlib.Path(work or home.WORK)
-        self.procedural_share, self.by = procedural_share, {}
+        self.procedural_share, self.by, self.category_weights = procedural_share, {}, None
         self.entries, self.unsplit = [], 0
         for name in names:
             cat = load(work, name)
@@ -554,7 +554,9 @@ class Bank:
                 return rng.choice(pool)
         if not self.by or rng.random() < self.procedural_share:
             return None
-        cat = rng.choice(sorted(self.by))
+        cats = sorted(self.by)
+        cw = getattr(self, "category_weights", None)   # gen mine's focus: the categories' weights (None: equal)
+        cat = rng.choices(cats, [float(cw.get(c, 1.0)) for c in cats])[0] if cw else rng.choice(cats)
         series = self.by[cat]
         return rng.choice(series[rng.choice(sorted(series))])
 
