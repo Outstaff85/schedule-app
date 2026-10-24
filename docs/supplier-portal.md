@@ -36,7 +36,7 @@ One TanStack Query read (`['supplier', 'data']`): `loadSchedule` and `loadPunchL
 - **showPay** — whether this login sees pay;
 - **commission** — this supplier's own rate list `[{from, mode, rate}]` (`sp.commission`, set by the firm owner);
 - **suppliers** — always empty;
-- **punches** — only this supplier's workers, only `id, workerId, workerName, type, time, date, site, clientId` (plus `ts`); no GPS, distance or notes. The last 13 months.
+- **punches** — only this supplier's workers, only `id, workerId, workerName, type, time, date, site, clientId` (plus `ts`); no GPS, distance or notes. The last 13 months (the query itself is bounded by `ts`).
 
 ## Tabs
 

@@ -25,7 +25,7 @@ The page talks only to the `punch` Cloud Function (`PUNCH_FN_URL` = `https://eur
 | Save a punch (`postPunch(e)`) | `{action:'savePunch', token: e.workerToken or the link's, data: e}` |
 | The month on My Hours | `{action:'myMonth', token, month:'YYYY-MM'}` → `{punches, pay, clients}` |
 | Days off and shift offers (My Schedule) | `{action:'myRequests' / 'setUnavailable' / 'offerShift' / 'cancelRequest', token, …}` ([backend.md](backend.md) → `punch`) |
-| Error telemetry | `{action:'logError', …}` |
+| Error telemetry | `{action:'logError', token, …}` (stored only for a working link) |
 | Documents to sign (`src/punch/sign.ts`) | the **`sign_documents`** function (`SIGN_FN_URL`, us-central1), every call with the link's token: `{action:'mine'}` → the worker's latest request (`{id, status, templateName, signDate, dateFixed, signedAt}` or null), `{action:'view', which}` (Form 101 / the contract, both at once), `{action:'sign', signaturePng}`, then `{action:'build', which}` twice at once ([contracts.md](contracts.md) → Signing) |
 
 The function hands out only this worker and their sites, and accepts punches for this worker only.
@@ -83,7 +83,7 @@ The button: "Not on site" when `!locOk` (the ring's track only, no hold); otherw
 
 - Ignored without `locOk`; a second tap within 4 s gets "Wait a couple of seconds".
 - **IN or OUT** = the opposite of the worker's last punch across all days (`getLastEntry`, latest `ts`), so an overnight shift closes correctly.
-- The entry: `{id: Date.now(), workerId, workerName, type, time:'HH:MM', ts, site, clientId, dist, lat, lng, gpsVerified, geoSkipped, manual:false, gpsAccuracy, gpsSuspicious, gpsWarnings, gpsElapsed}`. `lat`/`lng` are sent only when the site has a geofence. No `date` is sent: the `punch` function takes the day from `ts` in Israel time.
+- The entry: `{id: Date.now(), workerId, workerName, type, time:'HH:MM', ts, site, clientId, dist, lat, lng, gpsVerified, geoSkipped, manual:false, gpsAccuracy, gpsSuspicious, gpsWarnings, gpsElapsed}`. `time` is the time in Israel (`IL_TIME`, `Asia/Jerusalem`), whatever the phone's time zone. `lat`/`lng` are sent only when the site has a geofence. No `date` is sent. The `punch` function checks `ts` against its own clock (ahead → the server's time; sent late → kept; both marked suspicious with a warning) and builds the stored `day` and `time` from it in Israel time ([backend.md](backend.md) → `savePunch`).
 - Saved to `localStorage.punchLog` first, then `gsSavePunch()`; a second punch within 4 s gets "Wait a couple of seconds".
 - On OUT, `updateScheduleManager()` writes today's shift start/end into the same-device `schedMgr_v1` cache (a leftover bridge to the manager app on the same device).
 
@@ -93,12 +93,12 @@ The button: "Not on site" when `!locOk` (the ring's track only, no hold); otherw
 - `queueEntry()` stamps the entry with its `workerToken`, so a later flush posts to the right firm.
 - `flushQueue()` runs on `online` and at startup (`startQueue()`, which also shows the badge of a queue left from before), one punch at a time, keeps the ones to retry (and anything queued while it was sending); `_flushingQueue` stops two runs from double-posting. The badge "Offline — N punches queued" (`#offlineBadge`, the store's `queued`) shows until the queue is empty, then the toast "Synced N offline punches".
 - **Opening without a connection:** the service worker serves the page and its built files from its cache (network-first, every same-origin file it fetched is kept — the page has no lazy chunks, so one online open caches all of it), and the worker comes from `schedMgr_v1`; `tests/e2e/main.test.js` opens the page offline, punches into the queue and checks the send after the connection returns.
-- Re-sending is harmless: the `punch` function writes the punch under its own id (`set`), so a duplicate is the same document.
+- Re-sending is harmless: the `punch` function only creates a punch — an id already stored is answered ok and left as it is, so a duplicate is the same document (and a punch a manager changed since is never rewritten).
 
 ## Telemetry and push
 
-- `reportError()` — at most 21 per page, the same message at most once a minute; sent with `role:'worker'` and the worker's name (or the first 4 characters of the token). Wired to `error` and `unhandledrejection`.
-- Push: the page does not subscribe (no sender exists). The `punch` function still accepts `savePushSubscription`, and `service-worker.js` still has `push` / `notificationclick` handlers for the future.
+- `reportError()` — at most 21 per page, the same message at most once a minute; sent with the link's token (`wpToken()`); the `punch` function stores it only for a working link, with the firm and the worker's name from the link. Wired to `error` and `unhandledrejection`.
+- Push: the page does not subscribe (no sender exists), and the `punch` function takes no push subscription; `service-worker.js` still has `push` / `notificationclick` handlers for the future.
 - The service worker is registered with `updateViaCache:'none'` and the page reloads when a new version takes control (`main.tsx`).
 - New version check: `useVersionWatch` watches the page's own HTML (it names the hashed bundle) and `og.css` and offers **Update** in a toast after a deploy.
 - Toasts: the shared Sonner toasts; `showToast(msg)` picks success / warning / error / info from the text, as the old page's `toastKind`.

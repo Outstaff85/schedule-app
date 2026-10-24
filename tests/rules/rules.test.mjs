@@ -80,6 +80,7 @@ beforeEach(async () => {
     await setDoc(doc(d, 'users', 'u-ownerB'), { username: 'ownerb', tenantId: B, role: 'tenant_admin' });
     await setDoc(doc(d, 'authSecrets', 'u-ownerA'), { passwordHash: 'h', passwordSalt: 's' });
     await setDoc(doc(d, 'workerTokens', 'tok1'), { tenantId: A, workerId: 'w1' });
+    await setDoc(doc(d, 'pushSubscriptions', 'ps1'), { tenantId: A, workerId: 'w1' });
     await setDoc(doc(d, 'usernames', 'ownera'), { uid: 'u-ownerA' });
     await setDoc(doc(d, 'errors', 'e1'), { message: 'x' });
   });
@@ -204,11 +205,14 @@ test('users: own profile, owner sees own firm, superadmin all; nobody writes', a
   await assertFails(updateDoc(doc(db('staffAll'), 'users', 'u-staffAll'), { role: 'tenant_admin' }));
 });
 
-test('password hashes, usernames and punch-link tokens: unreachable for everyone, superadmin included', async () => {
+test('password hashes, usernames, old punch-link tokens and push subscriptions: unreachable for everyone, superadmin included', async () => {
   for (const r of ['superadmin', 'ownerA', 'staffAll', 'supplierA', 'anon']) {
     await assertFails(getDoc(doc(db(r), 'authSecrets', 'u-ownerA')));
     await assertFails(getDoc(doc(db(r), 'workerTokens', 'tok1')));
     await assertFails(setDoc(doc(db(r), 'workerTokens', 'tok2'), { tenantId: A }));
+    // No rule of their own any more: denied by default.
+    await assertFails(getDoc(doc(db(r), 'pushSubscriptions', 'ps1')));
+    await assertFails(setDoc(doc(db(r), 'pushSubscriptions', 'ps2'), { workerId: 'w1' }));
     await assertFails(getDoc(doc(db(r), 'usernames', 'ownera')));
     await assertFails(setDoc(doc(db(r), 'usernames', 'grab'), { uid: 'x' }));
   }

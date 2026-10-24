@@ -454,6 +454,7 @@ export const closeGpsHelp = () => set({ gpsHelp: false });
 // ── A punch ──
 /** IN or OUT: the opposite of the worker's last punch across all days (an overnight shift closes correctly). */
 export function nextType(): 'in' | 'out' { return getLastEntry(getPunchLog(), st.worker?.id)?.type === 'in' ? 'out' : 'in'; }
+const IL_TIME = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 export function doPunch() {
   const w = st.worker;
   if (!st.locOk || !w) return;
@@ -462,7 +463,8 @@ export function doPunch() {
   // The site check must be fresh: re-read the GPS instead of punching on an old reading.
   if (geoEnforced && (!lastGps || Date.now() - lastGps.at > GPS_FRESH_MS)) { showToast(tr('Checking your location again — punch in a moment')); getLocation(); return; }
   _lastPunchAt = Date.now();
-  const now = new Date(), hh = String(now.getHours()).padStart(2, '0'), mm = String(now.getMinutes()).padStart(2, '0');
+  // The time in Israel, as the punch function stores it (from ts), whatever this phone's time zone.
+  const now = new Date(), [hh, mm] = IL_TIME.format(now).split(':');
   const log = getPunchLog(), last = getLastEntry(log, w.id), type = last?.type === 'in' ? 'out' : 'in';
   const gps = lastGps || ({} as Partial<NonNullable<typeof lastGps>>);
   const entry: PunchEntry = {
@@ -559,7 +561,7 @@ export function reportError(message: unknown, source?: string, stack?: string) {
     if (_errSent[key] && nowT - _errSent[key] < 60000) return;
     _errSent[key] = nowT; _errCount++;
     punchFn({
-      action: 'logError', page: (location.pathname.split('/').pop() || location.href), role: 'worker',
+      action: 'logError', token: wpToken(), page: (location.pathname.split('/').pop() || location.href), role: 'worker',
       worker: (st.worker && st.worker.name) || (URL_TOKEN ? 'token:' + String(URL_TOKEN).slice(0, 4) : ''),
       message: String(message || '').slice(0, 500), source: String(source || '').slice(0, 300), stack: String(stack || '').slice(0, 1200),
     }).catch(() => {});

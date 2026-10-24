@@ -3,6 +3,8 @@ on the Firestore + Auth emulators."""
 
 from test_core import DB, _clear  # noqa: F401 — also initializes the Admin SDK
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 import portal
@@ -71,16 +73,25 @@ def test_unknown_or_shared_token_is_refused():
     assert portal.punch_action(DB, {"action": "load", "token": "tok-avi"})["error"] == portal.E_LINK
 
 
+def _iso(dt):
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def test_save_punch():
+    now = datetime.now(timezone.utc)
     data = {"id": 1727770000000, "workerId": "w1", "workerName": "Avi Cohen", "type": "IN", "time": "08:00",
-            "date": "1/10/2026", "ts": "2026-10-01T05:00:00.000Z", "site": "Site A", "clientId": "c1",
+            "date": "1/1/2020", "ts": _iso(now), "site": "Site A", "clientId": "c1",
             "dist": 12, "gpsAccuracy": 8, "gpsSuspicious": False, "gpsWarnings": ["slow"], "tenantId": "evil",
             "hourlyRate": 999}
     r = portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})
     assert r == {"ok": True, "id": 1727770000000}
     d = P(T1, "1727770000000").get().to_dict()
-    assert d["type"] == "in" and d["day"] == "2026-10-01" and d["archived"] is False and d["ts"].year == 2026
-    assert d["workerId"] == "w1" and d["gpsWarnings"] == ["slow"] and "tenantId" not in d and "hourlyRate" not in d
+    local = now.astimezone(portal.TZ)
+    # day and time come from ts in Israel time — never the page's date or time.
+    assert d["type"] == "in" and d["day"] == local.strftime("%Y-%m-%d") and d["time"] == local.strftime("%H:%M")
+    assert d["archived"] is False and "date" not in d and abs((d["receivedAt"] - now).total_seconds()) < 60
+    assert d["workerId"] == "w1" and d["gpsWarnings"] == ["slow"] and d["gpsSuspicious"] is False
+    assert "tenantId" not in d and "hourlyRate" not in d
     # The same punch again (offline queue retry) is the same document.
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]
     assert len(list(DB.collection("tenants").document(T1).collection("punches").stream())) == 1
@@ -105,14 +116,68 @@ def test_a_link_cannot_punch_for_someone_else():
     assert P(T2, "9").get().exists and not P(T1, "9").get().exists      # lands in the link's own firm
 
 
-def test_push_subscription_and_errors():
-    assert portal.punch_action(DB, {"action": "savePushSubscription", "token": "tok-avi",
-                                    "subscription": {"endpoint": "https://push/x", "keys": {"a": 1}}})["ok"]
-    subs = [s.to_dict() for s in DB.collection("pushSubscriptions").stream()]
-    assert subs[0]["tenantId"] == T1 and subs[0]["workerId"] == "w1"
-    assert portal.punch_action(DB, {"action": "logError", "message": "m" * 900, "worker": "Avi"})["ok"]
+def test_a_punch_time_is_checked_against_the_servers_clock():
+    now = datetime.now(timezone.utc)
+    # The phone's clock ahead: the server's time is used, and the punch is marked.
+    ahead = {"id": "f1", "workerId": "w1", "type": "out", "ts": _iso(now + timedelta(hours=2)), "time": "23:59"}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": ahead})["ok"]
+    d = P(T1, "f1").get().to_dict()
+    assert abs((d["ts"] - now).total_seconds()) < 60 and d["gpsSuspicious"] is True
+    assert d["time"] == d["ts"].astimezone(portal.TZ).strftime("%H:%M")
+    assert any(x.startswith("clock ahead 1") for x in d["gpsWarnings"])
+    # Sent late (an offline punch, or a clock set back): its time is kept, the punch is marked.
+    back = now - timedelta(minutes=82)
+    late = {"id": "f2", "workerId": "w1", "type": "in", "ts": _iso(back), "gpsSuspicious": False}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": late})["ok"]
+    d = P(T1, "f2").get().to_dict()
+    assert abs((d["ts"] - back).total_seconds()) < 1 and d["gpsSuspicious"] is True
+    assert d["time"] == back.astimezone(portal.TZ).strftime("%H:%M")
+    assert d["gpsWarnings"] == ["sent 82 min after the punch time"]
+    # Within a few minutes: nothing marked.
+    ok = {"id": "f3", "workerId": "w1", "type": "out", "ts": _iso(now - timedelta(minutes=2))}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": ok})["ok"]
+    d = P(T1, "f3").get().to_dict()
+    assert d["gpsWarnings"] == [] and "gpsSuspicious" not in d
+
+
+def test_the_time_is_israel_time_whatever_the_phones_zone():
+    ts = datetime(2026, 1, 15, 6, 0, tzinfo=timezone.utc)                # 08:00 in Israel (winter, UTC+2)
+    data = {"id": "z1", "workerId": "w1", "type": "in", "ts": _iso(ts), "time": "14:00"}  # a phone on Manila time
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]
+    d = P(T1, "z1").get().to_dict()
+    assert d["time"] == "08:00" and d["day"] == "2026-01-15"
+
+
+def test_save_punch_never_rewrites_a_stored_punch():
+    """Create-only: a punch an accepted fix or a manager changed stays as it is."""
+    at = datetime(2026, 10, 5, 14, 0, tzinfo=timezone.utc)
+    fixed = {"id": "e1", "workerId": "w1", "type": "out", "time": "17:00", "ts": at, "day": "2026-10-05",
+             "editedBy": "approval", "editedAt": "2026-10-06T08:00:00Z", "archived": False}
+    P(T1, "e1").set(fixed)
+    P(T1, "e2").set({"id": "e2", "workerId": "w1", "type": "in", "time": "08:00", "ts": at, "manual": True})
+    for pid, typ in (("e1", "out"), ("e2", "out")):
+        r = portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi",
+                                     "data": {"id": pid, "workerId": "w1", "type": typ, "ts": "2026-10-05T17:00:00Z"}})
+        assert r == {"ok": True, "id": pid}                                # the queue's re-send stays harmless
+    assert P(T1, "e1").get().to_dict() == fixed                           # editedBy included
+    e2 = P(T1, "e2").get().to_dict()
+    assert e2["type"] == "in" and e2["time"] == "08:00" and e2["manual"] is True
+
+
+def test_errors_only_from_a_working_link():
+    assert portal.punch_action(DB, {"action": "logError", "message": "spam", "worker": "x"}) == {"error": portal.E_LINK}
+    assert portal.punch_action(DB, {"action": "logError", "token": "nope", "message": "spam"}) == {"error": portal.E_LINK}
+    assert list(DB.collection("errors").stream()) == []
+    assert portal.punch_action(DB, {"action": "logError", "token": "tok-avi", "message": "m" * 900, "worker": "Evil"})["ok"]
     e = [s.to_dict() for s in DB.collection("errors").stream()][0]
     assert e["role"] == "worker" and len(e["message"]) == 500
+    assert e["tenantId"] == T1 and e["worker"] == "Avi Cohen"            # from the link, never the page
+
+
+def test_push_subscriptions_are_not_stored():
+    r = portal.punch_action(DB, {"action": "savePushSubscription", "token": "tok-avi",
+                                 "subscription": {"endpoint": "https://push/x", "keys": {"a": 1}}})
+    assert r == {"error": "Unknown action"} and list(DB.collection("pushSubscriptions").stream()) == []
 
 
 # ── Supplier portal ──────────────────────────────────────────────────────────
@@ -189,6 +254,8 @@ def test_supplier_punches_only_own_and_without_gps():
     P(T1, "a").set({"id": "a", "workerId": "w1", "type": "in", "date": "01/10/2026", "dist": 5, "gpsAccuracy": 3,
                     "notes": "x", "ts": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)})
     P(T1, "b").set({"id": "b", "workerId": "w2", "type": "in"})
+    P(T1, "old").set({"id": "old", "workerId": "w1", "type": "in",                     # older than 13 months
+                      "ts": datetime.now(timezone.utc) - timedelta(days=31 * portal.PUNCH_MONTHS + 5)})
     r = portal.supplier_action(DB, SUP1, {"action": "loadPunchLog"})
     assert [e["id"] for e in r["entries"]] == ["a"]
     e = r["entries"][0]

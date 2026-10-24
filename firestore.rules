@@ -209,11 +209,10 @@ service cloud.firestore {
     }
 
     // Function-only: password hashes, the username -> uid index (keeps
-    // usernames unique), worker punch-link tokens, push subscriptions.
+    // usernames unique). Every collection not matched here (the old
+    // workerTokens and pushSubscriptions among them) is denied by default.
     match /authSecrets/{uid} { allow read, write: if false; }
     match /usernames/{name} { allow read, write: if false; }
-    match /workerTokens/{token} { allow read, write: if false; }
-    match /pushSubscriptions/{id} { allow read, write: if false; }
     match /weatherCache/{area} { allow read, write: if false; }  // the weather function only (stage 12)
     match /permTemplates/{id} { allow read, write: if false; }  // the users_admin function only (permission templates)
 
