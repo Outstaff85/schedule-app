@@ -93,7 +93,8 @@ globalThis.fetch = async (url, opts = {}) => {
   const body = files[url], bytes = typeof body === 'string' ? new TextEncoder().encode(body) : body;
   return new Response(opts.method === 'HEAD' ? null : bytes, { status: 200, headers: { etag: '"e1"', 'content-length': String(bytes.length) } });
 };
-globalThis.caches = { open: async name => { opened.push(name); return { match: async () => undefined, put: async () => {} }; } };
+const cacheKeys = [];  // the Cache Storage keys fetchModel used
+globalThis.caches = { open: async name => { opened.push(name); return { match: async k => { cacheKeys.push('match ' + k); }, put: async k => { cacheKeys.push('put ' + k); } }; } };
 
 function fakeOrt(created, failIf = () => null) {
   function Tensor(type, data, dims) { this.type = type; this.data = data; this.dims = dims; }
@@ -545,6 +546,13 @@ await run('every URL from the surface\'s base: the site never asks for /scan-lab
     assert.deepEqual([info.version, info.doctype, info.mrz, info.he, !!rd.doctype, !!rd.mrz, !!rd.he], ['v', true, true, true, true, true, true]);
     assert.equal(ort.env.wasm.wasmPaths, base + 'ort/');
     await MO.fetchModel(surface, 'lite.onnx', () => {});
+    // the cache key is the surface's own model URL (the same entry for the page and every thread), never the bare name
+    cacheKeys.length = 0;
+    await MO.fetchModel(surface, 'sa24_w16.onnx', () => {}).catch(() => {});
+    files[base + 'sa24_w16.onnx'] = new Uint8Array(4);
+    await MO.fetchModel(surface, 'sa24_w16.onnx', () => {});
+    assert.ok(cacheKeys.includes('match ' + base + 'sa24_w16.onnx') && cacheKeys.includes('put ' + base + 'sa24_w16.onnx'), 'cache keys: ' + cacheKeys.join(', '));
+    assert.ok(cacheKeys.every(k => k.split(' ')[1].startsWith(base)), 'cache keys under ' + base + ': ' + cacheKeys.join(', '));
     // the engine's threads and its page way
     policy = loadOk;
     const { eng } = newEngines(surface, { gpu: false });

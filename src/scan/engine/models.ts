@@ -18,12 +18,14 @@ const hasGpu = (): boolean => !!((globalThis as { navigator?: { gpu?: unknown } 
 
 // A model kept in the browser's cache is used only while it is still the file on
 // the server (same ETag; one small HEAD request) — a changed model is downloaded
-// again. Offline, the kept copy is used as it is.
+// again. Offline, the kept copy is used as it is. The cache key is the surface's own model URL (root-relative,
+// so the same entry wherever the code runs: the page, every pool worker, the capture and file threads), as the
+// old plain page and its worker shared one entry per model.
 export async function fetchModel(s: SurfaceRef, name: string, onProgress: (got: number, total: number) => void): Promise<Uint8Array> {
   const url = modelUrl(s, name);
   try {
     const cache = await caches.open(s.cache);
-    const hit = await cache.match(name);
+    const hit = await cache.match(url);
     let etag: string | null = null;
     try { const h = await fetch(url, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) etag = h.headers.get('etag'); } catch { /* offline: the kept copy */ }
     if (hit && (!etag || hit.headers.get('x-etag') === etag)) { onProgress(1, 1); return new Uint8Array(await hit.arrayBuffer()); }
@@ -33,7 +35,7 @@ export async function fetchModel(s: SurfaceRef, name: string, onProgress: (got: 
     const reader = res.body!.getReader(); const parts: Uint8Array[] = []; let got = 0;
     for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
     const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
-    try { await cache.put(name, new Response(buf, { headers: { 'x-etag': res.headers.get('etag') || etag || '' } })); } catch { /* cache full or blocked */ }
+    try { await cache.put(url, new Response(buf, { headers: { 'x-etag': res.headers.get('etag') || etag || '' } })); } catch { /* cache full or blocked */ }
     return buf;
   } catch {
     const res = await fetch(url); return new Uint8Array(await res.arrayBuffer());
