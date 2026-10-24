@@ -842,9 +842,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     for (const x of [site, a, b, quiet, none]) x.w.remove();
     const ex = sent.map(x => x.examples[0]);
     return { inFrame, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage].join(),
+      // a lab example names its origin and the copy's turn: the model's answer, and no face finder turn on these pages
+      turn: ex[0] && [ex[0].origin, ex[0].turnModel, ex[0].turnBy].join(),
       second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined].join(), noModel: !none.w.querySelector('select.kind') };
   });
-  ok(kinds.inFrame && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel,
+  ok(kinds.inFrame && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel
+    && kinds.turn === 'lab,0,model',
     'scanner lab: a kept page shows the model\'s document type; only the user\'s ✓ or pick is sent, once — never an untouched answer, never in the site\'s frame, no choice with no model ' + JSON.stringify(kinds));
   // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
   // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
@@ -926,9 +929,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
   const exOk = ex.length === 2 && ex.every(e => e.source === 'page')
     && ex[0].doctypeBy === 'model' && ex[0].doctypeModel === 'id_front' && ex[0].doctypeFixed === 'id_front'
-    && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage;
+    && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage
+    // each carries its scan's session and who set its turn (the training audit, 2026-10-24)
+    && typeof ex[0].sessionId === 'string' && !!ex[0].sessionId && ex[1].sessionId === ex[0].sessionId && ex[0].turnBy === 'model' && ex[1].turnBy === 'haiku';
   ok(exOk && kindAtDone === 1 && feedbackCalls.some(c => c.action === 'mode'),
-    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep}))}));
+    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep, session: !!e.sessionId, turnBy: e.turnBy}))}));
   const docCall = feedbackCalls.find(c => c.action === 'document') || {};
   const zs = docCall.mrzShadow || {};
   ok((zs.lines || []).length === 2 && zs.docId === 'NW259050' && zs.docDob === '12/03/1984' && zs.docExpiry === '19/05/2029' && zs.docSex === 'M'

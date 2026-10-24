@@ -4,6 +4,7 @@
 // reads are kept by the pages' images). The page's Form 101 reads the stored pages from
 // window.__aiScanImage (the primary) and window.__aiPacketOtherPages (the rest).
 import { detectDoctype, rotateImage } from '@/scan/doctype';
+import { newScanSession } from '@/scan/server';
 import { reportTiming } from '@/manager/data/telemetry';
 import { extraPageReader, readDoc, verifierFor, verifyOneFor } from './ai';
 import { readPages, type Cache, type Deps, type InPage, type OutPage } from './read';
@@ -55,9 +56,10 @@ export function sessionPages(): { b64: string; mediaType: string; kind: string |
   return [...last.filter(p => p.primary), ...last.filter(p => !p.primary)].map(p => ({ b64: p.b64, mediaType: p.mediaType, kind: p.kind }));
 }
 
-/** A new scan: the reads of the last one are forgotten. */
+/** A new scan: the reads of the last one are forgotten; a new scan session (src/scan/server.ts). */
 export function resetScan(): void {
   cache = new Map(); last = []; lastRead = null; lastZone = null; lastHe = null;
+  newScanSession();
   window.__aiScanImage = null;
   window.__aiPacketOtherPages = [];
 }

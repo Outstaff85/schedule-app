@@ -5,7 +5,8 @@
 // it folds into a line below, which a tap unfolds and ⋮ / a swipe deletes (owner, 2026-10-20). Every page
 // has its document type — Haiku's, or the document type model's as Admin → Scanner says (Off / Shadow /
 // Mixed). The batches are kept on this phone until Done has read them (store.ts); Done reads every
-// batch's pages in order and sends the pages' examples.
+// batch's pages in order and sends the pages' examples (with the scan's session id and, on a known worker's scan,
+// the worker's id; server.ts keeps the scan's attempts for the worker window's save).
 import * as React from 'react';
 import { IconBolt, IconCamera, IconCheck, IconCrop, IconFileText, IconLoader2, IconPhoto, IconTrash } from '@tabler/icons-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,7 +18,7 @@ import { undoDelete } from '@/components/shared/undo';
 import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
 import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
-import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
+import { doctypeMode, scanAttempts, scanSessionId, sendFeedback, type DoctypeMode, type Example } from './server';
 import { autoLab, continueLab, filesLab, labDeleted, labDone, labFix, showLab, sleepLab, snapLab, startLab } from './lab';
 import { loadBatches, saveBatches } from './store';
 
@@ -39,7 +40,8 @@ function cleanHe(v: unknown): HeFields | undefined {
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype; mrz?: string[]; he?: HeFields };
 // Each page has its kind: Haiku's or the model's (doctypeModel, doctypeBy) and the one shown, which a tap can change;
 // in shadow the model's answer is only kept (doctypeShadow) for the example. part: the posted key it came under.
-type Page = ScannedPage & { uid: number; part?: string; att?: string; pg?: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype };
+// turnBy: who set the turn the page is at (the same who gave its kind).
+type Page = ScannedPage & { uid: number; part?: string; att?: string; pg?: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype; turnBy?: 'haiku' | 'model' };
 let nextUid = 0;
 /** A batch: a camera shot (s<n>), the files of one pick (f<n>, posted in parts f<n>.<i>), or the pages before a Scan again. */
 type Batch = { key: string; source: 'camera' | 'file' | 'before'; kept: boolean; pages: Page[] };
@@ -52,16 +54,18 @@ const SURE = 0.9;
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
 
 /** The pages' training examples (functions/feedback.py, source "page"): every page with a type from
- * Haiku or the model — a changed one with its copy, one right page in five with its copy too. */
-async function examples(pages: Page[]): Promise<Example[]> {
-  const out: Example[] = [];
+ * Haiku or the model — a changed one with its copy, one right page in five with its copy too —, each with the
+ * scan's session id, the worker's id when known, and who set its turn. */
+async function examples(pages: Page[], workerId?: string): Promise<Example[]> {
+  const out: Example[] = [], sessionId = scanSessionId();
   for (const p of pages) {
     if (!p.doctypeModel) continue;
     const fixed = p.kind || p.doctypeModel, changed = fixed !== p.doctypeModel, keep = !changed && rightSeen++ % 5 === 0;
     const copy = changed || keep ? await pageCopy(p.b64, p.mediaType).catch(() => undefined) : undefined;
     if (changed && !copy) continue;
     out.push({ source: 'page', doctypeModel: p.doctypeModel, doctypeFixed: fixed, doctypeBy: p.doctypeBy || 'haiku',
-      ...(p.doctypeShadow ? { doctypeShadow: p.doctypeShadow } : {}), ...(copy ? { pageImage: copy } : {}), ...(keep && copy ? { keep: true } : {}) });
+      ...(p.doctypeShadow ? { doctypeShadow: p.doctypeShadow } : {}), ...(copy ? { pageImage: copy } : {}), ...(keep && copy ? { keep: true } : {}),
+      sessionId, ...(workerId ? { workerId } : {}), turnBy: p.turnBy || p.doctypeBy || 'haiku' });
   }
   return out;
 }
@@ -119,8 +123,10 @@ function PageTile({ p, onKind, onRemove, onFix, superAdmin }: { p: Page; onKind:
   );
 }
 
-export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
+export function Scanner({ open, onDone, onClose, initial, read, superAdmin, workerId }: {
   open: boolean; onDone: (pages: ScannedPage[]) => void; onClose: () => void;
+  /** the worker scanned again, when the scan started from their window (sent with the pages' examples) */
+  workerId?: string;
   /** a super-admin sees the document type model's chip on each page */
   superAdmin?: boolean;
   /** pages already scanned (this session's, for "Scan again"): shown first, folded */
@@ -169,7 +175,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
     const m = await mode.current, a = m === 'off' ? null : answers[i] || null;
     const sure = m === 'mixed' && a && (DOCTYPES as readonly string[]).includes(a.doctype) && a.conf >= SURE && a.turnConf >= SURE;
     const { kind, rotate } = sure ? { kind: a!.doctype, rotate: a!.turn } : await detectDoctype(pg.b64, pg.mediaType);
-    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, doctypeBy: sure ? 'model' : 'haiku',
+    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, doctypeBy: sure ? 'model' : 'haiku', turnBy: sure ? 'model' : 'haiku',
       ...(a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { modelSaid: a.doctype } : {}),
       ...(m === 'shadow' && a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { doctypeShadow: a.doctype } : {}) };
     // a page turned here was read by the zone reader and the field reader on its side: what they read says nothing
@@ -193,6 +199,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
         ...(f ? { he: f } : {}),
       }));
       if (!pages.length) return;
+      scanAttempts(pages.map(p => p.att)); // this scan's attempts: told the worker's id when the worker window saves
       const key = m.key.split('.')[0], source = key.startsWith('f') ? 'file' : 'camera';
       setBatches(xs => (xs.some(b => b.key === key)
         ? xs.map(b => (b.key === key ? { ...b, pages: [...b.pages.filter(p => p.part !== m.key), ...pages] } : b))
@@ -249,7 +256,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
           // waits for the pages' kinds
           while (batchesRef.current.some(b => b.pages.some(p => p.doctypePending))) await new Promise(r => setTimeout(r, 100));
           const list = batchesRef.current.flatMap(b => b.pages);
-          void examples(list).then(sendFeedback); // in the background, queued when offline
+          void examples(list, workerId).then(sendFeedback); // in the background, queued when offline
           const out = list.filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind, mrz, he }) => ({ b64, mediaType, turn, blurry, kind, ...(mrz ? { mrz } : {}), ...(he ? { he } : {}) }));
           if (read) {
             setReading({ label: tr('Reading the pages…'), pct: 2 });

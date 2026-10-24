@@ -1,6 +1,6 @@
 // Opens the scan window (Scanner.tsx) over the manager page and resolves with the
 // pages when Done is tapped (and, with read, once they are read), or null when the
-// window is closed.
+// window is closed. workerId: the worker scanned again from their window, when known.
 import * as React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -12,7 +12,7 @@ import { bridge, hasBridge } from '../manager/bridge';
 let root: Root | null = null;
 let seq = 0;
 
-export function openScanner(opts: { initial?: ScannedPage[]; read?: ReadFn } = {}): Promise<ScannedPage[] | null> {
+export function openScanner(opts: { initial?: ScannedPage[]; read?: ReadFn; workerId?: string } = {}): Promise<ScannedPage[] | null> {
   const api = hasBridge() ? bridge() : null;
   if (api) adoptLanguage(api.lang(), api.dict());
   if (!root) {
@@ -30,7 +30,7 @@ export function openScanner(opts: { initial?: ScannedPage[]; read?: ReadFn } = {
       root!.render(<React.StrictMode><TooltipProvider><Scanner key={key} open={false} onDone={() => {}} onClose={() => {}} /></TooltipProvider></React.StrictMode>);
       resolve(pages);
     };
-    root!.render(<React.StrictMode><TooltipProvider><Scanner key={key} open initial={opts.initial} read={opts.read} superAdmin={!!api?.admin().isSuper} onDone={p => end(p)} onClose={() => end(null)} /></TooltipProvider></React.StrictMode>);
+    root!.render(<React.StrictMode><TooltipProvider><Scanner key={key} open initial={opts.initial} read={opts.read} workerId={opts.workerId} superAdmin={!!api?.admin().isSuper} onDone={p => end(p)} onClose={() => end(null)} /></TooltipProvider></React.StrictMode>);
   });
 }
 

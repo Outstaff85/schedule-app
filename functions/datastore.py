@@ -1,13 +1,14 @@
 """Where the scanner's training data goes (docs/hf-plan.md → H7, H8a): the private Hugging
-Face bucket BUCKET once the server has its token (the secret HF_DATA_TOKEN — it may only
-write there), else the project's Firebase Storage under training/ as before. Files are
+Face bucket BUCKET once the server has its token (the secret HF_DATA_TOKEN — it reaches
+that bucket only), else the project's Firebase Storage under training/ as before. Files are
 written one request at a time (a bucket has no Git history: a file is added or deleted for
-real). Paths, the same in both:
+real); get() reads one back (an attempt's answer.json, for its later outcome). Paths, the same in both:
   edges/<YYYY-MM>/<id>.jpg      the part of the photo the document edges model saw (256×256)
   doctype/<YYYY-MM>/<id>.jpg    the page, for the document type model (256×256)
   records/<YYYY-MM>/<id>.json   the example's record (bucket only — in Firebase it is Firestore scanTraining/<id>)
   documents/<tenant>/<YYYY-MM>/<id>/page-<n>.jpg, record.json   a full document with its fields (H8a)
-  attempts/new/<site|lab>/<YYYY-MM-DD>/<id>/picture.jpg, answer.json, outcome-<time>.json   every scan attempt (S8);
+  attempts/new/<site|lab>/<YYYY-MM-DD>/<id>/picture.jpg, answer.json, outcome-<time>.json   every scan attempt (S8;
+                                an outcome: a page deleted, or the worker saved — with the worker's id);
                                 after a training, attempts/used/v<N>/…
 In Firebase they sit under training/ (training/scan/… keeps its old place for the copies)."""
 import json
@@ -54,6 +55,28 @@ def put(files, fb_bucket=None):
         b.blob(p).upload_from_string(data, content_type="application/json" if path.endswith(".json") else "image/jpeg")
         out.append(p)
     return out
+
+
+def get(path, fb_bucket=None):
+    """A file put() wrote, read back from where it went: the bucket (with the server's token), else Firebase
+    Storage (fb_bucket: as for put). → its bytes, or None when it is in neither."""
+    if on_hf():
+        try:
+            import pathlib
+            import tempfile
+            from huggingface_hub import HfApi
+            with tempfile.TemporaryDirectory() as tmp:
+                dest = pathlib.Path(tmp) / "file"
+                HfApi(token=token()).download_bucket_files(BUCKET, [(path, str(dest))], raise_on_missing_files=True)
+                return dest.read_bytes()
+        except Exception as e:  # not there (a refusal kept it in Firebase), or the bucket out of reach
+            print(f"training data: {path} not read from the Hugging Face bucket ({type(e).__name__})")
+    if fb_bucket is None:
+        return None
+    try:
+        return fb_bucket().blob(firebase_path(path)).download_as_bytes()
+    except Exception:  # not there
+        return None
 
 
 def as_json(obj):

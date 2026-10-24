@@ -306,3 +306,175 @@ def test_a_training_is_due_at_15_attempts():
 def test_a_firm_with_its_collection_off_sends_no_attempts():
     assert feedback.attempts_wanted("t1", True) and not feedback.attempts_wanted("t1", False)
     assert feedback.attempts_wanted("", False)  # the super-admin in the lab
+
+
+# ---------- Training 2: the scan's session, the worker, the copy's turn; attempts told the worker; firm checks ----------
+def test_a_page_copy_keeps_its_scan_session_worker_and_who_set_its_turn():
+    e, why = feedback.check({"source": "page", "doctypeModel": "sefach", "doctypeFixed": "id_back", "pageImage": JPG,
+                             "sessionId": "3f1c-9a_b", "workerId": "w1", "turnBy": "haiku", "turnModel": 2, "turnFixed": 0})
+    assert why is None and e["sessionId"] == "3f1c-9a_b" and e["workerId"] == "w1" and e["origin"] == "site"
+    assert e["turnBy"] == "haiku" and e["turnModel"] == 2 and e["turnFixed"] == 0
+    now = datetime.datetime(2026, 10, 24, tzinfo=datetime.timezone.utc)
+    r = feedback.record(e, "t1", now, None, "p")
+    assert {k: r[k] for k in ("sessionId", "workerId", "turnBy", "turnModel", "turnFixed", "origin")} == \
+        {"sessionId": "3f1c-9a_b", "workerId": "w1", "turnBy": "haiku", "turnModel": 2, "turnFixed": 0, "origin": "site"}
+
+
+def test_bad_session_worker_and_turn_fields_are_dropped_not_refused():
+    e, why = feedback.check({"source": "page", "doctypeModel": "sefach", "sessionId": "../x", "workerId": "w" * 80,
+                             "turnBy": "guess", "turnModel": 4, "turnFixed": True, "origin": "elsewhere"})
+    assert why is None and e["sessionId"] is None and e["workerId"] == "w" * 64 and e["turnBy"] is None
+    assert e["turnModel"] is None and e["turnFixed"] is None and e["origin"] == "site"
+    e, _ = feedback.check({"source": "page", "doctypeModel": "sefach"})
+    assert e["workerId"] is None and e["sessionId"] is None
+    for who in feedback.TURN_BY:
+        assert feedback.check({"source": "page", "doctypeModel": "sefach", "turnBy": who})[0]["turnBy"] == who
+
+
+def test_a_lab_example_keeps_the_version_the_lab_names():
+    lab, _ = feedback.check({"source": "page", "origin": "lab", "model": "v5", "doctypeModel": "sefach", "doctypeFixed": "id_back",
+                             "pageImage": JPG, "turnModel": 1, "turnBy": "face"})
+    site, _ = feedback.check({"source": "page", "model": "v5", "doctypeModel": "sefach", "doctypeFixed": "id_back", "pageImage": JPG})
+    assert lab["origin"] == "lab" and feedback.example_version(lab, "base-v1") == "v5"
+    assert site["origin"] == "site" and feedback.example_version(site, "base-v1") == "base-v1"
+
+
+def test_a_full_document_keeps_its_scan_session():
+    d, _ = feedback.check_document(doc(sessionId="s-1"))
+    assert d["sessionId"] == "s-1" and feedback.document_record(d, "t1", "now", "x", ["p1", "p2"])["sessionId"] == "s-1"
+    d, _ = feedback.check_document(doc(workerId="w" * 70, sessionId="bad id"))
+    assert d["workerId"] == "w" * 64 and d["sessionId"] is None
+
+
+NOT_FIRM = "not this firm" + chr(39) + "s attempt"
+
+
+def test_a_saved_outcome_needs_the_worker_and_the_attempts_own_firm():
+    answer = {"id": "s12", "tenantId": "t1"}
+    out, why = feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "t1", answer)
+    assert why is None and out == {"outcome": "saved", "page": None, "workerId": "w1"}
+    assert feedback.check_outcome({"outcome": "saved"}, "t1", answer)[1] == "a saved attempt needs its worker"
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "t2", answer)[1] == NOT_FIRM
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "", answer)[1] == NOT_FIRM
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "t1", None)[1] == "no such attempt"
+    assert feedback.check_outcome({"outcome": "kept"}, "t1", answer)[1] == "bad outcome"
+    out, _ = feedback.check_outcome({"outcome": "deleted", "page": 2}, "t1", answer)
+    assert out == {"outcome": "deleted", "page": 2, "workerId": None}
+    # the super-admin's lab attempts carry no firm: only a login with no firm adds to them
+    assert feedback.check_outcome({"outcome": "deleted"}, "", {"tenantId": ""})[0]["outcome"] == "deleted"
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w" * 80}, "t1", answer)[0]["workerId"] == "w" * 64
+
+
+# ---------- the server's side (functions/main.py) with Storage, the bucket and Firestore mocked ----------
+def _main():
+    """functions/main.py under a name of its own (functions-auth's tests import theirs as "main")."""
+    import sys
+    if "scan_functions_main" in sys.modules:
+        return sys.modules["scan_functions_main"]
+    fn = str(ROOT / "functions")
+    if fn not in sys.path:
+        sys.path.append(fn)  # its own modules (contracts, signing, datastore, feedback, gate)
+    spec = importlib.util.spec_from_file_location("scan_functions_main", ROOT / "functions" / "main.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["scan_functions_main"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _Ref:
+    def __init__(self, store, n):
+        self.id, self.store = f"r{n}", store
+
+    def set(self, rec, merge=False):
+        self.store.append((self.id, rec))
+
+
+class _Db:
+    def __init__(self):
+        self.records, self.n = [], 0
+
+    def collection(self, name):
+        assert name == "scanTraining"
+        return self
+
+    def document(self):
+        self.n += 1
+        return _Ref(self.records, self.n)
+
+
+class _Stats:
+    def __init__(self):
+        self.updates = []
+
+    def set(self, update, merge=False):
+        self.updates.append(update)
+
+
+def _body(resp):
+    import json
+    return resp.status_code, json.loads(resp.get_data())
+
+
+def _server(monkeypatch, collects=True, answer=None):
+    main = _main()
+    put, asked = [], []
+    monkeypatch.setattr(main, "collects_documents", lambda db, t: asked.append(t) or collects)
+    monkeypatch.setattr(main.datastore, "put", lambda files, fb=None: put.extend(files) or [p for p, _ in files])
+    monkeypatch.setattr(main.datastore, "on_hf", lambda: False)
+    monkeypatch.setattr(main.datastore, "get", lambda path, fb=None: answer(path) if callable(answer) else answer)
+    return main, put, asked
+
+
+PAGE = {"source": "page", "doctypeModel": "sefach", "doctypeFixed": "id_back", "pageImage": JPG}
+
+
+def test_the_server_keeps_the_lab_version_and_the_new_fields(monkeypatch):
+    main, put, _ = _server(monkeypatch)
+    db, stats = _Db(), _Stats()
+    lab = dict(PAGE, origin="lab", model="v5", turnModel=1, turnBy="face")
+    site = dict(PAGE, model="v5", sessionId="s1", workerId="w1", turnBy="haiku")
+    code, j = _body(main._scan_add({"examples": [lab, site]}, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] == 2
+    recs = dict(db.records)
+    assert recs["r1"]["model"] == "v5" and recs["r1"]["origin"] == "lab" and recs["r1"]["turnBy"] == "face" and recs["r1"]["turnModel"] == 1
+    assert recs["r2"]["model"] == main.SITE_VERSION and recs["r2"]["sessionId"] == "s1" and recs["r2"]["workerId"] == "w1" and recs["r2"]["turnBy"] == "haiku"
+    assert len(put) == 2
+
+
+def test_a_firm_with_its_collection_off_keeps_no_page_copy(monkeypatch):
+    main, put, asked = _server(monkeypatch, collects=False)
+    db, stats = _Db(), _Stats()
+    code, j = _body(main._scan_add({"examples": [PAGE, dict(PAGE, doctypeFixed="sefach", keep=True)]}, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] == 0 and j["right"] == 1 and put == [] and db.records == [] and asked == ["t1"]
+    assert "doctypesSince" not in stats.updates[-1]
+    # the super-admin in the lab (no firm) always keeps them
+    main, put, asked = _server(monkeypatch, collects=False)
+    code, j = _body(main._scan_add({"examples": [PAGE]}, {"role": "superadmin"}, _Db(), _Stats(), None))
+    assert j["kept"] == 1 and len(put) == 1 and asked == []
+
+
+def test_a_saved_outcome_is_written_beside_the_attempt_with_the_worker(monkeypatch):
+    import json
+    dir_ = "attempts/new/site/2026-10-24/s12"
+    seen = []
+    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or json.dumps({"tenantId": "t1"}).encode())
+    code, j = _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t1"}, None))
+    assert code == 200 and j["ok"] and seen == [dir_ + "/answer.json"]
+    (path, data), = put
+    rec = json.loads(data)
+    assert path.startswith(dir_ + "/outcome-") and path.endswith(".json")
+    assert rec["outcome"] == "saved" and rec["workerId"] == "w1" and rec["page"] is None and rec["at"]
+
+
+def test_an_outcome_from_another_firm_or_for_no_attempt_is_refused(monkeypatch):
+    import json
+    dir_ = "attempts/new/site/2026-10-24/s12"
+    main, put, _ = _server(monkeypatch, answer=json.dumps({"tenantId": "t1"}).encode())
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, None))[0] == 403
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved"}, {"tenantId": "t1"}, None))[0] == 400
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "kept"}, {"tenantId": "t1"}, None))[0] == 400
+    assert _body(main._scan_attempt_outcome({"dir": "documents/t1/x", "outcome": "deleted"}, {"tenantId": "t1"}, None))[0] == 400
+    assert put == []
+    main, put, _ = _server(monkeypatch, answer=None)
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted", "page": 1}, {"tenantId": "t1"}, None))[0] == 404
+    assert put == []

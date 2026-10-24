@@ -634,6 +634,7 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
 # The scanner's model version: the same as scripts/scan/models-version (tests/auth checks it),
 # written into each kept example.
 MODEL_PREFIX = "models/scan/" + (pathlib.Path(__file__).parent / "scan_models_version.txt").read_text().strip() + "/"
+SITE_VERSION = MODEL_PREFIX.rstrip("/").rsplit("/", 1)[-1]  # the site's version (a lab example names its own)
 MODEL_BUCKETS = ("schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com")
 
 
@@ -749,17 +750,90 @@ def _scan_attempts(payload, claims, db, stats_ref, storage):
     return _json({"ok": True, "kept": len(dirs), "refused": refused, "dirs": dirs})
 
 
-def _scan_attempt_outcome(payload, storage):
-    """A later outcome of a kept attempt (a page deleted from its batch): {"action": "attemptOutcome",
-    "dir", "outcome", "page"} → outcome-<time>.json beside it (page: which of its pages, none for all)."""
+# why a later outcome is refused → its status (else 400)
+OUTCOME_STATUS = {"no such attempt": 404, "not this firm's attempt": 403}
+
+
+def _scan_attempt_outcome(payload, claims, storage):
+    """A later outcome of a kept attempt: {"action": "attemptOutcome", "dir", "outcome", "page"?, "workerId"?} —
+    "deleted" (a page deleted from its batch; page: which, none for all) or "saved" (the worker window saved after
+    the scan, with the worker's id). Only a login of the attempt's own firm (its answer.json's tenantId) may add
+    one → outcome-<time>.json beside it: {outcome, page, workerId, at}."""
     base = feedback.outcome_dir(payload.get("dir"))
-    outcome = payload.get("outcome") if payload.get("outcome") in feedback.OUTCOMES else None
-    if not base or not outcome:
+    if not base or payload.get("outcome") not in feedback.LATER_OUTCOMES:
         return _json({"error": "bad outcome"}, 400)
+    fb = lambda: _model_bucket(storage)
+    raw = datastore.get(f"{base}/answer.json", fb)
+    try:
+        answer = json.loads(raw) if raw else None
+    except ValueError:
+        answer = None
+    out, why = feedback.check_outcome(payload, claims.get("tenantId"), answer)
+    if not out:
+        return _json({"error": why}, OUTCOME_STATUS.get(why, 400))
     now = datetime.datetime.now(datetime.timezone.utc)
-    page = payload.get("page") if isinstance(payload.get("page"), int) and not isinstance(payload.get("page"), bool) and 0 <= payload.get("page") < 20 else None
-    datastore.put([(f"{base}/outcome-{now:%Y%m%dT%H%M%S%f}.json", datastore.as_json({"outcome": outcome, "page": page, "at": now}))], lambda: _model_bucket(storage))
+    datastore.put([(f"{base}/outcome-{now:%Y%m%dT%H%M%S%f}.json", datastore.as_json({**out, "at": now}))], fb)
     return _json({"ok": True})
+
+
+def _scan_add(payload, claims, db, stats_ref, storage):
+    """The scan window's page examples: {"action": "add", "examples": [...]} (feedback.check). Pages whose
+    corners moved or whose document type changed (and one right page in five) are kept with their copies, the
+    rest only counted; a firm whose collection the super-admin turned off (collects_documents) keeps no copy —
+    its pages are only counted. A lab example keeps the version the lab names, a site one the site's."""
+    from firebase_admin import firestore
+    examples = payload.get("examples")
+    if not isinstance(examples, list) or not examples:
+        return _json({"error": "no examples"}, 400)
+    tenant = claims.get("tenantId") or ""
+    wanted = []  # whether this login's copies are kept, asked once
+    copies = lambda: wanted[0] if wanted else (wanted.append(feedback.attempts_wanted(tenant, tenant and collects_documents(db, tenant))) or wanted[0])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    bucket = []
+    fb = lambda: bucket[0] if bucket else (bucket.append(_model_bucket(storage)) or bucket[0])
+    kept = right = bad = fixes = 0
+    moved_sum = 0.0
+    doctypes, shadow = {}, {}
+    for raw in examples[:feedback.MAX_EXAMPLES]:
+        ex, why = feedback.check(raw)
+        if not ex:
+            bad += 1
+            continue
+        if not feedback.correction(ex):
+            right += 1
+        for k, n in feedback.shadow_counts(ex).items():
+            shadow[k] = shadow.get(k, 0) + n
+        if not feedback.kept(ex) or not copies():
+            continue
+        ex["model"] = feedback.example_version(ex, SITE_VERSION)  # the version that gave these corners and this type
+        ref = db.collection("scanTraining").document()
+        files = []
+        if ex["image"] is not None:
+            files.append((f"edges/{now:%Y-%m}/{ref.id}.jpg", ex["image"]))
+        if ex["pageImage"] is not None:
+            files.append((f"doctype/{now:%Y-%m}/{ref.id}.jpg", ex["pageImage"]))
+            doctypes[ex["doctypeFixed"]] = doctypes.get(ex["doctypeFixed"], 0) + 1
+        stored = dict(zip([f[0].split("/", 1)[0] for f in files], datastore.put(files, fb)))
+        rec = feedback.record(ex, claims.get("tenantId"), now, stored.get("edges"), stored.get("doctype"))
+        if all(not str(p or "").startswith("training/") for p in (rec.get("image"), rec.get("pageImage"))) and datastore.on_hf():
+            # the copies went to the bucket: the record goes beside them; nothing about the example stays in Firebase
+            rec.pop("deleteAt", None)
+            if datastore.put([(f"records/{now:%Y-%m}/{ref.id}.json", datastore.as_json({"id": ref.id, **rec}))], fb)[0].startswith("training/"):
+                ref.set(rec)  # the bucket refused the record: it stays in Firestore with its copies' paths
+        else:
+            ref.set(rec)
+        kept += 1
+        fixes += feedback.edges_correction(ex)
+        moved_sum += ex["moved"]
+    # edgesSince counts the corrections only: they make a retraining due, the kept right pages do not
+    # doctypesSince: the page copies of each document type (by the type the user left), for the document type model
+    update = {"edgesSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
+              "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum), "updatedAt": now}
+    if doctypes:  # an empty map under merge would wipe the counts
+        update["doctypesSince"] = {k: firestore.Increment(n) for k, n in doctypes.items()}
+    update.update({k: firestore.Increment(n) for k, n in shadow.items()})
+    stats_ref.set(update, merge=True)
+    return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
 
 
 @https_fn.on_request(
@@ -772,14 +846,14 @@ def _scan_attempt_outcome(payload, storage):
 )
 def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     """The scanner's training examples (feedback.py; docs/scan-plan.md → S6).
-    {"action": "add", "examples": [...]} from the scan window's Done (any manager
-    login): pages whose corners the user moved are kept, the rest only counted.
-    {"action": "document", "pages", "read", "reads", "scanned", "saved", "workerId", "mrzShadow"?, "heShadow"?} from
+    {"action": "add", "examples": [...]} from the scan window's Done and the scanner lab (any manager
+    login; _scan_add): pages whose document type changed (and one right page in five) are kept, the rest only counted.
+    {"action": "document", "pages", "read", "reads", "scanned", "saved", "workerId", "sessionId", "mrzShadow"?, "heShadow"?} from
     the save of the worker window after a scan: a full document for the field reader model (H8a), with the
     passport zone reader's answer in shadow (H8b; counted: mrzShadowPassports / mrzShadowRight / mrzAiRight)
     and the Hebrew field reader's (H8c; counted: heShadowCards / heShadowRight / heAiRight).
-    {"action": "attempt", "attempts": [...]} / {"action": "attemptOutcome", "dir", "outcome"} from
-    the scanner (S8): every scan attempt, for the training.
+    {"action": "attempt", "attempts": [...]} / {"action": "attemptOutcome", "dir", "outcome", "workerId"?} from
+    the scanner (S8): every scan attempt, for the training, and what became of it (a page deleted, the worker saved).
     {"action": "stats"} (a super-admin): the counts, and whether retraining is due.
     The files go to the private Hugging Face bucket once the server has its token, else to
     Firebase Storage training/ (datastore.py)."""
@@ -815,56 +889,8 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         if payload.get("action") == "attempt":
             return _scan_attempts(payload, claims, db, stats_ref, storage)
         if payload.get("action") == "attemptOutcome":
-            return _scan_attempt_outcome(payload, storage)
-        examples = payload.get("examples")
-        if not isinstance(examples, list) or not examples:
-            return _json({"error": "no examples"}, 400)
-        now = datetime.datetime.now(datetime.timezone.utc)
-        bucket = []
-        fb = lambda: bucket[0] if bucket else (bucket.append(_model_bucket(storage)) or bucket[0])
-        kept = right = bad = fixes = 0
-        moved_sum = 0.0
-        doctypes, shadow = {}, {}
-        for raw in examples[:feedback.MAX_EXAMPLES]:
-            ex, why = feedback.check(raw)
-            if not ex:
-                bad += 1
-                continue
-            if not feedback.correction(ex):
-                right += 1
-            for k, n in feedback.shadow_counts(ex).items():
-                shadow[k] = shadow.get(k, 0) + n
-            if not feedback.kept(ex):
-                continue
-            ex["model"] = MODEL_PREFIX.rstrip("/").rsplit("/", 1)[-1]  # the version that found these corners
-            ref = db.collection("scanTraining").document()
-            files = []
-            if ex["image"] is not None:
-                files.append((f"edges/{now:%Y-%m}/{ref.id}.jpg", ex["image"]))
-            if ex["pageImage"] is not None:
-                files.append((f"doctype/{now:%Y-%m}/{ref.id}.jpg", ex["pageImage"]))
-                doctypes[ex["doctypeFixed"]] = doctypes.get(ex["doctypeFixed"], 0) + 1
-            stored = dict(zip([f[0].split("/", 1)[0] for f in files], datastore.put(files, fb)))
-            rec = feedback.record(ex, claims.get("tenantId"), now, stored.get("edges"), stored.get("doctype"))
-            if all(not str(p or "").startswith("training/") for p in (rec.get("image"), rec.get("pageImage"))) and datastore.on_hf():
-                # the copies went to the bucket: the record goes beside them; nothing about the example stays in Firebase
-                rec.pop("deleteAt", None)
-                if datastore.put([(f"records/{now:%Y-%m}/{ref.id}.json", datastore.as_json({"id": ref.id, **rec}))], fb)[0].startswith("training/"):
-                    ref.set(rec)  # the bucket refused the record: it stays in Firestore with its copies' paths
-            else:
-                ref.set(rec)
-            kept += 1
-            fixes += feedback.edges_correction(ex)
-            moved_sum += ex["moved"]
-        # edgesSince counts the corrections only: they make a retraining due, the kept right pages do not
-        # doctypesSince: the page copies of each document type (by the type the user left), for the document type model
-        update = {"edgesSince": firestore.Increment(fixes), "kept": firestore.Increment(kept),
-                  "right": firestore.Increment(right), "movedSum": firestore.Increment(moved_sum), "updatedAt": now}
-        if doctypes:  # an empty map under merge would wipe the counts
-            update["doctypesSince"] = {k: firestore.Increment(n) for k, n in doctypes.items()}
-        update.update({k: firestore.Increment(n) for k, n in shadow.items()})
-        stats_ref.set(update, merge=True)
-        return _json({"ok": True, "kept": kept, "right": right, "refused": bad})
+            return _scan_attempt_outcome(payload, claims, storage)
+        return _scan_add(payload, claims, db, stats_ref, storage)
     except Exception as e:
         return _json({"error": str(e)}, 500)
 

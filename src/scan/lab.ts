@@ -3,6 +3,8 @@
 // (4–8 s). An iframe moved in the page is loaded again, so the frame lives in the page's body, laid
 // over the window's slot every frame while the window is open; closed, it is hidden and its camera
 // stopped (scan/embed.js, "scan-sleep"), and removed — the models' memory freed — when the time is up.
+import { attemptFolders } from './server';
+
 const KEEP_MS = 3 * 60 * 1000;
 let frame: HTMLIFrameElement | null = null;
 let timer = 0;
@@ -12,6 +14,15 @@ const waiting: unknown[] = [];
 function toLab(m: unknown) {
   if (frame && loaded) frame.contentWindow?.postMessage(m, location.origin);
   else if (frame) waiting.push(m);
+}
+
+// The folders the server gave the lab page's attempts, as they come back (scan/index.html flushAttempts) —
+// listened to while the window is closed too (Done sends the attempts as it closes): server.ts keeps this scan's.
+if (typeof window !== 'undefined') {
+  window.addEventListener('message', e => {
+    const m = e.data as { type?: string; dirs?: Record<string, unknown> } | null;
+    if (e.origin === location.origin && m && m.type === 'scan-attempt-dirs' && m.dirs && typeof m.dirs === 'object') attemptFolders(m.dirs);
+  });
 }
 
 /** Shows the lab page over `slot` (made once, then kept) until the returned function is called. */

@@ -656,15 +656,18 @@ async function doctypeNote(canvas) {
 // user did is a label — the model's answer nobody touched never is (it would teach the model its own guesses;
 // the training audit, 2026-10-24): a type picked is sent 20 s after the last change or when the page is left,
 // the ✓ sends the type shown at once (keep when it is the model's); each page once. Sent with a 256×256 copy
-// (scan_feedback "add", source "page"). Only on the lab's own page — never in the site's frame, whose scan
-// window has its own types — and only with a document type model in the version.
+// (scan_feedback "add", source "page", origin "lab" with the lab's model version) and the copy's turn: the model's
+// answer (turnModel, quarter turns) and who set the turn the copy is at — "face" when the face finder set the page
+// upright, else "model" (the page as cut: its turn is only the model's guess). Only on the lab's own page — never in
+// the site's frame, whose scan window has its own types — and only with a document type model in the version.
 const KIND_WAIT = 20000, kindsDue = new Map();
 function sendKind(sel) {
   const job = kindsDue.get(sel);
   if (!job || job.sent) return;
   job.sent = true; clearTimeout(job.timer);
   for (const el of sel.parentNode ? sel.parentNode.querySelectorAll('select.kind, button.kind-ok') : []) el.disabled = true;
-  const fixed = sel.value, ex = { source: 'page', model: modelsVersion, doctypeModel: job.model, doctypeFixed: fixed, doctypeBy: 'model', pageImage: job.copy };
+  const fixed = sel.value, ex = { source: 'page', origin: 'lab', model: modelsVersion, doctypeModel: job.model, doctypeFixed: fixed, doctypeBy: 'model', pageImage: job.copy,
+    turnModel: job.turn, turnBy: job.faced ? 'face' : 'model' };
   if (fixed === job.model) ex.keep = true;
   trainPost({ action: 'add', examples: [ex] }).then(() => log('Document type sent for training: ' + DOCTYPE_NAMES[fixed] + (fixed === job.model ? ' (the model\'s, confirmed)' : ' (the model said ' + DOCTYPE_NAMES[job.model] + ')')),
     e => logErr('Document type not sent: ' + (e && e.message || e)));
@@ -682,7 +685,7 @@ async function addKind(w, im) {
     for (const [k, name] of Object.entries(DOCTYPE_NAMES)) { const o = document.createElement('option'); o.value = k; o.textContent = name + (k === a.doctype ? ' · ' + Math.round(a.conf * 100) + '%' : ''); sel.append(o); }
     sel.value = a.doctype;
     const ok = document.createElement('button'); ok.className = 'kind-ok'; ok.textContent = '✓'; ok.title = 'This type is right';
-    const job = { model: a.doctype, copy: a.square.toDataURL('image/jpeg', 0.85).split(',')[1], timer: 0, sent: false };
+    const job = { model: a.doctype, turn: a.turn, faced: +(im.dataset.turn ?? -1) >= 0, copy: a.square.toDataURL('image/jpeg', 0.85).split(',')[1], timer: 0, sent: false };
     kindsDue.set(sel, job);
     sel.onchange = () => { if (job.sent) return; clearTimeout(job.timer); job.timer = setTimeout(() => sendKind(sel), KIND_WAIT); };
     ok.onclick = () => sendKind(sel);
@@ -847,6 +850,8 @@ async function flushAttempts() {
     if (items.length && navigator.onLine !== false) {
       try {
         const j = await trainPost({ action: 'attempt', attempts: items.map(x => x.a) });
+        // in the site's frame the scan window learns the folders too: told the worker's id when it saves (src/scan/server.ts)
+        if (window.parent !== window && j.dirs) window.parent.postMessage({ type: 'scan-attempt-dirs', dirs: j.dirs }, location.origin);
         for (const [id, dir] of Object.entries(j.dirs || {})) {
           attemptDirs.set(id, dir);
           for (const pg of lateDeletes.get(id) || []) void trainPost({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {});
@@ -898,7 +903,7 @@ function keepCurrent(bump = true) {
     for (const i of imgs) {
       const w = document.createElement('div'); w.className = 'kept-page';
       const im = new Image(); im.src = i.src;
-      im.dataset.att = i.dataset.att || ''; im.dataset.pg = i.dataset.pg || '0';
+      im.dataset.att = i.dataset.att || ''; im.dataset.pg = i.dataset.pg || '0'; im.dataset.turn = i.dataset.turn ?? '-1';
       const x = document.createElement('button'); x.textContent = '✕'; x.onclick = () => { dropKind(w); attemptPageDeleted(im.dataset.att, +im.dataset.pg); w.remove(); relabel(); };
       w.append(im, x); body.append(w); addKind(w, im);
     }
@@ -941,7 +946,7 @@ async function takeShot() {
     else if (!put.el) { put.el = new Image(); put.el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(put.el); }
     put.el.src = url;
     if (!put.att) put.att = newAttempt(frame, w, h, shotWhole ? 'pdf' : isVideo ? 'camera' : 'photo');
-    put.att.edgesModel = shotWhole ? null : pts.map(p => p.slice()); put.el.dataset.att = put.att.id; put.el.dataset.pg = '0';
+    put.att.edgesModel = shotWhole ? null : pts.map(p => p.slice()); put.el.dataset.att = put.att.id; put.el.dataset.pg = '0'; put.el.dataset.turn = String(out.turn ?? -1);
     return true;
   };
   const livePts = lastRes.pts;
@@ -1340,7 +1345,7 @@ async function showPicture(url, parts, before) {
       let el;
       if (pages === 0) el = $('shotImg');
       else { el = new Image(); el.style.cssText = 'width:100%;border-radius:14px;display:block'; $('shotMore').appendChild(el); }
-      el.src = oc.toDataURL('image/jpeg', 0.9); el.dataset.att = att.id; el.dataset.pg = String(i);
+      el.src = oc.toDataURL('image/jpeg', 0.9); el.dataset.att = att.id; el.dataset.pg = String(i); el.dataset.turn = String(d.out.turn ?? -1);
       if (i > 0) att.edgesMore.push(d.pts.map(p => p.slice()));
       pages++;
     }
