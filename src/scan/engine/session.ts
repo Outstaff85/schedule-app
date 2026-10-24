@@ -79,6 +79,11 @@ export class ScanSession {
   /** Auto takes the shot once the frame is still for a second (the lab's Auto capture, on by default). */
   auto = true;
   private shotId = 0;
+  /** Bumped by sleep() / stop(): a camera start still waiting (the model loading, the permission asked) finds
+   *  it changed and turns nothing on. */
+  private camGen = 0;
+  /** A shot is in work (from its snap until it settles, or a wake / sleep): a second snap does nothing. */
+  private shotInWork = false;
   private captureMs: number | null = null;
   private listeners: { [K in keyof SessionEvents]: Set<SessionEvents[K]> } = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set() };
 
@@ -130,15 +135,19 @@ export class ScanSession {
 
   /** The camera shown in video, once the model is ready; the live frame and its follow start. */
   async startCamera(video: VideoLike): Promise<void> {
+    const gen = this.camGen;
     try {
       if (this.readers) void this.readers.load();
       await this.engines.ensureSession();
-      await this.camera.start(video);
+      if (gen !== this.camGen) return;  // put away while the model loaded: the camera is not turned on
+      const started = await this.camera.start(video);
+      if (!started || gen !== this.camGen) return;  // put away while the camera started (camera.stop gave it back)
       this.emitFigures();
       this.live.show(video);
       this.emit('status', { key: 'finding' });
       this.live.start();
     } catch (e) {
+      if (gen !== this.camGen) return;  // put away meanwhile: no error to show
       this.log.err('Camera / model error: ' + ((e as Error)?.message || e));
       this.emit('status', { key: 'camera_failed' });
     }
@@ -149,8 +158,11 @@ export class ScanSession {
     if (this.auto && autoShot(res)) void this.snap();
   }
 
-  /** Take the shot (Capture, or Auto): the number of documents it held, 0 when nothing was taken. */
+  /** Take the shot (Capture, or Auto): the number of documents it held, 0 when nothing was taken — and 0 with
+   *  nothing done while a shot is still in work (a shutter tap just after Auto would cut the same frame again). */
   async snap(): Promise<number> {
+    if (this.shotInWork) return 0;
+    this.shotInWork = true;
     let id = -1;
     try {
       return await takeShot({
@@ -175,6 +187,9 @@ export class ScanSession {
       // the camera goes on (not when it was put away, or a newer shot took over)
       if (this.camera.on && this.live.video && (id < 0 || id === this.shotId)) { this.live.clearFrame(); this.live.start(); }
       return 0;
+    } finally {
+      // settled: a snap may take a shot again (not when a wake / sleep already freed it for a newer one)
+      if (id < 0 || id === this.shotId) this.shotInWork = false;
     }
   }
 
@@ -186,6 +201,7 @@ export class ScanSession {
    *  camera put away by sleep(), it starts again on the video it was shown in. */
   wake(video?: VideoLike): void {
     this.shotId++;
+    this.shotInWork = false;
     this.live.clearFrame();
     const v = video || this.camera.video;
     if (this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
@@ -193,9 +209,11 @@ export class ScanSession {
   }
 
   /** The scanner put away with its models kept (the scan window closed; scan/embed.js's scan-sleep): the
-   *  camera stops, the loops end, a shot in work is dropped. */
+   *  camera stops (one still starting is not turned on), the loops end, a shot in work is dropped. */
   sleep(): void {
     this.shotId++;
+    this.shotInWork = false;
+    this.camGen++;
     this.live.running = false;
     this.camera.stop();
     this.live.hide();

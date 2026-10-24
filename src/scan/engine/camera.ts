@@ -28,19 +28,46 @@ const browserGetUserMedia: GetUserMedia = c => navigator.mediaDevices.getUserMed
 export class Camera {
   stream: StreamLike | null = null;
   video: VideoLike | null = null;
+  /** Bumped by stop(): a start still waiting for the camera finds it changed and gives its stream back. */
+  private gen = 0;
+  /** The camera asked for and not answered yet: starts at the same time share it (one stream). */
+  private starting: Promise<StreamLike> | null = null;
 
   constructor(private readonly getUserMedia: GetUserMedia = browserGetUserMedia) {}
 
-  /** The camera started (once; asked again only after stop()) and shown in video, playing. */
-  async start(video: VideoLike): Promise<void> {
-    if (!this.stream) this.stream = await this.getUserMedia(CAMERA_CONSTRAINTS);
+  /** The camera started (once; asked again only after stop()) and shown in video, playing. False when stop()
+   *  ran while it started: then nothing stays on (a stream that came after the stop has its tracks stopped). */
+  async start(video: VideoLike): Promise<boolean> {
+    const gen = this.gen;
+    if (!this.stream) {
+      let p = this.starting;
+      if (!p) {
+        const asked: Promise<StreamLike> = this.getUserMedia(CAMERA_CONSTRAINTS).then(s => {
+          if (this.starting === asked) this.starting = null;
+          if (gen !== this.gen) { s.getTracks().forEach(t => t.stop()); return s; }
+          this.stream = s;
+          return s;
+        }, e => { if (this.starting === asked) this.starting = null; throw e; });
+        p = this.starting = asked;
+      }
+      await p;
+    }
+    if (gen !== this.gen || !this.stream) return false;
     this.video = video;
     video.srcObject = this.stream as unknown as MediaProvider;
-    await video.play();
+    try { await video.play(); }
+    catch (e) {
+      if (gen !== this.gen) return false;  // stopped while it began to play
+      this.stop();  // it cannot play: the camera is not left on
+      throw e;
+    }
+    return gen === this.gen;
   }
 
-  /** The camera stopped: its tracks end, the video shows nothing. */
+  /** The camera stopped: its tracks end, the video shows nothing; a start still waiting gives its stream back. */
   stop(): void {
+    this.gen++;
+    this.starting = null;
     if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
     if (this.video) this.video.srcObject = null;
   }

@@ -9,6 +9,9 @@
 //  - the accurate model's corners replace the live page (the same page id) only when they moved over 0.002;
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
 //  - the status keys come out in order (finding, hold with the seconds, found with the count, then the shot's);
+//  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
+//  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
+//  - the refined page is read again on its own cut; a page's pixels are kept once;
 //  - the camera asks for 30 frames a second and nothing else about the rate.
 //
 //   node tests/scan/session.test.mjs
@@ -140,13 +143,14 @@ function fakeVideo() {
   return v;
 }
 /** A session on the fakes; follow: the scripted follow's step (null: it cannot tell). */
-function setup(script, { follow = () => null, auto = true, delay = null, size = 1 } = {}) {
-  const clock = fakeClock(), engine = fakeEngine(script, clock, delay), engines = fakeEngines(engine), asked = [];
-  const follower = { resets: 0, reset() { this.resets++; }, since: (t0, pts) => pts, step: async (v, q) => follow(q, clock.t) };
+function setup(script, { follow = () => null, auto = true, delay = null, size = 1, readers = null, getUserMedia = null, ensureSession = null } = {}) {
+  const clock = fakeClock(), engine = fakeEngine(script, clock, delay), engines = fakeEngines(engine), asked = [], steps = [];
+  if (ensureSession) engines.ensureSession = ensureSession;
+  const follower = { resets: 0, reset() { this.resets++; }, since: (t0, pts) => pts, step: async (v, q) => { steps.push(v); return follow(q, clock.t); } };
   let ids = 0;
-  const s = new Sess.ScanSession(Surf.siteSurface(), { engines, readers: null, env: {
+  const s = new Sess.ScanSession(Surf.siteSurface(), { engines, readers, env: {
     now: clock.now, raf: clock.raf, setTimeout: clock.setTimeout, bitmap: null, follower, newId: () => 'att' + (++ids),
-    getUserMedia: async c => { asked.push(c); return { getTracks: () => [{ stop() {} }] }; },
+    getUserMedia: getUserMedia ? c => { asked.push(c); return getUserMedia(c); } : async c => { asked.push(c); return { getTracks: () => [{ stop() {} }] }; },
   } });
   s.setAuto(auto);
   engine.size = size;
@@ -155,7 +159,7 @@ function setup(script, { follow = () => null, auto = true, delay = null, size = 
   s.on('status', st => log.status.push({ t: clock.t, ...st }));
   s.on('page', p => log.pages.push({ t: clock.t, ...p }));
   s.on('figures', f => log.figures.push(f));
-  return { s, clock, engine, engines, asked, log, video: fakeVideo() };
+  return { s, clock, engine, engines, asked, steps, log, video: fakeVideo() };
 }
 const steadyLive = q => (call) => call.which === 'live' ? { pts: q, conf: 0.9 } : NONE;
 const firstAnswer = log => log.status.find(x => x.key === 'hold').t;
@@ -229,24 +233,33 @@ await run('a weak answer is held for 600 ms, then the frame goes (and a held ans
 for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
   await run(`the refined corners ${replaced ? 'replace' : 'do not replace'} the live page when they moved ${moved}`, async () => {
     const exact = shift(Q, moved);
-    const { s, clock, log, video, engine } = setup((call) => call.which === 'live' && !s.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !engine.capped ? (engine.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false, delay: call => call.which === 'live' ? 30 : 0 });
+    // readers that tell which cut they read
+    const readers = { info: { version: 't' }, load: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
+    const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false, readers, delay: call => call.which === 'live' ? 30 : 0 });
     await s.startCamera(video);
     await clock.runFor(600);
     await clock.runFor(200, () => engine.pendingLive > 0);
     assert.ok(engine.pendingLive > 0, 'a live frame is in work when the shot is taken');
-    s.shooting = true;
+    engine.shooting = true;
     let done = null; s.snap().then(n => { done = n; });
     await clock.runFor(2000, () => done !== null);
     assert.equal(done, 1, 'one document');
+    assert.ok(log.pages.every(p => !('data' in p.page)), 'the page pixels are kept once (on its canvas)');
+    assert.equal(log.pages[0].page.width, 20); assert.equal(log.pages[0].page.turn, 0);
     const ids = new Set(log.pages.map(p => p.id));
     assert.equal(ids.size, 1, 'one page id');
     const refined = log.pages.filter(p => p.refined);
     if (replaced) {
-      assert.equal(refined.length, 1, 'cut again once');
-      assert.deepEqual(refined[0].quad, exact);
-      assert.deepEqual(refined[0].record.edgesModel, exact);
-      assert.ok(refined[0].readouts, 'the readouts carried to the refined cut');
+      assert.equal(engine.warps.filter(w => w.upright).length, 2, 'cut again once');
+      assert.equal(refined.length, 2, 'the refined cut, then its readouts');
+      assert.equal(refined[0].readouts, null, "the refined cut does not carry the live cut's readouts");
+      assert.ok(refined.every(p => p.canvas === refined[0].canvas), 'one refined canvas');
+      assert.deepEqual(refined[1].quad, exact);
+      assert.deepEqual(refined[1].record.edgesModel, exact);
+      assert.equal(refined[1].readouts.doctype.read, refined[1].canvas, 'read again on the refined cut');
+      assert.notEqual(log.pages[1].readouts.doctype.read, refined[1].canvas, 'the live cut was read on its own canvas');
     } else {
+      assert.equal(log.pages[log.pages.length - 1].readouts.doctype.read, log.pages[0].canvas, 'the live cut read');
       assert.equal(refined.length, 0, 'not cut again');
       near(log.pages[log.pages.length - 1].quad, Q, 'the live cut stays');
       near(log.pages[0].record.edgesModel, Q, 'the model corners are the live ones');
@@ -361,6 +374,79 @@ await run('sleep stops the camera and drops the shot in work; wake starts the fr
   assert.ok(log.frames[log.frames.length - 1].ok, 'green again');
   s.stop();
   assert.ok(s.engines.stopped, 'stop releases the models');
+});
+
+await run('put away while the model loads or the camera starts: the camera is not left on', async () => {
+  // the model still loading when the window closes
+  let loaded; const a = setup(steadyLive(Q), { auto: false, ensureSession: () => new Promise(r => { loaded = r; }) });
+  const p = a.s.startCamera(a.video);
+  await flush(); a.s.sleep(); loaded(); await p; await a.clock.runFor(200);
+  assert.equal(a.asked.length, 0, 'the camera was never asked for');
+  assert.equal(a.s.camera.on, false); assert.equal(a.s.live.running, false);
+  assert.ok(!a.log.status.some(x => x.key === 'finding' || x.key === 'camera_failed'), 'no status after the close');
+  // the permission prompt open when the window closes
+  let answer; const stopped = [];
+  const b = setup(steadyLive(Q), { auto: false, getUserMedia: () => new Promise(r => { answer = r; }) });
+  const q = b.s.startCamera(b.video);
+  await flush(); assert.equal(b.asked.length, 1, 'asked');
+  b.s.sleep(); answer({ getTracks: () => [{ stop() { stopped.push(1); } }] }); await q; await b.clock.runFor(300);
+  assert.equal(stopped.length, 1, 'the stream that came after the close was stopped');
+  assert.equal(b.s.camera.on, false); assert.equal(b.s.camera.stream, null);
+  assert.equal(b.s.live.running, false); assert.equal(b.engine.calls.length, 0, 'no frames sent');
+  assert.equal(b.video.played, 0, 'never played');
+  // two starts at once share one stream; stop turns it off
+  let give; const c = setup(steadyLive(Q), { auto: false, getUserMedia: () => new Promise(r => { give = r; }) });
+  const c1 = c.s.startCamera(c.video), c2 = c.s.startCamera(c.video);
+  await flush(); assert.equal(c.asked.length, 1, 'one getUserMedia for two starts');
+  const cs = []; give({ getTracks: () => [{ stop() { cs.push(1); } }] }); await Promise.all([c1, c2]);
+  assert.equal(c.s.camera.on, true);
+  c.s.stop(); assert.equal(cs.length, 1, 'stop turns the one stream off');
+  // a video that cannot play: the camera is turned off again
+  const ds = [];
+  const d = setup(steadyLive(Q), { auto: false, getUserMedia: async () => ({ getTracks: () => [{ stop() { ds.push(1); } }] }) });
+  d.video.play = async () => { throw new Error('NotAllowedError'); };
+  await d.s.startCamera(d.video);
+  assert.equal(ds.length, 1, 'stopped when it cannot play'); assert.equal(d.s.camera.on, false);
+  assert.equal(d.log.status[d.log.status.length - 1].key, 'camera_failed');
+});
+
+await run('the follow starts again after sleep when the scanner is shown on a new video', async () => {
+  const withRvfc = v => { v.cbs = []; v.requestVideoFrameCallback = fn => { v.cbs.push(fn); return v.cbs.length; }; return v; };
+  const { s, clock, steps, video } = setup(steadyLive(Q), { auto: false, follow: q => ({ pts: q, apply: p => p, moved: 0, points: 16 }) });
+  const A = withRvfc(video), B = withRvfc(fakeVideo());
+  const pump = async (v, n) => { for (let i = 0; i < n; i++) { const cbs = v.cbs; v.cbs = []; for (const fn of cbs) fn(); await clock.tick(); } };
+  await s.startCamera(A);
+  await clock.runFor(400); await pump(A, 5);
+  assert.ok(steps.some(v => v === A), 'it follows on the first video');
+  s.sleep();  // A's pending camera-frame callback never fires again (no source)
+  s.wake(B); await flush(); await clock.runFor(400); await pump(B, 5);
+  assert.ok(steps.some(v => v === B), 'it follows on the new video');
+  // a late callback of the old video does not start a second chain
+  const before = steps.length; for (const fn of A.cbs) fn(); A.cbs = []; await flush();
+  assert.equal(steps.slice(before).filter(v => v === A).length, 0, "the old video's step is dropped");
+  s.stop();
+});
+
+await run('a shutter tap while a shot is in work does nothing (no second cut of the same frame)', async () => {
+  const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: Q, conf: 0.9 }) : NONE, { auto: false });
+  await s.startCamera(video);
+  await clock.runFor(600);
+  engine.shooting = true;
+  let first = null, second = null;
+  s.snap().then(n => { first = n; }); await flush(2);
+  s.snap().then(n => { second = n; });
+  await clock.runFor(2000, () => first !== null && second !== null);
+  assert.equal(second, 0, 'the second tap took nothing'); assert.equal(first, 1);
+  assert.equal(new Set(log.pages.map(p => p.record.attempt)).size, 1, 'one attempt');
+  assert.equal(engine.warps.filter(w => w.upright).length, 1, 'cut once');
+  // settled: the shutter works again (after a wake)
+  engine.shooting = false; engine.capped = false;
+  s.wake(); await clock.runFor(600);
+  engine.shooting = true;
+  let third = null; s.snap().then(n => { third = n; });
+  await clock.runFor(2000, () => third !== null);
+  assert.equal(third, 1, 'a new shot once the first settled');
+  s.stop();
 });
 
 await run('the camera asks for 30 frames a second and nothing else about the rate', async () => {

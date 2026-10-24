@@ -120,6 +120,9 @@ export class Live {
   private readonly followTimes: number[] = [];
   private readonly followMs: number[] = [];
   private following = false;
+  /** Bumped by startFollow() and hide(): a follow step of an earlier start (its camera-frame callback still
+   *  pending on a video put away) ends instead of running beside the new one. */
+  private followGen = 0;
   /** Bumped by start(): a loop of an earlier start ends instead of running beside the new one. */
   private loopGen = 0;
   private animating = false;
@@ -137,7 +140,11 @@ export class Live {
     if (!this.animating) { this.animating = true; this.clock.raf(() => this.animate()); }
   }
   /** The video put away (the scanner closed): no frame, the loops end. */
-  hide(): void { this.video = null; this.running = false; this.target = this.shown = null; this.hooks.frame(null, false); }
+  hide(): void {
+    this.video = null; this.running = false; this.target = this.shown = null;
+    this.following = false; this.followGen++; this.follower.reset();
+    this.hooks.frame(null, false);
+  }
 
   /** The live frame and its follow start (again). */
   start(): void { this.running = true; this.loop(++this.loopGen); this.startFollow(); }
@@ -205,14 +212,15 @@ export class Live {
   }
 
   /** On every camera frame the frame follows the document between the model's answers. */
-  private followLoop(): void {
+  private followLoop(gen: number): void {
+    if (gen !== this.followGen) return;  // a newer follow runs (or the video was put away)
     const v = this.video;
     if (!this.running || !v) { this.following = false; this.follower.reset(); return; }
-    const next = (): void => { if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(() => this.followLoop()); else this.clock.raf(() => this.followLoop()); };
+    const next = (): void => { if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(() => this.followLoop(gen)); else this.clock.raf(() => this.followLoop(gen)); };
     if (!this.follow || !this.target) { this.follower.reset(); next(); return; }
     const t = this.clock.now();
     this.follower.step(v, this.target.pts).then(r => {
-      if (r && this.target && this.running) {
+      if (r && this.target && this.running && gen === this.followGen) {
         this.target = { ...this.target, pts: r.pts };
         if (this.shown) this.shown = r.apply(this.shown);
         if (this.lastRes && !this.lastRes.pts.some(p => !p)) this.lastRes = { ...this.lastRes, pts: r.apply(this.lastRes.pts as Quad) };
@@ -226,7 +234,7 @@ export class Live {
       }
     }).catch(e => this.hooks.log.log('Follow: ' + ((e as Error)?.message || e))).finally(next);
   }
-  startFollow(): void { if (!this.following) { this.following = true; this.follower.reset(); this.followLoop(); } }
+  startFollow(): void { if (!this.following) { this.following = true; this.follower.reset(); this.followLoop(++this.followGen); } }
 
   /** Up to engine.size frames are worked on at once, sent evenly spaced. */
   private loop(gen: number): void {

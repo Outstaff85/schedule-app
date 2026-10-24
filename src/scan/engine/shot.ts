@@ -3,7 +3,7 @@
 //  - the frame is frozen and cut at once by the live frame's corners (the page is out in a few ms), set upright
 //    by the face; the document type, the passport zone and the Hebrew fields are read on it;
 //  - once the live frames still in work are done, the accurate model refines the corners; when they moved over
-//    0.002 the page is cut again and replaces the first under the same page id;
+//    0.002 the page is cut again and replaces the first under the same page id, and is read again on that cut;
 //  - more documents on the same photo, up to 4 in all (findNext): every one found painted over in the colour of
 //    the photo's border, looked for by the accurate model then the light one, then the same with a 10 % margin
 //    of that colour around the photo (a document cut off by the photo's edge lies whole inside), then in the two
@@ -25,12 +25,18 @@ const ctx = (c: OffscreenCanvas, read = false): Ctx2D => c.getContext('2d', read
 const copy = (q: Quad): Quad => q.map(p => p.slice() as Pt);
 const errText = (e: unknown): string => String((e as Error)?.message || e);
 
-/** A warped picture on a canvas (the lab's toCanvas). */
+/** A warped picture on a canvas (the lab's toCanvas). Its pixels are taken as they are, not copied: the model's
+ *  thread handed the buffer over, nothing else holds it. */
 export function toCanvas(out: Rgba): OffscreenCanvas {
   const c = mkCanvas(out.width, out.height);
-  ctx(c).putImageData(new ImageData(new Uint8ClampedArray(out.data), out.width, out.height), 0, 0);
+  const d = out.data.buffer instanceof ArrayBuffer ? out.data as Uint8ClampedArray<ArrayBuffer> : new Uint8ClampedArray(out.data);
+  ctx(c).putImageData(new ImageData(d, out.width, out.height), 0, 0);
   return c;
 }
+
+/** A cut page's size and turn — its pixels live once, on its canvas (as the lab kept only the canvas). */
+export type PageInfo = Omit<Upright, 'data'>;
+const info = (out: Upright): PageInfo => ({ width: out.width, height: out.height, turn: out.turn, ...(out.turnError ? { turnError: out.turnError } : {}) });
 
 /** The readers' answers on a page: the document type (null with no model), the passport zone (null with no
  *  reader; found false when the page has none), the Hebrew fields of a card (null with no reader or when the
@@ -60,15 +66,16 @@ export interface ShotRecord {
 }
 
 /** A cut page: its id (the same when it is cut again — refined), its shot and page number on it (0 the first
- *  document, then the others in the order found), the corners on the photo, the page upright (with the turn
- *  the face gave: -1 no face, -2 the face finder failed), its readouts once read, and whether it is the
- *  refined cut. */
+ *  document, then the others in the order found), the corners on the photo, the page upright — its size and
+ *  turn (the turn the face gave: -1 no face, -2 the face finder failed), its pixels on canvas —, its readouts
+ *  once read (always read on this very cut: a refined page comes without them, then again once they are
+ *  read on it), and whether it is the refined cut. */
 export interface ShotPage {
   id: string;
   record: ShotRecord;
   pg: number;
   quad: Quad;
-  page: Upright;
+  page: PageInfo;
   canvas: OffscreenCanvas;
   turn: number;
   readouts: Readouts | null;
@@ -127,13 +134,13 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   live.running = false;
   const id = c.begin(), t0 = c.now(), { frame, pix, w, h } = freeze(v);
   const record: ShotRecord = { shot: id, attempt: c.newId(), input: 'camera', frame, w, h, edgesModel: null, edgesMore: [], pages: 1, way: c.way(), model: c.modelVersion() };
-  let readouts: Readouts | null = null, first: ShotPage | null = null;
+  let first: ShotPage | null = null;
   const put = async (pts: Quad, refined: boolean): Promise<boolean> => {
     const out = await engine.warp(pix.slice(), w, h, pts, true);
     if (out.turnError) c.log.err('Face finder: ' + out.turnError);
     if (id !== c.current()) return false;
     record.edgesModel = copy(pts);
-    first = { id: record.attempt + ':0', record, pg: 0, quad: copy(pts), page: out, canvas: toCanvas(out), turn: out.turn, readouts, refined };
+    first = { id: record.attempt + ':0', record, pg: 0, quad: copy(pts), page: info(out), canvas: toCanvas(out), turn: out.turn, readouts: null, refined };
     c.page(first);
     return true;
   };
@@ -142,7 +149,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   const ms = Math.round(c.now() - t0); c.captured(ms); c.status({ key: 'captured', ms });
   const p0 = first as ShotPage | null;
   if (!p0) return 0;
-  readouts = await readPage(c.readers, p0.canvas, c.now);
+  const readouts = await readPage(c.readers, p0.canvas, c.now);
   if (id !== c.current()) return 0;
   first = { ...p0, readouts }; c.page(first);
   if (!engine.hasCap()) { c.status({ key: 'found', count: 1 }); return 1; }
@@ -155,7 +162,15 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   if (confirmed) {
     const ex = exact.pts as Quad;
     moved = Math.max(...ex.map((p, k) => Math.hypot(p[0] - livePts[k][0], p[1] - livePts[k][1])));
-    if (moved > 0.002 && !(await put(ex, true))) return 0;
+    if (moved > 0.002) {
+      if (!(await put(ex, true))) return 0;
+      // the readouts read again on the refined cut (its edges, where the zone and the fields lie, moved)
+      const p1 = first as ShotPage | null;
+      if (!p1) return 0;
+      const r1 = await readPage(c.readers, p1.canvas, c.now);
+      if (id !== c.current()) return 0;
+      first = { ...p1, readouts: r1 }; c.page(first);
+    }
     firstQ = ex; live.target = { pts: ex, ok: true }; live.shown = copy(ex);
   }
   c.log.log('Shown in ' + ms + ' ms; ' + (!confirmed ? 'the accurate model did not confirm the corners' : moved > 0.002 ? 'corners refined by the accurate model (moved ' + (moved * 100).toFixed(1) + '%)' : 'the accurate model agreed') + ' in ' + Math.round(c.now() - t0) + ' ms');
@@ -167,7 +182,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
     const out = await engine.warp(pix.slice(), w, h, q, true);
     if (id !== c.current()) return false;
     record.edgesMore.push(copy(q)); record.pages = found.length;
-    const pg = found.length - 1, p: ShotPage = { id: record.attempt + ':' + pg, record, pg, quad: copy(q), page: out, canvas: toCanvas(out), turn: out.turn, readouts: null, refined: false };
+    const pg = found.length - 1, p: ShotPage = { id: record.attempt + ':' + pg, record, pg, quad: copy(q), page: info(out), canvas: toCanvas(out), turn: out.turn, readouts: null, refined: false };
     more.push(p); c.page(p);
     c.status({ key: 'looking_more', count: found.length });
     return true;
