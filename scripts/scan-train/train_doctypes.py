@@ -22,10 +22,19 @@ Writes ~/.scan-train/new/doctype-lite.onnx (and deletes report_doctypes.json: ex
 A larger model for a server (common.DOCTYPE_SERVER, doctype.onnx) is trained only with --only server; no
 code runs it and publish.py never publishes it.
 
+The data come as one list (gen/mix.py; docs/scan-training.md → "Real data and its weight"): --from-mix DIR reads a mix
+made by python -m gen mix --model doctype (refused when made under another heldout.json); the old flags (doctypes.json
+and --synth N) build the same list here. Each real page is repeated --real-repeat K times (capped at 30 % of an epoch),
+a page whose type no one saw (labelBy self) is left out for now, each page's loss is weighed by its weight, the epoch
+kept is the one with the lowest loss on the select set (the real pages of split "select"; never the exam) when it has
+any, and --seed (default: a fresh one, printed and saved in the checkpoint; --resume takes the stopped run's) seeds the
+run.
+
   python train_doctypes.py                                    # the phone's model, the default size
   python train_doctypes.py --phone tf_efficientnet_lite1     # the next size up for the phone
   python train_doctypes.py --only server                      # only the server's (Lite2), on request
   python train_doctypes.py --synth 6000                        # + the made-up pages (synth_pages.py)
+  python train_doctypes.py --from-mix ~/.scan-train/models/doctype   # a mix (python -m gen mix --model doctype)
 """
 import argparse
 import pathlib
@@ -41,11 +50,13 @@ from torch import nn
 
 import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SERVER, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
+from gen import mix as gmix
 from gen import phone
 from gen import manifest
 from gen.common import trains
-from gen.manifest import data_fingerprint, run_fingerprint
+from gen.manifest import run_fingerprint
 from gen.qa import require_qa
+from gen.real import newest_attempt_day, stale_warning
 from gen.sources import assert_clean
 from home import drop_report, gentle
 
@@ -100,13 +111,17 @@ def turn_known(e):
     return e.get("turnBy") in KNOWN_BY or e.get("turnFixed") is not None
 
 
-def load(examples, resize="phone"):
-    """→ (pictures, types, known, turns): known False for a page whose turn is not known (no turn answer); turns: the
-    clockwise quarter turns each stored page still needs (a phone-cut crop's turn_k; 0 for the rest). Each picture's
-    square is made once, here (square), its kernel draws from a stream of their own."""
-    X, Y, U, T = [], [], [], []
+def load(examples, resize="phone", with_weights=False):
+    """→ (pictures, types, known, turns) — and, with_weights, (…, weights, repeats): known False for a page whose turn is
+    not known (no turn answer); turns: the clockwise quarter turns each stored page still needs (a phone-cut crop's
+    turn_k; 0 for the rest); a page of weight 0 is left out. Each picture's square is made once, here (square), its
+    kernel draws from a stream of their own."""
+    X, Y, U, T, W, R = [], [], [], [], [], []
     rng = random.Random("train_doctypes.py:resize")
     for e in examples:
+        w = float(e.get("weight", 1.0))
+        if w <= 0:
+            continue
         img = cv2.imread(e["file"])
         if img is None:
             continue
@@ -114,7 +129,9 @@ def load(examples, resize="phone"):
         Y.append(DOCTYPES.index(e["doctype"]))
         U.append(turn_known(e))
         T.append(int(e.get("turn_k") or 0))
-    return X, Y, U, T
+        W.append(w)
+        R.append(max(1, int(e.get("repeat", 1))))
+    return (X, Y, U, T, W, R) if with_weights else (X, Y, U, T)
 
 
 def turned(img, k):
@@ -128,13 +145,22 @@ def turn_answer(k, known, needs=0):
     return (needs - k) % 4 if known else TURN_IGNORE
 
 
-def turn_loss(logits, target, known):
+def turn_loss(logits, target, known, weight=None):
     """The turn head's loss: cross-entropy per sample (reduction 'none'), averaged over the samples whose turn is known
-    (known: a bool tensor) — 0 when none is (a batch of type-only copies adds no turn loss, never a NaN)."""
+    (known: a bool tensor; weight: each sample's weight, a weighted mean) — 0 when none is (a batch of type-only copies
+    adds no turn loss, never a NaN)."""
     ce = nn.functional.cross_entropy(logits, target.clamp(min=0), reduction="none")
-    k = known.to(ce.dtype)
+    k = known.to(ce.dtype) * (weight.to(ce.dtype) if weight is not None else 1.0)
     n = k.sum()
     return (ce * k).sum() / n if bool(n > 0) else ce.sum() * 0.0
+
+
+def kind_loss(logits, target, class_weight, weight=None):
+    """The type head's loss: cross-entropy with the class weights, each sample also weighed by its own weight (the
+    weighted mean, as nn.CrossEntropyLoss(weight=…) averages: over the weights of the samples' classes)."""
+    ce = nn.functional.cross_entropy(logits, target, weight=class_weight, reduction="none")
+    w = class_weight[target] * (weight if weight is not None else 1.0)
+    return ce.mul(weight if weight is not None else 1.0).sum() / w.sum().clamp_min(1e-8)
 
 
 def batch(X, Y, idx, augment, U=None, T=None):
@@ -153,36 +179,65 @@ def batch(X, Y, idx, augment, U=None, T=None):
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(ks), torch.tensor(ts)
 
 
-def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None, data=None, T=None):
-    info = {"model": name, "arch": arch, "data": data}
+def select_loss(net, sel, cw, dev):
+    """The mean loss on the select set (pages shown upright as stored: turn 0; no augmentation, no learning)."""
+    Xs, Ys, Us, Ts = sel
+    net.eval()
+    total = 0.0
+    with torch.no_grad():
+        for k in range(0, len(Xs), 32):
+            idx = list(range(k, min(k + 32, len(Xs))))
+            xb = torch.tensor(np.stack([Xs[i].astype(np.float32).transpose(2, 0, 1) / 255.0 for i in idx]), dtype=torch.float32)
+            kb = torch.tensor([Ys[i] for i in idx], device=dev)
+            tb = torch.tensor([turn_answer(0, Us[i], Ts[i]) for i in idx], device=dev)
+            lk, lt = net.logits(xb.to(dev))
+            total += float(kind_loss(lk, kb, cw) + turn_loss(lt, tb, tb != TURN_IGNORE)) * len(idx)
+    return total / max(1, len(Xs))
+
+
+def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None, data=None, T=None, W=None, R=None,
+              select=None, seed=None):
+    """One model trained on the pages: each page's index R[i] times an epoch, its loss weighed by W[i]; select (the
+    select set's (X, Y, U, T)): the epoch with the lowest loss on it is the one exported (the last one without)."""
+    info = {"model": name, "arch": arch, "data": data, "seed": seed}
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
     net = DoctypeNet(arch, pretrained and ck is None).to(dev)   # saved weights need no ImageNet download
     counts = Counter(Y)
     weights = torch.tensor([1 / np.sqrt(max(1, counts.get(i, 0))) for i in range(len(DOCTYPES))], dtype=torch.float32)
-    ce_kind = nn.CrossEntropyLoss(weight=(weights / weights.mean()).to(dev))
+    cw = (weights / weights.mean()).to(dev)
     opt = torch.optim.AdamW(net.parameters(), 3e-4, weight_decay=1e-4)
-    steps = epochs * ((len(X) + 31) // 32)
+    order = [i for i in range(len(X)) for _ in range(R[i] if R else 1)]
+    steps = epochs * ((len(order) + 31) // 32)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-4, total_steps=max(1, steps), pct_start=0.15)
     checkpoint.check_steps(ck, args, max(1, steps))
-    first, _ = checkpoint.restore(ck, args, net, opt, sched)
-    order = list(range(len(X)))
+    first, best = checkpoint.restore(ck, args, net, opt, sched)
     for ep in range(first, epochs):
         try:
             random.shuffle(order)
             net.train()
             total = 0.0
             for k in range(0, len(order), 32):
-                xb, kb, tb = batch(X, Y, order[k:k + 32], True, U, T)
+                idx = order[k:k + 32]
+                xb, kb, tb = batch(X, Y, idx, True, U, T)
+                wb = torch.tensor([W[i] for i in idx], dtype=torch.float32, device=dev) if W else None
                 lk, lt = net.logits(xb.to(dev))
                 tb = tb.to(dev)
-                loss = ce_kind(lk, kb.to(dev)) + turn_loss(lt, tb, tb != TURN_IGNORE)   # the turn over the known samples only
+                loss = kind_loss(lk, kb.to(dev), cw, wb) + turn_loss(lt, tb, tb != TURN_IGNORE, wb)   # the turn over the known samples only
                 opt.zero_grad(); loss.backward(); opt.step(); sched.step()
                 total += float(loss.detach()) * len(xb)
         except KeyboardInterrupt:
             checkpoint.stopped(name, ep)
         print(f"  {name} ({arch}) epoch {ep + 1}/{epochs}: loss {total / len(order):.4f}")
-        checkpoint.save(name, info, net, opt, sched, ep + 1, epochs)
+        if select and select[0]:
+            score = select_loss(net, select, cw, dev)
+            print(f"  {name} epoch {ep + 1}: select loss {score:.4f} ({len(select[0])} real pages of split select)")
+            if best is None or score < best["score"]:
+                best = {"net": {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}, "score": score, "epoch": ep + 1}
+        checkpoint.save(name, info, net, opt, sched, ep + 1, epochs, best)
+    if best:
+        net.load_state_dict(best["net"])
+        print(f"  {name}: the select set picked epoch {best['epoch']} (loss {best['score']:.4f})")
     dst = WORK / "new" / name
     dst.parent.mkdir(parents=True, exist_ok=True)
     if name in DOCTYPE_MODELS:
@@ -224,6 +279,14 @@ def gather(a):
     return ex
 
 
+def as_mix(ex, real_repeat):
+    """The old flags' entries (gather) as one list (gen.mix.build): the real page copies (doctypes.json — a page whose
+    type no one saw, labelBy self, left out for now) repeated, the made-up pages once each → (rows, meta)."""
+    real = [e for e in gmix.real_from_examples([e for e in ex if not e.get("synthPage")]) if e.get("labelBy") != "self"]
+    synth = [{**e, "source": "synth", "weight": float(e.get("weight", 1.0))} for e in ex if e.get("synthPage")]
+    return gmix.build("doctype", real, (), synth, (), real_repeat)
+
+
 def main():
     gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
@@ -237,18 +300,39 @@ def main():
                     "~/.scan-train/synth/pages; a run of the phone's own cuts — python -m gen build --model doctype,… — too)")
     ap.add_argument("--resize", choices=("phone", "area"), default="phone",
                     help="how a page is shrunk to 256: as the phone draws it (gen/phone.py, the default) or INTER_AREA")
+    ap.add_argument("--from-mix", help="a mix's folder (python -m gen mix --model doctype --out DIR): its train.jsonl and select.jsonl")
+    ap.add_argument("--real-repeat", type=int, default=gmix.DEFAULT_REPEAT,
+                    help="each real page repeated K times, capped so the real ones are at most 30%% of an epoch (the old flags)")
+    ap.add_argument("--seed", type=int, default=None, help="the run's seed (default: a fresh one, printed and saved; --resume: the stopped run's)")
     checkpoint.add_args(ap)
     a = ap.parse_args()
-    random.seed(7); torch.manual_seed(7)
-    ex = gather(a)
-    data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(a.synth_run) if a.synth else None, synthCount=a.synth,
-                            resize=phone.profile_id() if a.resize == "phone" else "area")
-    X, Y, U, T = load(ex, a.resize)
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"{len(X)} pages ({len(U) - sum(U)} with no known turn: the type only), on {dev}")
     jobs = {"doctype-lite.onnx": a.phone} if a.only == "phone" else {"doctype.onnx": a.server}
+    seed = checkpoint.seed_of(list(jobs), a)
+    random.seed(seed); torch.manual_seed(seed)
+    print(f"seed {seed} (python train_doctypes.py ... --seed {seed} repeats this run)")
+    if a.from_mix:
+        ex, select, meta = gmix.load(a.from_mix, "doctype")
+        if meta.get("synthRun"):
+            require_qa(meta["synthRun"], "the mix's made-up pages", work=WORK)   # drawn through gen build: its QA passed
+        pulled = pathlib.Path(meta.get("realDir") or WORK / "real") / "index.jsonl"
+    else:
+        ex, meta = as_mix(gather(a), a.real_repeat)
+        meta.update({"synth": run_fingerprint(a.synth_run) if a.synth else None, "seed": None, "realIndex": None})
+        select, pulled = [], WORK / "doctypes.json"
+    stale = stale_warning(pulled, newest_attempt_day())
+    if stale:
+        print(stale)
+    if not ex:
+        raise SystemExit("no pages to train on — run pull_doctypes.py (or python -m gen real and gen mix) first")
+    print("  " + gmix.summary_line(meta))
+    assert_clean(ex + select, "the document type model's training pages", work=WORK)
+    data = gmix.fingerprint(ex, meta, resize=phone.profile_id() if a.resize == "phone" else "area")
+    X, Y, U, T, W, R = load(ex, a.resize, with_weights=True)
+    sel = load(select, a.resize) if select else None
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"{len(X)} pages ({sum(R)} an epoch; {len(U) - sum(U)} with no known turn: the type only), on {dev}")
     for name, arch in jobs.items():
-        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U, data, T)
+        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U, data, T, W, R, sel, seed)
     prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
     write_json(WORK / "new" / "doctypes-arch.json", {**prev, **jobs})
 

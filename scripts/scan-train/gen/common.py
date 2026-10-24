@@ -162,6 +162,14 @@ def side(rec, links=None, rid=None, golden=False, exam_keys=frozenset()):
     return None, legacy_split(rid) if rid else "train", True
 
 
+# ---------- real labels (gen/real.py; docs/scan-training.md → "Real data and its weight") ----------
+MOVED_MIN = 0.005   # functions/feedback.py MOVED_MIN: corners moved less than this are the model's own (not a fix)
+SELF_WEIGHT = 0.3   # a label no one touched (the model's own answer) weighs at most this much, and is never the exam's
+# who gave a real label, strongest first: corners moved past MOVED_MIN, a type changed or ticked, the worker window's
+# saved fields, the face finder's turn, the model's own answer no one touched
+LABEL_BY = ("human-moved", "human-confirmed", "human-saved", "face", "self")
+
+
 def trains(e):
     """Does a pulled example (examples.json, doctypes.json) go to training? Not the exam's, not one left out of both."""
     return not e.get("exam") and not e.get("hard") and e.get("split") != "none"

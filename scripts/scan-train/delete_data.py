@@ -12,7 +12,9 @@ still in Firebase and from the copies the pulls left on this PC (WORK). Run on t
       and the scan attempts told it when the worker window saved (an outcome-*.json with the worker's id) — each
       attempt's whole folder.
   On this PC: the pulls' copies named by what was found — templates/<kind>/<document>-<n>.jpg,
-      doctypes/<copy>.jpg (and its turned copy), img/<copy>.jpg, attempts/<attempt>.jpg and img/att-<attempt>-<page>.jpg.
+      doctypes/<copy>.jpg (and its turned copy), doctypes/doc-<document>-<n>.jpg, img/<copy>.jpg, attempts/<attempt>.jpg and
+      img/att-<attempt>-<page>.jpg, and gen real's copies under real/ (img/<record>.jpg, img/copy-<record>.jpg,
+      img/doc-<document>-<n>.jpg, attempts/<attempt>.jpg, img/att-<attempt>-<page>.jpg); run python -m gen real again after.
 
 A blank id is refused. A bucket listing or download that fails stops the run before anything is deleted (an expired
 `hf auth login` must never look like "nothing there"); a file naming an owner that cannot be read is counted, and
@@ -134,12 +136,17 @@ def local_copies(ids, work=None):
     out = set()
     for d in ids["documents"]:
         out |= {p for p in work.glob("templates/*/*.jpg") if re.fullmatch(re.escape(d) + r"-\d+\.jpg", p.name)}
+        # the document's pages pull_doctypes.py and gen real shrank like page copies
+        out |= {p for g in ("doctypes/doc-*.jpg", "real/img/doc-*.jpg") for p in work.glob(g)
+                if re.fullmatch("doc-" + re.escape(d) + r"-\d+\.jpg", p.name)}
     for r in ids["copies"]:
-        out |= {p for p in (work / "doctypes" / f"{r}.jpg", work / "img" / f"{r}.jpg") if p.exists()}
+        out |= {p for p in (work / "doctypes" / f"{r}.jpg", work / "img" / f"{r}.jpg", work / "real" / "img" / f"{r}.jpg",
+                            work / "real" / "img" / f"copy-{r}.jpg") if p.exists()}
         out |= {p for p in work.glob("doctypes/*.jpg") if re.fullmatch(re.escape(r) + r"-t[0-3]\.jpg", p.name)}
     for a in ids["attempts"]:
-        out |= {p for p in (work / "attempts" / f"{a}.jpg",) if p.exists()}
-        out |= {p for p in work.glob("img/att-*.jpg") if re.fullmatch("att-" + re.escape(a) + r"-\d+\.jpg", p.name)}
+        out |= {p for p in (work / "attempts" / f"{a}.jpg", work / "real" / "attempts" / f"{a}.jpg") if p.exists()}
+        out |= {p for g in ("img/att-*.jpg", "real/img/att-*.jpg") for p in work.glob(g)
+                if re.fullmatch("att-" + re.escape(a) + r"-\d+\.jpg", p.name)}
     return sorted(out)
 
 

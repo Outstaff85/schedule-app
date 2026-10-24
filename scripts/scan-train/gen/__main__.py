@@ -9,7 +9,9 @@ verify, QA").
   python -m gen bg add DIR --category auto|<name> [--owner] | bg check | bg split | bg pull | bg push   # the background bank
   python -m gen occluders add DIR --category cup --size-mm 80   # cut-outs laid over documents
   python -m gen verify --run DIR --sample 50    # draw a sample again byte for byte; fail on what the exam keeps
-  python -m gen qa --run DIR                    # the QA sheet (DIR/qa/index.html) and purity.json
+  python -m gen qa --run DIR [--real DIR] [--midv DIR]   # the QA sheet (DIR/qa/index.html), purity.json, the realism panel
+  python -m gen real [--out DIR]                # every real labelled picture in one index (DIR/index.jsonl; read-only)
+  python -m gen mix --model edges|doctype --synth-run DIR [--real-repeat 30] [--out DIR]   # one training list per model
   python -m gen profile --frames DIR            # the resampling probe's fixed frames (PNG) and frames.json
   python -m gen profile --from probe.json --frames DIR [--out FILE]   # fit the kernels to a browser's outputs
   python -m gen exam-phone --model edges --count 40 --out DIR   # E4: the lab's edges models, INTER_AREA vs the phone path
@@ -68,6 +70,21 @@ def main(argv=None):
     q.add_argument("--run", required=True)
     q.add_argument("--sample", type=int, default=20, help="the examples verify draws again when the set has no verify.json")
     q.add_argument("--jobs", type=int, default=1)
+    q.add_argument("--real", help="the realism panel's real pictures: gen real's folder (default <home>/real)")
+    q.add_argument("--midv", help="and MIDV's folder (default <home>/midv)")
+    r = sub.add_parser("real", help="every real labelled picture (attempts, records, page copies, documents) in one index, "
+                       "labelled only from what a person did — read-only")
+    r.add_argument("--out", help="the index's folder (default <home>/real)")
+    m = sub.add_parser("mix", help="one training list per model: made-up, open and real data, the real data repeated")
+    m.add_argument("--model", required=True, choices=("edges", "doctype"))
+    m.add_argument("--real", help="gen real's folder (default <home>/real)")
+    m.add_argument("--synth-run", help="a made-up set drawn through gen build (its QA passed)")
+    m.add_argument("--synth", type=int, default=0, help="made-up examples taken (0: all)")
+    m.add_argument("--midv", type=int, default=0, help="MIDV training photos taken (edges)")
+    m.add_argument("--smartdoc", type=int, default=0, help="SmartDoc training frames taken (edges)")
+    m.add_argument("--real-repeat", type=int, default=30, help="each real row repeated K times, capped at 30%% of an epoch")
+    m.add_argument("--seed", type=int, help="the made-up sample's seed (default: fresh, saved in mix.json)")
+    m.add_argument("--out", help="the mix's folder (default <home>/models/<model>)")
     p = sub.add_parser("profile", help="the phone's resampling: write the probe's frames, or fit gen/phone_profile.json "
                        "to a probe's outputs (gen/phone.py)")
     p.add_argument("--frames", help="the probe's frames folder: written there without --from, read from there with it")
@@ -96,7 +113,13 @@ def main(argv=None):
     elif a.command == "qa":
         from .qa import qa
         from .verify import find_run
-        return 0 if qa(find_run(a.run), a.sample, a.jobs)["passed"] else 1
+        return 0 if qa(find_run(a.run), a.sample, a.jobs, real=a.real, midv=a.midv)["passed"] else 1
+    elif a.command == "real":
+        from .real import main as real_main
+        real_main(a.out)
+    elif a.command == "mix":
+        from .mix import main as mix_main
+        mix_main(a.model, a.real, a.synth_run, a.synth, a.midv, a.smartdoc, a.real_repeat, a.seed, a.out)
     elif a.command == "profile":
         return profile(a)
     elif a.command == "bg":

@@ -10,7 +10,11 @@ their keys goes with them — their retake groups' new attempts, their worker's 
 and pull_templates.py apply the same keys to the page copies and the documents' pages). A record the rule before (its
 id) put on the training side, kept before gen.common.KEY_RULE_FROM, is in neither set when its key says exam: the
 version fine-tuned from learned it. A retaken page with no fix whose group is on the training side is in neither the exam nor
-training (counted: attempts.json "hardLeftOut"), so no exam page has a sibling in training. Writes
+training (counted: attempts.json "hardLeftOut"), so no exam page has a sibling in training. A kept page whose corners no
+one moved is "self" (the model's own answer: weight SELF_WEIGHT in training, gen/real.py; on the exam side it is in
+neither set — counted "selfLeftOut" — so the users' exam never scores a model against its own answers). A page lying
+inside an earlier one (attempts.py "on": an ID card on its ספח) is written as that page's flat cut (flat_cut: the
+lab's findInside cut, not turned) with its corners mapped into the cut (into_cut), nothing painted. Writes
 ~/.scan-train/examples.json (each example with its "key", "split" and an attempt's "group") and attempts.json —
 the new attempts' folders, {"train": [...], "exam": [...], "hardLeftOut": n}: publish.py moves the train folders
 to attempts/used/v<N>/ and the exam ones to attempts/exam/; attempts/golden/ is never moved."""
@@ -20,12 +24,13 @@ import tempfile
 
 import attempts as attempt_rules
 from common import DATA, WORK, bucket, data_file, data_records, db, named, write_json
-from gen.common import session_links, side, split_key, split_of, trains
+from gen.common import MOVED_MIN, SELF_WEIGHT, session_links, side, split_key, split_of, trains
 
 
-def document_records():
+def document_records(with_paths=False):
     """The full documents' records (H8a: documents/<tenant>/<month>/<id>/record.json in the private bucket) — each
-    with the worker's and the scan session's ids, so a page copy of that scan goes with its document. A bucket that
+    with the worker's and the scan session's ids, so a page copy of that scan goes with its document (with_paths:
+    [(the record's bucket path, record)] — gen/real.py reads their pages). A bucket that
     cannot be read stops the run (a failed listing is not an empty one: the page copies sent before their worker was
     saved would be keyed by their session, maybe to the other side)."""
     try:
@@ -42,11 +47,12 @@ def document_records():
                 api.download_bucket_files(DATA, [(f, f"{tmp}/{i}.json") for i, f in enumerate(files)])
             except Exception as e:
                 raise SystemExit(f"the full documents' records in {DATA} cannot be downloaded ({type(e).__name__}) - run again")
-        for i, _ in enumerate(files):
+        for i, f in enumerate(files):
             try:
-                out.append(json.loads(pathlib.Path(f"{tmp}/{i}.json").read_text(encoding="utf-8")))
+                r = json.loads(pathlib.Path(f"{tmp}/{i}.json").read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
+            out.append((f, r) if with_paths else r)
     return out
 
 
@@ -122,9 +128,42 @@ def painted(src, dest, quads):
     return True
 
 
-def group_of(d, ans):
-    """An attempt's retake group: the group the scanner gave (the first shot's id), else its own id."""
-    return ans.get("group") or ans.get("id") or d.rsplit("/", 1)[1]
+def into_cut(outer, pts):
+    """Points (0..1 of the photo) in the 0..1 frame of the outer quad's flat cut: through the inverse of the homography
+    taking the unit square onto the outer quad (the inverse of gen/phone.py unwarp). None stays None."""
+    if pts is None:
+        return None
+    from gen import phone
+    Hq = phone.homography([list(map(float, p)) for p in outer], [[0, 0], [1, 0], [1, 1], [0, 1]])
+    return [[round(c, 6) for c in phone.apply_h(Hq, float(x), float(y))] for x, y in pts]
+
+
+def flat_cut(src, dest, outer):
+    """The outer quad (0..1) of the photo cut flat as the lab's findInside cuts it (gen/phone.py warp_rgba: not turned,
+    what falls outside the photo black), saved to dest; False when the photo is unreadable or the cut empty."""
+    import cv2
+    import numpy as np
+    from gen import phone
+    img = cv2.imread(str(src))
+    if img is None:
+        return False
+    cut = phone.warp_rgba(img, [list(map(float, p)) for p in outer])[..., :3]
+    if cut.shape[0] < 2 or cut.shape[1] < 2:
+        return False
+    cv2.imwrite(str(dest), np.ascontiguousarray(cut))
+    return True
+
+
+def picture_of(pic, f, x, targets):
+    """Write one example's picture (pull.py and gen/real.py): the photo with the pages before painted over, or — a page
+    lying on another (x["on"]) — that page's flat cut. → (written, the corner map: the identity, or into_cut)."""
+    if x.get("on") is not None:
+        outer = targets[x["on"]]
+        return flat_cut(pic, f, outer), (lambda q, outer=outer: into_cut(outer, q))
+    return painted(pic, f, x["paint"]), (lambda q: q)
+
+
+group_of = attempt_rules.group_of   # an attempt's retake group (the first shot's id, else its own)
 
 
 def attempt_keys(folders):
@@ -156,7 +195,7 @@ def attempt_examples(out, folders=None, kept_exam=False, exam_keys=frozenset(), 
     (attempts/exam/) — every example an exam page, none listed."""
     folders = list(attempt_folders() if folders is None else folders)
     keys = keys if keys is not None else attempt_keys(folders)
-    pulled = {"train": [], "exam": [], "hardLeftOut": 0}
+    pulled = {"train": [], "exam": [], "hardLeftOut": 0, "selfLeftOut": 0}
     for d, ans, outs, fetch in folders:
         aid = ans.get("id") or d.rsplit("/", 1)[1]
         pic = WORK / "attempts" / f"{aid}.jpg"
@@ -167,18 +206,25 @@ def attempt_examples(out, folders=None, kept_exam=False, exam_keys=frozenset(), 
         split = "exam" if kept_exam or key in exam_keys else split_of(key)
         exam = split == "exam"
         mine = []
-        for x in attempt_rules.examples_of(ans, outs):
+        xs = attempt_rules.examples_of(ans, outs)
+        targets = {x["page"]: x["target"] for x in xs if x["kind"] == "edges"}
+        quads = [ans.get("edgesModel")] + list(ans.get("edgesMore") or [])
+        for x in xs:
             f = WORK / "img" / f"att-{aid}-{x['page']}.jpg"
-            if not painted(pic, f, x["paint"]):
+            ok, to = picture_of(pic, f, x, targets)
+            if not ok:
                 continue
             hard = x["kind"] == "hard"
             if hard and not exam:
                 pulled["hardLeftOut"] += 1   # its kept retake trains: as an exam page it would have a sibling in training
-            q = ([ans.get("edgesModel")] + list(ans.get("edgesMore") or []))[x["page"]]
-            mine.append({"id": f"att-{aid}-{x['page']}", "file": str(f), "model": q, "fixed": x["target"],
-                         "moved": ans.get("moved", 0) if x["page"] == 0 else 0, "exam": exam,
-                         "none": x["kind"] == "none", "hard": hard, "rejected": x["rejected"], "attempt": True,
-                         "group": group_of(d, ans), "key": key, "split": "none" if hard and not exam else split})
+            own = bool(x.get("self"))
+            if own and exam:
+                pulled["selfLeftOut"] += 1   # the model's own answer is no truth for the exam
+            mine.append({"id": f"att-{aid}-{x['page']}", "file": str(f), "model": to(quads[x["page"]]), "fixed": to(x["target"]),
+                         "moved": ans.get("moved", 0) if x["page"] == 0 else 0, "exam": exam and not own,
+                         "none": x["kind"] == "none", "hard": hard, "rejected": to(x["rejected"]), "attempt": True,
+                         "self": own, "weight": SELF_WEIGHT if own else 1.0, **({"inside": True} if x.get("on") is not None else {}),
+                         "group": group_of(d, ans), "key": key, "split": "none" if (hard and not exam) or (own and exam) else split})
         out += mine
         if not kept_exam:
             pulled["exam" if exam else "train"].append(d)
@@ -197,8 +243,12 @@ def record_examples(recs, links, exam_keys=frozenset()):
         if not path.exists() and not fetch(r["image"], path):
             continue
         key, split, legacy = side(r, links, rid, exam_keys=exam_keys)
+        own = float(r.get("moved") or 0) < MOVED_MIN   # a sampled page the model got right: its own corners, no one moved
+        if own and split == "exam":
+            split = "none"   # the model's own answer is no truth for the exam
         out.append({"id": rid, "file": str(path), "model": r["edgesModel"], "fixed": r["edgesFixed"],
-                    "moved": r.get("moved", 0), "exam": split == "exam", "key": key, "split": split, **({"legacy": True} if legacy else {})})
+                    "moved": r.get("moved", 0), "exam": split == "exam", "key": key, "split": split, "self": own,
+                    "weight": SELF_WEIGHT if own else 1.0, **({"legacy": True} if legacy else {})})
     return out
 
 
@@ -221,8 +271,9 @@ def main():
     n_none = sum(1 for e in out if not e.get("attempt") and e["split"] == "none")
     print(f"{len(out)} examples ({n_att} from {len(pulled['train']) + len(pulled['exam'])} new scan attempts, "
           f"{len(out) - before} from the attempts kept as the exam): {n_train} to train on, {n_exam} for the exam; "
-          f"{pulled['hardLeftOut']} retaken pages left out (their group trains); {n_none} records left out (their key is "
-          f"the exam's, the rule before trained them); {n_legacy} records with no worker, session or group, split by "
+          f"{pulled['hardLeftOut']} retaken pages left out (their group trains); {pulled['selfLeftOut']} exam pages left "
+          f"out (no corner moved: the model's own answer); {n_none} records left out (their key is "
+          f"the exam's and the rule before trained them, or no corner moved); {n_legacy} records with no worker, session or group, split by "
           f"their id as before")
 
 

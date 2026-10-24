@@ -133,11 +133,12 @@ def test_a_kept_exam_attempts_worker_is_the_exam_in_every_pull(tmp_path, monkeyp
     w = _worker_on("train")
     fetch = lambda dest: True
     quad = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
-    kept = [("attempts/exam/site/d/a1", {"id": "a1", "group": "shot-a1", "outcome": "kept", "edgesModel": quad},
+    moved = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]   # the corners the user moved (a self label is never the exam's)
+    kept = [("attempts/exam/site/d/a1", {"id": "a1", "group": "shot-a1", "outcome": "kept", "edgesModel": quad, "edgesFixed": moved},
              [{"outcome": "saved", "workerId": w}], fetch)]
     keys, exam_keys = pull.kept_exam_keys([], kept)
     assert exam_keys == {gc.split_key({"workerId": w})} and keys["attempts/exam/site/d/a1"] == gc.split_key({"workerId": w})
-    rec = {"image": "records/r.jpg", "edgesModel": quad, "edgesFixed": quad, "workerId": w, "createdAt": NEW}
+    rec = {"image": "records/r.jpg", "edgesModel": quad, "edgesFixed": moved, "moved": 0.02, "workerId": w, "createdAt": NEW}
     got = lambda path, dest: True
     out = pull.record_examples([("rec-1", rec, got), ("rec-2", {**rec, "workerId": _worker_on("train") + "x"}, got)], {}, exam_keys)
     assert out[0]["exam"] is True and out[0]["split"] == "exam" and out[0]["key"] == gc.split_key({"workerId": w})

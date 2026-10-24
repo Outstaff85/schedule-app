@@ -18,6 +18,12 @@ The sheet (local only — the pictures come from the owner's real pages; it is n
   the phone's cuts as a histogram, the cut_by share of the pages kept (phone, bad, editor) against the editor cap,
   the document type crops by class (short classes marked), the zone finder's and the Hebrew fields' counts with
   layout_overflow.json, the face exam's, and a contact sheet of the crops per class (turn_k, cut_by, IoU written on).
+- the realism panel: how far the made-up pictures are from real ones — the two-sample Kolmogorov–Smirnov distance of
+  each picture statistic (sharpness, noise, brightness, and for photos the document's fill and tilt) against the real
+  scan attempts (gen real's index; a set of crops is compared with the real page copies and document pages and with
+  the attempts cut at their corners) and against MIDV, plus the AUC of a real-vs-made-up classifier on those statistics
+  (a logistic regression in numpy, scored on held-back folds: 0.5 — it cannot tell them apart). Written to run.json
+  ("realism") and shown on the sheet; it never decides purity.
 purity.json records it: passed when the intersection is 0 and verify passed. Every train*.py calls require_qa on a
 made-up set drawn through gen build: no qa/purity.json, one not passed, or one of another drawing (fingerprint) or
 another heldout.json, or a manifest that references what the exam keeps today (held_refs run again at training
@@ -246,6 +252,241 @@ def cuts_part(folder, out):
     return part
 
 
+# ---------- the realism panel ----------
+REALISM_N = 200                   # pictures per group at most (a fixed sample)
+STATS = ("sharpness", "noise", "brightness", "fill", "tilt")
+LONG_SIDE = 512                   # the statistics are measured on the picture shrunk to this long side
+
+
+def _quad_area(q):
+    return abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))) / 2
+
+
+def _tilt(q, w, h):
+    """The mean distance of the quad's four corner angles from 90° (degrees), in the picture's pixels: 0 for a page
+    seen straight on, larger the more the camera leans."""
+    import math
+    P = [(x * w, y * h) for x, y in q]
+    out = []
+    for i in range(4):
+        a, b, c = P[i - 1], P[i], P[(i + 1) % 4]
+        u, v = (a[0] - b[0], a[1] - b[1]), (c[0] - b[0], c[1] - b[1])
+        n = math.hypot(*u) * math.hypot(*v)
+        if n <= 0:
+            return None
+        out.append(abs(math.degrees(math.acos(max(-1.0, min(1.0, (u[0] * v[0] + u[1] * v[1]) / n)))) - 90))
+    return sum(out) / 4
+
+
+def image_stats(img, quad=None):
+    """One picture's statistics (BGR or grey): sharpness — log10(1 + the Laplacian's variance); noise — the median
+    absolute high-pass residual (× 1.4826); brightness — the mean grey 0..1; fill — the document's share of the picture
+    (its quad's area, 0..1) and tilt (_tilt), only with a quad."""
+    import cv2
+    import numpy as np
+    g = img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    h, w = g.shape[:2]
+    k = LONG_SIDE / max(h, w)
+    if k < 1:
+        g = cv2.resize(g, (max(1, round(w * k)), max(1, round(h * k))), interpolation=cv2.INTER_AREA)
+    f = g.astype(np.float32)
+    lap = cv2.Laplacian(f, cv2.CV_32F)
+    res = f - cv2.GaussianBlur(f, (3, 3), 0)
+    out = {"sharpness": float(np.log10(1 + lap.var())), "noise": float(1.4826 * np.median(np.abs(res))),
+           "brightness": float(f.mean() / 255), "fill": None, "tilt": None}
+    if quad:
+        out["fill"] = float(_quad_area(quad))
+        out["tilt"] = _tilt(quad, img.shape[1], img.shape[0])
+    return out
+
+
+def ks(a, b):
+    """The two-sample Kolmogorov–Smirnov distance (the largest gap of the two empirical distributions); None when either
+    is empty."""
+    import numpy as np
+    a = np.sort(np.asarray([x for x in a if x is not None], np.float64))
+    b = np.sort(np.asarray([x for x in b if x is not None], np.float64))
+    if not len(a) or not len(b):
+        return None
+    v = np.concatenate([a, b])
+    return float(np.max(np.abs(np.searchsorted(a, v, "right") / len(a) - np.searchsorted(b, v, "right") / len(b))))
+
+
+def auc(scores, labels):
+    """The area under the ROC curve (the Mann–Whitney statistic, ties averaged); None without both classes."""
+    import numpy as np
+    s, y = np.asarray(scores, np.float64), np.asarray(labels, bool)
+    npos, nneg = int(y.sum()), int((~y).sum())
+    if not npos or not nneg:
+        return None
+    order = np.argsort(s, kind="mergesort")
+    ranks = np.empty(len(s), np.float64)
+    sv = s[order]
+    i = 0
+    while i < len(s):
+        j = i
+        while j + 1 < len(s) and sv[j + 1] == sv[i]:
+            j += 1
+        ranks[order[i:j + 1]] = (i + j) / 2 + 1
+        i = j + 1
+    return float((ranks[y].sum() - npos * (npos + 1) / 2) / (npos * nneg))
+
+
+def logistic_auc(real, made, folds=2, seed=0, steps=600, lr=0.2, l2=1e-3):
+    """The AUC of a real-vs-made-up classifier: a logistic regression (numpy gradient descent, the features standardised)
+    on the rows (lists of numbers), each row scored by a model fitted on the other folds. None with fewer than 5 of
+    either."""
+    import numpy as np
+    if len(real) < 5 or len(made) < 5:
+        return None
+    X = np.asarray(list(real) + list(made), np.float64)
+    y = np.asarray([1] * len(real) + [0] * len(made), np.float64)
+    rng = np.random.default_rng(seed)
+    fold = np.empty(len(y), int)
+    for c in (0, 1):
+        idx = np.flatnonzero(y == c)
+        rng.shuffle(idx)
+        fold[idx] = np.arange(len(idx)) % folds
+    scores = np.zeros(len(y))
+    for k in range(folds):
+        tr, te = fold != k, fold == k
+        mu, sd = X[tr].mean(0), X[tr].std(0) + 1e-9
+        A = (X[tr] - mu) / sd
+        w, b = np.zeros(X.shape[1]), 0.0
+        for _ in range(steps):
+            p = 1 / (1 + np.exp(-(A @ w + b)))
+            g = p - y[tr]
+            w -= lr * (A.T @ g / len(g) + l2 * w)
+            b -= lr * g.mean()
+        scores[te] = ((X[te] - mu) / sd) @ w + b
+    return auc(scores, y.astype(bool))
+
+
+def _sample_items(items, n=REALISM_N, seed="realism"):
+    import random
+    items = list(items)
+    return items if len(items) <= n else random.Random(seed).sample(items, n)
+
+
+def made_items(folder, run, rows):
+    """The made-up pictures to measure → (kind, [(file, quad or None, cut quad or None)]): "frames" for photos (an edges
+    set: each scene's frame with its answer's corners), "pages" for crops (a cuts set's document type crops, a pages
+    set's pages); (None, []) for a set of field crops."""
+    model = run.get("model")
+    if model == "edges":
+        return "frames", [(str(folder / r["outputs"][0][0]), (r.get("labels") or {}).get("fixed"), None) for r in rows if r.get("outputs")]
+    if model == "cuts":
+        try:
+            entries = json.loads((folder / "doctype" / "pages.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            entries = []
+        return "pages", [(str(folder / e["file"]), None, None) for e in entries]
+    if model == "doctype":
+        return "pages", [(str(folder / r["outputs"][0][0]), None, None) for r in rows if r.get("outputs")]
+    return None, []
+
+
+def real_items(real_dir, kind):
+    """The real pictures of gen real's index for a kind: frames — the attempts' photos (their first page, not a cut) with
+    their right corners; pages — the page copies and document pages, and the attempts' photos cut at their corners."""
+    from . import real as greal
+    rows = greal.read_index(real_dir) if real_dir else []
+    out = []
+    for r in rows:
+        e = (r.get("targets") or {}).get("edges") or {}
+        if r.get("source") == "attempt" and r.get("page") == 0 and not r.get("inside"):
+            q = e.get("fixed") if not e.get("none") else None
+            if kind == "frames":
+                out.append((r["file"], q, None))
+            elif q:
+                out.append((r["file"], None, q))
+        elif kind == "pages" and "doctype" in (r.get("targets") or {}):
+            out.append((r["file"], None, None))
+    return out
+
+
+def midv_items(midv_dir, kind):
+    """MIDV's photos with their corners (frames), or cut at them (pages)."""
+    p = pathlib.Path(midv_dir) / "examples.json" if midv_dir else None
+    if not p or not p.exists():
+        return []
+    out = []
+    for e in json.loads(p.read_text(encoding="utf-8")):
+        f = str(pathlib.Path(midv_dir) / "img" / str(e["file"]).replace("\\", "/").rsplit("/", 1)[-1])
+        q = e.get("fixed")
+        out.append((f, q, None) if kind == "frames" else (f, None, q) if q else None)
+    return [x for x in out if x]
+
+
+def measure(items):
+    """The statistics of each picture (a cut quad: the picture cut flat there first, gen/phone.py warp_rgba)."""
+    import cv2
+    from . import phone
+    out = []
+    for f, quad, cut in items:
+        img = cv2.imread(str(f))
+        if img is None:
+            continue
+        if cut:
+            img = phone.warp_rgba(img, cut)[..., :3]
+            if img.shape[0] < 8 or img.shape[1] < 8:
+                continue
+        out.append(image_stats(img, quad))
+    return out
+
+
+def compare(made, ref):
+    """{ks: {stat: distance or None}, auc, n} of the made-up statistics against a reference group's."""
+    if not ref:
+        return {"ks": {k: None for k in STATS}, "auc": None, "n": 0}
+    d = {k: ks([m[k] for m in made], [r[k] for r in ref]) for k in STATS}
+    # the classifier's features: the statistics most pictures of both have (a photo with no document has no fill or
+    # tilt), on the pictures that have them all
+    share = lambda xs, k: sum(x[k] is not None for x in xs) / max(1, len(xs))
+    feats = [k for k in STATS if share(made, k) >= 0.8 and share(ref, k) >= 0.8]
+    whole = lambda xs: [[x[k] for k in feats] for x in xs if all(x[k] is not None for k in feats)]
+    a = logistic_auc(whole(ref), whole(made)) if feats else None
+    return {"ks": d, "auc": None if a is None else round(a, 4), "n": len(ref), "features": feats}
+
+
+def realism(folder, run, rows, real_dir=None, midv_dir=None):
+    """The realism panel of a set → its dict (also written into run.json "realism"); None for a set of field crops."""
+    kind, made = made_items(folder, run, rows)
+    if kind is None:
+        return None
+    m = measure(_sample_items(made))
+    groups = {"real": real_items(real_dir, kind), "midv": midv_items(midv_dir, kind)}
+    got = {"kind": kind, "made": len(m), "against": {}, "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+           "realDir": str(real_dir) if real_dir else None}
+    for name, items in groups.items():
+        c = compare(m, measure(_sample_items(items, seed=f"realism:{name}")))
+        got["against"][name] = {**c, "ks": {k: None if v is None else round(v, 4) for k, v in c["ks"].items()}}
+    p = folder / manifest.RUN
+    info = manifest.read_run(folder) or {}
+    info["realism"] = got
+    p.write_text(json.dumps(info, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
+    return got
+
+
+def realism_part(rz):
+    """The realism panel's section of the sheet."""
+    if not rz:
+        return ""
+    head = "".join(f"<th>{html.escape(n)} (n={g['n']})</th>" for n, g in rz["against"].items())
+    body = ""
+    for k in STATS:
+        cells = "".join('<td class="zero">n/a</td>' if g["ks"].get(k) is None else f'<td class="n">{g["ks"][k]:.3f}</td>'
+                        for g in rz["against"].values())
+        body += f"<tr><th>KS {html.escape(k)}</th>{cells}</tr>"
+    cells = "".join('<td class="zero">n/a</td>' if g.get("auc") is None else f'<td class="n">{g["auc"]:.3f}</td>' for g in rz["against"].values())
+    body += f"<tr><th>AUC real vs made-up</th>{cells}</tr>"
+    note = ("" if any(g["n"] for g in rz["against"].values()) else
+            "<p class='bad'>No real pictures to compare with: python -m gen real (and MIDV: midv.py), then gen qa again.</p>")
+    return (f"<h2>Realism</h2><p>{rz['made']} made-up {html.escape(rz['kind'])} measured against real ones: the KS distance of each "
+            f"statistic (0 — the same distribution, 1 — apart) and the AUC of a classifier telling real from made-up on them "
+            f"(0.5 — it cannot tell; it should fall toward 0.5 run after run).</p>{note}<table><tr><th></th>{head}</tr>{body}</table>")
+
+
 def page(run, rows, sheets, refs, ver, recipe_sheets=None, extra=""):
     model = run.get("model")
     classes = classes_of(model, rows)
@@ -283,10 +524,15 @@ fingerprint {html.escape(str(run.get('fingerprint'))[:12])}; heldout.json {html.
 <h2>Contact sheets</h2><p>First corner red, the document's own top-left blue; a field's text only as a sha1 prefix.</p>{blocks}"""
 
 
-def qa(folder, sample=20, jobs=1, work=None):
-    """Write <run>/qa/index.html, its pictures and purity.json → the purity dict."""
+def qa(folder, sample=20, jobs=1, work=None, real=None, midv=None):
+    """Write <run>/qa/index.html, its pictures and purity.json → the purity dict. real: gen real's folder (default
+    <home>/real), midv: MIDV's (default <home>/midv) — the realism panel's references."""
+    import home
     from . import verify as gv
     folder = pathlib.Path(folder)
+    base = pathlib.Path(work or home.WORK)
+    real = pathlib.Path(real) if real else base / "real"
+    midv = pathlib.Path(midv) if midv else base / "midv"
     run, rows = manifest.read_run(folder), manifest.read_manifest(folder)
     if not run or not rows:
         raise SystemExit(f"{folder}: no run.json / manifest.jsonl (drawn before gen build? draw it again)")
@@ -318,13 +564,19 @@ def qa(folder, sample=20, jobs=1, work=None):
         name = f"sheet-recipe-{_slug(rc)}.jpg"
         contact_sheet(folder, rs, out / name, every=True)
         recipe_sheets[rc] = (name, len(rs))
-    (out / "index.html").write_text(page(run, rows, sheets, refs, ver, recipe_sheets, cuts_part(folder, out)), encoding="utf-8")
+    rz = realism(folder, run, rows, real, midv)
+    (out / "index.html").write_text(page(run, rows, sheets, refs, ver, recipe_sheets, cuts_part(folder, out) + realism_part(rz)),
+                                    encoding="utf-8")
     purity = {"passed": bool(not refs and ver.get("passed")), "heldoutIntersection": len(refs),
               "verify": {k: ver.get(k) for k in ("sample", "matched", "passed")}, "fingerprint": run.get("fingerprint"),
               "heldoutSha256": gc.heldout_sha256(), "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
     (out / "purity.json").write_text(json.dumps(purity, indent=1), encoding="utf-8")
     print(f"QA sheet: {out / 'index.html'} — intersection with held-out = {len(refs)}; verify "
           + ("passed" if ver.get("passed") else "FAILED") + ("" if purity["passed"] else " — NOT PASSED: no training on this set"))
+    if rz:
+        for name, g in rz["against"].items():
+            ksd = ", ".join(f"{k} {v:.3f}" for k, v in g["ks"].items() if v is not None) or "n/a"
+            print(f"  realism vs {name} (n={g['n']}): KS {ksd}; AUC {g['auc'] if g['auc'] is not None else 'n/a'}")
     return purity
 
 

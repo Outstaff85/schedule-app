@@ -80,8 +80,8 @@ def _differ(old, new):
 
 def begin(name, args, info):
     """The saved state to start from: with --resume the run that stopped (its info must be this run's — the same
-    model, base, size and data fingerprint), with --more the last run of the same model and size (the base, the data
-    and where it came from may differ — the data by the rules above); else None."""
+    model, base, size, seed and data fingerprint), with --more the last run of the same model and size (the base, the
+    data, the seed and where it came from may differ — the data by the rules above); else None."""
     if not (getattr(args, "resume", False) or getattr(args, "more", False)):
         return None
     ck = load(name)
@@ -96,7 +96,7 @@ def begin(name, args, info):
                    + (" and other data" if "data" in keys else ""))
             raise SystemExit(f"the saved progress of {name} cannot be resumed: {why} — start without --resume (or --more)")
         return ck
-    plain = {k: v for k, v in info.items() if k not in ("base", "data", "from")}
+    plain = {k: v for k, v in info.items() if k not in ("base", "data", "from", "seed")}   # a new run's own seed may differ
     if not all(old.get(k) == v for k, v in plain.items()):
         raise SystemExit(f"the saved progress of {name} is of {{{', '.join(f'{k}: {old.get(k)!r}' for k in plain)}}}, not "
                          f"{plain} — start without --resume / --more")
@@ -155,6 +155,20 @@ def check_steps(ck, args, total_steps):
     if saved is not None and saved != total_steps:
         raise SystemExit(f"the saved schedule was made for {saved} steps, this run has {total_steps} (the set or the batch changed) "
                          "— start without --resume")
+
+
+def seed_of(names, args):
+    """The training's seed: --seed when given; with --resume the stopped run's own (saved in its info), so the resumed
+    run is the same run; else a fresh one. Printed and saved in the checkpoint's info (and the report)."""
+    if getattr(args, "seed", None) is not None:
+        return int(args.seed)
+    if getattr(args, "resume", False):
+        for n in names:
+            ck = load(n)
+            got = ((ck or {}).get("info") or {}).get("seed")
+            if got is not None:
+                return int(got)
+    return random.SystemRandom().randrange(1 << 31)
 
 
 def epochs_of(ck, args, wanted):

@@ -353,3 +353,42 @@ def test_an_exam_set_drawn_outside_the_work_folder_leaves_exam_sets_json_alone(t
     sf.gen_write(own_he, {"held": True, "pages": [], "count": 1}, [{"entry": ["0-0.png\tא\tgiven"]}])
     got = json.loads(record.read_text(encoding="utf-8"))["sets"]
     assert sorted(got) == ["he-fields/check", "synth/docs-exam"] and gc.stale_exam_sets(work) == []
+
+
+# ---------- the realism panel (Training 8) ----------
+def test_the_realism_statistics_ks_and_auc():
+    from gen import qa
+    assert qa.ks([1, 2, 3], [1, 2, 3]) == 0 and qa.ks([1, 2, 3], [10, 11]) == 1 and qa.ks([], [1]) is None
+    r = np.random.default_rng(0)
+    assert qa.auc([0.9, 0.8, 0.1, 0.2], [1, 1, 0, 0]) == 1.0 and qa.auc([1, 1], [1, 0]) == 0.5 and qa.auc([1], [1]) is None
+    apart = qa.logistic_auc(r.normal(3, 1, (60, 3)).tolist(), r.normal(0, 1, (60, 3)).tolist())
+    same = qa.logistic_auc(r.normal(0, 1, (200, 3)).tolist(), r.normal(0, 1, (200, 3)).tolist())
+    assert apart > 0.95 and 0.35 < same < 0.65 and qa.logistic_auc([[1]] * 3, [[0]] * 9) is None
+    img = np.full((300, 400, 3), 128, np.uint8)
+    s = qa.image_stats(img, [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]])
+    assert s["noise"] == 0 and abs(s["brightness"] - 128 / 255) < 1e-6 and abs(s["fill"] - 0.64) < 1e-9 and s["tilt"] < 1e-6
+    assert qa.image_stats(img)["fill"] is None
+
+
+def test_the_realism_panel_is_written_to_run_json_and_shown_on_the_sheet(pages_set, tmp_path):
+    from gen import qa, real
+    build_pages(pages_set, tmp_path / "a", count=16)
+    folder = tmp_path / "real"
+    (folder / "img").mkdir(parents=True)
+    r = np.random.default_rng(1)
+    rows = []
+    for i in range(12):   # real page copies: darker and noisier than the made-up pages
+        f = folder / "img" / f"copy-{i}.jpg"
+        cv2.imwrite(str(f), np.clip(r.normal(70, 30, (256, 256, 3)), 0, 255).astype(np.uint8))
+        rows.append(real.finish({"id": f"copy-{i}", "source": "copy", "file": f"img/{f.name}", "key": f"w:{i}", "split": "train",
+                                 "targets": {"doctype": {"doctype": "id_front", "labelBy": "human-confirmed", "weight": 1.0}}}))
+    real.write_index(folder, rows, real.summary(rows))
+    qa.qa(tmp_path / "a", 5, 1, pages_set.work, real=folder)
+    rz = manifest.read_run(tmp_path / "a")["realism"]
+    g = rz["against"]["real"]
+    assert rz["kind"] == "pages" and g["n"] == 12 and rz["made"] == 16
+    assert all(0 <= g["ks"][k] <= 1 for k in ("sharpness", "noise", "brightness")) and g["ks"]["fill"] is None
+    assert g["auc"] is not None and g["auc"] > 0.8                                              # these are easy to tell apart
+    assert rz["against"]["midv"]["n"] == 0 and rz["against"]["midv"]["auc"] is None
+    page = (tmp_path / "a" / "qa" / "index.html").read_text(encoding="utf-8")
+    assert "<h2>Realism</h2>" in page and "AUC real vs made-up" in page and f"{g['auc']:.3f}" in page and "KS brightness" in page

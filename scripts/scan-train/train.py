@@ -13,8 +13,18 @@ python -m gen qa --run DIR). The checkpoint records the data fingerprint (checkp
 the graph the saved weights belong to (their info.base — v4's weights are of v3's graph) and records where it went on
 from (info.from: that base, its epochs and the version publish.py stamped on it). Each photo's 256 input is made as the
 phone makes it (gen/phone.py frame_to_S: half as the camera frame's live input, half as the capture's, the kernel drawn
-from the phone profile's mix; --resize area: INTER_AREA as before), and the fingerprint records the profile. Writes
-~/.scan-train/new/<model>.onnx."""
+from the phone profile's mix; --resize area: INTER_AREA as before), and the fingerprint records the profile.
+
+The data come as one list (gen/mix.py; docs/scan-training.md → "Real data and its weight"): --from-mix DIR reads a mix
+made by python -m gen mix --model edges (its train.jsonl, select.jsonl and mix.json; refused when made under another
+heldout.json), and the old flags (--synth N, --midv N, --smartdoc N with pull.py's examples.json) build the same list
+here. Each real example is repeated --real-repeat K times (capped so the real ones are at most 30 % of an epoch), each
+example's loss is weighed by its weight (a self label — the model's own corners no one moved — 0.3), the counts per
+source and the real share are printed, and the epoch kept is the one with the lowest loss on the select set (the real
+examples of split "select"; never the exam) when it has any. --seed (default: a fresh one, printed and saved in the
+checkpoint; --resume takes the stopped run's) seeds the shuffling, the augmentation and the old flags' sample. A warning
+is printed when examples.json (or the mix's real index) is older than the newest scan attempt in attempts/new/.
+Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
 import pathlib
 import random
@@ -27,10 +37,11 @@ import onnxruntime as ort
 import torch
 
 import checkpoint
+from gen import mix as gmix
 from gen import phone
-from gen.common import trains
-from gen.manifest import data_fingerprint, run_fingerprint
+from gen.manifest import run_fingerprint
 from gen.qa import require_qa
+from gen.real import newest_attempt_day, stale_warning
 from gen.sources import assert_clean
 from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
@@ -71,19 +82,23 @@ def model_input(img, resize, rng):
 
 
 def load(examples, resize="phone"):
-    """→ (inputs, corners). Each example's input is made once, here (a whole photo per example would not fit in
-    memory): by model_input, its draws from a stream of their own (the same every run, apart from the training's)."""
-    X, Y = [], []
+    """→ (inputs, corners, weights, repeats). Each example's input is made once, here (a whole photo per example would
+    not fit in memory): by model_input, its draws from a stream of their own (the same every run, apart from the
+    training's). An example of weight 0 or with no right answer (a retaken page: only the exam's) is left out."""
+    X, Y, W, R = [], [], [], []
     rng = random.Random("train.py:resize")
     for e in examples:
-        if e.get("hard"):
-            continue  # a retaken page with no right answer: only the exam's
+        w = float(e.get("weight", 1.0))
+        if e.get("hard") or w <= 0:
+            continue
         img = cv2.imread(e["file"])
         if img is None:
             continue
         X.append(model_input(img, resize, rng))
         Y.append(e["fixed"])
-    return X, Y
+        W.append(w)
+        R.append(max(1, int(e.get("repeat", 1))))
+    return X, Y, W, R
 
 
 def batch(X, Y, idx, augment):
@@ -124,7 +139,9 @@ def graph_of(name, base, args):
     return saved, {"base": saved, "epochs": prev.get("epoch"), "published": published}
 
 
-def train_one(name, base, X, Y, epochs, dev, args, data=None):
+def train_one(name, base, X, Y, epochs, dev, args, data=None, W=None, R=None, select=None, seed=None):
+    """One model trained on (X, Y): each example's index R[i] times an epoch, its loss weighed by W[i]; select (Xs, Ys):
+    the epoch with the lowest loss on it is the one exported (the last one without)."""
     base, came = graph_of(name, base, args)
     src = model_path(base, name)
     proto = onnx.load(str(src))
@@ -137,41 +154,65 @@ def train_one(name, base, X, Y, epochs, dev, args, data=None):
         got = net.eval()(torch.from_numpy(probe)).numpy()
     assert np.abs(got - ref).max() < 1e-3, "the PyTorch copy does not answer like the model"
     net = net.to(dev)
-    info = {"model": name, "base": base, "data": data}
+    info = {"model": name, "base": base, "data": data, "seed": seed}
     if came:
         info["from"] = came
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
     opt = torch.optim.Adam(net.parameters(), LR[name])
-    first, _ = checkpoint.restore(ck, args, net, opt)
-    order = list(range(len(X)))
+    first, best = checkpoint.restore(ck, args, net, opt)
+    order = [i for i in range(len(X)) for _ in range(R[i] if R else 1)]
     for ep in range(first, epochs):
         try:
-            one_epoch(name, net, opt, X, Y, order, dev, ep, epochs)
+            one_epoch(name, net, opt, X, Y, order, dev, ep, epochs, W)
         except KeyboardInterrupt:
             checkpoint.stopped(name, ep)
-        checkpoint.save(name, info, net, opt, None, ep + 1, epochs)
+        if select and select[0]:
+            score = select_loss(net, select[0], select[1], dev)
+            print(f"  {name} epoch {ep + 1}: select loss {score:.4f} ({len(select[0])} real pages of split select)")
+            if best is None or score < best["score"]:
+                best = {"net": {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}, "score": score, "epoch": ep + 1}
+        checkpoint.save(name, info, net, opt, None, ep + 1, epochs, best)
+    if best:
+        net.load_state_dict(best["net"])
+        print(f"  {name}: the select set picked epoch {best['epoch']} (loss {best['score']:.4f})")
     export(name, net, probe, inp, outname)
 
 
-def corner_loss(out, yb):
+def corner_loss(out, yb, wb=None):
     """The heatmaps' error, the spots counted, not the empty background (plain MSE would rather lower
     every peak) — against the right corners started from whichever corner fits best (each example its
     own): near 45° the photo's "top-left" is either of two corners, and a fixed order taught the model
-    to put its first corner between them (MIDV's turned scans, owner 2026-10-22)."""
+    to put its first corner between them (MIDV's turned scans, owner 2026-10-22). wb: each example's weight (a self
+    label 0.3): the weighted mean."""
     per = [(((out - y) ** 2) * (1 + 20 * y)).mean((1, 2, 3)) for y in (torch.roll(yb, k, 1) for k in range(4))]
-    return torch.stack(per, 1).min(1).values.mean() * 1000
+    best = torch.stack(per, 1).min(1).values
+    if wb is None:
+        return best.mean() * 1000
+    return (best * wb).sum() / wb.sum().clamp_min(1e-8) * 1000
 
 
-def one_epoch(name, net, opt, X, Y, order, dev, ep, epochs):
+def select_loss(net, Xs, Ys, dev):
+    """The mean corner loss on the select set (no augmentation, no learning)."""
+    total = 0.0
+    with torch.no_grad():
+        for k in range(0, len(Xs), 16):
+            xb, yb = batch(Xs, Ys, range(k, min(k + 16, len(Xs))), False)
+            total += float(corner_loss(net(xb.to(dev)), yb.to(dev))) * len(xb)
+    return total / max(1, len(Xs))
+
+
+def one_epoch(name, net, opt, X, Y, order, dev, ep, epochs, W=None):
     random.shuffle(order)
     net.eval()  # batch norms keep their statistics; the weights still learn
     total = 0.0
     for k in range(0, len(order), 16):
-        xb, yb = batch(X, Y, order[k:k + 16], True)
+        idx = order[k:k + 16]
+        xb, yb = batch(X, Y, idx, True)
         out = net(xb.to(dev))
         yb = yb.to(dev)
-        loss = corner_loss(out, yb)
+        wb = torch.tensor([W[i] for i in idx], dtype=torch.float32, device=dev) if W else None
+        loss = corner_loss(out, yb, wb)
         opt.zero_grad(); loss.backward(); opt.step()
         total += float(loss.detach()) * len(xb)
     print(f"  {name} epoch {ep + 1}/{epochs}: loss {total / len(order):.4f}")
@@ -199,14 +240,48 @@ def export(name, net, probe, inp, outname):
     print(f"  {name} → {dst}")
 
 
+def gather(a, seed):
+    """The training list → (rows, select rows, mix meta, the real file it was pulled into): --from-mix's (gen/mix.py), or
+    the old flags' — pull.py's examples.json (the training side, each with its weight) and a.synth / a.midv /
+    a.smartdoc made-up and open examples drawn at random (by seed) — built into the same list (gen.mix.build)."""
+    if a.from_mix:
+        rows, select, meta = gmix.load(a.from_mix, "edges")
+        if meta.get("synthRun"):
+            require_qa(meta["synthRun"], "the mix's made-up photos", work=WORK)   # drawn through gen build: its QA passed
+        return rows, select, meta, pathlib.Path(meta.get("realDir") or WORK / "real") / "index.jsonl"
+    rng = random.Random(f"train.py:{seed}")
+    real = gmix.real_from_examples(read_json(WORK / "examples.json")) if (WORK / "examples.json").exists() else []
+    synth_run = pathlib.Path(a.synth_run)
+    more = []
+    for n, folder, how, src in ((a.synth, synth_run, "synth_docs.py", "synth"), (a.midv, WORK / "midv", "midv.py", "midv"),
+                                 (a.smartdoc, WORK / "smartdoc", "smartdoc.py", "smartdoc")):
+        if not n:
+            continue
+        f = folder / "examples.json"
+        if not f.exists():
+            raise SystemExit(f"no {folder.name} examples — run {how} first")
+        got = [{**e, "file": str(folder / "img" / pathlib.Path(e["file"]).name), "source": src}   # wherever the set was made (another PC, datasets_hf.py)
+               for e in read_json(f) if not open_exam(e)]  # the exam's documents are never trained on
+        more += rng.sample(got, min(n, len(got)))
+    if a.synth:
+        require_qa(synth_run, "the made-up photos (synth_docs.py)", work=WORK)   # drawn through gen build: its QA passed
+    rows, meta = gmix.build("edges", real, (), more, (), a.real_repeat)
+    meta.update({"synth": run_fingerprint(synth_run) if a.synth else None, "seed": None, "realIndex": None})
+    return rows, [], meta, WORK / "examples.json"
+
+
 def main():
     gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="*", default=list(MODELS))
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
+    ap.add_argument("--from-mix", help="a mix's folder (python -m gen mix --model edges --out DIR): its train.jsonl and select.jsonl")
     ap.add_argument("--synth", type=int, default=0, help="made-up photos (synth_docs.py) added, at random")
     ap.add_argument("--midv", type=int, default=0, help="MIDV photos (midv.py) added, at random")
     ap.add_argument("--smartdoc", type=int, default=0, help="SmartDoc frames (smartdoc.py) added, at random")
+    ap.add_argument("--real-repeat", type=int, default=gmix.DEFAULT_REPEAT,
+                    help="each real example repeated K times, capped so the real ones are at most 30%% of an epoch (the old flags)")
+    ap.add_argument("--seed", type=int, default=None, help="the run's seed (default: a fresh one, printed and saved; --resume: the stopped run's)")
     ap.add_argument("--base", default="", help="the version whose models are trained further (default: the lab's, scripts/scan-lab/models-version; "
                     "with --more / --resume the saved weights' own)")
     ap.add_argument("--synth-run", default=str(WORK / "synth" / "docs"), help="the made-up set --synth draws from (default ~/.scan-train/synth/docs)")
@@ -214,33 +289,25 @@ def main():
                     help="how a photo is shrunk to the 256 input: as the phone does (gen/phone.py, live or capture; the default) or INTER_AREA")
     checkpoint.add_args(ap)
     a = ap.parse_args()
-    random.seed(7); torch.manual_seed(7)
-    ex = [e for e in read_json(WORK / "examples.json") if trains(e)] if (WORK / "examples.json").exists() else []   # not the exam's, none left out of both
-    synth_run = pathlib.Path(a.synth_run)
-    for n, folder, how in ((a.synth, synth_run, "synth_docs.py"), (a.midv, WORK / "midv", "midv.py"),
-                            (a.smartdoc, WORK / "smartdoc", "smartdoc.py")):
-        if not n:
-            continue
-        more = folder / "examples.json"
-        if not more.exists():
-            raise SystemExit(f"no {folder.name} examples — run {how} first")
-        more = [{**e, "file": str(folder / "img" / pathlib.Path(e["file"]).name)} for e in read_json(more)  # wherever the set was made (another PC, datasets_hf.py)
-                if not open_exam(e)]  # the exam's documents are never trained on
-        ex += random.sample(more, min(n, len(more)))
-    if not ex:
-        raise SystemExit("no examples to train on — run pull.py first")
-    if a.synth:
-        require_qa(synth_run, "the made-up photos (synth_docs.py)", work=WORK)   # drawn through gen build: its QA sheet passed
-    assert_clean(ex, "the document edges' training examples", work=WORK)   # no held-out page, exam key or exam document
-    data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(synth_run) if a.synth else None,
-                            counts={"synth": a.synth, "midv": a.midv, "smartdoc": a.smartdoc},
-                            resize=phone.profile_id() if a.resize == "phone" else "area")
-    X, Y = load(ex, a.resize)
+    seed = checkpoint.seed_of(a.models, a)
+    random.seed(seed); torch.manual_seed(seed)
+    print(f"seed {seed} (python train.py ... --seed {seed} repeats this run)")
+    rows, select, meta, pulled = gather(a, seed)
+    stale = stale_warning(pulled, newest_attempt_day())
+    if stale:
+        print(stale)
+    if not rows:
+        raise SystemExit("no examples to train on — run pull.py (or python -m gen real and gen mix) first")
+    print("  " + gmix.summary_line(meta))
+    assert_clean(rows + select, "the document edges' training examples", work=WORK)   # no held-out page, exam key or exam document
+    data = gmix.fingerprint(rows, meta, resize=phone.profile_id() if a.resize == "phone" else "area")
+    X, Y, W, R = load(rows, a.resize)
+    sel = load(select, a.resize)[:2] if select else None
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     base = a.base or version_of("scan-lab")
-    print(f"{len(X)} examples, base models {base}, on {dev}")
+    print(f"{len(X)} examples ({sum(R)} an epoch), base models {base}, on {dev}")
     for name in a.models:
-        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a, data)
+        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a, data, W, R, sel, seed)
 
 
 if __name__ == "__main__":

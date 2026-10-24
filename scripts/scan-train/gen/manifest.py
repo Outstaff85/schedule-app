@@ -251,9 +251,9 @@ def data_fingerprint(train=(), **parts):
 
 
 def exam_ids(work=None):
-    """The short_ids of the real examples on the exam side today (examples.json and doctypes.json entries whose split
-    is exam or golden, by gen.sources' rule): a record moves there when its split key changes (a session linked to a
-    worker) or pull.py keeps more exam keys — with heldout.json unchanged."""
+    """The short_ids of the real examples on the exam side today (examples.json and doctypes.json entries, and gen real's
+    real/index.jsonl rows, whose split is exam or golden, by gen.sources' rule): a record moves there when its split key
+    changes (a session linked to a worker) or pull.py keeps more exam keys — with heldout.json unchanged."""
     from . import sources
     import home
     work = pathlib.Path(work or home.WORK)
@@ -266,6 +266,17 @@ def exam_ids(work=None):
         for e in got if isinstance(got, list) else []:
             if isinstance(e, dict) and e.get("id") is not None and sources._real_split(e) in gc.EXAM_SIDE:
                 out.add(short_id(e["id"]))
+    try:
+        lines = (work / "real" / "index.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(e, dict) and e.get("id") is not None and e.get("split") in gc.EXAM_SIDE:
+            out.add(short_id(e["id"]))
     return out
 
 

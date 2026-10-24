@@ -285,3 +285,13 @@ def test_pull_templates_drops_the_pages_whose_document_left_the_bucket(tmp_path)
     stale = [str(p.relative_to(tmp_path)).replace("\\", "/") for p in pt.stale(tmp_path, {kept})]
     # only pulled pages (<a Firestore id>-<n>.jpg) of a document no longer there; the owner's and hand-put pages stay
     assert stale == [f"id_front/{gone}-0.jpg", f"sefach/{gone}-1.jpg"]
+
+
+def test_the_copies_of_gen_real_and_the_documents_pages_are_found_on_this_pc(tmp_path):
+    names = ["real/img/doc-d1-0.jpg", "doctypes/doc-d1-2.jpg", "real/img/copy-r1.jpg", "real/img/r1.jpg", "real/attempts/n1.jpg",
+             "real/img/att-n1-0.jpg", "real/img/att-n1-3.jpg", "real/img/doc-d10-0.jpg", "real/img/copy-r10.jpg", "real/img/att-n10-0.jpg"]
+    for n in names:
+        (tmp_path / n).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / n).write_bytes(b"\xff\xd8")
+    got = delete_data.local_copies({"documents": ["d1"], "copies": ["r1"], "attempts": ["n1"]}, tmp_path)
+    assert sorted(str(p.relative_to(tmp_path)).replace("\\", "/") for p in got) == sorted(names[:7])   # never another's (d10, r10, n10)
