@@ -36,7 +36,8 @@ class GDb(Db):
 
         class Q:
             def where(self, filter=None):
-                self.key = filter.value
+                # array_contains (one key) or array_contains_any (a list of keys), as Firestore runs them
+                self.keys = list(filter.value) if filter.op_string == "array_contains_any" else [filter.value]
                 return self
 
             def limit(self, n):
@@ -44,7 +45,7 @@ class GDb(Db):
 
             def stream(self):
                 return [Hit(p[1], p[3], d) for p, d in db.data.items()
-                        if len(p) == 4 and p[2] == name and self.key in (d.get("docKeys") or [])]
+                        if len(p) == 4 and p[2] == name and any(k in (d.get("docKeys") or []) for k in self.keys)]
         return Q()
 
 
@@ -89,6 +90,33 @@ def test_the_new_firm_learns_nothing_and_only_its_admin_asks():
     # the firm can't ask for its own worker
     signing.run(db, bucket, {"uid": "a1", "role": "tenant_admin", "tenantId": "t1"}, {"action": "transferAsk", "docNumber": "123456782"}, build101)
     assert len([p for p in db.data if p[0] == "transferRequests"]) == 1
+
+
+def _reqs(db):
+    return [d for p, d in db.data.items() if p[0] == "transferRequests" and d.get("status") == "asked"]
+
+
+def test_an_israeli_id_is_found_with_or_without_its_leading_zero():
+    # stored padded to 9 (the worker window's normDocId), asked with the 8 digits typed
+    db, bucket = _setup()
+    db.collection("tenants").document("t1").collection("workers").document("w1").update({"docId": "012345674", "docKeys": ["012345674"]})
+    assert signing.run(db, bucket, ADMIN2, {"action": "transferAsk", "docNumber": "12345674"}, build101) == {"ok": True, "message": transfer.E_SENT}
+    assert len(_reqs(db)) == 1 and _reqs(db)[0]["fromWorker"] == "w1"
+    # an older record stored without the 0, asked with the 9 digits
+    db, bucket = _setup()
+    db.collection("tenants").document("t1").collection("workers").document("w1").update({"docId": "12345674", "docKeys": ["12345674"]})
+    signing.run(db, bucket, ADMIN2, {"action": "transferAsk", "docNumber": "012345674"}, build101)
+    assert len(_reqs(db)) == 1 and _reqs(db)[0]["fromWorker"] == "w1"
+    assert transfer.doc_key_forms("012345674") == ["012345674", "12345674"]
+    assert transfer.doc_key_forms("12345674") == ["12345674", "012345674"]
+    assert transfer.doc_key_forms("AB12345") == ["AB12345"]
+
+
+def test_the_form_101_payload_sends_the_street_and_house_number_apart():
+    # as form101Payload does: a house number such as "12א" must print whole, not be re-split from `address`
+    p = transfer.form101_payload({"address": "הרצל", "houseNumber": "12א", "city": "חיפה"}, {}, "2026-10-01", "2026-10-01")
+    assert p["street"] == "הרצל" and p["houseNumber"] == "12א" and p["address"] == "הרצל 12א"
+    assert transfer.form101_payload({}, {}, "", "")["street"] == "" and transfer.form101_payload({}, {}, "", "")["houseNumber"] == ""
 
 
 def test_the_worker_signs_and_only_the_personal_data_is_copied():

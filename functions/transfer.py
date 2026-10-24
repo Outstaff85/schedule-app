@@ -44,6 +44,19 @@ def doc_key(v):
     return "".join(c for c in str(v or "").upper() if c.isalnum())
 
 
+def doc_key_forms(key):
+    """The stored keys a typed number matches (functions-auth core.py _doc_key_forms): an Israeli ID
+    may be stored with or without its leading 0 ("12345678" / "012345678" — the worker window pads
+    an 8-digit ID to 9), so an all-digit key also matches its forms without leading zeros and padded to 9."""
+    forms = [key]
+    if key.isdigit():
+        bare = key.lstrip("0")
+        for k in (bare, bare.zfill(9)):
+            if k and k not in forms:
+                forms.append(k)
+    return forms
+
+
 def _now():
     return datetime.datetime.now(datetime.timezone.utc)
 
@@ -66,6 +79,8 @@ def form101_payload(w, profile, sign_date, start):
         "workerPhone": w.get("phone") or "", "incomeType": w.get("incomeType"), "otherIncomeType": w.get("otherIncomeType"),
         "employer": {k: profile.get(k) for k in ("companyName", "street", "streetNumber", "city", "phone", "deductionsFileNumber")},
         "address": ((w.get("address") or "") + " " + (w.get("houseNumber") or "")).strip(), "city": w.get("city") or "",
+        # the street and the house number apart, as form101Payload sends them: a number such as "12א" prints whole
+        "street": w.get("address") or "", "houseNumber": w.get("houseNumber") or "",
         "marital": w.get("maritalStatus") or "", "workStart": start, "healthFund": w.get("healthFund") or "",
         "children": w.get("docChildren") or [],
     }
@@ -109,7 +124,8 @@ def ask(db, claims, tenant, body):
         return {"error": "Type the worker's ID or passport number"}
     try:
         from google.cloud.firestore_v1.base_query import FieldFilter
-        hits = list(db.collection_group("workers").where(filter=FieldFilter("docKeys", "array_contains", key)).limit(10).stream())
+        hits = list(db.collection_group("workers").where(
+            filter=FieldFilter("docKeys", "array_contains_any", doc_key_forms(key))).limit(10).stream())
     except Exception:
         hits = []
     to_name = (db.collection("tenants").document(tenant).get().to_dict() or {}).get("companyName") or ""

@@ -1238,6 +1238,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sp = await p.evaluate(async ([jpg, jpg2]) => {
     const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     const load = async ids => (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerPages', fileIds: ids})})).json();
+    // saveScanPages deletes the replaced files (and the old sidecar) without awaiting it: poll up to ~5 s
+    const settle = async f => { for (let i = 0; i < 25; i++) { if (await f()) return true; await new Promise(res => setTimeout(res, 200)); } return !!(await f()); };
     const id = 'wpages' + Date.now();
     workers.push({id, name:'Pages Test', docType:'israeli_id', docGiven:'Pages', docSurname:'Test', clientIds:[], schedule:[]});
     const w = () => workers.find(x => x.id === id);
@@ -1258,8 +1260,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const ok2 = await autoUploadWithRetry(true, id);
     const now = w().scanPages;
     r.rescan = ok2 && now.length === 2 && now[0].fileId !== first[0].fileId && now[1].fileId === first[1].fileId && w().sigFileId === firstSig && w().docHasSignature === true;
-    const gone = await load([first[0].fileId]);
-    r.oldFrontGone = gone.ok && gone.missing.length === 1;
+    r.oldFrontGone = await settle(async () => { const gone = await load([first[0].fileId]); return gone.ok && gone.missing.length === 1; });
     // 3. a worker still on the old sidecar is split into pages on its rebuild; the sidecar goes
     window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:id, scanB64:jpg, scanMediaType:'image/jpeg', sigPng:'data:image/png;base64,' + PNG, extraPages:[{b64:jpg2, mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
@@ -1268,8 +1269,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // the card's field search reads the old sidecar too
     r.legacyRead = !!(await ManagerBridge.findScanFields(id, ['city'], 'israeli_id'));
     const ok3 = await regenerateWorkerDoc(id);
-    const side = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerAssets', fileId:a.id})})).json();
-    r.split = ok3 && !w().assetsFileId && (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(',') === 'id_front*,other' && !!w().sigFileId && side.error === 'File not found';
+    const sidecarGone = await settle(async () => (await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerAssets', fileId:a.id})})).json()).error === 'File not found');
+    r.split = ok3 && !w().assetsFileId && (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(',') === 'id_front*,other' && !!w().sigFileId && sidecarGone;
     // the split pages are readable; a rebuild of a split worker reads them and stores nothing new
     const keep = w().scanPages.map(x => x.fileId).join();
     const ok4 = await regenerateWorkerDoc(id);
