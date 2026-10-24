@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One browser-test file (main.test.js or hr.test.js), run inside
+# One browser-test file (main.test.js, hr.test.js or scanner.test.js), run inside
 # `firebase emulators:exec` (package.json): serves dist/ (what Hosting serves,
 # built by `npm run build` at the repo root; the repo itself when there is no
 # dist/) on :8765, starts

@@ -1,7 +1,7 @@
 """The passport zone reader (docs/hf-plan.md → H8b): a small CRNN that reads one MRZ line, and how
 a passport page's two MRZ lines are found — shared by train_mrz.py and exam_mrz.py; the phone
-does the same (src/scan-process/mrz-reader.ts: the same line finding, the same input, the same
-decoding — a change here is mirrored there).
+does the same (src/scan/engine/readers.ts mrzFind / lineInput / ctcDecode and the Readers' mrzRead: the
+same line finding, the same input, the same decoding — a change here is mirrored there).
 
 The model's contract (mrz.onnx): input "img" [1, 1, 32, 512] — the line in grey 0..1, its height
 scaled to 32, left-aligned, the rest of the width filled with white; output "logits" [1, 128, 38]

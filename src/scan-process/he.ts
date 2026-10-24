@@ -1,5 +1,5 @@
 // The Hebrew field reader's answer on the primary ID card (docs/hf-plan.md → H8c; the reader: the scanner's
-// heRead in scan-lab/index.html) in the worker fields' forms — kept beside the AI's read as heShadow and
+// heRead in src/scan/engine/readers.ts) in the worker fields' forms — kept beside the AI's read as heShadow and
 // compared on the server with what the user saved; never put into the worker window. Pure.
 import type { HeFields } from '../scan/Scanner';
 import type { Rec } from './types';

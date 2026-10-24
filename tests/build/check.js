@@ -23,8 +23,8 @@ function walk(dir, base = '') {
   const old = staticFiles(ROOT);
   for (const f of ['service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
-  // The new pages are built by Vite, never copied: /next, the punch page and the manager app.
-  for (const [f, src] of [['worker-punch.html', 'src/punch/'], ['schedule-manager.html', 'src/manager/page/']])
+  // The new pages are built by Vite, never copied: /next, the punch page, the manager app and the scanner lab.
+  for (const [f, src] of [['worker-punch.html', 'src/punch/'], ['schedule-manager.html', 'src/manager/page/'], ['scan-lab/index.html', 'src/scan/lab/']])
     if (old.includes(f)) errs.push(`${f} is a Vite entry (${src}): it must not be in the copied list`);
   // /supplier and /client (permissions plan, stage 4): small static pages that only send to the manager app.
   for (const f of ['client-portal.html', 'supplier-portal.html']) {
@@ -40,7 +40,7 @@ function walk(dir, base = '') {
   const built = walk(DIST);
   const never = /^(functions|functions-auth|services|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
   for (const f of built) if (never.test(f)) errs.push(`dist/${f} must never be served`);
-  for (const [page, what] of [['next/index.html', 'the /next page'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app']]) {
+  for (const [page, what] of [['next/index.html', 'the /next page'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app'], ['scan-lab/index.html', 'the scanner lab (/scan-lab/)']]) {
     const file = path.join(DIST, page);
     if (!fs.existsSync(file)) { errs.push(`dist/${page} missing (${what})`); continue; }
     const html = fs.readFileSync(file, 'utf8');
@@ -65,6 +65,51 @@ function walk(dir, base = '') {
   for (const f of ['og.css', 'payroll.js', 'fonts/fonts.css', 'icons/tabler-icons.css', 'manifest.json'])
     if (!mh.includes(`"${f}"`) || !old.includes(f)) errs.push(`dist/schedule-manager.html: ${f} is not loaded as it is (vite-ignore) or not copied`);
   if (/vite-ignore/.test(mh)) errs.push('dist/schedule-manager.html: a vite-ignore attribute was left in the built page');
+  // The scanner's surfaces (docs/scan-plan.md → S9, package 8; CLAUDE.md → Scanner: the lab and the site are apart).
+  // The chunk graph: a chunk reaches every other chunk of dist/assets it names (its imports, its dynamic imports,
+  // Vite's preload lists, the worker's URL); a page loads its module's chunk and everything it reaches.
+  const chunkOf = f => fs.existsSync(path.join(DIST, f)) ? fs.readFileSync(path.join(DIST, f), 'utf8') : '';
+  const chunks = built.filter(f => /^assets\/[^/]+\.js$/.test(f));
+  const named = code => chunks.filter(c => code.includes('/' + c) || code.includes('"' + c) || code.includes('`' + c) || code.includes("'" + c) || code.includes('./' + path.basename(c)));
+  const pageModule = page => (chunkOf(page).match(/src="\/(assets\/[^"]+\.js)"/) || [])[1];
+  const reach = start => { const seen = new Set(); const todo = start ? [start] : [];
+    while (todo.length) { const c = todo.pop(); if (seen.has(c)) continue; seen.add(c); todo.push(...named(chunkOf(c)).filter(n => !seen.has(n))); }
+    return seen; };
+  const workerOf = code => [...code.matchAll(/new Worker\(new URL\([`'"]\/(assets\/worker-[\w-]+\.js)[`'"][^)]*\)\s*,\s*\{\s*type\s*:\s*[`'"]module[`'"]\s*\}\)/g)].map(m => m[1]);
+  // The site never loads from the lab: no chunk the manager page loads names '/scan-lab/'. The one exception is the
+  // manager's own module — Admin → Scanner reads the lab's version ('/scan-lab/models.json') and Admin → Scanner lab
+  // opens the lab page ('/scan-lab/') in a new tab; neither loads a model. Any other '/scan-lab/…' there fails too.
+  const mjs = pageModule('schedule-manager.html'), mReach = reach(mjs);
+  for (const c of mReach) {
+    const code = chunkOf(c);
+    const hits = [...code.matchAll(/\/scan-lab\/[^`'"]*/g)].map(m => m[0]);
+    const bad = c === mjs ? hits.filter(h => h !== '/scan-lab/' && h !== '/scan-lab/models.json') : hits;
+    if (bad.length) errs.push(`dist/${c}: a chunk the manager page loads names ${[...new Set(bad)].join(', ')} (the site never loads from the scanner lab)`);
+  }
+  const sReach = reach(pageModule('scan-lab/index.html'));
+  // The manager page's scanner (src/scan/open.tsx) and the lab start the same module worker.
+  const mWk = [...mReach].flatMap(c => workerOf(chunkOf(c))), sWk = [...sReach].flatMap(c => workerOf(chunkOf(c)));
+  if (!mWk.length) errs.push(`dist/schedule-manager.html: no chunk it loads (${mjs || 'none'} and on) starts the scanner's worker as a module worker`);
+  if (!sWk.length) errs.push(`dist/scan-lab/index.html: no chunk it loads (${pageModule('scan-lab/index.html') || 'none'} and on) starts the scanner's worker as a module worker`);
+  // The worker (vite.config.mts worker.format 'es') is an ES module built into dist/assets: never wrapped as a
+  // classic script, no importScripts, and no surface folder of its own (the surface comes in its 'load' message).
+  for (const wk of new Set([...mWk, ...sWk])) {
+    const code = chunkOf(wk);
+    if (!code) { errs.push(`dist/${wk}: the scanner's worker chunk is missing`); continue; }
+    if (/^\s*(\(function|\(\(\)\s*=>|!function|var \w+=function)/.test(code)) errs.push(`dist/${wk}: the scanner's worker is built as a classic script, not an ES module`);
+    if (/importScripts/.test(code)) errs.push(`dist/${wk}: the scanner's worker calls importScripts (a module worker imports)`);
+    if (/['"`]\/scan(-lab)?\//.test(code)) errs.push(`dist/${wk}: the scanner's worker names a surface's folder`);
+  }
+  // The lab's page names its own folder in its module (src/scan/lab/surface.ts), so it loads the lab's models.
+  const ljs = pageModule('scan-lab/index.html');
+  if (ljs && !/[`'"]\/scan-lab\/[`'"]/.test(chunkOf(ljs))) errs.push(`dist/${ljs}: the lab page's module does not name '/scan-lab/' (its surface, src/scan/lab/surface.ts)`);
+  // The two surfaces' folders hold no copied file: scan-lab/ is the lab page Vite builds, and the deploy puts each
+  // surface's models next to it afterwards (scripts/scan-lab/fetch-models.sh, scripts/scan/fetch-models.sh) — so
+  // right after the build dist/scan-lab/ is the built page alone and dist/scan/ is not there yet.
+  for (const dir of ['scan-lab/', 'scan/']) if (old.some(f => f.startsWith(dir))) errs.push(`${dir} holds no file of its own in the repo (the built lab page, the models put there at deploy): none may be in the copied list`);
+  const labBuilt = built.filter(f => f.startsWith('scan-lab/')), siteBuilt = built.filter(f => f.startsWith('scan/'));
+  if (labBuilt.join() !== 'scan-lab/index.html') errs.push(`dist/scan-lab/ must be the built lab page alone before the deploy puts its models there: ${labBuilt.join(', ') || 'empty'}`);
+  if (siteBuilt.length) errs.push(`dist/scan/ is filled only by the deploy (the site's models): ${siteBuilt.join(', ')}`);
   const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
   if (fb.hosting.public !== 'dist') errs.push(`firebase.json: hosting.public is "${fb.hosting.public}", must be "dist"`);
   console.log(`${old.length} files of the old pages, ${built.length} files in dist/, ${errs.length} problems`);

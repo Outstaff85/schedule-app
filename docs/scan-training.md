@@ -14,7 +14,7 @@ The whole training of the scanner in one place: where the examples come from, wh
 
 - **The site's scanner** is the only source of examples: real scans by the firms' users. The lab collects nothing (no login, no data).
 - **The models' home is Hugging Face** (docs/hf-plan.md): the private repo `OutStaff/scanner-models` (the deploys read it with the Actions secret `HF_TOKEN`), one tag per version (`base-v1`, `v2`…), every file of the version in its commit, named by what it does (`edges.onnx`, `edges-lite.onnx`, `face.onnx`, `doctype.onnx`, `doctype-lite.onnx`, the exam reports). The examples are in Firebase (Storage `training/scan/`, Firestore `scanTraining`). A version not moved yet (`move_to_hf.py`) is still read from Storage `models/scan/<version>/` under its old names (`sa24.onnx`, `lite.onnx`, `yunet640.onnx`).
-- **The lab and the site never share code or a model file** (CLAUDE.md → Scanner: the lab and the site are apart); each names the model version it uses.
+- **The lab and the site run one scanner code (`src/scan/`) but never share a model file** (CLAUDE.md → Scanner: one code, the models per surface): each surface has its own models, ONNX Runtime and browser cache, and names the model version it uses.
 
 ## 1. What is collected (on the site)
 
@@ -160,7 +160,7 @@ Not yet: its exam on the site's real ID cards (H8a keeps each read's `fieldBoxes
 - **Site:** only when the owner says the lab is better, the same version is set in **both** `scripts/scan/models-version` (the phone's light model, `/scan/`) and `functions/scan_models_version.txt` (the server's accurate model; a test keeps the two equal), then deployed.
 - **Rollback:** the previous version in the same files; every version stays on Hugging Face.
 
-At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`resolve/<tag>/<file>`, no key — the repo is public), else from Storage while the version is not moved yet; only `base-v1` may fall back to the models' authors — a trained version is the firm's own. **The server runs no scanner model** (2026-10-19: `preprocess_scan` and its Storage mirror were removed — the site's scanner is the lab's page, which runs its models on the phone); `functions/scan_models_version.txt` only names the site's version in each training example.
+At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`resolve/<tag>/<file>`, no key — the repo is public), else from Storage while the version is not moved yet; only `base-v1` may fall back to the models' authors — a trained version is the firm's own. **The server runs no scanner model** (2026-10-19: `preprocess_scan` and its Storage mirror were removed — the site's scanner runs its models on the phone, the same scanner as the lab's); `functions/scan_models_version.txt` only names the site's version in each training example.
 
 ## 6. The owner's side
 
@@ -173,7 +173,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 
 | What | Where |
 |---|---|
-| page kinds, their examples, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx` (`classify`, `examples`), `src/scan/server.ts` (`sendFeedback`, `doctypeMode`, `sendScanDocument`) — the pages are cut by the lab's page (`scan/`), so they send document type examples only (`source: "page"`), no corner examples |
+| page kinds, their examples, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx` (`classify`, `examples`), `src/scan/server.ts` (`sendFeedback`, `doctypeMode`, `sendScanDocument`) — the pages are cut by the full-screen scanner on the phone, so they send document type examples only (`source: "page"`), no corner examples |
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
 | the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`, `scanAttemptsNotice` — S8, at 15 new attempts) |
 | the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
@@ -181,7 +181,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 | the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh` |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
 | training | `scripts/scan-train/` (corners: `pull.py`, `attempts.py` — the scan attempts' examples —, `train.py`, `onnxbatch.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
-| the document type models at work | `scan-lab/index.html` (`doctypeNote`, `doctypeSess`), `scan/embed.js` (`answer` — each posted page's), `src/scan/Scanner.tsx` (Off / Shadow / Mixed), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
+| the document type models at work | `src/scan/engine/readers.ts` (`doctypeAnswer` — each page's readouts, the site's scanner and the lab alike), `src/scan/lab/Readouts.tsx` and `kinds.ts` (the lab's readout and its type collection), `src/scan/Scanner.tsx` (Off / Shadow / Mixed), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
 | the passport zone reader (H8b) and the made-up lines | `scripts/scan-train/synth.py` (the lines), `synth_lines.py` (drawn with TRDG), `fonts/OCRB.otf`, `requirements-synth.txt`, `mrzmodel.py` (the model's contract, the line finding, line 2's values), `train_mrz.py`, `exam_mrz.py`, `publish.py` (`mrz.onnx`) |
 | the made-up document photos | `scripts/scan-train/synth_docs.py` (the documents, the photo), `synth.py` (`order_corners`, `scene_quad`), `train.py --synth` |

@@ -25,7 +25,8 @@ def readable(text):
     return bool(text) and all(c in CHARS for c in text)
 
 
-# ---------- the phone's side (scan-lab/index.html heRead, mirrored there) ----------
+# ---------- the phone's side (src/scan/engine/readers.ts heRead, HE_CHARS / heLineBox / heLogical: CHARS,
+# line_input and logical_simple are mirrored there) ----------
 # The fields the phone reads on a cut ID card and compares with what the user saved (docs/scan.md):
 # each layout is a reference page of template_fields.json, its fields by role.
 LAYOUT_PAGES = {"new": "id_front/new_type.jpg", "old": "id_front/old_type.jpg"}

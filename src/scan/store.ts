@@ -1,5 +1,5 @@
 // The scan window's batches kept on this phone (IndexedDB) until Done has read them, for 3 minutes at most
-// (owner, 2026-10-20 — as long as the lab page stays loaded, lab.ts):
+// (owner, 2026-10-20 — as long as the scan session stays, keep.ts):
 // a window closed by mistake, or a page the phone reloaded, opens again with them (docs/scan.md →
 // The scan window → Batches). Only on this device; nothing here goes to a server.
 const DB = 'scanner', STORE = 'batches', KEY = 'current', KEEP_MS = 3 * 60 * 1000;

@@ -49,8 +49,8 @@ get() {
 drive() { echo "https://drive.usercontent.google.com/download?id=$1&export=download&confirm=t"; }
 # DocAligner, the light model (lcnet100, Apache-2.0): the live frame.
 get lite.onnx "$(drive 1IlbLPkCv-TdaBLOPh_4J97P1_KHYYJ7a)"
-# DocAligner, the accurate model (fastvit_sa24, Apache-2.0), under the lab's name: the copied lab page (scan/)
-# refines a shot's corners and finds its other documents with it — fp16 weights, fp32 math.
+# DocAligner, the accurate model (fastvit_sa24, Apache-2.0), under the lab's name: the scanner refines a shot's
+# corners and finds its other documents with it (src/scan/engine/shot.ts) — fp16 weights, fp32 math.
 get sa24.onnx "$(drive 14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl)"
 [ -s "$CACHE/sa24_w16.onnx" ] || python "$HERE/w16.py" "$CACHE/sa24.onnx" "$CACHE/sa24_w16.onnx"
 # The face finder that sets a shot upright (YuNet, MIT, OpenCV zoo), its input size freed to run at 320.
@@ -81,10 +81,27 @@ files = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()[:16] for f in sorted
 PY
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).
+# ort.all.min.mjs is what the scanner's engine imports at run time (src/scan/engine/ort.ts); the
+# ort-wasm-simd-threaded*.mjs are what both builds' wasm loaders import (docs/build.md → The scanner's entries).
 T="$(mktemp -d)"
 for v in 1.22.0:ort 1.30.0:ort130; do
   (cd "$T" && mkdir -p "${v#*:}" && cd "${v#*:}" && npm pack "onnxruntime-web@${v%%:*}" --silent >/dev/null && tar xzf "onnxruntime-web-${v%%:*}.tgz")
-  cp "$T/${v#*:}/package/dist/ort.all.min.js" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
+  cp "$T/${v#*:}/package/dist/ort.all.min.mjs" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
 done
 cp "$HERE/THIRD-PARTY.txt" "$OUT/"
+# What the surface's page loads at run time, all from its own folder (docs/build.md → The scanner's entries): the models,
+# models.json at this version, he-layouts.json when the Hebrew reader is there, and both ONNX Runtime builds — the .mjs
+# the scanner's engine imports (src/scan/engine/ort.ts), its .wasm and loaders. A deploy missing one stops here.
+python - "$OUT" "$SCAN_MODELS_VERSION" <<'PY'
+import json, pathlib, sys
+out, version = pathlib.Path(sys.argv[1]), sys.argv[2]
+m = json.loads((out / "models.json").read_text())
+need = ["lite.onnx", "sa24_w16.onnx", "yunet.onnx"] + [f"{d}/{f}" for d in ("ort", "ort130") for f in ("ort.all.min.mjs",)]
+need += ["doctype.onnx"] * m["doctype"] + ["mrz.onnx"] * m["mrz"] + ["he.onnx", "he-layouts.json"] * m["he"]
+missing = [f for f in need if not (out / f).is_file() or (out / f).stat().st_size == 0]
+for d in ("ort", "ort130"):
+    if not list((out / d).glob("*.wasm")) or not list((out / d).glob("ort-wasm-simd-threaded*.mjs")): missing.append(d + "/ (its .wasm and loader .mjs)")
+if m["version"] != version: missing.append(f"models.json says {m['version']}, models-version {version}")
+sys.exit("not put next to the page in " + str(out) + ": " + ", ".join(missing) if missing else 0)
+PY
 ls -la "$OUT"
