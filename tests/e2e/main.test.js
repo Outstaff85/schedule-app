@@ -276,6 +276,28 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(tf.figs === 'On shift,Late,No punch,Notices' && tf.tiles && /notices/.test(tf.all) && /log/.test(tf.all) && tf.noticeN >= 1 && tf.only && tf.back && tf.folded && tf.open && tf.emptyFrame && tf.sheet && tf.hidden && tf.shown && tf.closed,
     'today (React): figures as glass tiles, a figure filters to its section and Show all brings the rest back, the arrow folds a section (kept), the empty log in a dashed frame, a chip opens the notices; salary search opens from its icon ' + JSON.stringify(tf));
+  // Today's hours and who is on shift: a shift open since 4 hours ago shows 4h (not twice that),
+  // a night shift opened yesterday at 22:00 is still on shift after midnight (its IN only in the last 24 hours).
+  const tn = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    const base = getPunchLog().slice(), now = new Date(), y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 22, 0);
+    const p = (id, wid, name, ts) => ({id, workerId: wid, workerName: name, type: 'in', ts: ts.toISOString(), time: String(ts.getHours()).padStart(2, '0') + ':' + String(ts.getMinutes()).padStart(2, '0'), site: '', clientId: 'c1'});
+    try { savePunchLog(base.concat([p('t-avi', 'w1', 'Avi Cohen', new Date(now.getTime() - 4 * 36e5)), p('t-dana', 'w2', 'Dana Levi', y)])); } catch (e) {}
+    const snap = ManagerBridge.today();
+    r.recent = snap.recent.some(e => e.id === 't-dana') && !snap.log.some(e => e.id === 't-dana');
+    switchTab('dashboard'); render(); await wait(400);
+    // the plate's hours (its right side: the figure in .text-fig)
+    const plate = name => { const x = [...document.querySelectorAll('#todayRoot section[data-sec=onsite] [data-slot=plate]')].find(el => el.textContent.includes(name));
+      return x ? ((x.querySelector('.text-fig') || {}).textContent || '') : ''; };
+    r.avi = plate('Avi Cohen'); r.dana = plate('Dana Levi');
+    r.onsite = (document.querySelector('#todayRoot section[data-sec=onsite]') || {}).textContent || '';
+    try { savePunchLog(base); } catch (e) {}
+    render(); await wait(200);
+    return r;
+  });
+  const hoursOf = t => Number(((t || '').match(/(\d+(?:\.\d+)?)h/) || [])[1]);
+  ok(tn.recent && /Avi Cohen/.test(tn.onsite) && /Dana Levi/.test(tn.onsite) && hoursOf(tn.avi) >= 4 && hoursOf(tn.avi) < 4.2 && hoursOf(tn.dana) > 4,
+    'today: a shift open 4h shows 4h, a night shift from before midnight is on shift with its hours ' + JSON.stringify(tn));
   // Template 3 on a phone: Today (figures, colored lines), Workers, Accounting — screenshots for review.
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
@@ -1541,7 +1563,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(c1rows === '0 records', 'client filter: Avi\'s current client has no punches (' + c1rows + ')');
   await pickFilter('client', 'All clients');
   // CSV columns
-  const csv = await p.evaluate(async () => { let txt=''; const orig=URL.createObjectURL; URL.createObjectURL = b => { b.text().then(t=>txt=t); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function(){}; await exportPunchCSV(); await new Promise(r=>setTimeout(r,300)); URL.createObjectURL=orig; return txt; });
+  const [csv, csvBom] = await p.evaluate(async () => { let txt='', bom=''; const orig=URL.createObjectURL; URL.createObjectURL = b => { b.text().then(t=>txt=t); b.arrayBuffer().then(a=>bom=[...new Uint8Array(a).slice(0,3)].join()); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function(){}; await exportPunchCSV(); await new Promise(r=>setTimeout(r,300)); URL.createObjectURL=orig; return [txt, bom]; });
+  ok(csvBom === '239,187,191', 'CSV: starts with a UTF-8 BOM, so Excel shows Hebrew names ' + csvBom);
   const lines = csv.split('\n').map(l => l.split('","').length);
   ok(lines.length === 5 && lines.every(n => n === lines[0]) && lines[0] === 10, 'CSV: every row has the 10 header columns');
   ok(/"8","n-p\d"/.test(csv), 'CSV: GPS Accuracy is filled (8) and Notes follow it');

@@ -140,9 +140,21 @@ function genPunches(w, year, month) {
 
 // ── The comparison of one dataset ──
 const SAT = d => d.getDay() === 6;
+// The old copies return { hours, warnings }; the module adds `codes` (what each
+// warning is, in step with the texts).
+const hw = a => ({ hours: a.hours, warnings: [...a.warnings] }); // (in this realm: both sides' objects come from the vm)
+// Intended differences (2026-10-24, docs/history.md → Payroll: a pair's length
+// from its time stamps): the old copies counted a pair from its 'HH:MM'
+// strings, so a shift across a clock change (Israel: late March, late October)
+// or longer than 24h came out 1h off or a day short. A bucket like that is
+// checked against its time stamps instead of the old copy.
+const stampChanged = entries => {
+  const t = entries.map(e => new RealDate(e.ts));
+  return t.length > 1 && (t.some(d => d.getTimezoneOffset() !== t[0].getTimezoneOffset()) || Math.max(...t) - Math.min(...t) >= 24 * 3600e3);
+};
 function compareDataset(label, workers, cls, punches) {
   clients = cls;
-  let shifts = 0, payOld = 0, payNew = 0;
+  let shifts = 0, payOld = 0, payNew = 0, changed = 0;
   const pages = [
     ['manager', OLD.manager, NEW.manager.analyze],
     ['supplier', OLD.supplier, NEW.short.analyze],
@@ -155,13 +167,21 @@ function compareDataset(label, workers, cls, punches) {
       const bOld = old.groupPunchesIntoShifts(mine), bNew = P.groupPunchesIntoShifts(mine);
       assert.deepStrictEqual(bNew, bOld, `${label} ${page} ${w.id}: shift buckets`);
       if (page === 'client') {
-        for (const b of bOld) assert.deepStrictEqual(analyze(b.entries, b.date), old.analyzeDayPunches(b.entries, b.date), `${label} client ${w.id}: hours`);
+        for (const b of bOld) if (!stampChanged(b.entries)) assert.deepStrictEqual(hw(analyze(b.entries, b.date)), hw(old.analyzeDayPunches(b.entries, b.date)), `${label} client ${w.id}: hours`);
         continue;
       }
       const seenOld = new Set(), seenNew = new Set();
       for (const b of bOld) {
-        const aOld = old.analyzeDayPunches(b.entries, b.date), aNew = analyze(b.entries, b.date);
-        assert.deepStrictEqual(aNew, aOld, `${label} ${page} ${w.id} ${b.date.toISOString()}: hours and warnings`);
+        const aNew = analyze(b.entries, b.date);
+        let aOld = old.analyzeDayPunches(b.entries, b.date);
+        assert.equal(aNew.codes.length, aNew.warnings.length, `${label} ${page} ${w.id}: a code for each warning`);
+        if (stampChanged(b.entries)) {
+          const [i, o] = b.entries;
+          if (b.entries.length === 2 && i.type === 'in' && o.type === 'out' && i.time && o.time)
+            assert.equal(aNew.hours, (Math.floor(new RealDate(o.ts) / 6e4) - Math.floor(new RealDate(i.ts) / 6e4)) / 60, `${label} ${page} ${w.id} ${b.date.toISOString()}: hours by the time stamps`);
+          aOld = { ...aOld, hours: aNew.hours }; // the pay below is still compared on the same hours
+          changed++;
+        } else assert.deepStrictEqual(hw(aNew), hw(aOld), `${label} ${page} ${w.id} ${b.date.toISOString()}: hours and warnings`);
         const cid = (b.entries.find(e => e.clientId) || {}).clientId;
         const sat = SAT(b.date);
         assert.deepStrictEqual(P.effectiveRates(w, cid, clients), old.effectiveRates(w, cid), `${label} ${page} ${w.id} ${cid}: rates`);
@@ -189,7 +209,7 @@ function compareDataset(label, workers, cls, punches) {
     }
   }
   for (const [page, old] of pages) assert.deepStrictEqual(P.PAY_RULES, old.PAY_RULES || P.PAY_RULES, `${page}: PAY_RULES`);
-  return { shifts, payOld, payNew };
+  return { shifts, payOld, payNew, changed };
 }
 
 function run(label, fn) {
@@ -198,7 +218,7 @@ function run(label, fn) {
 }
 
 // Generated months: 2025-01 … 2026-10, plus today's month with open shifts "now".
-let total = { shifts: 0, payOld: 0, payNew: 0, months: 0 };
+let total = { shifts: 0, payOld: 0, payNew: 0, months: 0, changed: 0 };
 for (let i = 0; i < 22; i++) {
   const year = 2025 + Math.floor(i / 12), month = i % 12;
   R = rng(1000 + i);
@@ -207,7 +227,7 @@ for (let i = 0; i < 22; i++) {
   const punches = workers.flatMap(w => genPunches(w, year, month));
   run(`${year}-${String(month + 1).padStart(2, '0')}`, () => {
     const r = compareDataset(`${year}-${month + 1}`, workers, cls, punches);
-    total.shifts += r.shifts; total.payOld += r.payOld; total.payNew += r.payNew; total.months++;
+    total.shifts += r.shifts; total.payOld += r.payOld; total.payNew += r.payNew; total.months++; total.changed += r.changed;
   });
 }
 // Today: an open shift since this morning counts up to now in the manager.
@@ -215,9 +235,9 @@ run('today: open shift counted up to now', () => {
   const t = new FixedDate();
   const p = [{ workerId: 'w0', type: 'in', ts: new FixedDate(t.getFullYear(), t.getMonth(), t.getDate(), 7, 5).toISOString(), time: '07:05' }];
   const a = P.analyzeDayPunches(p, t, { tr }), b = OLD.manager.analyzeDayPunches(p, t);
-  assert.deepStrictEqual(a, b);
-  assert.ok(a.hours > 0 && a.warnings.length === 1, JSON.stringify(a));
-  assert.deepStrictEqual(P.analyzeDayPunches(p, t), OLD.supplier.analyzeDayPunches(p, t));
+  assert.deepStrictEqual(hw(a), hw(b));
+  assert.ok(a.hours > 0 && a.warnings.length === 1 && a.codes.join() === 'open-today', JSON.stringify(a));
+  assert.deepStrictEqual(hw(P.analyzeDayPunches(p, t)), hw(OLD.supplier.analyzeDayPunches(p, t)));
 });
 run('localYMD on every day of two years', () => {
   for (let d = new FixedDate(2025, 0, 1); d < new FixedDate(2027, 0, 1); d = new FixedDate(d.getFullYear(), d.getMonth(), d.getDate() + 1, 23, 59))
@@ -259,9 +279,29 @@ ok(P.salaryPeriodKey('week', new FixedDate(2026, 9, 15)) === 'w:2026-10-11', 'we
   const b = P.groupPunchesIntoShifts(night);
   ok(b.length === 1 && P.analyzeDayPunches(b[0].entries, b[0].date).hours === 8.5, 'a night shift stays one 8.5h shift');
 }
+{
+  // The clocks go back at 02:00 on Sun 2026-10-25: Sat 22:00 (UTC+3) → Sun 06:00 (UTC+2) is 9 real hours.
+  const dst = [{ type: 'in', ts: '2026-10-24T19:00:00Z', time: '22:00' }, { type: 'out', ts: '2026-10-25T04:00:00Z', time: '06:00' }];
+  const b = P.groupPunchesIntoShifts(dst), a = P.analyzeDayPunches(b[0].entries, b[0].date, { tr });
+  ok(b.length === 1 && a.hours === 9 && !a.warnings.length && P.analyzeDayPunches(dst, b[0].date).hours === 9, 'the night the clocks go back: 22:00–06:00 is 9h ' + JSON.stringify(a));
+  // And forward (Fri 2026-03-27 02:00 → 03:00): Thu 22:00 (UTC+2) → Fri 06:00 (UTC+3) is 7 hours.
+  const fwd = [{ type: 'in', ts: '2026-03-26T20:00:00Z', time: '22:00' }, { type: 'out', ts: '2026-03-27T03:00:00Z', time: '06:00' }];
+  ok(P.analyzeDayPunches(fwd, new FixedDate(fwd[0].ts), { tr }).hours === 7, 'the night the clocks go forward: 22:00–06:00 is 7h');
+  // A forgotten OUT punched 25 hours later: 25h and the >12h warning (it was 1h).
+  const long = [{ type: 'in', ts: '2026-10-05T05:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-10-06T06:00:00Z', time: '09:00' }];
+  const l = P.analyzeDayPunches(long, new FixedDate(long[0].ts), { tr });
+  ok(l.hours === 25 && l.warnings.length === 1 && /shift >12h/.test(l.warnings[0]) && l.codes.join() === 'gt12', 'a forgotten OUT 25h later: 25h and the >12h warning ' + JSON.stringify(l));
+  // Every warning has its code, in the same order; a translated text keeps its code.
+  const he = (s2, p2) => 'HE:' + tr(s2, p2);
+  const mix = [{ type: 'out', ts: '2026-10-05T04:00:00Z', time: '07:00' }, { type: 'in', ts: '2026-10-05T05:00:00Z', time: '08:00' }, { type: 'in', ts: '2026-10-05T06:00:00Z', time: '09:00' }];
+  const m = P.analyzeDayPunches(mix, new FixedDate(2026, 9, 5), { tr: he });
+  ok(m.codes.join() === 'out-no-in,double-in,open' && m.warnings.every(x => x.startsWith('HE:')), 'warning codes in step with the translated texts ' + JSON.stringify(m));
+  // A missing time stamp falls back to the HH:MM strings.
+  ok(P.analyzeDayPunches([{ type: 'in', ts: 'x', time: '22:00' }, { type: 'out', ts: 'y', time: '06:30' }], new FixedDate(2026, 9, 5)).hours === 8.5, 'no time stamps: the HH:MM strings');
+}
 
 if (total.months) {
-  console.log(`PASS ${total.months} generated months: ${total.shifts} manager shifts, pay ${total.payNew.toFixed(2)} new = ${total.payOld.toFixed(2)} old`);
+  console.log(`PASS ${total.months} generated months: ${total.shifts} manager shifts, pay ${total.payNew.toFixed(2)} new = ${total.payOld.toFixed(2)} old (${total.changed} buckets across a clock change or over 24h checked by their time stamps)`);
   ok(Object.is(total.payNew, total.payOld), 'month totals identical');
 }
 console.log(failed ? `${failed} FAILED (${passed} passed)` : `ALL PASSED (${passed})`);

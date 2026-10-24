@@ -47,6 +47,8 @@ export type TodaySnapshot = {
   suppliers: { id: string; name: string; color?: string }[];
   /** today's punches, as stored */
   log: BridgePunch[];
+  /** the last 24 hours' punches (on shift and today's hours: a night shift opened before midnight); absent = `log` */
+  recent?: BridgePunch[];
   /** the login may add workers (the `workers` section) */
   canAddWorker: boolean;
 };

@@ -5,7 +5,8 @@
 // a global `Payroll`) and call it through thin wrappers that pass their own
 // `clients` list and `tr`; the new pages import it. tests/payroll/ runs it
 // against the old copies (tests/payroll/legacy.mjs) and requires identical
-// results — a change here is a payroll change.
+// results (but for a pair across a clock change or over 24h, which now counts
+// by its time stamps — docs/history.md) — a change here is a payroll change.
 
 // ── Data shapes (only the fields payroll reads) ──
 export interface Punch {
@@ -61,9 +62,13 @@ export interface DayPay {
   isSat: boolean;
 }
 export type Translate = (text: string, params?: Record<string, unknown>) => string;
+/** What each warning is, in step with `warnings` (the texts are translated;
+ * the codes are what a page sorts them by — Accounting → Alerts). */
+export type WarnCode = 'double-in' | 'out-no-in' | 'zero' | 'gt12' | 'open' | 'open-today';
 export interface DayAnalysis {
   hours: number;
   warnings: string[];
+  codes: WarnCode[];
 }
 
 // ── Pay rules (Israeli labour-law DEFAULTS — VERIFY against your real rules) ──
@@ -88,17 +93,29 @@ const tsOf = (p: Punch) => new Date(p.ts).getTime();
 const minsFull = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const minsShort = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
 const nowHHMM = () => { const n = new Date(); return String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0'); };
+// The minutes from one punch to a later one: from their time stamps, in whole
+// minutes as the clock showed them — so a night across a clock change (Israel,
+// last Sunday of October / Friday before the last Sunday of March) counts its
+// real 9 or 7 hours and a forgotten OUT a day later counts 25h, not 1h. The
+// 'HH:MM' strings only when a stamp is missing or unreadable.
+function pairMins(a: Punch, b: Punch | null, mins: (t: string) => number, bTime: string): number {
+  const ta = tsOf(a), tb = b ? tsOf(b) : Date.now();
+  if (isFinite(ta) && isFinite(tb) && tb >= ta) return Math.floor(tb / 60000) - Math.floor(ta / 60000);
+  let dur = mins(bTime) - mins(a.time as string); if (dur < 0) dur += 1440;
+  return dur;
+}
 
 // ═══ CANONICAL punch-hours calculation — single source of truth. ═══
 // Pair a day's punches chronologically; return total hours + a list of anomalies.
 // With opts.tr (the manager app): every anomaly is reported (double IN, OUT
 // without IN, 0-minute or >12h shift, an open shift) and today's open shift
 // counts up to now. Without it (the portals and the punch page): only closed
-// IN→OUT pairs count and warnings stays empty.
+// IN→OUT pairs count and warnings stays empty. A pair's length comes from the
+// punches' time stamps (pairMins); `codes` names each warning.
 export function analyzeDayPunches(entries: Punch[], date: string | number | Date, opts?: { tr: Translate }): DayAnalysis {
   const chrono = [...entries].sort((a, b) => tsOf(a) - tsOf(b));
   let hours = 0, openIn: Punch | null = null;
-  const warnings: string[] = [];
+  const warnings: string[] = [], codes: WarnCode[] = [];
   const tr = opts && opts.tr;
   if (!tr) {
     chrono.forEach(e => {
@@ -106,23 +123,23 @@ export function analyzeDayPunches(entries: Punch[], date: string | number | Date
       else if (e.type === 'out') {
         if (!openIn) return;
         if (!openIn.time || !e.time) { openIn = null; return; }
-        let dur = minsShort(e.time) - minsShort(openIn.time); if (dur < 0) dur += 1440;
+        const dur = pairMins(openIn, e, minsShort, e.time);
         hours += dur / 60; openIn = null;
       }
     });
-    return { hours, warnings };
+    return { hours, warnings, codes };
   }
   chrono.forEach(e => {
     if (e.type === 'in') {
-      if (openIn) warnings.push(tr('double IN (no OUT after {0})', { 0: openIn.time }));
+      if (openIn) { warnings.push(tr('double IN (no OUT after {0})', { 0: openIn.time })); codes.push('double-in'); }
       openIn = e;
     } else if (e.type === 'out') {
-      if (!openIn) { warnings.push(tr('OUT without IN ({0})', { 0: e.time })); return; }
+      if (!openIn) { warnings.push(tr('OUT without IN ({0})', { 0: e.time })); codes.push('out-no-in'); return; }
       if (!openIn.time || !e.time) { openIn = null; return; }
-      let dur = minsFull(e.time) - minsFull(openIn.time); if (dur < 0) dur += 1440; dur = roundMins(dur);
+      const dur = roundMins(pairMins(openIn, e, minsFull, e.time));
       const hh = dur / 60;
-      if (hh <= 0) warnings.push(tr('0-minute shift ({0}→{1})', { 0: openIn.time, 1: e.time }));
-      else if (hh > 12) warnings.push(tr('shift >12h ({0}→{1})', { 0: openIn.time, 1: e.time }));
+      if (hh <= 0) { warnings.push(tr('0-minute shift ({0}→{1})', { 0: openIn.time, 1: e.time })); codes.push('zero'); }
+      else if (hh > 12) { warnings.push(tr('shift >12h ({0}→{1})', { 0: openIn.time, 1: e.time })); codes.push('gt12'); }
       hours += hh; openIn = null;
     }
   });
@@ -130,9 +147,10 @@ export function analyzeDayPunches(entries: Punch[], date: string | number | Date
   if (open) {
     const isToday = new Date().toDateString() === new Date(date).toDateString();
     warnings.push(tr(isToday ? 'open shift from {0} (still at work)' : 'open shift from {0} — no OUT', { 0: open.time }));
-    if (isToday && open.time) { let dur = minsFull(nowHHMM()) - minsFull(open.time); if (dur < 0) dur += 1440; dur = roundMins(dur); hours += dur / 60; }
+    codes.push(isToday ? 'open-today' : 'open');
+    if (isToday && open.time) hours += roundMins(pairMins(open, null, minsFull, nowHHMM())) / 60;
   }
-  return { hours, warnings };
+  return { hours, warnings, codes };
 }
 
 // Pair one worker's punches into shifts chronologically, independent of calendar-day

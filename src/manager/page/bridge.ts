@@ -14,6 +14,7 @@ import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, worke
 import { canChange, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
+import { csvText } from '../../lib/utils';
 import { autoSave, latestHoursBatch } from '../data/store';
 import { fsTenantId, getSession, gsAuth } from '../data/session';
 import { activeTenantIdForAdmin, activeTenantProfile, adminPanes, assignWorkersToHr, assignWorkersToSupplier, firmProfileMissing, firmsPayableRows, hrColor, loadAdminCache, loadFirmsCache } from '../logic/admin';
@@ -104,9 +105,11 @@ provideBridge({
   pingLogin:()=>pingLogin(),
   // The snapshot Today draws from: each worker with today's shift, today's punch
   // and its notices (worked out here — they still belong to the Workers tab),
-  // the suppliers, today's punches with their site.
+  // the suppliers, today's punches with their site, and the last 24 hours'
+  // (who is on shift and today's hours: a night shift opened before midnight).
   today(){
-    const now=new Date(), t=now.toDateString(), log=getPunchLog().filter((e?: any)=>new Date(e.ts).toDateString()===t);
+    const now=new Date(), t=now.toDateString(), all=getPunchLog(), log=all.filter((e?: any)=>new Date(e.ts).toDateString()===t);
+    const since=now.getTime()-24*36e5, recent=all.filter((e?: any)=>new Date(e.ts).getTime()>=since);
     return {
       ready:__dataReady,
       workers:workers.map((w?: any)=>{ const td=workerToday(w,log), sh=shiftOn(w,now);
@@ -115,6 +118,7 @@ provideBridge({
           notices:workerNotices(w,td).map((n?: any)=>({lvl:n.lvl, word:n.word, title:n.title}))}; }),
       suppliers:suppliers.map((x?: any)=>({id:x.id, name:x.name||'', color:x.color||''})),
       log:log.map((e?: any)=>({...e, site:punchSite(e)})),
+      recent:recent as any[],
       canAddWorker:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
@@ -698,8 +702,7 @@ function exportPunchCSV(){
       e.editedAt?new Date(e.editedAt).toLocaleString():''
     ]);
   });
-  const csv=rows.map((r?: any)=>r.map((v?: any)=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const blob=new Blob([csvText(rows)],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download='punch-log-'+localYMD(new Date())+'.csv'; a.click();

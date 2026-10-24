@@ -19,7 +19,7 @@ export type TodayModel = {
   log: BridgePunch[];
   /** a headcount per supplier that has workers */
   suppliers: { id: string; name: string; color?: string; count: number }[];
-  /** today's hours of a worker: the day's paired shifts plus a shift still open up to now */
+  /** today's hours of a worker: its shifts with a punch today, and a shift still open (also one opened before midnight) up to now */
   hours: (w: BridgeWorker) => number;
 };
 
@@ -36,12 +36,19 @@ export function latestOf<P extends { ts: unknown }>(entries: P[]): P | null {
 }
 
 export function todayModel(s: TodaySnapshot, now = new Date()): TodayModel {
-  const byWorker = new Map<string, BridgePunch[]>();
-  s.log.forEach(e => { const l = byWorker.get(e.workerId); if (l) l.push(e); else byWorker.set(e.workerId, [e]); });
+  const index = (list: BridgePunch[]) => {
+    const m = new Map<string, BridgePunch[]>();
+    list.forEach(e => { const l = m.get(e.workerId); if (l) l.push(e); else m.set(e.workerId, [e]); });
+    return m;
+  };
+  const byWorker = index(s.log), byWorkerRecent = index(s.recent || s.log);
   const of = (w: BridgeWorker) => byWorker.get(w.id) || [];
+  // The last day's punches: a night shift opened before midnight is still on shift, and its OUT pairs with its IN.
+  const recentOf = (w: BridgeWorker) => byWorkerRecent.get(w.id) || [];
   const nowMins = now.getHours() * 60 + now.getMinutes();
+  const today = now.toDateString(), isToday = (e: { ts: unknown }) => new Date(e.ts as string).toDateString() === today;
 
-  const onSite = s.workers.filter(w => latestOf(of(w))?.type === 'in');
+  const onSite = s.workers.filter(w => latestOf(recentOf(w))?.type === 'in');
 
   const missing = s.workers.filter(w => w.active).flatMap(w => {
     const sh = w.shift;
@@ -69,12 +76,15 @@ export function todayModel(s: TodaySnapshot, now = new Date()): TodayModel {
   s.workers.forEach(w => { if (w.supplierId) counts.set(w.supplierId, (counts.get(w.supplierId) || 0) + 1); });
   const suppliers = s.suppliers.filter(x => counts.get(x.id)).map(x => ({ ...x, count: counts.get(x.id)! }));
 
+  // analyzeDayPunches counts a shift opened today up to now; one still open
+  // since before midnight is counted here up to now, the same whole minutes.
   const hours = (w: BridgeWorker) => {
     let h = 0;
-    groupPunchesIntoShifts(of(w)).forEach(b => {
-      h += analyzeDayPunches(b.entries, b.date, { tr: (t, p) => tr(t, p as Record<string, string | number>) }).hours;
-      const last = b.entries[b.entries.length - 1];
-      if (last && last.type === 'in') h += Math.max(0, (now.getTime() - tsOf(last)) / 36e5);
+    groupPunchesIntoShifts(recentOf(w)).forEach(b => {
+      const last = b.entries[b.entries.length - 1], open = !!last && last.type === 'in';
+      if (!b.entries.some(isToday) && !open) return;
+      if (open && !isToday(b.entries[0])) h += Math.max(0, Math.floor(now.getTime() / 6e4) - Math.floor(tsOf(last) / 6e4)) / 60;
+      else h += analyzeDayPunches(b.entries, b.date, { tr: (t, p) => tr(t, p as Record<string, string | number>) }).hours;
     });
     return h;
   };
