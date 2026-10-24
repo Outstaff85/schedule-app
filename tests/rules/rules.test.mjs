@@ -146,7 +146,7 @@ test('punches: any manager-side login of the firm reads and writes', async () =>
   }
 });
 
-test('punches: only the owner or a superadmin sets a hrId other than the worker's', async () => {
+test("punches: only the owner or a superadmin sets a hrId other than the worker's", async () => {
   // staff (or an all-workers hr) with Edit punches: an edit keeps the hrId, a new punch carries its worker's
   for (const r of ['staffAll', 'hrAll']) {
     await assertFails(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p1'), { hrId: 'u-hrOwn' }));
