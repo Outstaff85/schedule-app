@@ -21,7 +21,7 @@ The punch log's Log / By Client switch is a segmented switch (`ToggleGroup`); ev
 
 ## Punch log data
 
-- **Storage:** punches live in `localStorage.punchLog` — `getPunchLog()` parses it on every call, `savePunchLog(log)` writes it.
+- **Storage:** punches live in `localStorage['punchLog:' + firm]` — one key per firm (`fsTenantId()`), so a super-admin who opens another firm never sees the last one's punches; the punch page keeps its own `punchLog` (`src/punch/core.ts`). `getPunchLog()` parses it on every call, `savePunchLog(log)` writes it; when `localStorage` is full the list is kept in memory instead (`getPunchLog` returns that copy), so punches never disappear and the `punches` event still fires. Sign-out removes these keys ([app-core.md](app-core.md) → Login and session).
 - **Loading:** `syncPunchesFromGS()` → `gsLoadPunchLog()` → `mergeRemotePunches(remote)`:
   - `time` is rebuilt from `ts` in local time;
   - remote rows win by id;
@@ -29,7 +29,7 @@ The punch log's Log / By Client switch is a segmented switch (`ToggleGroup`); ev
 - **Loading by month:**
   - `gsLoadPunchLog()` starts a live listener (`listenPunches`) from `punchWindowStart()` = the 1st of this month minus 7 days; every later snapshot is merged and refreshes Today;
   - `__punchLoadedFrom` is the earliest time loaded in this app open;
-  - `ensurePunchesSince(from)` reads older punches once (`punchesBetween(t, from, loadedFrom)`), merges them and lowers `__punchLoadedFrom`. Calls run one after another (`__punchEnsureChain`). `ensureAllPunches()` = from 2000-01-01;
+  - `ensurePunchesSince(from)` reads older punches once (`punchesBetween(t, from, loadedFrom)`), merges them and lowers `__punchLoadedFrom` (put back if the merge fails); it resolves `false` (after a toast) when they could not be loaded. Calls run one after another (`__punchEnsureChain`). `ensureAllPunches()` = from 2000-01-01;
   - `periodPunchStart(period)` gives the start a salary period needs (a past month starts one day early);
   - callers: the Accounting period, salary and hours exports, Export CSV, Clear Log, an approved hours batch, and "Load earlier month" / "Load all history" under the log (`ManagerBridge.loadEarlierPunches` / `loadAllPunches`);
   - cached rows older than what this app open loaded are dropped on merge, so the cache doesn't grow;
@@ -57,8 +57,8 @@ Drawn by `PunchLog` in `src/manager/Admin.tsx` from `ManagerBridge.admin()`: `lo
   - **Older punches:** under the list, while not everything is loaded, "Showing punches from <date>" with **Load earlier month** (`loadEarlierPunchMonth()` loads back to the 1st of the month already partly loaded, or the month before) and **Load all history** (`ensureAllPunches()`).
 - **Edit:** a tap, a double click or a long press on a punch plate (in the log or By Client; with a mouse a single click waits 250 ms for a double one, `useTapOpen`), or ⋮ → Edit, opens the punch window (`Window`): type, time, site (a client, "— No site —", or a kept custom site) and notes; **Save Changes** → `ManagerBridge.savePunch(id, edit)` → the page's `savePunchEdit`: a client sets `clientId` and its name as `site`, no site clears `clientId` and puts the worker's client name, the custom site is kept as it was; `editedBy:'admin'` and `editedAt`; then `gsUpdatePunch`, `render()` and the toast.
 - **By Client** (`byClient`): per client a panel (its colour dot, name, address; "N on site now · N workers · N total punches"), a plate per assigned worker (green while on site — today's latest punch is IN; "In since …" / "Last: … (IN/OUT)" / "No records today"; "N records" at the right; a tap opens its card) and its last 5 punches, newest first, as small plates under it (the time as the name; a tap edits).
-- **Export CSV** (`ManagerBridge.exportPunches()` → `ensureAllPunches()` then the page's `exportPunchCSV()`): Worker, Supplier, Type, Time, Date, Site, Distance(m), GPS Accuracy (rounded), Notes, Edited.
-- **Clear Log** (owner / super-admin; after `ensureAllPunches()`), **behind the Alert Dialog** (it asks, as an irreversible action; it does not close on the backdrop):
+- **Export CSV** (`ManagerBridge.exportPunches()` → `ensureAllPunches()` then, only when the whole history came in, the page's `exportPunchCSV()` — never a file with part of it): Worker, Supplier, Type, Time, Date, Site, Distance(m), GPS Accuracy (rounded), Notes, Edited.
+- **Clear Log** (owner / super-admin; after `ensureAllPunches()` — it stops there when the whole history could not be loaded, `loadAllPunches()` resolving `false`), **behind the Alert Dialog** (it asks, as an irreversible action; it does not close on the backdrop):
   1. A month checklist with counts per month (`monthCounts` / `punchMonthKey`: from `date`, else `ts`) and Select all; the user must type `DELETE`; Delete (with the count) is off until a month is ticked and the word typed; Cancel keeps everything.
   2. `ManagerBridge.clearPunchMonths(months)` → the page's `clearPunchMonths`: downloads a CSV of exactly those rows first,
   3. then `deletePunchesByMonths` runs (by `day`, or `ts` for a punch without `day`), the rows are dropped from the local cache, `render()`, and the toast gives the count. A failure keeps the dialog open with its toast.

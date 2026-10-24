@@ -10,7 +10,7 @@ A punch is one IN or OUT:
 `{id, workerId, workerName, type:'in'|'out', time:'HH:MM', date:'dd/MM/yyyy', ts:ISO, clientId, site, dist, gpsAccuracy, gpsSuspicious, gpsWarnings, notes, manual, editedAt, editedBy}`.
 In Firestore it is a document `tenants/{t}/punches/{id}` with `ts` (Timestamp), `day` (`yyyy-MM-dd`) and `archived` added. Imported hours have ids `imp-<batch>-<row>-in|out`.
 
-The client keeps the punch log in `localStorage.punchLog` (`getPunchLog()` / `savePunchLog()`). How it is loaded and kept in sync: [admin.md](admin.md) → Punch log data.
+The client keeps the punch log in `localStorage['punchLog:' + firm]` (`getPunchLog()` / `savePunchLog()`). How it is loaded and kept in sync: [admin.md](admin.md) → Punch log data.
 
 ## Canonical calculation
 
@@ -112,7 +112,7 @@ Three sections; a section with no row is left out, and with none at all "Nothing
 
 - **Hours approvals** (a month period only, never for an HR): see [hours-review.md](hours-review.md) → Accounting → Hours approvals.
 - **Pending hours** (the approval queue): `loadPendingHours` lists the batches with status `pending` as plates (amber): the worker (or the file), "file · uploaded by · N shifts". For the owner / super-admin ✓ / ✕ on each and Select (Approve / Reject the ticked ones); `staff` sees the list read-only; a `supplier` is refused everywhere (the server checks the same). The list is read again when the batches change (`batchesKey`).
-- **Approving:** `approveHoursBatch(id)` → `approvePendingHours` creates IN and OUT punches per row, with no GPS fields and the note `Imported from <file>`; an OUT at or before the IN is a night shift and lands on the next day. Approving again creates nothing. The app then reads the batch's punches (`punchesOfBatch`) and loads back to the earliest of them, so a past month shows up.
+- **Approving:** `approveHoursBatch(id)` → `approvePendingHours` creates IN and OUT punches per row, with no GPS fields and the note `Imported from <file>`; an OUT at or before the IN is a night shift and lands on the next day. The punches are written in batch writes of 450 (Firestore takes 500 writes per batch, so a long sheet works too), and the batch is marked approved only after all of them; a failure part way leaves it pending, and approving again rewrites the same punch ids (`imp-<batch>-<row>-<type>`), so nothing is duplicated. Approving an approved batch creates nothing. The app then reads the batch's punches (`punchesOfBatch`) and loads back to the earliest of them, so a past month shows up.
 - **Rejecting:** `rejectHoursBatch(id)` (asks first; several: `bulkHoursBatches`, one question) → `rejectPendingHours` marks the batch rejected and creates nothing.
 - Approving and rejecting store `decidedAt`; the sender sees the batch's status (worker card → Upload hours, [workers.md](workers.md); the supplier portal's My Hours). A supplier's batches (`supplierId`, uploaded by the supplier's name, "entered by hand") come in through the `supplier` function and are approved the same way.
 - **Live count and status:** `watchHoursBatches()` (after the load, any manager-side login) keeps `__hoursBatches` from `listenPendingHours`. `updateHoursBadge()` shows the number of batches waiting on the Accounting tab (`#accPendingBadge`, hidden at 0); the worker card shows the worker's latest batch and its status (`HoursStatusChip` in `WorkerCard.tsx` over `latestHoursBatch`, redrawn live while the card is open); an open Accounting tab redraws.

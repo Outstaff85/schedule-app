@@ -50,6 +50,31 @@ export function STORAGE_KEY(): string {
   return STORAGE_KEY_BASE + '_' + tid;
 }
 
+// What this device keeps of a firm for a login — the data cache (every
+// schedMgr_v1* key: per firm, its _bak / _unsaved / _base copies, the
+// unscoped copy), the punch cache (punchLog:<firm>, and the old shared
+// punchLog) and the Form 101 rebuild flags (form101Regen:<firm>) — removed on
+// sign-out and when a different login signs in on this device, so the next
+// login never sees (or saves back) what the last one was allowed to see.
+export const LAST_UID_KEY = 'schedMgr_lastUid';
+export function purgeDeviceData(): void {
+  try {
+    const drop: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith(STORAGE_KEY_BASE) || k === 'punchLog' || k.startsWith('punchLog:') || k.startsWith('form101Regen:'))) drop.push(k);
+    }
+    drop.forEach(k => localStorage.removeItem(k));
+  } catch { /* storage blocked: nothing kept either */ }
+}
+// A sign-in: a login other than the device's last one starts with no cache.
+export function adoptLogin(uid: string): void {
+  let last: string | null = null;
+  try { last = localStorage.getItem(LAST_UID_KEY); } catch { /* blocked */ }
+  if (last !== uid) purgeDeviceData();
+  try { localStorage.setItem(LAST_UID_KEY, uid); } catch { /* blocked */ }
+}
+
 // Merged into every data request: asTenantId when a super-admin has switched
 // into a specific firm (omitted for a firm's own login — firestore-backend.js
 // then uses the session's own firm).

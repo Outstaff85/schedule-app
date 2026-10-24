@@ -192,7 +192,7 @@ provideBridge({
   setStatus:(ids?: any,v?: any)=>setWorkersStatus(ids,v),
   deleteWorkers(ids?: any){
     const one=ids.length===1?workers.find((x?: any)=>x.id===ids[0]):null;
-    ids.forEach((id?: any)=>deleteWorkerNow(id)); render(); autoSave();
+    ids.forEach((id?: any)=>deleteWorkerNow(id)); render(); autoSave({allowEmpty:true}); // the last worker too
     showToast(one?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ids.length,1:''}));
   },
   // ── Clients and Suppliers (stage 6d): the tabs and their windows are React;
@@ -302,8 +302,10 @@ provideBridge({
   setAdminPane:(p?: any)=>switchAdminPane(p),
   punchLog:()=>getPunchLog().map((e?: any)=>({...e, id:e.id, site:punchSite(e), rawSite:e.site||''})),
   loadEarlierPunches:()=>loadEarlierPunchMonth(),
-  loadAllPunches:()=>ensureAllPunches().then(renderAdmin),
-  exportPunches:()=>ensureAllPunches().then(exportPunchCSV),
+  // Whether the whole history came in: Clear Log and the export stop when it did not
+  // (ensurePunchesSince has said why), so a file never holds only part of it.
+  loadAllPunches:()=>ensureAllPunches().then((ok?: any)=>{ renderAdmin(); return !!ok; }),
+  exportPunches:()=>ensureAllPunches().then((ok?: any)=>{ if(ok) exportPunchCSV(); }),
   clearPunchMonths:(months?: any)=>clearPunchMonths(months),
   savePunch:(id?: any,ed?: any)=>savePunchEdit(id,ed),
   deletePunches:(ids?: any)=>deletePunchesNow(ids.map(String)),

@@ -71,7 +71,7 @@ export function deleteClientsNow(ids?: any){
     clients=clients.filter((x?: any)=>x.id!==cid);
     workers.forEach((w?: any)=>{ if(w.clientIds) w.clientIds=w.clientIds.filter((id?: any)=>id!==cid); if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid]; });
     if(selectedClientId===cid) selectedClientId=null; });
-  render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
+  render(); autoSave({allowEmpty:true}); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
 }
 // ── The map picker (React since stage 8e-3: src/manager/MapPicker.tsx, Google
 // Maps in src/manager/maps.ts). The client window's small map opens it

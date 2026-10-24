@@ -2460,6 +2460,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {dialogGone: !document.querySelector('[data-testid="reset-logs"]'), timings: (t.rows || []).length, errors: (e.rows || []).length, shown: ((ManagerBridge.admin().logs || {}).rows || []).length, empty: !!document.querySelector('#adminRoot [data-testid="timings-empty"]')};
   });
   ok(rst.dialogGone && rst.timings === 0 && rst.errors === 0 && rst.shown === 0 && rst.empty, 'timings: Reset deletes every error and measurement ' + JSON.stringify(rst));
+  // The punch cache is per firm: opening Firm Two after Firm One shows none of Firm One's punches.
+  ok(await waitFor(p, () => getPunchLog().some(e => e.workerId === 'w1' || e.workerId === 'w2')), 'boss: Firm One\'s punches are in its cache');
+  await p.evaluate(() => ManagerBridge.openFirm('tenant-two'));
+  await p.waitForNavigation().catch(()=>{});
+  ok(await waitFor(p, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w9') && getPunchLog().length >= 2, 15000), 'boss: viewing Firm Two');
+  const pf = await p.evaluate(() => ({ids: getPunchLog().map(e => e.workerId), own: !!localStorage.getItem('punchLog:tenant-two'), shared: localStorage.getItem('punchLog')}));
+  ok(pf.ids.every(id => id !== 'w1' && id !== 'w2') && pf.ids.includes('w9') && pf.own && !pf.shared, 'punch cache: per firm (punchLog:<firm>), no punch of the firm opened before ' + JSON.stringify(pf));
+  // Deleting every client and then every worker of a firm is saved (allowEmpty), not skipped as an empty glitch.
+  const le = await p.evaluate(async () => {
+    const server = async () => (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+    const until = async fn => { for (let i = 0; i < 40; i++) { await T.tick(250); if (fn(await server())) return true; } return false; };
+    ManagerBridge.deleteClients(clients.map(c => c.id));
+    const c = await until(d => !d.clients.length);
+    ManagerBridge.deleteWorkers(workers.map(w => w.id));
+    const w = await until(d => !d.workers.length);
+    return {c, w, local: workers.length};
+  });
+  ok(le.c && le.w && le.local === 0, 'delete: the last client and the last worker of a firm are deleted on the server ' + JSON.stringify(le));
   ok(p.errs.length === 0, 'boss: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
@@ -3175,6 +3193,83 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(slip.tot && slip.tot === payTot && /Pay estimate/.test(slip.title) && slip.note, 'punch: the month\'s pay estimate has the same total as My Hours and says it is before deductions ' + JSON.stringify({payTot, slip}));
   await pop.close().catch(() => {});
   ok(p.errs.length === 0, 'punch: no page errors ' + p.errs.join(' | '));
+  // ── Two devices of one firm (store.ts → merged save): changes kept on A while its save failed are saved
+  // against the base they were edited from, so a worker B added meanwhile, and B's edit of another worker, stay ──
+  {
+    const ca = await newCtx(); let pa = await page(ca);
+    await login(pa, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+    await pa.waitForNavigation().catch(()=>{});
+    ok(await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w1') && !!localStorage.getItem(STORAGE_KEY() + '_base'), 15000), 'two devices: A loads and keeps a save base next to its cache');
+    const a1 = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend(), keep = b.saveSchedule;
+      b.saveSchedule = async () => { throw new Error('offline'); };   // A's save fails (offline)
+      workers.find(w => w.id === 'w1').e2eNote = 'from A';
+      autoSave();
+      await T.tick(2000);
+      b.saveSchedule = keep;
+      return {unsaved: hasUnsavedLocal(), cached: /from A/.test(localStorage.getItem(STORAGE_KEY()) || '')};
+    });
+    await pa.close();
+    const cb = await newCtx(); const pb = await page(cb);
+    await login(pb, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+    await pb.waitForNavigation().catch(()=>{});
+    ok(await waitFor(pb, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w2'), 15000), 'two devices: B loads');
+    const b1 = await pb.evaluate(async () => {
+      workers.push({id: 'wB', name: 'Added On B', clientIds: [], token: 'tok-wb', status: 'active', schedule: []});
+      workers.find(w => w.id === 'w2').e2eNote = 'from B';
+      return gsSave(getDataObj());
+    });
+    await cb.close();
+    // A opens again: its kept changes are saved, merged with what B did.
+    pa = await page(ca);
+    await pa.goto(BASE + 'schedule-manager.html');
+    const merged = await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'wB') && !hasUnsavedLocal(), 20000);
+    const a2 = await pa.evaluate(async () => {
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      const w = id => d.workers.find(x => x.id === id) || {};
+      return {wB: !!d.workers.find(x => x.id === 'wB'), w1: w('w1').e2eNote, w2: w('w2').e2eNote, local2: (workers.find(x => x.id === 'w2') || {}).e2eNote};
+    });
+    ok(a1.unsaved && a1.cached && b1 && merged && a2.wB && a2.w1 === 'from A' && a2.w2 === 'from B' && a2.local2 === 'from B',
+      'two devices: A\'s unsaved change is saved without deleting the worker B added or undoing B\'s edit ' + JSON.stringify({a1, b1, merged, a2}));
+    // A full localStorage: the cache writes fail, the save still reaches Firestore and the punches stay (in memory).
+    const qt = await pa.evaluate(async () => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (/^schedMgr_v1|^punchLog/.test(k)) throw new DOMException('full', 'QuotaExceededError'); return set.call(this, k, v); };
+      try {
+        clients.find(c => c.id === 'c2').e2eNote = 'quota';
+        autoSave();
+        let saved = false;
+        for (let i = 0; i < 40 && !saved; i++) {
+          await T.tick(250);
+          const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+          saved = (d.clients.find(c => c.id === 'c2') || {}).e2eNote === 'quota';
+        }
+        const n = getPunchLog().length;
+        savePunchLog(getPunchLog().concat([{id: 'quota-p', workerId: 'w1', workerName: 'Avi Cohen', type: 'in', ts: new Date().toISOString(), time: '08:00'}]));
+        return {saved, punches: getPunchLog().length === n + 1 && getPunchLog().some(e => e.id === 'quota-p')};
+      } finally {
+        Storage.prototype.setItem = set;
+        savePunchLog(getPunchLog().filter(e => e.id !== 'quota-p'));
+      }
+    });
+    ok(qt.saved && qt.punches, 'quota: with localStorage full the save still reaches Firestore and a punch is kept in memory ' + JSON.stringify(qt));
+    // Approving a long hours sheet: more rows than one Firestore batch (500 writes) takes.
+    const big = await pa.evaluate(async () => {
+      const entries = [], d0 = new Date(2025, 0, 1);
+      for (let i = 0; i < 300; i++) {
+        const d = new Date(d0); d.setDate(d.getDate() + i);
+        entries.push({workerId: 'w2', date: String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(), inTime: '08:00', outTime: '12:00'});
+      }
+      const s = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'savePendingHoursBatch', fileName: 'big', entries})})).json();
+      const a = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'approvePendingHours', batchId: s.batchId})})).json();
+      const punches = await (await loadFirestoreBackend()).punchesOfBatch(fsTenantId(), s.batchId);
+      const q = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'loadPendingHours'})})).json();
+      return {saved: s.count, approved: a.ok ? a.created : a.error, punches: punches.length, status: ((q.batches || []).find(b => b.batchId === s.batchId) || {}).status};
+    });
+    ok(big.saved === 300 && big.approved === 300 && big.punches === 600 && big.status === 'approved', 'hours: a 300-row batch is approved (punches in batch writes of 450) ' + JSON.stringify(big));
+    ok(pa.errs.length === 0, 'two devices: no page errors ' + pa.errs.join(' | '));
+    await ca.close();
+  }
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'still no request to script.google.com');
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');

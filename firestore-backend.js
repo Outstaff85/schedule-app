@@ -83,6 +83,33 @@
 		if (v && typeof v === "object") return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + sig(v[k])).join(",") + "}";
 		return JSON.stringify(v);
 	}
+	function sigHash(str) {
+		let h1 = 3735928559, h2 = 1103547991;
+		for (let i = 0; i < str.length; i++) {
+			const ch = str.charCodeAt(i);
+			h1 = Math.imul(h1 ^ ch, 2654435761);
+			h2 = Math.imul(h2 ^ ch, 1597334677);
+		}
+		h1 = Math.imul(h1 ^ h1 >>> 16, 2246822507) ^ Math.imul(h2 ^ h2 >>> 13, 3266489909);
+		h2 = Math.imul(h2 ^ h2 >>> 16, 2246822507) ^ Math.imul(h1 ^ h1 >>> 13, 3266489909);
+		return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+	}
+	var itemHash = (item) => sigHash(sig(plain(item)));
+	function scheduleBaseOf(data) {
+		const out = {};
+		for (const kind of [
+			"workers",
+			"clients",
+			"suppliers"
+		]) {
+			const m = {};
+			(data[kind] || []).forEach((item) => {
+				if (item && item.id != null) m[String(item.id)] = itemHash(item);
+			});
+			out[kind] = m;
+		}
+		return out;
+	}
 	function ddmmyyyyToDay(s) {
 		const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || ""));
 		return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : null;
@@ -209,8 +236,43 @@
 			}
 			return out;
 		}
-		async function saveSchedule(t, data, first) {
-			if (knownTenant !== t) await loadSchedule(t);
+		async function mergeOnBase(local, server, base) {
+			const out = Object.assign({}, local);
+			for (const kind of [
+				"workers",
+				"clients",
+				"suppliers"
+			]) {
+				const srv = server[kind] || [];
+				if (!await mayWrite(kind)) {
+					out[kind] = srv;
+					continue;
+				}
+				const b = base[kind] || {}, list = [], seen = /* @__PURE__ */ new Set();
+				const byId = new Map(srv.map((x) => [String(x.id), x]));
+				(local[kind] || []).forEach((item) => {
+					if (!item || item.id == null) return;
+					const id = String(item.id);
+					seen.add(id);
+					if (!(id in b) || itemHash(item) !== b[id]) {
+						list.push(item);
+						return;
+					}
+					const s = byId.get(id);
+					if (s) list.push(s);
+				});
+				srv.forEach((s) => {
+					const id = String(s.id);
+					if (!seen.has(id) && !(id in b)) list.push(s);
+				});
+				out[kind] = list;
+			}
+			return out;
+		}
+		async function saveSchedule(t, data, first, base) {
+			let merged = null;
+			if (base) merged = data = await mergeOnBase(data, await loadSchedule(t), base);
+			else if (knownTenant !== t) await loadSchedule(t);
 			const hrScoped = !!await hrOnly();
 			const ops = [];
 			const next = {};
@@ -260,7 +322,11 @@
 			(data.workers || []).forEach((x) => {
 				if (x && x.id != null) workerHr.set(String(x.id), x.hrId || null);
 			});
-			return {
+			return merged ? {
+				ok: true,
+				written: ops.length,
+				data: merged
+			} : {
 				ok: true,
 				written: ops.length
 			};
@@ -582,7 +648,7 @@
 				return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), h || 0, mi || 0).toISOString();
 			};
 			const ddmmyyyy = (d) => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
-			const batch = F.writeBatch(db);
+			const writes = [];
 			(b.rows || []).forEach((r, i) => {
 				const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
 				[["in", r.inTime], ["out", r.outTime]].forEach(([type, time]) => {
@@ -595,7 +661,7 @@
 						date = ddmmyyyy(next);
 					}
 					const id = "imp-" + batchId + "-" + i + "-" + type;
-					batch.set(F.doc(db, "tenants", t, "punches", id), punchDoc({
+					writes.push([F.doc(db, "tenants", t, "punches", id), punchDoc({
 						id,
 						workerId: r.workerId,
 						workerName: names[r.workerId] || "",
@@ -606,14 +672,18 @@
 						clientId: r.clientId || "",
 						notes: note,
 						gpsWarnings: []
-					}, hrs[r.workerId] || null));
+					}, hrs[r.workerId] || null)]);
 				});
 			});
-			batch.update(ref, {
+			for (let i = 0; i < writes.length; i += BATCH_LIMIT) {
+				const batch = F.writeBatch(db);
+				writes.slice(i, i + BATCH_LIMIT).forEach(([r, d]) => batch.set(r, d));
+				await batch.commit();
+			}
+			await F.updateDoc(ref, {
 				status: "approved",
 				decidedAt: (/* @__PURE__ */ new Date()).toISOString()
 			});
-			await batch.commit();
 			return {
 				ok: true,
 				created: (b.rows || []).length
@@ -850,6 +920,7 @@
 			login,
 			loadSchedule,
 			saveSchedule,
+			scheduleBaseOf,
 			listenWorkers,
 			listenPendingHours,
 			listenPunches,

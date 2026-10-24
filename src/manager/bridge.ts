@@ -490,9 +490,9 @@ export type ManagerBridge = WorkerBridge & {
   punchLog(): AdminPunch[];
   /** "Load earlier month": back to the 1st of the month already partly loaded, or the month before */
   loadEarlierPunches(): Promise<void>;
-  /** loads the whole punch history (`ensureAllPunches`) */
-  loadAllPunches(): Promise<void>;
-  /** Export CSV of the whole history (`exportPunchCSV`) */
+  /** loads the whole punch history (`ensureAllPunches`); false when it could not (a toast said why) */
+  loadAllPunches(): Promise<boolean>;
+  /** Export CSV of the whole history (`exportPunchCSV`); nothing when the history could not be loaded */
   exportPunches(): Promise<void>;
   /** Clear Log: a CSV of exactly those punches first, then `deletePunchesByMonths`; the toast is the page's; true when deleted */
   clearPunchMonths(months: string[]): Promise<boolean>;

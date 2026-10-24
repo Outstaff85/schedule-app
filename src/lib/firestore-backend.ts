@@ -12,7 +12,9 @@
 //   currentUser()               the signed-in Firebase user, or null
 //   signOut()
 //   loadSchedule(t)             {workers, clients, suppliers, weekStart, savedAt}
-//   saveSchedule(t, data)       writes only the documents that changed
+//   saveSchedule(t, data, first?, base?)  writes only the documents that changed
+//                               (base: merged with the server's copy first)
+//   scheduleBaseOf(data)        the save base of data the app holds (cache)
 //   listenPunches(t, onChange, since)  live punches from `since` (the app
 //                               passes the start of this month minus a week);
 //                               resolves with the first snapshot's entries
@@ -107,6 +109,34 @@ function sig(v: unknown): string {
   if (Array.isArray(v)) return '[' + v.map(sig).join(',') + ']';
   if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + sig((v as Rec)[k])).join(',') + '}';
   return JSON.stringify(v);
+}
+
+// A short hash of a signature (53-bit, cyrb53): the save base kept next to
+// the offline cache (scheduleBaseOf) holds one per record instead of its JSON.
+function sigHash(str: string): string {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+// The base a device's local data was edited from: per kind, record id -> the
+// hash of the record as the app held it when it was last in step with the
+// server (scheduleBaseOf). See saveSchedule's base.
+export type ScheduleBase = Record<string, Record<string, string>>;
+const itemHash = (item: unknown): string => sigHash(sig(plain(item)));
+// The save base of data the app holds (after a load or a save).
+export function scheduleBaseOf(data: Rec): ScheduleBase {
+  const out: ScheduleBase = {};
+  for (const kind of ['workers','clients','suppliers']) {
+    const m: Record<string, string> = {};
+    ((data[kind] || []) as Rec[]).forEach(item => { if (item && item.id != null) m[String(item.id)] = itemHash(item); });
+    out[kind] = m;
+  }
+  return out;
 }
 
 function ddmmyyyyToDay(s: unknown): string | null {
@@ -224,6 +254,32 @@ export async function initFirestoreBackend() {
     return out;
   }
 
+  // Local data edited from base, merged with the server's fresh copy: a
+  // record edited (or added) here keeps this copy; one untouched here takes
+  // the server's (an edit made elsewhere stays); one deleted elsewhere and
+  // untouched here stays deleted; one deleted here stays deleted; one added
+  // elsewhere (on the server, not in the base) is kept. A kind this login
+  // may not write is the server's.
+  async function mergeOnBase(local: Rec, server: Rec, base: ScheduleBase): Promise<Rec> {
+    const out: Rec = Object.assign({}, local);
+    for (const kind of ['workers','clients','suppliers'] as Kind[]) {
+      const srv = (server[kind] || []) as Rec[];
+      if (!(await mayWrite(kind))) { out[kind] = srv; continue; }
+      const b = base[kind] || {}, list: Rec[] = [], seen = new Set<string>();
+      const byId = new Map(srv.map(x => [String(x.id), x]));
+      ((local[kind] || []) as Rec[]).forEach(item => {
+        if (!item || item.id == null) return;
+        const id = String(item.id); seen.add(id);
+        if (!(id in b) || itemHash(item) !== b[id]) { list.push(item); return; }
+        const s = byId.get(id);
+        if (s) list.push(s);
+      });
+      srv.forEach(s => { const id = String(s.id); if (!seen.has(id) && !(id in b)) list.push(s); });
+      out[kind] = list;
+    }
+    return out;
+  }
+
   // Writes the workers/clients/suppliers that differ from what was last
   // loaded or saved, and deletes the ones that are gone. Each document is
   // its own record, so two managers editing different workers never
@@ -231,8 +287,15 @@ export async function initFirestoreBackend() {
   // first (optional): {ops, ids} — writes that must land together with the
   // documents of those ids (a confirmed shift offer: the request and its two
   // workers). They go first, in the first batch, so all of them commit or none.
-  async function saveSchedule(t: string, data: Rec, first?: {ops: Op[]; ids?: unknown[]}): Promise<Reply> {
-    if (knownTenant !== t) await loadSchedule(t); // never diff against another firm
+  // base (optional): the data was edited from that base, not from the last
+  // load or save of this page (changes kept on the device while offline, or
+  // an edit on the cached list): the server's copy is read fresh and merged
+  // with it first (mergeOnBase), so a record added or edited elsewhere is
+  // never deleted or overwritten; the reply's `data` is what was saved.
+  async function saveSchedule(t: string, data: Rec, first?: {ops: Op[]; ids?: unknown[]}, base?: ScheduleBase | null): Promise<Reply> {
+    let merged: Rec | null = null;
+    if (base) merged = data = await mergeOnBase(data, await loadSchedule(t), base);
+    else if (knownTenant !== t) await loadSchedule(t); // never diff against another firm
     const hrScoped = !!(await hrOnly());
     const ops: Op[] = [];
     const next = {} as Store;
@@ -269,7 +332,7 @@ export async function initFirestoreBackend() {
     }
     for (const kind in next) known[kind as Kind] = next[kind as Kind];
     workerHr.clear(); ((data.workers || []) as Rec[]).forEach(x => { if (x && x.id != null) workerHr.set(String(x.id), x.hrId || null); });
-    return {ok: true, written: ops.length};
+    return merged ? {ok: true, written: ops.length, data: merged} : {ok: true, written: ops.length};
   }
 
   function punchFromDoc(d: any): Rec {
@@ -511,8 +574,11 @@ export async function initFirestoreBackend() {
   function approver(ctx: ActionCtx): boolean { return ctx.role === 'tenant_admin' || ctx.role === 'superadmin'; }
   const APPROVER_ERROR = 'Only the firm owner or the super-admin can approve uploaded hours';
   // Approving turns each row into an IN and an OUT punch (ids derived from
-  // the batch, so approving twice can't duplicate) and marks the batch, all
-  // in one batch write.
+  // the batch, so approving twice can't duplicate) and then marks the batch.
+  // The punches go in batch writes of BATCH_LIMIT (Firestore allows 500
+  // writes per batch); the batch is marked approved only after all of them
+  // are written, so a failure part way leaves it pending, and approving again
+  // rewrites the same punch documents.
   async function approvePendingHours(t: string, ctx: ActionCtx, batchId: unknown): Promise<Reply> {
     if (!approver(ctx)) return {error: APPROVER_ERROR};
     const ref = F.doc(db,'tenants',t,'pendingHours',String(batchId));
@@ -531,7 +597,7 @@ export async function initFirestoreBackend() {
       return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), h || 0, mi || 0).toISOString();
     };
     const ddmmyyyy = (d: Date) => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
-    const batch = F.writeBatch(db);
+    const writes: [any, Rec][] = [];
     ((b.rows || []) as Rec[]).forEach((r, i) => {
       const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
       ([['in', r.inTime], ['out', r.outTime]] as [string, string][]).forEach(([type, time]) => {
@@ -543,13 +609,17 @@ export async function initFirestoreBackend() {
           ts = next.toISOString(); date = ddmmyyyy(next);
         }
         const id = 'imp-' + batchId + '-' + i + '-' + type;
-        batch.set(F.doc(db,'tenants',t,'punches',id), punchDoc({id, workerId: r.workerId, workerName: names[r.workerId] || '',
+        writes.push([F.doc(db,'tenants',t,'punches',id), punchDoc({id, workerId: r.workerId, workerName: names[r.workerId] || '',
           type, time, date, ts, clientId: r.clientId || '', notes: note, gpsWarnings: []},
-          hrs[r.workerId] || null));
+          hrs[r.workerId] || null)]);
       });
     });
-    batch.update(ref, {status: 'approved', decidedAt: new Date().toISOString()});
-    await batch.commit();
+    for (let i = 0; i < writes.length; i += BATCH_LIMIT) {
+      const batch = F.writeBatch(db);
+      writes.slice(i, i + BATCH_LIMIT).forEach(([r, d]) => batch.set(r, d));
+      await batch.commit();
+    }
+    await F.updateDoc(ref, {status: 'approved', decidedAt: new Date().toISOString()});
     return {ok: true, created: (b.rows || []).length};
   }
   async function rejectPendingHours(t: string, ctx: ActionCtx, batchId: unknown): Promise<Reply> {
@@ -735,7 +805,7 @@ export async function initFirestoreBackend() {
   }
 
   return {
-    login, loadSchedule, saveSchedule, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
+    login, loadSchedule, saveSchedule, scheduleBaseOf, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
     uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
     // A link to open a firm's file (storage.rules: the firm's managers read),
     // e.g. a client's signed month (hours.py sign).

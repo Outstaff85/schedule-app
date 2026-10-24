@@ -9,7 +9,7 @@
 import { byId, qs } from './dom';
 import { reportError } from '../data/telemetry';
 import { loadI18n, storedLanguage, tr } from '../logic/i18n';
-import { autoSave, loadData } from '../data/store';
+import { autoSave, loadData, savePending } from '../data/store';
 import { homeTab, isAccTab, isHrSession } from '../logic/access';
 import { loadFirestoreBackend } from '../data/api';
 import { getSession, saveSession } from '../data/session';
@@ -166,8 +166,10 @@ if('serviceWorker' in navigator){
     if(_swRefreshing) return; _swRefreshing=true;
     if(!_hadController) return;
     // Don't reload mid-upload (a deploy while a document is uploading used to
-    // cut the upload off); wait until every upload has finished.
-    const reloadWhenIdle=()=>{ if(typeof __uploadsInFlight!=='undefined' && __uploadsInFlight>0) setTimeout(reloadWhenIdle,1000); else window.location.reload(); };
+    // cut the upload off), while a window is open (a worker being typed in)
+    // or while a change is not saved yet; wait until the page is idle.
+    const busy=()=>(typeof __uploadsInFlight!=='undefined' && __uploadsInFlight>0) || savePending() || !!document.querySelector('.overlay.open');
+    const reloadWhenIdle=()=>{ if(busy()) setTimeout(reloadWhenIdle,1000); else window.location.reload(); };
     reloadWhenIdle();
   });
   window.addEventListener('load',()=>{

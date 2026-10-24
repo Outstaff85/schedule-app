@@ -436,6 +436,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     count: document.querySelector('#adminRoot [data-testid="template-row"][data-tid="hrpayedit"]').innerText}));
   await p.keyboard.press('Escape');
   ok(!ro.newBtn && !ro.save && ro.name && ro.tick && ro.edits === 'editSchedule,editWorkers,editPunches,approveHours,disputeHours,fixHours' && /1 login/.test(ro.count), 'owner: the permission templates read-only, with the firm\'s logins on each ' + JSON.stringify(ro));
+  // Sign-out leaves nothing of the firm on the device (purgeDeviceData); a different login signing in on it
+  // (an owner's session that ended without Sign out, with unsaved changes left) starts with no cache (adoptLogin).
+  await p.evaluate(() => { localStorage.setItem('form101Regen:tenant-one', '1'); ManagerBridge.signOut(); });
+  await p.waitForSelector('#loginScreen', {state: 'visible', timeout: 15000});
+  const purged = await p.evaluate(() => Object.keys(localStorage).filter(k => /^schedMgr_v1|^punchLog|^form101Regen:/.test(k)));
+  await p.evaluate(() => {
+    localStorage.setItem('schedMgr_v1_tenant-one', JSON.stringify({workers: [{id: 'wX', name: 'Leaked Owner Worker', clientIds: []}], clients: [{id: 'c1', name: 'Site A'}], suppliers: []}));
+    localStorage.setItem('schedMgr_v1_tenant-one_unsaved', String(Date.now()));
+    localStorage.setItem('punchLog:tenant-one', JSON.stringify([{id: 'px', workerId: 'wX', workerName: 'Leaked Owner Worker', type: 'in', ts: new Date().toISOString(), time: '08:00'}]));
+    localStorage.setItem('schedMgr_lastUid', 'u-admin1');
+  });
+  await p.fill('#loginUsername', 'hr1'); await p.fill('#loginPassword', 'hr-pass-222'); await p.click('#loginBtn');
+  await p.waitForNavigation().catch(()=>{});
+  const hrIn = await waitFor(p, () => typeof workers !== 'undefined' && workers.length === 1 && workers[0].name === 'New Hire', 15000);
+  const left = await p.evaluate(async () => { await new Promise(r => setTimeout(r, 1500));
+    return {leak: workers.some(w => w.id === 'wX'), punch: getPunchLog().some(e => e.workerId === 'wX'), cache: /Leaked/.test(localStorage.getItem('schedMgr_v1_tenant-one') || '')}; });
+  ok(purged.length === 0 && hrIn && !left.leak && !left.punch && !left.cache,
+    'sign-out: the firm\'s cache, punches and flags leave the device; another login starts without the last one\'s cache ' + JSON.stringify({purged, hrIn, left}));
   ok(h.errs.length === 0 && p.errs.length === 0, 'no page errors ' + h.errs.concat(p.errs).join(' | '));
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');
