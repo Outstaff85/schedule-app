@@ -683,8 +683,8 @@ def page_id(d):
 
 def doc_labels(sc):
     """[{index, doctype, kind, source, material, quadDoc (px), quad01, quadModel (order_corners, 0..1), upright, insideOf,
-    pageId, painted, visible, area, fields [{role, text, quad px}], face (quad px), mrz}] — the text as it is (the
-    writers hash it before it reaches a manifest)."""
+    pageId, painted, visible, area, fields [{role, kind, text, quad px}], face (quad px), mrz}] — the text as it is
+    (the writers hash it before it reaches a manifest)."""
     import synth
     import synth_docs as sd
     out = []
@@ -692,8 +692,9 @@ def doc_labels(sc):
         q01 = [[float(x) / sc.cam.W, float(y) / sc.cam.H] for x, y in q]
         model = synth.order_corners(q01)
         fields = []
-        for role, text, fq in d.page.fields:
-            fields.append({"role": role, "text": text, "quad": sc.cam.project(d.lift(fq)).tolist()})
+        kinds = getattr(d.page, "kinds", None) or [None] * len(d.page.fields)
+        for (role, text, fq), kind in zip(d.page.fields, kinds):
+            fields.append({"role": role, "kind": kind or role, "text": text, "quad": sc.cam.project(d.lift(fq)).tolist()})
         face = sc.cam.project(d.lift(d.page.face_box)).tolist() if d.page.face_box else None
         out.append({"index": d.index, "doctype": d.page.doctype, "kind": d.page.kind, "source": d.page.source,
                     "material": d.page.material, "quadDoc": q.tolist(), "quad01": q01, "quadModel": model,

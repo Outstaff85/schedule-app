@@ -189,56 +189,77 @@ def entries_of(sc, frame, labels, roles, folder, i, seed, split, meta_common):
     return out, files
 
 
-def _batch(job):
-    params, indices, folder = job
+def tools(params):
+    """What a run's scenes are drawn with: (fonts, the page pool, the background bank, the occluders) — as recorded in
+    its params (gen/phone_run.py draws its scenes with them too)."""
     import synth_docs as sd
     from .. import pages as gp
-    from .. import rng as grng
-    from .. import scene as gs
     F = sd.Fonts(params["latin"], params["hebrew"])
     pool = gp.Pool([(e["path"], e["kind"]) for e in params["pages"]], [(e["path"], e["kind"]) for e in params["pdfs"]],
                    held=params.get("held", False), sharp=params.get("sharp", False),
                    template_share=params.get("templateShare", 0.4), pdf_share=params.get("pdfShare", 0.5))
-    bank = _Bank(params["photos"], params.get("proceduralShare", 0.15))
-    occ = _Occluders(params.get("occluders") or [])
+    return F, pool, _Bank(params["photos"], params.get("proceduralShare", 0.15)), _Occluders(params.get("occluders") or [])
+
+
+def scene_of(params, i, F, pool, bank, occ):
+    """Scene i of a run: (its streams, the scene or None when no pose fits in 8 tries)."""
+    from .. import rng as grng
+    from .. import scene as gs
+    r = grng.streams(params["seed"], i)
+    for _ in range(8):   # a pose that fits: the next draws of the same streams (the same every run)
+        sc = gs.plan(r, pool, F, bank, occ, weights=params["weights"])
+        if sc is not None:
+            return r, sc
+    return r, None
+
+
+def scene_meta(params, sc, labels, roles, F, skipped0):
+    """The manifest fields every scene's row has (pages and background laid, fonts, the scene, the camera) — the
+    caller adds class, source and labels."""
+    from .. import pages as gp
+    from .. import rng as grng
+    laid = [l["templateSha1"] for l, _ in roles if l["templateSha1"]] + [l["templateSha1"] for l in labels if l["templateSha1"]]
+    laid = list(dict.fromkeys(laid))
+    return {"templates": laid, "bgSha1": sc.bg.get("sha1"), "bgCategory": sc.bg.get("category"), "bgKind": sc.bg.get("kind"),
+            "fonts": F.used(), "vocabulary": "check" if params.get("held") else "train", "recipe": sc.recipe, "rng": grng.STAGED,
+            "scene": {"recipe": sc.recipe, "pages": [{"kind": l["kind"], "doctype": l["doctype"], "source": l["source"],
+                                                      "material": l["material"], "insideOf": l["insideOf"], "painted": l["painted"],
+                                                      "bend": (l["bend"] or {}).get("kind"), "visible": l["visible"],
+                                                      **({"pdf": l["fileSha1"][:12]} if l["fileSha1"] else {})} for l in labels],
+                      "occluders": [o["kind"] for o in sc.occluders],
+                      "occluderSha1s": [o["sha1"][:12] for o in sc.occluders if o.get("sha1")],
+                      "finger": bool(sc.fingers), "worn": sorted(sc.worn),
+                      "bgSeries": sc.bg.get("series"), "pdfSkipped": gp.SKIPPED["pdf"] - skipped0,
+                      "bgPpm": round(float(sc.bg.get("ppm") or 0), 3), "framePpm": round(float(sc.bg.get("framePpm") or 0), 3)},
+            "camera": sc.cam.info()}
+
+
+def _batch(job):
+    params, indices, folder = job
+    from .. import pages as gp
+    from .. import scene as gs
+    F, pool, bank, occ = tools(params)
     seed, split = params["seed"], params["split"]
     out = []
     for i in indices:
-        r = grng.streams(seed, i)
         skipped0 = gp.SKIPPED["pdf"]
-        sc = None
-        for _ in range(8):   # a pose that fits: the next draws of the same streams (the same every run)
-            sc = gs.plan(r, pool, F, bank, occ, weights=params["weights"])
-            if sc is not None:
-                break
+        r, sc = scene_of(params, i, F, pool, bank, occ)
         if sc is None:
             F.used()
             continue
         frame = gs.render(sc, r["camera"])
         labels = gs.doc_labels(sc)
         roles = gs.roles(sc, labels)
-        laid = [l["templateSha1"] for l, _ in roles if l["templateSha1"]] + [l["templateSha1"] for l in labels if l["templateSha1"]]
-        laid = list(dict.fromkeys(laid))
+        base_meta = scene_meta(params, sc, labels, roles, F, skipped0)
+        laid = base_meta["templates"]
         common = {**({"templateSha1": roles[0][0]["templateSha1"]} if roles and roles[0][0]["templateSha1"] else {}),
                   **({"templates": sorted(set(laid))} if laid else {}), **({"bg": sc.bg["sha1"]} if sc.bg.get("sha1") else {}),
                   **({"occ": [o["sha1"][:12] for o in sc.occluders if o.get("sha1")]} if any(o.get("sha1") for o in sc.occluders) else {})}
         entries, files = entries_of(sc, frame, labels, roles, folder, i, seed, split, common)
         answer = next((l for l, rl in roles if rl == "answer"), None)
         cls = answer["doctype"] if answer and sc.recipe != "partial" else (labels[0]["doctype"] if sc.recipe == "partial" and labels else "none")
-        meta = {"templates": laid, "bgSha1": sc.bg.get("sha1"), "bgCategory": sc.bg.get("category"), "bgKind": sc.bg.get("kind"),
-                "fonts": F.used(), "vocabulary": "check" if params.get("held") else "train", "class": cls,
-                "source": answer["source"] if answer else (labels[0]["source"] if labels else "none"), "recipe": sc.recipe,
-                "rng": grng.STAGED,
-                "scene": {"recipe": sc.recipe, "pages": [{"kind": l["kind"], "doctype": l["doctype"], "source": l["source"],
-                                                          "material": l["material"], "insideOf": l["insideOf"], "painted": l["painted"],
-                                                          "bend": (l["bend"] or {}).get("kind"), "visible": l["visible"],
-                                                          **({"pdf": l["fileSha1"][:12]} if l["fileSha1"] else {})} for l in labels],
-                          "occluders": [o["kind"] for o in sc.occluders],
-                          "occluderSha1s": [o["sha1"][:12] for o in sc.occluders if o.get("sha1")],
-                          "finger": bool(sc.fingers), "worn": sorted(sc.worn),
-                          "bgSeries": sc.bg.get("series"), "pdfSkipped": gp.SKIPPED["pdf"] - skipped0,
-                          "bgPpm": round(float(sc.bg.get("ppm") or 0), 3), "framePpm": round(float(sc.bg.get("framePpm") or 0), 3)},
-                "camera": sc.cam.info(),
+        meta = {**base_meta, "class": cls,
+                "source": answer["source"] if answer else (labels[0]["source"] if labels else "none"),
                 "labels": {"fixed": entries[0]["fixed"], "doc": entries[0].get("doc"), "upright": entries[0].get("upright"),
                            "none": entries[0]["fixed"] is None, "partial": sc.recipe == "partial",
                            "entries": [{"file": pathlib.Path(e["file"]).name, "role": e["role"], "fixed": e["fixed"]} for e in entries],

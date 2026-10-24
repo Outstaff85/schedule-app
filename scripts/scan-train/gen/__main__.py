@@ -5,6 +5,7 @@ verify, QA").
   python -m gen sources --check    # and fail (exit 1) when the exam is not kept apart
   python -m gen build --model edges --count N --seed S --jobs J --out DIR   # scenes: one camera for table and documents
   python -m gen build --model doctype|he --count N --seed S --jobs J --out DIR   # today's generators + their manifest
+  python -m gen build --model doctype,mrz,he,face --count N --seed S --out DIR   # the phone's own cuts (gen/phone_run.py)
   python -m gen bg add DIR --category auto|<name> [--owner] | bg check | bg split | bg pull | bg push   # the background bank
   python -m gen occluders add DIR --category cup --size-mm 80   # cut-outs laid over documents
   python -m gen verify --run DIR --sample 50    # draw a sample again byte for byte; fail on what the exam keeps
@@ -24,10 +25,15 @@ def main(argv=None):
     if argv[:1] == ["build"] and not {"-h", "--help"} & set(argv[1:2]):
         # the model's own options (synth_docs.py, synth_pages.py, synth_fields.py) once --model is known
         pre = argparse.ArgumentParser(prog="python -m gen build", add_help=False)
-        pre.add_argument("--model", required=True, choices=("edges", "doctype", "he"))
+        pre.add_argument("--model", required=True, help="edges | doctype | he (today's) | a list of doctype,mrz,he,face "
+                         "(the phone's own cuts, gen/phone_run.py; a single doctype or he with --cuts)")
         known, rest = pre.parse_known_args(argv[1:])
-        from .build import SCENES, cli
-        cli(known.model, rest, prog=f"python -m gen build --model {known.model}", generator=SCENES.get(known.model))
+        from .build import SCENES, cli, cut_models
+        cuts = cut_models(known.model, "--cuts" in rest)
+        if cuts:
+            cli("cuts", rest + ["--models", ",".join(cuts)], prog=f"python -m gen build --model {known.model}", generator=SCENES["cuts"])
+        else:
+            cli(known.model, rest, prog=f"python -m gen build --model {known.model}", generator=SCENES.get(known.model))
         return 0
     ap = argparse.ArgumentParser(prog="python -m gen")
     sub = ap.add_subparsers(dest="command", required=True)
@@ -35,7 +41,8 @@ def main(argv=None):
     s.add_argument("--check", action="store_true", help="fail when an exam or golden key is on the training side, a held-out "
                    "page is in training, a site page has no side, or heldout.json changed after the exam sets were made")
     s.add_argument("--work", help="the work folder (default SCAN_TRAIN_HOME, else ~/.scan-train)")
-    sub.add_parser("build", help="a made-up set through the manifest: --model edges (scenes) | doctype | he and the generator's options")
+    sub.add_parser("build", help="a made-up set through the manifest: --model edges (scenes) | doctype | he (today's) | "
+                   "doctype,mrz,he,face (the phone's own cuts) and the generator's options")
     b = sub.add_parser("bg", help="the background bank (gen/backgrounds.py): add, check, split, pull, push")
     b.add_argument("action", choices=("add", "check", "split", "pull", "push"))
     b.add_argument("dir", nargs="?", help="add: the folder of photos (copied into <home>/backgrounds unless there)")

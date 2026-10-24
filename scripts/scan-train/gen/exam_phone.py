@@ -56,23 +56,27 @@ def exam_sets(work, count):
 
 def shot(models, img, path):
     """The lab's shot on one photo (index.html takeShot, findNext, findInside — their rules on both paths): path
-    "phone" (the live frame by createImageBitmap, smallRGBA after) or "area" (INTER_AREA everywhere)."""
+    "phone" (the live frame by createImageBitmap, smallRGBA after) or "area" (INTER_AREA everywhere). Besides the counts,
+    "quads": every document found (0..1, the model's order) and "how": where each came from (live, cap, next, inside)
+    — gen/phone_run.py cuts the pages by them."""
     import docfind
     lite, acc = models
     rl, rc = ("live", "capture") if path == "phone" else ("area", "area")
     lp, _ = docfind.detect(lite, img, rl)
     if lp is None:
-        return {"shot": False, "first": None, "found": 0, "next": 0, "inside": 0, "confirmed": False, "moved": False}
+        return {"shot": False, "first": None, "found": 0, "next": 0, "inside": 0, "confirmed": False, "moved": False,
+                "quads": [], "how": []}
     cp, cc = docfind.detect(acc, img, rc)
     confirmed = cp is not None and cc >= 0.5
     first = cp if confirmed else lp
     moved = bool(confirmed and max(float(np.hypot(*(cp[k] - lp[k]))) for k in range(4)) > 0.002)
-    found = [first]
+    found, how = [first], ["cap" if confirmed else "live"]
     for _ in range(3):
         q = docfind.find_next([acc, lite], img, found, rc, lab=True)
         if q is None:
             break
         found.append(q)
+        how.append("next")
     nxt = len(found) - 1
     for q in list(found):
         if len(found) >= MAX_DOCS:
@@ -80,8 +84,9 @@ def shot(models, img, path):
         c = docfind.find_inside(acc, img, q, found, rc)
         if c is not None:
             found.append(c)
+            how.append("inside")
     return {"shot": True, "first": first, "found": len(found), "next": nxt, "inside": len(found) - 1 - nxt,
-            "confirmed": confirmed, "moved": moved}
+            "confirmed": confirmed, "moved": moved, "quads": [np.asarray(q, np.float64).tolist() for q in found], "how": how}
 
 
 def shot_counts(results, examples):

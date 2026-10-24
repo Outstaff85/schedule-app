@@ -190,3 +190,31 @@ def test_the_edges_exam_takes_any_first_corner():
     assert df.quad_error(right[1:] + right[:1], right) == 0.0
     assert df.quad_error([[0.51, 0.1], [0.9, 0.5], [0.5, 0.9], [0.1, 0.5]], right) < 0.011
     assert df.quad_error(right[::-1], right) > 0.5
+
+
+def test_documents_70_to_79_are_the_zone_readers_real_check_neither_trained_nor_the_exam():
+    assert midv_mrz.is_select("70") and midv_mrz.is_select("79") and not midv_mrz.is_select("69") and not midv_mrz.is_select("80")
+    assert not any(midv_mrz.is_exam(str(n)) for n in range(70, 80))
+    assert midv_mrz.SELECT_FROM == 70 < midv_mrz.EXAM_FROM == 80
+
+
+def test_the_zone_reader_keeps_the_weights_best_on_the_real_lines_first(tmp_path):
+    import pytest
+    pytest.importorskip("torch")
+    spec = importlib.util.spec_from_file_location("train_mrz_t7", HERE / "train_mrz.py")
+    tm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tm)
+    # real lines right first, then the made-up ones, then fewer characters wrong
+    assert tm.score((0.8, 0.1), (0.90, 0.02)) > tm.score((0.7, 0.1), (0.99, 0.01))
+    assert tm.score(None, (0.95, 0.02)) == (-1.0, 0.95, -0.02)
+    # an old best.pt better on made-up lines only does not throw away a run better on the real ones (both scored today)
+    old, new = tm.score((0.60, 0.2), (0.97, 0.01)), tm.score((0.75, 0.1), (0.93, 0.02))
+    assert not tm.keep_old(old, new) and tm.keep_old(new, old) and not tm.keep_old(None, new)
+    rep = tm.train_report(0.9, 0.02, (0.75, 0.1), [1] * 10, [1] * 3, [1] * 4, True, {"at": "2026-10-20"}, 0.93, 1914, 1e-5)
+    assert rep["keptOld"] is True and rep["keptFrom"] == "2026-10-20" and rep["newRunLinesRight"] == 0.93
+    assert rep["realLinesRight"] == 0.75 and rep["midvLines"] == 1914 and rep["realCheckLines"] == 4
+    rep = tm.train_report(0.9, 0.02, None, [1], [1], [], False, None, 0.9, 0, 0.0)
+    assert rep["keptOld"] is False and rep["keptFrom"] is None and rep["realLinesRight"] is None
+    # a phone-cut zone line found on the wrong place (find_ok 0) is left out of a labels.tsv
+    (tmp_path / "labels.tsv").write_text("a.png\tLINE1\tcut-1\t1\nb.png\tLINE2\tcut-1\t0\nc.png\tLINE3\n", encoding="utf-8")
+    assert [t for _, t in tm.load(tmp_path)] == ["LINE1", "LINE3"]

@@ -1,9 +1,12 @@
 """Document types, step 2 (docs/scan-plan.md → S7; /scan-train): the phone's document type model
 (doctype-lite.onnx — the only one by default; owner, 2026-10-24) is trained on the page copies — an ImageNet EfficientNet-Lite (timm)
 with two heads: the document type (6) and the clockwise turn the page needs (4). The turn is
-learned for free: a copy stored upright is shown turned by a random quarter
-turn, with the turn back as its answer; a copy whose turn only the model guessed ("upright": False in doctypes.json,
-pull_doctypes.py) is shown turned too but has no turn answer (TURN_IGNORE) — it teaches the type only. The ImageNet normalization is inside the model, so
+learned for free: a page whose turn is known is shown turned by a random quarter turn, with the turn back as its
+answer — a made-up page lies upright, a page from the phone's own cut (gen/phone_run.py, --synth-run <cuts run>) needs
+its turn_k; a real page copy's turn is known only when the face finder or the owner set it (turnBy face / owner, or
+turned by hand: turnFixed). Every other copy (the model's or Haiku's turn) is shown turned too but has no turn answer —
+it teaches the type only: each sample carries a turn_known mask, and the turn loss (turn_loss: cross-entropy per sample)
+is averaged over the known samples only. The ImageNet normalization is inside the model, so
 it takes the page as RGB 0..1 like the document edges models. Exported to ONNX (input "img"
 [1,3,256,256]; outputs "doctype", "turn" — probabilities) and checked to answer like the
 trained model. With --synth N, N made-up upright pages (synth_pages.py) are added to the site's page
@@ -81,10 +84,25 @@ def square(img, resize, rng):
     return cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
 
 
+KNOWN_BY = ("face", "owner")   # who sets a real copy's turn for sure (not the model's guess, not Haiku's)
+
+
+def turn_known(e):
+    """Is a page's turn known (its turn answer taught)? A made-up page (synth_pages: drawn upright) or a phone-cut
+    crop (gen/phone_run.py: turn_k from the geometry, unless None) — yes; a real page copy (doctypes.json) only when
+    the face finder or the owner set its turn (turnBy face / owner) or the owner turned it by hand (turnFixed)."""
+    if "turn_k" in e:
+        return e["turn_k"] is not None
+    if e.get("synthPage"):
+        return True
+    return e.get("turnBy") in KNOWN_BY or e.get("turnFixed") is not None
+
+
 def load(examples, resize="phone"):
-    """→ (pictures, types, upright): upright False for a copy whose turn is not known (no turn answer). Each
-    picture's square is made once, here (square), its kernel draws from a stream of their own."""
-    X, Y, U = [], [], []
+    """→ (pictures, types, known, turns): known False for a page whose turn is not known (no turn answer); turns: the
+    clockwise quarter turns each stored page still needs (a phone-cut crop's turn_k; 0 for the rest). Each picture's
+    square is made once, here (square), its kernel draws from a stream of their own."""
+    X, Y, U, T = [], [], [], []
     rng = random.Random("train_doctypes.py:resize")
     for e in examples:
         img = cv2.imread(e["file"])
@@ -92,8 +110,9 @@ def load(examples, resize="phone"):
             continue
         X.append(square(img, resize, rng))
         Y.append(DOCTYPES.index(e["doctype"]))
-        U.append(e.get("upright") is not False)   # the made-up pages are drawn upright
-    return X, Y, U
+        U.append(turn_known(e))
+        T.append(int(e.get("turn_k") or 0))
+    return X, Y, U, T
 
 
 def turned(img, k):
@@ -101,13 +120,22 @@ def turned(img, k):
     return np.ascontiguousarray(np.rot90(img, -k)) if k else img
 
 
-def turn_answer(k, upright):
-    """The turn answer of a copy shown turned k clockwise quarter turns: the turn that sets it back upright, or
-    TURN_IGNORE when the copy is not known to lie upright."""
-    return (4 - k) % 4 if upright else TURN_IGNORE
+def turn_answer(k, known, needs=0):
+    """The turn answer of a page shown turned k more clockwise quarter turns: the turn that sets it upright (it needed
+    `needs` as stored), or TURN_IGNORE when its turn is not known."""
+    return (needs - k) % 4 if known else TURN_IGNORE
 
 
-def batch(X, Y, idx, augment, U=None):
+def turn_loss(logits, target, known):
+    """The turn head's loss: cross-entropy per sample (reduction 'none'), averaged over the samples whose turn is known
+    (known: a bool tensor) — 0 when none is (a batch of type-only copies adds no turn loss, never a NaN)."""
+    ce = nn.functional.cross_entropy(logits, target.clamp(min=0), reduction="none")
+    k = known.to(ce.dtype)
+    n = k.sum()
+    return (ce * k).sum() / n if bool(n > 0) else ce.sum() * 0.0
+
+
+def batch(X, Y, idx, augment, U=None, T=None):
     xs, ks, ts = [], [], []
     for i in idx:
         img = X[i].astype(np.float32)
@@ -119,18 +147,18 @@ def batch(X, Y, idx, augment, U=None):
         k = random.randrange(4)
         xs.append(turned(img, k).transpose(2, 0, 1) / 255.0)
         ks.append(Y[i])
-        ts.append(turn_answer(k, U is None or U[i]))  # the clockwise turn that sets it back upright
+        ts.append(turn_answer(k, U is None or U[i], T[i] if T is not None else 0))  # the clockwise turn that sets it upright
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(ks), torch.tensor(ts)
 
 
-def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None, data=None):
+def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None, data=None, T=None):
     info = {"model": name, "arch": arch, "data": data}
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
     net = DoctypeNet(arch, pretrained and ck is None).to(dev)   # saved weights need no ImageNet download
     counts = Counter(Y)
     weights = torch.tensor([1 / np.sqrt(max(1, counts.get(i, 0))) for i in range(len(DOCTYPES))], dtype=torch.float32)
-    ce_kind, ce_turn = nn.CrossEntropyLoss(weight=(weights / weights.mean()).to(dev)), nn.CrossEntropyLoss(ignore_index=TURN_IGNORE)
+    ce_kind = nn.CrossEntropyLoss(weight=(weights / weights.mean()).to(dev))
     opt = torch.optim.AdamW(net.parameters(), 3e-4, weight_decay=1e-4)
     steps = epochs * ((len(X) + 31) // 32)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-4, total_steps=max(1, steps), pct_start=0.15)
@@ -143,11 +171,10 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None,
             net.train()
             total = 0.0
             for k in range(0, len(order), 32):
-                xb, kb, tb = batch(X, Y, order[k:k + 32], True, U)
+                xb, kb, tb = batch(X, Y, order[k:k + 32], True, U, T)
                 lk, lt = net.logits(xb.to(dev))
-                loss = ce_kind(lk, kb.to(dev))
-                if bool((tb != TURN_IGNORE).any()):  # a batch with no turn answer at all adds no turn loss (it would be NaN)
-                    loss = loss + ce_turn(lt, tb.to(dev))
+                tb = tb.to(dev)
+                loss = ce_kind(lk, kb.to(dev)) + turn_loss(lt, tb, tb != TURN_IGNORE)   # the turn over the known samples only
                 opt.zero_grad(); loss.backward(); opt.step(); sched.step()
                 total += float(loss.detach()) * len(xb)
         except KeyboardInterrupt:
@@ -174,11 +201,14 @@ def gather(a):
     document (docs/scan-training.md → "Kept apart")."""
     ex = [e for e in read_json(WORK / "doctypes.json") if trains(e)] if (WORK / "doctypes.json").exists() else []   # not the exam's, none left out of both
     if a.synth:
-        made = pathlib.Path(getattr(a, "synth_run", None) or WORK / "synth" / "pages") / "pages.json"
+        run = pathlib.Path(getattr(a, "synth_run", None) or WORK / "synth" / "pages")
+        cut = (run / "doctype" / "pages.json").exists()   # the phone's own cuts (gen/phone_run.py): <run>/doctype/
+        made = run / "doctype" / "pages.json" if cut else run / "pages.json"
         if not made.exists():
-            raise SystemExit("no made-up pages — run synth_pages.py first")
-        require_qa(made.parent, "the made-up pages (synth_pages.py)", work=WORK)   # drawn through gen build: its QA sheet passed
-        pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1])} for e in read_json(made)]
+            raise SystemExit("no made-up pages — run synth_pages.py (or python -m gen build --model doctype,mrz,he,face) first")
+        require_qa(run, "the made-up pages", work=WORK)   # drawn through gen build: its QA sheet passed
+        pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1]), "synthPage": True}
+                 for e in read_json(made)]
         assert_clean(pages, "the made-up pages (synth_pages.py)", work=WORK)   # the whole set, not only the sample drawn
         ex += random.sample(pages, min(a.synth, len(pages)))
     if not ex:
@@ -196,7 +226,8 @@ def main():
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
     ap.add_argument("--scratch", action="store_true", help="random weights, no download — only to test the steps, never for a model to publish")
     ap.add_argument("--synth", type=int, default=0, help="made-up pages (synth_pages.py) added, at random")
-    ap.add_argument("--synth-run", default=str(WORK / "synth" / "pages"), help="the made-up set --synth draws from (default ~/.scan-train/synth/pages)")
+    ap.add_argument("--synth-run", default=str(WORK / "synth" / "pages"), help="the made-up set --synth draws from (default "
+                    "~/.scan-train/synth/pages; a run of the phone's own cuts — python -m gen build --model doctype,… — too)")
     ap.add_argument("--resize", choices=("phone", "area"), default="phone",
                     help="how a page is shrunk to 256: as the phone draws it (gen/phone.py, the default) or INTER_AREA")
     checkpoint.add_args(ap)
@@ -205,12 +236,12 @@ def main():
     ex = gather(a)
     data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(a.synth_run) if a.synth else None, synthCount=a.synth,
                             resize=phone.profile_id() if a.resize == "phone" else "area")
-    X, Y, U = load(ex, a.resize)
+    X, Y, U, T = load(ex, a.resize)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"{len(X)} page copies ({len(U) - sum(U)} with no sure turn: the type only), on {dev}")
+    print(f"{len(X)} pages ({len(U) - sum(U)} with no known turn: the type only), on {dev}")
     jobs = {"doctype-lite.onnx": a.phone} if a.only == "phone" else {"doctype.onnx": a.server}
     for name, arch in jobs.items():
-        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U, data)
+        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U, data, T)
     prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
     write_json(WORK / "new" / "doctypes-arch.json", {**prev, **jobs})
 

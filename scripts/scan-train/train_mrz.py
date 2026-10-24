@@ -11,9 +11,16 @@ training, train_he.py: its progress goes through checkpoint.py.)
 
 The weights are kept between trainings in ~/.scan-train/mrz-ckpt/ (made-up and public lines only, no
 worker's data: clean.py and publish.py leave it): best.pt — the best weights so far, which the next
-training starts from (with a lower learning rate); last.pt — the running training after every epoch,
-which --resume continues after a stop. The check lines are picked by their text (one in 50), so a
-check line is never trained on in any training, whatever the number of lines drawn.
+training starts from (with a lower learning rate), with the run's arguments and both its scores; last.pt — the
+running training after every epoch, which --resume continues after a stop. The check lines are picked by their text
+(one in 50), so a check line is never trained on in any training, whatever the number of lines drawn.
+
+Which weights win: with --midv, MIDV-2020's documents 70–79 (midv_mrz.py: ~/.scan-train/midv-mrz/select/, never
+trained on; 80–99 stay the exam) are a real check set, and every epoch — and best.pt against this run — is compared on
+the real lines right first, then the made-up ones, then fewer characters wrong (score). best.pt is scored again on
+today's sets, so a run with real lines is never thrown away for an old made-up-only score. report_mrz_train.json says
+whether the old weights were kept (keptOld, keptFrom), the new run's own made-up score (newRunLinesRight), the real
+check's (realLinesRight) and midvLines from the exported weights' own record.
 
   python synth_lines.py mrz --count 100000      # first
   python train_mrz.py                           # ~10-20 min on the 4070; from best.pt when it is there
@@ -59,8 +66,10 @@ class MrzNet(nn.Module):
 
 
 def load(folder):
-    rows = [l.split("\t", 1) for l in (folder / "labels.tsv").read_text(encoding="utf-8").splitlines() if "\t" in l]
-    return [(folder / f, t) for f, t in rows]
+    """[(picture, text)] of a folder's labels.tsv (file, text[, more columns]); a line whose 4th column is 0 (the phone's
+    own cuts, gen/outputs/mrz.py: a zone line found on the wrong place, find_ok 0) is left out."""
+    rows = [l.split("\t") for l in (folder / "labels.tsv").read_text(encoding="utf-8").splitlines() if "\t" in l]
+    return [(folder / r[0], r[1]) for r in rows if not (len(r) > 3 and r[3] == "0")]
 
 
 def worse(gray, rng, other=None):
@@ -206,6 +215,27 @@ def export(net, path):
     return diff
 
 
+def score(real, synth):
+    """An epoch's (or best.pt's) score to compare: (real lines right, made-up lines right, −made-up characters wrong) —
+    the real check first (None when there is none: no --midv), then the made-up one. real, synth: evaluate()'s
+    (lines right, characters wrong)."""
+    return ((real[0] if real else -1.0), synth[0], -synth[1])
+
+
+def keep_old(before, best):
+    """Does best.pt (its score on today's sets) stay over this run's best epoch? Only when it scores at least as well
+    by score's order — never on a made-up-only comparison when this run has a real check (both are scored on it)."""
+    return before is not None and tuple(before) >= tuple(best)
+
+
+def train_report(acc, cer, real, train, val, real_val, kept, saved, run_synth, midv_lines, diff):
+    """report_mrz_train.json."""
+    return {"linesRight": acc, "charsWrong": cer, "realLinesRight": real[0] if real else None,
+            "realCharsWrong": real[1] if real else None, "trainLines": len(train), "checkLines": len(val),
+            "realCheckLines": len(real_val), "midvLines": midv_lines, "keptOld": bool(kept),
+            "keptFrom": (saved or {}).get("at") if kept else None, "newRunLinesRight": run_synth, "onnxDiff": diff}
+
+
 def is_check(text):
     """One line in 50 is a check line, by its text: the same in every training."""
     return zlib.crc32(text.encode()) % 50 == 0
@@ -236,7 +266,7 @@ def main():
         raise SystemExit(f"only {len(items)} lines in {a.data}: run synth_lines.py mrz first")
     val = [it for it in items if is_check(it[1])]
     train = [it for it in items if not is_check(it[1])]
-    real = []
+    real, real_val = [], []
     if a.midv:
         folder = WORK / "midv-mrz" / "train"
         if not (folder / "labels.tsv").exists():
@@ -244,19 +274,30 @@ def main():
         real = load(folder)
         train = train + real * a.midv_repeat
         print(f"+ {len(real)} real zone lines from MIDV-2020, each {a.midv_repeat} times an epoch")
+        sel = WORK / "midv-mrz" / "select"
+        if (sel / "labels.tsv").exists():
+            real_val = load(sel)
+            print(f"{len(real_val)} real check lines (MIDV-2020 documents 70–79): epochs and best.pt compared on them first")
+        else:
+            print(f"no {sel / 'labels.tsv'} — run midv_mrz.py again for the real check lines; compared on made-up lines only")
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(train)} lines to train on, {len(val)} to check, on the {dev}")
     net = MrzNet().to(dev)
     print(f"{sum(p.numel() for p in net.parameters()) / 1e6:.2f} M weights")
     tl = torch.utils.data.DataLoader(Lines(train, True, real=frozenset(p for p, _ in real)), a.batch, shuffle=True, num_workers=a.workers, collate_fn=collate, drop_last=True)
     vl = torch.utils.data.DataLoader(Lines(val, False), 128, num_workers=a.workers, collate_fn=collate)
+    rl = (torch.utils.data.DataLoader(Lines(real_val, False, real=frozenset(p for p, _ in real_val)), 128, num_workers=a.workers,
+                                      collate_fn=collate) if real_val else None)
     saved = torch.load(CKPT / "best.pt", weights_only=False) if (CKPT / "best.pt").exists() else None
     before = None                                # best.pt on today's check lines: a training must beat it
     if saved:
         net.load_state_dict(saved["weights"])
         acc, cer = evaluate(net, vl, dev)
-        before = (acc, -cer)                     # lines right first, then fewer characters wrong
-        print(f"best.pt (kept {saved['at']}): {acc:.1%} of today's check lines right ({cer:.2%} of the characters wrong)")
+        real_b = evaluate(net, rl, dev) if rl else None
+        before = score(real_b, (acc, cer))       # the real lines first, then the made-up ones, then fewer characters wrong
+        print(f"best.pt (kept {saved['at']}{', trained with MIDV' if (saved.get('args') or {}).get('midv') else ''}): "
+              f"{acc:.1%} of today's check lines right ({cer:.2%} of the characters wrong)"
+              + (f"; real check lines {real_b[0]:.1%}" if real_b else ""))
     if last is None:
         if a.fresh or not saved:
             net = MrzNet().to(dev)
@@ -268,7 +309,7 @@ def main():
     opt = torch.optim.AdamW(net.parameters(), a.lr / 2, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, a.lr, total_steps=a.epochs * len(tl))
     ctc = nn.CTCLoss(blank=0, zero_infinity=True)
-    best, first = ((-1.0, 0.0), None), 0
+    best, first = ((-1.0, -1.0, 0.0), None), 0
     if last is not None:
         saved_steps = (last.get("sched") or {}).get("total_steps")
         if saved_steps is not None and saved_steps != a.epochs * len(tl):   # the lines were drawn again since: the schedule would run out
@@ -276,7 +317,7 @@ def main():
         net.load_state_dict(last["weights"])
         opt.load_state_dict(last["opt"])
         sched.load_state_dict(last["sched"])
-        best, first = (last["bestAcc"], last["bestWeights"]), last["epoch"] + 1
+        best, first = (tuple(last["bestAcc"]) if len(last["bestAcc"]) == 3 else (-1.0, *last["bestAcc"]), last["bestWeights"]), last["epoch"] + 1
     CKPT.mkdir(parents=True, exist_ok=True)
     for ep in range(first, a.epochs):
         net.train()
@@ -291,24 +332,34 @@ def main():
             sched.step()
             total += loss.item()
         acc, cer = evaluate(net, vl, dev)
-        print(f"epoch {ep + 1}/{a.epochs}: loss {total / len(tl):.3f}, lines right {acc:.1%}, characters wrong {cer:.2%}")
-        if (acc, -cer) > best[0]:
-            best = ((acc, -cer), {k: v.detach().cpu().clone() for k, v in net.state_dict().items()})
+        real_e = evaluate(net, rl, dev) if rl else None
+        print(f"epoch {ep + 1}/{a.epochs}: loss {total / len(tl):.3f}, lines right {acc:.1%}, characters wrong {cer:.2%}"
+              + (f", real check lines right {real_e[0]:.1%}" if real_e else ""))
+        if score(real_e, (acc, cer)) > best[0]:
+            best = (score(real_e, (acc, cer)), {k: v.detach().cpu().clone() for k, v in net.state_dict().items()})
         torch.save({"args": vars(a), "epoch": ep, "weights": net.state_dict(), "opt": opt.state_dict(),
                     "sched": sched.state_dict(), "bestAcc": best[0], "bestWeights": best[1]}, CKPT / "last.pt")
-    if before is not None and before >= best[0]:
-        print(f"this training did not beat best.pt ({best[0][0]:.1%} against {before[0]:.1%} of the lines right): best.pt is kept and written out")
+    run_synth = best[0][1]
+    kept = keep_old(before, best[0])
+    if kept:
+        print(f"this training did not beat best.pt (real {best[0][0]:.1%} / made-up {best[0][1]:.1%} against real "
+              f"{before[0]:.1%} / made-up {before[1]:.1%}): best.pt is kept and written out")
         best = (before, saved["weights"])
+        midv_lines = saved.get("midvLines")   # the exported weights' own record (None: kept before it was recorded)
     else:
         import datetime
-        torch.save({"weights": best[1], "acc": best[0][0], "at": datetime.date.today().isoformat()}, CKPT / "best.pt")
-        print(f"best.pt kept: {best[0][0]:.1%} of the lines right")
+        midv_lines = len(real)
+        torch.save({"weights": best[1], "acc": best[0][1], "real": best[0][0] if rl else None, "synth": best[0][1],
+                    "midvLines": midv_lines, "args": vars(a), "lines": {"train": len(train), "check": len(val), "realCheck": len(real_val)},
+                    "at": datetime.date.today().isoformat()}, CKPT / "best.pt")
+        print(f"best.pt kept: {best[0][1]:.1%} of the made-up lines right" + (f", {best[0][0]:.1%} of the real ones" if rl else ""))
     (CKPT / "last.pt").unlink(missing_ok=True)
     net.load_state_dict(best[1])
     acc, cer = evaluate(net.to(dev), vl, dev)
+    real_x = evaluate(net, rl, dev) if rl else None
     drop_report("report_mrz.json")   # the exam of the model before: exam_mrz.py runs again on this one
     diff = export(net, WORK / "new" / "mrz.onnx")
-    report = {"linesRight": acc, "charsWrong": cer, "trainLines": len(train), "checkLines": len(val), "midvLines": len(real), "onnxDiff": diff}
+    report = train_report(acc, cer, real_x, train, val, real_val, kept, saved, run_synth, midv_lines, diff)
     (WORK / "report_mrz_train.json").write_text(json.dumps(report, indent=1))
     print(f"mrz.onnx written: on made-up lines {acc:.1%} of the lines right ({cer:.2%} of the characters wrong)")
 

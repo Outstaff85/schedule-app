@@ -12,7 +12,8 @@ Kept apart (docs/scan-training.md → "Kept apart"): the check set is drawn only
 exam (synth.held_out: heldout.json) and with the check vocabulary (synth.field_value held=True); training gets the
 other pages and the training vocabulary — the reader is measured on cards and words it never saw.
 
-Writes <n>.png (grey), labels.tsv (file, text as written, kind, the page's sha1 prefix) and sources.json (the
+Writes <n>.png (grey), labels.tsv (file, text as written, kind, the page's sha1 prefix, the page type, the field's
+role — hemodel.role_of: a date's dob / expiry / issued) and sources.json (the
 split, the vocabulary, the pages' sha1s — train_he.py refuses a training set holding a held-out page). A thin wrapper
 over `python -m gen build --model he` (gen/build.py): the folder also gets manifest.jsonl and run.json, one row per page
 (docs/scan-training.md → "Made-up sets: build, verify, QA")."""
@@ -50,14 +51,24 @@ def phone(rng, page):
     return cv2.imdecode(enc, cv2.IMREAD_GRAYSCALE)
 
 
+SHIFT, SCALE = 0.02, 0.02   # the phone's cut a little off: in shares of the card, not of the field's box
+
+
 def crop(rng, g, box):
-    """A field's box cut out a little off and with a margin, as a box the AI or a finder gives would be."""
+    """A field cut out as the phone cuts it: the phone reads a layout box on its own cut of the card, and a corner a
+    little off moves the card under that box — so the box is moved by up to SHIFT of the card's width and height and
+    each axis of the card is scaled by up to ±SCALE about its centre (in shares of the card, not of the box: a field
+    far from the centre moves more), then grown by heLine's margins (hemodel.MARGIN_X / MARGIN_Y, the phone's
+    scan-lab/index.html heLine — mirrored)."""
+    from hemodel import MARGIN_X, MARGIN_Y
     x, y, w, h = box
-    H, W = g.shape
-    dx, dy = rng.uniform(-0.02, 0.02) * w, rng.uniform(-0.15, 0.15) * h
-    mx, my = rng.uniform(0.0, 0.03) * w, rng.uniform(0.1, 0.4) * h   # a field beside on the same line stays out
-    x0, y0 = int(max(0, x + dx - mx)), int(max(0, y + dy - my))
-    x1, y1 = int(min(W, x + w + dx + mx)), int(min(H, y + h + dy + my))
+    H, W = g.shape[:2]
+    dx, dy = rng.uniform(-SHIFT, SHIFT) * W, rng.uniform(-SHIFT, SHIFT) * H
+    sx, sy = 1 + rng.uniform(-SCALE, SCALE), 1 + rng.uniform(-SCALE, SCALE)
+    nx, ny = W / 2 + (x - W / 2) * sx + dx, H / 2 + (y - H / 2) * sy + dy
+    nw, nh = w * sx, h * sy
+    x0, y0 = int(max(0, nx - MARGIN_X * nw)), int(max(0, ny - MARGIN_Y * nh))
+    x1, y1 = int(min(W, nx + nw * (1 + MARGIN_X))), int(min(H, ny + nh * (1 + MARGIN_Y)))
     return g[y0:y1, x0:x1]
 
 
@@ -81,13 +92,17 @@ MODEL, CHUNK = "he", 50
 
 def _batch(job):
     import template_vary
+    from gen.common import label
+    from hemodel import role_of
     seed, indices, folder, pages, fonts, held = job
     fonts = FontLog(fonts)
     out = []
     for i in indices:
         rng = grng.legacy(seed, i)   # random.Random(seed * 1_000_003 + i), as always
         path, kind_page = rng.choice(pages)
-        page, fields = template_vary.vary(rng, fonts, path, template_vary.spec_for(path), held=held)
+        spec = template_vary.spec_for(path)
+        page, fields = template_vary.vary(rng, fonts, path, spec, held=held)   # one per spec["fields"], in order
+        page_type = label("template", kind_page)
         sha = file_sha1(path) or ""
         tag = sha[:10]
         g = phone(rng, page)
@@ -98,7 +113,7 @@ def _batch(job):
                 continue
             name = f"{i}-{k}.png"
             cv2.imwrite(str(pathlib.Path(folder) / name), part)
-            labels.append(f"{name}\t{text}\t{kind}\t{tag}")
+            labels.append(f"{name}\t{text}\t{kind}\t{tag}\t{page_type}\t{role_of(spec['fields'][k])}")
             files.append(name)
             kept.append({"file": name, "kind": kind, "text": hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]})   # the text as a hash only
         out.append({"index": i, "id": f"he-{seed}-{i}", "entry": labels, "files": files, "meta": {

@@ -13,7 +13,11 @@ The sheet (local only — the pictures come from the owner's real pages; it is n
   verify on a sample, run here when the set has none for its fingerprint);
 - for scenes (gen/scene.py: rows with a recipe) the per-recipe strata too: the tables recipe × class and recipe ×
   background category (every cell a count or n=0), a histogram by recipe, and a contact sheet per recipe showing every
-  picture of a scene — the frame, each "next" one (found pages painted over) and each "inside" cut — with its answer.
+  picture of a scene — the frame, each "next" one (found pages painted over) and each "inside" cut — with its answer;
+- for the phone's own cuts (gen/phone_run.py, model "cuts"): the shot's counts (matched, missed, false), the IoU of
+  the phone's cuts as a histogram, the cut_by share of the pages kept (phone, bad, editor) against the editor cap,
+  the document type crops by class (short classes marked), the zone finder's and the Hebrew fields' counts with
+  layout_overflow.json, the face exam's, and a contact sheet of the crops per class (turn_k, cut_by, IoU written on).
 purity.json records it: passed when the intersection is 0 and verify passed. Every train*.py calls require_qa on a
 made-up set drawn through gen build: no qa/purity.json, one not passed, or one of another drawing (fingerprint) or
 another heldout.json, or a manifest that references what the exam keeps today (held_refs run again at training
@@ -125,7 +129,7 @@ def classes_of(model, rows):
 
 
 SOURCES = {"edges": ("drawn", "template", "washed", "pdf", "none"), "doctype": ("drawn", "template", "midv", "smartdoc"),
-           "he": ("template",)}
+           "he": ("template",), "cuts": ("drawn", "template", "washed", "pdf", "attempt", "none")}
 RECIPES = ("single", "pair", "card_on_sheet", "painted", "none", "partial")   # gen/scene.py's
 
 
@@ -160,7 +164,89 @@ def recipe_part(model, rows, recipe_sheets):
             f"cuts, each with its own answer.</p>{blocks}")
 
 
-def page(run, rows, sheets, refs, ver, recipe_sheets=None):
+def crop_sheet(folder, entries, dest):
+    """Up to PER_SHEET document type crops in one picture, each with its turn_k, cut_by and IoU written on it."""
+    import cv2
+    import numpy as np
+    thumbs = []
+    for e in entries[:PER_SHEET]:
+        img = cv2.imread(str(folder / e["file"]))
+        if img is None:
+            continue
+        h, w = img.shape[:2]
+        k = THUMB / max(h, w)
+        img = cv2.resize(img, (max(1, round(w * k)), max(1, round(h * k))))
+        cv2.rectangle(img, (0, 0), (img.shape[1], 14), (255, 255, 255), -1)
+        cv2.putText(img, f"t{e.get('turn_k')} {e.get('cut_by')} {float(e.get('iou') or 0):.2f}", (2, 11), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.35, (0, 0, 0), 1)
+        pad = np.full((THUMB + 4, THUMB + 4, 3), 255, np.uint8)
+        pad[2:2 + img.shape[0], 2:2 + img.shape[1]] = img
+        thumbs.append(pad)
+    if not thumbs:
+        return False
+    blank = np.full((THUMB + 4, THUMB + 4, 3), 255, np.uint8)
+    rows = [np.hstack(thumbs[k:k + COLS] + [blank] * (COLS - len(thumbs[k:k + COLS]))) for k in range(0, len(thumbs), COLS)]
+    cv2.imwrite(str(dest), np.vstack(rows), [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return True
+
+
+def cuts_part(folder, out):
+    """The phone's own cuts' section ("" for any other set): cuts.json's counts and the crops by class."""
+    try:
+        summary = json.loads((folder / "cuts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    c = summary.get("cuts") or {}
+    ok = c.get("editorShare", 0) <= c.get("editorCap", 1) + 1e-9
+    runs = summary.get("modelRuns")
+    part = (f"<h2>The phone's own cuts</h2><p>The lab's edges models {html.escape(str(c.get('labVersion')))} (edges sha "
+            f"{html.escape(str(c.get('edgesSha'))[:12])}); model runs in this drawing: {runs}"
+            f"{' (every scene from the cache)' if not runs else ''}.</p>"
+            f"<p>{c.get('scenes')} scenes, {c.get('shots')} shots taken; {c.get('documents')} true documents: matched "
+            f"{c.get('matched')}, missed {c.get('missed')}; found where no document is (false) {c.get('false')}; "
+            f"mean corner error of the phone's cuts {c.get('cornerErrMean')}.</p>"
+            f"<ul><li class='{'ok' if ok else 'bad'}'>cut_by share of the pages kept: editor {c.get('editorShare', 0):.1%} "
+            f"(cap {c.get('editorCap', 0):.0%}), bad cuts {c.get('badShare', 0):.1%} (cap {c.get('badCap', 0):.0%}); "
+            f"{summary.get('dropped', 0)} pages dropped to keep them so</li></ul>"
+            f"{_bars('IoU of the phone cuts (before the caps)', c.get('iouHist') or {})}"
+            f"{_bars('pages kept, by cut', c.get('keptByCut') or {})}{_bars('pages by cut (before the caps)', c.get('byCut') or {})}"
+            f"{_bars('found by (the lab step)', c.get('byHow') or {})}")
+    d = summary.get("doctype")
+    if d:
+        body = "".join(f"<tr><th>{html.escape(k)}</th><td class='n'>{v['crops']}</td><td class='n'>{v['templates']}</td>"
+                       f"<td class='n'>{v['editor']}</td><td class='n'>{v['bad']}</td><td class='n'>{v['turnKnown']}</td>"
+                       f"<td class='{'bad' if k in d['short'] else 'ok'}'>{'short' if k in d['short'] else 'ok'}</td></tr>"
+                       for k, v in d["byClass"].items())
+        part += (f"<h3>Document type crops by class</h3><p>Each class wants at least {d['minCrops']} crops from "
+                 f"{d['minTemplates']} distinct pages.</p><table><tr><th></th><th>crops</th><th>pages</th><th>editor</th>"
+                 f"<th>bad cut</th><th>turn known</th><th></th></tr>{body}</table>")
+        try:
+            entries = json.loads((folder / "doctype" / "pages.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            entries = []
+        for cls in sorted({e["doctype"] for e in entries}):
+            name = f"sheet-crops-{_slug(cls)}.jpg"
+            if crop_sheet(folder, [e for e in entries if e["doctype"] == cls], out / name):
+                part += f"<section><h3>{html.escape(cls)} crops</h3><img src='{name}' alt='{html.escape(cls)}'></section>"
+    z = summary.get("mrz")
+    if z:
+        part += (f"<h3>Passport zone</h3><p>{z['passports']} passports ({z['td3']} TD3): both lines found right on {z['ok']}; "
+                 f"failed {html.escape(json.dumps(z['failed']))}; {z['lines']} line crops ({z['linesFoundRight']} find_ok).</p>")
+    h = summary.get("he")
+    if h:
+        o = h.get("overflow") or {}
+        part += (f"<h3>Hebrew fields</h3><p>{h['crops']} crops on {h['pages']} card fronts, skipped "
+                 f"{html.escape(json.dumps(h['skipped']))}; by role {html.escape(json.dumps(h['byRole']))}. "
+                 f"layout_overflow.json: 99th percentile past the box x {o.get('x')}, y {o.get('y')} — "
+                 f"{'within' if o.get('covered') else 'NOT within'} heLine's margins.</p>")
+    f = summary.get("face")
+    if f:
+        part += (f"<h3>Face exam crops</h3><p>{f['crops']} pages with a photo: the face finder right on {f['right']}, "
+                 f"no face on {f['noFace']}.</p>")
+    return part
+
+
+def page(run, rows, sheets, refs, ver, recipe_sheets=None, extra=""):
     model = run.get("model")
     classes = classes_of(model, rows)
     sources = list(SOURCES.get(model, ())) + sorted({str(r.get("source")) for r in rows} - set(SOURCES.get(model, ())))
@@ -193,6 +279,7 @@ fingerprint {html.escape(str(run.get('fingerprint'))[:12])}; heldout.json {html.
 <h2>Histograms</h2>{_bars("by class", _count(rows, lambda r: r.get("class")))}{_bars("by source", _count(rows, lambda r: r.get("source")))}
 {_bars("by background category", _count(rows, lambda r: r.get("bgCategory")))}
 {recipe_part(model, rows, recipe_sheets or {})}
+{extra}
 <h2>Contact sheets</h2><p>First corner red, the document's own top-left blue; a field's text only as a sha1 prefix.</p>{blocks}"""
 
 
@@ -231,7 +318,7 @@ def qa(folder, sample=20, jobs=1, work=None):
         name = f"sheet-recipe-{_slug(rc)}.jpg"
         contact_sheet(folder, rs, out / name, every=True)
         recipe_sheets[rc] = (name, len(rs))
-    (out / "index.html").write_text(page(run, rows, sheets, refs, ver, recipe_sheets), encoding="utf-8")
+    (out / "index.html").write_text(page(run, rows, sheets, refs, ver, recipe_sheets, cuts_part(folder, out)), encoding="utf-8")
     purity = {"passed": bool(not refs and ver.get("passed")), "heldoutIntersection": len(refs),
               "verify": {k: ver.get(k) for k in ("sample", "matched", "passed")}, "fingerprint": run.get("fingerprint"),
               "heldoutSha256": gc.heldout_sha256(), "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}

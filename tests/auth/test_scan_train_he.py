@@ -164,3 +164,89 @@ def test_the_check_set_draws_only_the_held_out_pages(tmp_path, monkeypatch):
         synth_fields.split_pages([pg for pg in pages if gc.file_sha1(pg[0]) not in held], True)   # no held-out page
     with pytest.raises(SystemExit, match="nothing left"):
         synth_fields.split_pages([pg for pg in pages if gc.file_sha1(pg[0]) in held], False)  # nothing to train on
+
+
+# ---------- the phone's geometry (docs/scan-training.md → "The Hebrew field reader": phone-path crops) ----------
+ROOT = HERE.parents[1]
+
+
+def _crop_bounds(sf, rng, W, H, box):
+    """synth_fields.crop's window on a W × H page (x0, y0, x1, y1) — read off a page whose pixels hold their place."""
+    import numpy as np
+    g = (np.arange(H)[:, None] * W + np.arange(W)[None, :]).astype(np.int64)
+    part = sf.crop(rng, g, box)
+    y0, x0 = divmod(int(part[0, 0]), W)
+    y1, x1 = divmod(int(part[-1, -1]), W)
+    return x0, y0, x1 + 1, y1 + 1
+
+
+def test_the_training_crop_jitters_in_shares_of_the_card_and_keeps_heLines_margins(monkeypatch):
+    import pytest
+    pytest.importorskip("cv2")
+    sf = _load("synth_fields")
+    from gen import phone
+    W, H = 1000, 630
+    box = (700, 500, 12, 6)   # a tiny field far from the card's centre
+    rng = random.Random(3)
+    xs = [_crop_bounds(sf, rng, W, H, box)[0] for _ in range(2000)]
+    # the shift is in shares of the card (±2 % of 1000 px, more with the scale far from the centre), not of the 12 px box
+    assert max(xs) - min(xs) > 0.035 * W and max(xs) - min(xs) < 2 * (sf.SHIFT * W + sf.SCALE * abs(box[0] - W / 2)) + 3
+    # with no jitter the window is heLine's: the box grown by hemodel.MARGIN_X / MARGIN_Y (gen/phone.py he_rect)
+    monkeypatch.setattr(sf, "SHIFT", 0.0)
+    monkeypatch.setattr(sf, "SCALE", 0.0)
+    for b in ((100, 80, 300, 40), (600, 450, 250, 35), (5, 3, 200, 30)):
+        x0, y0, w, h = phone.he_rect(W, H, [b[0] / W, b[1] / H, b[2] / W, b[3] / H])
+        got = _crop_bounds(sf, random.Random(0), W, H, b)
+        assert abs(got[0] - x0) <= 1 and abs(got[1] - y0) <= 1 and abs(got[2] - (x0 + w)) <= 1 and abs(got[3] - (y0 + h)) <= 1, (b, got)
+
+
+def test_heLines_margins_are_one_number_on_every_side_of_the_copy():
+    from gen import phone
+    assert (hemodel.MARGIN_X, hemodel.MARGIN_Y) == (phone.HE_MARGIN_X, phone.HE_MARGIN_Y)
+    for copy in ("scan-lab", "scan"):
+        src = (ROOT / copy / "index.html").read_text(encoding="utf-8")
+        m = re.search(r"const HE_MX = ([0-9.]+), HE_MY = ([0-9.]+);", src)
+        assert m, f"{copy}/index.html has no HE_MX / HE_MY"
+        assert (float(m.group(1)), float(m.group(2))) == (hemodel.MARGIN_X, hemodel.MARGIN_Y), copy
+        assert "HE_MX * bw" in src and "HE_MY * bh" in src and "(1 + HE_MX)" in src and "(1 + HE_MY)" in src
+
+
+def test_the_sites_scanner_page_is_the_labs_but_its_two_paths():
+    lab = (ROOT / "scan-lab" / "index.html").read_text(encoding="utf-8").replace("\r\n", "\n")
+    site = (ROOT / "scan" / "index.html").read_text(encoding="utf-8").replace("\r\n", "\n")
+    site = site.replace('<script src="/scan/embed.js"></script>\n', "").split("\n")
+    lab = lab.split("\n")
+    assert len(site) == len(lab)
+    differ = [(a, b) for a, b in zip(lab, site) if a != b]
+    assert differ and all(b.replace("/scan/", "/scan-lab/") == a for a, b in differ), [b for a, b in differ][:3]
+
+
+def test_the_name_boxes_open_toward_the_left_and_labels_carry_page_type_and_role(tmp_path):
+    marks = json.loads((HERE / "template_fields.json").read_text(encoding="utf-8"))
+    raw = {}
+    for name, key in hemodel.LAYOUT_PAGES.items():
+        for f in marks[key]["fields"]:
+            raw.setdefault((name, hemodel.role_of(f)), f["box"])
+    for name, boxes in hemodel.layouts(marks).items():
+        for b in boxes:
+            x, y, w, h = raw[(name, b["role"])]
+            if b["role"] in hemodel.NAMES:
+                assert b["box"][0] < x and abs(b["box"][0] + b["box"][2] - (x + w)) < 1e-3 and b["box"][0] >= 0   # widened left only
+            else:
+                assert b["box"] == [x, y, w, h]
+    assert hemodel.role_of({"kind": "date", "same": "dob"}) == "dob" and hemodel.role_of({"kind": "idNo", "same": "holder"}) == "idNo"
+    # train_he.load reads the page type and the role (and the page, for the select / exam split)
+    import pytest
+    pytest.importorskip("torch")
+    th = _load("train_he")
+    (tmp_path / "labels.tsv").write_text("1-0.png\tכהן\tsurname\tabc\tid_front\tsurname\n"
+                                        "1-1.png\t01.02.1990\tdate\tabc\tid_front\tdob\n"
+                                        "2-0.png\tלוי\tgiven\tabd\tsefach\tgiven\n"
+                                        "x.png\t123\tidNo\tdrawn\tid_front\tidNo\tnew\tTrue\ttrain\tcut-1-2-d0\n", encoding="utf-8")
+    rows = th.load(tmp_path)
+    assert [r[3]["pageType"] for r in rows] == ["id_front", "id_front", "sefach", "id_front"]
+    assert [r[3]["role"] for r in rows] == ["surname", "dob", "given", "idNo"]
+    assert [r[3]["page"] for r in rows] == ["1", "1", "2", "cut-1-2-d0"]
+    many = [(None, "x", "k", {"page": str(p)}) for p in range(40) for _ in range(3)]
+    sel, exam = th.check_split(many)
+    assert sel and exam and not {r[3]["page"] for r in sel} & {r[3]["page"] for r in exam} and len(sel) + len(exam) == len(many)

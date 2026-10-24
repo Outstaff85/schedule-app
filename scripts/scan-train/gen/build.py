@@ -6,6 +6,8 @@
 
 `python -m gen build --model edges` draws scenes (gen/scene.py, written by gen/outputs/edges.py: one camera for the
 table and the documents); synth_docs.py keeps today's flat-crop photos for comparison (its run.json names its generator).
+`python -m gen build --model doctype,mrz,he,face` (cut_models) cuts the scenes' pages by the lab's own edges model
+(gen/phone_run.py, its writers gen/outputs/doctype.py, mrz.py, he.py, face.py): one run, a folder per writer.
 
 Each of today's generators draws exactly as it always did (one stream per example, gen.rng.legacy: an example depends only on
 the seed and its index) and writes what it always wrote (examples.json, pages.json, labels.tsv), and the set's
@@ -23,7 +25,23 @@ import pathlib
 from . import manifest
 
 GENERATORS = {"edges": "synth_docs", "doctype": "synth_pages", "he": "synth_fields"}   # today's (the old CLIs)
-SCENES = {"edges": "gen.outputs.edges"}   # python -m gen build --model edges: the scenes
+SCENES = {"edges": "gen.outputs.edges", "cuts": "gen.phone_run"}   # python -m gen build: the scenes, the phone's own cuts
+CUT_MODELS = ("doctype", "mrz", "he", "face")
+
+
+def cut_models(spec, force=False):
+    """The writers a --model names for the phone's own cuts (gen/phone_run.py), or None for one of today's generators:
+    a list of doctype, mrz, he, face — any list of two or more, mrz or face alone, or doctype / he alone with --cuts."""
+    names = [m for m in str(spec).split(",") if m]
+    if names == ["cuts"]:
+        return list(CUT_MODELS)
+    if not names or any(m not in CUT_MODELS for m in names):
+        if len(names) > 1 or any(m not in GENERATORS for m in names):
+            raise SystemExit(f"--model {spec}: edges, doctype or he alone, or a list of {', '.join(CUT_MODELS)}")
+        return None
+    if len(names) > 1 or force or set(names) & {"mrz", "face"}:
+        return list(dict.fromkeys(names))
+    return None
 
 
 def module(model, generator=None):
@@ -76,7 +94,8 @@ def build(model, params, jobs):
     for stale in (folder / "verify.json", folder / "qa" / "purity.json"):   # of a set drawn here before
         stale.unlink(missing_ok=True)
     mod.gen_prepare(folder, params)
-    items = draw(mod, params, range(params["count"]), folder, jobs)
+    every = mod.indices(params) if hasattr(mod, "indices") else range(params["count"])   # a generator may draw more (real scenes)
+    items = draw(mod, params, every, folder, jobs)
     mod.gen_write(folder, params, items)
     rows = rows_of(model, params, items, folder)
     sha = manifest.write_manifest(folder, rows)
@@ -103,7 +122,7 @@ def _found(entry, roots):
     return None
 
 
-WHAT = {"pages": "page", "photos": "background", "pdfs": "PDF", "occluders": "cut-out"}
+WHAT = {"pages": "page", "photos": "background", "pdfs": "PDF", "occluders": "cut-out", "real": "attempt photo"}
 
 
 def resolve(params, work=None):
@@ -114,7 +133,7 @@ def resolve(params, work=None):
     out = dict(params)
     assets = pathlib.Path(__file__).resolve().parents[3] / "functions" / "assets"
     for key, roots in (("pages", [work / "templates"]), ("photos", [work / "backgrounds", work / "backgrounds-own"]),
-                       ("pdfs", [work / "contracts", assets]), ("occluders", [work / "occluders"])):
+                       ("pdfs", [work / "contracts", assets]), ("occluders", [work / "occluders"]), ("real", [work / "img"])):
         fixed = []
         for e in params.get(key) or []:
             got = _found(e, roots)

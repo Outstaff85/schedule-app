@@ -6,7 +6,9 @@ scene can lay, flat and upright, with what is printed on it known.
 - rgba: the picture (PIL RGBA; outside a card's rounded corners alpha 0); rect: the document's own part of it in
   pixels (a passport's data page under the booklet's other page), size_mm its size; ppm: pixels per millimetre.
 - fields: [(role, text, quad)] — each value's four corners in the picture's pixels (pixel edges, its top-left first,
-  clockwise); a bow of the paper moves them with it. mrz_text: a passport's two zone lines; face_box the holder's
+  clockwise); a bow of the paper moves them with it. role: what the value is (surname, idNo, dob, expiry…: a marked
+  real page's by hemodel.role_of — a date's "same"); kinds: each field's marked kind (template_fields.json: date,
+  hedate, digits…) when it differs, else None (the drawn pages: the role is the kind). mrz_text: a passport's two zone lines; face_box the holder's
   photo's quad (or None).
 - doctype: the page kind (gen.common.DOCTYPES, by gen.common.label); kind: the source's own kind (id_front, insert,
   licence, contract, form101, he_sheet…); material: card, paper or booklet.
@@ -48,6 +50,7 @@ class Page:
     template_sha1: object = None   # a real page's content sha1 (what heldout.json keeps); None for a drawn page or a PDF
     seen: bool = True
     file_sha1: object = None       # a PDF's sha1 (the page it was rendered from)
+    kinds: list = None             # each field's marked kind (a real page's), parallel to fields; None: the role is the kind
 
     @property
     def size_px(self):
@@ -108,11 +111,14 @@ def real(rng, F, path, kind, held=False, sharp=False):
     from PIL import Image
     import synth_docs as sd
     import template_vary
+    from hemodel import role_of
     spec = template_vary.spec_for(path)
     marked = bool(spec and spec.get("fields"))
+    kinds = None
     if marked:
-        im, out = template_vary.vary(rng, F.hebrew, path, spec, held=held)
-        fields = [(k, t, as_quad(b)) for k, t, b in out]
+        im, out = template_vary.vary(rng, F.hebrew, path, spec, held=held)   # one per spec["fields"], in order
+        fields = [(role_of(f), t, as_quad(b)) for f, (k, t, b) in zip(spec["fields"], out)]
+        kinds = [k for k, _, _ in out]
     else:
         im = Image.fromarray(cv2.cvtColor(template_vary.load_page(path, spec), cv2.COLOR_BGR2RGB))
         fields = []
@@ -142,7 +148,7 @@ def real(rng, F, path, kind, held=False, sharp=False):
         im = im.convert("RGBA")
         material = MATERIAL.get(kind, "paper")
     page = Page(im, (tw / PX, th / PX), gc.label("template", kind), kind, material, fields, None, None,
-                "template" if marked else "washed", (0, 0, tw, th), PX, gc.file_sha1(path), not held)
+                "template" if marked else "washed", (0, 0, tw, th), PX, gc.file_sha1(path), not held, kinds=kinds)
     return page
 
 

@@ -10,7 +10,9 @@ Exact ports (pure numpy, no randomness):
 - homography / warp_rgba: the cut (scan-core.js warpRGBA) — bilinear, no antialiasing, the sides by Math.round, no
   exact proportion, what falls outside the photo left 0 (alpha too);
 - mrz_find: the passport zone's two line boxes (index.html mrzFind), and line_input (mrzRead's 32 × 512 input);
-- he_line(page, box): the Hebrew field reader's input (index.html heLine: margins 0.015 / 0.25 of the box);
+- he_line(page, box): the Hebrew field reader's input (index.html heLine: margins HE_MARGIN_X / HE_MARGIN_Y of the
+  box — hemodel.MARGIN_X / MARGIN_Y, which synth_fields.crop cuts by too);
+- face_turn(sess, page): the quarter turns that set a cut page upright by its face (scan-core.js faceTurn / faceScore);
 - doc_shape, lab_good_quad, in_quad / lab_quad_iou, lab_border_colour, unwarp, INSIDE_MIN / INSIDE_MAX: the rules by
   which the lab takes more documents on one photo (index.html docShape, goodQuad, inQuad / quadIoU, findNext's paint
   colour, findInside) — docfind.find_next(lab=True) and docfind.find_inside run the lab's steps with them.
@@ -283,6 +285,45 @@ def doctype_input(page, bgr=False, kernel=None, rng=None, profile=None):
     return np.ascontiguousarray(sq.transpose(2, 0, 1)).astype(np.float32) / 255.0
 
 
+def face_score_of(outs):
+    """faceScore's reading of the face finder's outputs on its 320 input ({name: array}: cls_/obj_/kps_ 8, 16, 32): the
+    surest face (the first of the highest, stride by stride), its score × sin of the eyes → mouth angle — 1 when the
+    mouth is straight below the eyes; 0 when no face is surer than 0.5."""
+    best = None
+    for st in (8, 16, 32):
+        cols = FN // st
+        cls = np.clip(np.asarray(outs[f"cls_{st}"], np.float64).reshape(-1), 0, 1)
+        obj = np.clip(np.asarray(outs[f"obj_{st}"], np.float64).reshape(-1), 0, 1)
+        if not cls.size:
+            continue
+        sc = np.sqrt(cls * obj)
+        i = int(np.argmax(sc))
+        if best is None or sc[i] > best[0]:
+            kps = np.asarray(outs[f"kps_{st}"], np.float64).reshape(-1, 10)[i]
+            r, c = divmod(i, cols)
+            best = (float(sc[i]), [((kps[2 * m] + c) * st, (kps[2 * m + 1] + r) * st) for m in range(5)])
+    if best is None or best[0] < 0.5:
+        return 0.0
+    er, el, _, mr, ml = best[1]
+    a = math.atan2((mr[1] + ml[1]) / 2 - (er[1] + el[1]) / 2, (mr[0] + ml[0]) / 2 - (er[0] + el[0]) / 2)
+    return best[0] * max(0.0, math.sin(a))
+
+
+def face_turn(sess, page, bgr=False, kernel=None):
+    """scan-core.js faceTurn: the clockwise quarter turns (0..3) that put a cut page upright by the face on it — the
+    page turned k = 0..3, each on the face finder's 320 letterbox (face_input), the surest upright face wins; -1 when
+    no face is found. sess: the face finder's ONNX session (face.onnx)."""
+    name = sess.get_inputs()[0].name
+    outs = [o.name for o in sess.get_outputs()]
+    bk, bs = -1, 0.0
+    for k in range(4):
+        x = face_input(page, k, bgr=bgr, kernel=kernel)
+        sc = face_score_of(dict(zip(outs, sess.run(None, {name: x[None]}))))
+        if sc > bs:
+            bk, bs = k, sc
+    return bk
+
+
 def _grey(rgba):
     return (0.299 * rgba[..., 0].astype(np.float64) + 0.587 * rgba[..., 1] + 0.114 * rgba[..., 2])
 
@@ -303,18 +344,35 @@ def line_input(img, box, kernel=None, rng=None, profile=None):
     return _line(img, (int(b["x"]), int(b["y"]), int(b["w"]), int(b["h"])), _kernel("high", kernel, rng, profile))
 
 
-def he_line(page, box, kernel=None, rng=None, profile=None):
-    """heLine's input for one field: the box ([x, y, w, h] as shares of the page) grown by 1.5 % of its width on each
-    side and 25 % of its height above and below (kept inside the page), drawn as line_input does; None when the field
-    is under 4 px."""
-    H, W = page.shape[:2]
+# heLine's margins around a field's layout box: a share of the box's width on each side and of its height above and
+# below. One number on every side of the copy: hemodel.MARGIN_X / MARGIN_Y (synth_fields.crop cuts the training fields
+# by them) and HE_MX / HE_MY in scan-lab/index.html (copied to scan/) — tests/auth/test_scan_train_he.py holds them
+# equal. Wide enough for the 99th percentile of a field running past its layout box on the phone's own cut
+# (gen/outputs/he.py writes layout_overflow.json) and for a corner a little off.
+HE_MARGIN_X, HE_MARGIN_Y = 0.22, 0.7
+
+
+def he_rect(W, H, box):
+    """heLine's source rectangle (x0, y0, w, h) in pixels of a W × H page for a field box ([x, y, w, h] as shares of
+    the page): the box grown by HE_MARGIN_X of its width on each side and HE_MARGIN_Y of its height above and below,
+    kept inside the page; None when it is under 4 px."""
     bx, by, bw, bh = (float(v) for v in box)
-    x0, y0 = max(0.0, (bx - 0.015 * bw) * W), max(0.0, (by - 0.25 * bh) * H)
-    x1, y1 = min(float(W), (bx + bw * 1.015) * W), min(float(H), (by + bh * 1.25) * H)
+    x0, y0 = max(0.0, (bx - HE_MARGIN_X * bw) * W), max(0.0, (by - HE_MARGIN_Y * bh) * H)
+    x1, y1 = min(float(W), (bx + bw * (1 + HE_MARGIN_X)) * W), min(float(H), (by + bh * (1 + HE_MARGIN_Y)) * H)
     w, h = x1 - x0, y1 - y0
     if w < 4 or h < 4:
         return None
-    return _line(page, (x0, y0, w, h), _kernel("high", kernel, rng, profile))
+    return x0, y0, w, h
+
+
+def he_line(page, box, kernel=None, rng=None, profile=None):
+    """heLine's input for one field: the box ([x, y, w, h] as shares of the page) grown by heLine's margins (he_rect),
+    drawn as line_input does; None when the field is under 4 px."""
+    H, W = page.shape[:2]
+    rect = he_rect(W, H, box)
+    if rect is None:
+        return None
+    return _line(page, rect, _kernel("high", kernel, rng, profile))
 
 
 def store_attempt(img, bgr=True, kernel=None, rng=None, profile=None):
@@ -721,6 +779,14 @@ def lab_paint(img, quads01, kernel=None, colour=None):
 
 HE_BOXES = ([0.06, 0.18, 0.42, 0.07], [0.5, 0.42, 0.3, 0.06], [0.12, 0.7, 0.55, 0.09], [0.3, 0.52, 0.05, 0.02])   # he_line probes (shares; the last one is enlarged)
 PROBE_SIZES = ((1920, 1080), (1280, 720), (1080, 1920), (1600, 1200), (720, 1280))
+# The cut's probe (gen/phone_run.py cuts every page with warp_rgba): one quad (0..1, clockwise from the top-left) per
+# frame for the first len(CUT_QUADS) frames — tilted, turned, one reaching the frame's edge — cut by the lab's own
+# warpRGBA in a browser and by warp_rgba here (tests/e2e/phone-parity.test.js: PSNR >= 35 dB on each).
+CUT_QUADS = (((0.18, 0.2), (0.82, 0.16), (0.86, 0.8), (0.14, 0.84)), ((0.3, 0.1), (0.9, 0.3), (0.7, 0.9), (0.1, 0.7)),
+             ((0.05, 0.05), (0.95, 0.05), (0.95, 0.95), (0.05, 0.95)), ((0.4, 0.2), (0.62, 0.22), (0.6, 0.58), (0.38, 0.55)),
+             ((0.85, 0.15), (0.88, 0.85), (0.12, 0.88), (0.15, 0.12)), ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)),
+             ((0.22, 0.35), (0.78, 0.3), (0.74, 0.62), (0.26, 0.66)), ((0.5, 0.05), (0.95, 0.5), (0.5, 0.95), (0.05, 0.5)),
+             ((0.1, 0.4), (0.45, 0.38), (0.47, 0.6), (0.12, 0.63)), ((0.6, 0.55), (0.97, 0.5), (0.99, 0.98), (0.58, 0.97)))
 
 
 def probe_frames(n=20, seed=5):
@@ -762,7 +828,7 @@ def probe_frames(n=20, seed=5):
 
 
 def write_probe_frames(folder, n=20, seed=5):
-    """The probe's frames as PNG files (RGB) in folder, with frames.json: {frames: [names], heBoxes}."""
+    """The probe's frames as PNG files (RGB) in folder, with frames.json: {frames: [names], heBoxes, cutQuads}."""
     import cv2
     folder = pathlib.Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
@@ -771,7 +837,8 @@ def write_probe_frames(folder, n=20, seed=5):
         name = f"{i:02d}.png"
         cv2.imwrite(str(folder / name), f[..., ::-1])
         names.append(name)
-    (folder / "frames.json").write_text(json.dumps({"frames": names, "heBoxes": [list(b) for b in HE_BOXES]}), encoding="utf-8")
+    (folder / "frames.json").write_text(json.dumps({"frames": names, "heBoxes": [list(b) for b in HE_BOXES],
+                                                    "cutQuads": [[list(p) for p in q] for q in CUT_QUADS]}), encoding="utf-8")
     return names
 
 
@@ -779,7 +846,8 @@ def write_probe_frames(folder, n=20, seed=5):
 
 # A probe output's path → the op whose kernel makes it: "live" (createImageBitmap), "capture" (smallRGBA), the
 # document type square and the face finder's letterbox (drawImage at the default smoothing), the field and zone lines
-# ('high'). A path may carry ":<n>" (he:0 — the n-th of HE_BOXES; mrz:0 — the zone's line n).
+# ('high'). A path may carry ":<n>" (he:0 — the n-th of HE_BOXES; mrz:0 — the zone's line n). "cut" (the frame's quad
+# cut by warpRGBA, its quad in "box") is no resampling: it is measured once against warp_rgba (fit_profile's "cuts").
 PSNR_CAP = 99.0   # dB written for equal pictures (JSON has no infinity)
 PATH_OP = {"live": "live", "capture": "capture", "doctype": "capture", "face": "capture", "he": "high", "mrz": "high"}
 
@@ -819,11 +887,12 @@ def fit_profile(probe, frames_dir=None, kernels=KERNELS):
     """The kernel of each op that comes nearest a browser's own outputs (probe: {browser, device, frames: [{name,
     paths: {path: {shape, dtype, b64|z, box?}}}]}, the frames read from frames_dir or probe["framesDir"]) →
     {name, measured, browser, device, ops: {op: {kernel, mean, min}}, paths: {path: {kernel: {mean, min}}},
-    zoneBoxes: [frames where mrz_find's boxes differ from the browser's]} — PSNR in dB, the mean and the worst frame."""
+    zoneBoxes: [frames where mrz_find's boxes differ from the browser's], cuts: {n, mean, min} — warp_rgba against the
+    browser's warpRGBA on the "cut" paths, None when there are none} — PSNR in dB, the mean and the worst frame."""
     import cv2
     folder = pathlib.Path(frames_dir or probe.get("framesDir") or ".")
     per = {}                      # path kind → kernel → [psnr per output]
-    boxes_off = []
+    boxes_off, cuts = [], []
     for fr in probe["frames"]:
         frame = cv2.imread(str(folder / fr["name"]), cv2.IMREAD_COLOR)
         if frame is None:
@@ -836,8 +905,11 @@ def fit_profile(probe, frames_dir=None, kernels=KERNELS):
             if [[b["x"], b["y"], b["w"], b["h"]] for b in want] != [[b["x"], b["y"], b["w"], b["h"]] for b in got if b]:
                 boxes_off.append(fr["name"])
         for path, out in fr["paths"].items():
-            seen = probe_picture(path, unpack(out))
             kind = path.split(":")[0]
+            if kind == "cut":   # the cut: warp_rgba against the lab's warpRGBA, no kernel to pick
+                cuts.append(cut_psnr(frame, out["box"], unpack(out)))
+                continue
+            seen = probe_picture(path, unpack(out))
             for k in kernels:
                 ref = probe_reference(path, frame, k, out.get("box"))
                 if ref is None:
@@ -855,7 +927,18 @@ def fit_profile(probe, frames_dir=None, kernels=KERNELS):
         ops[op] = {"kernel": best, "min": score[best],
                    "mean": round(float(np.mean([paths[kind][best]["mean"] for kind in kinds])), 2)}
     return {"name": "-".join(str(probe.get(k) or "") for k in ("browser", "device")).strip("-") or "probe", "measured": True,
-            "browser": probe.get("browser"), "device": probe.get("device"), "ops": ops, "paths": paths, "zoneBoxes": boxes_off}
+            "browser": probe.get("browser"), "device": probe.get("device"), "ops": ops, "paths": paths, "zoneBoxes": boxes_off,
+            "cuts": {"n": len(cuts), "mean": round(float(np.mean(cuts)), 2), "min": round(float(np.min(cuts)), 2)} if cuts else None}
+
+
+def cut_psnr(frame, quad, got):
+    """The PSNR (dB, capped at PSNR_CAP) of warp_rgba's cut of a frame (RGB) by quad against a browser's warpRGBA cut
+    (H × W × 4); 0 when the sizes differ."""
+    want = warp_rgba(frame, [list(map(float, p)) for p in quad])
+    got = np.asarray(got).reshape(want.shape) if np.asarray(got).size == want.size else None
+    if got is None:
+        return 0.0
+    return min(PSNR_CAP, psnr(want[..., :3], got[..., :3]))
 
 
 def browser_kernel(browser, op, profile=None):
