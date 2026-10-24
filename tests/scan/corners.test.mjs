@@ -1,10 +1,23 @@
-// The phone's corner picking (scan-lab/scan-core.js corners, and its copy scan/scan-core.js) on the same maps
+// The phone's corner picking (scan-lab/scan-core.js corners, its copy scan/scan-core.js, and the scanner engine's
+// src/scan/engine/geometry.ts corners, bundled here with Vite) on the same maps
 // as tests/auth/test_scan_train_corners.py (scripts/scan-train/docfind.py corners): with two documents on a
 // picture the highest spot of one heatmap may lie on the other document — the frame is then taken from the
 // spots that make one document (the owner's ID card below its ספח, 2026-10-22); one spot each, as before.
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build } from 'vite';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const res = await build({
+  configFile: false, root: ROOT, logLevel: 'silent', publicDir: false,
+  resolve: { alias: { '@': path.join(ROOT, 'src') } },
+  build: { write: false, minify: false, emptyOutDir: false, target: 'es2020',
+    lib: { entry: path.join(ROOT, 'src/scan/engine/geometry.ts'), formats: ['iife'], name: 'Geometry', fileName: () => 'geometry.js' } },
+});
+const geometry = new Function((Array.isArray(res) ? res : [res]).flatMap(r => r.output).find(o => o.type === 'chunk').code + ';return Geometry;')();
 
 const H = 128, SIGMA = 2.4;
 const TWO_DOCS = [[[0.07, 0.29, 0.70], [0.21, 0.59, 0.63]], [[0.80, 0.58, 0.89]], [[0.80, 0.78, 0.80]], [[0.21, 0.75, 0.77], [0.04, 0.84, 0.48]]];
@@ -24,9 +37,13 @@ function maps(spots) {
 }
 const near = (pts, want) => pts.every((p, i) => Math.abs(p[0] - want[i][0]) < 0.01 && Math.abs(p[1] - want[i][1]) < 0.01);
 
-for (const file of ['scan-lab/scan-core.js', 'scan/scan-core.js']) {
+const copies = ['scan-lab/scan-core.js', 'scan/scan-core.js'].map(file => {
   const ctx = {};
   vm.runInNewContext(readFileSync(new URL('../../' + file, import.meta.url), 'utf8') + ';this.corners = corners;', ctx);
+  return [file, ctx];
+});
+copies.push(['src/scan/engine/geometry.ts', geometry]);
+for (const [file, ctx] of copies) {
   const two = ctx.corners(maps(TWO_DOCS));
   assert.ok(near(two.pts, [[0.21, 0.59], [0.80, 0.58], [0.80, 0.78], [0.21, 0.75]]), file + ': two documents → the card, whole: ' + JSON.stringify(two.pts));
   assert.ok(Math.abs(two.conf - 0.63) < 0.03, file + ': conf ' + two.conf);

@@ -5,6 +5,8 @@
 import { API_URL } from '@/manager/data/api';
 import { gsAuth } from '@/manager/data/session';
 
+// The one list of the kinds (docs/scan-plan.md → S9): its order is the document type model's output order
+// (the scanner engine reads the model's answer by it; tests/scan/engine.test.mjs checks it against the lab's).
 export const DOCTYPES = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'] as const;
 export type Doctype = (typeof DOCTYPES)[number];
 /** The labels (through tr() where they are shown). */
