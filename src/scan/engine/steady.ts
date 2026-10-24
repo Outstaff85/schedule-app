@@ -3,7 +3,7 @@
 // 2026-10-24: it kept moving and the 1 s countdown kept starting again): an answer within HOLD of it leaves
 // it where it is, a weak or missed answer is outlived for MISS_MS (a blur, a glare), and the follow between
 // answers starts the countdown again only when the document went DRIFT away since it stuck, or jumped (JERK
-// in one camera frame) — not on every tremble of the hand. Ported unchanged from the lab's index.html
+// in one camera frame) — not on every tremble of the hand. Ported unchanged from the lab's former plain page
 // (smoothen, restartSteady, the follow's restart rule and the hint; tests/scan/engine.test.mjs).
 import type { Corners, Pt, Quad } from './types';
 

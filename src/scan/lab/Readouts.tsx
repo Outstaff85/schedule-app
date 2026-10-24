@@ -1,5 +1,5 @@
 // The scanner lab's readouts of one page (docs/scan-plan.md → S9, package 7): what the on-device readers read on
-// it, as the lab's page said under each shot (doctypeNote, mrzNote, heNote, turnNote in scan-lab/index.html) —
+// it, as the lab's page said under each shot (doctypeNote, mrzNote, heNote, turnNote on its former plain page) —
 // the document type with how sure the model is and the turn the page needs, the passport zone's line 2 with how
 // many of its three check digits are right, the Hebrew fields of a card with the ID number's tick, how the face
 // set the page upright, and what failed. The labels go through tr(); what the readers read stays as read (data).

@@ -1,5 +1,5 @@
 // The scanner's engine (docs/scan-plan.md → S9): the shot and the other documents on it — ported unchanged from
-// the lab's index.html (takeShot, findNext, findInside, toCanvas):
+// the lab's former plain page (takeShot, findNext, findInside, toCanvas):
 //  - the frame is frozen and cut at once by the live frame's corners (the page is out in a few ms), set upright
 //    by the face; the document type, the passport zone and the Hebrew fields are read on it;
 //  - once the live frames still in work are done, the accurate model refines the corners; when they moved over

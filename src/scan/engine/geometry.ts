@@ -1,7 +1,7 @@
 // The scanner's engine (docs/scan-plan.md → S9): the frames' geometry — the corners picked from the
 // corners model's heatmaps, the homography and the perspective warp, the quad checks, a document's shape
-// and the back-map of a document found on a document. Ported unchanged from the lab's scan-core.js and
-// index.html (tests/scan/engine.test.mjs runs both on the same inputs). corners() is mirrored in
+// and the back-map of a document found on a document. Ported unchanged from the lab's former plain page
+// (frozen in tests/scan/legacy-lab.js; tests/scan/engine.test.mjs runs both on the same inputs). corners() is mirrored in
 // scripts/scan-train/docfind.py corners (a change in one is made in the other).
 import type { Corners, FoundCorners, Pt, Quad, Rgba, Spot } from './types';
 

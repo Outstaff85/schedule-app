@@ -11,7 +11,7 @@
 // large with its type chips, Fix corners, Delete and Looks good; the lab with its tools drawer.
 //  - the site: the manager's scan window (src/scan/Scanner.tsx) on the site's surface (/scan/), signed in as the
 //    firm owner — Done reads the pages (src/scan-process/) into the worker window; it never loads /scan-lab/;
-//  - the lab: /scan-next/ (src/scan/lab/) on the lab's surface (/scan-lab/) — the drawer, the readouts, Settings,
+//  - the lab: /scan-lab/ (src/scan/lab/) on the lab's surface (its own models in /scan-lab/) — the drawer, the readouts, Settings,
 //    Show what the models read, the attempts and the types sent; it never loads /scan/.
 // Run inside `firebase emulators:exec` by run.sh (package.json test:scanner), on dist/.
 const { chromium } = require('playwright');
@@ -104,7 +104,7 @@ const READS = {
     // every request of the page and its threads (the network guards: each surface loads only its own files)
     p.on('request', r => p.reqs.push(r.url()));
     // a way to run the models that fails (no models here) is the engine's own business (its log), not a page error
-    p.on('pageerror', e => { if (!/\/scan(-lab|-next)?\/|ort\.all/.test(e.stack || '')) p.errs.push(e.message); });
+    p.on('pageerror', e => { if (!/\/scan(-lab)?\/|ort\.all/.test(e.stack || '')) p.errs.push(e.message); });
     p.on('dialog', d => d.accept());
     return p;
   };
@@ -361,7 +361,7 @@ const READS = {
   ok(p.errs.length === 0, 'site: no page errors ' + p.errs.join(' | '));
   await p.close();
 
-  // ── The lab: /scan-next/ on the lab's surface, the Lab tools drawer — on the same phone, signed in (the lab
+  // ── The lab: /scan-lab/ on the lab's surface, the Lab tools drawer — on the same phone, signed in (the lab
   // sends its attempts and types with the user's token) ──
   p = await page(ctx);
   const labCalls = [];
@@ -373,7 +373,7 @@ const READS = {
       body: JSON.stringify({ok: true, dirs: Object.fromEntries((body.attempts || []).map(a => [a.id, 'attempts/new/' + a.source + '/2026-10-24/' + a.id]))})});
     return r.fulfill({status: 200, contentType: 'application/json', headers: CORS, body: JSON.stringify(body.action === 'stats' ? {ok: true, attemptsSince: 3, attemptsAt: 15} : {ok: true})});
   });
-  await p.goto(BASE + 'scan-next/');
+  await p.goto(BASE + 'scan-lab/');
   await p.waitForFunction(() => window.ScanLab && document.querySelector('[data-testid="scanner"][data-mode="lab"] [data-testid="scan-status"]'), null, {timeout: 20000});
   const labStart = await startCamera(p, false);
   const lshot = await p.evaluate(async () => {
@@ -393,7 +393,7 @@ const READS = {
   ok(labStart.before === 'failed' && lshot.two && lshot.kinds === 'id_front,sefach' && lshot.surface === '/scan-lab/,lab' && lshot.show === 'Show what the models read'
     && lsaid.includes('Finding the document…') && lsaid.some(t => /^Hold still · \d\.\d s$/.test(t)) && lsaid[lsaid.length - 1] === '2 documents found' && lshot.green > 0
     && ((labAsked[0] || {}).video || {}).frameRate && labAsked[0].video.frameRate.ideal === 30,
-    'lab (/scan-next/): the same scanner on the lab\'s surface — the live frame, "Finding the document…" → "Hold still" → "2 documents found", green, the Auto shot with its second document; the camera asked for 30 frames a second; Show what the models read in Done\'s place '
+    'lab (/scan-lab/): the same scanner on the lab\'s surface — the live frame, "Finding the document…" → "Hold still" → "2 documents found", green, the Auto shot with its second document; the camera asked for 30 frames a second; Show what the models read in Done\'s place '
     + JSON.stringify({labStart, ...lshot, asked: labAsked}));
 
   // the tick on the model's type sends it (keep), once; Looks good on both pages sends the shot's attempt at once

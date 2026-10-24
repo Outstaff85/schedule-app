@@ -1,7 +1,7 @@
 // The scanner's engine (docs/scan-plan.md → S9): what a picked picture is — a white page with photos in it
 // (a form's page, a PDF, a screenshot), or a page made on a computer that is a document already (white to
 // its edges). The pixel work is pure (photosOnPagePixels, whiteEdgesPixels, on ImageData-like pixels); the
-// canvas scaling is the thin wrappers. Ported unchanged from the lab's index.html (tests/scan/engine.test.mjs).
+// canvas scaling is the thin wrappers. Ported unchanged from the lab's former plain page (tests/scan/engine.test.mjs).
 import type { PixelsLike } from './types';
 
 /** The photos on a white page are looked for on a copy whose longer side is this. */

@@ -1,7 +1,7 @@
 // The scanner's engine (docs/scan-plan.md → S9): what the status line says while the models load, as a key with
 // its figures — the text is the screen's, through tr() (src/scan/status-text.ts), the same way as steady.ts's
-// SteadyHint. statusEnglish() gives the lab's own sentence for each (index.html, scan-core.js, scan-worker.js —
-// the parity tests compare it with what the lab's code says). Runs in the page and the background thread.
+// SteadyHint. statusEnglish() gives the lab's own sentence for each (its former plain page and its worker —
+// the parity tests compare it with what that code says, tests/scan/legacy-lab.js). Runs in the page and the background thread.
 // SessionStatus, at the end, is the scan session's status line (session.ts): keys only, no text in any language.
 import type { GpuLayout } from './ort';
 

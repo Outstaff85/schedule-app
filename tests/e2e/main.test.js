@@ -32,12 +32,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await ctx.route('**/*', async r => {
       const u = r.request().url();
       // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose models never
-      // start — the ES module the site's scanner imports (<base>ort(130)/ort.all.min.mjs, src/scan/engine/ort.ts),
-      // and the script the plain lab page (/scan-lab/) loads, so its own code runs (its checks below)
+      // start — the ES module each surface's scanner imports (<base>ort(130)/ort.all.min.mjs, src/scan/engine/ort.ts)
       if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.mjs$/.test(u)) return r.fulfill({status:200, contentType:'text/javascript',
         body:"export const env={wasm:{},webgpu:{}};export function Tensor(){};export const InferenceSession={create:async()=>{throw new Error('no models in the tests')}};"});
-      if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript',
-        body:"window.ort={env:{wasm:{},webgpu:{}},Tensor:function(){},InferenceSession:{create:async()=>{throw new Error('no models in the tests')}}};"});
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
@@ -90,8 +87,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     });
     return ctx;
   }
-  // the plain lab page (/scan-lab/, its own checks below) runs without its engine here: CI fetches no models
-  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => { if (!/\/scan(-lab)?\//.test(e.stack || '')) p.errs.push(e.message); }); p.on('dialog', d => d.accept()); return p; };
+  // a way to run the scanner's models that fails on the ONNX Runtime stand-in (no models here) is the engine's own
+  // business (its log), not a page error — as in scanner.test.js
+  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => { if (!/ort\.all\.min\.mjs/.test(e.stack || '')) p.errs.push(e.message); }); p.on('dialog', d => d.accept()); return p; };
   const waitFor = async (p, fn, ms=10000) => { const end = Date.now()+ms; while (Date.now() < end) { try { if (await p.evaluate(fn)) return true; } catch (e) {} await sleep(150); } return false; };
   const login = async (p, url, u, pw) => {
     await p.goto(url);
@@ -1031,7 +1029,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sentFix = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts).find(x => x.id === fixed.id) || {};
   ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && fixed.sent && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20 && Math.round(sentFix.edgesFixed[0][1] * 100) === 15,
     'scan corner editor: Fix corners opens the editor on the page\'s photo; a dragged corner is the attempt\'s answer (edgesFixed), sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
-  // The scanner lab on the new stack (/scan-next/, src/scan/lab/; docs/scan-plan.md → S9, package 7): the same
+  // The scanner lab (/scan-lab/, src/scan/lab/; docs/scan-plan.md → S9): the same
   // full-screen scanner in lab mode, on the lab's own surface (/scan-lab/ and its models — never the site's /scan/),
   // with the Lab tools drawer — the figures, the Errors block (why a way to run the models failed, kept on the
   // phone: the last 8) apart from the loading log — and the lab's training collection: a page's document type is
@@ -1049,7 +1047,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       body: JSON.stringify({ok: true, dirs: Object.fromEntries((body.attempts || []).map(a => [a.id, 'attempts/new/' + a.source + '/2026-10-20/' + a.id]))})});
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'stats' ? {ok: true, attemptsSince: 3, attemptsAt: 15} : {ok: true})});
   });
-  await labPage.goto(BASE + 'scan-next/');
+  await labPage.goto(BASE + 'scan-lab/');
   await labPage.waitForFunction(() => window.ScanLab && document.querySelector('[data-testid="scanner"][data-mode="lab"] [data-testid="scan-status"]'), null, {timeout: 20000}).catch(() => {});
   const labLook = await labPage.evaluate(async () => {
     const s = document.querySelector('[data-testid="scanner"][data-mode="lab"]'), b = s ? s.getBoundingClientRect() : {}, S = window.ScanLab && ScanLab.session;
@@ -1067,7 +1065,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   }).catch(e => ({error: e.message}));
   ok(labLook.full && labLook.noScroll && labLook.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done,lab-tools' && labLook.show === 'Show what the models read'
     && labLook.surface === '/scan-lab/,scan-lab-models,lab' && labLook.open && labLook.blocks === 'lab-figures,lab-errors,lab-log,lab-settings,lab-readouts' && labLook.tiles === 10 && labLook.logged,
-    'scanner lab (/scan-next/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (10 tiles), Errors, the loading log, Settings and the readouts ' + JSON.stringify(labLook));
+    'scanner lab (/scan-lab/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (10 tiles), Errors, the loading log, Settings and the readouts ' + JSON.stringify(labLook));
   const wayFails = await labPage.evaluate(async () => {
     const L = ScanLab, ls = localStorage;
     ls.removeItem('scanWayFails');
@@ -1088,7 +1086,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       now: /^\d\d:\d\d:\d\d Failed — CPU ×1 · bg: hang/m.test(errs), apart: !/Fail/.test(loading)};
   }).catch(e => ({error: e.message}));
   ok(wayFails.n === 8 && wayFails.kinds === 'GPU,hang,memory' && wayFails.last === 'memory' && wayFails.head >= 0 && wayFails.listed === 8 && wayFails.gpu && wayFails.memory && wayFails.hang && wayFails.now && wayFails.apart,
-    'scanner lab (/scan-next/): a way that failed is kept with its reason (GPU, memory, hang), the last 8, and shown in the drawer\'s Errors block — "Earlier failures on this device (last 8" and each failure with its time —, apart from the loading log ' + JSON.stringify(wayFails));
+    'scanner lab (/scan-lab/): a way that failed is kept with its reason (GPU, memory, hang), the last 8, and shown in the drawer\'s Errors block — "Earlier failures on this device (last 8" and each failure with its time —, apart from the loading log ' + JSON.stringify(wayFails));
   // the types: the model's answer on each page; only the user's tick (keep) or pick is sent, once — never an
   // untouched answer, no tick with no model; then Show what the models read, and Looks good sending the attempt
   const labKinds = await labPage.evaluate(async jpg => {
@@ -1160,27 +1158,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && [ex0.source, ex0.doctypeModel, ex0.doctypeFixed, ex0.keep, !!ex0.pageImage, ex0.doctypeBy].join() === 'page,sefach,sefach,true,true,model'
     && [ex1.doctypeModel, ex1.doctypeFixed, ex1.keep === undefined, !!ex1.pageImage].join() === 'sefach,id_front,true,true'
     && labKinds.show && (labKinds.showType.match(/Appendix \(ספח\) 90%/g) || []).length === 3,
-    'scanner lab (/scan-next/): a page\'s type chips start on the model\'s answer; only the user\'s tick (keep) or pick is sent, once — never an untouched answer, no tick with no model; Show what the models read lists each page\'s readouts '
+    'scanner lab (/scan-lab/): a page\'s type chips start on the model\'s answer; only the user\'s tick (keep) or pick is sent, once — never an untouched answer, no tick with no model; Show what the models read lists each page\'s readouts '
     + JSON.stringify({labKinds, adds: labAdds.map(e => ({m: e.doctypeModel, f: e.doctypeFixed, keep: e.keep, by: e.doctypeBy, copy: !!e.pageImage}))}));
   ok(labAtt.length === 1 && labAtt[0].id === (labKinds.ids || {}).quiet && labAtt[0].source === 'lab' && labAtt[0].outcome === 'kept',
-    'scanner lab (/scan-next/): Looks good sends the page\'s attempt at once with source "lab" (no Done in the lab); the pages left alone are not sent ' + JSON.stringify(labAtt.map(x => ({id: x.id, source: x.source, outcome: x.outcome}))));
+    'scanner lab (/scan-lab/): Looks good sends the page\'s attempt at once with source "lab" (no Done in the lab); the pages left alone are not sent ' + JSON.stringify(labAtt.map(x => ({id: x.id, source: x.source, outcome: x.outcome}))));
   const r1 = byId(labRetake.one), r2 = byId(labRetake.next);
   ok(r1.outcome === 'retaken' && (r1.deletedPages || []).length === 0 && r2.outcome === 'kept' && r2.group === labRetake.one && r1.source === 'lab',
-    'scanner lab (/scan-next/): every page of an undecided camera shot deleted is its Retake — sent retaken, the next shot sharing its group ' + JSON.stringify({labRetake, one: {o: r1.outcome, d: r1.deletedPages}, next: {o: r2.outcome, g: r2.group}}));
+    'scanner lab (/scan-lab/): every page of an undecided camera shot deleted is its Retake — sent retaken, the next shot sharing its group ' + JSON.stringify({labRetake, one: {o: r1.outcome, d: r1.deletedPages}, next: {o: r2.outcome, g: r2.group}}));
   const pk1 = byId(labPicks.p1), pk2 = byId(labPicks.p2), pk3 = byId(labPicks.p3);
   ok([pk1, pk2, pk3].every(a => a.outcome === 'kept' && a.source === 'lab' && a.input === 'photo') && labPicks.undecidedBefore
     && ['a', 'b', 'none'].every(k => byId((labKinds.ids || {})[k]).outcome === 'kept'),
-    'scanner lab (/scan-next/): with no Done, the attempts still undecided go as kept with the next pick and when the page is left (source "lab") ' + JSON.stringify({labPicks, sent: [pk1, pk2, pk3].map(a => a.outcome + ':' + a.source + ':' + a.input)}));
+    'scanner lab (/scan-lab/): with no Done, the attempts still undecided go as kept with the next pick and when the page is left (source "lab") ' + JSON.stringify({labPicks, sent: [pk1, pk2, pk3].map(a => a.outcome + ':' + a.source + ':' + a.input)}));
   const labSite = labReqs.filter(u => /\/scan\/(models\.json|ort(130)?\/|[\w-]+\.onnx)/.test(u)), labOwn = labReqs.filter(u => /\/scan-lab\//.test(u));
   ok(!labSite.length && labOwn.length > 0,
-    'scanner lab (/scan-next/): it loads only the lab\'s own files (/scan-lab/) — no request to the site\'s scanner (/scan/) ' + JSON.stringify({site: labSite.slice(0, 5), lab: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));
+    'scanner lab (/scan-lab/): it loads only the lab\'s own files (/scan-lab/) — no request to the site\'s scanner (/scan/) ' + JSON.stringify({site: labSite.slice(0, 5), lab: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));
   await labPage.close();
-  // The plain lab page (/scan-lab/, Admin → Scanner lab) is still served as it was until the last package.
-  const oldLab = await page(ctx);
-  await oldLab.goto(BASE + 'scan-lab/');
-  ok(await oldLab.waitForFunction(() => typeof noteFail === 'function' && typeof addKind === 'function' && !!document.getElementById('startCam'), null, {timeout: 15000}).then(() => true, () => false),
-    'scanner lab: the plain lab page (/scan-lab/) still opens as it was');
-  await oldLab.close();
   // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
   // by Haiku and changed to Contract — with a copy of the page
   const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);

@@ -1,5 +1,5 @@
 // The scanner's engine (docs/scan-plan.md → S9): the ways the models run, ported unchanged from the lab's
-// index.html (pageEngine, workerEngine, poolEngine, capOnly, WAYS, startSession / ensureSession,
+// former plain page (pageEngine, workerEngine, poolEngine, capOnly, WAYS, startSession / ensureSession,
 // ensureCap, onStuck, growFiles / dropFileThreads) into one class per scanner, Engines(surface, log):
 //  - the ways, best first: the GPU's live frame beside a CPU capture thread, a pool of CPU threads, one
 //    background thread with several CPU threads, one with one, the page itself. Each is tried in turn: a way

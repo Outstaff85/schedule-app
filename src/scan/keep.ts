@@ -2,7 +2,7 @@
 // the models they loaded stay, so the next worker's scan opens at once, without the models starting again
 // (4–8 s). The camera stops the moment the window closes (session.sleep); when the time is up the session is
 // stopped — its background threads terminated, the readers' sessions released — and the next scan makes a new
-// one. (It replaces lab.ts, which kept the lab's page loaded in a frame the same way.)
+// one.
 import type { ScanSession } from './engine/session';
 
 export const KEEP_MS = 3 * 60 * 1000;

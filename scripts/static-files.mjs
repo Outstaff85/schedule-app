@@ -13,7 +13,7 @@ import path from 'node:path';
 const EXCLUDED_TOP = new Set([
   'firebase.json', 'firestore.rules', 'firestore.indexes.json', 'storage.rules',
   'docs', 'functions', 'functions-auth', 'tests', 'node_modules',
-  'dist', 'src', 'next', 'scan-next', 'scripts', 'archive', 'services',
+  'dist', 'src', 'next', 'scan-lab', 'scripts', 'archive', 'services',
   // the new pages' HTML entries at the top level, built by Vite (docs/build.md);
   // client-portal.html and supplier-portal.html are small static pages that send to the manager app
   'worker-punch.html', 'schedule-manager.html',

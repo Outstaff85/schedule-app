@@ -2,7 +2,7 @@
 // between the model's answers. A few textured points inside the document are followed from frame to frame
 // (pyramidal Lucas–Kanade on a small gray copy, checked forward and back), and the affine motion they agree
 // on moves the frame. A model answer that comes back late is carried forward by the motion seen since its
-// frame was taken. Ported unchanged from the lab's track.js (tests/scan/engine.test.mjs).
+// frame was taken. Ported unchanged from the lab's former follow (tests/scan/engine.test.mjs).
 import type { Affine, GrayLevel, Pt, Pyramid, Quad } from './types';
 
 export const TW = 320, LEVELS = 3, R = 4, KEEP_MS = 2000;

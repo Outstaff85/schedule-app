@@ -1,4 +1,4 @@
-// The scanner's engine (docs/scan-plan.md → S9): the training attempts — ported from the lab's index.html
+// The scanner's engine (docs/scan-plan.md → S9): the training attempts — ported from the lab's former plain page
 // (newAttempt, decideAttempts, doneAttempts, trainDb / trainStore, queueAttempt, attemptPageDeleted, trainPost,
 // flushAttempts, trainFigures; docs/scan-training.md). Every attempt goes for training: a camera shot or a
 // picked picture, with the photo (at most 1600 px, JPEG 0.85), the models' corners (the first document's, the

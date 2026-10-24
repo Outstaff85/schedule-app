@@ -1,8 +1,8 @@
-"""The documents on a scanned photo — once the server's finder (removed 2026-10-19: the site's
-scanner is the lab's page); kept here for /scan-train's exam (exam.py: detect, good_quad).
+"""The documents on a scanned photo — once the server's finder (removed 2026-10-19: the phone's
+scanner finds them); kept here for /scan-train's exam (exam.py: detect, good_quad).
 
-The same steps as the scanner lab (scan-lab/index.html, scan-lab/scan-core.js),
-with the accurate model in full precision:
+The same steps as the scanner (src/scan/engine/: geometry.ts, pictures.ts, files.ts), which the site
+and the lab both run, with the accurate model in full precision:
 
 - a white page with photos in it (a form's page, a PDF, a screenshot) is cut
   into its photos first (`photos_on_page`);
@@ -111,8 +111,8 @@ def corners(hm):
     document and three on the other (an ID card below its ספח, 2026-10-22). The convex frame with the
     highest spots wins, a frame whose opposite sides differ more than SIDES× counted down, and one with both
     pairs of sides more than FREE from parallel (a frame mixed of two documents) by cos^PAR of the rest. One spot on
-    each heatmap: that frame, as before. The phone does the same (scan-lab/scan-core.js corners, copied to
-    scan/, and src/scan/engine/geometry.ts corners — a change here is mirrored in both)."""
+    each heatmap: that frame, as before. The phone does the same (src/scan/engine/geometry.ts corners, the one copy
+    the site's scanner and the lab run — a change here is mirrored there)."""
     found = [_spots(hm[k]) for k in range(4)]
     conf0 = min(top for _, top in found)
     if any(not s for s, _ in found):

@@ -1,13 +1,13 @@
 // The scanner's engine (docs/scan-plan.md → S9): the pure part of the on-device readers — the passport zone
 // reader (docs/hf-plan.md → H8b) and the Hebrew field reader (H8c): the characters, the line input's size,
 // the greedy CTC decoding, the zone's line finding, its check digits, the Hebrew writing order, the Israeli
-// ID check digit and the card layout's pick. Ported unchanged from the lab's index.html
+// ID check digit and the card layout's pick. Ported unchanged from the lab's former plain page
 // (tests/scan/engine.test.mjs). Mirrored in scripts/scan-train/mrzmodel.py (find_lines / line_input /
 // decode) and hemodel.py (CHARS / line_input / logical_simple), and heIdOk in synth.py valid_israeli_id:
 // a change in one is made in the others.
 //
 // The runtime part (Readers, at the end): the readers' sessions as the surface's models.json says, and the
-// lab's doctypeAnswer, mrzRead and heRead on canvases (index.html), ported unchanged.
+// lab's doctypeAnswer, mrzRead and heRead on canvases (its former plain page), ported unchanged.
 import { mrzCheck } from '@/scan-process/mrz';
 import { DOCTYPES, type Doctype } from './doctypes';
 import { cpuSession, errText, readModels, type ModelsInfo } from './models';

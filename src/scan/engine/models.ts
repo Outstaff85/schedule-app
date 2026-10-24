@@ -1,5 +1,5 @@
 // The scanner's engine (docs/scan-plan.md → S9): the models fetched and kept, and their sessions started —
-// ported unchanged from the lab's scan-core.js (fetchModel, openSession, detectRGBA, synthCard, selfTest)
+// ported unchanged from the lab's former plain page (fetchModel, openSession, detectRGBA, synthCard, selfTest)
 // and its models.json read, with every URL from the surface (surface.ts). Runs in the page and in the
 // background thread (worker.ts), so it uses no DOM.
 import { corners, S } from './geometry';
@@ -19,8 +19,7 @@ const hasGpu = (): boolean => !!((globalThis as { navigator?: { gpu?: unknown } 
 // A model kept in the browser's cache is used only while it is still the file on
 // the server (same ETag; one small HEAD request) — a changed model is downloaded
 // again. Offline, the kept copy is used as it is. The cache key is the surface's own model URL (root-relative,
-// so the same entry wherever the code runs: the page, every pool worker, the capture and file threads), as the
-// old plain page and its worker shared one entry per model.
+// so the same entry wherever the code runs: the page, every pool worker, the capture and file threads).
 export async function fetchModel(s: SurfaceRef, name: string, onProgress: (got: number, total: number) => void): Promise<Uint8Array> {
   const url = modelUrl(s, name);
   try {

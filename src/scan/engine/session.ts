@@ -1,8 +1,8 @@
 // The scanner's engine (docs/scan-plan.md → S9): one scan session — the controller the full-screen scanner
 // (site and lab alike) drives, with no framework and no text of its own: the models' ways (engines.ts), the
 // readers (readers.ts), the camera (camera.ts), the live frame and its follow (live.ts), the shot and its
-// other documents (shot.ts). Ported from the lab's index.html (startCam, showShot, Auto, the Keep / Retake
-// restart, the scan window's sleep through scan/embed.js).
+// other documents (shot.ts). Ported from the lab's former plain page (startCam, showShot, Auto, the Keep / Retake
+// restart, the scan window's sleep).
 //
 //   const s = new ScanSession(siteSurface(token));
 //   s.on('status', st => …); s.on('frame', (quad, ok) => …); s.on('page', p => …); s.on('figures', f => …);
@@ -313,7 +313,7 @@ export class ScanSession {
   setFollow(on: boolean): void { this.live.follow = on; }
 
   /** The lab's settings changed (the models, the backend): nothing of the old way stays on the screen — no
-   *  frame, no figures — and the frame and its follow start again on the new way (the lab's index.html, its
+   *  frame, no figures — and the frame and its follow start again on the new way (the lab's former plain page, its
    *  settings' onchange). A shot in work is dropped. */
   //
   // One change at a time, the newest winning: a change made while an earlier one still waits applies its
@@ -359,7 +359,7 @@ export class ScanSession {
     else if (v) void this.startCamera(v);
   }
 
-  /** The scanner put away with its models kept (the scan window closed; scan/embed.js's scan-sleep): the
+  /** The scanner put away with its models kept (the scan window closed): the
    *  camera stops (one still starting is not turned on), the loops end, a shot in work is dropped. */
   sleep(): void {
     this.held = false;

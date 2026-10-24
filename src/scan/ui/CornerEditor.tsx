@@ -1,5 +1,5 @@
-// The full-screen scanner (docs/scan-plan.md → S9): the corner editor — the lab's cornerEditor (scan-lab/
-// index.html, S8-3) in React, a step inside the scanner screen (not a window of its own). The page's whole photo
+// The full-screen scanner (docs/scan-plan.md → S9): the corner editor — the lab's cornerEditor (its former
+// plain page, S8-3) in React, a step inside the scanner screen (not a window of its own). The page's whole photo
 // fitted to the screen with the four corners the model found; each is dragged to the document's real corner (a
 // press within 48 px of a corner picks it up, the pointer captured until it is let go; a corner stays on the
 // photo); Apply gives the corners rounded to 5 decimals (session.fix cuts the page again from them and sends

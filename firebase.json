@@ -135,24 +135,6 @@
             "value": "no-cache"
           }
         ]
-      },
-      {
-        "source": "/scan-next",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
-      },
-      {
-        "source": "/scan-next/**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
       }
     ],
     "rewrites": [
@@ -175,10 +157,6 @@
       {
         "source": "/next",
         "destination": "/next/index.html"
-      },
-      {
-        "source": "/scan-next",
-        "destination": "/scan-next/index.html"
       }
     ]
   },

@@ -1,7 +1,7 @@
 // The scanner's engine (docs/scan-plan.md → S9): the background thread — runs the models and the warp, so the
 // camera picture and the frame on the page never wait. A module worker built by Vite (engines.ts starts it
 // with new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })); ported from the lab's
-// scan-worker.js with the same messages: 'load' (now also the surface's base and cache and the ONNX Runtime
+// former worker with the same messages: 'load' (now also the surface's base and cache and the ONNX Runtime
 // build to load), 'detect' (an S×S bitmap or its RGBA) and 'warp' (with the upright turn); it answers with
 // 'status', 'log' and 'reply' (the call's id, or its error). Uses no DOM: it type-checks under the WebWorker
 // lib too.

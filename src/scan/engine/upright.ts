@@ -1,5 +1,5 @@
 // The scanner's engine (docs/scan-plan.md → S9): a cut page set upright by the face on it — ported unchanged
-// from the lab's scan-core.js (turned, faceScore, faceTurn, uprightRGBA, uprightTurn). YuNet (MIT), run at
+// from the lab's former plain page (turned, faceScore, faceTurn, uprightRGBA, uprightTurn). YuNet (MIT), run at
 // 320×320 BGR 0..255 (scripts/scan-lab/yunet_dyn.py and scripts/scan/yunet_dyn.py free its input size): the
 // face found with the eyes above the mouth tells how to turn the shot. On OffscreenCanvas, so it runs in the
 // background thread (worker.ts) and in the page alike.

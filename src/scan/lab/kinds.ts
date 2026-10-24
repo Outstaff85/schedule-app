@@ -1,5 +1,5 @@
 // The scanner lab's document type collection (docs/scan-plan.md → S9, package 7; docs/scan-training.md) — the
-// lab's addKind / sendKind / dropKind, ported (scan-lab/index.html). On every page the lab keeps, when its model
+// lab's addKind / sendKind / dropKind, ported (its former plain page). On every page the lab keeps, when its model
 // version has a document type model, the page's kind chips start on the model's answer. Only what the user did is
 // a label — the model's answer nobody touched never is (it would teach the model its own guesses; the training
 // audit, 2026-10-24): a type picked is sent KIND_WAIT after the last change or when the page is left (pagehide);

@@ -1,6 +1,6 @@
 // The scanner's engine (docs/scan-plan.md → S9): the camera — the back camera at up to 1920×1080 and 30
 // frames a second (owner, 2026-10-24: thirty and no faster choice; the lab asked the same), shown in the
-// screen's video. Ported from the lab's index.html (startCam, stop).
+// screen's video. Ported from the lab's former plain page (startCam, stop).
 
 /** What the camera is asked for: the back camera, 1920×1080 and 30 frames a second when it can. */
 export const CAMERA_CONSTRAINTS: MediaStreamConstraints = {

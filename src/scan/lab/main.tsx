@@ -1,6 +1,5 @@
-// /scan-next/ — the scanner lab on the new stack (docs/scan-plan.md → S9, package 7): the full-screen scanner in
-// lab mode over the lab's own surface (/scan-lab/ and its models), with the Lab tools drawer (LabApp.tsx). Until
-// the last package it stands beside the plain lab page (/scan-lab/, Admin → Scanner lab), which is unchanged.
+// /scan-lab/ — the scanner lab (docs/scan-plan.md → S9; Admin → Scanner lab opens it): the full-screen scanner in
+// lab mode over the lab's own surface (/scan-lab/ and its models), with the Lab tools drawer (LabApp.tsx).
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/styles/globals.css';

@@ -1,7 +1,7 @@
 // The scanner's engine: the lab's code vs src/scan/engine/ (docs/tests.md → Scanner engine parity).
-// The lab's plain page (scan-lab/scan-core.js and track.js whole, and the functions of scan-lab/index.html
-// pulled out by name) runs in vm; the engine's typed modules (bundled here in memory with Vite) run beside
-// it on the same generated inputs — heatmaps (two documents, a card above its ספח, one document, a missing
+// The lab's former plain page (frozen in tests/scan/legacy-lab.js: its detection core and follow whole, and
+// its page functions pulled out by name) runs in vm; the engine's typed modules (bundled here in memory with
+// Vite) run beside it on the same generated inputs — heatmaps (two documents, a card above its ספח, one document, a missing
 // corner, random spots), random quads, warps, a document on a document, synthetic gray frames for the
 // follow and the affine fit, white pages with photos, passport zones, Hebrew lines, ID numbers, the sticky
 // frame's sequences on a fake clock, the way-failure log — and must give the same answers (floats to 1e-9).
@@ -33,15 +33,16 @@ const engineCode = (Array.isArray(res) ? res : [res]).flatMap(r => r.output).fin
 const E = new Function(engineCode + ';return ScanEngine;')();
 const { geometry: G, steady: ST, track: TR, pictures: PI, readers: RD, fails: FA } = E;
 
-// ── the lab's code ──
+// ── the lab's code (its former plain page, frozen) ──
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
-const CORE = read('scan-lab/scan-core.js'), TRACK = read('scan-lab/track.js'), PAGE = read('scan-lab/index.html');
-const SCRIPT = PAGE.slice(PAGE.lastIndexOf('<script>'), PAGE.lastIndexOf('</script>'));
+const LEGACY = read('tests/scan/legacy-lab.js');
+const part = name => { const m = LEGACY.match(new RegExp('//#region ' + name + '\\r?\\n([\\s\\S]*?)\\r?\\n//#endregion ' + name)); assert.ok(m, 'legacy-lab.js has no part ' + name); return m[1]; };
+const CORE = part('core'), TRACK = part('track'), SCRIPT = '\n' + part('page');
 
 // A function of the lab's page by name: from `function name(` (with its `async`) to its closing brace.
 function fnSource(name) {
   const at = SCRIPT.search(new RegExp('(^|\\n)(async )?function ' + name + '\\('));
-  assert.ok(at >= 0, 'scan-lab/index.html has no function ' + name);
+  assert.ok(at >= 0, 'legacy-lab.js has no function ' + name);
   const start = SCRIPT[at] === '\n' ? at + 1 : at;
   let i = SCRIPT.indexOf('{', SCRIPT.indexOf(')', start)), depth = 0, q = null;
   for (; i < SCRIPT.length; i++) {
@@ -57,7 +58,7 @@ function fnSource(name) {
 // A one-line declaration of the lab's page that starts with `head`.
 function lineSource(head) {
   const at = SCRIPT.indexOf('\n' + head);
-  assert.ok(at >= 0, 'scan-lab/index.html has no line ' + head);
+  assert.ok(at >= 0, 'legacy-lab.js has no line ' + head);
   return SCRIPT.slice(at + 1, SCRIPT.indexOf('\n', at + 1));
 }
 // A statement of the lab's page from `from` to the end of the line holding `to`.
@@ -117,7 +118,7 @@ function oldPage(extra) { const ctx = oldContext(extra); vm.runInContext(CORE + 
 function oldTrack() {
   const ctx = oldContext();
   const src = TRACK.replace(/return \{(\r?\n    reset\(\))/, 'return { pyramid, at, texture, follow, affine, solve3, apply,$1');
-  assert.notEqual(src, TRACK, 'track.js: its return object moved');
+  assert.notEqual(src, TRACK, 'the legacy follow: its return object moved');
   vm.runInContext(src + '\nthis.Track = Track;', ctx);
   return ctx;
 }
@@ -172,7 +173,7 @@ function randomQuad(R, spread = 0.35) {
 
 const page = oldPage();
 
-await run('corners: the same heatmaps give the same corners as scan-lab/scan-core.js', () => {
+await run('corners: the same heatmaps give the same corners as the lab\'s former page', () => {
   const sets = heatmapSets();
   for (const [label, hm] of sets) {
     same(page.corners(hm), G.corners(hm), label + ' corners');
@@ -266,7 +267,7 @@ function frameRGBA(f, w, h, A, seed = 0) {
   return d;
 }
 
-await run('the follow: pyramid, at, texture, follow, affine, solve3, apply as track.js', () => {
+await run('the follow: pyramid, at, texture, follow, affine, solve3, apply as the lab\'s former follow', () => {
   const R = rng(19), old = oldTrack().Track, f = scene(R), w = 320, h = 240;
   const d0 = frameRGBA(f, w, h, [1, 0, 0, 0, 1, 0]), d1 = frameRGBA(f, w, h, [Math.cos(0.01), -Math.sin(0.01), 1.7, Math.sin(0.01), Math.cos(0.01), -0.9]);
   const g0 = TR.grayOf(d0, w, h), g1 = TR.grayOf(d1, w, h);

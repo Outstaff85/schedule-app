@@ -3,7 +3,7 @@
 // and the errors (free English text, shown only in the lab's tools drawer) — as events; the lab's Errors and
 // Loading-and-work blocks listen to it, the site's scanner its status line. The way failures are kept on the
 // device through fails.ts (noteFail) and shown when the scanner opens (showFails). Ported from the lab's
-// index.html (log, logErr, logAny, status, noteFail, showFails).
+// former plain page (log, logErr, logAny, status, noteFail, showFails).
 import { failLine, failLines, readFails, recordFail, type FailKind } from './fails';
 import type { EngineStatus } from './status';
 import type { KeyValue } from './types';

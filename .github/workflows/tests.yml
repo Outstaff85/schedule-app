@@ -66,10 +66,10 @@ jobs:
       - name: Scan process (the old reading vs src/scan-process/)
         run: node tests/scan/compare.test.mjs
 
-      - name: Scanner corners (scan-lab/scan-core.js, scan/scan-core.js and src/scan/engine/geometry.ts)
+      - name: Scanner corners (src/scan/engine/geometry.ts)
         run: node tests/scan/corners.test.mjs
 
-      - name: Scanner engine parity (the lab's code vs src/scan/engine/)
+      - name: Scanner engine parity (the lab's former page, frozen in tests/scan/legacy-lab.js, vs src/scan/engine/)
         run: node tests/scan/engine.test.mjs
 
       - name: Scanner engine runtime (src/scan/engine/ ways, watchdog, failures, URLs per surface)

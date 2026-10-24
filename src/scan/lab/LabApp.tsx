@@ -1,5 +1,4 @@
-// The scanner lab on the new stack (docs/scan-plan.md → S9, package 7; served at /scan-next/ until it replaces the
-// plain lab page at /scan-lab/): the same full-screen scanner as the site's scan window (src/scan/ui/ScannerScreen,
+// The scanner lab (/scan-lab/, docs/scan-plan.md → S9; Admin → Scanner lab opens it): the same full-screen scanner as the site's scan window (src/scan/ui/ScannerScreen,
 // mode 'lab') over a scan session on the lab's own surface — /scan-lab/ and its models (scripts/scan-lab/
 // models-version), its cache scan-lab-models, the training source "lab", the signed-in user's token from
 // src/lib/backend.ts — with the pull-up Lab tools drawer (LabDrawer.tsx), "Show what the models read" in place

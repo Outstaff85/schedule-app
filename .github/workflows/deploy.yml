@@ -19,9 +19,9 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           node tests/build/check.js
-      # Each scanner surface gets its own models, models.json, he-layouts.json and ONNX Runtime (both builds,
-      # .js and .mjs) next to its built page, after the build (docs/build.md → The scanner's entries): the lab's
-      # under /scan-lab/ at scripts/scan-lab/models-version, the site's under /scan/ at scripts/scan/models-version.
+      # Each scanner surface gets its own models, models.json, he-layouts.json and ONNX Runtime (both builds, the
+      # .mjs the engine imports) after the build (docs/build.md → The scanner's entries): the lab's next to its built
+      # page in /scan-lab/ at scripts/scan-lab/models-version, the site's in /scan/ at scripts/scan/models-version.
       # Each is kept in the Actions cache by its own version file; each script stops the deploy when a file its
       # page loads is missing. The site never loads from /scan-lab/ (tests/build/check.js → the surface guard).
       - uses: actions/setup-python@v5

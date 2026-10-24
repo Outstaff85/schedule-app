@@ -1,4 +1,4 @@
-// The scanner's engine (docs/scan-plan.md → S9): picked files — ported from the lab's index.html
+// The scanner's engine (docs/scan-plan.md → S9): picked files — ported from the lab's former plain page
 // (pickedPictures, analyzePicture, pictureTimer, the file input's lanes):
 //  - several photos and PDFs at once; a PDF is rendered page by page (pdf.js 3.11.174 from cdnjs through
 //    src/lib/pdfjs.ts, scale 2 on a white ground); a file that is neither a photo nor a PDF is left out (logged);

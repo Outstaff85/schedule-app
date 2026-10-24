@@ -1,7 +1,7 @@
 // The scanner's engine (docs/scan-plan.md → S9): why a way of running the models failed on this device,
 // kept on it (the last 8, with the device's memory): shown in the errors when the scanner opens, so a way
 // that keeps failing — and why: memory, a hang, the GPU, another error — can be seen on the phone itself.
-// Ported unchanged from the lab's index.html (failKind, noteFail, showFails; tests/scan/engine.test.mjs).
+// Ported unchanged from the lab's former plain page (failKind, noteFail, showFails; tests/scan/engine.test.mjs).
 import type { KeyValue } from './types';
 
 export const FAIL_KEY = 'scanWayFails', FAILS_KEPT = 8;

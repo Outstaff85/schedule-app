@@ -2,7 +2,7 @@
 // docs/tests.md): the engine's pure functions (the other documents' shape, a picture worked on any engine, a
 // document lying on another, picked files in order, a way failure's kind), the kept session, its training
 // attempts, and pages given to the session as its camera would (CI has no camera and no models). Nothing in
-// the app calls them. The scanner lab's page (/scan-next/, src/scan/lab/) loads them too, for its own session
+// the app calls them. The scanner lab's page (/scan-lab/, src/scan/lab/) loads them too, for its own session
 // (injectInto). stubWorkers / stubReaders put stand-ins with fixed answers in place of the models — the corners
 // model behind the real thread protocol (the engine's ways, pool, capture thread and watchdog run as on a
 // phone) —, so the real camera path (tests/e2e/scanner.test.js: a canvas stream for the camera) runs whole:

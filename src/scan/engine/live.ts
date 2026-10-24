@@ -1,5 +1,5 @@
 // The scanner's engine (docs/scan-plan.md → S9): the live frame on the camera — ported unchanged from the
-// lab's index.html (loop, runOnce, frameInput, smallRGBA, followLoop, animate, the figures):
+// lab's former plain page (loop, runOnce, frameInput, smallRGBA, followLoop, animate, the figures):
 //  - up to engine.size frames are worked on at once, sent evenly spaced (the mean model time / n); 5 failed
 //    frames in a row stop it; with no engine (a way that stuck was dropped) the model starts again first;
 //  - each frame is scaled to S×S on the GPU (createImageBitmap) and handed to the model's thread as is — no

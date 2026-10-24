@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The scanner lab's models and ONNX Runtime Web, put next to it in the built site
-# (docs/scan-plan.md → Scanner lab). No model file is committed. Each base model
-# comes from the firm's own Firebase Storage (models/scan/base-v1/, through
+# The scanner lab's models and ONNX Runtime Web, put next to its built page in dist/scan-lab/
+# (docs/scan-plan.md → Scanner lab), with their licences (THIRD-PARTY.txt). No model file is
+# committed. Each base model comes from the firm's own Firebase Storage (models/scan/base-v1/, through
 # model_store.py, when the deploy's credentials are set); only a model not stored
 # there yet is downloaded from its authors — once — and stored. /tmp/models (the
 # Actions cache) keeps them between runs.
@@ -74,21 +74,22 @@ printf '{"version":"%s","doctype":%s,"mrz":%s,"he":%s}\n' "$SCAN_MODELS_VERSION"
 # The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).
-# ort.all.min.js for the plain page; ort.all.min.mjs for the new stack's engine (src/scan/engine/ort.ts imports it at
-# run time); the ort-wasm-simd-threaded*.mjs are what both builds' wasm loaders import (docs/scan-plan.md → S9).
+# ort.all.min.mjs is what the scanner's engine imports at run time (src/scan/engine/ort.ts); the
+# ort-wasm-simd-threaded*.mjs are what both builds' wasm loaders import (docs/build.md → The scanner's entries).
 T="$(mktemp -d)"
 for v in 1.22.0:ort 1.30.0:ort130; do
   (cd "$T" && mkdir -p "${v#*:}" && cd "${v#*:}" && npm pack "onnxruntime-web@${v%%:*}" --silent >/dev/null && tar xzf "onnxruntime-web-${v%%:*}.tgz")
-  cp "$T/${v#*:}/package/dist/ort.all.min.js" "$T/${v#*:}/package/dist/ort.all.min.mjs" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
+  cp "$T/${v#*:}/package/dist/ort.all.min.mjs" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
 done
+cp "$HERE/THIRD-PARTY.txt" "$OUT/"
 # What the surface's page loads at run time, all from its own folder (docs/build.md → The scanner's entries): the models,
 # models.json at this version, he-layouts.json when the Hebrew reader is there, and both ONNX Runtime builds — the .mjs
-# the new stack's engine imports (src/scan/engine/ort.ts) and the plain page's .js. A deploy missing one stops here.
+# the scanner's engine imports (src/scan/engine/ort.ts), its .wasm and loaders. A deploy missing one stops here.
 python - "$OUT" "$SCAN_MODELS_VERSION" <<'PY'
 import json, pathlib, sys
 out, version = pathlib.Path(sys.argv[1]), sys.argv[2]
 m = json.loads((out / "models.json").read_text())
-need = ["lite.onnx", "sa24_w16.onnx", "yunet.onnx"] + [f"{d}/{f}" for d in ("ort", "ort130") for f in ("ort.all.min.js", "ort.all.min.mjs")]
+need = ["lite.onnx", "sa24_w16.onnx", "yunet.onnx"] + [f"{d}/{f}" for d in ("ort", "ort130") for f in ("ort.all.min.mjs",)]
 need += ["doctype.onnx"] * m["doctype"] + ["mrz.onnx"] * m["mrz"] + ["he.onnx", "he-layouts.json"] * m["he"]
 missing = [f for f in need if not (out / f).is_file() or (out / f).stat().st_size == 0]
 for d in ("ort", "ort130"):

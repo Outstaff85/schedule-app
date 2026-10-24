@@ -5,10 +5,10 @@
 //    WebGPU, and minus the ways stuck on the page; a way that fails falls to the next, the GPU live way uses
 //    the shared capture thread, the GPU layout that worked is kept;
 //  - a silent background thread is failed after 25 s only while a call waits on it, and an idle one is not
-//    failed on its first call — the same answers as the lab's workerEngine (index.html, run in vm);
+//    failed on its first call — the same answers as the lab's workerEngine (its former plain page, frozen in tests/scan/legacy-lab.js, run in vm);
 //  - a failed way is logged through noteFail with its kind (GPU / memory / hang / error), the store capped at 8;
 //  - openSession tries the backends and GPU layouts in the same order with the same status and log lines as
-//    the lab's scan-core.js (run in vm);
+//    the lab's former detection core (legacy-lab.js, run in vm);
 //  - the scanner closed (stopAll): a start or a thread still loading stops what it made, nothing is kept (no
 //    thread, no ready state), the stuck ways and a fall back to the page are forgotten, the next open starts
 //    clean; the page way's and the readers' sessions are released; the capture and file threads follow the
@@ -383,11 +383,12 @@ await run('the status line: a key per step, worded through tr() — plainly for 
 
 // ── the watchdog, against the lab's workerEngine ──
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
-const PAGE = read('scan-lab/index.html');
-const SCRIPT = PAGE.slice(PAGE.lastIndexOf('<script>'), PAGE.lastIndexOf('</script>'));
+const LEGACY = read('tests/scan/legacy-lab.js');
+const part = name => { const m = LEGACY.match(new RegExp('//#region ' + name + '\\r?\\n([\\s\\S]*?)\\r?\\n//#endregion ' + name)); assert.ok(m, 'legacy-lab.js has no part ' + name); return m[1]; };
+const SCRIPT = '\n' + part('page');
 function fnSource(name) {
   const at = SCRIPT.search(new RegExp('(^|\\n)(async )?function ' + name + '\\('));
-  assert.ok(at >= 0, 'scan-lab/index.html has no function ' + name);
+  assert.ok(at >= 0, 'legacy-lab.js has no function ' + name);
   const start = SCRIPT[at] === '\n' ? at + 1 : at;
   let i = SCRIPT.indexOf('{', SCRIPT.indexOf(')', start)), depth = 0, q = null;
   for (; i < SCRIPT.length; i++) {
@@ -494,9 +495,9 @@ await run('noteFail: the kind of each failure (GPU / memory / hang / error), sai
   assert.equal(blocked.noteFail('x', 'no answer'), 'hang');
 });
 
-// ── openSession, against the lab's scan-core.js ──
+// ── openSession, against the lab's former detection core ──
 await run('openSession: the backends and GPU layouts in the same order, the same status and log lines as the lab', async () => {
-  const CORE = read('scan-lab/scan-core.js');
+  const CORE = part('core');
   const scenarios = [
     { name: 'auto, no WebGPU', want: 'auto', gpu: false, layout: null, fail: () => null },
     { name: 'auto, the GPU fails both layouts', want: 'auto', gpu: true, layout: null, fail: n => (n.startsWith('webgpu') ? 'WebGPU adapter not found' : null) },
