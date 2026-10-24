@@ -21,7 +21,7 @@ import torch
 import checkpoint
 from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
-from home import gentle
+from home import drop_report, gentle
 from onnxbatch import free_batch
 
 S, H, SIGMA = 256, 128, 2.4  # the spread of the models' own corner spots (measured)
@@ -124,6 +124,7 @@ def one_epoch(name, net, opt, X, Y, order, dev, ep, epochs):
 def export(name, net, probe, inp, outname):
     dst = WORK / "new" / name
     dst.parent.mkdir(parents=True, exist_ok=True)
+    drop_report("report.json", "report.html")   # the exam of the model before: exam.py runs again on this one
     net = net.cpu().eval()
     with torch.no_grad():
         want = net(torch.from_numpy(probe)).numpy()

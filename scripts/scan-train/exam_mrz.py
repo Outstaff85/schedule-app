@@ -3,7 +3,7 @@ the real passports the site collected (the full documents, H8a: documents/…/re
 the way the phone will run it (mrzmodel.py: the two lowest lines of the primary page, each read, line 2's
 values taken where their check digit is right) — and compared with what the user saved and with what the
 AI had filled in (scanned). On the made-up lines its check figures come from train_mrz.py.
-Writes ~/.scan-train/report_mrz.json: "publish" when the made-up lines are read well enough (SYNTH_AT),
+Writes ~/.scan-train/report_mrz.json (with the sha256 of the mrz.onnx examined, "model_sha256"): "publish" when the made-up lines are read well enough (SYNTH_AT),
 MIDV-2020's exam passports (midv_mrz.py: real photos and scans of mock passports, never trained on; the
 zone found, line 2 read right, every check-digit field right) have every check-digit field right often
 enough (MIDV_AT), and, on the real passports, it is right at least as often as the AI (or there are none
@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
-from common import DATA, WORK, write_json
+from common import DATA, MRZ_MODEL, WORK, model_hashes, write_json
 from mrzmodel import decode, fields, find_lines, line_input
 
 SYNTH_AT = 0.93       # the share of made-up lines read right that a model must reach
@@ -125,7 +125,8 @@ def main():
     report = {"madeUpLinesRight": train["linesRight"], "madeUpCharsWrong": train["charsWrong"],
               "passports": n, "zoneFound": found, "passportsAllRight": all_right, "fieldsRight": fields_right, "fieldsCompared": fields_n,
               "aiPassportsAllRight": ai_right, "aiFieldsRight": ai_fields_right, "aiFieldsCompared": ai_n,
-              "missed": misses[:50], "publish": synth_ok and real_ok and midv_ok, **midv}
+              "missed": misses[:50], "publish": synth_ok and real_ok and midv_ok, **midv,
+              "model_sha256": model_hashes([MRZ_MODEL], WORK / "new")}   # the exact file examined (publish.py checks it)
     write_json(WORK / "report_mrz.json", report)
     print(f"Made-up lines: {train['linesRight']:.1%} read right ({train['charsWrong']:.2%} of the characters wrong; needed {SYNTH_AT:.0%})")
     if n:

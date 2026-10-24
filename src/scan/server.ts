@@ -85,7 +85,12 @@ export type TrainingStats = { due: boolean; edgesSince: number; doctypesDue: boo
 export async function trainingStats(): Promise<TrainingStats | null> {
   try {
     const j = await post(SCAN_FEEDBACK_FN_URL, { action: 'stats' });
-    return { due: !!j.due, edgesSince: Number(j.edgesSince ?? j.stats?.edgesSince ?? 0), doctypesDue: !!j.doctypesDue, doctypes: j.doctypes || {}, stats: j.stats || {} };
+    const attemptsSince = Number(j.attemptsSince ?? j.stats?.attemptsSince ?? 0);
+    const at = j.attemptsAt ?? j.stats?.attemptsAt;
+    const attemptsAt = at == null ? undefined : Number(at);
+    const due = j.attemptsDue ?? j.stats?.attemptsDue;
+    return { due: !!j.due, edgesSince: Number(j.edgesSince ?? j.stats?.edgesSince ?? 0), doctypesDue: !!j.doctypesDue, doctypes: j.doctypes || {}, stats: j.stats || {},
+      attemptsSince, attemptsAt, attemptsDue: due != null ? !!due : attemptsAt != null && attemptsSince >= attemptsAt };
   }
   catch { return null; }
 }

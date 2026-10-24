@@ -2248,9 +2248,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
 
   // ── Super-admin: cross-firm summary uses each firm's own clients ──
   ctx = await newCtx(); p = await page(ctx);
+  // The scanner's training counts (scan_feedback stats, read for the bell at most every 6 hours): 18 new
+  // scan attempts of the 15 needed — the super-admin's bell says it is time to train (src/scan/server.ts trainingStats).
+  await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
+    const h = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:h});
+    if (JSON.parse(r.request().postData() || '{}').action !== 'stats') return r.fallback();
+    return r.fulfill({status:200, contentType:'application/json', headers:h, body: JSON.stringify({ok: true, due: false, edgesSince: 3, doctypesDue: false, doctypes: {},
+      stats: {attemptsSince: 18}, attemptsSince: 18, attemptsAt: 15, attemptsDue: true})});
+  });
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2 && document.querySelectorAll('#firmsScreenRoot [data-testid="firm-row"]').length === 2), 'boss: firms list (listTenants)');
+  const attemptsBell = await waitFor(p, () => notifList().some(n => /^scan-attempts:/.test(n.id) && /18 new scan attempts/.test(n.detail)), 10000);
+  ok(attemptsBell, 'boss: the bell says "New scan attempts — time to train" with the count from scan_feedback (attemptsSince / attemptsDue reach the header)');
   // The firms list (React, stage 6f-2): ✎ and a bare ⋮ (Edit, Disable, Delete last via Undo); Select; a tap opens the firm (below).
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));

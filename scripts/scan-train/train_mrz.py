@@ -34,7 +34,7 @@ import torch
 from torch import nn
 
 import checkpoint
-from home import WORK, gentle
+from home import WORK, drop_report, gentle
 from mrzmodel import CHARS, H, W, decode, line_input
 
 CKPT = WORK / "mrz-ckpt"
@@ -301,6 +301,7 @@ def main():
     (CKPT / "last.pt").unlink(missing_ok=True)
     net.load_state_dict(best[1])
     acc, cer = evaluate(net.to(dev), vl, dev)
+    drop_report("report_mrz.json")   # the exam of the model before: exam_mrz.py runs again on this one
     diff = export(net, WORK / "new" / "mrz.onnx")
     report = {"linesRight": acc, "charsWrong": cer, "trainLines": len(train), "checkLines": len(val), "midvLines": len(real), "onnxDiff": diff}
     (WORK / "report_mrz_train.json").write_text(json.dumps(report, indent=1))

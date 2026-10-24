@@ -1,5 +1,5 @@
-"""Document types, step 2 (docs/scan-plan.md → S7; /scan-train): the phone's and the server's
-document type models are trained on the page copies — an ImageNet EfficientNet-Lite (timm)
+"""Document types, step 2 (docs/scan-plan.md → S7; /scan-train): the phone's document type model
+(doctype-lite.onnx — the only one by default; owner, 2026-10-24) is trained on the page copies — an ImageNet EfficientNet-Lite (timm)
 with two heads: the document type (6) and the clockwise turn the page needs (4). The turn is
 learned for free: every copy is stored upright and is shown turned by a random quarter
 turn, with the turn back as its answer. The ImageNet normalization is inside the model, so
@@ -9,11 +9,13 @@ trained model. With --synth N, N made-up upright pages (synth_pages.py) are adde
 copies — or train alone while the site has collected none yet; the exam stays the site's pages.
 Each epoch's progress is saved (checkpoint.py: --resume goes on with a run that stopped, --more trains
 further from the last run's weights).
-Writes ~/.scan-train/new/doctype-lite.onnx and doctype.onnx.
+Writes ~/.scan-train/new/doctype-lite.onnx (and deletes report_doctypes.json: exam_doctypes.py runs again).
+A larger model for a server (common.DOCTYPE_SERVER, doctype.onnx) is trained only with --only server; no
+code runs it and publish.py never publishes it.
 
-  python train_doctypes.py                                    # both, the default sizes
+  python train_doctypes.py                                    # the phone's model, the default size
   python train_doctypes.py --phone tf_efficientnet_lite1     # the next size up for the phone
-  python train_doctypes.py --only server
+  python train_doctypes.py --only server                      # only the server's (Lite2), on request
   python train_doctypes.py --synth 6000                        # + the made-up pages (synth_pages.py)
 """
 import argparse
@@ -28,8 +30,8 @@ import torch
 from torch import nn
 
 import checkpoint
-from common import DOCTYPE_MODELS, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
-from home import gentle
+from common import DOCTYPE_MODELS, DOCTYPE_SERVER, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
+from home import drop_report, gentle
 
 S = 256
 EPOCHS = {"doctype-lite.onnx": 20, "doctype.onnx": 16}
@@ -117,6 +119,8 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None):
         checkpoint.save(name, info, net, opt, sched, ep + 1, epochs)
     dst = WORK / "new" / name
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if name in DOCTYPE_MODELS:
+        drop_report("report_doctypes.json")   # the exam of the model before: exam_doctypes.py runs again on this one
     net = net.cpu().eval()
     probe = torch.rand(1, 3, S, S)
     with torch.no_grad():
@@ -131,8 +135,8 @@ def main():
     gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
     ap.add_argument("--phone", default=DOCTYPE_MODELS["doctype-lite.onnx"], choices=DOCTYPE_SIZES, help="the phone's model size")
-    ap.add_argument("--server", default=DOCTYPE_MODELS["doctype.onnx"], choices=DOCTYPE_SIZES, help="the server's model size")
-    ap.add_argument("--only", choices=("phone", "server"))
+    ap.add_argument("--server", default=DOCTYPE_SERVER["doctype.onnx"], choices=DOCTYPE_SIZES, help="the server's model size (with --only server)")
+    ap.add_argument("--only", choices=("phone", "server"), default="phone", help="phone (the default): the phone's model; server: only the server's, on request")
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
     ap.add_argument("--scratch", action="store_true", help="random weights, no download — only to test the steps, never for a model to publish")
     ap.add_argument("--synth", type=int, default=0, help="made-up pages (synth_pages.py) added, at random")
@@ -151,9 +155,7 @@ def main():
     X, Y = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} page copies, on {dev}")
-    jobs = {"doctype-lite.onnx": a.phone, "doctype.onnx": a.server}
-    if a.only:
-        jobs = {k: v for k, v in jobs.items() if (k == "doctype-lite.onnx") == (a.only == "phone")}
+    jobs = {"doctype-lite.onnx": a.phone} if a.only == "phone" else {"doctype.onnx": a.server}
     for name, arch in jobs.items():
         train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a)
     prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}

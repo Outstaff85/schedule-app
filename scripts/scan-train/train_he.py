@@ -27,7 +27,7 @@ import cv2
 import torch
 
 import hemodel
-from home import WORK, gentle
+from home import HE_FILES, WORK, drop_report, gentle, model_hashes
 from mrzmodel import decode, line_input
 from synth import valid_israeli_id
 import checkpoint
@@ -95,12 +95,14 @@ def main():
     vl = torch.utils.data.DataLoader(Lines([(p, t) for p, t, _ in checks][:2000], False, real=frozenset(p for p, _, _ in checks), chars=hemodel.CHARS), 128,
                                      num_workers=a.workers, collate_fn=collate)
     net = fit("he", {"model": "he"}, net, tl, vl, dev, a.epochs, a, hemodel.CHARS, "check fields right")
+    drop_report("report_he.json")   # the reader's check below writes it again, for these files
     report = check(net.to(dev), checks, dev)
     report["onnxDiff"] = export(net, WORK / "new" / "he.onnx")
     marks = json.loads((pathlib.Path(__file__).resolve().parent / "template_fields.json").read_text(encoding="utf-8"))
     (WORK / "new" / "he-layouts.json").write_text(json.dumps(hemodel.layouts(marks)), encoding="utf-8")   # where the phone reads
     report["trainFields"], report["trainLines"] = len(fields), len(lines)
     report["publish"] = report["fieldsRight"] >= READ_AT
+    report["model_sha256"] = model_hashes(HE_FILES, WORK / "new")   # the exact files checked (publish.py checks them)
     (WORK / "report_he.json").write_text(json.dumps(report, indent=1, ensure_ascii=False))
     print(f"he.onnx written: {report['fieldsRight']:.1%} of the check fields read right; by kind {report['byKind']}; "
           f"ID numbers with a right check digit {report['idNumbersWithARightCheckDigit']:.1%}")

@@ -2,8 +2,11 @@
 edges/, and those still in Firebase — Firestore scanTraining, Storage training/scan/) is downloaded to the work folder,
 and every new scan attempt (attempts/new/, S8 — its examples by attempts.py); about one in seven —
 chosen by its id, so always the same ones — is kept apart as the exam and never
-trained on. Writes ~/.scan-train/examples.json and attempts.json (the attempts' folders, which
-publish.py moves to attempts/used/v<N>/)."""
+trained on. The attempts kept as the exam before (attempts/exam/, moved there by publish.py) are pulled
+on every run, always as the exam: a real exam that grows and is never trained on. Writes
+~/.scan-train/examples.json and attempts.json — the new attempts' folders, {"train": [...], "exam": [...]}:
+publish.py moves the train folders to attempts/used/v<N>/ and the exam ones (kept apart by their id, or
+every example of it an exam page) to attempts/exam/; attempts/golden/ is never moved."""
 import hashlib
 import json
 import pathlib
@@ -34,14 +37,15 @@ def records():
     return out
 
 
-def attempt_folders():
-    """Every new scan attempt: [(folder, answer, outcomes, fetch(dest) -> bool)] — the private
-    bucket's attempts/new/ and, for those the bucket refused, Firebase Storage training/attempts/new/."""
+def attempt_folders(prefix="attempts/new/"):
+    """Every scan attempt under prefix (attempts/new/, or attempts/exam/): [(folder, answer, outcomes,
+    fetch(dest) -> bool)] — the private bucket's and, for those the bucket refused, Firebase Storage's
+    training/<prefix>."""
     out, seen = [], set()
     try:
         from huggingface_hub import HfApi
         api = HfApi()
-        files = [f.path for f in api.list_bucket_tree(DATA, prefix="attempts/new/", recursive=True)]
+        files = [f.path for f in api.list_bucket_tree(DATA, prefix=prefix, recursive=True)]
     except Exception:
         api, files = None, []
     folders = {}
@@ -60,7 +64,7 @@ def attempt_folders():
             seen.add(d)
     b = bucket()
     blobs = {}
-    for blob in b.list_blobs(prefix="training/attempts/new/"):
+    for blob in b.list_blobs(prefix="training/" + prefix):
         blobs.setdefault(blob.name.rsplit("/", 1)[0][len("training/"):], []).append(blob)
     for d, bs in blobs.items():
         if d in seen:
@@ -92,25 +96,30 @@ def painted(src, dest, quads):
     return True
 
 
-def attempt_examples(out):
-    """The attempts' examples, added to out; → the folders pulled."""
-    pulled = []
-    for d, ans, outs, fetch in attempt_folders():
+def attempt_examples(out, folders=None, kept_exam=False):
+    """The attempts' examples, added to out; → the new folders pulled, {"train": [...], "exam": [...]}: an
+    exam folder is one kept apart by its id, or one whose every example is an exam page (retaken pages).
+    kept_exam: the attempts kept as the exam before (attempts/exam/) — every example an exam page, none listed."""
+    pulled = {"train": [], "exam": []}
+    for d, ans, outs, fetch in (attempt_folders() if folders is None else folders):
         aid = ans.get("id") or d.rsplit("/", 1)[1]
         pic = WORK / "attempts" / f"{aid}.jpg"
         pic.parent.mkdir(parents=True, exist_ok=True)
         if not pic.exists() and not fetch(pic):
             continue
-        pulled.append(d)
-        exam = is_exam(aid)
+        exam = kept_exam or is_exam(aid)
+        mine = []
         for x in attempt_rules.examples_of(ans, outs):
             f = WORK / "img" / f"att-{aid}-{x['page']}.jpg"
             if not painted(pic, f, x["paint"]):
                 continue
             q = ([ans.get("edgesModel")] + list(ans.get("edgesMore") or []))[x["page"]]
-            out.append({"id": f"att-{aid}-{x['page']}", "file": str(f), "model": q, "fixed": x["target"],
-                        "moved": ans.get("moved", 0) if x["page"] == 0 else 0, "exam": exam or x["kind"] == "hard",
-                        "none": x["kind"] == "none", "hard": x["kind"] == "hard", "rejected": x["rejected"], "attempt": True})
+            mine.append({"id": f"att-{aid}-{x['page']}", "file": str(f), "model": q, "fixed": x["target"],
+                         "moved": ans.get("moved", 0) if x["page"] == 0 else 0, "exam": exam or x["kind"] == "hard",
+                         "none": x["kind"] == "none", "hard": x["kind"] == "hard", "rejected": x["rejected"], "attempt": True})
+        out += mine
+        if not kept_exam:
+            pulled["exam" if exam or (mine and all(e["exam"] for e in mine)) else "train"].append(d)
     return pulled
 
 
@@ -126,11 +135,14 @@ def main():
         out.append({"id": rid, "file": str(path), "model": r["edgesModel"], "fixed": r["edgesFixed"],
                     "moved": r.get("moved", 0), "exam": is_exam(rid)})
     pulled = attempt_examples(out)
+    before = len(out)
+    attempt_examples(out, attempt_folders("attempts/exam/"), kept_exam=True)   # the real exam kept from the trainings before
     write_json(WORK / "examples.json", out)
     write_json(WORK / "attempts.json", pulled)
     n_exam = sum(e["exam"] for e in out)
     n_att = sum(1 for e in out if e.get("attempt"))
-    print(f"{len(out)} examples ({n_att} from {len(pulled)} scan attempts): {len(out) - n_exam} to train on, {n_exam} for the exam")
+    print(f"{len(out)} examples ({n_att} from {len(pulled['train']) + len(pulled['exam'])} new scan attempts, "
+          f"{len(out) - before} from the attempts kept as the exam): {len(out) - n_exam} to train on, {n_exam} for the exam")
 
 
 if __name__ == "__main__":

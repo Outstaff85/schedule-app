@@ -10,7 +10,7 @@ import re
 
 from google.cloud import firestore, storage
 
-from home import DATA, WORK  # ~/.scan-train (or SCAN_TRAIN_HOME): examples, models, report — deleted by publish/clean; DATA: the private bucket
+from home import DATA, HE_FILES, WORK, drop_report, model_hashes, sha256_of  # noqa: F401 — WORK: ~/.scan-train (or SCAN_TRAIN_HOME): examples, models, report — deleted by publish/clean; DATA: the private bucket
 
 PROJECT = "schedule-odinson"
 BUCKETS = ["schedule-odinson.firebasestorage.app", "schedule-odinson.appspot.com"]
@@ -20,14 +20,16 @@ MODELS = ("edges-lite.onnx", "edges.onnx")            # the document edges model
 KEEP = ("face.onnx",)                                 # carried to a new version as it is
 # a model file's name in a version not moved to Hugging Face yet (Storage), by its name today
 OLD_FILES = {"edges.onnx": "sa24.onnx", "edges-lite.onnx": "lite.onnx", "face.onnx": "yunet640.onnx"}
-# The document type models (docs/scan-plan.md → S7): the phone's (EfficientNet-Lite0; the next
-# size up while the exam shows it short) and the server's (a larger one). Input "img"
-# [1,3,256,256] RGB 0..1; outputs "doctype" [1,6] and "turn" [1,4] (scripts/scan-train/docfind.py doctype_of).
-DOCTYPE_MODELS = {"doctype-lite.onnx": "tf_efficientnet_lite0", "doctype.onnx": "tf_efficientnet_lite2"}
+# The document type model (docs/scan-plan.md → S7): the phone's (EfficientNet-Lite0; the next size up
+# while the exam shows it short) — the only one trained, examined and published by default (owner,
+# 2026-10-24: no server code runs a scanner model since 2026-10-19). Input "img" [1,3,256,256] RGB 0..1;
+# outputs "doctype" [1,6] and "turn" [1,4] (scripts/scan-train/docfind.py doctype_of).
+DOCTYPE_MODELS = {"doctype-lite.onnx": "tf_efficientnet_lite0"}
+# A larger one for a server, trained only on request (train_doctypes.py --only server) and never published.
+DOCTYPE_SERVER = {"doctype.onnx": "tf_efficientnet_lite2"}
 DOCTYPE_SIZES = [f"tf_efficientnet_lite{i}" for i in range(5)]
 # The passport zone reader (docs/hf-plan.md → H8b; mrzmodel.py): trained on made-up lines (synth_lines.py, train_mrz.py)
 MRZ_MODEL = "mrz.onnx"
-HE_FILES = ("he.onnx", "he-layouts.json")             # the Hebrew field reader and where it reads on a card (train_he.py; H8c)
 DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 # A record's field names before H0 (docs/hf-plan.md) → today's: records not yet renamed by rename_fields.py
 OLD_NAMES = {"cornersModel": "edgesModel", "cornersFixed": "edgesFixed", "kindModel": "doctypeModel", "kindFixed": "doctypeFixed", "kindBy": "doctypeBy"}

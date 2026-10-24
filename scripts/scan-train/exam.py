@@ -10,7 +10,8 @@ part), the share within 2 % and the share not found; from the scan attempts (S8)
 the extra pages found where the user deleted one ("nothing here" — lower is better) and,
 on retaken pages, how often the model answers other than the frame the user rejected.
 A model is better when it is no worse on any set with pages ("publish" in the report; with no
-pages in any set there is nothing to measure: NO). Writes ~/.scan-train/report.json, prints
+pages in any set there is nothing to measure: NO). Writes ~/.scan-train/report.json — with the sha256 of
+each new file examined ("model_sha256"; publish.py refuses a report written for another file) —, prints
 "before → after", and writes report.html — the
 pages where the two models differ most, each with the old corners (red), the new (blue) and
 the right ones (green) drawn on it — and opens it in the browser. The page shows workers'
@@ -25,7 +26,7 @@ import numpy as np
 import onnxruntime as ort
 
 from midv import open_exam
-from common import MODELS, WORK, model_path, read_json, version_of, write_json
+from common import MODELS, WORK, model_hashes, model_path, read_json, version_of, write_json
 
 import docfind  # the corner reading (once the server's, kept here for the exam)
 
@@ -132,6 +133,7 @@ def main():
                 diffs.append((gap, name, e, b, a))
     report["publish"] = bool(sets and report["models"]) and all(
         r["after"]["mean"] <= r["before"]["mean"] for m in report["models"].values() for r in m.values())
+    report["model_sha256"] = model_hashes(report["models"], WORK / "new")   # the exact files examined
     write_json(WORK / "report.json", report)
     print(f"Exam: {report['exam']} pages never trained on — "
           + (", ".join(f"{SETS[s]} {n}" for s, n in report["sets"].items()) or "none") + f"; base {base}")

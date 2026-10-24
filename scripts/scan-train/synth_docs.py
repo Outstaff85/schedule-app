@@ -29,9 +29,11 @@ photos again, so only this script is kept.
   python synth_docs.py --templates --exam                    # the exam photos of the real pages kept apart (exam.py)
 
 Writes <out>/img/<n>.jpg (the long side 640) and <out>/examples.json in pull.py's form (fixed:
-the corners 0..1, top-left first clockwise as the model gives them; null: nothing here).
+the corners 0..1, top-left first clockwise as the model gives them; null: nothing here; a real page
+answered also names it, "template": a short sha1 of its kind folder and file name, page_id).
 Needs: pip install -r requirements-synth.txt."""
 import argparse
+import hashlib
 import json
 import pathlib
 import random
@@ -526,20 +528,26 @@ def border_colour(img):
     return [int(v) for v in np.median(border, axis=0)]
 
 
+def page_id(path, kind):
+    """A real page's short id in the examples ("template"): a sha1 prefix of its kind folder and file name —
+    the exam reports per document (exam_doctypes.py byDocument) without copying a worker's file name."""
+    return hashlib.sha1(f"{kind}/{pathlib.Path(path).name}".encode("utf-8")).hexdigest()[:10]
+
+
 def document(rng, F, tpl, kinds=None):
-    """A document to lay: (RGBA, rect, kind, card) — a real page (tpl: (pages, share, sharp)) or a drawn one;
-    `kinds`: only these kinds (a sheet, a card)."""
+    """A document to lay: (RGBA, rect, kind, card, page id or None) — a real page (tpl: (pages, share, sharp))
+    or a drawn one; `kinds`: only these kinds (a sheet, a card)."""
     pages, share, sharp = tpl
     if kinds:
         pages = [pg for pg in pages if pg[1] in kinds]
     if pages and rng.random() < share:
         path, kind = rng.choice(pages)
         doc, rect = template(rng, F, path, kind, sharp)
-        return doc, rect, "template:" + kind, kind in CARDS
+        return doc, rect, "template:" + kind, kind in CARDS, page_id(path, kind)
     names = [k for k in KINDS if not kinds or k in kinds]
     kind = rng.choices(names, [KINDS[k] for k in names])[0]
     doc, rect = DRAW[kind](rng, F)
-    return doc, rect, kind, kind.startswith("id")
+    return doc, rect, kind, kind.startswith("id"), None
 
 
 def _area(q):
@@ -547,20 +555,20 @@ def _area(q):
 
 
 def photo(rng, F, photos, tpl=((), 0, False)):
-    """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind)."""
+    """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind, the real page's id or None)."""
     W, H = rng.choice(SIZES)
     img = background(rng, W, H, photos)
     none = rng.random() < NONE_SHARE
     two = not none and rng.random() < PAINTED_SHARE   # another document found first, painted over
     pair = not none and not two and rng.random() < PAIR_SHARE   # a card on the sheet or beside it, both in sight
-    quad = painted = None
+    quad = painted = src = None
     if not none:
-        doc, rect, kind, card = document(rng, F, tpl, SHEETS if pair else None)
+        doc, rect, kind, card, src = document(rng, F, tpl, SHEETS if pair else None)
         quad = synth.scene_quad(rng, (rect[2] - rect[0]) / (rect[3] - rect[1]), W, H,
                                 fill=(0.15, 0.45) if two else (0.3, 0.7) if pair else (0.18, 0.8))
         none = quad is None
     if two and quad:
-        d2, r2, _, card2 = document(rng, F, tpl)
+        d2, r2, _, card2, _ = document(rng, F, tpl)
         for _ in range(10):
             q2 = synth.scene_quad(rng, (r2[2] - r2[0]) / (r2[3] - r2[1]), W, H, fill=(0.1, 0.3))
             if q2 and not _overlaps(quad, q2, W, H):
@@ -572,7 +580,7 @@ def photo(rng, F, photos, tpl=((), 0, False)):
         if rng.random() < 0.25:
             finger(rng, img, quad)
     if pair and quad:
-        d2, r2, k2, card2 = document(rng, F, tpl, CARDS)
+        d2, r2, k2, card2, s2 = document(rng, F, tpl, CARDS)
         a1, a2 = (rect[2] - rect[0]) / (rect[3] - rect[1]), (r2[2] - r2[0]) / (r2[3] - r2[1])
         q2 = None
         if rng.random() < PAIR_ON:
@@ -586,7 +594,7 @@ def photo(rng, F, photos, tpl=((), 0, False)):
         if q2:
             lay(rng, img, d2, r2, q2, card2)
             if _area(q2) > _area(quad):   # the answer: the larger document, whole
-                quad, kind = q2, k2
+                quad, kind, src = q2, k2, s2
             kind += "+2"
     if painted:
         col = border_colour(img)
@@ -597,8 +605,8 @@ def photo(rng, F, photos, tpl=((), 0, False)):
     s = LONG / max(W, H)
     img = cv2.resize(img, (round(W * s), round(H * s)), interpolation=cv2.INTER_AREA)
     if none:
-        return img, None, "none"
-    return img, synth.order_corners([[x / W, y / H] for x, y in quad]), kind
+        return img, None, "none", None
+    return img, synth.order_corners([[x / W, y / H] for x, y in quad]), kind, src
 
 
 def _overlaps(a, b, W, H):
@@ -614,7 +622,7 @@ def _batch(job):
     out = []
     for i in range(start, start + n):
         rng = random.Random(seed * 1_000_003 + i)
-        img, corners, kind = photo(rng, F, photos, tpl)
+        img, corners, kind, src = photo(rng, F, photos, tpl)
         f = pathlib.Path(folder) / "img" / f"{i}.jpg"
         cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         if show:
@@ -626,7 +634,7 @@ def _batch(job):
             cv2.putText(v, kind, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.imwrite(str(pathlib.Path(folder) / "show" / f"{i}.jpg"), v)
         out.append({"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
-                    "exam": False, "synth": True, "kind": kind, "none": corners is None})
+                    "exam": False, "synth": True, "kind": kind, "none": corners is None, **({"template": src} if src else {})})
     return out
 
 
