@@ -1,8 +1,9 @@
 // The full-screen scanner (docs/scan-plan.md → S9): a page opened large — a tap on its thumbnail. Its document
 // type as choice chips (the model's answer marked with how sure it is; a tap picks another), then Fix corners
 // (the corner editor, a step inside the screen), Delete (no question: the Undo snack) and Looks good (this page
-// only). A step inside the scanner screen, not a window: a tap on the dimmed ground around it, a swipe down or
-// Escape (the screen's) goes back to the camera, and so do Delete and Looks good.
+// only). A page the host kept from before (kept) has its type and Delete only: its photo is gone. A step inside
+// the scanner screen, not a window: a tap on the dimmed ground around it, a swipe down or Escape (the screen's)
+// goes back to the camera, and so do Delete and Looks good.
 import * as React from 'react';
 import { IconCheck, IconCrop, IconTrash } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
@@ -30,7 +31,7 @@ export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClo
   const kind = kindOf(page);
   const startY = React.useRef<number | null>(null);
   return (
-    <div data-testid="page-view" data-id={page.id}
+    <div data-testid="page-view" data-id={page.id} data-kept={page.kept || undefined}
       className="absolute inset-0 z-20 flex flex-col justify-end gap-3 bg-background/90 px-4 pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[calc(28px+env(safe-area-inset-top,0px))] backdrop-blur-md"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       onPointerDown={e => { if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.swipe) startY.current = e.clientY; }}
@@ -56,11 +57,15 @@ export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClo
           ))}
         </ToggleGroup>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Button onClick={onFix} data-testid="page-fix" className="min-w-0"><IconCrop className="size-[18px]" />{tr('Fix corners')}</Button>
-        <Button variant="danger" onClick={onDelete} data-testid="page-delete" className="min-w-0"><IconTrash className="size-[18px]" />{tr('Delete')}</Button>
-        <Button variant="primary" onClick={onKeep} data-testid="page-keep" on={page.looked} className="col-span-2"><IconCheck className="size-[18px]" />{tr('Looks good')}</Button>
-      </div>
+      {page.kept
+        ? <div className="grid gap-2">
+            <Button variant="danger" onClick={onDelete} data-testid="page-delete"><IconTrash className="size-[18px]" />{tr('Delete')}</Button>
+          </div>
+        : <div className="grid grid-cols-2 gap-2">
+            <Button onClick={onFix} data-testid="page-fix" className="min-w-0"><IconCrop className="size-[18px]" />{tr('Fix corners')}</Button>
+            <Button variant="danger" onClick={onDelete} data-testid="page-delete" className="min-w-0"><IconTrash className="size-[18px]" />{tr('Delete')}</Button>
+            <Button variant="primary" onClick={onKeep} data-testid="page-keep" on={page.looked} className="col-span-2"><IconCheck className="size-[18px]" />{tr('Looks good')}</Button>
+          </div>}
       {note && <p data-testid="page-note" className="text-center text-[13px] text-[var(--amber-text)]">{note}</p>}
     </div>
   );

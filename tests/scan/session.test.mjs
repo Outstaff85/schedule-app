@@ -10,6 +10,10 @@
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
 //  - Looks good while the shot still looks for more documents: the attempt goes once the search is over, with
 //    every document the shot gave;
+//  - Looks good on one page of a photo keeps nothing yet: its other pages can still be fixed; the attempt goes
+//    once every page still shown was looked at (a page deleted does not count);
+//  - a newer shot (a wake) while a shot is in work: the pages it already gave are still read;
+//  - hold() pauses the live frame (no frames, no Auto shot) and resume() starts it again from a fresh frame;
 //  - the status keys come out in order (finding, hold with the seconds, found with the count, then the shot's);
 //  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
@@ -306,6 +310,13 @@ for (const inside of [false, true]) {
   });
 }
 
+const labBodies = () => {
+  const bodies = [];
+  const attemptsEnv = { idb: null, now: () => Date.now(), online: () => true, encode: async c => 'j' + c.width, newId: () => 'x', setTimeout: () => {}, onOnline: () => () => {},
+    fetch: async (url, init) => { const b = JSON.parse(init.body); bodies.push(b); return { ok: true, status: 200, json: async () => (b.action === 'attempt' ? { ok: true, dirs: Object.fromEntries(b.attempts.map(a => [a.id, 'att/' + a.id])) } : { ok: true }) }; } };
+  return { bodies, attemptsEnv, sent: () => bodies.filter(b => b.action === 'attempt').flatMap(b => b.attempts) };
+};
+
 await run('Looks good while the shot still looks for more documents: the attempt goes once the search is over, with every document', async () => {
   let next = 1;
   const script = (call, e) => {
@@ -319,8 +330,9 @@ await run('Looks good while the shot still looks for more documents: the attempt
   const attemptsEnv = { idb: null, now: () => Date.now(), online: () => true, encode: async c => 'j' + c.width, newId: () => 'x', setTimeout: () => {}, onOnline: () => () => {},
     fetch: async (url, init) => { const b = JSON.parse(init.body); bodies.push(b); return { ok: true, status: 200, json: async () => (b.action === 'attempt' ? { ok: true, dirs: Object.fromEntries(b.attempts.map(a => [a.id, 'att/' + a.id])) } : { ok: true }) }; } };
   const { s, clock, log, video, engine } = setup(script, { auto: false, lab: true, attemptsEnv });
-  let keptEarly = false;
-  s.on('page', p => { if (p.pg === 0 && !keptEarly) { keptEarly = true; s.keep(p.id); } });
+  // Looks good on each page the moment it comes (the first while the search still runs)
+  let keptEarly = false; const keptIds = new Set();
+  s.on('page', p => { if (keptIds.has(p.id)) return; keptIds.add(p.id); if (p.pg === 0) keptEarly = true; s.keep(p.id); });
   await s.startCamera(video);
   await clock.runFor(600);
   engine.shooting = true;
@@ -493,6 +505,106 @@ await run('the camera asks for 30 frames a second and nothing else about the rat
   const src = fs.readFileSync(path.join(ROOT, 'src/scan/engine/camera.ts'), 'utf8');
   assert.ok(!/\b60\b/.test(src), 'no 60 in camera.ts');
   assert.equal((src.match(/frameRate/g) || []).length, 1, 'one frame rate asked');
+  s.stop();
+});
+
+await run('Looks good on one page of a photo keeps nothing yet: the others can still be fixed; the attempt goes once every page still shown was looked at', async () => {
+  let next = 1;
+  const script = (call, e) => {
+    if (call.which === 'live' && !e.shooting) return { pts: Q, conf: 0.9 };
+    if (call.afterFlat) return NONE;
+    if (call.which === 'cap' && !e.capped) { e.capped = true; return { pts: Q, conf: 0.9 }; }
+    if (call.which === 'cap') return next < 4 ? { pts: QS[next++], conf: 0.9 } : NONE;
+    return NONE;
+  };
+  const lab = labBodies();
+  const { s, clock, log, video, engine } = setup(script, { auto: false, lab: true, attemptsEnv: lab.attemptsEnv });
+  await s.startCamera(video);
+  await clock.runFor(600);
+  engine.shooting = true;
+  let done = null; s.snap().then(n => { done = n; });
+  await clock.runFor(4000, () => done !== null);
+  await flush(20);
+  assert.equal(done, 4, '4 documents');
+  const ids = [...new Set(log.pages.map(p => p.id))];
+  assert.equal(ids.length, 4);
+  s.keep(ids[0]); await flush(20);
+  assert.equal(lab.sent().length, 0, 'one page looked at: nothing sent');
+  assert.ok(s.fixable(ids[1]), 'another page of the photo can still be fixed');
+  assert.ok(await s.fix(ids[2], shift(QS[2], 0.01)), 'and fixed');
+  s.keep(ids[1]); s.keep(ids[2]); await flush(20);
+  assert.equal(lab.sent().length, 0, 'three of four looked at: nothing sent');
+  s.remove(ids[3]); await flush(40);
+  const sent = lab.sent();
+  assert.equal(sent.length, 1, 'the last page deleted: every page still shown is looked at, sent once');
+  assert.equal(sent[0].outcome, 'kept');
+  assert.deepEqual(sent[0].deletedPages, [3]);
+  assert.ok(sent[0].edgesMoreFixed[1], 'with the corners fixed by hand on the third page');
+  assert.equal(s.fixable(ids[0]), null, 'sent: no longer fixed');
+  s.stop();
+  return 'sent once every page was decided';
+});
+
+for (const at of [0, 1]) {
+  await run('a wake while the shot is in work: the ' + (at ? 'other document it found' : 'first page') + ' is still read', async () => {
+    let next = 1;
+    const script = (call, e) => {
+      if (call.which === 'live' && !e.shooting) return { pts: Q, conf: 0.9 };
+      if (call.afterFlat) return NONE;
+      if (call.which === 'cap' && !e.capped) { e.capped = true; return { pts: Q, conf: 0.9 }; }
+      if (call.which === 'cap') return next < 4 ? { pts: QS[next++], conf: 0.9 } : NONE;
+      return NONE;
+    };
+    // readers that take 50 ms a page
+    const clockRef = {};
+    const readers = { info: { version: 't' }, load: async () => {}, release() {},
+      doctypeAnswer: () => new Promise(r => clockRef.c.setTimeout(() => r({ doctype: 'passport', conf: 1 }), 50)), mrzRead: async () => null, heRead: async () => null };
+    const { s, clock, log, video, engine } = setup(script, { auto: false, readers });
+    clockRef.c = clock;
+    let woke = false;
+    s.on('page', p => { if (!woke && p.pg === at && !p.readouts) { woke = true; s.wake(); } });
+    await s.startCamera(video);
+    await clock.runFor(600);
+    engine.shooting = true;
+    let done = null; s.snap().then(n => { done = n; });
+    await clock.runFor(3000, () => done !== null);
+    await clock.runFor(300);
+    assert.ok(woke, 'woken while the page was being read');
+    assert.equal(done, 0, 'the shot was taken over');
+    const given = [...new Set(log.pages.map(p => p.id))];
+    for (const id of given) {
+      const last = log.pages.filter(p => p.id === id).pop();
+      assert.ok(last.readouts && last.readouts.doctype, 'page ' + id + ' was read (no "Reading…" left)');
+    }
+    if (at) assert.ok(given.length >= 2, 'the other document was given before the wake');
+    s.stop();
+    return given.length + ' page(s) read';
+  });
+}
+
+await run('hold() pauses the live frame (no frames sent, no Auto shot); resume() starts it again from a fresh frame', async () => {
+  const { s, clock, log, video, engine } = setup(steadyLive(Q), { auto: true });
+  await s.startCamera(video);
+  await clock.runFor(500);
+  assert.equal(log.pages.length, 0, 'not shot yet');
+  s.hold();
+  await clock.runFor(50);
+  assert.equal(s.live.running, false);
+  const n = engine.calls.length;
+  await clock.runFor(2000);
+  assert.equal(engine.calls.length, n, 'no frames sent while held');
+  assert.equal(log.pages.length, 0, 'no Auto shot behind the page opened large');
+  const t = clock.t;
+  s.resume();
+  assert.equal(s.live.running, true);
+  await clock.runFor(1600, () => log.pages.length > 0);
+  assert.ok(log.pages.length, 'Auto shoots again once resumed');
+  assert.ok(log.pages[0].t - t >= 1000, 'from a fresh countdown (' + (log.pages[0].t - t) + ' ms)');
+  // a hold when the live frame waits after a shot does nothing, and its resume starts nothing
+  await clock.runFor(1500);
+  assert.equal(s.live.running, false, 'waiting after the shot');
+  s.hold(); s.resume();
+  assert.equal(s.live.running, false, 'still waiting for wake()');
   s.stop();
 });
 

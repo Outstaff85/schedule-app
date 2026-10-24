@@ -3,7 +3,7 @@
 // flushAttempts, trainFigures; docs/scan-training.md). Every attempt goes for training: a camera shot or a
 // picked picture, with the photo (at most 1600 px, JPEG 0.85), the models' corners (the first document's, the
 // others found on it), the corners set by hand (edgesFixed, edgesMoreFixed) and, once decided, how it went —
-// kept (Looks good on one of its pages, Done, or left alone at Done), retaken (Retake: the next shot shares its
+// kept (Looks good on each of its pages still shown, Done, or left alone at Done), retaken (Retake: the next shot shares its
 // group) or a page deleted. Sent to scan_feedback ('attempt') with the signed-in user's token (the surface's
 // idToken); with no network it waits on the phone (IndexedDB 'scanAttempts'), 5 at most, an hour at most.
 // On the site a kept attempt waits for Done (holdForDone: a window closed without Done sends nothing); the lab
@@ -162,7 +162,7 @@ export class Attempts {
     return id;
   }
 
-  /** The photo kept for the corner editor, or undefined when it is gone (Retake it). */
+  /** The photo kept for the corner editor, or undefined when it is gone (the page is deleted and taken again). */
   frameOf(id: string): KeptFrame | undefined { return this.frames.get(id); }
 
   /** Not sent yet (on the screen or waiting for Done): its corners can still be fixed, its pages deleted with it. */

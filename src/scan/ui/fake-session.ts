@@ -152,6 +152,9 @@ export class FakeScanSession implements ScanSessionLike {
   }
   setAuto(on: boolean): void { this.auto = on; this.log('auto ' + (on ? 'on' : 'off')); }
   wake(): void { this.log('wake'); this.say({ key: 'finding' }); this.later(800, () => this.say({ key: 'found', count: 1 })); }
+  /** A page opened large over the camera: the drawn camera has nothing to pause (not written to calls). */
+  hold(): void { /* nothing to pause */ }
+  resume(): void { /* nothing to start again */ }
   sleep(): void { for (const t of this.camTimers) { window.clearTimeout(t); window.clearInterval(t); } this.camTimers = []; }
   private stopAll(): void { this.sleep(); for (const t of this.timers) window.clearTimeout(t); this.timers = []; }
 

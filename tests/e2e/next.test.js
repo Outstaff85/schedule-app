@@ -329,6 +329,9 @@ async function scanner(browser) {
   await p.locator(cam + ' [data-testid=scan-shutter]').tap(); await sleep(150);
   const shot = { n: await thumbs(), reading: await p.locator(cam + ' [data-testid=scan-thumb]').last().locator('[data-reading]').count(), paused: await p.locator(cam + ' [data-testid=scan-shutter]').getAttribute('data-paused'), status: await p.locator(cam + ' [data-testid=scan-status]').innerText() };
   ok(shot.n === 4 && shot.reading === 1 && shot.paused === 'true' && /Captured in 180 ms/.test(shot.status) && /snap/.test(await calls()), 'scanner: the shutter takes a page, shown at once with a spinner while it is read ' + JSON.stringify(shot));
+  // while the shot is still in work the shutter is off (Next would drop the shot's other documents)
+  ok(await p.locator(cam + ' [data-testid=scan-shutter]').isDisabled() && !/wake/.test(await calls()), 'scanner: the shutter is off while the shot is still in work');
+  await p.waitForFunction(cam => !document.querySelector(cam + ' [data-testid=scan-shutter]').disabled, cam, { timeout: 3000 });
   await p.locator(cam + ' [data-testid=scan-shutter]').tap(); await sleep(150);
   ok(/wake/.test(await calls()) && !(await p.locator(cam + ' [data-testid=scan-shutter]').getAttribute('data-paused')), 'scanner: after a shot the shutter starts the live frame again');
 
@@ -379,6 +382,8 @@ async function scanner(browser) {
   await press(cam + ' [data-testid=page-delete]'); await sleep(300);
   await press(cam + ' [data-testid=scan-done]'); await sleep(300);
   ok(/remove p2 · done/.test(await calls()), 'scanner: Done makes a delete still offering Undo, then ends the scan ' + await calls());
+  ok(!(await visible(p, '[data-testid=undo-snack]')) && await thumbs() === 0 && await p.locator(cam + ' [data-testid=scan-done]').isDisabled(),
+    'scanner: Done ends the Undo snack and the screen starts empty (its pages let go)');
 
   // the still screens: a page opened large, the corner editor
   ok(await visible(p, '[data-testid=scanner-page] [data-testid=page-view]') && await p.locator('[data-testid=scanner-page] [data-testid=kind-chip]').count() === 6, 'scanner: the gallery\'s second screen is a page opened large');
@@ -390,6 +395,16 @@ async function scanner(browser) {
   await p.locator('[data-testid=open-scanner]').tap(); await sleep(500);
   const full = await p.evaluate(() => { const w = document.querySelector('[data-testid=window][data-kind=full]'); if (!w) return null; const r = w.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, scanner: !!w.querySelector('[data-testid=scanner] [data-testid=scan-status]') }; });
   ok(!!full && full.x === 0 && full.y === 0 && full.w === 390 && full.h === 844 && full.scanner, 'scanner: Window full fills the screen with the scanner ' + JSON.stringify(full));
+  const locked = await p.evaluate(() => ({ attr: document.body.hasAttribute('data-scroll-locked'), overflow: getComputedStyle(document.body).overflow }));
+  ok(locked.attr && locked.overflow === 'hidden', 'scanner: the page behind the full window does not scroll ' + JSON.stringify(locked));
+  // the host's kept page (from before): first in the strip, counted in Done, opened with its type and Delete only
+  const fw = '[data-testid=window][data-kind=full] [data-testid=scanner]';
+  const keptShape = { first: await p.locator(fw + ' [data-testid=scan-thumb]').first().getAttribute('data-id'), n: await p.locator(fw + ' [data-testid=scan-thumb]').count(), done: await p.locator(fw + ' [data-testid=scan-done]').innerText() };
+  await p.locator(fw + ' [data-testid=scan-thumb]').first().dispatchEvent('click'); await sleep(200);
+  Object.assign(keptShape, { kept: await p.locator(fw + ' [data-testid=page-view]').getAttribute('data-kept'), fix: await p.locator(fw + ' [data-testid=page-fix]').count(), keep: await p.locator(fw + ' [data-testid=page-keep]').count(), del: await p.locator(fw + ' [data-testid=page-delete]').count() });
+  ok(keptShape.first === 'kept1' && keptShape.n === 3 && /Done · 3/.test(keptShape.done) && keptShape.kept === 'true' && keptShape.fix === 0 && keptShape.keep === 0 && keptShape.del === 1,
+    'scanner: the pages the host kept show first, count in Done and can be deleted (not fixed) ' + JSON.stringify(keptShape));
+  await p.keyboard.press('Escape'); await sleep(200);
   await p.screenshot({ path: path.join(OUT, 'scanner-full.png') });
   await p.evaluate(() => {
     const band = document.querySelector('[data-testid=window-band]'), r = band.getBoundingClientRect();

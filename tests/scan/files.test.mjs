@@ -521,14 +521,14 @@ await run('session.retake on a page already kept: its pages go to the attempt as
   };
   const site = pickSession({ main: fakeEngine('main', 1), file: null });
   shotOf(site.s, 'shotK');
-  site.s.keep('shotK:0');
+  site.s.keep('shotK:0'); site.s.keep('shotK:1');  // every page looked at: the attempt kept
   assert.deepEqual(site.s.retake('shotK:0'), ['shotK:0', 'shotK:1']);
   site.s.done(); await settle();
   const a = sentAttempts(site.server).find(x => x.id === 'shotK');
   assert.equal(a.outcome, 'kept'); assert.deepEqual(a.deletedPages, [0, 1], 'site: held for Done, sent with the pages thrown away');
   const lab = pickSession({ main: fakeEngine('main', 1), file: null, source: 'lab' });
   shotOf(lab.s, 'shotL');
-  lab.s.keep('shotL:1'); await settle();
+  lab.s.keep('shotL:0'); lab.s.keep('shotL:1'); await settle();
   lab.s.retake('shotL:1'); await settle();
   assert.deepEqual(lab.server.bodies.filter(b => b.action === 'attemptOutcome').map(b => b.dir + ' ' + b.outcome + ' ' + b.page), ['att/shotL deleted 0', 'att/shotL deleted 1'], 'lab: sent already, told as deleted');
 });

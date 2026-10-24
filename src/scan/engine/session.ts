@@ -8,6 +8,7 @@
 //   s.on('status', st => …); s.on('frame', (quad, ok) => …); s.on('page', p => …); s.on('figures', f => …);
 //   await s.startCamera(video); … s.snap(); s.setAuto(false); s.wake(); s.sleep(); s.stop();
 //   await s.pick(files); s.keep(pageId); s.retake(pageId); s.remove(pageId); await s.fix(pageId, pts);
+//   s.hold(); s.resume();  // a page opened large over the camera: the live frame paused under it
 //   s.done();  // or s.discard(): the window closed without Done
 //
 // Events: frame — the frame to draw, every screen frame (null when there is none; ok — green); status — the
@@ -17,9 +18,11 @@
 // url, which file and page, the frame of each document as it is found), so the preview switches to it at once.
 //
 // Picked files (pick, files.ts): each pick is a batch of its own, its pages in the files' order. The training
-// attempts (attempts.ts): every shot and picked picture is one; a page is kept when Looks good is tapped on it
-// (keep — while its shot is still looking for more documents, once the search is over, so the attempt goes
-// with every document the shot gave), at Done (done: the ones left alone too), retaken by Retake (retake: the
+// attempts (attempts.ts): every shot and picked picture is one; it is kept once Looks good was tapped on every
+// page of it still shown (keep — the pages deleted do not count; while its shot is still looking for more
+// documents, once the search is over, so the attempt goes with every document the shot gave, and a page found
+// later must be looked at too; until then every page of it can still be fixed), at Done (done: the ones left
+// alone too), retaken by Retake (retake: the
 // next shot shares its group; a page already kept goes as a deleted page instead), deleted by remove; nothing is
 // decided by a new shot or pick (owner, 2026-10-24). fix(pageId, pts): the corners set by hand go with the
 // attempt (edgesFixed / edgesMoreFixed) and the page is cut again under the same id. done() and discard() end
@@ -27,7 +30,10 @@
 // site); discard() sends nothing (the site's window closed without Done).
 //
 // After a shot the live frame waits (as the lab's did until Looks good / Retake): wake() starts it again from a
-// fresh frame — so Auto does not take the same document again.
+// fresh frame — so Auto does not take the same document again; not while a pick is in work (its pictures are
+// on the screen and the models busy with them). hold() pauses a running live frame (its follow, Auto) while a
+// page is opened large over the camera — a shot or a pick in work goes on — and resume() starts it again from
+// a fresh frame; a wake, a sleep or a pick in between leaves it to them.
 import { Attempts, type AttemptsEnv } from './attempts';
 import { Camera, type GetUserMedia, type VideoLike } from './camera';
 import { Engines } from './engines';
@@ -121,6 +127,12 @@ export class ScanSession {
   private fixedPages = new Set<string>();
   /** Looks good on a page of the shot still in work: attempt → shot, decided once that shot settles. */
   private keepAfterShot = new Map<string, number>();
+  /** The pages Looks good was tapped on, by attempt: the attempt is kept once every page of it still shown is. */
+  private looked = new Map<string, Set<string>>();
+  /** hold() paused a running live frame: resume() starts it again. */
+  private held = false;
+  /** Picks in work (wake waits for them). */
+  private picking = 0;
   /** Bumped by done() / discard(): a pick still in work gives nothing more. */
   private scanGen = 0;
   /** One pick at a time, in the order picked. */
@@ -229,6 +241,7 @@ export class ScanSession {
         batch: () => ++this.batchSeq,
         recorded: (r, frame) => { this.attempts.newAttempt(frame, r.w, r.h, r.input, { id: r.attempt, way: r.way, model: r.model, src: r }); },
         current: () => this.shotId,
+        has: pageId => this.pages.has(pageId),
         status: s => this.emit('status', s),
         page: p => this.putPage(p),
         captured: ms => { this.captureMs = ms; this.emitFigures(); },
@@ -245,8 +258,7 @@ export class ScanSession {
       if (id < 0 || id === this.shotId) this.shotInWork = false;
       // the Looks good tapped while it looked for more documents: its record is whole now
       const kept = [...this.keepAfterShot].filter(([, shot]) => shot === id).map(([a]) => a);
-      for (const a of kept) this.keepAfterShot.delete(a);
-      if (kept.length) this.attempts.decide('kept', kept);
+      for (const a of kept) { this.keepAfterShot.delete(a); this.keepIfAllLooked(a); }
     }
   }
 
@@ -257,6 +269,8 @@ export class ScanSession {
   /** The live frame starts again from a fresh frame (after a shot: the lab's Looks good / Retake); with the
    *  camera put away by sleep(), it starts again on the video it was shown in. */
   wake(video?: VideoLike): void {
+    if (this.picking) return;  // a pick in work: its pictures are on the screen, the models busy with them
+    this.held = false;
     this.shotId++;
     this.shotInWork = false;
     this.live.clearFrame();
@@ -268,6 +282,7 @@ export class ScanSession {
   /** The scanner put away with its models kept (the scan window closed; scan/embed.js's scan-sleep): the
    *  camera stops (one still starting is not turned on), the loops end, a shot in work is dropped. */
   sleep(): void {
+    this.held = false;
     this.shotId++;
     this.shotInWork = false;
     this.camGen++;
@@ -276,13 +291,43 @@ export class ScanSession {
     this.live.hide();
   }
 
-  /** Looks good on a page: its attempt kept (sent at once in the lab, held for Done on the site) — once its shot
-   *  has settled when it is still looking for more documents (its record still growing). */
+  /** The live frame paused while a page is opened large over the camera (its follow and Auto with it); a shot
+   *  or a pick in work goes on. Nothing when the live frame is not running (it waits after a shot already). */
+  hold(): void {
+    if (!this.live.running) return;
+    this.live.running = false;
+    this.held = true;
+  }
+  /** The live frame started again (from a fresh frame) after hold() — unless a wake, a sleep or a pick took
+   *  over meanwhile, or the camera is off. */
+  resume(): void {
+    if (!this.held) return;
+    this.held = false;
+    if (!this.camera.on || !this.live.video || this.picking) return;
+    this.live.clearFrame();
+    this.live.start();
+  }
+
+  /** Looks good on a page: its attempt kept (sent at once in the lab, held for Done on the site) once every page
+   *  of it still shown was looked at — and once its shot has settled when it is still looking for more
+   *  documents (its record still growing). */
   keep(pageId: string): void {
     const p = this.pages.get(pageId);
     if (!p) return;
     const { attempt, shot } = p.record;
+    const seen = this.looked.get(attempt) || new Set<string>();
+    seen.add(pageId);
+    this.looked.set(attempt, seen);
     if (shot > 0 && shot === this.shotId && this.shotInWork) { this.keepAfterShot.set(attempt, shot); return; }
+    this.keepIfAllLooked(attempt);
+  }
+
+  /** The attempt kept when Looks good was tapped on each of its pages still shown (and on one at least). */
+  private keepIfAllLooked(attempt: string): void {
+    const seen = this.looked.get(attempt);
+    if (!seen || !seen.size || !this.attempts.undecided(attempt)) return;
+    for (const x of this.pages.values()) if (x.record.attempt === attempt && !seen.has(x.id)) return;
+    this.looked.delete(attempt);
     this.attempts.decide('kept', [attempt]);
   }
 
@@ -293,6 +338,8 @@ export class ScanSession {
     this.shotInWork = false;
     this.scanGen++;
     this.keepAfterShot.clear();
+    this.looked.clear();
+    this.held = false;
     this.pages.clear();
     this.removed.clear();
     this.fixedPages.clear();
@@ -321,6 +368,7 @@ export class ScanSession {
     const attempt = p.record.attempt;
     const gone = [...this.pages.values()].filter(x => x.record.attempt === attempt);
     this.keepAfterShot.delete(attempt);
+    this.looked.delete(attempt);
     if (this.attempts.undecided(attempt)) this.attempts.decide('retaken', [attempt]);
     else for (const x of gone) void this.attempts.pageDeleted(attempt, x.pg);
     for (const x of gone) { this.removed.add(x.id); this.pages.delete(x.id); }
@@ -333,11 +381,15 @@ export class ScanSession {
     const p = this.pages.get(pageId);
     this.removed.add(pageId);
     this.pages.delete(pageId);
-    if (p) void this.attempts.pageDeleted(p.record.attempt, p.pg);
+    if (!p) return;
+    const { attempt, shot } = p.record;
+    void this.attempts.pageDeleted(attempt, p.pg);
+    // the pages left of it may all be looked at now (not while its shot still looks for more)
+    if (!(shot > 0 && shot === this.shotId && this.shotInWork)) this.keepIfAllLooked(attempt);
   }
 
   /** What the corner editor needs for a page: its photo and the corners to start from — null when the photo is
-   *  no longer kept or the attempt was sent already (Retake it). */
+   *  no longer kept or the attempt was sent already (every page of it looked at, or Done). */
   fixable(pageId: string): { frame: OffscreenCanvas; w: number; h: number; pts: Quad } | null {
     const p = this.pages.get(pageId), f = p && this.attempts.frameOf(p.record.attempt);
     if (!p || !f || !this.attempts.canFix(p.record.attempt)) return null;
@@ -348,7 +400,7 @@ export class ScanSession {
    *  and the page is cut again from them (set upright) and given again under the same id, then read again. */
   async fix(pageId: string, pts: Quad): Promise<boolean> {
     const p = this.pages.get(pageId), f = p && this.attempts.frameOf(p.record.attempt);
-    if (!p || !f || !this.attempts.fixed(p.record.attempt, p.pg, pts)) { this.log.log('This page can no longer be fixed — Retake it'); return false; }
+    if (!p || !f || !this.attempts.fixed(p.record.attempt, p.pg, pts)) { this.log.log('This page can no longer be fixed (its photo is gone, or it was sent)'); return false; }
     this.log.log('Corners fixed by hand (page ' + (p.pg + 1) + ')');
     this.fixedPages.add(pageId);
     let page: ShotPage;
@@ -370,8 +422,11 @@ export class ScanSession {
    *  order; the pages before it are left as they are (nothing is marked looked at). The live frame waits for
    *  wake() after it, as after a shot. Returns how many pages it gave. */
   pick(files: PickFile[]): Promise<number> {
+    this.picking++;
     const run = this.pickChain.then(() => this.runPick(files));
     this.pickChain = run.catch(() => 0);
+    const settled = (): void => { this.picking--; };
+    run.then(settled, settled);
     return run;
   }
 
@@ -379,7 +434,7 @@ export class ScanSession {
     if (!files.length) return 0;
     const batch = ++this.batchSeq, t0 = this.env.now(), log = this.log, gen = this.scanGen;
     this.shotId++; this.shotInWork = false;  // a shot in work is dropped (the lab's pick bumped it too)
-    this.live.running = false;
+    this.live.running = false; this.held = false;
     while (this.live.inFlight) await this.sleepMs(10);
     try { await this.engines.ensureCap(); }
     catch (e) { log.err('Accurate model: ' + errText(e)); this.emit('status', { key: 'pick_failed' }); return 0; }

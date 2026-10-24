@@ -6,9 +6,10 @@
 // A window opened from another one goes back to it: the caller keeps which
 // window is open, so closing the second re-opens the first (CLAUDE.md template).
 // `full` (the scanner, docs/scan-plan.md → S9): the whole screen on a phone and a
-// computer alike — no backdrop (nothing is outside it), closed by a swipe down
-// from its top band or Escape; still no ✕ and no Cancel. The title is for screen
-// readers only; the content draws its own bars.
+// computer alike — no backdrop to tap (nothing is outside it; a plain ground under
+// it only locks the page's scroll), closed by a swipe down from its top band or
+// Escape; still no ✕ and no Cancel. The title is for screen readers only; the
+// content draws its own bars.
 import * as React from 'react';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,9 @@ function FullWindow({ open, onOpenChange, title, description, footer, children, 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
+        {/* the ground under it: Radix locks the page's scroll through its overlay (the page behind does not
+            scroll, nor bounce on iOS); a tap on it closes nothing (onPointerDownOutside below) */}
+        <DialogPrimitive.Overlay data-slot="window-full-ground" className="fixed inset-0 z-50 bg-background" />
         <DialogPrimitive.Content
           data-slot="window-full"
           data-testid="window"

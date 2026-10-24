@@ -1,8 +1,9 @@
 // /next — the full-screen scanner (docs/scan-plan.md → S9, src/scan/ui/) on a fake session (no camera, no
 // models): the three screens at a phone's size (390×844) — the camera with the status line, the pages' strip,
 // the bar and Done; a page opened large with its type chips; the corner editor — and the scanner in a full
-// Window. The first screen plays: the status changes, the shutter takes a page, a thumbnail opens it, Fix
-// corners / Delete / Looks good work; what it asked the session for is listed under it.
+// Window (with a page its host kept from before, first in the strip). The first screen plays: the status
+// changes, the shutter takes a page, a thumbnail opens it, Fix corners / Delete / Looks good work; what it asked
+// the session for is listed under it.
 import * as React from 'react';
 import { toast } from 'sonner';
 import { IconScan } from '@tabler/icons-react';
@@ -11,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Window } from '@/components/shared/window';
 import { ScannerScreen } from '@/scan/ui/ScannerScreen';
 import { FakeScanSession } from '@/scan/ui/fake-session';
+import { token } from '@/scan/ui/LiveOverlay';
+import type { KeptPage } from '@/scan/ui/useScanSession';
 
 function PhoneFrame({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
   return (
@@ -21,12 +24,25 @@ function PhoneFrame({ id, label, children }: { id: string; label: string; childr
   );
 }
 
+/** A page the host keeps already (the site's batches on the phone until read): drawn once, as a data URL. */
+function keptPicture(): string {
+  const c = document.createElement('canvas'), g = c.getContext('2d');
+  if (!g) return '';
+  c.width = 300; c.height = 420;
+  g.fillStyle = token('--ink'); g.fillRect(0, 0, 300, 420);
+  g.fillStyle = token('--uline-1'); g.fillRect(0, 0, 300, 60);
+  return c.toDataURL('image/png');
+}
+
 export function ScannerDemo() {
   const live = React.useMemo(() => new FakeScanSession(3), []);
   const pageSession = React.useMemo(() => new FakeScanSession(3), []);
   const fixSession = React.useMemo(() => new FakeScanSession(3), []);
   const [full, setFull] = React.useState(false);
   const fullSession = React.useMemo(() => (full ? new FakeScanSession(2) : null), [full]);
+  // the full window's host keeps a page from before (a contract on the phone): first in the strip, counted in Done
+  const [kept, setKept] = React.useState<KeptPage[]>([]);
+  React.useEffect(() => { if (full) setKept([{ id: 'kept1', src: keptPicture(), kind: 'contract' }]); }, [full]);
   const [calls, setCalls] = React.useState<string[]>([]);
   React.useEffect(() => { live.onCall = () => setCalls([...live.calls]); return () => { live.onCall = null; }; }, [live]);
   const done = (n: number) => toast(tr('{n} pages done', { n }));
@@ -47,7 +63,8 @@ export function ScannerDemo() {
       <p data-testid="scanner-calls" className="font-mono text-[12px] text-ink-2">{calls.length ? calls.join(' · ') : tr('Nothing asked yet')}</p>
       <div><Button variant="primary" onClick={() => setFull(true)} data-testid="open-scanner"><IconScan className="size-[18px]" />{tr('Open the scanner full screen')}</Button></div>
       <Window full open={full} onOpenChange={setFull} title={tr('Scanner')}>
-        {fullSession && <ScannerScreen mode="site" session={fullSession} onDone={p => { setFull(false); done(p.length); }} />}
+        {fullSession && <ScannerScreen mode="site" session={fullSession} kept={kept} onRemoveKept={id => setKept(k => k.filter(x => x.id !== id))}
+          onDone={p => { setFull(false); done(p.length); }} />}
       </Window>
     </section>
   );

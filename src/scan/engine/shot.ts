@@ -10,7 +10,8 @@
 //    widest strips left beside the first; a frame overlapping a found one by over 30 % is that one again;
 //  - then a document lying on one found (an ID card on its ספח, findInside), up to MAX_DOCS in all, one level.
 // Every page is given the moment it is cut (and again when refined), so the screen can show, delete or fix it
-// at once. A newer shot (or the scanner put away) drops the work of an older one (the shot id).
+// at once. A newer shot (or the scanner put away) drops the work of an older one (the shot id) — but the pages
+// it already gave are still read, as long as the session still holds them (has), so none is left "Reading…".
 import { MAX_DOCS, docShape, goodQuad, insideDoc, quadIoU } from './geometry';
 import type { Engine, LoadableEngine } from './engines';
 import { smallRGBA, type Live } from './live';
@@ -103,6 +104,9 @@ export interface ShotCtx {
   recorded(record: ShotRecord, frame: OffscreenCanvas): void;
   /** The shot id now: work for an older one is dropped. */
   current(): number;
+  /** Whether the session still holds the page (not deleted, the scan not ended): a page given by a shot that a
+   *  newer one took over is still read then. */
+  has(pageId: string): boolean;
   status(s: SessionStatus): void;
   page(p: ShotPage): void;
   captured(ms: number): void;
@@ -158,7 +162,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   const p0 = first as ShotPage | null;
   if (!p0) return 0;
   const readouts = await readPage(c.readers, p0.canvas, c.now);
-  if (id !== c.current()) return 0;
+  if (id !== c.current()) { if (c.has(p0.id)) c.page({ ...p0, readouts }); return 0; }
   first = { ...p0, readouts }; c.page(first);
   if (!engine.hasCap()) { c.status({ key: 'found', count: 1 }); return 1; }
   c.status({ key: 'refining' });
@@ -176,7 +180,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
       const p1 = first as ShotPage | null;
       if (!p1) return 0;
       const r1 = await readPage(c.readers, p1.canvas, c.now);
-      if (id !== c.current()) return 0;
+      if (id !== c.current()) { if (c.has(p1.id)) c.page({ ...p1, readouts: r1 }); return 0; }
       first = { ...p1, readouts: r1 }; c.page(first);
     }
     firstQ = ex; live.target = { pts: ex, ok: true }; live.shown = copy(ex);
@@ -195,28 +199,33 @@ export async function takeShot(c: ShotCtx): Promise<number> {
     c.status({ key: 'looking_more', count: found.length });
     return true;
   };
-  for (let n = 1; n < 4; n++) {
-    const q = await findNext(frame, w, h, found, engine);
-    if (id !== c.current()) return 0;
-    if (!q || !(await addMore(q))) break;
-  }
-  if (id !== c.current()) return 0;
-  // a document lying on one found (an ID card on its ספח)
-  for (const q of found.slice()) {
-    if (found.length >= MAX_DOCS) break;
-    const inner = await findInside(pix, w, h, q, engine, found);
-    if (id !== c.current()) return 0;
-    if (inner && !(await addMore(inner))) return 0;
-  }
-  c.log.log((found.length > 1 ? found.length + ' documents' : 'One document') + ' on this photo (' + Math.round(c.now() - t0) + ' ms in all)');
-  c.status({ key: 'found', count: found.length });
-  // the other pages' readouts, once the search is over (it is not slowed by them)
+  const search = async (): Promise<boolean> => {
+    for (let n = 1; n < 4; n++) {
+      const q = await findNext(frame, w, h, found, engine);
+      if (id !== c.current()) return false;
+      if (!q || !(await addMore(q))) break;
+    }
+    if (id !== c.current()) return false;
+    // a document lying on one found (an ID card on its ספח)
+    for (const q of found.slice()) {
+      if (found.length >= MAX_DOCS) break;
+      const inner = await findInside(pix, w, h, q, engine, found);
+      if (id !== c.current()) return false;
+      if (inner && !(await addMore(inner))) return false;
+    }
+    c.log.log((found.length > 1 ? found.length + ' documents' : 'One document') + ' on this photo (' + Math.round(c.now() - t0) + ' ms in all)');
+    c.status({ key: 'found', count: found.length });
+    return true;
+  };
+  const whole = await search();
+  // the other pages' readouts, once the search is over (it is not slowed by them) — also when a newer shot
+  // took over: the pages given are on the screen, each still held is read
   for (const p of more) {
+    if (!c.has(p.id)) continue;
     const r = await readPage(c.readers, p.canvas, c.now);
-    if (id !== c.current()) break;
-    c.page({ ...p, readouts: r });
+    if (c.has(p.id)) c.page({ ...p, readouts: r });
   }
-  return found.length;
+  return whole ? found.length : 0;
 }
 
 /** A document lying on another (findInside): the found one q cut flat (not turned) and looked at on its own;
