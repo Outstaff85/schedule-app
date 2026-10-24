@@ -143,8 +143,8 @@ const SAT = d => d.getDay() === 6;
 // The old copies return { hours, warnings }; the module adds `codes` (what each
 // warning is, in step with the texts).
 const hw = a => ({ hours: a.hours, warnings: [...a.warnings] }); // (in this realm: both sides' objects come from the vm)
-// Intended differences (2026-10-24, docs/history.md → Payroll: a pair's length
-// from its time stamps): the old copies counted a pair from its 'HH:MM'
+// Intended differences (2026-10-24, docs/history.md → Payroll at the bounds of
+// time): the old copies counted a pair from its 'HH:MM'
 // strings, so a shift across a clock change (Israel: late March, late October)
 // or longer than 24h came out 1h off or a day short. From 1 November 2026
 // (Payroll.PAIR_STAMPS_FROM) a bucket like that is checked against its time

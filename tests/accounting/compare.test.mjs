@@ -9,8 +9,8 @@
 // Billable by client and its details, the pay window's figures, the salary
 // export table (every period, Select), the accountant workbook, the payable
 // summary, the hours-approval lines and counts.
-// Intended differences (2026-10-24, docs/history.md → Accounting: a shift in
-// the period it opened): the old code cut the punches at the period's bounds
+// Intended differences (2026-10-24, docs/history.md → Payroll at the bounds of
+// time): the old code cut the punches at the period's bounds
 // before pairing, so a shift across a bound (a night from the last day of a
 // month, Saturday night into Sunday for This Week) was lost on both sides. The
 // generated months keep out the shifts that cross a bound, and the new rule is

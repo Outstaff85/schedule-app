@@ -80,13 +80,13 @@ A client login reviews its workers' hours, with one tab, **Hours**. A client mus
 
 ### Logins
 
-- Made in the manager app: Admin → Users → New user, a **Client** template (the template says the role and its rights — the default Client template: Hours, Approve / Dispute / Fix hours), then the client (the user window's client picker, `src/manager/Users.tsx`). "Only own workers" is on and locked.
+- Made in the manager app: Admin → Users → New user, a **Client** template (the template says the role and its rights — the default Client template: Hours, Approve / Dispute / Fix hours; a Client template may also tick Schedule and Export — `RIGHT_CAPS`), then the client (the user window's client picker, `src/manager/Users.tsx`). "Only own workers" is on and locked.
 - Server side (`core.py`): `create_tenant_user` / `update_user` take a Client template with `clientId` (required); `claims_for` gives it `role: 'client'`, `clientId` and `rt` (its flat rights). The login reply carries `clientId` and `rights`.
 - The Users list shows a client login as "(client)" with its client and its hours ticks.
 - `firestore.rules`: no rule lets a `client` role read or write anything (tested in `rules.test.mjs`).
 
 ### In the manager app
 
-- **The gate.** One login page for every role: after the sign-in the manager page's gate runs `startPortal` (`src/manager/page/gate.ts`) instead of the app's start — no firm data is loaded. It writes the client's session key `clientPortal_session` = `{uid, role:'client', tenantId, clientId, username}`, checks the Firebase sign-in (`loadFirestoreBackend().currentUser()`; gone or another user's → the sign-in), and gives the frame one tab, Hours (`portalTabs`, `src/manager/portal.ts`).
+- **The gate.** One login page for every role: after the sign-in the manager page's gate runs `startPortal` (`src/manager/page/gate.ts`) instead of the app's start — no firm data is loaded. It writes the client's session key `clientPortal_session` = `{uid, role:'client', tenantId, clientId, username, rights}` (the gate clears a client or supplier session that has no `rights` array — signed in before the flat rights; `gateApp`, `gate.ts`), checks the Firebase sign-in (`loadFirestoreBackend().currentUser()`; gone or another user's → the sign-in), and gives the frame one tab, Hours (`portalTabs`, `src/manager/portal.ts`).
 - **The tab.** `PortalView` (`src/manager/Portal.tsx`), drawn into the page's `#sectionPortal`: `HoursReview` with its client named on top and `sign={signer: the login's name}` — the approved month is signed with a finger and kept as a PDF with the client's documents ([hours-review.md](hours-review.md) → Signing the month); its `call` posts to the `hours` function with the ID token; a session error in the reply signs out.
 - What a client receives is only the `hours` function's reply for its client (names, shifts at its site, its day entries, when and by whom the month was signed) — the page reads nothing else; `tests/e2e/main.test.js` checks the replies and the page for money, suppliers, GPS, files and tokens, and that no firm data is loaded.

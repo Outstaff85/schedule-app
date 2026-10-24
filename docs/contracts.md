@@ -24,8 +24,10 @@ Every scanned page of a worker is its own JPEG in Storage, and the signature a s
 Once, by the workflow **Split the old scan sidecars into pages** (`.github/workflows/migrate-scan-pages.yml`, started by hand, the deploy's service account), for every firm or one (`tenant`):
 
 - `dry-run` — reads every sidecar of a worker that has no `scanPages` yet, splits it in memory and reports per firm the workers, pages, signatures, the sidecars' and the pages' bytes and the failures (a sidecar gone, not in the worker's folder, or broken). Writes nothing.
-- `apply` — writes the pages (a page over 2000 px or not a JPEG is turned into one, Pillow; the others byte for byte) and the signature, with the HR stamp (`hrId` in the file's metadata — the worker's own `hrId`, else the sidecar's stamp, read with `bucket.get_blob`, since a blob from `bucket.blob()` has no metadata loaded), then updates only the worker's own fields (`scanPages`, `sigFileId`, `sigSavedAt` — the sidecar's time —, `assetsMigratedFrom` = the sidecar's path, `assetsFileId` removed). The sidecar file stays. Run again, it finds nothing more.
-- `cleanup` — deletes the sidecars already split (`assetsMigratedFrom`) and that field.
+- `apply` — writes the pages (a page over 2000 px or not a JPEG is turned into one, Pillow; the others byte for byte) and the signature, with the HR stamp (`hrId` in the file's metadata — the worker's own `hrId`, else the sidecar's stamp, read with `bucket.get_blob`, since a blob from `bucket.blob()` has no metadata loaded), then a record of the split outside the worker (`tenants/<t>/migrations/scanPages_<worker>`: the sidecar, the new fields, the stamp; no rule lets the app reach it), then updates only the worker's own fields (`scanPages`, `sigFileId`, `sigSavedAt` — the sidecar's time —, `assetsMigratedFrom` = the sidecar's path, `assetsFileId` removed). The sidecar file stays. Run again, it splits nothing more, and it **repairs a stale save**: the app saves a worker as a whole document, so a manager device that still holds a copy from before `apply` (an unsaved edit, kept across reloads) puts back `assetsFileId` with no `scanPages`; a worker whose `assetsFileId` is its recorded sidecar and has no pages gets the recorded fields back with a field update — the same files, none written again, even after `cleanup` deleted the sidecar (`restored` in the report; a recorded file gone is a failure). A worker split before the records existed gets one from its current fields (`recorded`).
+- `cleanup` — deletes the sidecars already split (`assetsMigratedFrom`) and that field, only for a worker whose fields are its record's (no `assetsFileId`, the same `scanPages` and `sigFileId`; otherwise `skipped`, with the reason). The record stays, so a stale save that comes later is still repaired by running `apply` again.
+
+**Every manager device reloads (or signs out) after `apply`, and `cleanup` runs only after that** — a device's unsaved copy from before `apply` is what a stale save writes back.
 
 `apply` and `cleanup` change real workers' data: they are run only with the owner's yes, after a `dry-run`. Tests: `tests/auth/test_migrate_pages.py`.
 
@@ -65,7 +67,7 @@ They are written in Latin letters, in double braces, with no spaces. A Hebrew ma
 | `{{site}}` | the client or site (several: joined by commas) |
 | `{{supplier}}` | the supplier, when there is one |
 | `{{schedule}}` | the weekly hours (days and times) |
-| **Pay** — filled only when the login sending it may see pay (`seePay`); otherwise the send is refused, as for the date | |
+| **Pay** — filled only when the login sending it may see pay (the owner or super-admin, a staff login with Accounting or Edit pay, an HR with See workers' pay — `may_see_pay` / `canSeePay`); otherwise the send is refused, as for the date | |
 | `{{rate}}` | the worker's rate (₪ per hour, or per day for daily pay) |
 | `{{pay_mode}}` | שעתי / יומי |
 | `{{ot_rate}}` | overtime rate |

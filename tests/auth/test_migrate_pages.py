@@ -57,6 +57,9 @@ class Doc:
     def to_dict(self):
         return dict(self.coll[self.id])
 
+    def set(self, data):
+        self.coll[self.id] = dict(data)
+
     def update(self, fields):
         for k, v in fields.items():
             if v is DEL:
@@ -66,22 +69,16 @@ class Doc:
 
 
 class Coll:
-    def __init__(self, data):
-        self.data = data
+    """A collection; one not there yet (migrations) is made only by a write."""
+    def __init__(self, parent, name):
+        self.parent, self.name = parent, name
 
     def stream(self):
-        return [Doc(self.data, k) for k in self.data]
+        data = self.parent.get(self.name, {})
+        return [Doc(data, k) for k in data]
 
     def document(self, id):
-        return Doc(self.data, id) if id in self.data else Ref(self.data, id)
-
-
-class Ref:
-    def __init__(self, data, id):
-        self.data, self.id = data, id
-
-    def collection(self, name):
-        return Coll(self.data[self.id][name])
+        return Doc(self.parent.setdefault(self.name, {}), id)
 
 
 class Db:
@@ -100,7 +97,7 @@ class TenantColl:
         return [type("D", (), {"id": t})() for t in self.tenants]
 
     def document(self, t):
-        return type("R", (), {"collection": lambda _s, n: Coll(self.tenants[t][n])})()
+        return type("R", (), {"collection": lambda _s, n: Coll(self.tenants[t], n)})()
 
 
 def _png(w, h, alpha=False):
@@ -191,3 +188,69 @@ def test_sidecar_outside_the_workers_folder_refused():
     store[tenants[T]["workers"]["w1"]["assetsFileId"]] = store[SIDE]
     rep = scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
     assert rep[T]["failed"][0]["worker"] == "w1" and "scanPages" not in tenants[T]["workers"]["w1"]
+
+
+def _stale_save(w, before):
+    """The app's whole-document save of a copy taken before apply (batch.set, no merge)."""
+    w.clear()
+    w.update(json.loads(json.dumps(before)))
+
+
+def test_stale_save_after_apply_is_restored_without_new_files():
+    db, bucket, tenants, store = _setup()
+    w = tenants[T]["workers"]["w1"]
+    before = json.loads(json.dumps(w))  # a manager device's unsaved copy from before apply
+    scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
+    split = {k: w[k] for k in ("scanPages", "sigFileId", "sigSavedAt", "assetsMigratedFrom")}
+    rec = tenants[T]["migrations"]["scanPages_w1"]
+    assert rec["sidecar"] == SIDE and rec["scanPages"] == split["scanPages"] and rec["sigFileId"] == split["sigFileId"]
+    files = set(store)
+    _stale_save(w, before)
+    assert w["assetsFileId"] == SIDE and "scanPages" not in w
+    # cleanup leaves the sidecar alone (the worker no longer carries the split)
+    rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["cleaned"] == 0 and SIDE in store
+    # the next apply puts the same fields back and writes no file
+    rep = scan_pages.migrate(db, bucket, "apply", now_ms=9, delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["restored"] == 1 and rep[T]["workers"] == 0
+    assert set(store) == files
+    assert {k: w[k] for k in split} == split and "assetsFileId" not in w and w["phone"] == "050"
+    # now cleanup deletes the sidecar, and keeps the record
+    rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["cleaned"] == 1 and SIDE not in store and "scanPages_w1" in tenants[T]["migrations"]
+
+
+def test_stale_save_after_cleanup_is_still_repaired():
+    db, bucket, tenants, store = _setup()
+    w = tenants[T]["workers"]["w1"]
+    before = json.loads(json.dumps(w))
+    scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
+    pages = w["scanPages"]
+    scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
+    assert SIDE not in store
+    _stale_save(w, before)  # the sidecar it points at is gone
+    files = set(store)
+    rep = scan_pages.migrate(db, bucket, "apply", now_ms=9, delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["restored"] == 1 and rep[T]["failed"] == [{"worker": "w4", "reason": "the sidecar is gone"}]
+    assert set(store) == files and w["scanPages"] == pages and "assetsFileId" not in w
+
+
+def test_cleanup_skips_a_worker_whose_fields_are_not_the_split():
+    db, bucket, tenants, store = _setup()
+    scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
+    w = tenants[T]["workers"]["w1"]
+    w["sigFileId"] = "elsewhere.png"
+    rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["cleaned"] == 0 and SIDE in store and rep[T]["skipped"][0]["worker"] == "w1"
+
+
+def test_a_worker_split_before_the_records_gets_one():
+    db, bucket, tenants, store = _setup()
+    scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
+    tenants[T]["migrations"].clear()  # as if split by the old script
+    rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["cleaned"] == 0 and SIDE in store
+    rep = scan_pages.migrate(db, bucket, "apply", now_ms=6, delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["recorded"] == 1 and tenants[T]["migrations"]["scanPages_w1"]["sidecar"] == SIDE
+    rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["cleaned"] == 1 and SIDE not in store

@@ -8,7 +8,7 @@ The Admin tab (`#sectionAdmin`) and the punch-log data behind it: the punch log,
 
 | Pane | Who |
 |---|---|
-| Punch Log | everyone who can open the tab — a staff login needs its Punch log tick (`punchlog`), any other role the `workers` permission (`tabAllowed`, `src/manager/logic/access.ts`) |
+| Punch Log | a staff login needs its Punch log tick (`punchlog`); the owner and the super-admin always; an HR never (`HR_HIDDEN_TABS`); a supplier or client works in the Portal and never reaches it (`tabAllowed`, `src/manager/logic/access.ts`) |
 | Firms, Users | `superadmin`, `tenant_admin` |
 | Contract templates | `tenant_admin`, and a `superadmin` inside a firm (`viewingTenantId`) — [contracts.md](contracts.md) → Contract templates |
 | Errors, Timings, Scanner | `superadmin` |
