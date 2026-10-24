@@ -148,8 +148,10 @@ def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=
             if not path.startswith(f"tenants/{t}/workers/{w['id']}/assets/"):
                 r["failed"].append({"worker": w["id"], "reason": "the sidecar is not in the worker's folder"})
                 continue
-            blob = bucket.blob(path)
-            if not blob.exists():
+            # get_blob loads the file's own metadata (bucket.blob() does not: its
+            # .metadata stays None until a reload) — None when the file is gone
+            blob = bucket.get_blob(path)
+            if blob is None:
                 r["failed"].append({"worker": w["id"], "reason": "the sidecar is gone"})
                 continue
             raw = blob.download_as_bytes()
@@ -166,10 +168,12 @@ def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=
             r["pageBytes"] += sum(len(f[1]) for f in files)
             if mode != "apply":
                 continue
+            # the HR stamp an own-workers HR reads by (storage.rules): the worker's
+            # own hrId, else the sidecar's stamp
             meta = {"workerId": w["id"]}
-            old_meta = getattr(blob, "metadata", None) or {}
-            if old_meta.get("hrId"):
-                meta["hrId"] = old_meta["hrId"]
+            hr = w.get("hrId") or (getattr(blob, "metadata", None) or {}).get("hrId")
+            if hr:
+                meta["hrId"] = hr
             for fpath, data_bytes, ctype, kind in files:
                 nb = bucket.blob(fpath)
                 nb.metadata = dict(meta, kind=kind)

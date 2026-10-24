@@ -24,7 +24,7 @@ Every scanned page of a worker is its own JPEG in Storage, and the signature a s
 Once, by the workflow **Split the old scan sidecars into pages** (`.github/workflows/migrate-scan-pages.yml`, started by hand, the deploy's service account), for every firm or one (`tenant`):
 
 - `dry-run` — reads every sidecar of a worker that has no `scanPages` yet, splits it in memory and reports per firm the workers, pages, signatures, the sidecars' and the pages' bytes and the failures (a sidecar gone, not in the worker's folder, or broken). Writes nothing.
-- `apply` — writes the pages (a page over 2000 px or not a JPEG is turned into one, Pillow; the others byte for byte) and the signature, with the sidecar's HR stamp (`hrId`), then updates only the worker's own fields (`scanPages`, `sigFileId`, `sigSavedAt` — the sidecar's time —, `assetsMigratedFrom` = the sidecar's path, `assetsFileId` removed). The sidecar file stays. Run again, it finds nothing more.
+- `apply` — writes the pages (a page over 2000 px or not a JPEG is turned into one, Pillow; the others byte for byte) and the signature, with the HR stamp (`hrId` in the file's metadata — the worker's own `hrId`, else the sidecar's stamp, read with `bucket.get_blob`, since a blob from `bucket.blob()` has no metadata loaded), then updates only the worker's own fields (`scanPages`, `sigFileId`, `sigSavedAt` — the sidecar's time —, `assetsMigratedFrom` = the sidecar's path, `assetsFileId` removed). The sidecar file stays. Run again, it finds nothing more.
 - `cleanup` — deletes the sidecars already split (`assetsMigratedFrom`) and that field.
 
 `apply` and `cleanup` change real workers' data: they are run only with the owner's yes, after a `dry-run`. Tests: `tests/auth/test_migrate_pages.py`.

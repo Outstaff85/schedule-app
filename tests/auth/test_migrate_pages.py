@@ -38,9 +38,15 @@ class Bucket:
         self.store = store
 
     def blob(self, path):
+        # like the real client: a blob from bucket.blob() has no metadata loaded
+        return Blob(self.store, path)
+
+    def get_blob(self, path):
+        # like the real client: fetched with its metadata, None when not there
+        if path not in self.store:
+            return None
         b = Blob(self.store, path)
-        if path in self.store:
-            b.metadata = self.store[path][2]
+        b.metadata = self.store[path][2]
         return b
 
 
@@ -150,6 +156,17 @@ def test_apply_splits_into_pages_and_keeps_the_sidecar():
     # cleanup deletes the sidecar and its mark
     rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
     assert rep[T]["cleaned"] == 1 and SIDE not in store and "assetsMigratedFrom" not in w
+
+
+def test_apply_stamps_the_workers_hr_id():
+    # the worker's own hrId wins; a sidecar with no stamp still gives its pages one
+    db, bucket, tenants, store = _setup()
+    store[SIDE] = (store[SIDE][0], store[SIDE][1], {"workerId": "w1"})
+    tenants[T]["workers"]["w1"]["hrId"] = "u-hr2"
+    scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
+    base = f"tenants/{T}/workers/w1"
+    for p in (f"{base}/pages/5-0-id_front.jpg", f"{base}/signature/5-signature.png"):
+        assert store[p][2]["hrId"] == "u-hr2"
 
 
 def test_page_kind_matches_the_app():
