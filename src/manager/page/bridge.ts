@@ -15,6 +15,7 @@ import { canChange, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHr
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { csvText } from '../../lib/utils';
+import { editedPunchTs, punchDate } from '../logic/punches';
 import { autoSave, latestHoursBatch } from '../data/store';
 import { fsTenantId, getSession, gsAuth } from '../data/session';
 import { activeTenantIdForAdmin, activeTenantProfile, adminPanes, assignWorkersToHr, assignWorkersToSupplier, firmProfileMissing, firmsPayableRows, hrColor, loadAdminCache, loadFirmsCache } from '../logic/admin';
@@ -647,11 +648,11 @@ function savePunchEdit(id?: any, ed?: any){
   if(idx<0) return;
   log[idx].type = ed.type;
   // ts is what pay and the live sync use (time is rebuilt from it), so a new
-  // time moves ts too — same local day, the edited hour and minute.
-  const tm = /^(\d{1,2}):(\d{2})$/.exec(ed.time||''), when = new Date(log[idx].ts);
-  if(tm && ed.time !== log[idx].time && !isNaN(when.getTime())){
-    when.setHours(Number(tm[1]), Number(tm[2]), 0, 0);
-    log[idx].ts = when.toISOString();
+  // time moves ts too: the edited hour and minute on the day that keeps the
+  // shift whole (an OUT after its IN, within 24h — logic/punches.ts).
+  if(ed.time !== log[idx].time){
+    const ts = editedPunchTs(log, log[idx], ed.time, ed.type);
+    if(ts){ log[idx].ts = ts; log[idx].date = punchDate(ts); }
   }
   log[idx].time = ed.time;
   if(ed.site==='__custom__'){

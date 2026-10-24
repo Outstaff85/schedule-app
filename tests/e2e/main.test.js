@@ -276,13 +276,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(tf.figs === 'On shift,Late,No punch,Notices' && tf.tiles && /notices/.test(tf.all) && /log/.test(tf.all) && tf.noticeN >= 1 && tf.only && tf.back && tf.folded && tf.open && tf.emptyFrame && tf.sheet && tf.hidden && tf.shown && tf.closed,
     'today (React): figures as glass tiles, a figure filters to its section and Show all brings the rest back, the arrow folds a section (kept), the empty log in a dashed frame, a chip opens the notices; salary search opens from its icon ' + JSON.stringify(tf));
-  // Today's hours and who is on shift: a shift open since 4 hours ago shows 4h (not twice that),
-  // a night shift opened yesterday at 22:00 is still on shift after midnight (its IN only in the last 24 hours).
+  // Today's hours and who is on shift: a shift open since 4 hours ago shows 4h (not twice that), and a
+  // forgotten IN 20 hours ago (yesterday's or a double tap today) adds nothing — only the last shift runs;
+  // a night shift opened yesterday at 23:00 is still on shift after midnight (its IN only in the last 24 hours)
+  // while it is under 16 hours old, with its hours up to now.
   const tn = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
-    const base = getPunchLog().slice(), now = new Date(), y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 22, 0);
+    const base = getPunchLog().slice(), now = new Date(), y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 0);
+    r.danaH = (now - y) / 36e5; r.danaOn = r.danaH <= 16;
     const p = (id, wid, name, ts) => ({id, workerId: wid, workerName: name, type: 'in', ts: ts.toISOString(), time: String(ts.getHours()).padStart(2, '0') + ':' + String(ts.getMinutes()).padStart(2, '0'), site: '', clientId: 'c1'});
-    try { savePunchLog(base.concat([p('t-avi', 'w1', 'Avi Cohen', new Date(now.getTime() - 4 * 36e5)), p('t-dana', 'w2', 'Dana Levi', y)])); } catch (e) {}
+    try { savePunchLog(base.concat([p('t-avi0', 'w1', 'Avi Cohen', new Date(now.getTime() - 20 * 36e5)), p('t-avi', 'w1', 'Avi Cohen', new Date(now.getTime() - 4 * 36e5)), p('t-dana', 'w2', 'Dana Levi', y)])); } catch (e) {}
     const snap = ManagerBridge.today();
     r.recent = snap.recent.some(e => e.id === 't-dana') && !snap.log.some(e => e.id === 't-dana');
     switchTab('dashboard'); render(); await wait(400);
@@ -296,8 +299,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   const hoursOf = t => Number(((t || '').match(/(\d+(?:\.\d+)?)h/) || [])[1]);
-  ok(tn.recent && /Avi Cohen/.test(tn.onsite) && /Dana Levi/.test(tn.onsite) && hoursOf(tn.avi) >= 4 && hoursOf(tn.avi) < 4.2 && hoursOf(tn.dana) > 4,
-    'today: a shift open 4h shows 4h, a night shift from before midnight is on shift with its hours ' + JSON.stringify(tn));
+  ok(tn.recent && /Avi Cohen/.test(tn.onsite) && hoursOf(tn.avi) >= 4 && hoursOf(tn.avi) < 4.2
+    && (tn.danaOn ? /Dana Levi/.test(tn.onsite) && Math.abs(hoursOf(tn.dana) - tn.danaH) < 0.2 : !/Dana Levi/.test(tn.onsite)),
+    'today: a shift open 4h shows 4h (a forgotten IN before it adds nothing), a night shift from before midnight is on shift with its hours while under 16h ' + JSON.stringify(tn));
   // Template 3 on a phone: Today (figures, colored lines), Workers, Accounting — screenshots for review.
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
@@ -1538,6 +1542,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   pw.closed = await p.evaluate(() => !document.querySelector('[data-testid="punch-window"]'));
   await p.evaluate(id => { const log = getPunchLog(); const e = log.find(x => String(x.id) === id); e.notes = ''; savePunchLog(log); render(); }, pid);
   ok(pw.title && pw.saved && pw.closed, 'punch log: a tap opens the punch window; Save writes the notes and editedAt ' + JSON.stringify(pw));
+  // The punch window's time edit keeps the shift whole: an OUT punched the next morning (IN Mon 08:00, OUT Tue
+  // 07:55) corrected to 17:00 lands on Monday (a 9h shift, its date moved too), an OUT after a 22:00 IN corrected
+  // to 23:30 stays that evening, and a lone punch keeps its own day.
+  const pe = await p.evaluate(() => {
+    const base = getPunchLog().slice(), at = (d, h, m) => new Date(2026, 9, d, h, m);
+    const mk = (id, type, d, h, m) => { const t = at(d, h, m); return {id, workerId: 'pe-w', workerName: 'Edit Test', type, ts: t.toISOString(), time: String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'), date: String(d).padStart(2, '0') + '/10/2026', site: '', clientId: 'c1'}; };
+    const r = {};
+    const edit = (id, time) => { ManagerBridge.savePunch(id, {type: getPunchLog().find(e => e.id === id).type, time, site: 'c1', notes: ''}); return getPunchLog().find(e => e.id === id); };
+    const lenH = (a, b) => (new Date(b.ts) - new Date(a.ts)) / 36e5;
+    try {
+      savePunchLog(base.concat([mk('pe-i1', 'in', 5, 8, 0), mk('pe-o1', 'out', 6, 7, 55)]));
+      const o1 = edit('pe-o1', '17:00'); r.mon = lenH(getPunchLog().find(e => e.id === 'pe-i1'), o1); r.monDate = o1.date;
+      savePunchLog(base.concat([mk('pe-i2', 'in', 12, 22, 0), mk('pe-o2', 'out', 13, 5, 0)]));
+      const o2 = edit('pe-o2', '23:30'); r.eve = lenH(getPunchLog().find(e => e.id === 'pe-i2'), o2);
+      savePunchLog(base.concat([mk('pe-x', 'out', 20, 7, 0)]));
+      const x = edit('pe-x', '23:00'); r.lone = new Date(x.ts).getDate() + ' ' + x.date;
+    } finally { savePunchLog(base); render(); }
+    return r;
+  });
+  ok(pe.mon === 9 && pe.monDate === '05/10/2026' && pe.eve === 1.5 && pe.lone === '20 20/10/2026',
+    'punch window: an edited time lands on the day that keeps the shift whole (9h, not 33h; 1.5h, not 25.5h), a lone punch keeps its day ' + JSON.stringify(pe));
   // By Client: a section per client with its workers.
   await p.click(PL + ' [data-testid="punchlog-view"] [data-v="clients"]'); await sleep(250);
   const bc = await p.evaluate(sel => ({secs: document.querySelectorAll(sel + ' [data-testid="punch-client"]').length, n: clients.length,

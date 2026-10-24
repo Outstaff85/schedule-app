@@ -483,6 +483,10 @@ export async function initFirestoreBackend() {
     const upd: Rec = {editedAt: new Date().toISOString()};
     ['type','time','site','notes','clientId'].forEach(k => { if (data[k] !== undefined) upd[k] = k === 'clientId' ? (data[k] || null) : data[k]; });
     if (data.ts) { const when = new Date(data.ts); if (!isNaN(when.getTime())) upd.ts = F.Timestamp.fromDate(when); }
+    // date (DD/MM/YYYY, what the punch log shows) and day (YYYY-MM-DD) follow
+    // an edited time moved to the day before or after.
+    const day = ddmmyyyyToDay(data.date);
+    if (day) { upd.date = data.date; upd.day = day; }
     await F.updateDoc(F.doc(db,'tenants',t,'punches',String(data.id)), upd);
     return {ok: true};
   }

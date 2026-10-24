@@ -494,6 +494,11 @@
 				const when = new Date(data.ts);
 				if (!isNaN(when.getTime())) upd.ts = F.Timestamp.fromDate(when);
 			}
+			const day = ddmmyyyyToDay(data.date);
+			if (day) {
+				upd.date = data.date;
+				upd.day = day;
+			}
 			await F.updateDoc(F.doc(db, "tenants", t, "punches", String(data.id)), upd);
 			return { ok: true };
 		}
