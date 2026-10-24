@@ -215,6 +215,27 @@ def test_the_zone_reader_keeps_the_weights_best_on_the_real_lines_first(tmp_path
     assert rep["realLinesRight"] == 0.75 and rep["midvLines"] == 1914 and rep["realCheckLines"] == 4
     rep = tm.train_report(0.9, 0.02, None, [1], [1], [], False, None, 0.9, 0, 0.0)
     assert rep["keptOld"] is False and rep["keptFrom"] is None and rep["realLinesRight"] is None
+    # best.pt from before the split (midv_mrz.py trained on 00–79) learned the select lines: it records no selectFrom
+    legacy = {"weights": {}, "acc": 0.97, "at": "2026-10-22"}
+    old_midv = {"weights": {}, "args": {"midv": True}, "midvLines": 1914, "at": "2026-10-23"}
+    clean = {"weights": {}, "selectFrom": midv_mrz.SELECT_FROM, "at": "2026-10-24"}
+    assert not tm.select_clean(legacy) and not tm.select_clean(old_midv) and tm.select_clean(clean) and not tm.select_clean(None)
+    assert not tm.select_clean({"selectFrom": midv_mrz.SELECT_FROM - 10})   # another split: not the select set of today
+    # it is compared on the made-up lines only, so it never wins on the real check against a run that has one
+    before = tm.score_old(legacy, (0.99, 0.0), (0.97, 0.01))
+    assert before == (-1.0, 0.97, -0.01) and not tm.keep_old(before, tm.score((0.40, 0.3), (0.90, 0.02)))
+    assert tm.score_old(clean, (0.99, 0.0), (0.97, 0.01)) == (0.99, 0.97, -0.01)
+    # a run decided on the real check never starts from it, nor goes on with a last.pt that did: --fresh once
+    import pytest as _pt
+    with _pt.raises(SystemExit, match="--fresh"):
+        tm.check_start(legacy, True, False)
+    with _pt.raises(SystemExit, match="--fresh"):
+        tm.check_start(clean, True, False, last={"epoch": 3})
+    assert tm.check_start(legacy, True, True) is True              # --fresh: random weights, clean
+    assert tm.check_start(None, True, False) is True               # nothing saved: random weights
+    assert tm.check_start(clean, True, False) is True
+    assert tm.check_start(legacy, False, False) is False           # no real check: allowed, the new weights stay marked
+    assert tm.check_start(legacy, True, True, last={"selectFrom": midv_mrz.SELECT_FROM}) is True
     # a phone-cut zone line found on the wrong place (find_ok 0) is left out of a labels.tsv
     (tmp_path / "labels.tsv").write_text("a.png\tLINE1\tcut-1\t1\nb.png\tLINE2\tcut-1\t0\nc.png\tLINE3\n", encoding="utf-8")
     assert [t for _, t in tm.load(tmp_path)] == ["LINE1", "LINE3"]

@@ -170,11 +170,11 @@ def test_the_check_set_draws_only_the_held_out_pages(tmp_path, monkeypatch):
 ROOT = HERE.parents[1]
 
 
-def _crop_bounds(sf, rng, W, H, box):
+def _crop_bounds(sf, rng, W, H, box, role=None):
     """synth_fields.crop's window on a W × H page (x0, y0, x1, y1) — read off a page whose pixels hold their place."""
     import numpy as np
     g = (np.arange(H)[:, None] * W + np.arange(W)[None, :]).astype(np.int64)
-    part = sf.crop(rng, g, box)
+    part = sf.crop(rng, g, box, role)
     y0, x0 = divmod(int(part[0, 0]), W)
     y1, x1 = divmod(int(part[-1, -1]), W)
     return x0, y0, x1 + 1, y1 + 1
@@ -198,6 +198,39 @@ def test_the_training_crop_jitters_in_shares_of_the_card_and_keeps_heLines_margi
         x0, y0, w, h = phone.he_rect(W, H, [b[0] / W, b[1] / H, b[2] / W, b[3] / H])
         got = _crop_bounds(sf, random.Random(0), W, H, b)
         assert abs(got[0] - x0) <= 1 and abs(got[1] - y0) <= 1 and abs(got[2] - (x0 + w)) <= 1 and abs(got[3] - (y0 + h)) <= 1, (b, got)
+    # a name is cut from its box widened as the phone reads it (hemodel.widened, he-layouts.json), the others as marked
+    for role in ("surname", "given", "idNo", "dob"):
+        for b in ((600, 80, 250, 40), (120, 300, 300, 35)):
+            share = [b[0] / W, b[1] / H, b[2] / W, b[3] / H]
+            x0, y0, w, h = phone.he_rect(W, H, hemodel.widened(role, share))
+            got = _crop_bounds(sf, random.Random(0), W, H, b, role)
+            assert abs(got[0] - x0) <= 1 and abs(got[1] - y0) <= 1 and abs(got[2] - (x0 + w)) <= 1 and abs(got[3] - (y0 + h)) <= 1, (role, b, got)
+            plain = _crop_bounds(sf, random.Random(0), W, H, b)
+            assert (got[0] < plain[0]) if role in hemodel.NAMES else got == plain   # a name's strip runs on to the left
+            assert got[2] >= plain[2]   # the margin is a share of the widened box: a little more on the right too
+
+
+def test_train_he_refuses_fields_cut_before_the_names_were_widened(tmp_path):
+    import json
+    import pytest
+    pytest.importorskip("torch")
+    th = _load("train_he")
+    for f in ("train", "check"):
+        (tmp_path / "synth" / "he-fields" / f).mkdir(parents=True)
+
+    def meta(f, **kw):
+        (tmp_path / "synth" / "he-fields" / f / "sources.json").write_text(json.dumps({"split": f, **kw}), encoding="utf-8")
+    meta("train")
+    meta("check", nameOpen=hemodel.NAME_OPEN)
+    with pytest.raises(SystemExit, match="he-fields/train was cut before"):
+        th.assert_cut_as_read(tmp_path)
+    th.assert_cut_as_read(tmp_path, fields=False)   # no fields set to train on: only the check's counts
+    meta("train", nameOpen=hemodel.NAME_OPEN)
+    meta("check", nameOpen=0.3)
+    with pytest.raises(SystemExit, match="he-fields/check was cut before"):
+        th.assert_cut_as_read(tmp_path)
+    meta("check", nameOpen=hemodel.NAME_OPEN)
+    th.assert_cut_as_read(tmp_path)
 
 
 def test_heLines_margins_are_one_number_on_every_side_of_the_copy():

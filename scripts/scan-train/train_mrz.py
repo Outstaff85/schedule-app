@@ -18,13 +18,17 @@ running training after every epoch, which --resume continues after a stop. The c
 Which weights win: with --midv, MIDV-2020's documents 70–79 (midv_mrz.py: ~/.scan-train/midv-mrz/select/, never
 trained on; 80–99 stay the exam) are a real check set, and every epoch — and best.pt against this run — is compared on
 the real lines right first, then the made-up ones, then fewer characters wrong (score). best.pt is scored again on
-today's sets, so a run with real lines is never thrown away for an old made-up-only score. report_mrz_train.json says
+today's sets, so a run with real lines is never thrown away for an old made-up-only score. best.pt and last.pt record
+whether their weights never learned 70–79 (selectFrom: select_clean); weights that did — every best.pt from before the
+split, when midv_mrz.py trained on 00–79 — are compared on the made-up lines only (score_old), and a --midv run with the
+real check refuses to start from them (check_start: run once with --fresh). report_mrz_train.json says
 whether the old weights were kept (keptOld, keptFrom), the new run's own made-up score (newRunLinesRight), the real
 check's (realLinesRight) and midvLines from the exported weights' own record.
 
   python synth_lines.py mrz --count 100000      # first
   python train_mrz.py                           # ~10-20 min on the 4070; from best.pt when it is there
   python train_mrz.py --midv                    # + MIDV-2020's real lines (after midv_mrz.py)
+  python train_mrz.py --midv --fresh            # once, the first --midv run after midv_mrz.py kept 70–79 apart
   python train_mrz.py --resume                  # the stopped training goes on from its last epoch
   python train_mrz.py --fresh                   # from random weights (best.pt replaced only when beaten)
 """
@@ -42,6 +46,7 @@ from torch import nn
 
 import checkpoint
 from home import WORK, drop_report, gentle
+from midv_mrz import SELECT_FROM
 from mrzmodel import CHARS, H, W, decode, line_input
 
 CKPT = WORK / "mrz-ckpt"
@@ -222,6 +227,39 @@ def score(real, synth):
     return ((real[0] if real else -1.0), synth[0], -synth[1])
 
 
+def select_clean(saved):
+    """Have saved weights (best.pt, last.pt) never learned MIDV-2020's select documents (70–79)? Only when they record
+    selectFrom = midv_mrz.SELECT_FROM — written by a run that started from random or clean weights and trained on no
+    line of 70–79 (with --midv only once midv_mrz.py has split select/ out of train/). Weights from before the split
+    (midv_mrz.py put 00–79 into train/) carry no record: they learned the select lines."""
+    return bool(saved) and saved.get("selectFrom") == SELECT_FROM
+
+
+def score_old(saved, real, synth):
+    """best.pt's score on today's sets (score): its real part only when it is select_clean — weights that learned the
+    select lines would win on them unfairly, so they are compared on the made-up lines only and lose to a run with a
+    real check."""
+    return score(real if select_clean(saved) else None, synth)
+
+
+def check_start(saved, real_check, fresh, last=None):
+    """Where this run starts, checked: a run decided on the real check (real_check) never starts from — or goes on
+    with (last: last.pt) — weights that learned the select lines (SystemExit: run once with --fresh). → whether this
+    run's weights stay clean of them (select_clean), to be recorded in best.pt and last.pt."""
+    if last is not None:
+        if real_check and not select_clean(last):
+            raise SystemExit("last.pt went on from weights that learned MIDV documents 70–79 (the real check) — "
+                             "start again: python train_mrz.py --midv --fresh")
+        return select_clean(last)
+    if fresh or not saved:
+        return True
+    if real_check and not select_clean(saved):
+        raise SystemExit("best.pt learned MIDV documents 70–79 (trained before midv_mrz.py kept them for the real check): "
+                         "a run from it would be picked on lines its weights saw — run once with --fresh "
+                         "(python train_mrz.py --midv --fresh; best.pt is still replaced only when beaten)")
+    return select_clean(saved)
+
+
 def keep_old(before, best):
     """Does best.pt (its score on today's sets) stay over this run's best epoch? Only when it scores at least as well
     by score's order — never on a made-up-only comparison when this run has a real check (both are scored on it)."""
@@ -275,7 +313,7 @@ def main():
         train = train + real * a.midv_repeat
         print(f"+ {len(real)} real zone lines from MIDV-2020, each {a.midv_repeat} times an epoch")
         sel = WORK / "midv-mrz" / "select"
-        if (sel / "labels.tsv").exists():
+        if (sel / "labels.tsv").exists():   # midv_mrz.py split 70–79 out of train/
             real_val = load(sel)
             print(f"{len(real_val)} real check lines (MIDV-2020 documents 70–79): epochs and best.pt compared on them first")
         else:
@@ -289,15 +327,18 @@ def main():
     rl = (torch.utils.data.DataLoader(Lines(real_val, False, real=frozenset(p for p, _ in real_val)), 128, num_workers=a.workers,
                                       collate_fn=collate) if real_val else None)
     saved = torch.load(CKPT / "best.pt", weights_only=False) if (CKPT / "best.pt").exists() else None
+    clean = check_start(saved, bool(rl), a.fresh, last)   # never picked on the select lines by weights that saw them
+    clean = clean and (not a.midv or bool(real_val))   # --midv with no select/: train/ is from before the split (00–79)
     before = None                                # best.pt on today's check lines: a training must beat it
     if saved:
         net.load_state_dict(saved["weights"])
         acc, cer = evaluate(net, vl, dev)
         real_b = evaluate(net, rl, dev) if rl else None
-        before = score(real_b, (acc, cer))       # the real lines first, then the made-up ones, then fewer characters wrong
+        before = score_old(saved, real_b, (acc, cer))   # the real lines first (when it never saw them), then the made-up ones
         print(f"best.pt (kept {saved['at']}{', trained with MIDV' if (saved.get('args') or {}).get('midv') else ''}): "
               f"{acc:.1%} of today's check lines right ({cer:.2%} of the characters wrong)"
-              + (f"; real check lines {real_b[0]:.1%}" if real_b else ""))
+              + (f"; real check lines {real_b[0]:.1%}" if real_b else "")
+              + ("" if not rl or select_clean(saved) else " — it learned documents 70–79: compared on the made-up lines only"))
     if last is None:
         if a.fresh or not saved:
             net = MrzNet().to(dev)
@@ -338,7 +379,8 @@ def main():
         if score(real_e, (acc, cer)) > best[0]:
             best = (score(real_e, (acc, cer)), {k: v.detach().cpu().clone() for k, v in net.state_dict().items()})
         torch.save({"args": vars(a), "epoch": ep, "weights": net.state_dict(), "opt": opt.state_dict(),
-                    "sched": sched.state_dict(), "bestAcc": best[0], "bestWeights": best[1]}, CKPT / "last.pt")
+                    "sched": sched.state_dict(), "bestAcc": best[0], "bestWeights": best[1],
+                    "selectFrom": SELECT_FROM if clean else None}, CKPT / "last.pt")
     run_synth = best[0][1]
     kept = keep_old(before, best[0])
     if kept:
@@ -351,6 +393,7 @@ def main():
         midv_lines = len(real)
         torch.save({"weights": best[1], "acc": best[0][1], "real": best[0][0] if rl else None, "synth": best[0][1],
                     "midvLines": midv_lines, "args": vars(a), "lines": {"train": len(train), "check": len(val), "realCheck": len(real_val)},
+                    "selectFrom": SELECT_FROM if clean else None,   # select_clean: never learned documents 70–79
                     "at": datetime.date.today().isoformat()}, CKPT / "best.pt")
         print(f"best.pt kept: {best[0][1]:.1%} of the made-up lines right" + (f", {best[0][0]:.1%} of the real ones" if rl else ""))
     (CKPT / "last.pt").unlink(missing_ok=True)

@@ -14,7 +14,8 @@ right, by kind, and the ID numbers whose check digit agrees. The check pages are
 decides publish is never the one the epoch was picked on; report_he.json has both. Before training, the training sets' sources.json are
 checked (gen.sources.assert_clean): a set holding a held-out page or drawn with the check vocabulary is refused; and
 the check set's (clean_check): one not drawn as the check, with another heldout.json or from other pages is refused; a
-training set drawn through gen build must have passed its QA (gen.qa.require_qa). Labels are taught in the visual order
+training set drawn through gen build must have passed its QA (gen.qa.require_qa); a fields set cut before the names'
+boxes were widened as the phone reads them (sources.json nameOpen) is refused too (assert_cut_as_read). Labels are taught in the visual order
 (hemodel.visual). Exported to ONNX (input "img" [1,1,32,512], output "logits" [1,128,len(CHARS)+1]) and
 checked. Each epoch's progress is saved (checkpoint.py: --resume, --more); the checkpoint records the data fingerprint
 (the labels.tsv sha1s, the sizes, the batch and the steps per epoch: data_info), so --resume refuses other data. Writes
@@ -97,6 +98,17 @@ def clean_check(work=None):
     assert_check_set(pathlib.Path(work or WORK) / "synth" / "he-fields" / "check", "synth/he-fields/check")
 
 
+def assert_cut_as_read(work=None, fields=True):
+    """Refuse a fields set (synth_fields.py) cut before the names' boxes were widened as the phone reads them: its
+    sources.json must carry nameOpen = hemodel.NAME_OPEN — a set cut by the marked box alone trains and checks the
+    names on a narrower strip than the phone gives the reader (draw it again)."""
+    work = pathlib.Path(work or WORK)
+    for f in (["he-fields/train"] if fields else []) + ["he-fields/check"]:
+        if (read_meta(work / "synth" / f) or {}).get("nameOpen") != hemodel.NAME_OPEN:
+            raise SystemExit(f"synth/{f} was cut before the names' boxes were widened as the phone reads them "
+                             f"(hemodel.NAME_OPEN) — draw it again: synth_fields.py --count 3000 / --count 300 --check")
+
+
 def data_info(work, items, checks, batch, steps, phone_run=None):
     """The checkpoint's info: the reader and the data fingerprint of its sets (each labels.tsv's sha1), the sizes, the
     batch and the steps per epoch (a resumed schedule is made for them)."""
@@ -152,6 +164,7 @@ def main():
         raise SystemExit("too few made-up fields — run synth_fields.py --count 3000 and synth_fields.py --count 300 --check first")
     clean_inputs(fields, lines)
     clean_check()
+    assert_cut_as_read(WORK, bool(fields))
     if fields:
         require_qa(WORK / "synth" / "he-fields" / "train", "synth/he-fields/train (synth_fields.py)", work=WORK)   # drawn through gen build: its QA passed
     select, exam = check_split(checks)

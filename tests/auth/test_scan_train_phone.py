@@ -235,6 +235,72 @@ def make_paints():
     return out
 
 
+# The face finder's turn (scan-core.js faceScore / faceTurn; phone.face_score_of / face_turn): the finder's outputs on
+# its 320 input written by hand, sparse — per stride its "hot" cells [index, cls, obj, 10 kps] (every other cell 0) — in
+# values a float32 holds exactly, so both sides read the same numbers.
+UP = [-0.25, -0.5, 0.25, -0.5, 0.0, 0.0, -0.25, 0.5, 0.25, 0.5]        # eyes above, the mouth straight below: sin 1
+TILT = [-0.25, -0.5, 0.25, -0.5, 0.0, 0.0, 0.25, 0.25, 0.75, 0.25]     # the mouth off to the right: 0 < sin < 1
+DOWN = [0.25, 0.5, -0.25, 0.5, 0.0, 0.0, 0.25, -0.5, -0.25, -0.5]      # upside down: sin < 0, so 0
+FACES = {
+    "a sure upright face": {16: [[210, 0.875, 0.75, UP]]},
+    "tilted": {32: [[37, 0.9375, 0.875, TILT]]},
+    "upside down": {8: [[900, 1.0, 1.0, DOWN]]},
+    "below 0.5": {16: [[5, 0.375, 0.5, UP]]},
+    "a tie across strides: the first stride's": {8: [[100, 0.75, 0.75, UP]], 16: [[50, 0.75, 0.75, TILT]]},
+    "a tie in a stride: the first cell's": {32: [[90, 0.625, 0.625, TILT], [20, 0.5, 0.5, UP], [95, 0.625, 0.625, UP]]},
+    "clipped to 0..1": {16: [[399, 1.25, 0.8125, UP]], 32: [[0, 0.875, -0.5, UP]]},
+    "nothing": {},
+}
+# faceTurn: the outputs for k = 0..3 (a FACES name each)
+FACE_TURNS = {
+    "upright only turned twice": ["nothing", "upside down", "a sure upright face", "below 0.5"],
+    "no face at all": ["nothing", "below 0.5", "upside down", "nothing"],
+    "the surest upright wins": ["tilted", "a sure upright face", "nothing", "a tie across strides: the first stride's"],
+    "a tie: the first turn": ["a tie across strides: the first stride's", "nothing", "a tie across strides: the first stride's", "nothing"],
+}
+FACE_OUTS = ["cls_8", "cls_16", "cls_32", "obj_8", "obj_16", "obj_32", "bbox_8", "bbox_16", "bbox_32", "kps_8", "kps_16", "kps_32"]
+
+
+def face_outputs(hot):
+    """FACES' sparse cells as {name: float32 array}, as the face finder answers on its 320 input ([1, n, 1] /
+    [1, n, 4] / [1, n, 10])."""
+    out = {}
+    for st in (8, 16, 32):
+        n = (phone.FN // st) ** 2
+        cls, obj, kps = np.zeros((1, n, 1), np.float32), np.zeros((1, n, 1), np.float32), np.zeros((1, n, 10), np.float32)
+        for i, c, o, k in hot.get(st, []):
+            cls[0, i, 0], obj[0, i, 0], kps[0, i] = c, o, k
+        out.update({f"cls_{st}": cls, f"obj_{st}": obj, f"bbox_{st}": np.zeros((1, n, 4), np.float32), f"kps_{st}": kps})
+    return out
+
+
+class ScriptedFace:
+    """An ONNX session answering face_turn's calls from a script of FACES names, in call order."""
+    def __init__(self, script):
+        self.left, self.inputs = list(script), []
+
+    def get_inputs(self):
+        return [type("I", (), {"name": "input"})()]
+
+    def get_outputs(self):
+        return [type("O", (), {"name": n})() for n in FACE_OUTS]
+
+    def run(self, names, feeds):
+        self.inputs.append(feeds["input"].shape)
+        outs = face_outputs(FACES[self.left.pop(0)])
+        return [outs[n] for n in FACE_OUTS]
+
+
+def make_faces():
+    """faceScore's reading of hand-made outputs (phone.face_score_of) and faceTurn's pick over four of them
+    (phone.face_turn on a scripted session)."""
+    page = np.full((60, 100, 3), 200, np.uint8)
+    return {"strides": {str(st): (phone.FN // st) ** 2 for st in (8, 16, 32)},
+            "scores": [{"name": k, "hot": {str(st): v for st, v in hot.items()}, "score": phone.face_score_of(face_outputs(hot))}
+                       for k, hot in FACES.items()],
+            "turns": [{"name": k, "script": v, "k": phone.face_turn(ScriptedFace(v), page)} for k, v in FACE_TURNS.items()]}
+
+
 def make_fixtures():
     fx = {"about": "Written once from scripts/scan-train/gen/phone.py by tests/auth/test_scan_train_phone.py --write; "
                    "checked by that test and by tests/scan/phone_parity.test.mjs (the lab's scan-core.js and mrzFind).",
@@ -259,6 +325,7 @@ def make_fixtures():
                             "findBoxes": [[x0, y0, x1 - x0, y1 - y0] for x0, y0, x1, y1 in mrzmodel.find_boxes(page)]})
     fx["moreDocs"] = make_more_docs()
     fx["paints"] = make_paints()
+    fx["faces"] = make_faces()
     return fx
 
 
@@ -279,6 +346,65 @@ def test_the_parity_fixtures_are_phone_py():
     assert len(fx["heatmaps"]) == len(now["heatmaps"]) and len(fx["zones"]) == len(now["zones"])
     assert fx["moreDocs"] == json.loads(json.dumps(now["moreDocs"]))
     assert fx["paints"] == json.loads(json.dumps(now["paints"]))
+    assert fx["faces"] == json.loads(json.dumps(now["faces"]))
+
+
+def test_the_face_turn_reads_the_finder_as_the_lab_does():
+    """phone.face_score_of / face_turn (scan-core.js faceScore / faceTurn, mirrored; tests/scan/phone_parity.test.mjs
+    runs the lab's own on the same outputs): the surest face, the first of the highest stride by stride and cell by
+    cell, clipped to 0..1, 0 under 0.5, times the sine of the eyes-to-mouth angle; the turn whose face is surest, the
+    first on a tie, -1 when none."""
+    s = {c["name"]: c["score"] for c in make_faces()["scores"]}
+    assert abs(s["a sure upright face"] - math.sqrt(0.875 * 0.75)) < 1e-12
+    assert 0 < s["tilted"] < math.sqrt(0.9375 * 0.875) - 0.05
+    assert s["upside down"] == 0.0 and s["below 0.5"] == 0.0 and s["nothing"] == 0.0
+    assert abs(s["a tie across strides: the first stride's"] - 0.75) < 1e-12           # stride 8's upright face, not 16's tilted
+    assert s["a tie in a stride: the first cell's"] < 0.625 - 0.05                     # cell 90's tilted face, not cell 95's
+    assert abs(s["clipped to 0..1"] - math.sqrt(0.8125)) < 1e-12                        # cls 1.25 is 1; obj -0.5 is 0
+    t = {c["name"]: c["k"] for c in make_faces()["turns"]}
+    assert t == {"upright only turned twice": 2, "no face at all": -1, "the surest upright wins": 1, "a tie: the first turn": 0}
+    sess = ScriptedFace(FACE_TURNS["upright only turned twice"])
+    phone.face_turn(sess, np.zeros((60, 100, 3), np.uint8))
+    assert sess.inputs == [(1, 3, phone.FN, phone.FN)] * 4 and not sess.left          # four turns, each on the 320 letterbox
+
+
+def _tiny_face_model(path):
+    """A model shaped like YuNet's file: its input fixed at [1, 3, 640, 640], an output with dim 1 fixed (here the
+    channels' mean: any size in)."""
+    onnx = pytest.importorskip("onnx")
+    from onnx import TensorProto, helper
+    x = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 640, 640])
+    y = helper.make_tensor_value_info("cls_8", TensorProto.FLOAT, [1, 3, 1, 1])
+    mid = helper.make_tensor_value_info("mid", TensorProto.FLOAT, [1, 3, 640, 640])
+    g = helper.make_graph([helper.make_node("Identity", ["input"], ["mid"]), helper.make_node("GlobalAveragePool", ["mid"], ["cls_8"])],
+                          "tiny", [x], [y], value_info=[mid])
+    m = helper.make_model(g, opset_imports=[helper.make_opsetid("", 17)])
+    m.ir_version = 8
+    onnx.save(m, str(path))
+    return m
+
+
+def test_yunet_dyn_frees_the_face_finders_size_as_the_lab_deploys_it(tmp_path):
+    """scripts/scan-lab/yunet_dyn.py free (the lab's deploy step, and phone_run.free_face in memory): the input's height
+    and width and the outputs' dim 1 left symbolic, the value infos dropped, so the model runs at 320 x 320; and the
+    command line `python yunet_dyn.py in out` still writes it."""
+    import subprocess
+    onnx = pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    from gen import phone_run as pr
+    src = tmp_path / "face.onnx"
+    _tiny_face_model(src)
+    x320 = np.zeros((1, 3, 320, 320), np.float32)
+    with pytest.raises(Exception):   # fixed at 640: ONNX Runtime refuses 320
+        ort.InferenceSession(str(src), providers=["CPUExecutionProvider"]).run(None, {"input": x320})
+    out = tmp_path / "face-dyn.onnx"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "scan-lab" / "yunet_dyn.py"), str(src), str(out)], check=True)
+    for m in (onnx.load(str(out)), onnx.load_from_string(pr.free_face(src))):
+        dims = m.graph.input[0].type.tensor_type.shape.dim
+        assert [d.dim_value for d in dims[:2]] == [1, 3] and [d.dim_param for d in dims[2:]] == ["n", "n"]
+        assert all(o.type.tensor_type.shape.dim[1].dim_param == "k" for o in m.graph.output) and not m.graph.value_info
+        got = ort.InferenceSession(m.SerializeToString(), providers=["CPUExecutionProvider"]).run(None, {"input": x320})[0]
+        assert got.shape == (1, 3, 1, 1)
 
 
 def test_the_more_documents_fixtures_say_what_they_test():

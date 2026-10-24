@@ -9,7 +9,9 @@ For each scene, made up (gen/scene.py) or real (an attempt's photo with the corn
 2. the found documents matched to the true ones by their overlap (match: the assignment with the largest total IoU,
    tried over every permutation — at most 4 documents, so no scipy): matched, missed and false, with the corner error;
 3. each true document cut from the full frame by the PREDICTED corners (gen/phone.py warp_rgba: the lab's cut), then
-   turned by the face on it (phone.face_turn: the lab's faceTurn);
+   turned by the face on it (phone.face_turn: the lab's faceTurn) — the frame at the camera's NATIVE size (native_scene:
+   the 1920 × 1080 video or the ~4000 × 3000 photo the lab cuts from, not the 1600 px the edges sets are drawn at); a
+   real attempt is cut from its stored photo (at most 1600 px, JPEG: cutFrom "stored1600");
 4. its labels from the geometry: turn_k — the clockwise quarter turns the cut still needs (the document's own corner
    order against the predicted one, less the face's turn) — and every field box mapped into the cut through
    H_pred⁻¹·H_true (the camera's projection of the page's own box, then the frame → cut map of the predicted corners);
@@ -19,10 +21,12 @@ For each scene, made up (gen/scene.py) or real (an attempt's photo with the corn
    rate: a parameter until the real attempts measure it) and the bad cuts to --bad-share; the rest are dropped, and
    which ones is recorded in the run (params "dropped"), so gen verify draws the same.
 
-The lab's answers (what the shot found, each cut's face turn) are cached in <home>/cache/cuts/<edges sha>/<run>/<n>.json:
-a second build of the same run runs no model; a new edges version is another folder (and another fingerprint: its sha
-is in every row's labels and in run.json). The writers (gen/outputs/doctype.py, mrz.py, he.py, face.py) make each
-model's files from one scene's cuts; this module draws the scenes and is the build's generator (gen/build.py).
+The lab's answers (what the shot found, each cut's face turn) are cached in <home>/cache/cuts/<edges sha>/<run>/<n>.json,
+each tied to the sha1 of the frame it was found on (frame_sha): a second build of the same run runs no model; a frame
+drawn otherwise (the scene code changed) is a miss and the lab runs again; a new edges version is another folder (and
+another fingerprint: its sha is in every row's labels and in run.json). The writers (gen/outputs/doctype.py, mrz.py,
+he.py, face.py) make each model's files from one scene's cuts; this module draws the scenes and is the build's
+generator (gen/build.py).
 Pure numpy / OpenCV / ONNX Runtime; the lab's models are loaded only on a cache miss."""
 import hashlib
 import itertools
@@ -195,8 +199,30 @@ def run_key(params):
     return hashlib.sha256(canonical(keep).encode("utf-8")).hexdigest()
 
 
+def frame_sha(frame):
+    """The sha1 of a frame's bytes and shape: a cache record holds only for the frame it was found on."""
+    h = hashlib.sha1(repr((frame.shape, str(frame.dtype))).encode())
+    h.update(np.ascontiguousarray(frame).tobytes())
+    return h.hexdigest()
+
+
+def native_scene(sc):
+    """The scene seen by the same camera at its native frame size (gen/camera.py frame_size: the size before
+    RENDER_MAX): the lab cuts from the full frame — the 1920 × 1080 video (takeShot) or the picked photo at its natural
+    size (analyzePicture) —, so the cuts are made from it. The projection scales with the frame (K: the focal length
+    and the centre in pixels of the long side), so the pages' 0..1 corners stay where they were and their pixels scale."""
+    import dataclasses
+    from .camera import Camera
+    c = sc.cam
+    w, h = (int(v) for v in c.native)
+    if (w, h) == (c.W, c.H):
+        return sc
+    return dataclasses.replace(sc, cam=Camera(w, h, c.native, c.fov, c.target, c.distance, c.tilt, c.azimuth, c.roll))
+
+
 class Cache:
-    """<home>/cache/cuts/<edges sha>/<run key>/<n>.json: a scene's shot and face turns."""
+    """<home>/cache/cuts/<edges sha>/<run key>/<n>.json: a scene's shot and face turns, and the sha1 of the frame they
+    were found on ("frame": a record for another frame is a miss)."""
 
     def __init__(self, params, work=None):
         import home
@@ -304,8 +330,9 @@ def gen_args(ap):
 
 
 def real_scenes(work, exam, limit):
-    """Up to limit real attempts (pull.py's examples.json) on the run's side, with the corners a person kept: [{path,
-    sha1, fixed, doc, doctype, key}] — a photo with no document or no corners is left out."""
+    """Up to limit real attempts (pull.py's examples.json) on the run's side — the exam's only (exam: True) for an
+    --exam run, only what trains (gen.common.trains) for a training run — with the corners a person kept: [{path,
+    sha1, fixed, doc, doctype, key}]; a photo with no document or no corners is left out."""
     from . import common as gc
     f = pathlib.Path(work) / "examples.json"
     if not limit or not f.exists():
@@ -314,7 +341,7 @@ def real_scenes(work, exam, limit):
     for e in json.loads(f.read_text(encoding="utf-8")):
         if not e.get("attempt") or e.get("none") or not e.get("fixed"):
             continue
-        if (e.get("exam") if exam else not gc.trains(e)):
+        if (not e.get("exam")) if exam else not gc.trains(e):   # the exam side: only the exam's; training: only gc.trains
             continue
         p = pathlib.Path(e["file"])
         if not p.exists():
@@ -401,6 +428,7 @@ def _batch(job):
                 out.append({"index": i, "id": f"cut-{seed}-{i}", "entry": {}, "files": [], "runs": 0,
                             "meta": {"class": "none", "source": "none", "rng": grng.STAGED, "labels": {"noPose": True}}})
                 continue
+            sc = native_scene(sc)   # cut from the full frame, as the lab does
             frame = gs.render(sc, r["camera"])
             labels = gs.doc_labels(sc)
             roles = gs.roles(sc, labels)
@@ -410,12 +438,15 @@ def _batch(job):
             for t in truths:
                 t["role"] = role_of.get(t["index"], "painted")
             rng = r["phone"]
+            cut_from = "native"
         else:
             e = params["real"][i - count]
             frame = cv2.imread(e["path"])
             truths = _real_truth(e, *(frame.shape[1::-1] if frame is not None else (1, 1))) if frame is not None else []
             meta = {"templates": [], "class": e.get("doctype") or "unknown", "source": "attempt", "rng": grng.STAGED,
-                    "vocabulary": "train", "scene": {"recipe": "real", "attempt": (e.get("sha1") or "")[:12]}}
+                    "vocabulary": "check" if params.get("held") else "train",
+                    "scene": {"recipe": "real", "attempt": (e.get("sha1") or "")[:12]}}
+            cut_from = "stored1600"   # the attempt's stored photo: at most 1600 px, JPEG 0.85 (phone.store_attempt)
             if e.get("key"):
                 meta["key"] = e["key"]
             rng = grng.py_stream(seed, i, "phone")
@@ -424,11 +455,15 @@ def _batch(job):
             if frame is None:
                 out.append({"index": i, "id": f"cut-{seed}-{i}", "entry": {}, "files": [], "runs": 0, "meta": meta})
                 continue
+        fsha = frame_sha(frame)
         rec = cache.get(i)
+        if rec is not None and rec.get("frame") != fsha:   # found on another frame (the drawing changed): run the lab again
+            rec = None
         res, rec2 = cut_scene(frame, truths, lab.shot, lab.face, rng, rec)
         if rec is None:
-            cache.put(i, rec2)
+            cache.put(i, {**rec2, "frame": fsha})
         ctx = {"seed": seed, "index": i, "edgesSha": params["edgesSha"], "split": params["split"], "held": params.get("held", False),
+               "cutFrom": cut_from,
                "fontSplit": "exam" if any(pathlib.Path(f).name.lower() in exam_fonts for f in meta.get("fonts") or []) else "train",
                **({"key": meta["key"]} if meta.get("key") else {})}
         entry, files = {}, []
@@ -445,7 +480,8 @@ def _batch(job):
         first = res["docs"][0] if res["docs"] else None
         if i < count:   # a made-up scene's class and source: its first document's (the largest in sight)
             meta.update({"class": first["truth"]["doctype"] if first else "none", "source": first["truth"]["source"] if first else "none"})
-        meta.update({"labels": {"edgesSha": params["edgesSha"][:16], "shot": res["shot"], "found": res["found"],
+        meta.update({"labels": {"edgesSha": params["edgesSha"][:16], "cutFrom": cut_from,
+                                "frame": [int(frame.shape[1]), int(frame.shape[0])], "shot": res["shot"], "found": res["found"],
                                 "matched": res["matched"], "missed": res["missed"], "false": res["false"],
                                 "falseIou": res["falseIou"], "turn": first["turnK"] if first else None, "docs": docs}})
         item = {"index": i, "id": f"cut-{seed}-{i}", "entry": entry, "files": files, "meta": meta, "runs": Lab.runs - runs0}

@@ -1,24 +1,33 @@
 """The document type model's pages from the phone's own cut (gen/phone_run.py; docs/scan-training.md → "The phone's own
 cuts"): each true page of a scene as the lab cut it — by the corners its edges model found (or, missed, as a person
-leaves them in the editor) and turned by the face on it — at most CROP_MAX px on its long side (the 256 square is
-made at training: gen/phone.py doctype_input, as the phone draws it).
+leaves them in the editor) and turned by the face on it — drawn onto the model's 256 square HERE, from the full-size
+cut in one step, as the phone draws it (gen/phone.py doctype_input: index.html doctypeAnswer's one drawImage, the
+kernel drawn from the phone profile's capture mix — no pre-shrink, no JPEG), and saved as PNG; train_doctypes.square
+then copies the 256 square as it is.
 
-  <run>/doctype/img/<scene>-<page>.jpg
-  <run>/doctype/pages.json   [{id, file, doctype, turn_k, face_k, cut_by, iou, edges_sha, source, …}]
+  <run>/doctype/img/<scene>-<page>.png
+  <run>/doctype/pages.json   [{id, file, doctype, turn_k, face_k, cut_by, iou, edges_sha, source, kernel, cut_size,
+                               cut_from, …}]
 
 turn_k: the clockwise quarter turns the crop still needs (geometry: the page's own corner order against the cut's,
 less the face's turn; None for a real attempt with no own top-left — its turn is not known); face_k: the face finder's
-turn (-1: no face); cut_by: phone | editor; iou: the cut's overlap with the true page. A bad cut (IoU 0.6–0.8) is kept
-within the run's bad share. finish() counts the crops by class and the distinct pages (templates) behind them: a class
-under MIN_CROPS crops or MIN_TEMPLATES distinct pages is reported short. pages.json is read by train_doctypes.py
+turn (-1: no face); cut_by: phone | editor; iou: the cut's overlap with the true page; kernel: the one the square was
+drawn with; cut_size: the cut's own size; cut_from: native (a scene's full frame) | stored1600 (a real attempt's
+stored photo). A bad cut (IoU 0.6–0.8) is kept within the run's bad share. finish() counts the crops by class and the
+distinct pages (templates) behind them: a class under MIN_CROPS crops or MIN_TEMPLATES distinct pages is reported short. pages.json is read by train_doctypes.py
 --synth-run <run> (its entries count as turn known when turn_k is known)."""
 import json
 import pathlib
 
 DIR = "doctype"
-CROP_MAX = 1024
-JPEG = 92
 MIN_CROPS, MIN_TEMPLATES = 300, 2
+
+
+def kernel_rng(ctx, j):
+    """The stream a page's square kernel is drawn from: its own, by the run's seed, the scene and the page (the same
+    every drawing, whatever the batch)."""
+    import random
+    return random.Random(f"doctype:{ctx['seed']}:{ctx['index']}:{j}")
 
 
 def write(folder, res, ctx):
@@ -33,13 +42,12 @@ def write(folder, res, ctx):
         crop = d["crop"]
         if t.get("doctype") not in gc.DOCTYPES or not crop.size:
             continue
-        h, w = crop.shape[:2]
-        k = min(1.0, CROP_MAX / max(h, w))
-        if k < 1:
-            crop = phone.resample(crop, (max(1, phone.js_round(w * k)), max(1, phone.js_round(h * k))), "area")
-        name = f"{DIR}/img/{ctx['index']}-{d['j']}.jpg"
-        cv2.imwrite(str(folder / name), crop, [cv2.IMWRITE_JPEG_QUALITY, JPEG])
+        kernel = phone.kernel_for("capture", kernel_rng(ctx, d["j"]))
+        square = phone.resample(crop[..., :3], (phone.S, phone.S), kernel)   # doctypeAnswer: the cut onto 256 × 256 at once
+        name = f"{DIR}/img/{ctx['index']}-{d['j']}.png"
+        cv2.imwrite(str(folder / name), square)
         e = {"id": d["id"], "doc": d["j"], "file": name, "doctype": t["doctype"], "turn_k": d["turnK"], "face_k": d["faceK"],
+             "kernel": kernel, "cut_size": [int(crop.shape[1]), int(crop.shape[0])], "cut_from": ctx.get("cutFrom", "native"),
              "cut_by": d["cutBy"], "iou": d["iou"], "edges_sha": ctx["edgesSha"][:16], "source": t["source"], "kind": t["kind"],
              "pageId": t["pageId"], "role": t.get("role"), "how": d["how"], "synth": t["source"] != "attempt",
              "turnKnown": d["turnK"] is not None, "split": ctx["split"], "exam": ctx["split"] == "exam"}

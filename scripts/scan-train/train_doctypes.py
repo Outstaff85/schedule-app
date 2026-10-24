@@ -42,6 +42,7 @@ from torch import nn
 import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SERVER, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
 from gen import phone
+from gen import manifest
 from gen.common import trains
 from gen.manifest import data_fingerprint, run_fingerprint
 from gen.qa import require_qa
@@ -76,7 +77,8 @@ class DoctypeNet(nn.Module):
 def square(img, resize, rng):
     """A page (BGR) on its 256 square (RGB): resize "phone" — drawn as the phone draws it (gen/phone.py
     doctype_input: the aspect not kept, the kernel drawn from the phone profile's capture mix; the site's 256 copies
-    stay as they are) —, or "area" (cv2.INTER_AREA, as before)."""
+    and the phone's own cuts' squares — drawn from the full cut by gen/outputs/doctype.py — stay as they are) —, or
+    "area" (cv2.INTER_AREA, as before)."""
     if resize == "area":
         small = cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA)
     else:
@@ -198,7 +200,8 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None,
 def gather(a):
     """The entries to train on: the site's page copies but the exam's, and a.synth made-up pages (synth_pages.py) —
     refused (gen.sources.assert_clean) when any holds a held-out real page, an exam split key or an open set's exam
-    document (docs/scan-training.md → "Kept apart")."""
+    document (docs/scan-training.md → "Kept apart"); a run of the phone's own cuts only when it is a training run
+    (run.json split "train", every entry split "train": a cuts run drawn with --exam is the exam's)."""
     ex = [e for e in read_json(WORK / "doctypes.json") if trains(e)] if (WORK / "doctypes.json").exists() else []   # not the exam's, none left out of both
     if a.synth:
         run = pathlib.Path(getattr(a, "synth_run", None) or WORK / "synth" / "pages")
@@ -207,8 +210,12 @@ def gather(a):
         if not made.exists():
             raise SystemExit("no made-up pages — run synth_pages.py (or python -m gen build --model doctype,mrz,he,face) first")
         require_qa(run, "the made-up pages", work=WORK)   # drawn through gen build: its QA sheet passed
+        if cut and (manifest.read_run(run) or {}).get("split") != "train":
+            raise SystemExit(f"{run}: not a training run — the phone's cuts of the exam's pages are never trained on")
         pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1]), "synthPage": True}
                  for e in read_json(made)]
+        if cut and any(e.get("exam") or e.get("split", "train") != "train" for e in pages):
+            raise SystemExit(f"{run}: holds pages of the exam's side — the phone's cuts of the exam are never trained on")
         assert_clean(pages, "the made-up pages (synth_pages.py)", work=WORK)   # the whole set, not only the sample drawn
         ex += random.sample(pages, min(a.synth, len(pages)))
     if not ex:

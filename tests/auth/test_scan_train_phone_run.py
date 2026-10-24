@@ -10,7 +10,11 @@ docs/scan-training.md → "The phone's own cuts"):
 - the editor cuts stay within their cap and the bad cuts within theirs, whatever the order; a dropped page leaves no
   file and is marked in the labels — the same when gen verify draws it again;
 - a second drawing of a scene comes from the cache (no model runs) and is byte for byte the same; another edges model
-  is another cache folder;
+  is another cache folder, and a frame drawn otherwise (the scene code changed) is a miss;
+- the pages are cut from the frame at the camera's native size (the 1920 x 1080 video, the photo), not the 1600 px the
+  edges sets are drawn at; the document type's 256 square is drawn from the full cut in one step, as the phone does;
+- the exam and training sides stay apart: an --exam run's real attempts are the exam's only, a training run's only what
+  trains, and train_doctypes refuses a cuts run of the exam;
 - the Hebrew writer cuts where the layout says, writes layout_overflow.json and skips a card not upright; the zone
   writer counts its failures;
 - train_doctypes' turn loss is averaged over the samples whose turn is known (the loss helper, torch only).
@@ -270,8 +274,96 @@ def test_a_second_drawing_comes_from_the_cache_and_another_edges_model_does_not(
     c, _ = draw(tmp_path / "c", batch_params(edges="b" * 64))
     assert calls["shot"] == n["shot"] + 3                             # another edges model: drawn again, its own folder
     assert pr.Cache(batch_params()).dir != pr.Cache(batch_params(edges="b" * 64)).dir
+    from gen import scene as gs
+    render = gs.render
+
+    def drawn_otherwise(sc, rng=None, effects=True):   # the scene code changed: another frame for the same params
+        f = render(sc, rng, effects)
+        f[0, 0] = 255 - f[0, 0]
+        return f
+    monkeypatch.setattr(gs, "render", drawn_otherwise)
+    shots = calls["shot"]
+    d, _ = draw(tmp_path / "d", batch_params())
+    assert calls["shot"] == shots + 3 and sum(it["runs"] for it in d) > 0   # the cached answers were for other frames
+    monkeypatch.setattr(gs, "render", render)
     assert pr.run_key({**batch_params(), "out": "y", "dropped": ["1:0"]}) == pr.run_key(batch_params())
     assert all(it["meta"]["labels"]["edgesSha"] == "a" * 16 for it in a)   # the edges model is in every row's labels
+
+
+def test_the_pages_are_cut_from_the_frame_at_its_native_size(tmp_path, monkeypatch):
+    import home
+    from gen import scene as gs
+    from gen.camera import Camera
+    from gen.outputs import edges as ge
+    cam = Camera(1600, 900, (1920, 1080), 70.0, (0.0, 0.0), 300.0, 10.0, 30.0, 2.0)
+    sc = gs.Scene("single", [], cam, {})
+    big = pr.native_scene(sc).cam
+    assert (big.W, big.H) == (1920, 1080) and pr.native_scene(gs.Scene("single", [], big, {})).cam is big
+    pts = np.array([[10.0, -20.0], [-35.0, 15.0], [0.0, 0.0]])
+    assert np.allclose(big.project(pts), cam.project(pts) * 1.2)   # the same view: 0..1 corners stay, pixels scale
+    monkeypatch.setattr(home, "WORK", tmp_path / "home")
+    monkeypatch.setattr(ge, "tools", lambda params: (StubFonts(), StubPool(), None, None))
+    frames = []
+
+    def shot(self, frame):
+        frames.append(frame.shape)
+        return {"shot": True, "quads": [], "how": []}
+    monkeypatch.setattr(pr.Lab, "shot", shot)
+    monkeypatch.setattr(pr.Lab, "face", lambda self, cut: -1)
+    params = {**batch_params(), "count": 4}
+    pr.gen_prepare(tmp_path / "run", params)
+    out = pr._batch((params, [0, 1, 2, 3], str(tmp_path / "run")))
+    cams = [it["meta"]["camera"] for it in out if it["meta"].get("camera")]
+    assert cams and len(frames) == len(cams)
+    for (h, w, _), c, it in zip(frames, cams, [it for it in out if it["meta"].get("camera")]):
+        assert [w, h] == c["native"] == c["size"] == it["meta"]["labels"]["frame"]   # the lab's frame, not RENDER_MAX
+        assert max(w, h) in (1920, 1280, 4000) and it["meta"]["labels"]["cutFrom"] == "native"
+
+
+def test_the_exam_and_training_sides_of_the_real_attempts_stay_apart(tmp_path):
+    rows = []
+    for k, (exam, hard, split) in enumerate([(True, False, "exam"), (False, False, "train"), (False, True, "train"),
+                                             (False, False, "none"), (True, True, "exam")]):
+        f = tmp_path / f"{k}.jpg"
+        f.write_bytes(b"x")
+        rows.append({"file": str(f), "attempt": True, "fixed": UNIT_Q, "exam": exam, "hard": hard, "split": split, "key": f"k{k}"})
+    (tmp_path / "examples.json").write_text(json.dumps(rows), encoding="utf-8")
+    exam = pr.real_scenes(tmp_path, True, 10)
+    train = pr.real_scenes(tmp_path, False, 10)
+    assert [e["key"] for e in exam] == ["k0", "k4"]       # the exam's attempts only, hard or not
+    assert [e["key"] for e in train] == ["k1"]            # only what trains: not the exam's, not hard, not split none
+
+
+UNIT_Q = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+
+
+def test_train_doctypes_refuses_a_cuts_run_of_the_exam(tmp_path, monkeypatch):
+    pytest.importorskip("torch")
+    pytest.importorskip("timm")
+    pytest.importorskip("onnxruntime")
+    import importlib.util
+    import types
+    spec = importlib.util.spec_from_file_location("train_doctypes_ex", HERE / "train_doctypes.py")
+    td = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(td)
+    monkeypatch.setattr(td, "WORK", tmp_path / "home")
+    monkeypatch.setattr(td, "require_qa", lambda *a, **k: None)   # its QA passed: the guard is the split
+    monkeypatch.setattr(td, "assert_clean", lambda *a, **k: None)
+
+    def run(name, split, entry_split=None):
+        r = tmp_path / name
+        (r / "doctype" / "img").mkdir(parents=True)
+        e = {"id": "cut-1-0-d0", "file": "doctype/img/0-0.png", "doctype": "id_front", "turn_k": 0, "split": entry_split or split,
+             "exam": (entry_split or split) == "exam"}
+        (r / "doctype" / "pages.json").write_text(json.dumps([e]), encoding="utf-8")
+        (r / "run.json").write_text(json.dumps({"model": "cuts", "split": split}), encoding="utf-8")
+        return r
+    with pytest.raises(SystemExit, match="not a training run"):
+        td.gather(types.SimpleNamespace(synth=5, synth_run=str(run("cuts-exam", "exam"))))
+    with pytest.raises(SystemExit, match="exam's side"):
+        td.gather(types.SimpleNamespace(synth=5, synth_run=str(run("cuts-mixed", "train", "exam"))))
+    got = td.gather(types.SimpleNamespace(synth=5, synth_run=str(run("cuts-train", "train"))))
+    assert [e["id"] for e in got] == ["cut-1-0-d0"]
 
 
 # ---------- the writers ----------
@@ -309,6 +401,28 @@ def test_the_hebrew_writer_cuts_by_the_layout_and_writes_layout_overflow(tmp_pat
     assert summary["skipped"] == {"notUpright": 1}
     cols = (tmp_path / "he" / "labels.tsv").read_text(encoding="utf-8").splitlines()[0].split("\t")
     assert len(cols) == 10 and cols[4] == "id_front" and cols[5] in {b["role"] for b in lay[name]} and cols[9] == "cut-5-0-d0"
+
+
+def test_the_doctype_square_is_drawn_from_the_full_cut_as_the_phone_draws_it(tmp_path):
+    from gen.outputs import doctype
+    rng = np.random.default_rng(3)
+    res = doc_result(0, size=(1730, 1090))
+    crop = rng.integers(0, 256, (1090, 1730, 3)).astype(np.uint8)
+    crop[200:600, 300:900] = (20, 60, 200)
+    res["docs"][0]["crop"] = res["docs"][0]["cut"] = crop
+    (tmp_path / "doctype" / "img").mkdir(parents=True)
+    kernels = set()
+    for seed in range(12):
+        ctx = {"seed": seed, "index": 4, "edgesSha": "a" * 64, "split": "train", "cutFrom": "native"}
+        ents, files = doctype.write(tmp_path, res, ctx)
+        e = ents[0]
+        img = cv2.imread(str(tmp_path / e["file"]))
+        assert e["file"].endswith(".png") and img.shape == (256, 256, 3) and e["cut_size"] == [1730, 1090] and e["cut_from"] == "native"
+        want = phone.doctype_input(crop, bgr=True, kernel=e["kernel"])     # index.html doctypeAnswer on the full cut
+        assert np.array_equal(np.ascontiguousarray(img[..., ::-1].transpose(2, 0, 1)).astype(np.float32) / 255.0, want)
+        assert e["kernel"] == phone.kernel_for("capture", doctype.kernel_rng(ctx, 0))   # its own stream: the same every drawing
+        kernels.add(e["kernel"])
+    assert kernels <= set(phone.KERNELS)
 
 
 def test_the_zone_writer_counts_what_it_did_not_find(tmp_path):

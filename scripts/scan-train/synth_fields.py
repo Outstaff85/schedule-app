@@ -14,7 +14,8 @@ other pages and the training vocabulary — the reader is measured on cards and 
 
 Writes <n>.png (grey), labels.tsv (file, text as written, kind, the page's sha1 prefix, the page type, the field's
 role — hemodel.role_of: a date's dob / expiry / issued) and sources.json (the
-split, the vocabulary, the pages' sha1s — train_he.py refuses a training set holding a held-out page). A thin wrapper
+split, the vocabulary, the pages' sha1s — train_he.py refuses a training set holding a held-out page —, and nameOpen:
+the names' boxes widened as the phone reads them, hemodel.NAME_OPEN — train_he.py refuses a set cut before). A thin wrapper
 over `python -m gen build --model he` (gen/build.py): the folder also gets manifest.jsonl and run.json, one row per page
 (docs/scan-training.md → "Made-up sets: build, verify, QA")."""
 import hashlib
@@ -54,15 +55,19 @@ def phone(rng, page):
 SHIFT, SCALE = 0.02, 0.02   # the phone's cut a little off: in shares of the card, not of the field's box
 
 
-def crop(rng, g, box):
-    """A field cut out as the phone cuts it: the phone reads a layout box on its own cut of the card, and a corner a
-    little off moves the card under that box — so the box is moved by up to SHIFT of the card's width and height and
-    each axis of the card is scaled by up to ±SCALE about its centre (in shares of the card, not of the box: a field
-    far from the centre moves more), then grown by heLine's margins (hemodel.MARGIN_X / MARGIN_Y, the phone's
-    scan-lab/index.html heLine — mirrored)."""
-    from hemodel import MARGIN_X, MARGIN_Y
-    x, y, w, h = box
+def crop(rng, g, box, role=None):
+    """A field cut out as the phone cuts it: the phone reads a layout box on its own cut of the card — a name's box
+    widened toward its open side (hemodel.widened by the field's role, as he-layouts.json carries it to the phone) —,
+    and a corner a little off moves the card under that box — so the box is moved by up to SHIFT of the card's width
+    and height and each axis of the card is scaled by up to ±SCALE about its centre (in shares of the card, not of the
+    box: a field far from the centre moves more), then grown by heLine's margins (hemodel.MARGIN_X / MARGIN_Y, the
+    phone's scan-lab/index.html heLine — mirrored)."""
+    from hemodel import MARGIN_X, MARGIN_Y, widened
     H, W = g.shape[:2]
+    x, y, w, h = box
+    if role is not None:   # in shares of the card, as the layouts are
+        bx, by, bw, bh = widened(role, [x / W, y / H, w / W, h / H])
+        x, y, w, h = bx * W, by * H, bw * W, bh * H
     dx, dy = rng.uniform(-SHIFT, SHIFT) * W, rng.uniform(-SHIFT, SHIFT) * H
     sx, sy = 1 + rng.uniform(-SCALE, SCALE), 1 + rng.uniform(-SCALE, SCALE)
     nx, ny = W / 2 + (x - W / 2) * sx + dx, H / 2 + (y - H / 2) * sy + dy
@@ -108,7 +113,7 @@ def _batch(job):
         g = phone(rng, page)
         labels, files, kept = [], [], []
         for k, (kind, text, box) in enumerate(fields):
-            part = crop(rng, g, box)
+            part = crop(rng, g, box, role_of(spec['fields'][k]))   # a name's box widened as the phone reads it
             if part.size == 0:
                 continue
             name = f"{i}-{k}.png"
@@ -161,8 +166,10 @@ def gen_write(folder, params, items):
     (out / "labels.tsv").write_text("\n".join(labels) + "\n", encoding="utf-8")
     held = params["held"]
     used = sorted({e["sha1"] for e in params["pages"]} - {None})
+    from hemodel import NAME_OPEN
     (out / "sources.json").write_text(json.dumps({"split": "check" if held else "train", "vocabulary": "check" if held else "train",
-                                                  "templates": used, "heldout_sha256": heldout_sha256()}, indent=1), encoding="utf-8")
+                                                  "templates": used, "heldout_sha256": heldout_sha256(),
+                                                  "nameOpen": NAME_OPEN}, indent=1), encoding="utf-8")   # train_he.py: cut as the phone reads
     if held:
         record_own_exam_set("he-fields/check", out / "labels.tsv")   # the work folder's own check set only
     print(f"{len(labels)} fields from {params['count']} made-up pages ({len(used)} real {'held-out' if held else 'training'} pages: "

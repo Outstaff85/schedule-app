@@ -7,7 +7,10 @@
 // findInside, run with a stub canvas and a stub engine answering as scripted, make the same model calls and take the
 // same frame as docfind.find_next(lab=True) / find_inside, and goodQuad, docShape, quadIoU and the constants
 // INSIDE_MIN / INSIDE_MAX / MAX_DOCS are gen/phone.py's; findNext's painting fills the paths phone.lab_paint_polys
-// gives (each found one grown 4 %) in the colour phone.lab_ring_colour takes from the 32 x 32 border ring.
+// gives (each found one grown 4 %) in the colour phone.lab_ring_colour takes from the 32 x 32 border ring;
+// and scan-core.js faceScore / faceTurn, run on the face finder's outputs written by hand (a stub session, a stub
+// canvas), give phone.face_score_of / face_turn's answers: the surest face, ties to the first, the clip, 0 under 0.5,
+// the eyes-to-mouth sine, the first turn on a tie and -1 when none.
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import vm from 'node:vm';
@@ -156,7 +159,40 @@ for (const dir of ['scan-lab', 'scan']) {
         `${dir}: findNext's painted path, ${c.name}: ${JSON.stringify(f.path)} vs ${JSON.stringify(c.polys[k])}`)));
     });
   }
+  // the face finder's turn: scan-core.js faceScore / faceTurn on hand-made outputs = phone.face_score_of / face_turn
+  const F = fx.faces;
+  const faceCtx = {
+    OffscreenCanvas: class {
+      constructor(w, h) { this.width = w; this.height = h; }
+      getContext() {
+        return { fillStyle: '', fillRect() {}, drawImage() {}, translate() {}, rotate() {}, getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }) };
+      }
+    },
+    ort: { Tensor: class { constructor(type, data, dims) { this.type = type; this.data = data; this.dims = dims; } } },
+  };
+  vm.runInNewContext(readFileSync(new URL(`../../${dir}/scan-core.js`, import.meta.url), 'utf8') +
+    ';this.faceScore = faceScore; this.faceTurn = faceTurn;', faceCtx);
+  const faceOutputs = hot => {   // the sparse cells as the finder's outputs (every other cell 0)
+    const out = {};
+    for (const st of [8, 16, 32]) {
+      const n = F.strides[st], cls = new Float32Array(n), obj = new Float32Array(n), kps = new Float32Array(n * 10);
+      for (const [i, c, o, k] of hot[st] || []) { cls[i] = c; obj[i] = o; kps.set(k, i * 10); }
+      Object.assign(out, { ['cls_' + st]: { data: cls }, ['obj_' + st]: { data: obj }, ['kps_' + st]: { data: kps } });
+    }
+    return out;
+  };
+  const facePage = { width: 100, height: 60 }, hotOf = Object.fromEntries(F.scores.map(c => [c.name, c.hot]));
+  for (const c of F.scores) {
+    const got = await faceCtx.faceScore({ run: async () => faceOutputs(c.hot) }, facePage);
+    assert.ok(Math.abs(got - c.score) <= 1e-12, `${dir}: faceScore = phone.face_score_of, ${c.name}: ${got} vs ${c.score}`);
+  }
+  for (const c of F.turns) {
+    const left = c.script.slice(), dims = [];
+    const sess = { run: async feeds => { dims.push([...feeds.input.dims]); return faceOutputs(hotOf[left.shift()]); } };
+    assert.equal(await faceCtx.faceTurn(sess, facePage), c.k, `${dir}: faceTurn = phone.face_turn, ${c.name}`);
+    assert.deepEqual(dims, Array(4).fill([1, 3, 320, 320]), `${dir}: faceTurn runs the four turns on the 320 letterbox, ${c.name}`);
+  }
   console.log(`PASS ${dir}: corners (${fx.heatmaps.length} maps) exactly, warpRGBA (${fx.warps.length}) within 1, mrzFind (${fx.zones.length}) as phone.py; ` +
     `findNext (${m.nexts.length}) and findInside (${m.insides.length}) as docfind, quadIoU / docShape / goodQuad as phone.py, ` +
-    `findNext's paint (${fx.paints.length}) as phone.lab_paint`);
+    `findNext's paint (${fx.paints.length}) as phone.lab_paint, faceScore (${F.scores.length}) and faceTurn (${F.turns.length}) as phone.py`);
 }
