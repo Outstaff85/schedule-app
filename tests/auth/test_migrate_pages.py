@@ -236,12 +236,56 @@ def test_stale_save_after_cleanup_is_still_repaired():
 
 
 def test_cleanup_skips_a_worker_whose_fields_are_not_the_split():
+    # migrated from another sidecar than the recorded one: never deleted on a guess
     db, bucket, tenants, store = _setup()
     scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
     w = tenants[T]["workers"]["w1"]
-    w["sigFileId"] = "elsewhere.png"
+    w["assetsMigratedFrom"] = f"tenants/{T}/workers/w1/assets/2-other_assets.json"
     rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
     assert rep[T]["cleaned"] == 0 and SIDE in store and rep[T]["skipped"][0]["worker"] == "w1"
+
+
+def _app_page_edit(w):
+    """The app's whole-document save after a rescan: new pages and signature, assetsMigratedFrom kept."""
+    base = f"tenants/{T}/workers/w1"
+    w["scanPages"] = w["scanPages"] + [{"fileId": f"{base}/pages/7-3-other.jpg", "kind": "other", "savedAt": "2026-10-20T00:00:00.000Z"}]
+    w["sigFileId"], w["sigSavedAt"] = f"{base}/signature/7-signature.png", "2026-10-20T00:00:00.000Z"
+
+
+def test_cleanup_deletes_the_sidecar_of_a_worker_edited_after_apply():
+    db, bucket, tenants, store = _setup()
+    w = tenants[T]["workers"]["w1"]
+    before = json.loads(json.dumps(w))
+    scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
+    _app_page_edit(w)
+    store[w["scanPages"][-1]["fileId"]] = (b"NEW", "image/jpeg", None)
+    store[w["sigFileId"]] = (b"NEWSIG", "image/png", None)
+    pages, sig = list(w["scanPages"]), w["sigFileId"]
+    rep = scan_pages.migrate(db, bucket, "cleanup", delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["cleaned"] == 1 and rep[T]["skipped"] == [] and rep[T]["refreshed"] == 1
+    assert SIDE not in store and "assetsMigratedFrom" not in w
+    # the record follows the newest pages, so a later stale save gets them back
+    rec = tenants[T]["migrations"]["scanPages_w1"]
+    assert rec["sidecar"] == SIDE and rec["scanPages"] == pages and rec["sigFileId"] == sig and rec["stamp"] == 5
+    _stale_save(w, before)
+    rep = scan_pages.migrate(db, bucket, "apply", now_ms=9, delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["restored"] == 1 and w["scanPages"] == pages and w["sigFileId"] == sig and "assetsFileId" not in w
+
+
+def test_apply_refreshes_the_record_of_a_worker_edited_after_apply():
+    db, bucket, tenants, store = _setup()
+    scan_pages.migrate(db, bucket, "apply", now_ms=5, delete_field=DEL, log=lambda *a: None)
+    w = tenants[T]["workers"]["w1"]
+    _app_page_edit(w)
+    rep = scan_pages.migrate(db, bucket, "dry-run", now_ms=6, delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["refreshed"] == 1 and tenants[T]["migrations"]["scanPages_w1"]["scanPages"] != w["scanPages"]
+    rep = scan_pages.migrate(db, bucket, "apply", now_ms=6, delete_field=DEL, log=lambda *a: None)
+    rec = tenants[T]["migrations"]["scanPages_w1"]
+    assert rep[T]["refreshed"] == 1 and rep[T]["recorded"] == 0 and rep[T]["workers"] == 0
+    assert rec["scanPages"] == w["scanPages"] and rec["sigFileId"] == w["sigFileId"] and rec["stamp"] == 5
+    # nothing more to refresh
+    rep = scan_pages.migrate(db, bucket, "apply", now_ms=7, delete_field=DEL, log=lambda *a: None)
+    assert rep[T]["refreshed"] == 0
 
 
 def test_a_worker_split_before_the_records_gets_one():

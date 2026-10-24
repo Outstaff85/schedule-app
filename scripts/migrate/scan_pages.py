@@ -24,8 +24,11 @@ back: `assetsFileId` again, no `scanPages`. `apply` run again finds such a
 worker by its record (its `assetsFileId` is the recorded sidecar, it has no
 pages) and puts the recorded fields back — the same files, none written
 again, even when `cleanup` has already deleted the sidecar. `cleanup`
-deletes a sidecar only when the worker's fields are the record's, and keeps
-the record, so a stale save that comes later is still repaired by `apply`.
+deletes a sidecar only when the worker still carries the recorded split (no
+`assetsFileId`, `assetsMigratedFrom` = the recorded sidecar) — its pages or
+signature may have been changed in the app since, and then the record is
+refreshed to them first (so does `apply`) — and keeps the record, so a stale
+save that comes later is still repaired by `apply`.
 Every manager device reloads (or signs out) after `apply`, and `cleanup`
 runs only after that. A worker split before the records existed gets one
 from its current fields on the next `apply`.
@@ -149,10 +152,19 @@ def record_of(sidecar, fields, stamp):
 
 
 def matches_record(w, rec):
-    """The worker's fields are the split's: no sidecar back, the same pages and signature."""
-    return (not w.get("assetsFileId") and w.get("assetsMigratedFrom") == rec.get("sidecar")
-            and (w.get("scanPages") or []) == (rec.get("scanPages") or [])
-            and w.get("sigFileId") == rec.get("sigFileId"))
+    """The worker carries the recorded split: no sidecar back, migrated from the recorded sidecar.
+
+    Its pages and signature may have changed since (a rescan, a page added, a new
+    signature in the app): the sidecar is still no longer pointed at. A stale save
+    from before `apply` brings `assetsFileId` back and drops `assetsMigratedFrom`,
+    so it never matches."""
+    return not w.get("assetsFileId") and bool(rec.get("sidecar")) and w.get("assetsMigratedFrom") == rec.get("sidecar")
+
+
+def record_is_current(w, rec):
+    """The record holds the worker's own pages and signature now."""
+    return ((w.get("scanPages") or []) == (rec.get("scanPages") or [])
+            and all(w.get(k) == rec.get(k) for k in SIG_KEYS))
 
 
 def restore_fields(rec, delete_field):
@@ -176,7 +188,7 @@ def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=
         mcol = db.collection("tenants").document(t).collection("migrations")
         records = {d.id[len(REC):]: (d.to_dict() or {}) for d in mcol.stream() if d.id.startswith(REC)}
         r = {"workers": 0, "pages": 0, "signatures": 0, "sidecarBytes": 0, "pageBytes": 0, "failed": [],
-             "cleaned": 0, "restored": 0, "recorded": 0, "skipped": []}
+             "cleaned": 0, "restored": 0, "recorded": 0, "refreshed": 0, "skipped": []}
         if mode == "cleanup":
             for w in workers:
                 old = w.get("assetsMigratedFrom")
@@ -189,6 +201,11 @@ def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=
                 if not matches_record(w, rec):
                     r["skipped"].append({"worker": w["id"], "reason": "the worker's fields are not the split's: check by hand"})
                     continue
+                if not record_is_current(w, rec):
+                    # pages or signature changed in the app since apply: a later stale save
+                    # is repaired with the worker's newest pages, not the first split's
+                    mcol.document(REC + w["id"]).set(record_of(old, w, rec.get("stamp")))
+                    r["refreshed"] += 1
                 blob = bucket.blob(old)
                 if blob.exists():
                     blob.delete()
@@ -214,12 +231,20 @@ def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=
                 continue
             todo.append(w)
         for w in workers:
-            # split before the records existed: record it from its current fields
             old = w.get("assetsMigratedFrom")
-            if old and w["id"] not in records and not w.get("assetsFileId") and (w.get("scanPages") or w.get("sigFileId")):
+            if not old or w.get("assetsFileId") or not (w.get("scanPages") or w.get("sigFileId")):
+                continue
+            rec = records.get(w["id"])
+            if rec is None:
+                # split before the records existed: record it from its current fields
                 r["recorded"] += 1
                 if mode == "apply":
                     mcol.document(REC + w["id"]).set(record_of(old, w, None))
+            elif matches_record(w, rec) and not record_is_current(w, rec):
+                # pages or signature changed in the app since the split: the record follows
+                r["refreshed"] += 1
+                if mode == "apply":
+                    mcol.document(REC + w["id"]).set(record_of(old, w, rec.get("stamp")))
         for w in todo:
             path = w["assetsFileId"]
             if not path.startswith(f"tenants/{t}/workers/{w['id']}/assets/"):
