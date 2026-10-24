@@ -2,7 +2,7 @@ name: Tests
 
 # Every pull request into main (and by hand): the dictionary and icon checks,
 # the build (typecheck, Vite, the old pages copied into dist/), the payroll
-# comparison (tests/payroll), the Accounting comparison (tests/accounting), the scan process comparison (tests/scan), the rules tests, the functions tests and the browser tests on the built dist/
+# comparison (tests/payroll), the Accounting comparison (tests/accounting), the scan process comparison and the scanner engine parity (tests/scan), the rules tests, the functions tests and the browser tests on the built dist/
 # (docs/tests.md).
 # Nothing is deployed and no secret is used — everything runs on the emulators.
 on:
@@ -66,8 +66,20 @@ jobs:
       - name: Scan process (the old reading vs src/scan-process/)
         run: node tests/scan/compare.test.mjs
 
-      - name: Scanner corners (scan-lab/scan-core.js and scan/scan-core.js)
+      - name: Scanner corners (src/scan/engine/geometry.ts)
         run: node tests/scan/corners.test.mjs
+
+      - name: Scanner engine parity (the lab's former page, frozen in tests/scan/legacy-lab.js, vs src/scan/engine/)
+        run: node tests/scan/engine.test.mjs
+
+      - name: Scanner engine runtime (src/scan/engine/ ways, watchdog, failures, URLs per surface)
+        run: node tests/scan/runtime.test.mjs
+
+      - name: Scanner scan session (src/scan/engine/ session, live frame, follow, Auto, the shot and its other documents)
+        run: node tests/scan/session.test.mjs
+
+      - name: Scanner picked files and attempts (src/scan/engine/ files on threads, the training attempts)
+        run: node tests/scan/files.test.mjs
 
       # LibreOffice for the Word templates' conversion (services/docx2pdf, docs/contracts.md → Word templates)
       # its packages kept between runs: the runners' Ubuntu mirror was down to ~40 KB/s (2026-10-22) and

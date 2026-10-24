@@ -148,6 +148,7 @@ def israeli_id(rng):
 
 
 def valid_israeli_id(s):
+    # mirrored on the phone: heIdOk in src/scan/engine/readers.ts
     if len(s) != 9 or not s.isdigit():
         return False
     return sum((int(c) * (1 + i % 2)) // 10 + (int(c) * (1 + i % 2)) % 10 for i, c in enumerate(s)) % 10 == 0
