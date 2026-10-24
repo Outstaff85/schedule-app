@@ -1,5 +1,6 @@
-"""The open sets made on the owner's PC — MIDV (midv.py: midv/, midv-mrz/) and SmartDoc (smartdoc.py:
-smartdoc/) — kept in the PRIVATE bucket DATA under datasets/<set>/ instead of only on the PC
+"""The open sets made on the owner's PC — MIDV (midv.py: midv/, midv-mrz/), SmartDoc (smartdoc.py:
+smartdoc/) and the background photos for the made-up document photos (backgrounds/: CC0 / public-domain photos
+of tables, cloths, floors from Openverse, their sources in sources.json; synth_docs.py lays documents on them) — kept in the PRIVATE bucket DATA under datasets/<set>/ instead of only on the PC
 (docs/scan-training.md → 4, "MIDV"): `push` uploads the made sets (never a download's raw/ folder),
 `pull` brings them back before a training on any PC. MIDV's terms allow no public copy: only the private
 bucket. The owner's own HF token on the PC (hf auth login).
@@ -12,7 +13,7 @@ import argparse
 
 from home import DATA, WORK
 
-SETS = ("midv", "midv-mrz", "smartdoc")
+SETS = ("midv", "midv-mrz", "smartdoc", "backgrounds")
 
 
 def remote(name):

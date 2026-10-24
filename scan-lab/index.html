@@ -53,6 +53,8 @@
   .kept-page{position:relative}
   .kept-page img{width:100%;border-radius:12px;display:block}
   .kept-page button{position:absolute;top:6px;right:6px;min-height:34px;padding:0 12px}
+  .kept-page select.kind{position:absolute;left:6px;bottom:6px;min-height:34px;max-width:calc(100% - 64px)}
+  .kept-page button.kind-ok{top:auto;bottom:6px;right:6px}
   @media (prefers-reduced-motion:reduce){.bar i{animation:none}}
 </style>
 </head>
@@ -630,18 +632,62 @@ async function heNote(canvas) {
       ', ID ' + (f.idNo || '—') + (f.idOk ? ' ✓' : ' ✗') + ', born ' + (f.dob || '—') + ' (' + Math.round(performance.now() - t0) + ' ms)';
   } catch (e) { return '; the Hebrew field reader failed: ' + (e && e.message || e); }
 }
+// The document type model's answer on a page (a canvas or a loaded image): {doctype, conf, turn, turnConf, ms}, or
+// null with no model in this version.
+async function doctypeAnswer(src) {
+  if (!doctypeSess || !src) return null;
+  const sq = document.createElement('canvas'); sq.width = 256; sq.height = 256;
+  const g = sq.getContext('2d', { willReadFrequently: true }); g.drawImage(src, 0, 0, 256, 256);
+  const d = g.getImageData(0, 0, 256, 256).data, n = 256 * 256, f = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+  const t0 = performance.now(), r = await doctypeSess.run({ [doctypeSess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, 256, 256]) });
+  const kp = Array.from(r.doctype.data), tp = Array.from(r.turn.data), k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
+  return { doctype: Object.keys(DOCTYPE_NAMES)[k], conf: kp[k], turn: t, turnConf: tp[t], ms: performance.now() - t0, square: sq };
+}
 async function doctypeNote(canvas) {
-  if (!doctypeSess || !canvas) return '';
   try {
-    const sq = document.createElement('canvas'); sq.width = 256; sq.height = 256;
-    const g = sq.getContext('2d', { willReadFrequently: true }); g.drawImage(canvas, 0, 0, 256, 256);
-    const d = g.getImageData(0, 0, 256, 256).data, n = 256 * 256, f = new Float32Array(3 * n);
-    for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
-    const t0 = performance.now(), r = await doctypeSess.run({ [doctypeSess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, 256, 256]) });
-    const kp = Array.from(r.doctype.data), tp = Array.from(r.turn.data), k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
-    const names = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'];
-    return '; type: ' + DOCTYPE_NAMES[names[k]] + ' ' + Math.round(kp[k] * 100) + '%, needs ' + t * 90 + '° (' + Math.round(tp[t] * 100) + '%), ' + Math.round(performance.now() - t0) + ' ms';
+    const a = await doctypeAnswer(canvas);
+    if (!a) return '';
+    return '; type: ' + DOCTYPE_NAMES[a.doctype] + ' ' + Math.round(a.conf * 100) + '%, needs ' + a.turn * 90 + '° (' + Math.round(a.turnConf * 100) + '%), ' + Math.round(a.ms) + ' ms';
   } catch (e) { return '; the document type model failed: ' + (e && e.message || e); }
+}
+// A kept page's document type (owner, 2026-10-24: the lab collects the document type model's examples too, as
+// the scan window does): a choice under the page set to the model's answer, and a ✓ beside it. Only what the
+// user did is a label — the model's answer nobody touched never is (it would teach the model its own guesses;
+// the training audit, 2026-10-24): a type picked is sent 20 s after the last change or when the page is left,
+// the ✓ sends the type shown at once (keep when it is the model's); each page once. Sent with a 256×256 copy
+// (scan_feedback "add", source "page"). Only on the lab's own page — never in the site's frame, whose scan
+// window has its own types — and only with a document type model in the version.
+const KIND_WAIT = 20000, kindsDue = new Map();
+function sendKind(sel) {
+  const job = kindsDue.get(sel);
+  if (!job || job.sent) return;
+  job.sent = true; clearTimeout(job.timer);
+  for (const el of sel.parentNode ? sel.parentNode.querySelectorAll('select.kind, button.kind-ok') : []) el.disabled = true;
+  const fixed = sel.value, ex = { source: 'page', model: modelsVersion, doctypeModel: job.model, doctypeFixed: fixed, doctypeBy: 'model', pageImage: job.copy };
+  if (fixed === job.model) ex.keep = true;
+  trainPost({ action: 'add', examples: [ex] }).then(() => log('Document type sent for training: ' + DOCTYPE_NAMES[fixed] + (fixed === job.model ? ' (the model\'s, confirmed)' : ' (the model said ' + DOCTYPE_NAMES[job.model] + ')')),
+    e => logErr('Document type not sent: ' + (e && e.message || e)));
+}
+function dropKind(w) { const sel = w.querySelector('select.kind'), job = sel && kindsDue.get(sel); if (job) { clearTimeout(job.timer); job.sent = true; } }
+addEventListener('pagehide', () => { for (const [sel, job] of kindsDue) if (job.timer && !job.sent) sendKind(sel); });
+function kindsHere() { return TRAIN_SOURCE === 'lab' && window.parent === window; }
+async function addKind(w, im) {
+  if (!kindsHere()) return;
+  try {
+    await im.decode();
+    const a = await doctypeAnswer(im);
+    if (!a || !w.isConnected) return;
+    const sel = document.createElement('select'); sel.className = 'kind';
+    for (const [k, name] of Object.entries(DOCTYPE_NAMES)) { const o = document.createElement('option'); o.value = k; o.textContent = name + (k === a.doctype ? ' · ' + Math.round(a.conf * 100) + '%' : ''); sel.append(o); }
+    sel.value = a.doctype;
+    const ok = document.createElement('button'); ok.className = 'kind-ok'; ok.textContent = '✓'; ok.title = 'This type is right';
+    const job = { model: a.doctype, copy: a.square.toDataURL('image/jpeg', 0.85).split(',')[1], timer: 0, sent: false };
+    kindsDue.set(sel, job);
+    sel.onchange = () => { if (job.sent) return; clearTimeout(job.timer); job.timer = setTimeout(() => sendKind(sel), KIND_WAIT); };
+    ok.onclick = () => sendKind(sel);
+    w.append(sel, ok);
+  } catch (e) { logErr('Document type: ' + (e && e.message || e)); }
 }
 // Every attempt goes for training (docs/scan-plan.md → S8; the same code on the site, the copy in /scan/):
 // a camera shot or a picked picture, with the photo (at most 1600 px), the models' corners (the first
@@ -853,11 +899,11 @@ function keepCurrent(bump = true) {
       const w = document.createElement('div'); w.className = 'kept-page';
       const im = new Image(); im.src = i.src;
       im.dataset.att = i.dataset.att || ''; im.dataset.pg = i.dataset.pg || '0';
-      const x = document.createElement('button'); x.textContent = '✕'; x.onclick = () => { attemptPageDeleted(im.dataset.att, +im.dataset.pg); w.remove(); relabel(); };
-      w.append(im, x); body.append(w);
+      const x = document.createElement('button'); x.textContent = '✕'; x.onclick = () => { dropKind(w); attemptPageDeleted(im.dataset.att, +im.dataset.pg); w.remove(); relabel(); };
+      w.append(im, x); body.append(w); addKind(w, im);
     }
     open.append(...thumbs, label); open.onclick = () => { body.hidden = !body.hidden; };
-    const del = document.createElement('button'); del.textContent = 'Delete'; del.onclick = () => { for (const im of row.querySelectorAll('.kept-page img')) attemptPageDeleted(im.dataset.att, +im.dataset.pg); row.remove(); };
+    const del = document.createElement('button'); del.textContent = 'Delete'; del.onclick = () => { for (const w of row.querySelectorAll('.kept-page')) dropKind(w); for (const im of row.querySelectorAll('.kept-page img')) attemptPageDeleted(im.dataset.att, +im.dataset.pg); row.remove(); };
     head.append(open, del); row.append(head, body); $('kept').append(row); relabel();
   }
   if (bump) shotId++;
