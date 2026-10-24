@@ -6,7 +6,8 @@
 // mrzmodel.find_boxes (the training's line finding) —; and more documents on one photo: index.html findNext and
 // findInside, run with a stub canvas and a stub engine answering as scripted, make the same model calls and take the
 // same frame as docfind.find_next(lab=True) / find_inside, and goodQuad, docShape, quadIoU and the constants
-// INSIDE_MIN / INSIDE_MAX / MAX_DOCS are gen/phone.py's.
+// INSIDE_MIN / INSIDE_MAX / MAX_DOCS are gen/phone.py's; findNext's painting fills the paths phone.lab_paint_polys
+// gives (each found one grown 4 %) in the colour phone.lab_ring_colour takes from the 32 x 32 border ring.
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import vm from 'node:vm';
@@ -127,6 +128,35 @@ for (const dir of ['scan-lab', 'scan']) {
     const got = await L.findInside(new Uint8ClampedArray(0), c.w, c.h, c.q, eng, [c.q, ...c.others]);
     near(got && JSON.parse(JSON.stringify(got)), c.c, `${dir}: findInside, ${c.name}`);
   }
+  // findNext's painting: the 32 x 32 border ring's colour and the paths it fills = phone.lab_ring_colour / lab_paint_polys
+  for (const c of fx.paints) {
+    const ring = unpack(c.ring).a, fills = [];
+    const recording = () => {
+      const cv = { width: 0, height: 0 };
+      let path = [];
+      cv.getContext = () => ({
+        fillStyle: '', drawImage() {}, fillRect() {}, closePath() {},
+        beginPath() { path = []; }, moveTo(x, y) { path.push([x, y]); }, lineTo(x, y) { path.push([x, y]); },
+        fill() { fills.push({ style: this.fillStyle, path }); },
+        getImageData: (x, y, w, h) => {
+          const data = new Uint8ClampedArray(w * h * 4);
+          if (w === 32 && h === 32) for (let i = 0; i < 32 * 32; i++) { data.set(ring.subarray(i * 3, i * 3 + 3), i * 4); data[i * 4 + 3] = 255; }
+          return { data };
+        },
+      });
+      return cv;
+    };
+    const keep = lab.document.createElement;
+    lab.document.createElement = recording;
+    try { await L.findNext(blankCanvas(), c.w, c.h, c.found, scriptedEngine([])); } finally { lab.document.createElement = keep; }
+    assert.equal(fills.length, c.polys.length, `${dir}: findNext paints each found one, ${c.name}`);
+    fills.forEach((f, k) => {
+      assert.equal(f.style, `rgb(${c.colour.join(',')})`, `${dir}: findNext's paint colour, ${c.name}`);
+      f.path.forEach((p, i) => p.forEach((v, j) => assert.ok(Math.abs(v - c.polys[k][i][j]) <= 1e-9,
+        `${dir}: findNext's painted path, ${c.name}: ${JSON.stringify(f.path)} vs ${JSON.stringify(c.polys[k])}`)));
+    });
+  }
   console.log(`PASS ${dir}: corners (${fx.heatmaps.length} maps) exactly, warpRGBA (${fx.warps.length}) within 1, mrzFind (${fx.zones.length}) as phone.py; ` +
-    `findNext (${m.nexts.length}) and findInside (${m.insides.length}) as docfind, quadIoU / docShape / goodQuad as phone.py`);
+    `findNext (${m.nexts.length}) and findInside (${m.insides.length}) as docfind, quadIoU / docShape / goodQuad as phone.py, ` +
+    `findNext's paint (${fx.paints.length}) as phone.lab_paint`);
 }

@@ -9,6 +9,10 @@ camera.py, scene.py, outputs/edges.py; docs/scan-training.md → "Scenes: one ca
   each side near the corner, two lines intersected), lie within 0.5 px of the labels;
 - a card on its ספח is written as the flat cut of the outer page (the lab's findInside), never as a second answer on
   the frame; partial scenes have weight 0 by default;
+- the next pictures and the painted recipe paint as the lab's findNext (gen/phone.py lab_paint: 4 % growth, the 32 × 32
+  border ring's colour, an antialiased fill) on the final frame, after the light and the phone's effects;
+- the table is drawn no coarser than the frame shows it (a photo's px/mm, a procedural surface's) at the point the
+  camera looks at, so it is as sharp as the documents on it;
 - no PyMuPDF: the PDF source is skipped and counted, another page drawn instead.
 SCAN_SCENES (default 200) sets the scenes per recipe. No torch here."""
 import json
@@ -379,6 +383,90 @@ def test_a_pair_writes_the_next_page_with_the_answer_painted_over():
         c = q.mean(0).astype(int)
         patch = nxt[c[1] - 3:c[1] + 4, c[0] - 3:c[0] + 4]
         assert patch.std(axis=(0, 1)).max() < 6          # the answer painted over in one colour
+
+
+def test_next_pictures_and_the_painted_recipe_paint_as_the_lab_on_the_final_frame():
+    from gen import phone
+    from gen.outputs import edges as ge
+    import tempfile
+    sc = next(s for s in scenes("pair", 10, seed=8) if len(s.docs) == 2)
+    labels = gs.doc_labels(sc)
+    roles = gs.roles(sc, labels)
+    frame = gs.render(sc, random.Random(5))          # with shadows, light and the phone's effects
+    found = [roles[0][0]["quad01"]]
+    nxt = gs.paint(frame, found)
+    assert np.array_equal(nxt, phone.lab_paint(frame, found))      # the scenes' next picture is the lab's paint of its frame
+    col = phone.lab_border_colour(frame, phone.kernel_for("capture"))
+    grown = phone.lab_paint_polys(found, sc.cam.W, sc.cam.H)[0]
+    inner = np.zeros(frame.shape[:2], np.uint8)
+    c = grown.mean(0)
+    cv2.fillPoly(inner, [np.round((c + (grown - c) * 0.98 - 0.5) * 16).astype(np.int32)], 1, cv2.LINE_8, shift=4)
+    q = np.array(roles[0][0]["quadDoc"])
+    rim = np.zeros_like(inner)
+    cv2.polylines(rim, [np.round((q - 0.5) * 16).astype(np.int32)], True, 1, 3, cv2.LINE_8, shift=4)
+    rim &= inner
+    assert rim.sum() > 100 and (nxt[rim > 0] == col).all()          # the page's edge is painted over: no outline left
+    assert (nxt[inner > 0] == col).all()
+    with tempfile.TemporaryDirectory() as t:
+        (pathlib.Path(t) / "img").mkdir()
+        ge.entries_of(sc, frame, labels, roles, t, 3, 1, "train", {})
+        data, _ = phone.store_attempt(nxt)
+        assert (pathlib.Path(t) / "img" / "3-n1.jpg").read_bytes() == data
+    # the painted recipe: painted on the final frame, a flat fill (no light, blur, noise or JPEG inside it)
+    seen = 0
+    for sc in scenes("painted", 6, seed=13):
+        frame = gs.render(sc, random.Random(7))
+        k = next(i for i, d in enumerate(sc.docs) if d.painted)
+        q01 = gs.doc_quads01(sc)[k]
+        grown = phone.lab_paint_polys([q01], sc.cam.W, sc.cam.H)[0]
+        c = grown.mean(0)
+        inner = np.zeros(frame.shape[:2], np.uint8)
+        cv2.fillPoly(inner, [np.round((c + (grown - c) * 0.97 - 0.5) * 16).astype(np.int32)], 1, cv2.LINE_8, shift=4)
+        others = np.zeros_like(inner)
+        for j, d in enumerate(sc.docs):
+            if j != k:
+                cv2.fillPoly(others, [np.round(gs.doc_quads(sc)[j] * 16).astype(np.int32)], 1, cv2.LINE_8, shift=4)
+        for f in sc.fingers:
+            cv2.fillPoly(others, [np.round(sc.cam.project(f["poly"]) * 16).astype(np.int32)], 1, cv2.LINE_8, shift=4)
+        inner &= 1 - others
+        if inner.sum() < 50:
+            continue
+        seen += 1
+        px = frame[inner > 0].reshape(-1, 3)
+        assert (px == px[0]).all()
+    assert seen
+
+
+def test_the_table_is_as_sharp_as_the_frame_shows_it():
+    class OnePhoto:
+        def sample(self, rng, hard=False):
+            return {"sha1": "a" * 40, "size": [1600, 1200], "category": "wood", "series": "w", "path": "x"}
+    for bank in (None, OnePhoto()):
+        n = 0
+        for i in range(60):
+            r = grng.streams(41, i)
+            sc = gs.plan(r, StubPool(), None, bank, None, recipe="single")
+            if sc is None:
+                continue
+            n += 1
+            ppm = sc.cam.ppm_at()
+            assert abs(sc.bg["framePpm"] - ppm) < 1e-9
+            if bank is None:
+                assert sc.bg["ppm"] >= ppm * gs.PROC_MARGIN - 1e-9 and sc.bg["size"] <= gs.PROC_MAX
+            else:
+                assert sc.bg["mm"] <= sc.bg["mmDrawn"] and 1600 / sc.bg["mm"] >= ppm - 1e-9
+            # the background's pixels per frame pixel at the point the camera looks at: never enlarged past its own
+            t = sc.cam.project([list(sc.cam.target)])[0]
+            P = gs.apply(np.linalg.inv(sc.bg["A"]), sc.cam.back(np.array([t, t + [1, 0], t + [0, 1]])))
+            J = np.array([P[1] - P[0], P[2] - P[0]])
+            assert math.sqrt(abs(np.linalg.det(J))) >= 0.9
+        assert n > 30
+    # a procedural surface drawn at the frame's resolution keeps its patterns' size in mm
+    import synth_docs as sd
+    a = sd.surface(random.Random(3), 300, 300, scale=1.0)
+    b = sd.surface(random.Random(3), 600, 600, scale=2.0)
+    small = cv2.resize(b, (300, 300), interpolation=cv2.INTER_AREA).astype(np.float32)
+    assert np.abs(small - a.astype(np.float32)).mean() < 12
 
 
 def test_partial_scenes_weigh_nothing_by_default_and_put_a_corner_out():

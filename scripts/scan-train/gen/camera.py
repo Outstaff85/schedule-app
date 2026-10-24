@@ -8,7 +8,8 @@ could tell them apart by that).
   top-left corner), the field of view along its long side, looking at `target` (a point of the plane) from `distance` mm,
   tilted `tilt` degrees from straight down, from the side `azimuth`, turned `roll` about its axis.
 - .H: the plane (mm) → the frame (pixels) homography; .project(points with z): a point lifted off the plane (a bent
-  page) goes through the same camera; .back(pixels): the frame → the plane.
+  page) goes through the same camera; .back(pixels): the frame → the plane; .ppm_at(point): the frame's pixels per mm
+  there; .footprint(): the frame's corners on the plane.
 - sample(rng, points): a phone's shot of points on the plane — the frame of one of PROFILES (1920×1080, 1280×720, a
   ~4000×3000 photo; upright or wide), drawn at most RENDER_MAX on its long side, fov 65–80°, 12–55 cm, tilt 0–45°, the
   points all inside the frame (or, partial, some of them outside).
@@ -87,6 +88,18 @@ class Camera:
         Hi = np.linalg.inv(self.Hm)
         P = np.column_stack([np.asarray(uv, np.float64), np.ones(len(uv))]) @ Hi.T
         return P[:, :2] / P[:, 2:3]
+
+    def ppm_at(self, pt=None):
+        """Pixels per mm the frame shows the plane at pt (default the point it looks at): the larger of the two
+        axes' scales there."""
+        p = np.asarray(self.target if pt is None else pt, np.float64)
+        uv = self.project(np.array([p, p + [1.0, 0.0], p + [0.0, 1.0]]))
+        return float(max(np.linalg.norm(uv[1] - uv[0]), np.linalg.norm(uv[2] - uv[0])))
+
+    def footprint(self):
+        """The frame's corners back on the plane (mm), None when a corner's ray misses it (the horizon in sight)."""
+        Q = self.back([[0, 0], [self.W, 0], [self.W, self.H], [0, self.H]])
+        return None if (self.depth(Q) <= 1).any() else Q
 
     def info(self):
         return {"size": [self.W, self.H], "native": list(self.native), "fov": round(self.fov, 3), "distance": round(self.distance, 2),

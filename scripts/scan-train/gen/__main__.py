@@ -135,7 +135,9 @@ def bg(a):
         print(f"{n}: {rep['photos']} photos — used by category {json.dumps(rep['used'])}; surfaces {json.dumps(rep['surfaces'])}")
         print(f"  rejected {json.dumps(rep['rejected'])}; no confirmed licence {rep['unlicensed']}; "
               f"hard negatives (text, no document) {rep['hardNegatives']}")
-        print(f"  split {json.dumps(rep['splits'])}" + (f"; edges models {rep['edgesVersion']}" if rep.get("edgesVersion") else ""))
+        print(f"  split {json.dumps(rep['splits'])}; not split yet {rep.get('unsplit', 0)}; exam locked {rep.get('locked', 0)}; "
+              f"trained twins of exam photos (now in neither) {rep.get('twinsOfExam', 0)}"
+              + (f"; edges models {rep['edgesVersion']}" if rep.get("edgesVersion") else ""))
     return 0
 
 

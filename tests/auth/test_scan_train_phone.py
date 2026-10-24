@@ -217,6 +217,24 @@ def make_more_docs():
             "goods": [{"pts": p, "conf": c, "ok": phone.lab_good_quad(p, c)} for p, c in GOODS]}
 
 
+PAINTS = {"one page": (640, 480, [[[0.2, 0.15], [0.7, 0.18], [0.72, 0.8], [0.18, 0.78]]]),
+          "two, one turned": (480, 640, [[[0.1, 0.1], [0.5, 0.12], [0.48, 0.4], [0.08, 0.38]],
+                                         [[0.6, 0.55], [0.9, 0.7], [0.75, 0.95], [0.45, 0.8]]]),
+          "at the edge": (400, 300, [[[0.0, 0.0], [0.6, 0.0], [0.6, 0.5], [0.0, 0.5]]])}
+
+
+def make_paints():
+    """findNext's painting: the colour of a 32 × 32 picture's border ring (phone.lab_ring_colour — the lab draws the
+    photo at 32 × 32 and reads that ring) and the paths it fills (phone.lab_paint_polys: each quad grown 4 %)."""
+    rng = np.random.default_rng(23)
+    out = []
+    for name, (w, h, found) in PAINTS.items():
+        ring = rng.integers(0, 256, (32, 32, 3)).astype(np.uint8)
+        out.append({"name": name, "w": w, "h": h, "found": found, "ring": phone.pack(ring),
+                    "colour": phone.lab_ring_colour(ring), "polys": [p.tolist() for p in phone.lab_paint_polys(found, w, h)]})
+    return out
+
+
 def make_fixtures():
     fx = {"about": "Written once from scripts/scan-train/gen/phone.py by tests/auth/test_scan_train_phone.py --write; "
                    "checked by that test and by tests/scan/phone_parity.test.mjs (the lab's scan-core.js and mrzFind).",
@@ -240,6 +258,7 @@ def make_fixtures():
         fx["zones"].append({"name": name, "page": phone.pack(page), "boxes": [_box(b) for b in phone.mrz_find(page)],
                             "findBoxes": [[x0, y0, x1 - x0, y1 - y0] for x0, y0, x1, y1 in mrzmodel.find_boxes(page)]})
     fx["moreDocs"] = make_more_docs()
+    fx["paints"] = make_paints()
     return fx
 
 
@@ -259,6 +278,7 @@ def test_the_parity_fixtures_are_phone_py():
         assert a["boxes"] == b["boxes"] and a["findBoxes"] == b["findBoxes"], a["name"]
     assert len(fx["heatmaps"]) == len(now["heatmaps"]) and len(fx["zones"]) == len(now["zones"])
     assert fx["moreDocs"] == json.loads(json.dumps(now["moreDocs"]))
+    assert fx["paints"] == json.loads(json.dumps(now["paints"]))
 
 
 def test_the_more_documents_fixtures_say_what_they_test():
@@ -275,6 +295,25 @@ def test_the_more_documents_fixtures_say_what_they_test():
     assert all(ins[k]["c"] is None for k in ("too big (64 %)", "a sliver", "unsure", "found already"))
     assert len({round(c["iou"], 3) for c in m["ious"]}) > 5
     assert {c["ok"] for c in m["shapes"]} == {True, False} and {c["ok"] for c in m["goods"]} == {True, False}
+
+
+def test_the_paint_is_one_copy_and_the_labs():
+    """phone.lab_paint is what find_next_lab, the scenes (gen/scene.py paint) and pull.painted paint with: each quad
+    grown 4 % from its centre, the 32 × 32 border ring's upper middle colour, an antialiased fill."""
+    from gen import scene as gs
+    img = np.zeros((300, 400, 3), np.uint8)
+    img[:, :] = (40, 90, 160)
+    img[60:240, 100:300] = 250
+    q = [[0.25, 0.2], [0.75, 0.2], [0.75, 0.8], [0.25, 0.8]]
+    out = phone.lab_paint(img, [q])
+    assert np.array_equal(gs.paint(img, [q]), out)
+    col = phone.lab_border_colour(img, phone.kernel_for("capture"))
+    assert col == [40, 90, 160]
+    # the page's rim is covered: the 4 % growth reaches 2 % of the page's size past its edge on every side
+    assert (out[56:244, 96:304] == col).all()
+    assert (out[50, 200] == col).all() and (out[150, 90] == col).all()          # outside the growth: the photo as it was
+    for c in make_paints():
+        assert c["colour"] == phone.lab_ring_colour(phone.unpack(c["ring"]))
 
 
 def test_corners_are_one_copy_and_pick_the_document():

@@ -680,10 +680,41 @@ def lab_border_colour(img, kernel="bilinear"):
     """findNext's paint colour: the photo drawn onto a 32 × 32 canvas (drawImage at the default smoothing: the capture
     op's kernel), its border's 128 pixels (each i: (i, 0), (i, 31), (0, i), (31, i) — the corners twice) and of each
     channel the upper middle value (a.sort()[n >> 1]). In the image's own channel order."""
-    t = resample(np.ascontiguousarray(img[..., :3]), (32, 32), kernel)
+    return lab_ring_colour(resample(np.ascontiguousarray(img[..., :3]), (32, 32), kernel))
+
+
+def lab_ring_colour(t):
+    """The colour of a 32 × 32 picture's border ring as findNext takes it (lab_border_colour after the resample)."""
     ring = [t[y, x] for i in range(32) for x, y in ((i, 0), (i, 31), (0, i), (31, i))]
     ring = np.sort(np.array(ring, np.int64), axis=0)
     return [int(v) for v in ring[len(ring) >> 1]]
+
+
+def lab_paint_polys(quads01, w, h):
+    """findNext's paths on a w × h canvas: each found quad (0..1) grown 4 % from its centre (its corners' mean), in
+    canvas pixels (x + (x - cx) * 0.04) * w, as the lab's lineTo gets them."""
+    out = []
+    for q in quads01:
+        q = np.asarray(q, np.float64)
+        c = q.sum(0) / 4
+        out.append((q + (q - c) * 0.04) * [w, h])
+    return out
+
+
+def lab_paint(img, quads01, kernel=None, colour=None):
+    """The picture with the found quads (0..1) painted over as the lab's findNext paints them: in the colour of its
+    border (lab_border_colour; kernel: the drawImage kernel, default the capture op's), each quad grown 4 % from its
+    centre, filled antialiased like a canvas fill (a canvas fills pixel areas; OpenCV's pixel centres are whole: -0.5).
+    The one copy: docfind.find_next_lab, the scenes' next pictures (gen/scene.py paint) and pull.painted."""
+    import cv2
+    out = np.ascontiguousarray(img[..., :3]).copy()
+    if not quads01:
+        return out
+    h, w = out.shape[:2]
+    col = colour if colour is not None else lab_border_colour(out, kernel or kernel_for("capture"))
+    for poly in lab_paint_polys(quads01, w, h):
+        cv2.fillPoly(out, [np.round((poly - 0.5) * 16).astype(np.int32)], col, lineType=cv2.LINE_AA, shift=4)
+    return out
 
 
 # ---------- the probe: fixed frames for measuring a browser's resamplers ----------

@@ -7,7 +7,11 @@ table and the documents").
 
 - The plane is in millimetres. A page is put on it by a similarity (its picture's pixels → mm: turned mostly by a
   quarter turn, ANY_ANGLE of them by any angle); the background photo too, at its physical size (its long side
-  BG_MM, or the catalog's widthMm); a procedural surface (synth_docs.surface) at PROC_PPM pixels per mm.
+  BG_MM, or the catalog's widthMm) but never wider than its pixels over the frame's px/mm at the point the camera
+  looks at (camera.ppm_at), so the table is as sharp as the documents on it (a photo enlarged 3-6 times next to a
+  sharp page would teach "smooth = table"); a procedural surface (synth_docs.surface) is drawn at the frame's px/mm ×
+  PROC_MARGIN over the frame's footprint on the plane (at most PROC_MAX px; beyond, mirrored), its patterns at their
+  size in mm (scale).
 - Recipes (the phone's search order): single; pair (2–4 pages apart, the larger found first — the rest "next");
   card_on_sheet (an ID card lying on its ספח or another sheet: the scanner cuts the sheet, then finds the card inside —
   the card is written as the flat cut of the outer page, gen/outputs/edges.py); painted (another document found first,
@@ -35,8 +39,9 @@ WEIGHTS = {"single": 0.37, "pair": 0.30, "card_on_sheet": 0.15, "painted": 0.10,
 ANY_ANGLE = 0.15
 BEND_SHARE, FOLD_SHARE, WORN_SHARE = 0.2, 0.12, 0.2      # of the paper pages
 FINGER_SHARE, OCCLUDER_SHARE = 0.2, 0.3
-BG_MM = (450.0, 1200.0)       # a background photo's long side on the table, mm
-PROC_PPM, PROC_SIZE = 1.5, 1200
+BG_MM = (450.0, 1200.0)       # a background photo's long side on the table, mm (at most its pixels over the frame's px/mm)
+PROC_PPM, PROC_SIZE = 1.5, 1200   # a procedural surface's base scale (its patterns' size: synth_docs.surface scale 1)
+PROC_MARGIN, PROC_MAX = 1.2, 3200  # drawn at the frame's px/mm × PROC_MARGIN, over the frame's footprint, at most PROC_MAX px
 CORNER_KEEP = 5.0             # mm: a finger or an occluder stays this far from every document corner
 SHEETS_ON = {"sefach": 0.65, "insert": 0.2, "other": 0.15}
 
@@ -282,18 +287,27 @@ def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, fo
     cam = gcam.sample(rs, pts, partial=recipe == "partial")
     if cam is None or (docs and not all((cam.depth(d.lift(d.boundary(6))) > 1).all() for d in docs)):
         return None
-    # the background: on the same plane, at its physical size
+    # the background: on the same plane, at its physical size — no coarser than the frame there
     entry = bank.sample(rs, hard=recipe == "none" and rs.random() < 0.5) if bank is not None else None
-    centre = np.array(cam.target) + np.array([rs.uniform(-100, 100), rs.uniform(-100, 100)])
+    shift = np.array([rs.uniform(-1, 1), rs.uniform(-1, 1)])
+    ppm = cam.ppm_at()
     if entry:
         w, h = entry["size"]
-        mm = float(entry.get("widthMm") or rs.uniform(*BG_MM))
+        drawn = float(entry.get("widthMm") or rs.uniform(*BG_MM))
+        mm = min(drawn, max(w, h) / ppm)
+        centre = np.array(cam.target) + shift * min(100.0, 0.2 * mm)
         bg = {"entry": entry, "sha1": entry["sha1"], "category": entry.get("category"), "series": entry.get("series"),
-              "A": similarity(rs.uniform(0, 360), mm / max(w, h), (w / 2, h / 2), centre), "kind": None, "mm": mm}
+              "A": similarity(rs.uniform(0, 360), mm / max(w, h), (w / 2, h / 2), centre), "kind": None, "mm": mm,
+              "mmDrawn": drawn, "ppm": max(w, h) / mm, "framePpm": ppm}
     else:
         seed = rs.randrange(1 << 30)
-        bg = {"entry": None, "sha1": None, "category": "procedural", "seed": seed, "kind": None,
-              "A": similarity(rs.uniform(0, 360), 1.0 / PROC_PPM, (PROC_SIZE / 2, PROC_SIZE / 2), centre)}
+        pp = max(PROC_PPM, ppm * PROC_MARGIN)
+        centre = np.array(cam.target) + shift * 100.0
+        foot = cam.footprint()
+        reach = float(np.linalg.norm(foot - centre, axis=1).max()) if foot is not None else math.inf
+        size = int(min(PROC_MAX, max(256, math.ceil(2 * reach * pp))))
+        bg = {"entry": None, "sha1": None, "category": "procedural", "seed": seed, "kind": None, "size": size, "ppm": pp,
+              "framePpm": ppm, "A": similarity(rs.uniform(0, 360), 1.0 / pp, (size / 2, size / 2), centre)}
     sc = Scene(recipe, docs, cam, bg, worn=worn)
     _add_fingers(rs, sc)
     _add_occluders(rs, sc, occluders)
@@ -550,7 +564,8 @@ def background_image(sc):
         if img is not None:
             return img
     meta = {}
-    img = sd.surface(random.Random(sc.bg.get("seed", 0)), PROC_SIZE, PROC_SIZE, meta)
+    size, pp = int(sc.bg.get("size") or PROC_SIZE), float(sc.bg.get("ppm") or PROC_PPM)
+    img = sd.surface(random.Random(sc.bg.get("seed", 0)), size, size, meta, scale=pp / PROC_PPM)
     sc.bg["kind"] = meta.get("bgKind")
     return img
 
@@ -590,22 +605,19 @@ def _glare(rgb, alpha, rng):
 
 
 def paint(img, quads01):
-    """The frame with quads (0..1) painted over in its border's colour (the lab's findNext): the scenes' next pictures and
-    pull.painted (the scan attempts' painted pages) both paint this way."""
-    import cv2
-    img = img.copy()
-    if quads01:
-        h, w = img.shape[:2]
-        border = np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]])
-        colour = [int(v) for v in np.median(border, axis=0)]
-        for q in quads01:
-            cv2.fillPoly(img, [np.array([[x * w, y * h] for x, y in q], np.int32)], colour)
-    return img
+    """The frame with quads (0..1) painted over as the lab's findNext paints them (gen/phone.py lab_paint: the colour
+    of the border of the picture drawn at 32 × 32 with the capture op's kernel, each quad grown 4 % from its centre,
+    an antialiased canvas fill). The final frame is painted — after the light and the phone's effects, as the phone
+    paints the captured photo: the scenes' next pictures, the painted recipe's frame and pull.painted (the scan
+    attempts' painted pages)."""
+    from . import phone
+    return phone.lab_paint(img, quads01)
 
 
 def render(sc, rng=None, effects=True):
     """The frame (BGR uint8, the camera's W × H): the background, each page (sheets before the cards on them) with its
-    shadow and a card's glare, the occluders, a finger, a painted-over page, then (effects) light and the phone."""
+    shadow and a card's glare, the occluders, a finger, then (effects) light and the phone, then a painted-over page
+    (painted on the final frame, as the phone does)."""
     import cv2
     import random
     import synth_docs as sd
@@ -638,12 +650,12 @@ def render(sc, rng=None, effects=True):
     for f in sc.fingers:
         P = sc.cam.project(f["poly"])
         cv2.fillPoly(img, [np.round(P * 16).astype(np.int32)], f["colour"], cv2.LINE_AA, shift=4)
-    painted = [q for d, q in zip(sc.docs, doc_quads01(sc)) if d.painted]
-    if painted:
-        img = paint(img, painted)
     if effects:
         sd.light(rng, img)
         img = sd.camera(rng.randrange(1 << 30))(image=img)["image"]
+    painted = [q for d, q in zip(sc.docs, doc_quads01(sc)) if d.painted]
+    if painted:   # on the final frame, as the phone paints the photo it captured
+        img = paint(img, painted)
     return img
 
 

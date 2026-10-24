@@ -4,21 +4,32 @@ lay their documents on, catalogued, checked and split — and the cut-outs that 
   python -m gen bg pull                       # datasets/backgrounds and backgrounds-own from the private bucket (datasets_hf.py)
   python -m gen bg add DIR --category auto    # catalog DIR's photos (CC0 downloads: their sources.json; --owner: the owner's shots)
   python -m gen bg check                      # size, near-duplicates, the lab's edges model, text → each photo's status
-  python -m gen bg split                      # ~20 % of the surfaces to the exam, by the crc of a sha1
+  python -m gen bg split                      # ~20 % of the new surfaces to the exam (by the crc of their series);
+                                              # a surface once on the exam side stays there (examLocked)
   python -m gen bg push                       # the bank → the private bucket (the owner's step, after looking at it)
   python -m gen occluders add DIR --category cup --size-mm 80   # cut-outs (PNG with alpha) laid over documents
 
-<home>/backgrounds/catalog.json: {"version": 1, "files": {name: {category, series, licence, url, size [w, h], sha1, split,
-ownerShot, text_present, status, phash, docConf}}}. status: ok, small (under MIN_SIDE on its long side), duplicate (a
+<home>/backgrounds/catalog.json: {"version": 1, "examLocked": [sha1 …], "files": {name: {category, series, licence, url,
+size [w, h], sha1, split, ownerShot, text_present, status, phash, docConf}}}. status: ok, small (under MIN_SIDE on its long side), duplicate (a
 near-duplicate of a larger photo by pHash), document (the lab's edges model sees a document in it with conf ≥ DOC_CONF:
 a background with paper teaches the model to pass documents by), new (not checked yet). A photo is used only when its
 status is ok AND its licence is confirmed (CONFIRMED: CC0, public domain, the owner's own); text_present marks a photo
-with text but no document's shape: a hard negative ("nothing here" scenes prefer it). split: train, exam or none (a
-series' photos past EXAM_PER_SERIES in the exam: in neither set, so no near twin trains).
+with text but no document's shape: a hard negative ("nothing here" scenes prefer it). split: train, exam, none (a
+series' photos past EXAM_PER_SERIES in the exam, or a photo that trained before its near twin went to the exam —
+"twinOfExam": in neither set, so no near twin trains) or null (not split yet: in neither set until `bg split`).
+
+The exam side is sticky: every photo ever put on the exam side is added to the catalog's examLocked (with heldout.json's
+examBackgrounds, the locked list) and never goes back to train. New photos (more downloads after the split) join a
+series by pHash or title whatever their category; a series that holds a locked photo is the exam's (its new photos go
+to the exam up to EXAM_PER_SERIES of a category, the rest to none) and `bg check` puts them there at once; its
+near-duplicate pass keeps the locked photo over a larger new twin. Only a series of new photos alone is split by the
+crc of its id.
 
 Bank(work, split) samples balanced by category — then by series (a series of one surface counts once), then a photo;
 PROCEDURAL_SHARE of the scenes get a procedural surface instead (synth_docs.surface: a category of its own,
-"procedural"). heldout.json's examBackgrounds are the exam's too. Nothing here writes to the bucket but `bg push`."""
+"procedural"). side(e) is the one reading of a photo's side (Bank, synth_docs.py's background_photos, the sources
+registry). Occluders have a side too: by the crc of their sha1 (occluder_side). Nothing here writes to the bucket but
+`bg push`."""
 import json
 import pathlib
 import shutil
@@ -32,12 +43,13 @@ CATALOG = "catalog.json"
 CONFIRMED = ("cc0", "pdm", "public-domain", "owner")
 MIN_SIDE = 1600          # px on the long side
 DUP_DIST = 6             # pHash bits (of 64) at most: a near-duplicate
-SERIES_DIST = 12         # pHash bits at most, same category: one surface shot again (a series)
+SERIES_DIST = 12         # pHash bits at most (any category): one surface shot again (a series)
 DOC_CONF = 0.5           # the lab's edges model as sure as this: a document in the photo
 TEXT_MIN = 12            # text-like marks in lines: text present
 EXAM_SHARE, EXAM_PER_SERIES = 0.2, 3
 PROCEDURAL_SHARE = 0.15
 PROCEDURAL = "procedural"
+LOCKED = "examLocked"    # the catalog's list of the sha1s ever on the exam side: they never go back to train
 # a download's words (its search query, title) → its category; the first match wins
 CATEGORY_WORDS = (
     ("car", ("car ", "car-", "car_", "vehicle", "dashboard", "seat")),
@@ -88,6 +100,28 @@ def confirmed(e):
 def usable(e):
     """A photo the scenes may lay documents on: checked ok and its licence confirmed."""
     return e.get("status") == "ok" and confirmed(e)
+
+
+def locked_of(cat):
+    """The locked list: the catalog's examLocked and heldout.json's examBackgrounds (sha1s, their 12-character prefixes
+    or file stems)."""
+    return frozenset(cat.get(LOCKED) or []) | frozenset(gc.heldout().get("examBackgrounds") or [])
+
+
+def is_locked(e, name, locked):
+    sha = str(e.get("sha1") or "")
+    return bool(sha and (sha in locked or sha[:12] in locked)) or (name is not None and pathlib.Path(name).stem in locked)
+
+
+def side(e, name=None, locked=frozenset()):
+    """A catalogued photo's side as everything that lays documents reads it: exam when it is locked (even when it is
+    no longer usable: it never trains), else none when it is not usable, else its split (train or exam), and none for
+    anything else (past the exam's cap, a trained twin of an exam photo, or not split yet)."""
+    if is_locked(e, name, locked):
+        return "exam"
+    if not usable(e):
+        return "none"
+    return e.get("split") if e.get("split") in ("train", "exam") else "none"
 
 
 def auto_category(*texts):
@@ -281,6 +315,8 @@ def check(work=None, detector=None, min_side=MIN_SIDE, dup=DUP_DIST, doc_conf=DO
     the photos used, rejected by reason, the hard negatives}. detector: picture → conf (edges_detector by default)."""
     cat = load(work, name)
     files = cat["files"]
+    _lock_exam(cat)
+    locked = locked_of(cat)
     d = (pathlib.Path(work) if work else folder().parent) / name
     detector = detector or edges_detector(work)
     imgs = {}
@@ -294,8 +330,9 @@ def check(work=None, detector=None, min_side=MIN_SIDE, dup=DUP_DIST, doc_conf=DO
         e["phash"] = phash(img)
         e["status"] = "small" if max(img.shape[:2]) < min_side else "ok"
         e.pop("dupOf", None)
-    # near-duplicates: the larger photo (then the name) is kept
-    order = sorted(imgs, key=lambda f: (-(files[f]["size"][0] * files[f]["size"][1]), f))
+    # near-duplicates: the photo on the exam side is kept, then the one that trained, then the larger (then the name)
+    order = sorted(imgs, key=lambda f: (0 if is_locked(files[f], f, locked) else 1 if files[f].get("split") == "train" else 2,
+                                        -(files[f]["size"][0] * files[f]["size"][1]), f))
     kept = []
     for f in order:
         twin = next((k for k in kept if hamming(files[k]["phash"], files[f]["phash"]) <= dup), None)
@@ -312,6 +349,7 @@ def check(work=None, detector=None, min_side=MIN_SIDE, dup=DUP_DIST, doc_conf=DO
             e["status"] = "document"
         e["text_present"] = text_score(imgs[f]) >= TEXT_MIN
     _series(files)
+    _assign(cat, decide_new=False)   # a new photo of an exam surface: on the exam side at once
     save(cat, work, name)
     return report(cat)
 
@@ -325,9 +363,9 @@ def title_key(t):
 
 
 def _series(files):
-    """One surface shot again is one series: an explicit series, else photos of one category with the same download
-    title (title_key) or close pHashes (SERIES_DIST) — the series' id is "s:" + the smallest sha1's prefix of its
-    members."""
+    """One surface shot again is one series: an explicit series, else photos with the same download title (title_key)
+    or close pHashes (SERIES_DIST), whatever their category (two shots of one table may get two categories from their
+    words); the series' id is "s:" + the smallest sha1's prefix of its members."""
     names = sorted(f for f, e in files.items() if e.get("phash"))
     parent = {f: f for f in names}
 
@@ -340,9 +378,8 @@ def _series(files):
         for b in names[i + 1:]:
             ea, eb = files[a], files[b]
             same = ea.get("series") and ea.get("series") == eb.get("series") and not str(ea["series"]).startswith("s:")
-            close = ea.get("category") == eb.get("category") and (
-                hamming(ea["phash"], eb["phash"]) <= SERIES_DIST
-                or (title_key(ea.get("title")) is not None and title_key(ea.get("title")) == title_key(eb.get("title"))))
+            close = (hamming(ea["phash"], eb["phash"]) <= SERIES_DIST
+                     or (title_key(ea.get("title")) is not None and title_key(ea.get("title")) == title_key(eb.get("title"))))
             if same or close:
                 parent[root(a)] = root(b)
     groups = {}
@@ -373,25 +410,95 @@ def report(cat):
     return {"photos": len(files), "used": dict(sorted(used.items())), "rejected": dict(sorted(rejected.items())),
             "unlicensed": unlicensed, "hardNegatives": hard,
             "surfaces": {k: len(v) for k, v in sorted(series.items())},
-            "splits": {s: sum(1 for e in files.values() if usable(e) and e.get("split") == s) for s in ("train", "exam", "none")}}
+            "splits": {s: sum(1 for e in files.values() if usable(e) and e.get("split") == s) for s in ("train", "exam", "none")},
+            "unsplit": sum(1 for e in files.values() if usable(e) and e.get("split") not in ("train", "exam", "none")),
+            "locked": len(cat.get(LOCKED) or []), "twinsOfExam": sum(1 for e in files.values() if e.get("twinOfExam"))}
+
+
+def _lock_exam(cat):
+    """Every photo on the exam side now (a catalog split before examLocked existed too) into the locked list."""
+    have = set(cat.get(LOCKED) or [])
+    have |= {e["sha1"] for e in cat["files"].values() if e.get("split") == "exam" and e.get("sha1")}
+    cat[LOCKED] = sorted(have)
+
+
+def _assign(cat, share=EXAM_SHARE, cap=EXAM_PER_SERIES, decide_new=True):
+    """Each photo's side, a series (one surface, whatever its categories) at a time:
+    - a series holding a locked photo is the exam's: its locked photos exam; a photo of it that trained before goes to
+      none (twinOfExam: its near twin is in the exam); its new photos exam while the series has fewer than `cap` of
+      their category there, then none;
+    - else a series with a photo that trained: its new photos train (a series left with none only: none);
+    - else (decide_new: `bg split`) a series of new photos alone: exam when the crc32 of its id falls under share (at
+      most `cap` of a category, the rest none), locked from then on; else train.
+    An unusable photo has no split (a locked one keeps "exam": it never trains)."""
+    files = cat["files"]
+    locked = locked_of(cat)
+    groups = {}
+    for f, e in sorted(files.items()):
+        lk = is_locked(e, f, locked)
+        if not usable(e):
+            e["split"] = "exam" if lk else None
+            if not lk:
+                continue   # a locked photo no longer used still holds its series on the exam side
+        groups.setdefault(e.get("series") or "s:" + e["sha1"][:10], []).append(f)
+    newly = set()
+    for sid, members in sorted(groups.items()):
+        members = sorted(members, key=lambda f: files[f]["sha1"])
+        held = [m for m in members if is_locked(files[m], m, locked)]
+        members = [m for m in members if usable(files[m])]
+        if held:
+            per = {}
+            for m in held:
+                files[m]["split"] = "exam"
+                if usable(files[m]):
+                    c = files[m].get("category")
+                    per[c] = per.get(c, 0) + 1
+            for m in members:
+                e = files[m]
+                if m in held or e.get("split") == "none":
+                    continue
+                if e.get("split") == "train":
+                    e["split"], e["twinOfExam"] = "none", True
+                    continue
+                c = e.get("category")
+                if per.get(c, 0) < cap:
+                    e["split"] = "exam"
+                    per[c] = per.get(c, 0) + 1
+                    newly.add(e["sha1"])
+                else:
+                    e["split"] = "none"
+            continue
+        prior = {files[m].get("split") for m in members}
+        if "train" in prior or "none" in prior:
+            for m in members:
+                if files[m].get("split") not in ("train", "none"):
+                    files[m]["split"] = "train" if "train" in prior else "none"
+            continue
+        if not decide_new:
+            continue
+        if zlib.crc32(sid.encode()) % 1000 < share * 1000:
+            per = {}
+            for m in members:
+                c = files[m].get("category")
+                if per.get(c, 0) < cap:
+                    files[m]["split"] = "exam"
+                    per[c] = per.get(c, 0) + 1
+                    newly.add(files[m]["sha1"])
+                else:
+                    files[m]["split"] = "none"
+        else:
+            for m in members:
+                files[m]["split"] = "train"
+    cat[LOCKED] = sorted(set(cat.get(LOCKED) or []) | newly)
 
 
 def split(work=None, share=EXAM_SHARE, cap=EXAM_PER_SERIES, name="backgrounds"):
-    """~share of the surfaces (series) to the exam by the crc32 of their key (the smallest sha1 of the series); at most
-    `cap` photos of one series per category there, the rest of it in neither set. → the report."""
+    """~share of the new surfaces (series) to the exam by the crc32 of their series id; at most `cap` photos of one
+    series per category there, the rest of it in neither set; what was on the exam side stays there (_assign). → the
+    report."""
     cat = load(work, name)
-    files = cat["files"]
-    groups = {}
-    for f, e in sorted(files.items()):
-        if not usable(e):
-            e["split"] = None
-            continue
-        groups.setdefault((e.get("category"), e.get("series") or "s:" + e["sha1"][:10]), []).append(f)
-    for (category, sid), members in sorted(groups.items()):
-        key = min(files[m]["sha1"] for m in members)
-        exam = zlib.crc32(key.encode()) % 1000 < share * 1000
-        for n, m in enumerate(sorted(members, key=lambda f: files[f]["sha1"])):
-            files[m]["split"] = ("exam" if n < cap else "none") if exam else "train"
+    _lock_exam(cat)
+    _assign(cat, share, cap, decide_new=True)
     save(cat, work, name)
     return report(cat)
 
@@ -415,21 +522,22 @@ def _image(path):
 
 
 class Bank:
-    """The usable photos of one side (train / exam), balanced by category then series; procedural surfaces apart."""
+    """The usable photos of one side (train / exam: side()), balanced by category then series; procedural surfaces
+    apart. A photo not split yet is on neither side (unsplit counts them: run `bg split`)."""
 
     def __init__(self, work=None, split="train", procedural_share=PROCEDURAL_SHARE, names=("backgrounds", "backgrounds-own")):
         import home
         work = pathlib.Path(work or home.WORK)
-        exam = set(gc.heldout().get("examBackgrounds") or [])
         self.procedural_share, self.by = procedural_share, {}
-        self.entries = []
+        self.entries, self.unsplit = [], 0
         for name in names:
             cat = load(work, name)
+            locked = locked_of(cat)
             for f, e in sorted(cat["files"].items()):
                 if not usable(e):
                     continue
-                side = "exam" if (e["sha1"] in exam or e["sha1"][:12] in exam) else (e.get("split") or "train")
-                if side != split:
+                self.unsplit += e.get("split") not in ("train", "exam", "none") and not is_locked(e, f, locked)
+                if side(e, f, locked) != split:
                     continue
                 item = {**e, "path": str(work / name / f), "name": f}
                 self.entries.append(item)
@@ -487,15 +595,22 @@ def occluders_add(src, category, size_mm, work=None, licence="owner"):
     return added, skipped
 
 
-class Occluders:
-    """The cut-outs with a confirmed licence; sample(rng) → (RGBA numpy, its long side in mm, category) or None."""
+def occluder_side(sha1, share=EXAM_SHARE):
+    """A cut-out's side: exam when the crc32 of its sha1 falls under share (its content: the same every run), else
+    train. The drawn ones (a pen, a phone, keys, a coin) are on both sides, like the drawn kinds."""
+    return "exam" if zlib.crc32(str(sha1).encode()) % 1000 < share * 1000 else "train"
 
-    def __init__(self, work=None):
+
+class Occluders:
+    """The cut-outs of one side (occluder_side) with a confirmed licence; sample(rng) → (RGBA numpy, its long side in
+    mm, category, sha1) or None. split None: every side."""
+
+    def __init__(self, work=None, split="train"):
         import home
         work = pathlib.Path(work or home.WORK)
         cat = load(work, "occluders")
         self.items = [{**e, "path": str(work / "occluders" / f)} for f, e in sorted(cat["files"].items()) if confirmed(e)
-                      and e.get("status", "ok") == "ok"]
+                      and e.get("status", "ok") == "ok" and (split is None or occluder_side(e.get("sha1")) == split)]
 
     def __len__(self):
         return len(self.items)

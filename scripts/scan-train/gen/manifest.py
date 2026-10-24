@@ -192,23 +192,35 @@ def write_run(folder, model, split, params, rows, manifest_sha):
 # ---------- what the exam keeps ----------
 def held_refs(rows, held=None, work=None):
     """[(row id, why)] of the rows that reference what the exam keeps: a training row laying a held-out template,
-    on an exam background, with an exam split key, or cut from an open set's exam document; an exam row laying a
-    page that is not held out."""
+    on an exam background, with an exam occluder, with an exam split key, or cut from an open set's exam document;
+    an exam row laying a page that is not held out, on a training background, laying a PDF (every PDF is on the
+    training side) or with a training occluder."""
     from . import sources
     import midv
     held = held or sources.Held(work)
     out = []
     for r in rows:
         shas = [s for s in [r.get("templateSha1")] + list(r.get("templates") or []) if s]
+        sc = r.get("scene") if isinstance(r.get("scene"), dict) else {}
+        occ = [o for o in sc.get("occluderSha1s") or [] if o]
+        bg = r.get("backgroundSha1")
+        exam_bg = bool(bg) and (bg in held.backgrounds or bg[:12] in held.backgrounds)
         if r.get("split") in gc.EXAM_SIDE:
             if any(s not in held.sha1s for s in shas):
                 out.append((r["id"], "an exam row lays a page that is not held out"))
+            if bg and not exam_bg:
+                out.append((r["id"], "an exam row on a training background"))
+            if any(isinstance(p, dict) and p.get("pdf") for p in sc.get("pages") or []):
+                out.append((r["id"], "an exam row lays a training PDF"))
+            if any(o not in getattr(held, "occluders", ()) for o in occ):
+                out.append((r["id"], "an exam row with a training occluder"))
             continue
         if any(s in held.sha1s for s in shas):
             out.append((r["id"], "a held-out template"))
-        bg = r.get("backgroundSha1")
-        if bg and (bg in held.backgrounds or bg[:12] in held.backgrounds):
+        if exam_bg:
             out.append((r["id"], "an exam background"))
+        if any(o in getattr(held, "occluders", ()) for o in occ):
+            out.append((r["id"], "an exam occluder"))
         if r.get("key") and r["key"] in held.keys:
             out.append((r["id"], "an exam split key"))
         o = r.get("open")

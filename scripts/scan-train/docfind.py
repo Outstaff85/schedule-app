@@ -287,11 +287,7 @@ def find_next_lab(models, img, found, resize=None):
         return q if fresh(q) else None
 
     col = phone.lab_border_colour(img, _border_kernel(resize))
-    painted = np.ascontiguousarray(img[..., :3]).copy()
-    for q in found:
-        c = q.mean(0)
-        poly = (q + (q - c) * 0.04) * [w, h] - 0.5   # a canvas fills pixel areas; OpenCV's pixel centres are whole
-        cv2.fillPoly(painted, [np.round(poly * 16).astype(np.int32)], col, lineType=cv2.LINE_AA, shift=4)
+    painted = phone.lab_paint(img, found, colour=col)   # each found one grown 4 %, an antialiased canvas fill
     for sess in models:
         q = try_it(sess, painted, lambda p: p)
         if q is not None:

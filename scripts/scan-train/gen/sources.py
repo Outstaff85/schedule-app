@@ -1,7 +1,8 @@
 """Every source the scanner's training draws from, with its side of the split (docs/scan-training.md → "Kept
 apart"): the owner's and the site's real pages (templates/), the drawn kinds, the PDFs (Form 101, contracts),
-the background photos, the fonts, the Hebrew vocabulary, the open sets (MIDV, SmartDoc), and the real examples
-pull.py and pull_doctypes.py wrote (records, attempts, page copies). pool(split) is the only way to them.
+the background photos, the occluders, the fonts, the Hebrew vocabulary, the open sets (MIDV, SmartDoc), and the
+real examples pull.py and pull_doctypes.py wrote (records, attempts, page copies). pool(split) is the only way to
+them.
 
   python -m gen sources            # the counts by kind and side
   python -m gen sources --check    # and fail when an exam or golden key is on the training side, a held-out
@@ -25,7 +26,7 @@ FONTS = (".ttf", ".otf")
 @dataclass(frozen=True)
 class Source:
     id: str
-    kind: str          # template-own, template-site, drawn, pdf, background, font, word, midv, smartdoc, record, attempt, page-copy
+    kind: str          # template-own, template-site, drawn, pdf, background, occluder, font, word, midv, smartdoc, record, attempt, page-copy
     split_key: object  # str or None
     split: str         # train, select, exam, golden; "none" (left out of both), "unknown" (a site page with no side)
     sha1: object       # str or None
@@ -93,29 +94,44 @@ def _pdfs(work):
 
 
 def _backgrounds(work):
-    """The background photos (backgrounds/, backgrounds-own/): exam when heldout.json's examBackgrounds or the bank's
-    catalog (gen/backgrounds.py `bg split`) says so; none when the catalog leaves it out of both or never uses it (its
-    check failed, or its licence is not confirmed)."""
-    from .backgrounds import usable
-    exam = set(gc.heldout().get("examBackgrounds") or [])
+    """The background photos (backgrounds/, backgrounds-own/), each on the side gen/backgrounds.py's side() reads: exam
+    when locked (the catalog's examLocked, heldout.json's examBackgrounds) or split so, train when usable and split so,
+    none otherwise (its check failed, no confirmed licence, past the exam's cap, a trained twin of an exam photo, not
+    split yet). A folder with a catalog: a photo it does not list is none; with no catalog, train (heldout.json's
+    exam ones exam)."""
+    from . import backgrounds as gb
     out = []
     for name in ("backgrounds", "backgrounds-own"):
         folder = work / name
         if not folder.is_dir():
             continue
-        files = (_read(folder / "catalog.json", {}) or {}).get("files") or {}
+        cat = _read(folder / "catalog.json", None)
+        has = isinstance(cat, dict) and isinstance(cat.get("files"), dict)
+        files = cat["files"] if has else {}
+        locked = gb.locked_of(cat if has else {})
         for p in sorted(folder.rglob("*")):
             if p.suffix.lower() in PICTURES and p.is_file():
                 sha = gc.file_sha1(p)
                 e = files.get(p.name) if isinstance(files.get(p.name), dict) else None
-                split = "train"
-                if e is not None:
-                    split = "none" if not usable(e) or e.get("split") == "none" else ("exam" if e.get("split") == "exam" else "train")
-                if sha in exam or sha[:12] in exam or p.stem in exam:
+                if gb.is_locked({"sha1": sha}, p.name, locked):
                     split = "exam"
+                elif e is not None:
+                    split = gb.side({**e, "sha1": sha}, p.name, locked)
+                else:
+                    split = "none" if has else "train"
                 out.append(Source("bg:" + sha[:12], "background", None, split, sha, str(p),
                                   {"category": (e or {}).get("category"), "series": (e or {}).get("series")}))
     return out
+
+
+def _occluders(work):
+    """The cut-outs (occluders/) on gen/backgrounds.py's occluder_side (by the crc of their sha1)."""
+    from . import backgrounds as gb
+    cat = _read(work / "occluders" / "catalog.json", None)
+    files = cat.get("files") if isinstance(cat, dict) and isinstance(cat.get("files"), dict) else {}
+    return [Source("occ:" + str(e.get("sha1"))[:12], "occluder", None, gb.occluder_side(e.get("sha1")), e.get("sha1"),
+                   str(work / "occluders" / f), {"category": e.get("category")})
+            for f, e in sorted(files.items()) if isinstance(e, dict) and e.get("sha1")]
 
 
 def _fonts():
@@ -194,7 +210,8 @@ def _real(work):
 
 def _all(work=None):
     work = _work(work)
-    return (_templates(work) + _drawn() + _pdfs(work) + _backgrounds(work) + _fonts() + _words() + _open(work) + _real(work))
+    return (_templates(work) + _drawn() + _pdfs(work) + _backgrounds(work) + _occluders(work) + _fonts() + _words() + _open(work)
+            + _real(work))
 
 
 def pool(split, kind=None, work=None):
@@ -206,7 +223,7 @@ def pool(split, kind=None, work=None):
 # ---------- what must never reach training ----------
 class Held:
     """What the exam keeps: the held-out templates' sha1s and page ids (and, failing closed, the site pages with no
-    known side), the exam backgrounds, the exam split keys."""
+    known side), the exam backgrounds, the exam occluders, the exam split keys."""
 
     def __init__(self, work=None):
         every = _all(work)
@@ -216,6 +233,7 @@ class Held:
         self.page_ids = {i for s in tpl for i in s.attrs.get("pageIds", [])}
         bgs = set(gc.heldout().get("examBackgrounds") or [])
         self.backgrounds = bgs | {s.sha1 for s in exam if s.kind == "background"} | {s.sha1[:12] for s in exam if s.kind == "background"}
+        self.occluders = {s.sha1 for s in exam if s.kind == "occluder"} | {s.sha1[:12] for s in exam if s.kind == "occluder"}
         self.keys = {s.split_key for s in exam if s.split_key}
 
 
@@ -239,6 +257,8 @@ def problems(entries=(), meta=NO_META, held=None, work=None):
         bg = e.get("bg")
         if bg and (bg in held.backgrounds or bg[:12] in held.backgrounds):
             c["photos on an exam background"] += 1
+        if any(o in getattr(held, "occluders", ()) for o in e.get("occ") or []):
+            c["photos with an exam occluder"] += 1
         if not e.get("exam") and e.get("key") and e["key"] in held.keys:
             c["examples whose split key is the exam's"] += 1
         if not e.get("exam") and e.get("split") == "none":

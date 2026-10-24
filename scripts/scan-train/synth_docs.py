@@ -19,6 +19,10 @@ Some photos teach the other cases the site's examples teach: the first document 
 over in the border's colour (as the next document search sees it — pull.painted) and "nothing
 here" (no document; empty maps, as a deleted page).
 
+The background photos follow the bank's sides (gen/backgrounds.py, when the folder has its catalog.json): a
+training run lays documents only on usable training-side photos, --exam only on exam-side ones (none yet: procedural
+surfaces only) — background_photos.
+
 Run on the owner's PC before train.py --synth; nothing is uploaded — the same seed draws the same
 photos again, so only this script is kept.
 
@@ -550,14 +554,20 @@ def background(rng, W, H, photos, meta=None):
 SURFACES = ("plain", "wood", "cloth", "check", "dark", "sheet")
 
 
-def surface(rng, W, H, meta=None):
-    """A procedural surface W × H (BGR): plain, wood, cloth, check, dark or a sheet; meta gets "bgKind"."""
+def surface(rng, W, H, meta=None, scale=1.0):
+    """A procedural surface W × H (BGR): plain, wood, cloth, check, dark or a sheet; meta gets "bgKind". scale: the
+    patterns' size in pixels times this (a surface drawn at more pixels per mm keeps the look of its patterns in mm:
+    gen/scene.py draws it at the frame's own resolution); 1 draws as always."""
     meta = {} if meta is None else meta
+    k = float(scale)
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
     kind = rng.choice(SURFACES)
     meta["bgKind"] = kind
     col = np.array([rng.randint(30, 230) for _ in range(3)], np.float32)
-    noise = cv2.resize(np.random.default_rng(rng.randint(0, 1 << 30)).random((H // 16 + 1, W // 16 + 1)).astype(np.float32), (W, H))
+    cell = 16 if k == 1 else max(1, int(round(16 * k)))
+    noise = cv2.resize(np.random.default_rng(rng.randint(0, 1 << 30)).random((H // cell + 1, W // cell + 1)).astype(np.float32), (W, H))
+    if k != 1:
+        xs, ys = xs / k, ys / k   # the patterns below in the base pixels (PROC_PPM's)
     if kind == "wood":
         col = np.array(rng.choice(((60, 100, 150), (40, 70, 110), (90, 140, 190), (120, 160, 200))), np.float32)
         g = np.sin((ys * rng.uniform(0.02, 0.08) + 8 * noise) + np.sin(xs * 0.01) * 3) * 0.5 + 0.5
@@ -835,32 +845,48 @@ def gen_args(ap):
     ap.add_argument("--hebrew", nargs="*")
 
 
-def background_photos(folder):
-    """[{"path", "sha1", "category"}] of a backgrounds folder (the category: catalog.json's when there, else the
-    sub-folder's name, else "uncategorised")."""
+def background_photos(folder, split="train"):
+    """[{"path", "sha1", "category"}] of a backgrounds folder's photos on one side (train, or exam for --exam). A folder
+    with the bank's catalog.json (gen/backgrounds.py: {"files": …}): only the photos it lists whose side()
+    is `split` (usable: checked ok with a confirmed licence; on that side of `bg split`; a locked exam photo never
+    trains); a photo it does not list is left out. A folder with none (or the old {name: {category}} list): every
+    photo for training but heldout.json's examBackgrounds, which only the exam takes. The category: the catalog's
+    when there, else the sub-folder's name, else "uncategorised"."""
     if not folder:
         return []
+    from gen import backgrounds as gb
     folder = pathlib.Path(folder)
     try:
         catalog = json.loads((folder / "catalog.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         catalog = {}
+    bank = isinstance(catalog, dict) and isinstance(catalog.get("files"), dict)
     files = catalog.get("files", catalog) if isinstance(catalog, dict) else {}
+    locked = gb.locked_of(catalog if bank else {})
     out = []
     for p in folder.rglob("*"):   # in the folder's own order, as always (the order is recorded: gen verify)
         if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
             info = files.get(p.name) if isinstance(files.get(p.name), dict) else {}
+            sha = file_sha1(p)
+            if gb.is_locked({"sha1": sha}, p.name, locked):
+                side = "exam"
+            elif bank:
+                side = gb.side({**info, "sha1": sha}, p.name, locked) if info else "none"
+            else:
+                side = "train"
+            if side != split:
+                continue
             cat = info.get("category") or (p.parent.name if p.parent != folder else "uncategorised")
-            out.append({"path": str(p), "sha1": file_sha1(p), "category": cat})
+            out.append({"path": str(p), "sha1": sha, "category": cat})
     return out
 
 
 def gen_params(a):
     """Everything needed to draw any photo of the set again (run.json "params")."""
     folder = a.backgrounds or (str(WORK / "backgrounds") if (WORK / "backgrounds").is_dir() else None)
-    photos = background_photos(folder)
+    photos = background_photos(folder, "exam" if a.exam else "train")
     if folder:
-        print(f"{len(photos)} background photos from {folder}")
+        print(f"{len(photos)} background photos on the {'exam' if a.exam else 'training'} side from {folder}")
     pages = templates_in(a.templates) if a.templates else []
     if a.templates and not pages:
         raise SystemExit(f"no pages in {a.templates} — run pull_templates.py or put photos into its id_front/, sefach/… folders")
@@ -883,7 +909,8 @@ def gen_params(a):
         raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
     return {"model": MODEL, "split": "exam" if a.exam else "train", "count": count, "seed": seed, "out": str(out),
             "pages": [{"path": p, "sha1": file_sha1(p), "kind": k} for p, k in pages], "share": share, "sharp": a.sharp,
-            "photos": photos, "show": a.show, "latin": list(latin), "hebrew": list(hebrew)}
+            "photos": photos, "photosSplit": "exam" if a.exam else "train", "show": a.show, "latin": list(latin),
+            "hebrew": list(hebrew)}
 
 
 def gen_prepare(folder, params):
