@@ -58,7 +58,7 @@ def test_load_gives_only_this_worker_and_their_sites():
 
 def test_save_punch_stamps_the_workers_hr_never_the_pages():
     W(T1, "w2").update({"hrId": "u-hr1"})
-    base = {"type": "in", "ts": "2026-10-01T05:00:00.000Z"}
+    base = {"type": "in", "ts": _iso(datetime.now(timezone.utc) - timedelta(hours=1))}
     portal.punch_action(DB, {"action": "savePunch", "token": "tok-dana", "data": {**base, "id": 11, "workerId": "w2"}})
     assert P(T1, "11").get().to_dict()["hrId"] == "u-hr1"
     portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi",
@@ -96,10 +96,11 @@ def test_save_punch():
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]
     assert len(list(DB.collection("tenants").document(T1).collection("punches").stream())) == 1
     # The punch page sends no date: the day is the punch time's date in Israel
-    # (22:30 UTC on 30/09 is already 1/10 there).
-    late = {"id": "late1", "workerId": "w1", "type": "out", "ts": "2026-09-30T22:30:00.000Z"}
+    # (22:30 UTC yesterday is already today there, UTC+2 or +3).
+    y = (now - timedelta(days=1)).replace(hour=22, minute=30, second=0, microsecond=0)
+    late = {"id": "late1", "workerId": "w1", "type": "out", "ts": _iso(y)}
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": late})["ok"]
-    assert P(T1, "late1").get().to_dict()["day"] == "2026-10-01"
+    assert P(T1, "late1").get().to_dict()["day"] == (y + timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def test_a_link_cannot_punch_for_someone_else():
@@ -138,9 +139,21 @@ def test_a_punch_time_is_checked_against_the_servers_clock():
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": ok})["ok"]
     d = P(T1, "f3").get().to_dict()
     assert d["gpsWarnings"] == [] and "gpsSuspicious" not in d
+    # Older than MAX_LATE (3 days): refused, nothing written.
+    old = {"id": "f4", "workerId": "w1", "type": "in", "ts": _iso(now - portal.MAX_LATE - timedelta(minutes=1))}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": old}) == {"error": "Punch time too old"}
+    assert not P(T1, "f4").get().exists
+    months = {"id": "f5", "workerId": "w1", "type": "out", "ts": "2026-01-15T06:00:00Z"}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": months})["error"] == "Punch time too old"
+    assert not P(T1, "f5").get().exists
+    # Just inside the limit: kept and marked.
+    edge = {"id": "f6", "workerId": "w1", "type": "in", "ts": _iso(now - portal.MAX_LATE + timedelta(minutes=5))}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": edge})["ok"]
+    assert P(T1, "f6").get().to_dict()["gpsSuspicious"] is True
 
 
-def test_the_time_is_israel_time_whatever_the_phones_zone():
+def test_the_time_is_israel_time_whatever_the_phones_zone(monkeypatch):
+    monkeypatch.setattr(portal, "MAX_LATE", timedelta(days=100000))  # a fixed winter date
     ts = datetime(2026, 1, 15, 6, 0, tzinfo=timezone.utc)                # 08:00 in Israel (winter, UTC+2)
     data = {"id": "z1", "workerId": "w1", "type": "in", "ts": _iso(ts), "time": "14:00"}  # a phone on Manila time
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]
@@ -456,7 +469,7 @@ def test_a_link_cannot_touch_another_workers_requests():
 
 
 def test_a_punch_is_filed_only_under_the_workers_own_clients():
-    base = {"workerId": "w1", "type": "in", "ts": "2026-10-01T05:00:00.000Z"}
+    base = {"workerId": "w1", "type": "in", "ts": _iso(datetime.now(timezone.utc) - timedelta(hours=1))}
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": {**base, "id": 21, "clientId": "c2", "site": "Site B"}})["ok"]
     assert P(T1, "21").get().to_dict()["clientId"] == "c2"
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": {**base, "id": 22, "clientId": "c3", "site": "Site C"}})["ok"]
