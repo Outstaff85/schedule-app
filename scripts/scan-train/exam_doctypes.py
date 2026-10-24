@@ -4,6 +4,9 @@ answers on the same pages (the type it gave, kept in each record):
   - type: right answers; how many it is sure of (≥ 0.9) and how right those are;
   - turn: every exam page shown at its 4 quarter turns, the turn back read right;
   - the site's way: the model's type where it is sure, Haiku's elsewhere — against Haiku alone.
+With the owner's real pages kept apart for the exam (synth.held_out; synth_docs.py --templates --exam's
+photos, each document cut by its known corners) the models are read on them too ("your documents") —
+the one exam before the site has collected page copies (no Haiku there: type and turn only).
 A model is worth publishing when the site's way is at least as right as Haiku alone and
 its sure turns are right (≥ 98 %); else the next size up is suggested. Writes
 ~/.scan-train/report_doctypes.json and prints the report."""
@@ -12,6 +15,8 @@ import numpy as np
 import onnxruntime as ort
 
 from common import DOCTYPE_MODELS, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
+
+EXAM_PHOTOS = WORK / "synth" / "docs-exam" / "examples.json"
 
 SURE, S = 0.9, 256
 
@@ -27,7 +32,7 @@ def score(path, exam):
     right = sure = sure_right = site = haiku = n_h = turns = turn_right = sure_turns = sure_turn_right = 0
     per = {k: [0, 0] for k in DOCTYPES}
     for e in exam:
-        img = cv2.imread(e["file"])
+        img = e["img"] if "img" in e else cv2.imread(e["file"])
         if img is None:
             continue
         kp, _ = read(sess, img)
@@ -53,19 +58,54 @@ def score(path, exam):
             "byDoctype": {k: pct(v[0], v[1]) for k, v in per.items()}}
 
 
+def your_documents():
+    """The owner's real pages kept apart, cut flat from their exam photos by the known corners:
+    [{"img", "doctype"}] (a photo with no document is left out)."""
+    if not EXAM_PHOTOS.exists():
+        return []
+    out = []
+    for e in read_json(EXAM_PHOTOS):
+        kind = (e.get("kind") or "").split(":")[-1].split("+")[0]
+        img = cv2.imread(e["file"])
+        if e.get("none") or not e.get("fixed") or kind not in DOCTYPES or img is None:
+            continue
+        h, w = img.shape[:2]
+        q = np.float32([[x * w, y * h] for x, y in e["fixed"]])
+        W = int(max(np.linalg.norm(q[1] - q[0]), np.linalg.norm(q[2] - q[3])))
+        H = int(max(np.linalg.norm(q[3] - q[0]), np.linalg.norm(q[2] - q[1])))
+        M = cv2.getPerspectiveTransform(q, np.float32([[0, 0], [W, 0], [W, H], [0, H]]))
+        out.append({"img": cv2.warpPerspective(img, M, (W, H)), "doctype": kind})
+    return out
+
+
 def main():
-    ex = read_json(WORK / "doctypes.json")
+    ex = read_json(WORK / "doctypes.json") if (WORK / "doctypes.json").exists() else []
     exam = [e for e in ex if e["exam"]]
-    if not exam:
-        raise SystemExit("no exam pages — run pull_doctypes.py first")
+    yours = your_documents()
+    if not exam and not yours:
+        raise SystemExit("no exam pages — run pull_doctypes.py (and synth_docs.py --templates --exam) first")
     archs = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
-    report = {"examples": len(ex), "exam": len(exam), "models": {}}
+    report = {"examples": len(ex), "exam": len(exam), "yours": len(yours), "models": {}, "yoursModels": {}}
     for name in DOCTYPE_MODELS:
         p = WORK / "new" / name
         if p.exists():
-            report["models"][name] = {"arch": archs.get(name, DOCTYPE_MODELS[name]), **score(p, exam)}
-    if not report["models"]:
+            if exam:
+                report["models"][name] = {"arch": archs.get(name, DOCTYPE_MODELS[name]), **score(p, exam)}
+            if yours:
+                report["yoursModels"][name] = {"arch": archs.get(name, DOCTYPE_MODELS[name]), **score(p, yours)}
+    if not report["models"] and not report["yoursModels"]:
         raise SystemExit("no document type model trained — run train_doctypes.py first")
+    if yours:
+        print(f"Your documents: {len(yours)} pages cut from the exam photos of the real pages kept apart (never made into a training page)")
+        for name, r in report["yoursModels"].items():
+            # the turn is not scored here: the known corners start at any corner of the document, so a cut page lies at any turn
+            print(f"  {name} ({r['arch']}): type right {r['doctype']:.0%}; sure of {r['sure']:.0%}, right on those {r['sureRight'] or 0:.0%}")
+            print("    by type: " + ", ".join(f"{k} {v:.0%}" for k, v in r["byDoctype"].items() if v is not None))
+    if not exam:
+        report["publish"] = None
+        write_json(WORK / "report_doctypes.json", report)
+        print("No page copies from the site kept apart yet: nothing to set against Haiku — the lab (then the site's shadow) shows how it does")
+        return
     good = {}
     print(f"Exam: {report['exam']} pages never trained on (of {report['examples']})")
     for name, r in report["models"].items():

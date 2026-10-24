@@ -656,7 +656,7 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--jobs", type=int, default=gentle())
-    ap.add_argument("--backgrounds", help="a folder of background photos (tables, floors, cloths — no documents in them)")
+    ap.add_argument("--backgrounds", help="a folder of background photos (tables, floors, cloths — no documents in them); default ~/.scan-train/backgrounds when there")
     ap.add_argument("--show", action="store_true", help="also show/<n>.jpg with the corners drawn (green; red: the first)")
     ap.add_argument("--templates", nargs="?", const=str(TEMPLATES), help="real pages laid like the drawn ones "
                     "(a folder with id_front/, id_back/, passport/, sefach/, insert/; default ~/.scan-train/templates)")
@@ -668,8 +668,11 @@ def main():
     ap.add_argument("--hebrew", nargs="*")
     a = ap.parse_args()
     photos = []
-    if a.backgrounds:
-        photos = [str(p) for p in pathlib.Path(a.backgrounds).rglob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
+    # the background photos: the given folder, else the set kept in the bucket (datasets_hf.py pull backgrounds)
+    folder = a.backgrounds or (str(WORK / "backgrounds") if (WORK / "backgrounds").is_dir() else None)
+    if folder:
+        photos = [str(p) for p in pathlib.Path(folder).rglob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
+        print(f"{len(photos)} background photos from {folder}")
     pages = templates_in(a.templates) if a.templates else []
     if a.templates and not pages:
         raise SystemExit(f"no pages in {a.templates} — run pull_templates.py or put photos into its id_front/, sefach/… folders")
