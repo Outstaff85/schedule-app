@@ -15,13 +15,16 @@ mkdir -p "$OUT/ort" "$OUT/ort130" "$CACHE"
 pip install -q onnx numpy google-cloud-storage
 STORE=""
 if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py" ping; then STORE=1; else echo "Firebase Storage not reachable: the authors' links are used"; fi
-# The models' home (docs/hf-plan.md): the public Hugging Face repo, one tag per version, the
+# The models' home (docs/hf-plan.md): the Hugging Face repo, one tag per version, the
 # files named by what they do; Firebase Storage (the old names) only while a version is not moved there yet.
 HF="https://huggingface.co/OutStaff/scanner-models/resolve/$SCAN_MODELS_VERSION"
+# the models' repo is private (owner, 2026-10-24): the deploy reads it with HF_TOKEN, a read-only key for
+# that repo alone (a GitHub Actions secret); without it a public repo is still read as before
+HF_AUTH=(); [ -n "${HF_TOKEN:-}" ] && HF_AUTH=(-H "Authorization: Bearer $HF_TOKEN")
 hfname() { case "$1" in sa24.onnx) echo edges.onnx;; lite.onnx) echo edges-lite.onnx;; yunet640.onnx) echo face.onnx;; *) echo "$1";; esac; }
 fromhf() {  # NAME [the least size in bytes: 100 kB, a model; a small file passes its own]
   for i in 1 2 3; do
-    code=$(curl -sSL -o "$CACHE/$1.part" -w '%{http_code}' "$HF/$(hfname "$1")" || echo 000)
+    code=$(curl -sSL "${HF_AUTH[@]}" -o "$CACHE/$1.part" -w '%{http_code}' "$HF/$(hfname "$1")" || echo 000)
     if [ "$code" = 200 ] && [ "$(stat -c %s "$CACHE/$1.part")" -gt "${2:-100000}" ]; then mv "$CACHE/$1.part" "$CACHE/$1"; echo "from Hugging Face: $(hfname "$1")"; return 0; fi
     rm -f "$CACHE/$1.part"
     case "$code" in 401|403|404) return 1;; esac  # not there: the version is not moved yet
