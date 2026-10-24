@@ -1116,7 +1116,6 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('[data-testid="kind-chip"][data-kind="passport"]').click();
     await close();
     await open(quiet.ids[0]); await close();  // looked at, untouched
-    window.dispatchEvent(new Event('pagehide'));  // the picks still waiting go now
     // Show what the models read: a sheet with each page's readouts
     document.querySelector('[data-testid="scan-done"]').click();
     r.show = await T.until(() => document.querySelectorAll('[data-testid="lab-show-page"]').length === 4, 4000);
@@ -1131,8 +1130,31 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   }, JPG).catch(e => ({error: e.message}));
   for (let i = 0; i < 60 && !labCalls.some(c => c.action === 'attempt'); i++) await sleep(150);
   await sleep(500);
-  const labAdds = labCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
   const labAtt = labCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []);
+  // the lab has no Retake button: deleting every page of a camera shot still undecided is its Retake (sent
+  // retaken, a hard example with no label; the next shot shares its group) — never kept with its pages deleted
+  const labRetake = await labPage.evaluate(async jpg => {
+    const one = await ScanLab.inject({pics: [{b64: jpg}], camera: true});
+    ScanLab.session.remove(one.ids[0]);
+    const next = await ScanLab.inject({pics: [{b64: jpg}], camera: true});
+    ScanLab.session.keep(next.ids[0]);
+    return {one: one.attempt, next: next.attempt};
+  }, JPG).catch(e => ({error: e.message}));
+  // picked photos: the attempts still undecided go as kept with the next pick (as with the next camera shot),
+  // and when the page is left — then the types still waiting go too
+  const labPicks = await labPage.evaluate(async jpg => {
+    const p1 = await ScanLab.inject({pics: [{b64: jpg}], camera: false}), p2 = await ScanLab.inject({pics: [{b64: jpg}], camera: false});
+    await ScanLab.view.pick([]);
+    const p3 = await ScanLab.inject({pics: [{b64: jpg}], camera: false});
+    const undecidedBefore = ScanLab.session.attempts.undecided(p3.attempt);
+    window.dispatchEvent(new Event('pagehide'));
+    return {p1: p1.attempt, p2: p2.attempt, p3: p3.attempt, undecidedBefore};
+  }, JPG).catch(e => ({error: e.message}));
+  const attSent = () => labCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []);
+  for (let i = 0; i < 60 && !attSent().some(a => a.id === labPicks.p3); i++) await sleep(150);
+  await sleep(300);
+  const labAdds = labCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
+  const allAtt = attSent(), byId = id => allAtt.find(a => a.id === id) || {};
   const ex0 = labAdds[0] || {}, ex1 = labAdds[1] || {};
   ok(labKinds.thumbs && labKinds.chosen === 'sefach' && labKinds.pct === '90%' && labKinds.tick && labKinds.sentShown && labKinds.noTick && labAdds.length === 2
     && [ex0.source, ex0.doctypeModel, ex0.doctypeFixed, ex0.keep, !!ex0.pageImage, ex0.doctypeBy].join() === 'page,sefach,sefach,true,true,model'
@@ -1142,6 +1164,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     + JSON.stringify({labKinds, adds: labAdds.map(e => ({m: e.doctypeModel, f: e.doctypeFixed, keep: e.keep, by: e.doctypeBy, copy: !!e.pageImage}))}));
   ok(labAtt.length === 1 && labAtt[0].id === (labKinds.ids || {}).quiet && labAtt[0].source === 'lab' && labAtt[0].outcome === 'kept',
     'scanner lab (/scan-next/): Looks good sends the page\'s attempt at once with source "lab" (no Done in the lab); the pages left alone are not sent ' + JSON.stringify(labAtt.map(x => ({id: x.id, source: x.source, outcome: x.outcome}))));
+  const r1 = byId(labRetake.one), r2 = byId(labRetake.next);
+  ok(r1.outcome === 'retaken' && (r1.deletedPages || []).length === 0 && r2.outcome === 'kept' && r2.group === labRetake.one && r1.source === 'lab',
+    'scanner lab (/scan-next/): every page of an undecided camera shot deleted is its Retake — sent retaken, the next shot sharing its group ' + JSON.stringify({labRetake, one: {o: r1.outcome, d: r1.deletedPages}, next: {o: r2.outcome, g: r2.group}}));
+  const pk1 = byId(labPicks.p1), pk2 = byId(labPicks.p2), pk3 = byId(labPicks.p3);
+  ok([pk1, pk2, pk3].every(a => a.outcome === 'kept' && a.source === 'lab' && a.input === 'photo') && labPicks.undecidedBefore
+    && ['a', 'b', 'none'].every(k => byId((labKinds.ids || {})[k]).outcome === 'kept'),
+    'scanner lab (/scan-next/): with no Done, the attempts still undecided go as kept with the next pick and when the page is left (source "lab") ' + JSON.stringify({labPicks, sent: [pk1, pk2, pk3].map(a => a.outcome + ':' + a.source + ':' + a.input)}));
   const labSite = labReqs.filter(u => /\/scan\/(models\.json|ort(130)?\/|[\w-]+\.onnx)/.test(u)), labOwn = labReqs.filter(u => /\/scan-lab\//.test(u));
   ok(!labSite.length && labOwn.length > 0,
     'scanner lab (/scan-next/): it loads only the lab\'s own files (/scan-lab/) — no request to the site\'s scanner (/scan/) ' + JSON.stringify({site: labSite.slice(0, 5), lab: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));

@@ -17,7 +17,7 @@ import { kindOf, type UiPage } from './useScanSession';
 /** How sure the model is, as the chip says it. */
 export const percent = (conf: number): string => Math.round(conf * 100) + '%';
 
-export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClose, note, onTick, tickSent }: {
+export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClose, note, onTick, tickSent, tickSending }: {
   page: UiPage;
   /** its place in the strip (1-based) */
   index: number;
@@ -30,8 +30,10 @@ export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClo
   note?: string | null;
   /** the lab: the type shown is right — sent for training (shown only when given) */
   onTick?: () => void;
-  /** the lab: this page's type was sent already */
+  /** the lab: this page's type was taken by scan_feedback (a send that failed shows the tick again) */
   tickSent?: boolean;
+  /** the lab: this page's type is on its way */
+  tickSending?: boolean;
 }) {
   const kind = kindOf(page);
   const startY = React.useRef<number | null>(null);
@@ -62,8 +64,9 @@ export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClo
           ))}
         </ToggleGroup>
         {onTick && (
-          <Button size="sm" on={tickSent} disabled={tickSent} onClick={onTick} data-testid="kind-tick" data-sent={tickSent || undefined} className="justify-self-start">
-            <IconCheck className="size-[18px]" />{tickSent ? tr('Sent for training') : tr('This type is right')}
+          <Button size="sm" on={tickSent} disabled={tickSent || tickSending} onClick={onTick} data-testid="kind-tick" data-sent={tickSent || undefined} className="justify-self-start">
+            {tickSending ? <Spinner className="size-[18px]" /> : <IconCheck className="size-[18px]" />}
+            {tickSent ? tr('Sent for training') : tickSending ? tr('Sending…') : tr('This type is right')}
           </Button>
         )}
       </div>

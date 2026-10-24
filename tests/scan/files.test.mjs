@@ -19,10 +19,15 @@
 //  - the attempts: a retake and the next shot share a group; a kept attempt is held until done() on the site and
 //    sent at once in the lab; the queue keeps 5 at most offline and empties when back online; a page deleted
 //    after sending goes as attemptOutcome, one deleted while the queue's write is pending goes with it; the
-//    photo is at most 1600 px; the undecided attempts listed (the lab sends them with its next camera shot);
+//    photo is at most 1600 px; the undecided attempts listed (the lab sends them with its next shot or pick);
+//  - session.remove of the last page of an undecided camera shot is a Retake (the next shot shares its group),
+//    also once a shot still looking for more settles with none shown; keepCanvases (the lab) keeps the newest
+//    pages' pixels only; switchWay while the models load starts them again on the new settings, the newest
+//    change winning;
 //  - the lab's document type collection (src/scan/lab/kinds.ts): the tick sends the type shown at once (keep
-//    when it is the model's), a pick goes KIND_WAIT after the last change or when the page is left, each page
-//    once; never an untouched answer, nothing with no model, nothing of a deleted page.
+//    when it is the model's), a pick goes KIND_WAIT after the last change or when the page is left (keepalive),
+//    each page once; a failed send is not shown as sent and goes again back online; never an untouched answer,
+//    nothing with no model, nothing of a deleted page.
 //
 //   node tests/scan/files.test.mjs
 import assert from 'node:assert/strict';
@@ -604,17 +609,18 @@ await run('attempts: the undecided ones listed, oldest first (the lab sends them
 
 // ── the lab's document type collection ──
 function kindsOn() {
-  const posts = [], logs = [], timers = new Map(), hide = new Set();
+  const posts = [], logs = [], timers = new Map(), hide = new Set(), online = new Set(), net = { down: false, opts: [] };
   let n = 0;
   const env = {
-    post: async body => { posts.push(body); return { ok: true }; }, version: () => 'v5', encode: async sq => 'copy' + sq.width,
+    post: async (body, opts) => { net.opts.push(opts || null); if (net.down) throw new Error('offline'); posts.push(body); return { ok: true }; }, version: () => 'v5', encode: async sq => 'copy' + sq.width,
     setTimeout: (fn, ms) => { const id = ++n; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => { timers.delete(id); },
-    onPageHide: fn => { hide.add(fn); return () => hide.delete(fn); }, log: t => logs.push(t), err: t => logs.push('ERR ' + t),
+    onPageHide: fn => { hide.add(fn); return () => hide.delete(fn); }, onOnline: fn => { online.add(fn); return () => online.delete(fn); }, leaving: () => true,
+    log: t => logs.push(t), err: t => logs.push('ERR ' + t),
   };
   const k = new K.Kinds(env);
   k.start();
   const fire = () => { const all = [...timers.values()]; timers.clear(); all.forEach(t => t.fn()); return all.map(t => t.ms); };
-  return { k, posts, logs, timers, fire, pagehide: () => hide.forEach(fn => fn()) };
+  return { k, posts, logs, timers, fire, net, pagehide: () => hide.forEach(fn => fn()), backOnline: () => online.forEach(fn => fn()) };
 }
 const answer = (doctype, conf = 0.9) => ({ doctype, conf, turn: 0, turnConf: 1, ms: 1, square: new StubCanvas(256, 256) });
 const examplesOf = posts => posts.filter(b => b.action === 'add').flatMap(b => b.examples);
@@ -665,6 +671,128 @@ await run('the lab\'s kinds: nothing with no model, nothing of a deleted page; a
   assert.equal(ex.length, 1); assert.equal(ex[0].doctypeFixed, 'contract'); assert.equal(ex[0].doctypeModel, 'passport');
 });
 
+
+await run('the lab\'s kinds: a send that failed is not shown as sent and goes again when back online; the page left sends with keepalive', async () => {
+  const { k, posts, net, logs, backOnline, pagehide } = kindsOn();
+  k.offer('p', answer('sefach'));
+  net.down = true;
+  k.tick('p', 'sefach');
+  assert.ok(k.sending('p') && !k.sent('p'), 'on its way, not yet sent');
+  k.tick('p', 'sefach');
+  await settle();
+  assert.ok(!k.sent('p') && !k.sending('p'), 'failed: not shown as sent');
+  assert.equal(net.opts.length, 1, 'a second tick while on its way sends nothing');
+  assert.ok(logs.some(t => t.startsWith('ERR Document type not sent')), logs.join('|'));
+  net.down = false; backOnline(); await settle();
+  assert.ok(k.sent('p'), 'sent once back online');
+  assert.deepEqual(examplesOf(posts).map(e => e.doctypeFixed + ':' + e.keep), ['sefach:true']);
+  k.offer('q', answer('passport')); k.pick('q', 'contract'); pagehide(); await settle();
+  assert.deepEqual(net.opts.at(-1), { keepalive: true }, 'the page left: keepalive');
+  assert.equal(examplesOf(posts).at(-1).doctypeFixed, 'contract');
+});
+
+/** A lab session's camera shot of `pages` documents put as takeShot would, each page with its readouts. */
+function cameraShot(s, id, pages = 1, read = true) {
+  const rec = { shot: 1, batch: 9, attempt: id, input: 'camera', w: 64, h: 48, edgesModel: Q, edgesMore: Array.from({ length: pages - 1 }, () => Q), pages, way: 'w', model: 'v5' };
+  s.attempts.newAttempt(photo(64, 48), 64, 48, 'camera', { id, src: rec });
+  const readouts = read ? { doctype: null, mrz: null, he: null, errors: [] } : null;
+  for (let pg = 0; pg < pages; pg++) s['putPage']({ id: id + ':' + pg, record: rec, pg, quad: Q, page: { width: 60, height: 40, turn: 0 }, canvas: photo(60, 40), turn: 0, readouts, refined: false });
+  return rec;
+}
+
+await run('session.remove: the last page of an undecided camera shot deleted is a Retake (the next shot shares its group); a picked photo\'s or one page of two is a deleted page', async () => {
+  const { s, server, file1 } = pickSession({ main: fakeEngine('main', 1), file: null, source: 'lab' });
+  cameraShot(s, 'one');
+  s.remove('one:0');
+  assert.equal(s.attempts.outcomeOf('one'), null, 'decided (sent)');
+  assert.ok(!s.attempts.undecided('one'));
+  cameraShot(s, 'next');
+  s.keep('next:0'); await settle();
+  let sent = sentAttempts(server);
+  const one = sent.find(a => a.id === 'one'), next = sent.find(a => a.id === 'next');
+  assert.equal(one.outcome, 'retaken'); assert.deepEqual(one.deletedPages, [], 'retaken, not kept with its page deleted');
+  assert.equal(next.group, 'one', 'the next shot shares its group');
+  // two documents: one deleted is a deleted page; the attempt waits for Looks good on the other
+  cameraShot(s, 'two', 2);
+  s.remove('two:1');
+  assert.ok(s.attempts.undecided('two'), 'one page left: still undecided');
+  s.keep('two:0'); await settle();
+  sent = sentAttempts(server);
+  const two = sent.find(a => a.id === 'two');
+  assert.equal(two.outcome, 'kept'); assert.deepEqual(two.deletedPages, [1]);
+  // a picked photo: no Retake there (no next shot), its page deleted goes with it
+  await s.pick([file1('a.jpg')]);
+  const pk = [...s.pages.values()].find(p => p.record.input === 'photo');
+  s.remove(pk.id);
+  assert.ok(s.attempts.undecided(pk.record.attempt), 'a pick is not retaken');
+});
+
+await run('session.remove while the shot still looks for more documents: retaken once it settles with none shown', async () => {
+  const { s, server } = pickSession({ main: fakeEngine('main', 1), file: null, source: 'lab' });
+  s['shotId'] = 1; s['shotInWork'] = true;
+  cameraShot(s, 'busy');
+  s.remove('busy:0');
+  assert.ok(s.attempts.undecided('busy'), 'not decided while the shot is in work');
+  // the shot settles (snap's finally) with no page of it left
+  s['shotInWork'] = false;
+  for (const [a] of s['retakeAfterShot']) { s['retakeAfterShot'].delete(a); s['retakeIfEmpty'](a); }
+  await settle();
+  assert.equal(sentAttempts(server).find(a => a.id === 'busy').outcome, 'retaken');
+});
+
+await run('session keepCanvases (the lab): only the newest pages read keep their full-size pixels; the older ones are given again released', async () => {
+  const { s } = pickSession({ main: fakeEngine('main', 1), file: null, source: 'lab' });
+  s['keepCanvases'] = 3;
+  const released = [];
+  s.on('page', p => { if (p.released) released.push(p.id); });
+  for (let i = 0; i < 7; i++) cameraShot(s, 'c' + i, i % 2 ? 2 : 1);
+  const all = [...s.pages.values()], heavy = all.filter(p => p.canvas.width > 1);
+  assert.equal(all.length, 10, 'every page still listed');
+  assert.equal(heavy.length, 3, 'at most 3 full-size canvases live: ' + heavy.length);
+  assert.deepEqual(heavy.map(p => p.id), ['c5:0', 'c5:1', 'c6:0'], 'the newest kept');
+  assert.ok(all.filter(p => p.released).every(p => p.canvas.width === 1 && p.readouts), 'released: a 1×1 canvas, the readouts kept');
+  assert.equal(released.length, 7, 'each released one given again once');
+  // a page not read yet is never released (its readouts still need its pixels)
+  cameraShot(s, 'unread', 1, false);
+  assert.ok(s.pages.get('unread:0').canvas.width > 1);
+  // the site keeps them all (until Done)
+  const site = pickSession({ main: fakeEngine('main', 1), file: null });
+  for (let i = 0; i < 12; i++) cameraShot(site.s, 's' + i);
+  assert.equal([...site.s.pages.values()].filter(p => p.canvas.width > 1).length, 12);
+});
+
+await run('session.switchWay: a change while the models still load starts them again on the new settings; quick changes, the newest wins', async () => {
+  const starts = [];
+  let release, running = null;
+  const engines = {
+    engine: null, engineWay: 'bg-pool', engineKey: '', state: { phase: 'loading', label: 'x', worker: true, loadSeconds: null }, settings: { cpuDir: 'ort', model: 'old', backend: 'auto' },
+    log: new Log.ScanLog(null, () => null), fileThreads: [], onChange: () => () => {}, stopAll() {}, ensureCap: async () => null, growFiles() {},
+    get starting() { return !!running; },
+    setSettings(p) { this.settings = { ...this.settings, ...p }; },
+    ensureSession() {
+      if (running) return running;
+      const key = this.settings.model + '|' + this.settings.backend;
+      if (this.engineKey === key) return Promise.resolve();
+      starts.push(key);
+      running = new Promise(r => { release = () => { this.engineKey = key; running = null; r(); }; });
+      return running;
+    },
+  };
+  const s = new Sess.ScanSession(Surf.labSurface(async () => 'tok'), { engines, readers: null,
+    attemptsEnv: { idb: fakeIDB(), fetch: async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }), now: () => Date.now(), online: () => true, encode: async () => 'j', setTimeout: () => {}, onOnline: () => () => {} },
+    env: { now: () => performance.now(), raf: fn => setImmediate(fn), setTimeout: (fn, ms) => { setTimeout(fn, ms); }, bitmap: null, newId: () => 'x', follower: { reset() {}, since: (t, p) => p, step: async () => null } } });
+  void engines.ensureSession();  // the camera's models loading since the lab opened
+  const sw = s.switchWay({ model: 'new' });
+  await settle();
+  release(); await settle();
+  assert.deepEqual(starts, ['old|auto', 'new|auto'], 'started again on the new model: ' + starts.join(', '));
+  release(); await sw;
+  assert.equal(engines.engineKey, 'new|auto');
+  // two quick changes: only the newest starts the model
+  const a = s.switchWay({ backend: 'cpu' }), b = s.switchWay({ model: 'newest' });
+  await settle(); release(); await Promise.all([a, b]);
+  assert.deepEqual(starts.slice(2), ['newest|cpu'], 'one start, on both changes: ' + starts.join(', '));
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 fs.rmSync(TMP, { recursive: true, force: true });

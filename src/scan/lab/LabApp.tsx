@@ -5,18 +5,25 @@
 // src/lib/backend.ts — with the pull-up Lab tools drawer (LabDrawer.tsx), "Show what the models read" in place
 // of the site's Done (a sheet with each page's readouts and timings), and the lab's training collection:
 //  - the attempts (src/scan/engine/attempts.ts): no holdForDone in the lab — an attempt is sent at once on Looks
-//    good (every page of it looked at), on Retake, and — the lab has no Done — with the next camera shot, which
-//    sends the attempts still undecided as kept (as the site's Done keeps the ones left alone; their pages are
-//    not marked looked at); a page deleted goes to its attempt (pageDeleted: with it, or as attemptOutcome);
-//    the corners fixed by hand go with it (edgesFixed); "In queue" and "New for training" in the drawer;
+//    good (every page of it looked at); a camera shot whose every page is deleted while undecided is sent
+//    retaken (the screen's Delete stands for the old lab's Retake: the next shot shares its group; session.ts
+//    remove); and — the lab has no Done — with the next camera shot or pick, and when the page is left (or
+//    reloaded for the CPU engine, after the queue on the phone is written), the attempts still undecided are
+//    sent as kept (as the site's Done keeps the ones left alone; their pages are not marked looked at); a page
+//    deleted otherwise goes to its attempt (pageDeleted: with it, or as attemptOutcome); the corners fixed by
+//    hand go with it (edgesFixed); "In queue" and "New for training" in the drawer;
 //  - the document types picked or ticked (kinds.ts), never an untouched answer.
 // The lab's start order is kept: the accurate model first (photos and PDFs can go in within seconds), then the
-// camera's models in the background once nothing is being worked on — the camera waits for both. The session
-// lives as long as the page (the lab's page reloads to start again: the CPU engine choice does).
+// camera's models in the background once nothing is being worked on — the camera waits for both (startLab runs
+// before the camera's start: the screen's effect runs before this page's). The session lives as long as the
+// page (the lab's page reloads to start again: the CPU engine choice does); only its newest KEEP_CANVASES pages
+// keep their full-size pixels (session keepCanvases), so a long lab session does not fill the phone's memory.
 import * as React from 'react';
 import { tr } from '@/lib/i18n';
 import { loadBackend } from '@/lib/backend';
 import { Window } from '@/components/shared/window';
+import { PagedList } from '@/components/shared/paged-list';
+import { Plate } from '@/components/shared/plate';
 import { Engines, type EngineSettings } from '../engine/engines';
 import { ScanLog } from '../engine/log';
 import { ScanSession } from '../engine/session';
@@ -24,6 +31,7 @@ import { labSurface, CPU_ORT, GPU_ORT, type OrtDir } from '../engine/surface';
 import type { TrainFigures } from '../engine/attempts';
 import type { ShotPage } from '../engine/shot';
 import type { Doctype } from '../engine/doctypes';
+import type { EngineStatus } from '../engine/status';
 import type { InjectOpts } from '../hooks';
 import { engineStatusText } from '../status-text';
 import { ScannerScreen } from '../ui/ScannerScreen';
@@ -35,6 +43,8 @@ import { PageReadouts } from './Readouts';
 const errText = (e: unknown): string => String((e as Error)?.message || e);
 const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
 const LINES_KEPT = 400;
+/** The pages that keep their full-size pixels (the newest; the older ones keep their thumbnail and readouts). */
+const KEEP_CANVASES = 8;
 
 /** The Errors block, the Loading-and-work log (newest on top) and the pictures' timings, as the drawer shows them. */
 export interface LabRecordsSnap { errors: string[]; lines: string[]; timings: string[] }
@@ -75,6 +85,8 @@ interface Lab {
   picking: number;
   /** A page deleted (its Undo over): the page's own view forgets it. */
   removed: (id: string) => void;
+  /** The engine's last status (the lab may start before the page listens: the screen's camera start). */
+  lastStatus: EngineStatus | null;
 }
 
 /** The signed-in user's ID token for scan_feedback (the attempts, the types, the lab's stats), null when there is none. */
@@ -95,9 +107,11 @@ function getLab(): Lab {
   window.addEventListener('unhandledrejection', e => log.err('Error: ' + errText((e as PromiseRejectionEvent).reason)));
   const engines = new Engines(surface, log);
   engines.setSettings({ cpuDir });
-  const session = new ScanSession(surface, { engines, log });
-  const kinds = new Kinds(defaultKindsEnv(b => session.attempts.post(b), () => session.readers?.info?.version || '', log.log, log.err));
-  return (lab = { session, engines, log, records, kinds, cpuDir, capReady: Promise.resolve(), started: false, picking: 0, removed: () => {} });
+  const session = new ScanSession(surface, { engines, log, keepCanvases: KEEP_CANVASES });
+  const kinds = new Kinds(defaultKindsEnv((b, o) => session.attempts.post(b, o), () => session.readers?.info?.version || '', log.log, log.err));
+  const made: Lab = { session, engines, log, records, kinds, cpuDir, capReady: Promise.resolve(), started: false, picking: 0, removed: () => {}, lastStatus: null };
+  log.on('status', st => { made.lastStatus = st; });
+  return (lab = made);
 }
 
 /** The lab opened (once): what this device has, the earlier failures, then the accurate model first and the
@@ -112,6 +126,9 @@ function startLab(l: Lab): void {
   log.showFails();
   session.attempts.start();
   l.kinds.start();
+  // the page left: the attempts still undecided go as kept (written to the queue on the phone first, sent now
+  // or on the next open)
+  addEventListener('pagehide', () => keepUndecided(l));
   if (session.readers) void session.readers.load();
   l.capReady = engines.ensureCap().then(() => {}, e => log.log('Accurate model: ' + errText(e)));
   void l.capReady.then(async () => {
@@ -120,8 +137,15 @@ function startLab(l: Lab): void {
   });
 }
 
+/** The attempts still undecided sent as kept (the lab has no Done; their pages are not marked looked at). */
+function keepUndecided(l: Lab): void {
+  const ids = l.session.attempts.undecidedIds();
+  if (ids.length) l.session.attempts.decide('kept', ids);
+}
+
 /** The session as the lab's screen drives it: the camera after the accurate model and any pick in work, picks
- *  counted, a deleted page's type never sent. */
+ *  counted (each sends the attempts still undecided before it, as a camera shot does), a deleted page's type
+ *  never sent. */
 function labView(l: Lab): ScanSessionLike {
   const s = l.session;
   let camGen = 0;
@@ -130,6 +154,7 @@ function labView(l: Lab): ScanSessionLike {
     on: (ev, fn) => s.on(ev, fn),
     startCamera: async v => {
       const g = camGen;
+      startLab(l);  // before the wait: the screen's effect runs before LabApp's, which would start it too late
       await l.capReady;
       while (l.picking) await sleep(300);
       if (g !== camGen) return;  // put away meanwhile
@@ -142,6 +167,7 @@ function labView(l: Lab): ScanSessionLike {
     hold: () => s.hold(),
     resume: () => s.resume(),
     pick: files => {
+      keepUndecided(l);
       l.picking++;
       const p = s.pick(files), settled = () => { l.picking--; };
       p.then(settled, settled);
@@ -202,19 +228,22 @@ export function LabApp() {
       l.kinds.on(() => setKindsSeen(n => n + 1)),
     ];
     startLab(l);
+    if (!seen && l.lastStatus) setEngineText(engineStatusText(l.lastStatus, true));  // said before this listened
     window.ScanLab = {
       session: l.session, log: l.log, kinds: l.kinds, records: l.records,
       clearLogs: () => l.records.clear(),
       inject: (o: InjectOpts) => import('../hooks').then(h => h.injectInto(l.session, o)),
       hooks: () => import('../hooks'),
+      view,
     };
     return () => { offs.forEach(off => off()); l.removed = () => {}; };
-  }, [l]);
+  }, [l, view]);
 
   // a new object when a page is offered or sent (kindsSeen): the tick is drawn again
   const kindTick = React.useMemo(() => ({
     offered: (id: string) => kindsSeen >= 0 && l.kinds.offered(id),
     sent: (id: string) => l.kinds.sent(id),
+    sending: (id: string) => l.kinds.sending(id),
     onTick: (id: string, kind: Doctype | null) => l.kinds.tick(id, kind),
   }), [l, kindsSeen]);
 
@@ -223,7 +252,13 @@ export function LabApp() {
     void l.session.switchWay(patch);
   };
   // the CPU engine: the page opened again with it (its ONNX Runtime is loaded once per page), as the lab's did
-  const changeCpu = (dir: OrtDir) => { if (dir !== l.cpuDir) location.search = '?ort=' + (dir === GPU_ORT ? '130' : '122') + '&v=' + Date.now(); };
+  // — the attempts still undecided and the types waiting go first (written to the queue on the phone / sent)
+  const changeCpu = async (dir: OrtDir) => {
+    if (dir === l.cpuDir) return;
+    keepUndecided(l);
+    await Promise.all([l.session.attempts.settle(), l.kinds.flush()]).catch(() => {});
+    location.search = '?ort=' + (dir === GPU_ORT ? '130' : '122') + '&v=' + Date.now();
+  };
 
   const list = pages.order.map(id => pages.byId[id]).filter(Boolean);
   return (
@@ -236,18 +271,17 @@ export function LabApp() {
       <Window open={!!shown} onOpenChange={o => { if (!o) setShown(null); }} title={tr('What the models read')}
         description={tr('Each page\'s readouts and how long they took')}>
         <div data-testid="lab-show" className="grid gap-3">
-          {(shown || []).map((u, i) => {
+          <PagedList items={shown || []} render={(u, i) => {
             const p = pages.byId[u.id] || u.shot;
             return (
-              <div key={u.id} data-testid="lab-show-page" className="grid grid-cols-[72px_1fr] items-start gap-3 rounded-[var(--radius-md)] bg-plate p-2 shadow-[var(--shadow-plate)]">
-                {u.src ? <img src={u.src} alt={tr('Page {n}', { n: i + 1 })} className="w-[72px] rounded-[8px] object-contain" /> : <span />}
-                <div className="grid min-w-0 gap-0.5">
-                  <div className="text-[13px] font-semibold">{tr('Page {n}', { n: i + 1 })}</div>
-                  {p ? <PageReadouts page={p} /> : null}
+              <Plate key={u.id} data-testid="lab-show-page" size="sm" title={tr('Page {n}', { n: i + 1 })} expanded>
+                <div className="grid grid-cols-[72px_1fr] items-start gap-3">
+                  {u.src ? <img src={u.src} alt={tr('Page {n}', { n: i + 1 })} className="w-[72px] rounded-[8px] object-contain" /> : <span />}
+                  {p ? <PageReadouts page={p} /> : <span />}
                 </div>
-              </div>
+              </Plate>
             );
-          })}
+          }} />
           {l.session.figures().captureMs != null && (
             <div className="text-[12.5px] text-ink-2">{tr('Last camera shot shown in {ms} ms', { ms: Math.round(l.session.figures().captureMs as number) })}</div>
           )}

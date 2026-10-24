@@ -85,6 +85,8 @@ export interface ShotPage {
   turn: number;
   readouts: Readouts | null;
   refined: boolean;
+  /** Its full-size pixels let go (session keepCanvases, the lab): canvas is 1×1; its thumbnail and readouts stay. */
+  released?: boolean;
 }
 
 /** What a shot needs of the session. */

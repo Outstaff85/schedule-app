@@ -56,7 +56,7 @@ interface Queued { a: AttemptData; at: number }
 /** What the attempts take of the browser (the tests give stand-ins). */
 export interface AttemptsEnv {
   idb: IDBFactory | null;
-  fetch: (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+  fetch: (url: string, init: { method: string; headers: Record<string, string>; body: string; keepalive?: boolean }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
   now(): number;
   online(): boolean;
   /** A canvas → JPEG 0.85 base64. */
@@ -117,6 +117,8 @@ export class Attempts {
   private frames = new Map<string, KeptFrame>();
   /** Decided, its photo being encoded: a page deleted now goes with it. */
   private readonly queuing = new Map<string, Live>();
+  /** The writes to the queue on the phone still running (settle waits for them). */
+  private readonly writing = new Set<Promise<void>>();
   /** The queue where the phone keeps no IndexedDB (a private window): in memory, sent all the same. */
   private readonly mem = new Map<string, Queued>();
   private flushing: Promise<void> | null = null;
@@ -173,7 +175,8 @@ export class Attempts {
   canFix(id: string): boolean { return !!this.unsent(id); }
   /** Undecided: on the screen, not looked at yet. */
   undecided(id: string): boolean { return this.onScreen.some(x => x.a.id === id); }
-  /** The attempts not decided yet, oldest first (the lab sends them with its next camera shot: it has no Done). */
+  /** The attempts not decided yet, oldest first (the lab sends them as kept with its next shot or pick, and when
+   *  the page is left: it has no Done). */
   undecidedIds(): string[] { return this.onScreen.map(x => x.a.id); }
   /** How it went, once decided (null while undecided or unknown). */
   outcomeOf(id: string): Outcome | null { const l = this.unsent(id); return (l && l.a.outcome) || null; }
@@ -259,12 +262,22 @@ export class Attempts {
    *  IndexedDB write copies it when it begins), so no deleted page is lost on the way. */
   private async queue(l: Live): Promise<void> {
     this.queuing.set(l.a.id, l);
-    try {
-      const a = await this.data(l), at = this.env.now();
-      let n = -1;
-      while (n !== a.deletedPages.length) { n = a.deletedPages.length; await this.put({ a, at }); }
-    } finally { this.queuing.delete(l.a.id); }
+    const write = (async () => {
+      try {
+        const a = await this.data(l), at = this.env.now();
+        let n = -1;
+        while (n !== a.deletedPages.length) { n = a.deletedPages.length; await this.put({ a, at }); }
+      } finally { this.queuing.delete(l.a.id); }
+    })();
+    this.writing.add(write);
+    try { await write; } finally { this.writing.delete(write); }
     await this.flush();
+  }
+
+  /** Every attempt decided so far written to the queue on the phone (the lab waits for it before it reloads:
+   *  they are sent on the next open). */
+  async settle(): Promise<void> {
+    while (this.writing.size) await Promise.allSettled([...this.writing]);
   }
 
   /** A page of an attempt deleted: with it when not sent yet; told to the server when sent; told once its
@@ -284,11 +297,13 @@ export class Attempts {
     } catch { /* gone already */ }
   }
 
-  /** A request to scan_feedback with the signed-in user's token. */
-  async post(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  /** A request to scan_feedback with the signed-in user's token; keepalive: it outlives the page being left (a
+   *  small body only — the browser takes 64 KB at most — so never an attempt with its photo). */
+  async post(body: Record<string, unknown>, opts: { keepalive?: boolean } = {}): Promise<Record<string, unknown>> {
     const token = await this.surface.idToken().catch(() => null);
     if (!token) throw new Error('not signed in');
-    const r = await this.env.fetch(TRAIN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(body) });
+    const init = { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(body), ...(opts.keepalive ? { keepalive: true } : {}) };
+    const r = await this.env.fetch(TRAIN_URL, init);
     const j = await r.json().catch(() => null) as Record<string, unknown> | null;
     if (!r.ok || !j || !j.ok) throw new Error(String((j && j.error) || 'HTTP ' + r.status));
     return j;

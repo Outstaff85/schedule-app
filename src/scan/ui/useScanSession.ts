@@ -9,7 +9,8 @@
 // the /next gallery's fake (fake-session.ts) another, so the screen can be looked at without a camera.
 //
 // The pages: each one the moment it is cut (the session's page event), again under its id when it is refined
-// or read; its picture made a JPEG object URL for the thumbnail (the old one let go). Before them the pages the
+// or read; its picture made a JPEG object URL for the thumbnail (the old one let go; a page given again
+// `released` keeps it, its canvas not held). Before them the pages the
 // host keeps already (`kept`: the site's batches kept on the phone until read, the pages from before Scan
 // again) — shown, deletable, counted and given at Done like the others, but not fixed (their photo is gone).
 // Delete hides a page at once and offers Undo (the Undo snack); the session (or the host, for a kept page) is
@@ -229,6 +230,8 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
       session.on('page', p => {
         setShots(m => ({ ...m, [p.id]: p }));
         setOrder(o => (o.includes(p.id) ? o : [...o, p.id]));
+        // its pixels let go (the lab keeps the newest pages' only): the thumbnail made stays, the canvas is not held
+        if (p.released) { if (urls.current.has(p.id)) madeFrom.current.delete(p.id); return; }
         if (madeFrom.current.get(p.id) === p.canvas) return;
         madeFrom.current.set(p.id, p.canvas);
         jpeg(p.canvas).then(b => {

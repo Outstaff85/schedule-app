@@ -24,8 +24,11 @@
 // documents, once the search is over, so the attempt goes with every document the shot gave, and a page found
 // later must be looked at too; until then every page of it can still be fixed), at Done (done: the ones left
 // alone too), retaken by Retake (retake: the
-// next shot shares its group; a page already kept goes as a deleted page instead), deleted by remove; nothing is
-// decided by a new shot or pick (owner, 2026-10-24). fix(pageId, pts): the corners set by hand go with the
+// next shot shares its group; a page already kept goes as a deleted page instead) — and so is a camera shot
+// whose every page was deleted while it was undecided (remove: the screen's Delete stands for the lab's
+// Retake, so a badly cut shot is never sent as kept with its pages deleted — "nothing here" on a photo that
+// holds a document) —, a page deleted otherwise told to its attempt; nothing is decided by a new shot or pick
+// (owner, 2026-10-24). fix(pageId, pts): the corners set by hand go with the
 // attempt (edgesFixed / edgesMoreFixed) and the page is cut again under the same id. done() and discard() end
 // the scan: a shot or pick in work stops, the pages are let go (the session outlives a closed window on the
 // site); discard() sends nothing (the site's window closed without Done).
@@ -35,6 +38,10 @@
 // on the screen and the models busy with them). hold() pauses a running live frame (its follow, Auto) while a
 // page is opened large over the camera — a shot or a pick in work goes on — and resume() starts it again from
 // a fresh frame; a wake, a sleep or a pick in between leaves it to them.
+//
+// keepCanvases (the lab, which has no Done and keeps its session for the page's life): only the newest that
+// many pages read keep their full-size pixels; an older one is given again `released` (a 1×1 canvas: its
+// thumbnail, made already, and its readouts stay), so a long lab session does not hold every cut page.
 import { Attempts, type AttemptsEnv } from './attempts';
 import { Camera, type GetUserMedia, type VideoLike } from './camera';
 import { Engines, type EngineSettings } from './engines';
@@ -43,6 +50,7 @@ import { ScanLog } from './log';
 import { Readers } from './readers';
 import { analyzePicture, defaultFilesEnv, pickedPictures, workPictures, type FilesEnv, type LaneEngine, type PickFile, type PictureStage } from './files';
 import { info, readPage, takeShot, toCanvas, type ShotPage, type ShotRecord } from './shot';
+import { mkCanvas } from './upright';
 import type { SessionStatus } from './status';
 import { autoShot, hintOf, type SteadyAnswer } from './steady';
 import type { ScanSurface } from './surface';
@@ -101,7 +109,11 @@ export function liveStatus(raw: Corners, res: SteadyAnswer): SessionStatus {
   }
 }
 
-export interface SessionParts { engines?: Engines; readers?: Readers | null; log?: ScanLog; env?: Partial<SessionEnv>; attempts?: Attempts; attemptsEnv?: Partial<AttemptsEnv> }
+export interface SessionParts {
+  engines?: Engines; readers?: Readers | null; log?: ScanLog; env?: Partial<SessionEnv>; attempts?: Attempts; attemptsEnv?: Partial<AttemptsEnv>;
+  /** Only the newest this many pages read keep their full-size pixels (the lab); unset: all of them, until Done. */
+  keepCanvases?: number;
+}
 
 export class ScanSession {
   readonly log: ScanLog;
@@ -128,6 +140,15 @@ export class ScanSession {
   private fixedPages = new Set<string>();
   /** Looks good on a page of the shot still in work: attempt → shot, decided once that shot settles. */
   private keepAfterShot = new Map<string, number>();
+  /** Every page of the shot still in work deleted: attempt → shot, retaken once that shot settles with none left. */
+  private retakeAfterShot = new Map<string, number>();
+  /** Pages being cut again by fix() (their pixels are not released meanwhile). */
+  private fixing = new Set<string>();
+  private readonly keepCanvases: number | null;
+  /** switchWay one at a time, the newest settings winning; relive: the live frame ran before the first of them. */
+  private switchSeq = 0;
+  private switchChain: Promise<void> = Promise.resolve();
+  private relive = false;
   /** The pages Looks good was tapped on, by attempt: the attempt is kept once every page of it still shown is. */
   private looked = new Map<string, Set<string>>();
   /** hold() paused a running live frame: resume() starts it again. */
@@ -147,6 +168,7 @@ export class ScanSession {
     this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.log, this.engines.settings.cpuDir);
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
+    this.keepCanvases = parts.keepCanvases ?? null;
     const env = this.env;
     this.live = new Live({
       engine: () => this.engines.engine,
@@ -184,6 +206,18 @@ export class ScanSession {
     if (this.removed.has(p.id) || (!fromFix && this.fixedPages.has(p.id))) return;
     this.pages.set(p.id, p);
     this.emit('page', p);
+    if (p.readouts) this.releaseOld();
+  }
+  /** keepCanvases: the pages read beyond the newest that many given again with a 1×1 canvas (released). */
+  private releaseOld(): void {
+    const n = this.keepCanvases;
+    if (n == null) return;
+    const heavy = [...this.pages.values()].filter(p => !p.released && p.readouts && !this.fixing.has(p.id));
+    for (const p of heavy.slice(0, Math.max(0, heavy.length - n))) {
+      const light: ShotPage = { ...p, canvas: mkCanvas(1, 1), released: true };
+      this.pages.set(p.id, light);
+      this.emit('page', light);
+    }
   }
   /** A page given from outside the scan's own work, under its id: the site's scan window gives back a page it
    *  turned upright (Haiku said it lay on its side) — only a page this scan still holds (one of a scan that
@@ -268,6 +302,9 @@ export class ScanSession {
       // the Looks good tapped while it looked for more documents: its record is whole now
       const kept = [...this.keepAfterShot].filter(([, shot]) => shot === id).map(([a]) => a);
       for (const a of kept) { this.keepAfterShot.delete(a); this.keepIfAllLooked(a); }
+      // every page it had so far deleted while it looked for more: retaken unless it found another since
+      const gone = [...this.retakeAfterShot].filter(([, shot]) => shot === id).map(([a]) => a);
+      for (const a of gone) { this.retakeAfterShot.delete(a); this.retakeIfEmpty(a); }
     }
   }
 
@@ -278,8 +315,20 @@ export class ScanSession {
   /** The lab's settings changed (the models, the backend): nothing of the old way stays on the screen — no
    *  frame, no figures — and the frame and its follow start again on the new way (the lab's index.html, its
    *  settings' onchange). A shot in work is dropped. */
-  async switchWay(patch: Partial<EngineSettings>): Promise<void> {
-    const was = this.live.running;
+  //
+  // One change at a time, the newest winning: a change made while an earlier one still waits applies its
+  // settings, and only the newest starts the model and the live frame again. A start of the models already
+  // running (the camera's models load for many seconds after the lab opens) was begun on the old settings: it
+  // is waited for, then the model is started again on the new ones.
+  switchWay(patch: Partial<EngineSettings>): Promise<void> {
+    const seq = ++this.switchSeq;
+    const run = this.switchChain.then(() => this.runSwitch(patch, seq));
+    this.switchChain = run.catch(() => {});
+    return run;
+  }
+  private async runSwitch(patch: Partial<EngineSettings>, seq: number): Promise<void> {
+    const was = this.live.running || this.relive;
+    this.relive = was;
     this.live.running = false; this.held = false;
     this.shotId++; this.shotInWork = false;
     while (this.live.inFlight) await this.sleepMs(30);
@@ -287,8 +336,13 @@ export class ScanSession {
     this.captureMs = null;
     this.emit('frame', null, false);
     this.emitFigures();
+    const stale = this.engines.starting;  // begun before this change: on the old settings
     this.engines.setSettings(patch);
+    if (seq !== this.switchSeq) return;  // a newer change follows: it starts the model
     await this.engines.ensureSession().catch(e => this.log.log('Model: ' + errText(e)));
+    if (stale && seq === this.switchSeq) await this.engines.ensureSession().catch(e => this.log.log('Model: ' + errText(e)));
+    if (seq !== this.switchSeq) return;
+    this.relive = false;
     if (was && this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
   }
 
@@ -364,6 +418,8 @@ export class ScanSession {
     this.shotInWork = false;
     this.scanGen++;
     this.keepAfterShot.clear();
+    this.retakeAfterShot.clear();
+    this.fixing.clear();
     this.looked.clear();
     this.held = false;
     this.pages.clear();
@@ -394,6 +450,7 @@ export class ScanSession {
     const attempt = p.record.attempt;
     const gone = [...this.pages.values()].filter(x => x.record.attempt === attempt);
     this.keepAfterShot.delete(attempt);
+    this.retakeAfterShot.delete(attempt);
     this.looked.delete(attempt);
     if (this.attempts.undecided(attempt)) this.attempts.decide('retaken', [attempt]);
     else for (const x of gone) void this.attempts.pageDeleted(attempt, x.pg);
@@ -402,16 +459,37 @@ export class ScanSession {
     return gone.map(x => x.id);
   }
 
-  /** A page deleted (right after it is found, or later): never given again, and told to its attempt. */
+  /** A page deleted (right after it is found, or later): never given again, and told to its attempt — or, when
+   *  it was the last page shown of a camera shot still undecided, the shot retaken (the lab's Retake: the photo
+   *  goes as a hard example with no label, the next shot shares its group), once the shot has settled. */
   remove(pageId: string): void {
     const p = this.pages.get(pageId);
     this.removed.add(pageId);
     this.pages.delete(pageId);
     if (!p) return;
     const { attempt, shot } = p.record;
+    const inWork = shot > 0 && shot === this.shotId && this.shotInWork;
+    if (shot > 0 && this.attempts.undecided(attempt) && !this.hasPagesOf(attempt)) {
+      if (inWork) { this.retakeAfterShot.set(attempt, shot); void this.attempts.pageDeleted(attempt, p.pg); return; }
+      this.looked.delete(attempt);
+      this.attempts.decide('retaken', [attempt]);
+      return;
+    }
     void this.attempts.pageDeleted(attempt, p.pg);
     // the pages left of it may all be looked at now (not while its shot still looks for more)
-    if (!(shot > 0 && shot === this.shotId && this.shotInWork)) this.keepIfAllLooked(attempt);
+    if (!inWork) this.keepIfAllLooked(attempt);
+  }
+  private hasPagesOf(attempt: string): boolean {
+    for (const x of this.pages.values()) if (x.record.attempt === attempt) return true;
+    return false;
+  }
+  /** A camera shot whose pages were all deleted while it looked for more: retaken now it has settled with none
+   *  shown; with a page found since, it waits for Looks good like any other. */
+  private retakeIfEmpty(attempt: string): void {
+    if (!this.attempts.undecided(attempt)) return;
+    if (this.hasPagesOf(attempt)) { this.keepIfAllLooked(attempt); return; }
+    this.looked.delete(attempt);
+    this.attempts.decide('retaken', [attempt]);
   }
 
   /** What the corner editor needs for a page: its photo and the corners to start from — null when the photo is
@@ -429,6 +507,10 @@ export class ScanSession {
     if (!p || !f || !this.attempts.fixed(p.record.attempt, p.pg, pts)) { this.log.log('This page can no longer be fixed (its photo is gone, or it was sent)'); return false; }
     this.log.log('Corners fixed by hand (page ' + (p.pg + 1) + ')');
     this.fixedPages.add(pageId);
+    this.fixing.add(pageId);
+    try { return await this.refix(pageId, p, f, pts); } finally { this.fixing.delete(pageId); }
+  }
+  private async refix(pageId: string, p: ShotPage, f: { frame: OffscreenCanvas; w: number; h: number }, pts: Quad): Promise<boolean> {
     let page: ShotPage;
     try {
       const eng = this.engines.engine || await this.engines.ensureCap();
@@ -436,7 +518,7 @@ export class ScanSession {
       const out = await eng.warp(pix, f.w, f.h, pts, true);
       if (out.turnError) this.log.err('Face finder: ' + out.turnError);
       if (this.removed.has(pageId) || this.pages.get(pageId) !== p) return false;  // deleted, or the scan ended
-      page = { ...p, quad: copy(pts), page: info(out), canvas: toCanvas(out), turn: out.turn, readouts: null };
+      page = { ...p, quad: copy(pts), page: info(out), canvas: toCanvas(out), turn: out.turn, readouts: null, released: false };
     } catch (e) { this.log.err('The page could not be cut again: ' + errText(e)); return false; }
     this.putPage(page, true);
     const readouts = await readPage(this.readers, page.canvas, this.env.now);

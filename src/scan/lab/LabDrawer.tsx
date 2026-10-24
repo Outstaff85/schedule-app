@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Figures } from '@/components/shared/section';
+import { PagedList } from '@/components/shared/paged-list';
+import { Plate } from '@/components/shared/plate';
 import { QUEUE_MAX, type TrainFigures } from '../engine/attempts';
 import type { EngineSettings } from '../engine/engines';
 import type { Figures as LiveFigures } from '../engine/live';
@@ -126,14 +128,12 @@ export function LabDrawer({ session, figuresNow, errors, lines, settings, onSett
 
         <Head>{tr('Readouts')}</Head>
         <div data-testid="lab-readouts" className="grid gap-2">
-          {pages.length
-            ? pages.map((p, i) => (
-                <div key={p.id} className="grid gap-0.5 rounded-[var(--radius-md)] bg-plate px-3 py-2 shadow-[var(--shadow-plate)]">
-                  <div className="text-[13px] font-semibold">{tr('Page {n}', { n: i + 1 })}</div>
-                  <PageReadouts page={p} />
-                </div>
-              ))
-            : <div className="text-[12.5px] text-ink-2">{tr('No pages yet')}</div>}
+          <PagedList items={pages} empty={<div className="text-[12.5px] text-ink-2">{tr('No pages yet')}</div>}
+            render={(p, i) => (
+              <Plate key={p.id} size="sm" title={tr('Page {n}', { n: i + 1 })} expanded>
+                <PageReadouts page={p} />
+              </Plate>
+            )} />
         </div>
 
         <Head>{tr('Errors')}</Head>

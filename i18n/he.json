@@ -1647,5 +1647,6 @@
   "born {date}": "נולד {date}",
   "The Hebrew field reader failed: {error}": "קורא השדות בעברית נכשל: {error}",
   "Sent for training": "נשלח לאימון",
-  "This type is right": "הסוג הזה נכון"
+  "This type is right": "הסוג הזה נכון",
+  "Sending…": "שולח…"
 }

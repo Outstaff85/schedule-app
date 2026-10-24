@@ -349,6 +349,9 @@ export class Engines {
     return ways;
   }
 
+  /** A start of the model is running (on the settings it began with). */
+  get starting(): boolean { return !!this.ensuring; }
+
   // One start of the model at a time (the live frame and a picked file may both ask).
   ensureSession(): Promise<void> {
     if (this.ensuring) return this.ensuring;
