@@ -19,7 +19,7 @@ export type Prepared = {
   marks: string[]; unknown: string[]; pages: { w: number; h: number; png: string }[]; heavy: boolean;
 };
 
-/** The marks a template may carry, in the order docs/contracts-plan.md lists them (functions/contracts.py MARKS). */
+/** The marks a template may carry, in the order docs/contracts.md → The marks lists them (functions/contracts.py MARKS). */
 export const MARKS = ['given', 'surname', 'full_name', 'id', 'id_type', 'id_expiry', 'dob', 'sex', 'marital', 'phone', 'address', 'city',
   'full_address', 'health_fund', 'start_date', 'end_date', 'contract_months', 'site', 'supplier', 'schedule', 'rate', 'pay_mode', 'ot_rate',
   'shabbat_rate', 'travel', 'bank', 'company', 'company_address', 'company_phone', 'deductions_file', 'terms_1', 'terms_2', 'terms_3',

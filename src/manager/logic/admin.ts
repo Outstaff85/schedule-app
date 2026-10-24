@@ -136,7 +136,8 @@ export async function firmsPayableRows(firms: Rec[]): Promise<{name: string; hou
         fetchForTenant('loadPunchLog', t.tenantId),
       ]);
       const fWorkers: Rec[] = schJson.workers || [];
-      const entries = ((logJson.entries || []) as Rec[]).filter(e => new Date(e.ts) >= ws);
+      // Paired over every punch read, a shift kept in the week it opened (as in Salary: a Saturday night into Sunday stays whole, in its own week).
+      const entries = (logJson.entries || []) as Rec[];
       const byWorkerPunches: Record<string, Rec[]> = {};
       entries.forEach(e => { (byWorkerPunches[e.workerId] = byWorkerPunches[e.workerId] || []).push(e); });
       let totalHours = 0, totalPay = 0;
@@ -149,7 +150,7 @@ export async function firmsPayableRows(firms: Rec[]): Promise<{name: string; hou
         Object.entries(byWorkerPunches).forEach(([wid, list]) => {
           const wc = fWorkers.find(w => w.id === wid), seen = new Set();
           let wPay = 0;
-          groupPunchesIntoShifts(list).forEach(bucket => {
+          groupPunchesIntoShifts(list).filter(bucket => bucket.date >= ws).forEach(bucket => {
             const res = analyzeDayPunches(bucket.entries as Rec[], bucket.date);
             if (res.hours > 0) {
               totalHours += res.hours;

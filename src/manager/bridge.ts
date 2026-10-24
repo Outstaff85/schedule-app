@@ -47,6 +47,8 @@ export type TodaySnapshot = {
   suppliers: { id: string; name: string; color?: string }[];
   /** today's punches, as stored */
   log: BridgePunch[];
+  /** the last 24 hours' punches (on shift and today's hours: a night shift opened before midnight); absent = `log` */
+  recent?: BridgePunch[];
   /** the login may add workers (the `workers` section) */
   canAddWorker: boolean;
 };
@@ -321,7 +323,7 @@ export type WorkerBridge = {
   rescan(): void;
   newToken(id: string): string | null;
   // saveWorker() (src/manager/worker-save.ts)
-  findByDocId(docId: string): { id: string; name: string; clientIds: string[] } | null;
+  findByDocId(docId: string, excludeId?: string): { id: string; name: string; clientIds: string[] } | null;
   isHr(): boolean;
   /** the server's yes / no across the whole firm (an HR has only its own workers) */
   docExistsInFirm(docId: string, workerId?: string): Promise<boolean>;
@@ -366,7 +368,7 @@ export type ManagerBridge = WorkerBridge & {
   /** the account menu's items: My name, Install app, Sign out; the theme kept on the account */
   editMyName(): void;
   installApp(): void;
-  signOut(): void;
+  signOut(): Promise<void>;
   saveTheme(theme: string): void;
   /** a supplier or client login (stage 3, Portal.tsx): its role, the open tab, its name; null for every other login */
   portal(): { role: 'supplier' | 'client'; tab: string; username: string } | null;
@@ -490,9 +492,9 @@ export type ManagerBridge = WorkerBridge & {
   punchLog(): AdminPunch[];
   /** "Load earlier month": back to the 1st of the month already partly loaded, or the month before */
   loadEarlierPunches(): Promise<void>;
-  /** loads the whole punch history (`ensureAllPunches`) */
-  loadAllPunches(): Promise<void>;
-  /** Export CSV of the whole history (`exportPunchCSV`) */
+  /** loads the whole punch history (`ensureAllPunches`); false when it could not (a toast said why) */
+  loadAllPunches(): Promise<boolean>;
+  /** Export CSV of the whole history (`exportPunchCSV`); nothing when the history could not be loaded */
   exportPunches(): Promise<void>;
   /** Clear Log: a CSV of exactly those punches first, then `deletePunchesByMonths`; the toast is the page's; true when deleted */
   clearPunchMonths(months: string[]): Promise<boolean>;
@@ -779,6 +781,8 @@ export type ClientInfo = {
   waiting: number;
   /** the `clients` section: Delete from the ⋮ */
   canDelete: boolean;
+  /** Edit pay (hasEditPay): without it the client's worker pay is read-only and saved as it was */
+  canPay: boolean;
   /** `PAY_RULES.otMult`, `shabbatMult` (the law's figures in the OT / Shabbat placeholders) */
   otMult: number;
   shabbatMult: number;

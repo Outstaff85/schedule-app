@@ -11,9 +11,13 @@ import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts,
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
-import { canChange, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
+import { docIdKey } from '../worker';
+import { canChange, hasEditPay, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
+import { csvText } from '../../lib/utils';
+import { hasBillRate } from '../accounting';
+import { editedPunchTs, punchDate } from '../logic/punches';
 import { autoSave, latestHoursBatch } from '../data/store';
 import { fsTenantId, getSession, gsAuth } from '../data/session';
 import { activeTenantIdForAdmin, activeTenantProfile, adminPanes, assignWorkersToHr, assignWorkersToSupplier, firmProfileMissing, firmsPayableRows, hrColor, loadAdminCache, loadFirmsCache } from '../logic/admin';
@@ -92,7 +96,7 @@ provideBridge({
   toggleBell:(e?: any)=>toggleBell(e),
   editMyName:()=>{ editMyName(); },
   installApp:()=>{ window.installApp(); },
-  signOut:()=>{ logout(); },
+  signOut:()=>logout(),
   saveTheme:(t?: any)=>setTheme(t),
   portal:()=>portalInfo(),
   setLanguage:(l?: any)=>{ setLanguage(l); },
@@ -104,9 +108,11 @@ provideBridge({
   pingLogin:()=>pingLogin(),
   // The snapshot Today draws from: each worker with today's shift, today's punch
   // and its notices (worked out here — they still belong to the Workers tab),
-  // the suppliers, today's punches with their site.
+  // the suppliers, today's punches with their site, and the last 24 hours'
+  // (who is on shift and today's hours: a night shift opened before midnight).
   today(){
-    const now=new Date(), t=now.toDateString(), log=getPunchLog().filter((e?: any)=>new Date(e.ts).toDateString()===t);
+    const now=new Date(), t=now.toDateString(), all=getPunchLog(), log=all.filter((e?: any)=>new Date(e.ts).toDateString()===t);
+    const since=now.getTime()-24*36e5, recent=all.filter((e?: any)=>new Date(e.ts).getTime()>=since);
     return {
       ready:__dataReady,
       workers:workers.map((w?: any)=>{ const td=workerToday(w,log), sh=shiftOn(w,now);
@@ -115,6 +121,7 @@ provideBridge({
           notices:workerNotices(w,td).map((n?: any)=>({lvl:n.lvl, word:n.word, title:n.title}))}; }),
       suppliers:suppliers.map((x?: any)=>({id:x.id, name:x.name||'', color:x.color||''})),
       log:log.map((e?: any)=>({...e, site:punchSite(e)})),
+      recent:recent as any[],
       canAddWorker:hasPermission('workers')&&canChange('editWorkers'),
     };
   },
@@ -192,7 +199,7 @@ provideBridge({
   setStatus:(ids?: any,v?: any)=>setWorkersStatus(ids,v),
   deleteWorkers(ids?: any){
     const one=ids.length===1?workers.find((x?: any)=>x.id===ids[0]):null;
-    ids.forEach((id?: any)=>deleteWorkerNow(id)); render(); autoSave();
+    ids.forEach((id?: any)=>deleteWorkerNow(id)); render(); autoSave({allowEmpty:true}); // the last worker too
     showToast(one?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ids.length,1:''}));
   },
   // ── Clients and Suppliers (stage 6d): the tabs and their windows are React;
@@ -201,11 +208,10 @@ provideBridge({
   clients(){
     const byClient=salaryEntriesFor('month').byClient||{};
     const waiting=new Set((__hoursBatches||[]).filter((b?: any)=>b.status==='pending').flatMap((b?: any)=>(b.entries||[]).map((e?: any)=>e.clientId)));
-    const empty=(v?: any)=>v==null||v==='';
     return {ready:__dataReady, canEdit:hasPermission('clients'), canPunch:canChange('editPunches'),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||'', address:c.address||'', object:c.object||'',
         workers:workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length, monthHours:(byClient[c.id]||{}).hours||0,
-        noRate:empty(c.billRate)&&empty(c.defaultHourlyRate)&&!c.fixedBillRate&&!c.dailyBillRate, waiting:waiting.has(c.id)}))};
+        noRate:!hasBillRate(c), waiting:waiting.has(c.id)}))};
   },
   suppliers(){
     const hours=workersMonthHours();
@@ -223,7 +229,7 @@ provideBridge({
     return {
       workers:c?workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length:0, monthHours:e.hours||0, billed:e.total||0,
       waiting:c?(__hoursBatches||[]).filter((b?: any)=>b.status==='pending'&&(b.entries||[]).some((x?: any)=>x.clientId===c.id)).length:0,
-      canDelete:hasPermission('clients'), otMult:PAY_RULES.otMult, shabbatMult:PAY_RULES.shabbatMult};
+      canDelete:hasPermission('clients'), canPay:hasEditPay(), otMult:PAY_RULES.otMult, shabbatMult:PAY_RULES.shabbatMult};
   },
   supplierInfo(id?: any){
     const sp=id?suppliers.find((x?: any)=>x.id===id):null, hours=workersMonthHours();
@@ -302,8 +308,10 @@ provideBridge({
   setAdminPane:(p?: any)=>switchAdminPane(p),
   punchLog:()=>getPunchLog().map((e?: any)=>({...e, id:e.id, site:punchSite(e), rawSite:e.site||''})),
   loadEarlierPunches:()=>loadEarlierPunchMonth(),
-  loadAllPunches:()=>ensureAllPunches().then(renderAdmin),
-  exportPunches:()=>ensureAllPunches().then(exportPunchCSV),
+  // Whether the whole history came in: Clear Log and the export stop when it did not
+  // (ensurePunchesSince has said why), so a file never holds only part of it.
+  loadAllPunches:()=>ensureAllPunches().then((ok?: any)=>{ renderAdmin(); return !!ok; }),
+  exportPunches:()=>ensureAllPunches().then((ok?: any)=>{ if(ok) exportPunchCSV(); }),
   clearPunchMonths:(months?: any)=>clearPunchMonths(months),
   savePunch:(id?: any,ed?: any)=>savePunchEdit(id,ed),
   deletePunches:(ids?: any)=>deletePunchesNow(ids.map(String)),
@@ -414,7 +422,8 @@ provideBridge({
   findScanFields:(editId?: any,keys?: any,docType?: any)=>findScanFields(editId?workers.find((x?: any)=>x.id===editId)||null:null,keys,docType),
   rescan:()=>rescanFromWorkerModal(),
   newToken:(id?: any)=>regenerateWorkerToken(id),
-  findByDocId(docId?: any){ const d=workers.find((w?: any)=>workerDocId(w)===docId); return d?{id:d.id, name:d.name||'', clientIds:d.clientIds||[]}:null; },
+  // Another worker with this document number (matched without spaces, dashes or leading zeros); excludeId: the worker being edited.
+  findByDocId(docId?: any,excludeId?: any){ const k=docIdKey(docId); const d=k?workers.find((w?: any)=>w.id!==excludeId&&docIdKey(workerDocId(w))===k):null; return d?{id:d.id, name:d.name||'', clientIds:d.clientIds||[]}:null; },
   isHr:()=>isHrSession(),
   async docExistsInFirm(docId?: any,workerId?: any){
     const r=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'checkWorkerDoc',...gsAuth(),docId,...(workerId?{workerId}:{})})})).json();
@@ -641,11 +650,11 @@ function savePunchEdit(id?: any, ed?: any){
   if(idx<0) return;
   log[idx].type = ed.type;
   // ts is what pay and the live sync use (time is rebuilt from it), so a new
-  // time moves ts too — same local day, the edited hour and minute.
-  const tm = /^(\d{1,2}):(\d{2})$/.exec(ed.time||''), when = new Date(log[idx].ts);
-  if(tm && ed.time !== log[idx].time && !isNaN(when.getTime())){
-    when.setHours(Number(tm[1]), Number(tm[2]), 0, 0);
-    log[idx].ts = when.toISOString();
+  // time moves ts too: the edited hour and minute on the day that keeps the
+  // shift whole (an OUT after its IN, within 24h — logic/punches.ts).
+  if(ed.time !== log[idx].time){
+    const ts = editedPunchTs(log, log[idx], ed.time, ed.type);
+    if(ts){ log[idx].ts = ts; log[idx].date = punchDate(ts); }
   }
   log[idx].time = ed.time;
   if(ed.site==='__custom__'){
@@ -696,8 +705,7 @@ function exportPunchCSV(){
       e.editedAt?new Date(e.editedAt).toLocaleString():''
     ]);
   });
-  const csv=rows.map((r?: any)=>r.map((v?: any)=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const blob=new Blob([csvText(rows)],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download='punch-log-'+localYMD(new Date())+'.csv'; a.click();

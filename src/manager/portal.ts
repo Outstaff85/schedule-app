@@ -1,5 +1,5 @@
-// A supplier or client login inside the manager app (docs/permissions-plan.md
-// → stage 3): the same frame, its own tabs, its data only through the
+// A supplier or client login inside the manager app (docs/portals.md):
+// the same frame, its own tabs, its data only through the
 // `supplier` / `hours` functions — the page loads no firm data for it and
 // never reads Firestore. Pure: what tabs a login gets and which portal view
 // each frame tab is.
@@ -25,5 +25,5 @@ export function portalTabs(role: string, rights: string[]): string[] {
 }
 
 export const isPortalRole = (role?: string) => role === 'supplier' || role === 'client';
-/** The session key each portal's own code reads (src/supplier/api.ts, src/client/App.tsx). */
+/** Each portal role's session key: page/gate.ts writes, restores and clears them; the supplier's screens read theirs (src/supplier/api.ts). */
 export const PORTAL_SESSION_KEYS: Record<string, string> = { supplier: 'supplierPortal_session', client: 'clientPortal_session' };

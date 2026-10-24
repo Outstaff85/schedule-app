@@ -1,7 +1,7 @@
 // My Schedule and My Hours (docs/punch.md): the worker's planned days, the next
 // shift, and the month's hours and pay — summed with the one payroll copy
 // (src/lib/payroll.ts) exactly as Accounting → Salary does for a month
-// (salaryEntriesFor): punches of the month, paired into shifts, each shift
+// (salaryEntriesFor): punches paired into shifts, the shifts that opened in the month, each shift
 // priced by shiftPayFor, daily days set by hand, travel. An estimate before
 // deductions; the payslip is the final figure.
 import { tr, uiLocale } from '@/lib/i18n';
@@ -9,7 +9,7 @@ import {
   analyzeDayPunches, dailyRate, dayOverride, groupPunchesIntoShifts, isDailyPay, localYMD, PAY_RULES, shiftPayFor, travelPay,
   type PayClient, type PayWorker, type Punch,
 } from '@/lib/payroll';
-import { getPunchLog, getState, punchFn, set, URL_TOKEN, wpToken, type MonthData, type PWorker } from './core';
+import { getPunchLog, getState, noteServerPunches, punchFn, set, URL_TOKEN, wpToken, type MonthData, type PWorker } from './core';
 
 // ── My Schedule ──
 export interface SchedDay { work: boolean; start?: string; end?: string; night?: boolean; hours: number; dated: boolean }
@@ -55,6 +55,7 @@ export async function loadMonth(key: string) {
   try {
     const r = await (await punchFn({ action: 'myMonth', token: wpToken(), month: key })).json();
     hoursData[key] = (r && !r.error) ? r : (hoursData[key] || { failed: true });
+    if (r && !r.error) noteServerPunches(r.punches, key);
   } catch { hoursData[key] = hoursData[key] && !hoursData[key].failed ? hoursData[key] : { failed: true }; }
   if (hoursData[key].failed) { const l = localMonthData(); if (l.punches!.length) hoursData[key] = l; }
   bump();
@@ -67,10 +68,16 @@ export function refreshTileHours() {
   if (URL_TOKEN && navigator.onLine && Date.now() - _tileAt > 60e3) {
     _tileAt = Date.now();
     punchFn({ action: 'myMonth', token: wpToken(), month: key }).then(r => r.json()).then(r => {
-      if (r && !r.error) { hoursData[key] = r; try { set({ tileHours: tr('{h}h', { h: myMonthFigures(r, key).hours.toFixed(1) }) }); } catch { /* bad data */ } }
+      if (r && !r.error) { hoursData[key] = r; noteServerPunches(r.punches, key); try { set({ tileHours: tr('{h}h', { h: myMonthFigures(r, key).hours.toFixed(1) }) }); } catch { /* bad data */ } }
     }).catch(() => {});
   }
 }
+
+// Back to the page: this month is read again at once (the next IN / OUT counts
+// the server's punches — another phone's, or one a manager added meanwhile).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && getState().worker) { _tileAt = 0; refreshTileHours(); }
+});
 
 export interface MonthShift { date: Date; inT?: string; outT?: string; h: number; pay: number; entries: (Punch & { type: string; time?: string; ts: string; dist?: number; clientId?: string; site?: string })[] }
 export interface MonthFigures { shifts: MonthShift[]; hours: number; regH: number; otH: number; shabH: number; total: number; travel: number; days: number; ov: number | null; hasRate: boolean }
@@ -79,10 +86,12 @@ export function myMonthFigures(data: MonthData, key: string): MonthFigures {
   const clients = (data.clients || []) as PayClient[];
   const w = (data.pay || {}) as PayWorker;
   const [y, m] = key.split('-').map(Number), from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
-  const list = ((data.punches || []) as unknown as MonthShift['entries']).filter(e => { const d = new Date(e.ts); return d >= from && d < to; });
+  // Paired over every punch read (the server sends a day each side), a shift
+  // kept in the month it opened — an overnight shift at the month's end whole.
+  const list = (data.punches || []) as unknown as MonthShift['entries'];
   const seen = new Set<string>(), dayKeys = new Set<string>(), shifts: MonthShift[] = [];
   let hours = 0, regH = 0, otH = 0, shabH = 0, total = 0;
-  groupPunchesIntoShifts(list).forEach(b => {
+  groupPunchesIntoShifts(list).filter(b => b.date >= from && b.date < to).forEach(b => {
     const h = analyzeDayPunches(b.entries, b.date).hours;
     const inE = b.entries.find(e => e.type === 'in'), outE = b.entries.find(e => e.type === 'out');
     let pay = 0;

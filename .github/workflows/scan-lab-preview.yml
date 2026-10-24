@@ -31,6 +31,7 @@ jobs:
       - name: The scanner lab's models and ONNX Runtime
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
           scripts/scan-lab/fetch-models.sh dist/scan-lab

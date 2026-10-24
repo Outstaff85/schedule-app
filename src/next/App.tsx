@@ -1,4 +1,4 @@
-// /next — the component gallery of the new stack (react-migration-plan.md →
+// /next — the component gallery of the new stack (archive/docs/react-migration-plan.md →
 // stage 1): every shared component and every shadcn/ui component in its
 // states, inside the Shell, in the chosen language. Not linked from the app.
 // Names and figures here are examples, not data.

@@ -1,5 +1,7 @@
 # Signed documents plan: Form 101 and the contract under one signature, one PDF per worker
 
+> **Archived 2026-10-24:** finished (D0–D7). The current state, the marks' table included, is in [docs/contracts.md](../../docs/contracts.md).
+
 **Status:** built — D0–D7 merged (2026-10-20); the docx2pdf service deployed (2026-10-21, after the owner granted its rights). The old scan sidecars are not split (owner, 2026-10-21: no): they stay and are read as before, each worker's split on its next save. What is built is described in docs/contracts.md.
 
 The owner's scheme:

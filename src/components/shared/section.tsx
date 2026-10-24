@@ -1,7 +1,7 @@
 // Section: a list's section label with its count (11/600 uppercase), the
 // section's own tools at the right; `folded` + `onFold` make it fold with the
 // arrow (Today's sections). The body opens and closes with Motion.
-// `panel` (the V7 look, react-migration-plan.md → Additions from the UI audit):
+// `panel` (the V7 look, archive/docs/react-migration-plan.md → Additions from the UI audit):
 // the section is a glass panel, its label 13/600 with an `icon`, the count at
 // the right before the arrow (Today's sections on a computer and a phone).
 import * as React from 'react';

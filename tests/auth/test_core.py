@@ -141,6 +141,38 @@ def test_unknown_user_and_empty_fields():
 def test_inactive_user_is_refused():
     DB.collection("users").document("u-staff1").update({"active": False})
     assert core.login(DB, "staff1", "staff-pass-1", mint)["error"] == "Account disabled"
+    # Without the password a disabled account looks like any wrong login.
+    assert core.login(DB, "staff1", "wrong-pass", mint)["error"] == core.E_BAD_LOGIN
+
+
+def test_concurrent_guesses_never_pass_the_lock(monkeypatch):
+    """Each attempt is reserved in a transaction before the password check, so
+    of many concurrent wrong guesses at most LOCK_AFTER_FAILS reach it."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    t = 2_000_000.0
+    checked, lock = [0], threading.Lock()
+    real = core.verify_password
+
+    def counting(password, secret):
+        with lock:
+            checked[0] += 1
+        return real(password, secret)
+    monkeypatch.setattr(core, "verify_password", counting)
+
+    def guess(_):
+        try:
+            return core.login(DB, "staff1", "wrong-pass", mint, now=t)["error"]
+        except Exception:  # a transaction that gave up after its retries checks nothing
+            return None
+    n = core.LOCK_AFTER_FAILS * 3
+    with ThreadPoolExecutor(n) as ex:
+        errors = list(ex.map(guess, range(n)))
+    sec = DB.collection("authSecrets").document("u-staff1").get().to_dict()
+    assert checked[0] <= core.LOCK_AFTER_FAILS
+    assert checked[0] == errors.count(core.E_BAD_LOGIN) == sec["failCount"]  # each check counted, none lost
+    if checked[0] == core.LOCK_AFTER_FAILS:
+        assert "Too many" in core.login(DB, "staff1", "staff-pass-1", mint, now=t + 1)["error"]
 
 
 def test_lockout_after_five_wrong_passwords():
@@ -462,6 +494,9 @@ def test_check_worker_doc_answers_only_yes_or_no():
     hr = {"uid": "u-hr", "role": "hr", "tenantId": T1}
     assert core.check_worker_doc(DB, hr, {"docId": "012345678"}) == {"ok": True, "exists": True}
     assert core.check_worker_doc(DB, hr, {"docId": "ab1234567"}) == {"ok": True, "exists": True}
+    tref = DB.collection("tenants").document(T1)
+    tref.set({"docKeysReady": False}, merge=True)
+    assert core.check_worker_doc(DB, hr, {"docId": "12345678"}) == {"ok": True, "exists": True}  # full read
     assert core.check_worker_doc(DB, hr, {"docId": "012345678", "workerId": "w1"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, hr, {"docId": "999"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, ADMIN2, {"docId": "012345678"})["exists"] is False  # other firm
@@ -473,6 +508,11 @@ def test_check_worker_doc_answers_only_yes_or_no():
     assert core.check_worker_doc(DB, hr, {"docId": "x77"}) == {"ok": True, "exists": True}
     assert core.check_worker_doc(DB, hr, {"docId": "x77", "workerId": "w3"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, hr, {"docId": "AB1234567"}) == {"ok": True, "exists": True}
+    # An 8-digit ID matches one stored padded to 9, and the other way round (before and after the flag).
+    w.document("w4").set({"id": "w4", "docId": "23456789", "docKeys": ["23456789"]})
+    assert core.check_worker_doc(DB, hr, {"docId": "023456789"}) == {"ok": True, "exists": True}
+    assert core.check_worker_doc(DB, hr, {"docId": "12345678"}) == {"ok": True, "exists": True}
+    assert core.check_worker_doc(DB, hr, {"docId": "023456789", "workerId": "w4"}) == {"ok": True, "exists": False}
 
 
 def test_full_name_for_every_role_and_update_my_name():
@@ -590,6 +630,18 @@ def test_templates_seeded_and_listed():
     # Only a superadmin writes them.
     assert core.save_template(DB, ADMIN1, {"name": "X", "role": "staff"}, Revokes())["error"] == core.E_NO_RIGHTS
     assert core.delete_template(DB, ADMIN1, {"id": "hr"}, Revokes())["error"] == core.E_NO_RIGHTS
+
+
+def test_templates_are_seeded_only_once():
+    """A superadmin who deletes every template keeps an empty set: the
+    defaults are not seeded again (appMeta/templates)."""
+    assert len(core.list_templates(DB, SUPER)["templates"]) == 6
+    assert DB.collection("appMeta").document("templates").get().exists
+    for snap in DB.collection("permTemplates").stream():
+        assert core.delete_template(DB, SUPER, {"id": snap.id}, Revokes()).get("ok")
+    assert core.list_templates(DB, SUPER)["templates"] == []
+    assert core.link_to_templates(DB, SUPER, {}, Revokes())["linked"] == 0
+    assert core.list_templates(DB, ADMIN1)["templates"] == []
 
 
 def test_rights_caps():

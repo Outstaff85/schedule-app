@@ -9,6 +9,12 @@
 // Billable by client and its details, the pay window's figures, the salary
 // export table (every period, Select), the accountant workbook, the payable
 // summary, the hours-approval lines and counts.
+// Intended differences (2026-10-24, docs/history.md → Payroll at the bounds of
+// time): the old code cut the punches at the period's bounds
+// before pairing, so a shift across a bound (a night from the last day of a
+// month, Saturday night into Sunday for This Week) was lost on both sides. The
+// generated months keep out the shifts that cross a bound, and the new rule is
+// checked by hand below — as are the alerts in another language.
 //
 //   node tests/accounting/compare.test.mjs
 import assert from 'node:assert/strict';
@@ -155,6 +161,23 @@ function genDocs(workers, log, month) {
   return docs;
 }
 
+// The bounds of the compared periods (This Week from Sunday 2026-10-11, the months).
+const BOUNDS = [new RealDate(2026, 9, 11), new RealDate(2026, 9, 1), new RealDate(2026, 8, 1), new RealDate(2026, 7, 1), new RealDate(2025, 11, 1), new RealDate(2026, 0, 1)].map(Number);
+// The log without the shifts that cross a bound (removed again until none is
+// left: taking one out can join its neighbours into a new one).
+function withoutCrossing(log) {
+  for (;;) {
+    const drop = new Set(), byW = {};
+    log.forEach(e => { (byW[e.workerId] = byW[e.workerId] || []).push(e); });
+    Object.values(byW).forEach(list => Payroll.groupPunchesIntoShifts(list).forEach(b => {
+      const t = b.entries.map(e => +new RealDate(e.ts)), lo = Math.min(...t), hi = Math.max(...t);
+      if (BOUNDS.some(x => lo < x && hi >= x)) b.entries.forEach(e => drop.add(e.id));
+    }));
+    if (!drop.size) return log;
+    log = log.filter(e => !drop.has(e.id));
+  }
+}
+
 // ── Old vs new on one dataset ──
 const pickE = e => ({ worker: e.worker, workerId: e.workerId, hours: e.hours, days: e.days, regH: e.regH, otH: e.otH, shabH: e.shabH, total: e.total, travel: e.travel,
   warns: e.warns, clientHours: e.clientHours, countedDays: e.countedDays, daysUsed: e.daysUsed, supCom: e.supCom, dayKeys: [...e.dayKeys], seen: [...e.seen] });
@@ -249,14 +272,116 @@ for (let i = 0; i < 12; i++) {
   const clients = genClients(), suppliers = genSuppliers();
   const workers = Array.from({ length: 12 }, (_, k) => genWorker(k));
   // Three months up to "today" (2026-10-15), one older month, so every period has data.
-  const log = workers.flatMap(w => [...genPunches(w, 2026, 7), ...genPunches(w, 2026, 8), ...genPunches(w, 2026, 9), ...genPunches(w, 2025, 11)])
-    .filter(e => new RealDate(e.ts) <= new RealDate(NOW));
+  const log = withoutCrossing(workers.flatMap(w => [...genPunches(w, 2026, 7), ...genPunches(w, 2026, 8), ...genPunches(w, 2026, 9), ...genPunches(w, 2025, 11)])
+    .filter(e => new RealDate(e.ts) <= new RealDate(NOW)));
   run(`dataset ${i + 1} (${workers.length} workers, ${log.length} punches)`, () => {
     compare('d' + (i + 1), workers, clients, suppliers, log, null);
     compare('d' + (i + 1), workers, clients, suppliers, log, { role: 'hr', uid: 'hr1', commissionRate: 3, commissionDayRate: 25 });
   });
 }
 run('totals', () => { sameNum(tally.pay, tally.payOld, 'pay + travel over every row'); return ` — ${tally.rows} Salary rows, ${tally.exportRows} export rows, pay + travel ${tally.pay.toFixed(2)} new = ${tally.payOld.toFixed(2)} old`; });
+
+// ── The new rules, by hand ──
+{
+  const W = [{ id: 'n1', name: 'Night', hourlyRate: 40, supplierId: 's1' }], CL = [{ id: 'c1', name: 'Site', rateMode: 'fixed', fixedBillRate: 50 }], SP = [{ id: 's1', name: 'Agency' }];
+  const P = (id, type, ts, time) => ({ id, workerId: 'n1', workerName: 'Night', type, ts, time, clientId: 'c1' });
+  run('a night across the month\'s end: in the month it opened, whole', () => {
+    // Sat 2026-10-31 22:00 → Sun 2026-11-01 06:00 (Israel, UTC+2).
+    const D = { log: [P('a', 'in', '2026-10-31T20:00:00Z', '22:00'), P('b', 'out', '2026-11-01T04:00:00Z', '06:00')], workers: W, clients: CL, suppliers: SP, tr };
+    const oct = A.salaryEntriesFor(D, 'm:2026-10'), nov = A.salaryEntriesFor(D, 'm:2026-11');
+    const e = oct.byWorker.n1;
+    assert.ok(e && e.hours === 8 && e.warns.length === 0 && e.shabH === 8, 'October: 8h (a Saturday shift) ' + JSON.stringify(e && { h: e.hours, w: e.warns }));
+    assert.equal(e.total, Payroll.shiftPay(8, W[0], true, 'c1', CL), 'October: paid');
+    assert.equal(e.supCom, 8 * A.SUPPLIER_DEFAULT_RATE, 'October: the supplier\'s commission');
+    assert.equal(oct.byClient.c1.total, 400, 'October: the client\'s bill');
+    assert.ok(!nov.byWorker.n1, 'November: no row, no warning ' + JSON.stringify(nov.byWorker));
+    const rows = A.buildSalaryExportRows(D, 'm:2026-10');
+    assert.ok(rows.length === 1 && rows[0].hours === 8 && rows[0].firstIn === '22:00' && rows[0].lastOut === '06:00' && !rows[0].notes, 'the export: one 8h row ' + JSON.stringify(rows));
+    assert.equal(A.buildSalaryExportRows(D, 'm:2026-11').length, 0, 'the export of November: nothing');
+    assert.equal(A.accAlerts(D, Object.values(oct.byWorker), oct.byClient).filter(a => a.sec === 'punch').length, 0, 'no punch alert');
+  });
+  run('Saturday night into Sunday: in the week it opened, not in This Week', () => {
+    // Sat 2026-10-10 22:00 → Sun 2026-10-11 06:00 (This Week starts Sunday 2026-10-11; "now" is 2026-10-15).
+    const D = { log: [P('a', 'in', '2026-10-10T19:00:00Z', '22:00'), P('b', 'out', '2026-10-11T03:00:00Z', '06:00'),
+      P('c', 'in', '2026-10-12T05:00:00Z', '08:00'), P('d', 'out', '2026-10-12T09:00:00Z', '12:00')], workers: W, clients: CL, suppliers: SP, tr };
+    const wk = A.salaryEntriesFor(D, 'week').byWorker.n1, oct = A.salaryEntriesFor(D, 'm:2026-10').byWorker.n1;
+    assert.ok(wk.hours === 4 && wk.warns.length === 0, 'This Week: only Monday\'s 4h, no warning ' + JSON.stringify({ h: wk.hours, w: wk.warns }));
+    assert.ok(oct.hours === 12 && oct.warns.length === 0, 'the month: both shifts ' + JSON.stringify({ h: oct.hours, w: oct.warns }));
+  });
+  run('a month before November 2026 keeps its numbers: a clock change, a forgotten OUT, an old edit', () => {
+    // Pairs that count by their time stamps from 1 November 2026 (Payroll.PAIR_STAMPS_FROM) keep the old
+    // 'HH:MM' numbers before it: the night the clocks went back (Sat 2026-10-24 22:00 → Sun 06:00: 8h, not 9h),
+    // an OUT the old punch window moved to 17:00 on the next morning's day (08:00 → 17:00: 9h, not 33h),
+    // a forgotten OUT 25h later (2026-09-10 08:00 → 09-11 09:00: 1h, not 25h).
+    const log = [P('a', 'in', '2026-10-05T05:00:00Z', '08:00'), { ...P('b', 'out', '2026-10-06T14:00:00Z', '17:00'), editedBy: 'admin', editedAt: '2026-10-07T08:00:00Z' },
+      P('c', 'in', '2026-10-24T19:00:00Z', '22:00'), P('d', 'out', '2026-10-25T04:00:00Z', '06:00'),
+      P('e', 'in', '2026-09-10T05:00:00Z', '08:00'), P('f', 'out', '2026-09-11T06:00:00Z', '09:00')];
+    compare('old month', W, CL, SP, log, null); // every figure the old tab showed, identical
+    const D = { log, workers: W, clients: CL, suppliers: SP, tr };
+    const oct = A.salaryEntriesFor(D, 'month').byWorker.n1, sep = A.salaryEntriesFor(D, 'm:2026-09').byWorker.n1;
+    assert.ok(oct.hours === 17 && sep.hours === 1, 'October 9h + 8h, September 1h ' + JSON.stringify({ oct: oct.hours, sep: sep.hours }));
+    assert.equal(oct.total, Payroll.shiftPay(9, W[0], false, 'c1', CL) + Payroll.shiftPay(8, W[0], true, 'c1', CL), 'October paid as before');
+    assert.equal(A.salaryEntriesFor(D, 'month').byClient.c1.total, 17 * 50, 'the client\'s bill as before');
+  });
+  run('the alerts by the warning\'s code, in any language', () => {
+    const he = (t, p) => 'HE ' + tr(t, p);
+    // today (2026-10-15) still at work since 08:00; the 5th: an IN with no OUT, then a >12h shift; the 6th: an OUT without IN.
+    const log = [P('a', 'in', '2026-10-05T03:00:00Z', '06:00'), P('b', 'in', '2026-10-05T04:00:00Z', '07:00'), P('c', 'out', '2026-10-05T18:00:00Z', '21:00'),
+      P('d', 'out', '2026-10-06T10:00:00Z', '13:00'), P('e', 'in', '2026-10-15T05:00:00Z', '08:00')];
+    const W2 = [{ ...W[0], bank: 'Leumi' }];
+    const lv = t => { const D = { log, workers: W2, clients: CL, suppliers: SP, tr: t }, r = A.salaryEntriesFor(D, 'm:2026-10');
+      assert.deepStrictEqual([...r.byWorker.n1.warnCodes], ['open', 'gt12', 'out-no-in', 'open-today'], 'the codes');
+      return A.accAlerts(D, Object.values(r.byWorker), r.byClient).filter(a => a.sec === 'punch').map(a => a.lvl).join(); };
+    assert.equal(lv(tr), 'amber,amber,red', 'English: the open shift and >12h amber, OUT without IN red, today\'s shift no alert');
+    assert.equal(lv(he), 'amber,amber,red', 'another language: the same');
+  });
+  run('the salary CSV: a BOM for Excel, no formulas, numbers kept', () => {
+    const W3 = [{ id: 'n1', name: '=HYPERLINK("x")', hourlyRate: 40, payMode: 'daily', dayOverrides: { 'm:2026-10': 0 } }];
+    const log = [P('a', 'in', '2026-10-05T05:00:00Z', '08:00'), P('b', 'out', '2026-10-05T09:00:00Z', '12:00')].map(e => ({ ...e, workerName: '=HYPERLINK("x")' }));
+    const csv = A.salaryCsv({ log, workers: W3, clients: [{ id: 'c1', name: 'אתר' }], suppliers: [], tr }, 'm:2026-10');
+    const lines = csv.split('\n');
+    assert.ok(csv.charCodeAt(0) === 0xFEFF && !csv.slice(1).includes('﻿'), 'starts with one BOM');
+    assert.ok(lines[1].startsWith('"\'=HYPERLINK(""x"")"') && lines[1].includes('"אתר"'), 'a formula is text, Hebrew kept ' + lines[1]);
+    assert.ok(lines[2].includes('"-40.00"') && !lines[2].includes("'-40"), 'a negative amount stays a number ' + lines[2]);
+  });
+}
+
+// ── The supplier portal's payable summary (src/supplier/money.ts) ──
+// Bundled the same way, with a plain tr() in place of the React i18n module.
+{
+  const stub = path.join(HERE, 'i18n-stub.mjs');
+  const mres = await build({
+    configFile: false, root: ROOT, logLevel: 'silent', publicDir: false,
+    resolve: { alias: [{ find: '@/lib/i18n', replacement: stub }, { find: '@', replacement: path.join(ROOT, 'src') }] },
+    build: { write: false, minify: false, emptyOutDir: false, target: 'es2019',
+      lib: { entry: path.join(ROOT, 'src/supplier/money.ts'), formats: ['iife'], name: 'SupMoney', fileName: () => 'money.js' } },
+  });
+  const code = (Array.isArray(mres) ? mres : [mres]).flatMap(r => r.output).find(o => o.type === 'chunk').code;
+  vm.runInContext(code + '\nthis.SupMoney = SupMoney;', ctx);
+  const money = ctx.SupMoney;
+  const P = (id, type, ts, time) => ({ id, workerId: 'd1', type, ts, time, clientId: 'c1' });
+  // Two punched days in October (Israel, UTC+3), 20 days set by hand for the month, ₪50 per day to the supplier.
+  const log = [P('a', 'in', '2026-10-05T05:00:00Z', '08:00'), P('b', 'out', '2026-10-05T13:00:00Z', '16:00'),
+    P('c', 'in', '2026-10-06T05:00:00Z', '08:00'), P('d', 'out', '2026-10-06T13:00:00Z', '16:00')];
+  run('the portal\'s payable summary counts the days set by hand, as Pay and the manager do', () => {
+    // With "See workers' pay": the pay mode and the days come with the worker.
+    const wPay = { id: 'd1', name: 'Daily', payMode: 'daily', dailyRate: 300, dayOverrides: { 'm:2026-10': 20 }, supplierRate: null, supplierDayRate: 50 };
+    const d = { workers: [wPay], clients: [{ id: 'c1', name: 'Site' }], punches: log, showPay: true, commission: [] };
+    const pay = money.payRows(d, 2026, 9), sum = money.summaryRows(d, 2026, 9);
+    assert.equal(pay[0].commission, 1000, 'Pay: 20 × ₪50');
+    assert.equal(sum[0].total, 1000, 'Summary: the same 20 × ₪50');
+    // The manager's figure for the same worker (Payable by supplier).
+    const mw = { id: 'd1', name: 'Daily', payMode: 'daily', dailyRate: 300, dayOverrides: { 'm:2026-10': 20 }, supplierId: 's1', supplierRates: { s1: { dayRate: 50 } } };
+    const r = A.salaryEntriesFor({ log, workers: [mw], clients: [{ id: 'c1', name: 'Site' }], suppliers: [{ id: 's1', name: 'Agency' }], tr }, 'm:2026-10');
+    assert.equal(A.supplierCommission(mw, r.byWorker.d1, 's1'), 1000, 'the manager (Payable by supplier): 20 × ₪50');
+    // Without "See workers' pay": no pay mode, only the day commission and its day counts (strip_worker).
+    const wNo = { id: 'd1', name: 'Daily', dayOverrides: { 'm:2026-10': 20 }, supplierRate: null, supplierDayRate: 50 };
+    assert.equal(money.summaryRows({ ...d, workers: [wNo], showPay: false }, 2026, 9)[0].total, 1000, 'Summary without pay: 20 × ₪50');
+    // No days set by hand: the punched days.
+    const wNone = { ...wNo, dayOverrides: {} };
+    assert.equal(money.summaryRows({ ...d, workers: [wNone], showPay: false }, 2026, 9)[0].total, 100, 'Summary: 2 punched days × ₪50');
+  });
+}
 
 console.log(failed ? `${failed} FAILED (${passed} passed)` : `ALL PASSED (${passed})`);
 process.exit(failed ? 1 : 0);

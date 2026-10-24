@@ -23,8 +23,12 @@ export function getDataObj(): Rec {
   return {workers: state.workers, clients: state.clients, suppliers: state.suppliers, weekStart: host.weekStart(), savedAt: new Date().toISOString()};
 }
 
+/** A worker as the app holds it (applyData): the fields every worker has. */
+export function normWorker(w: Rec): Rec {
+  return {id: w.id || uid(), clientIds: w.clientIds || [], token: w.token || genToken(), status: w.status || 'active', ...w};
+}
 export function applyData(d: Rec): void {
-  if (d.workers) state.workers = d.workers.map((w: Rec) => ({id: w.id || uid(), clientIds: w.clientIds || [], token: w.token || genToken(), status: w.status || 'active', ...w}));
+  if (d.workers) state.workers = d.workers.map(normWorker);
   if (d.clients) state.clients = d.clients;
   if (d.suppliers) state.suppliers = d.suppliers;
   // d.weekStart (the week that was on screen at the last save) is deliberately

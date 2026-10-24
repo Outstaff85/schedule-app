@@ -165,7 +165,7 @@ function PunchLog({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
       () => { which.forEach(id => hidden.delete(id)); redraw(); });
   };
   const openClear = async () => {
-    await api.loadAllPunches();
+    if (!(await api.loadAllPunches())) return; // only part of the history: nothing to clear by
     const months = monthCounts(api.punchLog());
     if (!months.length) { api.toast(tr('Log is already empty')); return; }
     setClearing(months);

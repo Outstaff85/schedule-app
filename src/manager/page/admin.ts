@@ -230,11 +230,19 @@ export async function userSaved(id?: any, origRole?: any, role?: any, fullName?:
 }
 // The workers as the Users section and its windows see them (an HR's hrId, a supplier's supplierId).
 export function adminTeam(){ return workers.map((w?: any)=>({id:w.id, name:w.name||'', docId:String(workerDocId(w)||''), hrId:w.hrId||undefined, supplierId:w.supplierId||undefined})); }
-// Logins deleted once their Undo time is up.
+// Logins deleted once their Undo time is up. A deleted HR's workers are
+// unassigned first (as when its role changes, userSaved), so no worker,
+// punch or shift request keeps a dead hrId.
 export async function deleteUsersNow(ids?: any){
   let ok=0;
+  const users = loadAdminCache('users_'+activeTenantIdForAdmin());
   for(const id of ids){
     try{
+      const u = Array.isArray(users) ? users.find((x?: any) => x.id===id) : null;
+      if(u && u.role==='hr'){
+        const mine = workers.filter((w?: any) => w.hrId===id).map((w?: any) => w.id);
+        if(mine.length) await assignWorkersToHr(mine, null);
+      }
       const json = await (await fetch(API_URL, { method:'POST', body: JSON.stringify({ action:'deleteUser', ...gsAuth(), id }) })).json();
       if(!json || json.error) showToast((json&&json.error)||tr('Failed')); else ok++;
     }catch(e: any){ showToast(tr('Network error')); }

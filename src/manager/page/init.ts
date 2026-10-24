@@ -6,10 +6,10 @@
 // reachable under their old global names through the window accessors below
 // (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
-import { byId, qs } from './dom';
+import { byId } from './dom';
 import { reportError } from '../data/telemetry';
 import { loadI18n, storedLanguage, tr } from '../logic/i18n';
-import { autoSave, loadData } from '../data/store';
+import { autoSave, loadData, savePending } from '../data/store';
 import { homeTab, isAccTab, isHrSession } from '../logic/access';
 import { loadFirestoreBackend } from '../data/api';
 import { getSession, saveSession } from '../data/session';
@@ -91,8 +91,6 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons
     // Wake users_admin (firm profile, users, files) so its first real call
     // doesn't wait for a cold start.
     warmCloudFunctions([USERS_ADMIN_FN_URL]);
-    // Check push subscription status
-    setTimeout(checkPushStatus, 1000);
   });
 }catch(err: any){
   console.error('Init failed:', err);
@@ -103,60 +101,6 @@ document.addEventListener('keydown',(e?: any)=>{
 });
 
 
-// ── Push Notifications ────────────────────────────────────────────
-const VAPID_PUBLIC_KEY = 'BBju9uoDfcpB0ZIPWhCyvUxg4lLwYVFy4QadSnvx6ImaafKK0pxalntUz5JmkH3Tc9wq9yymBucOf_U5i9o8t7w';
-// Push delivery is not wired up yet (needs VAPID signing) — keep the button hidden
-// so it doesn't promise alerts that won't arrive. Flip to true once a real sender exists.
-const PUSH_ENABLED = false;
-
-function urlB64ToUint8(b64?: any){
-  const pad = '='.repeat((4 - b64.length % 4) % 4);
-  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
-  return Uint8Array.from([...raw].map((c?: any)=>c.charCodeAt(0)));
-}
-
-async function subscribeToPush(){
-  if(!('PushManager' in window)){ showToast(tr('Push not supported')); return; }
-  try{
-    const perm = await Notification.requestPermission();
-    if(perm !== 'granted'){ showToast(tr('Notifications blocked in browser settings')); return; }
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY)
-    });
-    localStorage.setItem('pushSubscription', JSON.stringify(sub));
-    showToast(tr('Shift reminders enabled!'));
-    byId('pushBtn')?.remove();
-  } catch(e: any){ showToast(tr('Failed: {0}',{0:(e.message)})); console.error(e); }
-}
-
-async function checkPushStatus(){
-  if(!PUSH_ENABLED) return;
-  if(!('Notification' in window)) return;
-  
-  // If already granted - don't show button
-  if(Notification.permission === 'granted'){
-    try{
-      if('serviceWorker' in navigator){
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if(sub) return; // already subscribed
-      }
-    } catch(e: any){}
-  }
-  
-  // Show button if not yet subscribed
-  if(!byId('pushBtn')){
-    const btn=document.createElement('button');
-    btn.id='pushBtn'; btn.className='btn sm';
-    btn.innerHTML='<i class="ti ti-bell" style="color:var(--green)"></i> Enable Alerts';
-    btn.style.cssText='';
-    btn.onclick=subscribeToPush;
-    qs('[data-slot-for="langBtn"]')?.before(btn); // in the React frame's title bar, before the Language button
-  }
-}
-
 // ── PWA: Service Worker ───────────────────────────────────────────
 if('serviceWorker' in navigator){
   // Auto-reload once when a new version of the app takes over.
@@ -166,8 +110,10 @@ if('serviceWorker' in navigator){
     if(_swRefreshing) return; _swRefreshing=true;
     if(!_hadController) return;
     // Don't reload mid-upload (a deploy while a document is uploading used to
-    // cut the upload off); wait until every upload has finished.
-    const reloadWhenIdle=()=>{ if(typeof __uploadsInFlight!=='undefined' && __uploadsInFlight>0) setTimeout(reloadWhenIdle,1000); else window.location.reload(); };
+    // cut the upload off), while a window is open (a worker being typed in)
+    // or while a change is not saved yet; wait until the page is idle.
+    const busy=()=>(typeof __uploadsInFlight!=='undefined' && __uploadsInFlight>0) || savePending() || !!document.querySelector('.overlay.open');
+    const reloadWhenIdle=()=>{ if(busy()) setTimeout(reloadWhenIdle,1000); else window.location.reload(); };
     reloadWhenIdle();
   });
   window.addEventListener('load',()=>{
@@ -175,13 +121,9 @@ if('serviceWorker' in navigator){
       .then((reg?: any)=>{
         console.log('[PWA] SW registered');
         reg.update();                       // check for a newer SW right away
-        checkPushStatus();
       })
       .catch((e?: any)=>console.warn('[PWA] SW failed:',e));
   });
-} else {
-  // No SW support - still show button if Notification API available
-  if('Notification' in window) checkPushStatus();
 }
 
 // ── PWA: "Install app" in the account menu (always shown until the app is installed) ──

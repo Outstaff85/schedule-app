@@ -36,13 +36,9 @@ export function form101Payload(targetWorker: any, isId: any, profile: any): Reco
   // modal collected onto it before this function was ever called).
   let addr: any,city: any,marital: any,workStart: any,fund: any,children: any;
   if(isId){
-    // workerAddress(w) is the street name only (see workerAddress()'s own
-    // comment) — the PDF's address box wants "street number" as one
-    // string (functions/main.py's _split_street() re-splits it back
-    // apart), so the house number has to be appended here explicitly.
-    // Previously this line dropped w.houseNumber entirely, silently
-    // omitting the house number from every Form 101 whether it came from
-    // a scan or was typed in by hand.
+    // The street and the house number go apart (street / houseNumber: a number
+    // such as "12א" stays whole); `address` keeps both in one string for an
+    // older server (functions/main.py's _split_street()).
     addr=(workerAddress(targetWorker||{})+' '+((targetWorker&&targetWorker.houseNumber)||'')).trim();
     city=(targetWorker&&targetWorker.city)||'';
     marital=(targetWorker&&targetWorker.maritalStatus)||'';
@@ -51,7 +47,7 @@ export function form101Payload(targetWorker: any, isId: any, profile: any): Reco
     // Children table — only the Israeli-ID branch has one (from the ID's
     // ספח, manually editable in the modal as a fallback for a failed scan).
     children=(targetWorker&&targetWorker.docChildren)||[];
-    Object.assign(payload,{address:addr,city,marital,workStart,healthFund:fund,children});
+    Object.assign(payload,{address:addr,street:workerAddress(targetWorker||{}),houseNumber:(targetWorker&&targetWorker.houseNumber)||'',city,marital,workStart,healthFund:fund,children});
   } else {
     workStart=(targetWorker&&targetWorker.workStartDate)||'';
     fund=(targetWorker&&targetWorker.healthFund)||'';
@@ -63,7 +59,7 @@ export function form101Payload(targetWorker: any, isId: any, profile: any): Reco
     addr=(workerAddress(targetWorker||{})+' '+((targetWorker&&targetWorker.houseNumber)||'')).trim();
     city=(targetWorker&&targetWorker.city)||'';
     children=(targetWorker&&targetWorker.docChildren)||[];
-    Object.assign(payload,{workStart,healthFund:fund,marital,address:addr,city,children});
+    Object.assign(payload,{workStart,healthFund:fund,marital,address:addr,street:workerAddress(targetWorker||{}),houseNumber:(targetWorker&&targetWorker.houseNumber)||'',city,children});
   }
   // Form 101 section ו (spouse), either document type.
   const tw=targetWorker||{};

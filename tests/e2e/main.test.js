@@ -276,6 +276,32 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(tf.figs === 'On shift,Late,No punch,Notices' && tf.tiles && /notices/.test(tf.all) && /log/.test(tf.all) && tf.noticeN >= 1 && tf.only && tf.back && tf.folded && tf.open && tf.emptyFrame && tf.sheet && tf.hidden && tf.shown && tf.closed,
     'today (React): figures as glass tiles, a figure filters to its section and Show all brings the rest back, the arrow folds a section (kept), the empty log in a dashed frame, a chip opens the notices; salary search opens from its icon ' + JSON.stringify(tf));
+  // Today's hours and who is on shift: a shift open since 4 hours ago shows 4h (not twice that), and a
+  // forgotten IN 20 hours ago (yesterday's or a double tap today) adds nothing — only the last shift runs;
+  // a night shift opened yesterday at 23:00 is still on shift after midnight (its IN only in the last 24 hours)
+  // while it is under 16 hours old, with its hours up to now.
+  const tn = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    const base = getPunchLog().slice(), now = new Date(), y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 0);
+    r.danaH = (now - y) / 36e5; r.danaOn = r.danaH <= 16;
+    const p = (id, wid, name, ts) => ({id, workerId: wid, workerName: name, type: 'in', ts: ts.toISOString(), time: String(ts.getHours()).padStart(2, '0') + ':' + String(ts.getMinutes()).padStart(2, '0'), site: '', clientId: 'c1'});
+    try { savePunchLog(base.concat([p('t-avi0', 'w1', 'Avi Cohen', new Date(now.getTime() - 20 * 36e5)), p('t-avi', 'w1', 'Avi Cohen', new Date(now.getTime() - 4 * 36e5)), p('t-dana', 'w2', 'Dana Levi', y)])); } catch (e) {}
+    const snap = ManagerBridge.today();
+    r.recent = snap.recent.some(e => e.id === 't-dana') && !snap.log.some(e => e.id === 't-dana');
+    switchTab('dashboard'); render(); await wait(400);
+    // the plate's hours (its right side: the figure in .text-fig)
+    const plate = name => { const x = [...document.querySelectorAll('#todayRoot section[data-sec=onsite] [data-slot=plate]')].find(el => el.textContent.includes(name));
+      return x ? ((x.querySelector('.text-fig') || {}).textContent || '') : ''; };
+    r.avi = plate('Avi Cohen'); r.dana = plate('Dana Levi');
+    r.onsite = (document.querySelector('#todayRoot section[data-sec=onsite]') || {}).textContent || '';
+    try { savePunchLog(base); } catch (e) {}
+    render(); await wait(200);
+    return r;
+  });
+  const hoursOf = t => Number(((t || '').match(/(\d+(?:\.\d+)?)h/) || [])[1]);
+  ok(tn.recent && /Avi Cohen/.test(tn.onsite) && hoursOf(tn.avi) >= 4 && hoursOf(tn.avi) < 4.2
+    && (tn.danaOn ? /Dana Levi/.test(tn.onsite) && Math.abs(hoursOf(tn.dana) - tn.danaH) < 0.2 : !/Dana Levi/.test(tn.onsite)),
+    'today: a shift open 4h shows 4h (a forgotten IN before it adds nothing), a night shift from before midnight is on shift with its hours while under 16h ' + JSON.stringify(tn));
   // Template 3 on a phone: Today (figures, colored lines), Workers, Accounting — screenshots for review.
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
@@ -589,6 +615,105 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {atStart, rows: rows.map(r => r.date + ' ' + r.inTime + ' ' + r.outTime)};
   });
   ok(xl.atStart && xl.rows.length === 1 && xl.rows[0] === '01/10/2026 08:00 12:00', 'excel: the library is not loaded with the page; an hours file still reads after loading it ' + JSON.stringify(xl));
+  // The hours import's dates (docs/workers.md → Hours import / export): day-first and year-first dates become
+  // dd/MM/yyyy, a CSV is read as text (5/10 is the 5th of October), a date that is not one stays red and nothing is sent.
+  const hd = await p.evaluate(async () => {
+    const r = {};
+    const ws = XLSX.utils.aoa_to_sheet([['Date','In','Out'],['1/10/2026','08:00','12:00'],['2026-10-02','09:00','13:00']]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S');
+    r.xlsx = (await parseHoursExcelFile(new File([XLSX.write(wb, {type:'array', bookType:'xlsx'})], 'h.xlsx'))).map(x => x.date).join();
+    const csv = 'Date,In,Out\n5/10/2026,08:00,12:00\n31/02/2026,08:00,12:00\n';
+    r.csv = (await parseHoursExcelFile(new File([csv], 'h.csv'))).map(x => x.date).join();
+    const pend = async () => ((await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadPendingHours'})})).json()).batches||[]).length;
+    const before = await pend();
+    openHoursImportModal('w1'); await T.tick(50);
+    const inp = document.getElementById('hoursImportFile'), dt = new DataTransfer();
+    dt.items.add(new File([csv], 'bad.csv', {type: 'text/csv'}));
+    inp.files = dt.files; inp.dispatchEvent(new Event('change', {bubbles: true}));
+    r.red = await T.until(() => document.querySelector('#hoursImportPreview [data-testid="hours-bad-rows"]'), 5000)
+      && document.querySelectorAll('#hoursImportPreview [data-bad]').length === 1;
+    document.getElementById('hoursImportSubmitBtn').click();
+    await T.tick(600);
+    r.notSent = (await pend()) === before;
+    closeModal('hoursImportOverlay');
+    // times in other forms become HH:MM; a day with no times is dropped; a time that is not one is red and nothing is sent
+    const tcsv = 'Date,In,Out\n01/10/2026,8.30,1700\n02/10/2026,8,16:30:00\n03/10/2026,,\n04/10/2026,abc,12:00\n';
+    r.times = (await parseHoursExcelFile(new File([tcsv], 't.csv'))).map(x => x.inTime + '-' + x.outTime).join();
+    openHoursImportModal('w1'); await T.tick(50);
+    const inp2 = document.getElementById('hoursImportFile'), dt2 = new DataTransfer();
+    dt2.items.add(new File([tcsv], 'badtime.csv', {type: 'text/csv'}));
+    inp2.files = dt2.files; inp2.dispatchEvent(new Event('change', {bubbles: true}));
+    r.redTime = await T.until(() => document.querySelector('#hoursImportPreview [data-testid="hours-bad-rows"]'), 5000)
+      && document.querySelectorAll('#hoursImportPreview [data-bad]').length === 1;
+    document.getElementById('hoursImportSubmitBtn').click();
+    await T.tick(600);
+    r.timeNotSent = (await pend()) === before;
+    closeModal('hoursImportOverlay');
+    // the server refuses a time that is not HH:MM, and an OUT with no IN
+    const st1 = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'01/10/2026', inTime:'8.30', outTime:'12:00'}]})})).json();
+    const st2 = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'01/10/2026', inTime:'', outTime:'12:00'}]})})).json();
+    r.serverRefusesTime = !!st1.error && !!st2.error && (await pend()) === before;
+    // the server side refuses a date that is not dd/MM/yyyy (it would never become a punch on its day)
+    const sv = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'1/10/2026', inTime:'08:00', outTime:'12:00'}]})})).json();
+    r.serverRefuses = !!sv.error && (await pend()) === before;
+    return r;
+  });
+  ok(hd.xlsx === '01/10/2026,02/10/2026' && hd.csv === '05/10/2026,31/02/2026' && hd.red && hd.notSent && hd.serverRefuses,
+    'upload hours: dates in other forms become dd/MM/yyyy, a CSV is read day first, a date that is not one is red and nothing is sent ' + JSON.stringify(hd));
+  ok(hd.times === '08:30-17:00,08:00-16:30,abc-12:00' && hd.redTime && hd.timeNotSent && hd.serverRefusesTime,
+    'upload hours: times in other forms become HH:MM, a day with no times is dropped, a time that is not one is red and nothing is sent ' + JSON.stringify(hd));
+  // The worker window's save (docs/workers.md → Saving): closed with nothing changed it writes nothing; an edited
+  // number that another worker has is refused for every login; a rescan that finds a passport builds Form 101 as one.
+  const ws4 = await p.evaluate(async () => {
+    const r = {}, B = ManagerBridge, keep = {commit: B.commitEdit, regen: B.regenerateDoc, alert: window.alert, upload: window.autoUploadWithRetry};
+    let commits = 0, regens = 0; const alerts = [], uploads = [];
+    B.commitEdit = (...a) => { commits++; return keep.commit.apply(B, a); };
+    B.regenerateDoc = () => { regens++; return Promise.resolve(true); };
+    window.alert = m => alerts.push(String(m));
+    window.autoUploadWithRetry = async (isId, id) => { uploads.push([isId, id]); return true; };
+    const off = () => [0, 1, 2, 3, 4, 5, 6].map(() => ({type: 'off', start: null, end: null}));
+    workers.push({id: 'wa4n', name: 'Noop Four', docGiven: 'Noop', docSurname: 'Four', clientIds: [], schedule: off()},
+      {id: 'wa4a', name: 'Dup A', docGiven: 'Dup', docSurname: 'A', docId: '111111118', docType: 'israeli_id', clientIds: [], schedule: off()},
+      {id: 'wa4b', name: 'Dup B', docGiven: 'Dup', docSurname: 'B', docId: '022222222', docType: 'israeli_id', clientIds: [], schedule: off()},
+      {id: 'wa4p', name: 'Hand Added', docGiven: 'Hand', docSurname: 'Added', docId: '1234567', docType: 'israeli_id', clientIds: [], schedule: off()},
+      {id: 'wa4s', name: 'Eight Digits', docGiven: 'Eight', docSurname: 'Digits', docId: '33333334', docType: 'israeli_id', clientIds: [], schedule: off()});
+    const idx = id => workers.findIndex(w => w.id === id), rec = id => workers[idx(id)];
+    try {
+      // 1. opened and closed: no save, no start date of today, no Form 101 rebuild
+      openEditWorker(idx('wa4n')); await T.tick(50);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.noop = commits === 0 && regens === 0 && !rec('wa4n').startDate && !document.getElementById('workerOverlay').classList.contains('open');
+      // 2. an edited number (typed without its leading 0) that worker B has: refused, the record keeps its number
+      openEditWorker(idx('wa4a')); await T.tick(50);
+      T.fill('wDocId', '22222222'); await T.tick(20);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.dup = alerts.length === 1 && rec('wa4a').docId === '111111118' && commits === 0;
+      closeModal('workerOverlay');
+      // 2b. an older 8-digit number, another field edited: the number is written as stored (the signed print's hash stays)
+      openEditWorker(idx('wa4s')); await T.tick(50);
+      T.fill('wPhone', '0501234567'); await T.tick(20);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.keepId = commits === 1 && rec('wa4s').docId === '33333334' && rec('wa4s').phone === '0501234567';
+      closeModal('workerOverlay');
+      // 3. a worker added by hand (Israeli ID), rescanned: the passport found builds a passport Form 101 and the type is kept
+      window.__aiRescanWorkerId = 'wa4p';
+      openWorkerModalFromScan({type: 'passport', given: 'HAND', surname: 'ADDED', passportNo: 'AB1234567'});
+      await T.tick(100);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.passport = uploads.length === 1 && uploads[0][0] === false && uploads[0][1] === 'wa4p' && rec('wa4p').docType === 'passport';
+    } finally {
+      B.commitEdit = keep.commit; B.regenerateDoc = keep.regen; window.alert = keep.alert; window.autoUploadWithRetry = keep.upload;
+      window.__aiRescannedWorkerId = null; window.__aiRescanWorkerId = null;
+      document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+      for (const id of ['wa4n', 'wa4a', 'wa4b', 'wa4p', 'wa4s']) { const i = idx(id); if (i >= 0) workers.splice(i, 1); }
+      await gsSave(getDataObj());
+    }
+    r.alerts = alerts; r.uploads = uploads;
+    return r;
+  });
+  ok(ws4.noop, 'worker window: opened and closed with nothing changed — nothing saved, no start date set, no Form 101 rebuild ' + JSON.stringify(ws4));
+  ok(ws4.dup, 'worker window: an edited document number that another worker has is refused (the number matched without its leading 0) ' + JSON.stringify(ws4));
+  ok(ws4.keepId, 'worker window: an older 8-digit ID is kept as stored when another field is edited (no new signature asked) ' + JSON.stringify(ws4));
+  ok(ws4.passport, 'worker window: a hand-added worker rescanned with a passport builds Form 101 as a passport and keeps the type ' + JSON.stringify(ws4));
   // Scan again from the worker modal: typed values stay, empty ones take the scan's
   const rs = await p.evaluate(async () => {
     openEditWorker(0);
@@ -1113,6 +1238,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sp = await p.evaluate(async ([jpg, jpg2]) => {
     const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     const load = async ids => (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerPages', fileIds: ids})})).json();
+    // saveScanPages deletes the replaced files (and the old sidecar) without awaiting it: poll up to ~5 s
+    const settle = async f => { for (let i = 0; i < 25; i++) { if (await f()) return true; await new Promise(res => setTimeout(res, 200)); } return !!(await f()); };
     const id = 'wpages' + Date.now();
     workers.push({id, name:'Pages Test', docType:'israeli_id', docGiven:'Pages', docSurname:'Test', clientIds:[], schedule:[]});
     const w = () => workers.find(x => x.id === id);
@@ -1133,8 +1260,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const ok2 = await autoUploadWithRetry(true, id);
     const now = w().scanPages;
     r.rescan = ok2 && now.length === 2 && now[0].fileId !== first[0].fileId && now[1].fileId === first[1].fileId && w().sigFileId === firstSig && w().docHasSignature === true;
-    const gone = await load([first[0].fileId]);
-    r.oldFrontGone = gone.ok && gone.missing.length === 1;
+    r.oldFrontGone = await settle(async () => { const gone = await load([first[0].fileId]); return gone.ok && gone.missing.length === 1; });
     // 3. a worker still on the old sidecar is split into pages on its rebuild; the sidecar goes
     window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:id, scanB64:jpg, scanMediaType:'image/jpeg', sigPng:'data:image/png;base64,' + PNG, extraPages:[{b64:jpg2, mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
@@ -1143,8 +1269,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // the card's field search reads the old sidecar too
     r.legacyRead = !!(await ManagerBridge.findScanFields(id, ['city'], 'israeli_id'));
     const ok3 = await regenerateWorkerDoc(id);
-    const side = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerAssets', fileId:a.id})})).json();
-    r.split = ok3 && !w().assetsFileId && (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(',') === 'id_front*,other' && !!w().sigFileId && side.error === 'File not found';
+    const sidecarGone = await settle(async () => (await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerAssets', fileId:a.id})})).json()).error === 'File not found');
+    r.split = ok3 && !w().assetsFileId && (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(',') === 'id_front*,other' && !!w().sigFileId && sidecarGone;
     // the split pages are readable; a rebuild of a split worker reads them and stores nothing new
     const keep = w().scanPages.map(x => x.fileId).join();
     const ok4 = await regenerateWorkerDoc(id);
@@ -1160,6 +1286,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }, [JPG, JPG2]);
   await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  // A background rebuild while a merged save replaces every worker object (applyData): the new PDF's link
+  // lands on the worker the list holds now, not on the replaced object (which the save would drop).
+  await p.route(/cloudfunctions\.net\/fill_form_101$/, async r => { await sleep(1500); await r.fulfill({status: 200, contentType: 'application/json',
+    body: JSON.stringify({pdfBase64: btoa('%PDF-1.4 test'), fileName: 'f101.pdf', firmMissing: []})}); });
+  const rpl = await p.evaluate(async () => {
+    const id = 'wrepl' + Date.now();
+    workers.push({id, name: 'Replaced Test', docType: 'israeli_id', docGiven: 'Replaced', docSurname: 'Test', clientIds: [], schedule: [], docFileId: 'old-file', docUrl: 'https://old.example/f.pdf'});
+    const run = regenerateWorkerDoc(id);
+    await T.tick(400);
+    applyData(JSON.parse(JSON.stringify(getDataObj())));
+    const done = await run;
+    const w = workers.find(x => x.id === id);
+    const r = {done, file: !!w.docFileId && w.docFileId !== 'old-file', url: !!w.docUrl && w.docUrl !== 'https://old.example/f.pdf', at: !!w.docSavedAt, type: w.docType};
+    ManagerBridge.deleteWorkers([id]);
+    await T.until(() => !workers.some(x => x.id === id), 5000);
+    return r;
+  });
+  await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  ok(rpl.done && rpl.file && rpl.url && rpl.at && rpl.type === 'israeli_id', 'form 101: a rebuild finishing after a merged save replaced the worker objects writes the new PDF onto the live worker ' + JSON.stringify(rpl));
   ok(sp.ok1 && sp.kinds === 'id_front*,sefach' && sp.sig && sp.noSidecar && sp.paths && sp.sigPath && sp.hasSig === true && sp.extra === 1 && sp.back,
     'scan pages: a new worker from a scan stores each page as its own JPEG (with its kind, the ID card first) and the signature as a PNG, read back in one call ' + JSON.stringify(sp));
   ok(sp.rescan && sp.oldFrontGone, 'scan pages: a rescan of the front keeps the stored ספח and signature, the replaced front is deleted ' + JSON.stringify(sp));
@@ -1516,6 +1661,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   pw.closed = await p.evaluate(() => !document.querySelector('[data-testid="punch-window"]'));
   await p.evaluate(id => { const log = getPunchLog(); const e = log.find(x => String(x.id) === id); e.notes = ''; savePunchLog(log); render(); }, pid);
   ok(pw.title && pw.saved && pw.closed, 'punch log: a tap opens the punch window; Save writes the notes and editedAt ' + JSON.stringify(pw));
+  // The punch window's time edit keeps the shift whole: an OUT punched the next morning (IN Mon 08:00, OUT Tue
+  // 07:55) corrected to 17:00 lands on Monday (a 9h shift, its date moved too), an OUT after a 22:00 IN corrected
+  // to 23:30 stays that evening, and a lone punch keeps its own day.
+  const pe = await p.evaluate(() => {
+    const base = getPunchLog().slice(), at = (d, h, m) => new Date(2026, 9, d, h, m);
+    const mk = (id, type, d, h, m) => { const t = at(d, h, m); return {id, workerId: 'pe-w', workerName: 'Edit Test', type, ts: t.toISOString(), time: String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'), date: String(d).padStart(2, '0') + '/10/2026', site: '', clientId: 'c1'}; };
+    const r = {};
+    const edit = (id, time) => { ManagerBridge.savePunch(id, {type: getPunchLog().find(e => e.id === id).type, time, site: 'c1', notes: ''}); return getPunchLog().find(e => e.id === id); };
+    const lenH = (a, b) => (new Date(b.ts) - new Date(a.ts)) / 36e5;
+    try {
+      savePunchLog(base.concat([mk('pe-i1', 'in', 5, 8, 0), mk('pe-o1', 'out', 6, 7, 55)]));
+      const o1 = edit('pe-o1', '17:00'); r.mon = lenH(getPunchLog().find(e => e.id === 'pe-i1'), o1); r.monDate = o1.date;
+      savePunchLog(base.concat([mk('pe-i2', 'in', 12, 22, 0), mk('pe-o2', 'out', 13, 5, 0)]));
+      const o2 = edit('pe-o2', '23:30'); r.eve = lenH(getPunchLog().find(e => e.id === 'pe-i2'), o2);
+      savePunchLog(base.concat([mk('pe-x', 'out', 20, 7, 0)]));
+      const x = edit('pe-x', '23:00'); r.lone = new Date(x.ts).getDate() + ' ' + x.date;
+    } finally { savePunchLog(base); render(); }
+    return r;
+  });
+  ok(pe.mon === 9 && pe.monDate === '05/10/2026' && pe.eve === 1.5 && pe.lone === '20 20/10/2026',
+    'punch window: an edited time lands on the day that keeps the shift whole (9h, not 33h; 1.5h, not 25.5h), a lone punch keeps its day ' + JSON.stringify(pe));
   // By Client: a section per client with its workers.
   await p.click(PL + ' [data-testid="punchlog-view"] [data-v="clients"]'); await sleep(250);
   const bc = await p.evaluate(sel => ({secs: document.querySelectorAll(sel + ' [data-testid="punch-client"]').length, n: clients.length,
@@ -1541,7 +1707,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(c1rows === '0 records', 'client filter: Avi\'s current client has no punches (' + c1rows + ')');
   await pickFilter('client', 'All clients');
   // CSV columns
-  const csv = await p.evaluate(async () => { let txt=''; const orig=URL.createObjectURL; URL.createObjectURL = b => { b.text().then(t=>txt=t); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function(){}; await exportPunchCSV(); await new Promise(r=>setTimeout(r,300)); URL.createObjectURL=orig; return txt; });
+  const [csv, csvBom] = await p.evaluate(async () => { let txt='', bom=''; const orig=URL.createObjectURL; URL.createObjectURL = b => { b.text().then(t=>txt=t); b.arrayBuffer().then(a=>bom=[...new Uint8Array(a).slice(0,3)].join()); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function(){}; await exportPunchCSV(); await new Promise(r=>setTimeout(r,300)); URL.createObjectURL=orig; return [txt, bom]; });
+  ok(csvBom === '239,187,191', 'CSV: starts with a UTF-8 BOM, so Excel shows Hebrew names ' + csvBom);
   const lines = csv.split('\n').map(l => l.split('","').length);
   ok(lines.length === 5 && lines.every(n => n === lines[0]) && lines[0] === 10, 'CSV: every row has the 10 header columns');
   ok(/"8","n-p\d"/.test(csv), 'CSV: GPS Accuracy is filled (8) and Notes follow it');
@@ -2460,6 +2627,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {dialogGone: !document.querySelector('[data-testid="reset-logs"]'), timings: (t.rows || []).length, errors: (e.rows || []).length, shown: ((ManagerBridge.admin().logs || {}).rows || []).length, empty: !!document.querySelector('#adminRoot [data-testid="timings-empty"]')};
   });
   ok(rst.dialogGone && rst.timings === 0 && rst.errors === 0 && rst.shown === 0 && rst.empty, 'timings: Reset deletes every error and measurement ' + JSON.stringify(rst));
+  // The punch cache is per firm: opening Firm Two after Firm One shows none of Firm One's punches.
+  ok(await waitFor(p, () => getPunchLog().some(e => e.workerId === 'w1' || e.workerId === 'w2')), 'boss: Firm One\'s punches are in its cache');
+  await p.evaluate(() => ManagerBridge.openFirm('tenant-two'));
+  await p.waitForNavigation().catch(()=>{});
+  ok(await waitFor(p, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w9') && getPunchLog().length >= 2, 15000), 'boss: viewing Firm Two');
+  const pf = await p.evaluate(() => ({ids: getPunchLog().map(e => e.workerId), own: !!localStorage.getItem('punchLog:tenant-two'), shared: localStorage.getItem('punchLog')}));
+  ok(pf.ids.every(id => id !== 'w1' && id !== 'w2') && pf.ids.includes('w9') && pf.own && !pf.shared, 'punch cache: per firm (punchLog:<firm>), no punch of the firm opened before ' + JSON.stringify(pf));
+  // Deleting every client and then every worker of a firm is saved (allowEmpty), not skipped as an empty glitch.
+  const le = await p.evaluate(async () => {
+    const server = async () => (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+    const until = async fn => { for (let i = 0; i < 40; i++) { await T.tick(250); if (fn(await server())) return true; } return false; };
+    ManagerBridge.deleteClients(clients.map(c => c.id));
+    const c = await until(d => !d.clients.length);
+    ManagerBridge.deleteWorkers(workers.map(w => w.id));
+    const w = await until(d => !d.workers.length);
+    return {c, w, local: workers.length};
+  });
+  ok(le.c && le.w && le.local === 0, 'delete: the last client and the last worker of a firm are deleted on the server ' + JSON.stringify(le));
   ok(p.errs.length === 0, 'boss: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
@@ -2654,7 +2839,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
-  // ── Client portal (client1 → client c2: Avi's shift yesterday) — a React page (src/client/, stage 3) with the hours review (src/hours-review/) ──
+  // ── Client portal (client1 → client c2: Avi's shift yesterday) — its Hours tab inside the manager app (/client sends there) with the hours review (src/hours-review/) ──
   ctx = await newCtx(); p = await page(ctx);
   const hoursReplies = [];
   p.on('response', async r => { if (/cloudfunctions\.net\/hours$/.test(r.url()) && r.request().method() === 'POST') { try { hoursReplies.push(await r.text()); } catch (e) {} } });
@@ -2889,8 +3074,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // ── Worker punch link ──
   ctx = await newCtx(); p = await page(ctx);
   const punchReplies = [];
-  // The punch function's replies; `punchTweak` (when set) rewrites a `load` reply on its way to the page.
-  let punchTweak = null;
+  // The punch function's replies; `punchTweak` / `monthTweak` (when set) rewrite a `load` / `myMonth` reply on its way to the page.
+  let punchTweak = null, monthTweak = null;
   await p.route(/cloudfunctions\.net\/punch$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fallback();
     const body = r.request().postData() || '{}', action = JSON.parse(body).action;
@@ -2898,6 +3083,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     let text = await res.text();
     punchReplies.push({action, text});
     if (punchTweak && action === 'load') { const j = JSON.parse(text); punchTweak(j); text = JSON.stringify(j); }
+    if (monthTweak && action === 'myMonth') { const j = JSON.parse(text); monthTweak(j); text = JSON.stringify(j); }
     return r.fulfill({status: res.status, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'}, body: text});
   });
   const punchReady = () => { const s = document.getElementById('screenPunch'), b = document.getElementById('bigPunchBtn'); return !!s && !s.classList.contains('hidden') && !!b && (b.dataset.state === 'in' || b.dataset.state === 'out'); };
@@ -2927,6 +3113,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const after = await srv('/punches');
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');
   ok(!after.days.includes(null), 'punch: the new punch has a day');
+  // A new phone (no local history) with an IN on the server: the button offers Punch out (myMonth's punches count too).
+  const keptLog = await p.evaluate(() => { const l = localStorage.getItem('punchLog'); localStorage.removeItem('punchLog'); return l; });
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  ok(await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'out' && !localStorage.getItem('punchLog'), 8000),
+    'punch: an empty local history and an IN on the server give Punch out');
+  // A manager deletes that IN: the next myMonth reply (My Hours opened) no longer has it, so the button goes back to Punch in.
+  monthTweak = j => { j.punches = []; };
+  await p.click('[data-testid="tile-hours"]');
+  const gone = await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'in', 8000);
+  monthTweak = null;
+  await p.keyboard.press('Escape'); await sleep(400);
+  ok(gone, 'punch: a server punch missing from a newer myMonth reply no longer decides the button (Punch in)');
+  await p.evaluate(l => { if (l) localStorage.setItem('punchLog', l); }, keptLog);
   const load0 = JSON.parse((punchReplies.find(x => x.action === 'load') || {text: '{}'}).text);
   await p.click('[data-testid="tile-schedule"]');
   await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
@@ -3005,6 +3204,28 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   on.toast = await waitFor(p, () => /Synced 1 offline punch/.test(document.body.innerText), 5000);
   on.sent = (await srv('/punches')).n === n0 + 1;
   ok(on.flushed && on.toast && on.sent, 'punch: when the connection returns the queued punch is sent and the badge goes ' + JSON.stringify(on));
+  // A queue held for days (an OUT punched offline 5 days ago, within MAX_KEEP) is stored, not refused or taken off the phone;
+  // a refused punch (not this link's worker) is an error toast, leaves the history, and "Synced" counts only the stored one.
+  const n1 = (await srv('/punches')).n;
+  const lq = await p.evaluate(() => {
+    const log = JSON.parse(localStorage.getItem('punchLog') || '[]'), base = log[log.length - 1];
+    const t = new Date(Date.now() - 5 * 864e5), hm = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    const late = {...base, id: 'late-' + Date.now(), type: 'out', ts: t.toISOString(), time: hm};
+    const bad = {...base, id: 'bad-' + Date.now(), workerId: 'w-not-this-link', ts: new Date().toISOString()};
+    localStorage.setItem('punchLog', JSON.stringify(log.concat([late, bad])));
+    localStorage.setItem('punchQueue', JSON.stringify([late, bad]));
+    return {late: late.id, bad: bad.id};
+  });
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  const lt = {flushed: await waitFor(p, () => JSON.parse(localStorage.getItem('punchQueue') || '[]').length === 0, 15000)};
+  lt.err = await waitFor(p, () => [...document.querySelectorAll('[data-sonner-toast][data-type="error"]')].some(x => /Punch not recorded/.test(x.textContent)), 5000);
+  lt.synced1 = await waitFor(p, () => /Synced 1 offline punch\b/.test(document.body.innerText), 5000);
+  lt.noSynced2 = !/Synced 2 offline punches/.test(await p.evaluate(() => document.body.innerText));
+  const srvAfter = await srv('/punches');
+  lt.stored = srvAfter.n === n1 + 1 && srvAfter.ids.includes(lq.late) && !srvAfter.ids.includes(lq.bad);
+  lt.log = await p.evaluate(ids => { const l = JSON.parse(localStorage.getItem('punchLog') || '[]').map(e => String(e.id)); return {late: l.includes(ids.late), bad: l.includes(ids.bad)}; }, lq);
+  ok(lt.flushed && lt.err && lt.synced1 && lt.noSynced2 && lt.stored && lt.log.late && !lt.log.bad,
+    'punch: a punch sent 5 days late is stored and stays on the phone; a refused one is an error toast and leaves the history; Synced counts only the stored ' + JSON.stringify(lt));
   await srv('/revoke');
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: a regenerated link is revoked even from the cache');
@@ -3175,6 +3396,202 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(slip.tot && slip.tot === payTot && /Pay estimate/.test(slip.title) && slip.note, 'punch: the month\'s pay estimate has the same total as My Hours and says it is before deductions ' + JSON.stringify({payTot, slip}));
   await pop.close().catch(() => {});
   ok(p.errs.length === 0, 'punch: no page errors ' + p.errs.join(' | '));
+  // ── Two devices of one firm (store.ts → merged save): changes kept on A while its save failed are saved
+  // against the base they were edited from, so a worker B added meanwhile, and B's edit of another worker, stay ──
+  {
+    const ca = await newCtx(); let pa = await page(ca);
+    await login(pa, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+    await pa.waitForNavigation().catch(()=>{});
+    ok(await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w1') && !!localStorage.getItem(STORAGE_KEY() + '_base'), 15000), 'two devices: A loads and keeps a save base next to its cache');
+    const a1 = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend(), keep = b.saveSchedule;
+      b.saveSchedule = async () => { throw new Error('offline'); };   // A's save fails (offline)
+      workers.find(w => w.id === 'w1').e2eNote = 'from A';
+      autoSave();
+      await T.tick(2000);
+      b.saveSchedule = keep;
+      return {unsaved: hasUnsavedLocal(), cached: /from A/.test(localStorage.getItem(STORAGE_KEY()) || '')};
+    });
+    await pa.close();
+    const cb = await newCtx(); const pb = await page(cb);
+    await login(pb, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+    await pb.waitForNavigation().catch(()=>{});
+    ok(await waitFor(pb, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w2'), 15000), 'two devices: B loads');
+    const b1 = await pb.evaluate(async () => {
+      workers.push({id: 'wB', name: 'Added On B', clientIds: [], token: 'tok-wb', status: 'active', schedule: []});
+      workers.find(w => w.id === 'w2').e2eNote = 'from B';
+      return gsSave(getDataObj());
+    });
+    await cb.close();
+    // A opens again: its kept changes are saved, merged with what B did.
+    pa = await page(ca);
+    await pa.goto(BASE + 'schedule-manager.html');
+    const merged = await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'wB') && !hasUnsavedLocal(), 20000);
+    const a2 = await pa.evaluate(async () => {
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      const w = id => d.workers.find(x => x.id === id) || {};
+      return {wB: !!d.workers.find(x => x.id === 'wB'), w1: w('w1').e2eNote, w2: w('w2').e2eNote, local2: (workers.find(x => x.id === 'w2') || {}).e2eNote};
+    });
+    ok(a1.unsaved && a1.cached && b1 && merged && a2.wB && a2.w1 === 'from A' && a2.w2 === 'from B' && a2.local2 === 'from B',
+      'two devices: A\'s unsaved change is saved without deleting the worker B added or undoing B\'s edit ' + JSON.stringify({a1, b1, merged, a2}));
+    // A full localStorage: the cache writes fail, the save still reaches Firestore and the punches stay (in memory).
+    const qt = await pa.evaluate(async () => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (/^schedMgr_v1|^punchLog/.test(k)) throw new DOMException('full', 'QuotaExceededError'); return set.call(this, k, v); };
+      try {
+        clients.find(c => c.id === 'c2').e2eNote = 'quota';
+        autoSave();
+        let saved = false;
+        for (let i = 0; i < 40 && !saved; i++) {
+          await T.tick(250);
+          const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+          saved = (d.clients.find(c => c.id === 'c2') || {}).e2eNote === 'quota';
+        }
+        const n = getPunchLog().length;
+        savePunchLog(getPunchLog().concat([{id: 'quota-p', workerId: 'w1', workerName: 'Avi Cohen', type: 'in', ts: new Date().toISOString(), time: '08:00'}]));
+        return {saved, punches: getPunchLog().length === n + 1 && getPunchLog().some(e => e.id === 'quota-p')};
+      } finally {
+        Storage.prototype.setItem = set;
+        savePunchLog(getPunchLog().filter(e => e.id !== 'quota-p'));
+      }
+    });
+    ok(qt.saved && qt.punches, 'quota: with localStorage full the save still reaches Firestore and a punch is kept in memory ' + JSON.stringify(qt));
+    // Approving a long hours sheet: more rows than one Firestore batch (500 writes) takes.
+    const big = await pa.evaluate(async () => {
+      const entries = [], d0 = new Date(2025, 0, 1);
+      for (let i = 0; i < 300; i++) {
+        const d = new Date(d0); d.setDate(d.getDate() + i);
+        entries.push({workerId: 'w2', date: String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(), inTime: '08:00', outTime: '12:00'});
+      }
+      const s = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'savePendingHoursBatch', fileName: 'big', entries})})).json();
+      const a = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'approvePendingHours', batchId: s.batchId})})).json();
+      const punches = await (await loadFirestoreBackend()).punchesOfBatch(fsTenantId(), s.batchId);
+      const q = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'loadPendingHours'})})).json();
+      return {saved: s.count, approved: a.ok ? a.created : a.error, punches: punches.length, status: ((q.batches || []).find(b => b.batchId === s.batchId) || {}).status};
+    });
+    ok(big.saved === 300 && big.approved === 300 && big.punches === 600 && big.status === 'approved', 'hours: a 300-row batch is approved (punches in batch writes of 450) ' + JSON.stringify(big));
+    // An approve that failed part way left some punches: rejecting the batch deletes them.
+    const rj = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const entries = [{workerId: 'w2', date: '05/02/2025', inTime: '08:00', outTime: '12:00'}, {workerId: 'w2', date: '06/02/2025', inTime: '08:00', outTime: '12:00'}];
+      const s = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'savePendingHoursBatch', fileName: 'partial', entries})})).json();
+      await b.savePunch(fsTenantId(), {id: 'imp-' + s.batchId + '-0-in', workerId: 'w2', workerName: 'x', type: 'in', time: '08:00', date: '05/02/2025', ts: new Date(2025, 1, 5, 8).toISOString(), clientId: '', notes: '', gpsWarnings: []});
+      const before = (await b.punchesOfBatch(fsTenantId(), s.batchId)).length;
+      const r = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'rejectPendingHours', batchId: s.batchId})})).json();
+      const after = (await b.punchesOfBatch(fsTenantId(), s.batchId)).length;
+      const q = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'loadPendingHours'})})).json();
+      return {before, ok: !!r.ok, after, status: ((q.batches || []).find(x => x.batchId === s.batchId) || {}).status};
+    });
+    ok(rj.before === 1 && rj.ok && rj.after === 0 && rj.status === 'rejected', 'hours: rejecting a batch after a partial approve deletes its imported punches ' + JSON.stringify(rj));
+    // A cache from before the save base (_unsaved, no _base) while another device edited a worker: the server's copy of
+    // every worker it has is kept (nothing overwritten or deleted), a worker only on this device is saved.
+    await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const d = await b.loadSchedule(fsTenantId(), false);
+      d.workers.find(w => w.id === 'w2').e2eNote = 'other device';
+      await b.saveSchedule(fsTenantId(), d);
+      const c = JSON.parse(localStorage.getItem(STORAGE_KEY()));
+      c.workers.find(w => w.id === 'w1').e2eNote = 'legacy cache';
+      c.workers.push({id: 'wLegacy', name: 'Added Offline', clientIds: [], token: 'tok-wl', status: 'active', schedule: []});
+      localStorage.setItem(STORAGE_KEY(), JSON.stringify(c));
+      localStorage.setItem(UNSAVED_KEY(), String(Date.now()));
+      localStorage.removeItem(STORAGE_KEY() + '_base');
+    });
+    await pa.goto(BASE + 'schedule-manager.html');
+    const lg = await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w2' && w.e2eNote === 'other device') && !hasUnsavedLocal(), 20000);
+    const lc = await pa.evaluate(async () => {
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      const w = id => d.workers.find(x => x.id === id) || {};
+      return {w1: w('w1').e2eNote, w2: w('w2').e2eNote, wL: !!d.workers.find(x => x.id === 'wLegacy'), wB: !!d.workers.find(x => x.id === 'wB'), base: !!localStorage.getItem(STORAGE_KEY() + '_base')};
+    });
+    ok(lg && lc.w1 === 'from A' && lc.w2 === 'other device' && lc.wL && lc.wB && lc.base,
+      'legacy cache: a save with no base keeps the server copies and saves the worker added offline ' + JSON.stringify({lg, lc}));
+    // Sign-out with a change that could not be saved: the user is asked, and on Cancel nothing is removed.
+    const so = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend(), keep = b.saveSchedule;
+      b.saveSchedule = async () => { throw new Error('offline'); };
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        workers.find(w => w.id === 'w1').e2eNote = 'not saved yet';
+        autoSave();
+        await ManagerBridge.signOut();
+        await T.tick(3000);
+        return {asked: !!asked, cache: /not saved yet/.test(localStorage.getItem(STORAGE_KEY()) || ''), unsaved: hasUnsavedLocal()};
+      } finally { window.confirm = conf; b.saveSchedule = keep; }
+    });
+    ok(so.asked && so.cache && so.unsaved, 'sign-out: an unsaved change is not removed without asking ' + JSON.stringify(so));
+    // Saved once the server is back, then sign-out goes through without asking.
+    const so2 = await pa.evaluate(async () => {
+      autoSave();
+      for (let i = 0; i < 40 && hasUnsavedLocal(); i++) await T.tick(250);
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      return {saved: (d.workers.find(w => w.id === 'w1') || {}).e2eNote === 'not saved yet', unsaved: hasUnsavedLocal()};
+    });
+    ok(so2.saved && !so2.unsaved, 'sign-out: the kept change is saved when the server answers again ' + JSON.stringify(so2));
+    // A server load landing while an edit's 800 ms save has not run yet (the retry after a failed load): the
+    // edit is kept and saved, merged with that server copy, not replaced by it.
+    const asl = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const gd = await b.loadSchedule(fsTenantId(), false);
+      workers.find(w => w.id === 'w1').e2eNote = 'edited before the reload';
+      autoSave();
+      const applied = applyServerLoad(gd);
+      const local = (workers.find(w => w.id === 'w1') || {}).e2eNote;
+      let server = '';
+      for (let i = 0; i < 40 && server !== 'edited before the reload'; i++) {
+        await T.tick(250);
+        server = ((await b.loadSchedule(fsTenantId(), false)).workers.find(w => w.id === 'w1') || {}).e2eNote;
+      }
+      for (let i = 0; i < 20 && hasUnsavedLocal(); i++) await T.tick(250);
+      return {applied, local, server, unsaved: hasUnsavedLocal()};
+    });
+    ok(!asl.applied && asl.local === 'edited before the reload' && asl.server === 'edited before the reload' && !asl.unsaved,
+      'reload: a server load arriving before a pending save keeps the edit and saves it ' + JSON.stringify(asl));
+    // Another firm opened on this device still has changes kept after a failed save: sign-out removes every
+    // firm's data, so it asks first, and on Cancel nothing is removed.
+    const of = await pa.evaluate(async () => {
+      localStorage.setItem('schedMgr_v1_tenant-zz', JSON.stringify({workers: [{id: 'wz', name: 'Other firm worker', clientIds: []}], clients: [], suppliers: []}));
+      localStorage.setItem('schedMgr_v1_tenant-zz_unsaved', String(Date.now()));
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        await Promise.race([ManagerBridge.signOut(), T.tick(15000)]);
+        return {asked: !!asked, kept: !!localStorage.getItem('schedMgr_v1_tenant-zz') && !!localStorage.getItem('schedMgr_v1_tenant-zz_unsaved'), session: !!localStorage.getItem('schedMgr_session')};
+      } finally {
+        window.confirm = conf;
+        localStorage.removeItem('schedMgr_v1_tenant-zz'); localStorage.removeItem('schedMgr_v1_tenant-zz_unsaved');
+      }
+    });
+    ok(of.asked && of.kept && of.session, 'sign-out: another firm\'s unsaved changes on this device are not removed without asking ' + JSON.stringify(of));
+    // Really offline (the network off, not a stubbed save): the Firestore commit never settles, yet Sign out
+    // asks within seconds; Cancel keeps the change, and it is saved once the network is back.
+    await ca.setOffline(true);
+    const so3 = await pa.evaluate(async () => {
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        workers.find(w => w.id === 'w1').e2eNote = 'offline edit';
+        autoSave();
+        await T.tick(1200);
+        const t0 = Date.now();
+        await Promise.race([ManagerBridge.signOut(), T.tick(15000)]);
+        return {asked: !!asked, ms: Date.now() - t0, cache: /offline edit/.test(localStorage.getItem(STORAGE_KEY()) || ''), unsaved: hasUnsavedLocal(), session: !!localStorage.getItem('schedMgr_session')};
+      } finally { window.confirm = conf; }
+    });
+    await ca.setOffline(false);
+    // The pending commit lands by itself once Firestore reconnects; a save the SDK refused offline is sent again.
+    let back = await waitFor(pa, () => !hasUnsavedLocal(), 30000);
+    if (!back) { await pa.evaluate(() => autoSave()); back = await waitFor(pa, () => !hasUnsavedLocal(), 30000); }
+    const so4 = await pa.evaluate(async () => ((await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false)).workers.find(w => w.id === 'w1') || {}).e2eNote);
+    ok(so3.asked && so3.ms < 7000 && so3.cache && so3.unsaved && so3.session && back && so4 === 'offline edit',
+      'sign-out offline: asked within seconds (no hang on the pending commit), Cancel keeps the change, saved once back online ' + JSON.stringify({so3, back, so4}));
+    ok(pa.errs.length === 0, 'two devices: no page errors ' + pa.errs.join(' | '));
+    await ca.close();
+  }
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'still no request to script.google.com');
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');

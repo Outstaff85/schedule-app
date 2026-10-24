@@ -11,7 +11,7 @@
 //              (or the sections marked `more`, when any is marked).
 // A page without sections (a portal with one screen) has only the title bar.
 //
-// `app` — the manager app's frame, the V7 look (react-migration-plan.md →
+// `app` — the manager app's frame, the V7 look (archive/docs/react-migration-plan.md →
 // Additions from the UI audit; the old manager page draws the same frame in its
 // own CSS until stage 6 moves it):
 //   title bar → brand · the breadcrumb plate (the active section's icon in its

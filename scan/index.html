@@ -1127,7 +1127,7 @@ function loop() {
 $('startCam').onclick = async () => {
   try {
     await ensureSession();
-    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
     const v = $('video'); v.srcObject = stream; v.hidden = false; $('still').hidden = true; await v.play();
     $('sRes').textContent = v.videoWidth + '×' + v.videoHeight;
     running = true; loop(); startFollow();

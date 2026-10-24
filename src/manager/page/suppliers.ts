@@ -14,6 +14,7 @@ import { getPunchLog, savePunchLog } from '../data/punches';
 import { renderSuppliersPage } from './workers';
 import { render } from './render';
 import { showToast } from '../toast';
+import { mayWriteWorkers } from '../logic/access';
 import { island } from '../bridge';
 Object.defineProperties(window, {
   "openAddSupplier": {get: () => openAddSupplier, configurable: true},
@@ -47,7 +48,15 @@ export function commitSupplier(id?: any, fields?: any){
   closeModal('supplierOverlay'); renderSuppliersPage(); autoSave();
 }
 // A supplier's Undo time is up: removed and taken off every worker; saved.
+// Refused, as a client's delete, when this login may not write the workers it changes.
 export function deleteSuppliersNow(ids?: any){
+  const blocked=ids.filter((sid?: any)=>workers.some((w?: any)=>w.supplierId===sid||(w.supplierRates&&w.supplierRates[sid])) && !mayWriteWorkers(false));
+  if(blocked.length){
+    const sp=suppliers.find((x?: any)=>x.id===blocked[0]);
+    showToast(tr('{0} was not deleted — it would change workers this login may not edit',{0:(sp&&sp.name)||tr('Supplier')}));
+    ids=ids.filter((sid?: any)=>!blocked.includes(sid));
+    if(!ids.length){ renderSuppliersPage(); render(); return; }
+  }
   const one=ids.length===1?suppliers.find((s?: any)=>s.id===ids[0]):null;
   ids.forEach((sid?: any)=>{
     suppliers=suppliers.filter((x?: any)=>x.id!==sid);

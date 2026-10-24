@@ -1,5 +1,5 @@
-// A supplier or client login inside the manager app (docs/permissions-plan.md
-// → stage 3; portal.ts): the frame's open tab drawn with the portal's own
+// A supplier or client login inside the manager app (docs/portals.md;
+// portal.ts): the frame's open tab drawn with the portal's own
 // screens — a supplier's Dashboard, Workers, its hours and pay (Commission)
 // and the hours review (Hours); a client's hours review. Every call goes to
 // the `supplier` / `hours` function with the Firebase ID token, as on the

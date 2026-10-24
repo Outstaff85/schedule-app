@@ -12,7 +12,10 @@
 //   currentUser()               the signed-in Firebase user, or null
 //   signOut()
 //   loadSchedule(t)             {workers, clients, suppliers, weekStart, savedAt}
-//   saveSchedule(t, data)       writes only the documents that changed
+//   saveSchedule(t, data, first?, base?)  writes only the documents that changed
+//                               (base: merged with the server's copy first;
+//                               'unknown': a cache with no base, see mergeOnBase)
+//   scheduleBaseOf(data)        the save base of data the app holds (cache)
 //   listenPunches(t, onChange, since)  live punches from `since` (the app
 //                               passes the start of this month minus a week);
 //                               resolves with the first snapshot's entries
@@ -107,6 +110,39 @@ function sig(v: unknown): string {
   if (Array.isArray(v)) return '[' + v.map(sig).join(',') + ']';
   if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + sig((v as Rec)[k])).join(',') + '}';
   return JSON.stringify(v);
+}
+
+// A short hash of a signature (53-bit, cyrb53): the save base kept next to
+// the offline cache (scheduleBaseOf) holds one per record instead of its JSON.
+function sigHash(str: string): string {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+// The base a device's local data was edited from: per kind, record id -> the
+// hash of the record as the app held it when it was last in step with the
+// server (scheduleBaseOf). See saveSchedule's base.
+export type ScheduleBase = Record<string, Record<string, string>>;
+// The base of local data whose base was not kept (a cache from before the
+// save base existed, a base dropped by a full localStorage): see mergeOnBase.
+export type SaveBase = ScheduleBase | 'unknown';
+const itemHash = (item: unknown): string => sigHash(sig(plain(item)));
+// A client's worker pay: written only with Edit pay (saveSchedule).
+const CLIENT_PAY = ['defaultHourlyRate', 'defaultOtRate', 'defaultShabbatRate'];
+// The save base of data the app holds (after a load or a save).
+export function scheduleBaseOf(data: Rec): ScheduleBase {
+  const out: ScheduleBase = {};
+  for (const kind of ['workers','clients','suppliers']) {
+    const m: Record<string, string> = {};
+    ((data[kind] || []) as Rec[]).forEach(item => { if (item && item.id != null) m[String(item.id)] = itemHash(item); });
+    out[kind] = m;
+  }
+  return out;
 }
 
 function ddmmyyyyToDay(s: unknown): string | null {
@@ -224,6 +260,48 @@ export async function initFirestoreBackend() {
     return out;
   }
 
+  // Local data edited from base, merged with the server's fresh copy: a
+  // record edited (or added) here keeps this copy; one untouched here takes
+  // the server's (an edit made elsewhere stays); one deleted elsewhere and
+  // untouched here stays deleted; one deleted here stays deleted; one added
+  // elsewhere (on the server, not in the base) is kept. A kind this login
+  // may not write is the server's.
+  // base 'unknown' (no base was kept): nothing tells what was edited here,
+  // so a record on the server keeps the server's copy, a record only here is
+  // kept and nothing is deleted; `dropped` counts the records here that
+  // differed from the server's copy (their local changes are not saved).
+  async function mergeOnBase(local: Rec, server: Rec, base: SaveBase): Promise<{data: Rec; dropped: number}> {
+    const out: Rec = Object.assign({}, local);
+    let dropped = 0;
+    for (const kind of ['workers','clients','suppliers'] as Kind[]) {
+      const srv = (server[kind] || []) as Rec[];
+      if (!(await mayWrite(kind))) { out[kind] = srv; continue; }
+      const list: Rec[] = [], seen = new Set<string>();
+      const byId = new Map(srv.map(x => [String(x.id), x]));
+      let b: Record<string, string>;
+      if (base === 'unknown') {
+        b = {};
+        ((local[kind] || []) as Rec[]).forEach(item => {
+          if (!item || item.id == null) return;
+          const s = byId.get(String(item.id));
+          if (!s) return;
+          b[String(item.id)] = itemHash(item);
+          if (itemHash(s) !== b[String(item.id)]) dropped++;
+        });
+      } else b = base[kind] || {};
+      ((local[kind] || []) as Rec[]).forEach(item => {
+        if (!item || item.id == null) return;
+        const id = String(item.id); seen.add(id);
+        if (!(id in b) || itemHash(item) !== b[id]) { list.push(item); return; }
+        const s = byId.get(id);
+        if (s) list.push(s);
+      });
+      srv.forEach(s => { const id = String(s.id); if (!seen.has(id) && !(id in b)) list.push(s); });
+      out[kind] = list;
+    }
+    return {data: out, dropped};
+  }
+
   // Writes the workers/clients/suppliers that differ from what was last
   // loaded or saved, and deletes the ones that are gone. Each document is
   // its own record, so two managers editing different workers never
@@ -231,8 +309,17 @@ export async function initFirestoreBackend() {
   // first (optional): {ops, ids} — writes that must land together with the
   // documents of those ids (a confirmed shift offer: the request and its two
   // workers). They go first, in the first batch, so all of them commit or none.
-  async function saveSchedule(t: string, data: Rec, first?: {ops: Op[]; ids?: unknown[]}): Promise<Reply> {
-    if (knownTenant !== t) await loadSchedule(t); // never diff against another firm
+  // base (optional): the data was edited from that base, not from the last
+  // load or save of this page (changes kept on the device while offline, or
+  // an edit on the cached list): the server's copy is read fresh and merged
+  // with it first (mergeOnBase), so a record added or edited elsewhere is
+  // never deleted or overwritten; the reply's `data` is what was saved, and
+  // `dropped` the local records whose changes could not be merged (base
+  // 'unknown').
+  async function saveSchedule(t: string, data: Rec, first?: {ops: Op[]; ids?: unknown[]}, base?: SaveBase | null): Promise<Reply> {
+    let merged: Rec | null = null, dropped = 0;
+    if (base) { const m = await mergeOnBase(data, await loadSchedule(t), base); merged = data = m.data; dropped = m.dropped; }
+    else if (knownTenant !== t) await loadSchedule(t); // never diff against another firm
     const hrScoped = !!(await hrOnly());
     const ops: Op[] = [];
     const next = {} as Store;
@@ -256,6 +343,19 @@ export async function initFirestoreBackend() {
       });
       known[kind].forEach((_, id) => { if (!next[kind].has(id)) ops.push(['delete', F.doc(db,'tenants',t,kind,id)]); });
     }
+    // A client's worker pay (the three default rates) changes only with Edit
+    // pay (firestore.rules); without it a client is written with the pay the
+    // server holds, never this device's copy (it may be stale: clients are
+    // not listened to live), so a refused write never blocks every later save.
+    const c = await myClaims();
+    if (c.role !== 'tenant_admin' && c.role !== 'superadmin' && !(Array.isArray(c.rt) && c.rt.includes('editPay'))) {
+      for (const op of ops) {
+        if (op[0] !== 'set' || op[1].parent.id !== 'clients') continue;
+        const cur = await F.getDoc(op[1]);
+        const stored: Rec = cur.exists() ? cur.data() : {};
+        for (const k of CLIENT_PAY) { if (stored[k] !== undefined) op[2][k] = stored[k]; else delete op[2][k]; }
+      }
+    }
     if (first) {
       const linked = new Set((first.ids || []).map(String));
       const isLinked = (op: Op) => op[1].parent.id === 'workers' && linked.has(op[1].id);
@@ -269,7 +369,7 @@ export async function initFirestoreBackend() {
     }
     for (const kind in next) known[kind as Kind] = next[kind as Kind];
     workerHr.clear(); ((data.workers || []) as Rec[]).forEach(x => { if (x && x.id != null) workerHr.set(String(x.id), x.hrId || null); });
-    return {ok: true, written: ops.length};
+    return merged ? {ok: true, written: ops.length, data: merged, dropped} : {ok: true, written: ops.length};
   }
 
   function punchFromDoc(d: any): Rec {
@@ -390,14 +490,29 @@ export async function initFirestoreBackend() {
       F.where(F.documentId(),'>=',pre), F.where(F.documentId(),'<',pre + '')));
     return snap.docs.map(punchFromDoc);
   }
+  // A login other than the owner or a superadmin must stamp the worker's
+  // hrId as the server holds it (firestore.rules): it is read fresh, so a
+  // change of the worker's HR made on another device never refuses the punch.
   async function savePunch(t: string, entry: Rec): Promise<Reply> {
-    await F.setDoc(F.doc(db,'tenants',t,'punches',String(entry.id)), punchDoc(entry));
+    const c = await myClaims();
+    let hr: string | null | undefined;
+    if (c.role !== 'tenant_admin' && c.role !== 'superadmin' && entry.workerId != null) {
+      try {
+        const w = await F.getDoc(F.doc(db,'tenants',t,'workers',String(entry.workerId)));
+        if (w.exists()) { hr = (w.data().hrId as string) || null; workerHr.set(String(entry.workerId), hr); }
+      } catch { /* not readable here: the last load's copy */ }
+    }
+    await F.setDoc(F.doc(db,'tenants',t,'punches',String(entry.id)), punchDoc(entry, hr));
     return {ok: true, id: entry.id};
   }
   async function updatePunch(t: string, data: Rec): Promise<Reply> {
     const upd: Rec = {editedAt: new Date().toISOString()};
     ['type','time','site','notes','clientId'].forEach(k => { if (data[k] !== undefined) upd[k] = k === 'clientId' ? (data[k] || null) : data[k]; });
     if (data.ts) { const when = new Date(data.ts); if (!isNaN(when.getTime())) upd.ts = F.Timestamp.fromDate(when); }
+    // date (DD/MM/YYYY, what the punch log shows) and day (YYYY-MM-DD) follow
+    // an edited time moved to the day before or after.
+    const day = ddmmyyyyToDay(data.date);
+    if (day) { upd.date = data.date; upd.day = day; }
     await F.updateDoc(F.doc(db,'tenants',t,'punches',String(data.id)), upd);
     return {ok: true};
   }
@@ -489,6 +604,11 @@ export async function initFirestoreBackend() {
     if (ctx.role === 'supplier') return {error: 'Not available for the supplier role'};
     const entries: Rec[] = Array.isArray(params.entries) ? params.entries : [];
     if (!entries.length) return {error: 'No recognized shifts to upload'};
+    // Only dd/MM/yyyy dates: a shift with another date would not become a punch on its day.
+    if (entries.some(e => !/^\d{2}\/\d{2}\/\d{4}$/.test(String(e.date || '')))) return {error: 'A shift has a date that is not dd/MM/yyyy'};
+    // Times only as HH:MM, and an OUT only with its IN: anything else would make no punch, or an OUT alone.
+    const hhmm = (v: unknown) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v));
+    if (entries.some(e => (e.inTime && !hhmm(e.inTime)) || (e.outTime && !hhmm(e.outTime)) || (e.outTime && !e.inTime))) return {error: 'A shift has a time that is not HH:MM'};
     const ref = F.doc(col(t,'pendingHours'));
     const rows = entries.map(e => ({rowId: crypto.randomUUID(), workerId: e.workerId || '', clientId: e.clientId || null,
       date: e.date || '', inTime: e.inTime || '', outTime: e.outTime || ''}));
@@ -511,8 +631,11 @@ export async function initFirestoreBackend() {
   function approver(ctx: ActionCtx): boolean { return ctx.role === 'tenant_admin' || ctx.role === 'superadmin'; }
   const APPROVER_ERROR = 'Only the firm owner or the super-admin can approve uploaded hours';
   // Approving turns each row into an IN and an OUT punch (ids derived from
-  // the batch, so approving twice can't duplicate) and marks the batch, all
-  // in one batch write.
+  // the batch, so approving twice can't duplicate) and then marks the batch.
+  // The punches go in batch writes of BATCH_LIMIT (Firestore allows 500
+  // writes per batch); the batch is marked approved only after all of them
+  // are written, so a failure part way leaves it pending, and approving again
+  // rewrites the same punch documents (rejecting it deletes them).
   async function approvePendingHours(t: string, ctx: ActionCtx, batchId: unknown): Promise<Reply> {
     if (!approver(ctx)) return {error: APPROVER_ERROR};
     const ref = F.doc(db,'tenants',t,'pendingHours',String(batchId));
@@ -524,33 +647,45 @@ export async function initFirestoreBackend() {
     const names: Record<string, string> = {}, hrs: Record<string, string | null> = {};
     workersSnap.forEach((d: any) => { names[d.id] = d.data().name || ''; hrs[d.id] = d.data().hrId || null; });
     const note = 'Imported' + (b.fileName ? ' from ' + b.fileName : '');
-    const tsFor = (date: string, time: string) => {
+    // A row whose date or time is not readable makes no punch (null), never one at "now"
+    // (savePendingHours lets only dd/MM/yyyy and HH:MM through; an older batch may hold others).
+    const tsFor = (date: string, time: string): string | null => {
       const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date || '');
-      if (!m || !time) return new Date().toISOString();
-      const [h, mi] = String(time).split(':').map(Number);
-      return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), h || 0, mi || 0).toISOString();
+      const tm = /^(\d{1,2}):(\d{2})/.exec(String(time || '').trim());
+      if (!m || !tm) return null;
+      const d = new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(tm[1]), Number(tm[2]));
+      return isNaN(+d) || d.getDate() !== Number(m[1]) ? null : d.toISOString();
     };
     const ddmmyyyy = (d: Date) => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
-    const batch = F.writeBatch(db);
+    const writes: [any, Rec][] = [];
+    let created = 0;
     ((b.rows || []) as Rec[]).forEach((r, i) => {
+      // An IN that is missing or not readable: the whole row is skipped, so no OUT is left alone.
       const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
+      if (!inTs) return;
+      created++;
       ([['in', r.inTime], ['out', r.outTime]] as [string, string][]).forEach(([type, time]) => {
         if (!time) return;
         let ts = tsFor(r.date, time), date = r.date;
+        if (!ts) return;
         // A night shift (out at or before in) ends the next day.
         if (type === 'out' && inTs && ts <= inTs) {
           const next = new Date(ts); next.setDate(next.getDate() + 1);
           ts = next.toISOString(); date = ddmmyyyy(next);
         }
         const id = 'imp-' + batchId + '-' + i + '-' + type;
-        batch.set(F.doc(db,'tenants',t,'punches',id), punchDoc({id, workerId: r.workerId, workerName: names[r.workerId] || '',
+        writes.push([F.doc(db,'tenants',t,'punches',id), punchDoc({id, workerId: r.workerId, workerName: names[r.workerId] || '',
           type, time, date, ts, clientId: r.clientId || '', notes: note, gpsWarnings: []},
-          hrs[r.workerId] || null));
+          hrs[r.workerId] || null)]);
       });
     });
-    batch.update(ref, {status: 'approved', decidedAt: new Date().toISOString()});
-    await batch.commit();
-    return {ok: true, created: (b.rows || []).length};
+    for (let i = 0; i < writes.length; i += BATCH_LIMIT) {
+      const batch = F.writeBatch(db);
+      writes.slice(i, i + BATCH_LIMIT).forEach(([r, d]) => batch.set(r, d));
+      await batch.commit();
+    }
+    await F.updateDoc(ref, {status: 'approved', decidedAt: new Date().toISOString()});
+    return {ok: true, created};
   }
   async function rejectPendingHours(t: string, ctx: ActionCtx, batchId: unknown): Promise<Reply> {
     if (!approver(ctx)) return {error: APPROVER_ERROR};
@@ -558,6 +693,14 @@ export async function initFirestoreBackend() {
     const snap = await F.getDoc(ref);
     if (!snap.exists()) return {error: 'Batch not found'};
     if (snap.data().status !== 'pending') return {ok: true, rejected: 0};
+    // An approve that failed part way left some of the batch's punches
+    // written (approvePendingHours): they go before the batch is marked.
+    const left = await punchesOfBatch(t, String(batchId));
+    for (let i = 0; i < left.length; i += BATCH_LIMIT) {
+      const batch = F.writeBatch(db);
+      left.slice(i, i + BATCH_LIMIT).forEach(p => batch.delete(F.doc(db,'tenants',t,'punches',String(p.id))));
+      await batch.commit();
+    }
     await F.updateDoc(ref, {status: 'rejected', decidedAt: new Date().toISOString()});
     return {ok: true, rejected: (snap.data().rows || []).length};
   }
@@ -735,7 +878,7 @@ export async function initFirestoreBackend() {
   }
 
   return {
-    login, loadSchedule, saveSchedule, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
+    login, loadSchedule, saveSchedule, scheduleBaseOf, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
     uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
     // A link to open a firm's file (storage.rules: the firm's managers read),
     // e.g. a client's signed month (hours.py sign).
@@ -743,7 +886,7 @@ export async function initFirestoreBackend() {
     currentUser: (): {uid: string} | null => auth.currentUser,
     idToken: (): Promise<string | null> => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null),
     // The flat rights of this login as its ID token has them (claim rt,
-    // docs/permissions-plan.md); null for an owner or a superadmin.
+    // docs/admin.md → Permission templates); null for an owner or a superadmin.
     rights: async (): Promise<string[] | null> => { const v = (await myClaims()).rt; return Array.isArray(v) ? v : null; },
     signOut: (): Promise<void> => { if (punchUnsub) punchUnsub(); claimsFor = null; claims = {}; return authMod.signOut(auth); },
   };

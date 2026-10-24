@@ -1,4 +1,4 @@
-// The supplier's hours, pay and commission (docs/supplier-portal.md → My Hours).
+// The supplier's hours, pay and commission (docs/portals.md → Supplier login).
 // Hours and pay come only from the one payroll copy (src/lib/payroll.ts) with
 // this page's clients (the firm's clients with their worker-pay rates only),
 // so a worker's pay is the same figure as in the manager's Salary table.
@@ -67,6 +67,14 @@ export function plateRate(w: SWorker): string {
   return w.supplierRate != null ? '₪' + w.supplierRate + '/h' : '';
 }
 
+/** The days set by hand for a month (as in the manager's Salary table): for a
+ *  daily-paid worker, or one priced by a ₪/day commission — the server sends
+ *  the day counts for the latter even without "sees pay" (a commission input,
+ *  not a wage), so both portal figures equal the manager's commission. */
+export function commissionDayOverride(w: SWorker, key: string): number | null {
+  return isDailyPay(w) || hasDayRate(w) ? dayOverride(w, key) : null;
+}
+
 // ── The month's pay (only with "sees pay") ──
 export interface PayRow { w: SWorker; hours: number; days: number; rate: string; pay: number; commission: number }
 export function payRows(d: SupplierData, year: number, month: number): PayRow[] {
@@ -83,8 +91,8 @@ export function payRows(d: SupplierData, year: number, month: number): PayRow[] 
         hours += h; days.add(localYMD(b.date)); shifts.push({ date: b.date, hours: h });
         pay += shiftPayFor(h, w, b.date.getDay() === 6, (b.entries[0] && b.entries[0].clientId) as string | undefined, b.date, seen, clients);
       });
-    const daily = isDailyPay(w), ov = daily ? dayOverride(w, key) : null;
-    if (ov != null) pay = ov * dailyRate(w);
+    const daily = isDailyPay(w), ov = commissionDayOverride(w, key);
+    if (ov != null && daily) pay = ov * dailyRate(w);
     const rate = daily ? dailyRate(w) : effectiveRates(w, (w.clientIds || [])[0], clients).regRate;
     const dd = ov != null ? ov : days.size;
     return { w, hours, days: dd, rate: daily ? '₪' + rate + '/day' : '₪' + rate + '/h', pay, commission: myMonthCommission(w, d.commission, shifts, hours, dd) };
@@ -93,10 +101,13 @@ export function payRows(d: SupplierData, year: number, month: number): PayRow[] 
 
 /** The payable summary: per worker with hours that month, its commission. */
 export function summaryRows(d: SupplierData, year: number, month: number) {
+  const key = 'm:' + year + '-' + String(month + 1).padStart(2, '0');
   return d.workers.map(w => {
     const shifts = workerMonthShifts(d.punches, w.id, year, month);
     const hours = shifts.reduce((s, x) => s + x.hours, 0);
     const days = new Set(shifts.filter(x => x.hours > 0).map(x => localYMD(x.date))).size;
-    return { label: w.name, hours, rate: myRateLabel(w, d.commission), total: myMonthCommission(w, d.commission, shifts, hours, days) };
+    const ov = commissionDayOverride(w, key);
+    const dd = ov != null ? ov : days;
+    return { label: w.name, hours, rate: myRateLabel(w, d.commission), total: myMonthCommission(w, d.commission, shifts, hours, dd) };
   }).filter(r => r.hours > 0);
 }

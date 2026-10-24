@@ -57,6 +57,10 @@ export function SupplierEditor({ props, info, api }: { props: SupplierProps; inf
 
   const rateText = (r: CommissionEntry | null) => (r ? '₪' + r.rate + (r.mode === 'day' ? tr('/day') : tr('/h')) : '₪' + info.defaultRate + tr('/h'));
   const hist = [...(s.commission || [])].filter(x => x && x.rate != null && x.rate !== '').sort((a, b) => String(b.from || '').localeCompare(String(a.from || '')));
+  // The other entries, newest first: an entry from a later date (upcoming)
+  // shows here too, so a scheduled rate stays visible once saved.
+  const today = localYMD(new Date());
+  const others = hist.filter(x => x !== cur).slice(0, 3);
   const hours = info.workers.reduce((t, w) => t + w.hours, 0);
   const n = info.workers.length;
   const workersText = n === 1 ? tr('1 worker{1}', { 1: '' }) : tr('{0} workers{1}', { 0: n, 1: '' });
@@ -112,7 +116,7 @@ export function SupplierEditor({ props, info, api }: { props: SupplierProps; inf
                   {tr('Rate')}: <b className="font-mono text-fig">{rateText(cur)}</b>{cur && cur.from ? ' · ' + tr('from {0}', { 0: fmtDMY(cur.from) }) : ''}
                 </div>
               )}
-              {hist.length > 1 && <div className="text-[13px] text-ink-2" data-testid="supplier-rate-hist">{hist.slice(1, 4).map(x => rateText(x) + (x.from ? ' ' + tr('from {0}', { 0: fmtDMY(x.from) }) : '')).join(' · ')}</div>}
+              {others.length > 0 && <div className="text-[13px] text-ink-2" data-testid="supplier-rate-hist">{others.map(x => rateText(x) + (x.from ? ' ' + (x.from > today ? tr('from {0} (upcoming)', { 0: fmtDMY(x.from) }) : tr('from {0}', { 0: fmtDMY(x.from) })) : '')).join(' · ')}</div>}
               <div className="text-[13px] text-ink-2">{tr('Empty = ₪{0} per hour. A worker\'s own commission in Accounting wins over this rate.', { 0: info.defaultRate })}</div>
             </AccordionContent>
           </AccordionItem>

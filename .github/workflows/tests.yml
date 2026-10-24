@@ -47,6 +47,10 @@ jobs:
           node tests/icons/check.js
           node tests/design/check.js
 
+      # A browser test file that does not parse would skip its whole suite late in the run: fail at once.
+      - name: Browser test files parse
+        run: for f in tests/e2e/*.js; do node --check "$f" || exit 1; done
+
       - name: Build (typecheck, Vite, dist/)
         run: |
           npm ci --no-audit --no-fund

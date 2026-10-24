@@ -18,7 +18,7 @@
 // (and the browser tests) already call, as window
 // properties: the functions, the data as read / write accessors (workers,
 // clients, suppliers, __dataReady), and the state the page reads as
-// read-only accessors. React migration stage 8b (docs/react-migration-plan.md);
+// read-only accessors. React migration stage 8b (archive/docs/react-migration-plan.md);
 // 8c imports these modules directly and this file goes.
 import * as events from './data/events';
 import * as ids from './data/ids';
