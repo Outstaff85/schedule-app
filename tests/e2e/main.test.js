@@ -2819,7 +2819,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
-  // ── Client portal (client1 → client c2: Avi's shift yesterday) — a React page (src/client/, stage 3) with the hours review (src/hours-review/) ──
+  // ── Client portal (client1 → client c2: Avi's shift yesterday) — its Hours tab inside the manager app (/client sends there) with the hours review (src/hours-review/) ──
   ctx = await newCtx(); p = await page(ctx);
   const hoursReplies = [];
   p.on('response', async r => { if (/cloudfunctions\.net\/hours$/.test(r.url()) && r.request().method() === 'POST') { try { hoursReplies.push(await r.text()); } catch (e) {} } });

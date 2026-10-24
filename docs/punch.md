@@ -98,7 +98,7 @@ The button: "Not on site" when `!locOk` (the ring's track only, no hold); otherw
 ## Telemetry and push
 
 - `reportError()` — at most 21 per page, the same message at most once a minute; sent with the link's token (`wpToken()`); the `punch` function stores it only for a working link, with the firm and the worker's name from the link. Wired to `error` and `unhandledrejection`.
-- Push: the page does not subscribe (no sender exists), and the `punch` function takes no push subscription; `service-worker.js` still has `push` / `notificationclick` handlers for the future.
+- Push: the page does not subscribe (no sender exists), and the `punch` function takes no push subscription; `service-worker.js` has no push handlers.
 - The service worker is registered with `updateViaCache:'none'` and the page reloads when a new version takes control (`main.tsx`).
 - New version check: `useVersionWatch` watches the page's own HTML (it names the hashed bundle) and `og.css` and offers **Update** in a toast after a deploy.
 - Toasts: the shared Sonner toasts; `showToast(msg)` picks success / warning / error / info from the text, as the old page's `toastKind`.

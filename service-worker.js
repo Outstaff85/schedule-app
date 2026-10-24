@@ -3,7 +3,7 @@
 // {cache:'no-store'} so the newest code/data is always used; the cache is only
 // a fallback when offline. Data calls (Firebase, Cloud Functions) go to other
 // origins and are never touched by the SW.
-const CACHE = 'schedule-mgr-v136';
+const CACHE = 'schedule-mgr-v137';
 // The punch page's manifest is built by Vite under a hashed name in /assets/
 // (not listed here: addAll fails on a missing file); like the pages' built
 // files, it is kept on its first fetch.
@@ -80,17 +80,4 @@ self.addEventListener('fetch', e => {
       })
     )
   );
-});
-
-// Push (for the future, once a real sender exists)
-self.addEventListener('push', e => {
-  let data = {};
-  try { data = e.data.json(); } catch (_) { data = { title: 'Schedule Manager', body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(data.title || 'Schedule Manager', {
-    body: data.body || '', tag: data.tag || 'general', data: { url: data.url || './' }
-  }));
-});
-self.addEventListener('notificationclick', e => {
-  e.notification.close();
-  e.waitUntil(clients.openWindow((e.notification.data && e.notification.data.url) || './'));
 });

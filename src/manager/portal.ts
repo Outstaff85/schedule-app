@@ -25,5 +25,5 @@ export function portalTabs(role: string, rights: string[]): string[] {
 }
 
 export const isPortalRole = (role?: string) => role === 'supplier' || role === 'client';
-/** The session key each portal's own code reads (src/supplier/api.ts, src/client/App.tsx). */
+/** Each portal role's session key: page/gate.ts writes, restores and clears them; the supplier's screens read theirs (src/supplier/api.ts). */
 export const PORTAL_SESSION_KEYS: Record<string, string> = { supplier: 'supplierPortal_session', client: 'clientPortal_session' };

@@ -49,7 +49,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
 
 ## Building the PDF (`build_form101_pdf`, functions/main.py)
 
-- **Template:** `functions/assets/form101_fillable.pdf`, with the Heebo font (`functions/assets/heebo-hebrew.ttf`). These are the only copies (the old root copies are in `archive/`).
+- **Template:** `functions/assets/form101_fillable.pdf`, with the Heebo font (`functions/assets/heebo-hebrew.ttf`). These are the only copies.
   - The template's fields use the PDF's own Helvetica (`/Helv` in their `DA` and the form's `DR`), so the template carries no font file for them: ~95 KB, and a filled form without scans ~170 KB. It once carried the whole Calibri for 47 fields (586 KB in every Form 101) that the `garbage` clean-up could not drop, because the fields named it. `tests/auth/test_form101_template.py` keeps the template under 200 KB.
 - **`Form101Builder`** addresses fields by their AcroForm names.
   - **Hebrew text:** `set_hebrew()` sets the value, blanks the field's own appearance, and draws the text by hand. PyMuPDF has no RTL shaping, so the text goes through `bidi.get_display()` and is right-aligned.

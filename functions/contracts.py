@@ -20,7 +20,6 @@ firestore.rules grant nothing) and the file at tenants/<t>/contracts/<id>/<ms>.p
 
 import base64
 import io
-import json
 import re
 import time
 import uuid
@@ -613,7 +612,3 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         return {"ok": True}
 
     return {"error": "Unknown action"}
-
-
-def json_reply(obj):
-    return json.dumps(obj, ensure_ascii=False)
