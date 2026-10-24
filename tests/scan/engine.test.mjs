@@ -448,7 +448,9 @@ await run('the passport zone: mrzFind, the line input, the decoding and the chec
   for (let n = 0; n < 28; n++) {
     const pg = zonePage(R, ['zone', 'edge', 'none', 'three'][n % 4], n >= 16);
     const canvas = fakeCanvas(); canvas.width = pg.width; canvas.height = pg.height; canvas.page = pg;
-    const a = page.mrzFind(canvas), b = RD.mrzFind(RD.grayPixels(pg), pg.width, pg.height);
+    // the engine takes the lower band only, read as the lab reads it: rows mrzTop(h)..h
+    const top = RD.mrzTop(pg.height), low = { data: pg.data.subarray(top * pg.width * 4), width: pg.width, height: pg.height - top };
+    const a = page.mrzFind(canvas), b = RD.mrzFind(RD.grayPixels(low), pg.width, pg.height);
     same(a, b, 'mrzFind ' + n); if (b.length) zones++;
     // the whole read: the old mrzRead on its page vs the engine's pieces
     const C = RD.MRZ_CHARS.length + 1, ctx = oldPage(); ctx.mrzSess = session(C);

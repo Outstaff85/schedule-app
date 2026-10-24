@@ -111,7 +111,8 @@ def corners(hm):
     document and three on the other (an ID card below its ספח, 2026-10-22). The convex frame with the
     highest spots wins, a frame whose opposite sides differ more than SIDES× counted down, and one with both
     pairs of sides more than FREE from parallel (a frame mixed of two documents) by cos^PAR of the rest. One spot on
-    each heatmap: that frame, as before. The phone does the same (scan-lab/scan-core.js corners)."""
+    each heatmap: that frame, as before. The phone does the same (scan-lab/scan-core.js corners, copied to
+    scan/, and src/scan/engine/geometry.ts corners — a change here is mirrored in both)."""
     found = [_spots(hm[k]) for k in range(4)]
     conf0 = min(top for _, top in found)
     if any(not s for s, _ in found):

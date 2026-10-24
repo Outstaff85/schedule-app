@@ -40,22 +40,25 @@ export function grayPixels(px: PixelsLike): Float32Array {
 /** A box in a picture's pixels. */
 export interface PxBox { x: number; y: number; w: number; h: number }
 
-/** The passport zone's two lines on a page (its gray pixels, w×h): the two lowest lines in its lower 45 %
- *  that run across most of its width, [] when there is no zone. */
-export function mrzFind(grayAll: Float32Array, w: number, h: number): PxBox[] {
-  const top = Math.floor(h * 0.55), ph = h - top;
+/** The first row of a page's lower 45 %, where mrzFind looks for the zone. */
+export const mrzTop = (h: number): number => Math.floor(h * 0.55);
+
+/** The passport zone's two lines on a w×h page: the two lowest lines in its lower 45 % that run across
+ *  most of its width, [] when there is no zone. grayLow is that band only, gray (the rows from mrzTop(h)
+ *  to h: getImageData(0, mrzTop(h), w, h - mrzTop(h)) through grayPixels), as the lab reads it. */
+export function mrzFind(grayLow: Float32Array, w: number, h: number): PxBox[] {
+  const top = mrzTop(h), ph = h - top;
   if (w < 50 || ph < 20) return [];
-  const gray = grayAll.subarray(top * w, h * w);
   // dark marks: under the mean of their 31×31 neighbourhood by 15 (OpenCV's adaptive mean threshold)
   const W1 = w + 1, sum = new Float64Array(W1 * (ph + 1));
-  for (let y = 0; y < ph; y++) { let row = 0; for (let x = 0; x < w; x++) { row += gray[y * w + x]; sum[(y + 1) * W1 + x + 1] = sum[y * W1 + x + 1] + row; } }
+  for (let y = 0; y < ph; y++) { let row = 0; for (let x = 0; x < w; x++) { row += grayLow[y * w + x]; sum[(y + 1) * W1 + x + 1] = sum[y * W1 + x + 1] + row; } }
   const bw = new Uint8Array(w * ph), r = 15;
   for (let y = 0; y < ph; y++) {
     const y0 = Math.max(0, y - r), y1 = Math.min(ph, y + r + 1);
     for (let x = 0; x < w; x++) {
       const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
       const m = (sum[y1 * W1 + x1] - sum[y0 * W1 + x1] - sum[y1 * W1 + x0] + sum[y0 * W1 + x0]) / ((y1 - y0) * (x1 - x0));
-      bw[y * w + x] = gray[y * w + x] <= m - 15 ? 1 : 0;
+      bw[y * w + x] = grayLow[y * w + x] <= m - 15 ? 1 : 0;
     }
   }
   // closed along each row (a dilation, then an erosion, k wide): the letters of a line join up
