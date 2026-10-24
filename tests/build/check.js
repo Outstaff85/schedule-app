@@ -65,15 +65,44 @@ function walk(dir, base = '') {
   for (const f of ['og.css', 'payroll.js', 'fonts/fonts.css', 'icons/tabler-icons.css', 'manifest.json'])
     if (!mh.includes(`"${f}"`) || !old.includes(f)) errs.push(`dist/schedule-manager.html: ${f} is not loaded as it is (vite-ignore) or not copied`);
   if (/vite-ignore/.test(mh)) errs.push('dist/schedule-manager.html: a vite-ignore attribute was left in the built page');
-  // /scan-next/ (docs/scan-plan.md → S9, package 7): its module starts the scanner's background thread as a module
-  // worker (vite.config.mts worker.format 'es'), built into dist/assets — an ES module, not wrapped as a classic script.
-  const sh = fs.existsSync(path.join(DIST, 'scan-next/index.html')) ? fs.readFileSync(path.join(DIST, 'scan-next/index.html'), 'utf8') : '';
-  const sjs = (sh.match(/src="\/(assets\/[^"]+\.js)"/) || [])[1];
-  const sCode = sjs && fs.existsSync(path.join(DIST, sjs)) ? fs.readFileSync(path.join(DIST, sjs), 'utf8') : '';
-  const wk = (sCode.match(/new Worker\(new URL\([`'"]\/(assets\/worker-[\w-]+\.js)[`'"][^)]*\)\s*,\s*\{\s*type\s*:\s*[`'"]module[`'"]\s*\}\)/) || [])[1];
-  if (!wk) errs.push(`dist/scan-next/index.html: its module (${sjs || 'none'}) does not start the scanner's worker as a module worker`);
-  else if (!fs.existsSync(path.join(DIST, wk))) errs.push(`dist/${wk}: the scanner's worker chunk is missing`);
-  else if (/^\s*(\(function|\(\(\)\s*=>|!function|var \w+=function)/.test(fs.readFileSync(path.join(DIST, wk), 'utf8'))) errs.push(`dist/${wk}: the scanner's worker is built as a classic script, not an ES module`);
+  // The scanner's surfaces (docs/scan-plan.md → S9, package 8; CLAUDE.md → Scanner: the lab and the site are apart).
+  // The chunk graph: a chunk reaches every other chunk of dist/assets it names (its imports, its dynamic imports,
+  // Vite's preload lists, the worker's URL); a page loads its module's chunk and everything it reaches.
+  const chunkOf = f => fs.existsSync(path.join(DIST, f)) ? fs.readFileSync(path.join(DIST, f), 'utf8') : '';
+  const chunks = built.filter(f => /^assets\/[^/]+\.js$/.test(f));
+  const named = code => chunks.filter(c => code.includes('/' + c) || code.includes('"' + c) || code.includes('`' + c) || code.includes("'" + c) || code.includes('./' + path.basename(c)));
+  const pageModule = page => (chunkOf(page).match(/src="\/(assets\/[^"]+\.js)"/) || [])[1];
+  const reach = start => { const seen = new Set(); const todo = start ? [start] : [];
+    while (todo.length) { const c = todo.pop(); if (seen.has(c)) continue; seen.add(c); todo.push(...named(chunkOf(c)).filter(n => !seen.has(n))); }
+    return seen; };
+  const workerOf = code => [...code.matchAll(/new Worker\(new URL\([`'"]\/(assets\/worker-[\w-]+\.js)[`'"][^)]*\)\s*,\s*\{\s*type\s*:\s*[`'"]module[`'"]\s*\}\)/g)].map(m => m[1]);
+  // The site never loads from the lab: no chunk the manager page loads names '/scan-lab/'. The one exception is the
+  // manager's own module — Admin → Scanner reads the lab's version ('/scan-lab/models.json') and Admin → Scanner lab
+  // opens the lab page ('/scan-lab/') in a new tab; neither loads a model. Any other '/scan-lab/…' there fails too.
+  const mjs = pageModule('schedule-manager.html'), mReach = reach(mjs);
+  for (const c of mReach) {
+    const code = chunkOf(c);
+    const hits = [...code.matchAll(/\/scan-lab\/[^`'"]*/g)].map(m => m[0]);
+    const bad = c === mjs ? hits.filter(h => h !== '/scan-lab/' && h !== '/scan-lab/models.json') : hits;
+    if (bad.length) errs.push(`dist/${c}: a chunk the manager page loads names ${[...new Set(bad)].join(', ')} (the site never loads from the scanner lab)`);
+  }
+  const sReach = reach(pageModule('scan-next/index.html'));
+  // The manager page's scanner (src/scan/open.tsx) and the lab start the same module worker.
+  const mWk = [...mReach].flatMap(c => workerOf(chunkOf(c))), sWk = [...sReach].flatMap(c => workerOf(chunkOf(c)));
+  if (!mWk.length) errs.push(`dist/schedule-manager.html: no chunk it loads (${mjs || 'none'} and on) starts the scanner's worker as a module worker`);
+  if (!sWk.length) errs.push(`dist/scan-next/index.html: no chunk it loads (${pageModule('scan-next/index.html') || 'none'} and on) starts the scanner's worker as a module worker`);
+  // The worker (vite.config.mts worker.format 'es') is an ES module built into dist/assets: never wrapped as a
+  // classic script, no importScripts, and no surface folder of its own (the surface comes in its 'load' message).
+  for (const wk of new Set([...mWk, ...sWk])) {
+    const code = chunkOf(wk);
+    if (!code) { errs.push(`dist/${wk}: the scanner's worker chunk is missing`); continue; }
+    if (/^\s*(\(function|\(\(\)\s*=>|!function|var \w+=function)/.test(code)) errs.push(`dist/${wk}: the scanner's worker is built as a classic script, not an ES module`);
+    if (/importScripts/.test(code)) errs.push(`dist/${wk}: the scanner's worker calls importScripts (a module worker imports)`);
+    if (/['"`]\/scan(-lab)?\//.test(code)) errs.push(`dist/${wk}: the scanner's worker names a surface's folder`);
+  }
+  // The lab's page names its own folder in its module (src/scan/lab/surface.ts), so it loads the lab's models.
+  const ljs = pageModule('scan-next/index.html');
+  if (ljs && !/[`'"]\/scan-lab\/[`'"]/.test(chunkOf(ljs))) errs.push(`dist/${ljs}: the lab page's module does not name '/scan-lab/' (its surface, src/scan/lab/surface.ts)`);
   if (old.some(f => f.startsWith('scan-next/'))) errs.push('scan-next/ is built by Vite: none of its files may be in the copied list');
   const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
   if (fb.hosting.public !== 'dist') errs.push(`firebase.json: hosting.public is "${fb.hosting.public}", must be "dist"`);

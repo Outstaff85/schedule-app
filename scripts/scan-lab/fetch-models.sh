@@ -81,4 +81,19 @@ for v in 1.22.0:ort 1.30.0:ort130; do
   (cd "$T" && mkdir -p "${v#*:}" && cd "${v#*:}" && npm pack "onnxruntime-web@${v%%:*}" --silent >/dev/null && tar xzf "onnxruntime-web-${v%%:*}.tgz")
   cp "$T/${v#*:}/package/dist/ort.all.min.js" "$T/${v#*:}/package/dist/ort.all.min.mjs" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
 done
+# What the surface's page loads at run time, all from its own folder (docs/build.md → The scanner's entries): the models,
+# models.json at this version, he-layouts.json when the Hebrew reader is there, and both ONNX Runtime builds — the .mjs
+# the new stack's engine imports (src/scan/engine/ort.ts) and the plain page's .js. A deploy missing one stops here.
+python - "$OUT" "$SCAN_MODELS_VERSION" <<'PY'
+import json, pathlib, sys
+out, version = pathlib.Path(sys.argv[1]), sys.argv[2]
+m = json.loads((out / "models.json").read_text())
+need = ["lite.onnx", "sa24_w16.onnx", "yunet.onnx"] + [f"{d}/{f}" for d in ("ort", "ort130") for f in ("ort.all.min.js", "ort.all.min.mjs")]
+need += ["doctype.onnx"] * m["doctype"] + ["mrz.onnx"] * m["mrz"] + ["he.onnx", "he-layouts.json"] * m["he"]
+missing = [f for f in need if not (out / f).is_file() or (out / f).stat().st_size == 0]
+for d in ("ort", "ort130"):
+    if not list((out / d).glob("*.wasm")) or not list((out / d).glob("ort-wasm-simd-threaded*.mjs")): missing.append(d + "/ (its .wasm and loader .mjs)")
+if m["version"] != version: missing.append(f"models.json says {m['version']}, models-version {version}")
+sys.exit("not put next to the page in " + str(out) + ": " + ", ".join(missing) if missing else 0)
+PY
 ls -la "$OUT"

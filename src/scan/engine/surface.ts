@@ -3,6 +3,9 @@
 // at deploy by its own fetch script (scripts/scan/fetch-models.sh, scripts/scan-lab/fetch-models.sh) at its
 // own model version, and its own browser cache of the models. Every URL the engine loads is built here from
 // the surface's base, so the site never names /scan-lab/ (CLAUDE.md → Scanner: the lab and the site are apart).
+// The lab's surface itself is src/scan/lab/surface.ts, which only the lab's page imports: a module the site's
+// scanner shares with the lab never holds the lab's folder, so no chunk the manager page loads names it
+// (tests/build/check.js → the surface guard).
 
 /** The ONNX Runtime Web builds put next to each surface: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the
  *  light model right on a phone where 1.22 returned zeros). The lab may pick 1.30 for the CPU too. */
@@ -22,15 +25,11 @@ export interface ScanSurface extends SurfaceRef {
   idToken(): Promise<string | null>;
 }
 
-const noToken = async (): Promise<string | null> => null;
+export const noToken = async (): Promise<string | null> => null;
 
 /** The site's scanner: /scan/ and its models (scripts/scan/models-version). */
 export const siteSurface = (idToken: () => Promise<string | null> = noToken): ScanSurface =>
   ({ base: '/scan/', cache: 'scan-models', source: 'site', idToken });
-
-/** The scanner lab: /scan-lab/ and its models (scripts/scan-lab/models-version). */
-export const labSurface = (idToken: () => Promise<string | null> = noToken): ScanSurface =>
-  ({ base: '/scan-lab/', cache: 'scan-lab-models', source: 'lab', idToken });
 
 /** Only the serializable part, for a background thread. */
 export const surfaceRef = (s: SurfaceRef): SurfaceRef => ({ base: s.base, cache: s.cache });

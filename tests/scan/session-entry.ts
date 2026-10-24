@@ -5,4 +5,4 @@ export * as live from '../../src/scan/engine/live';
 export * as camera from '../../src/scan/engine/camera';
 export * as steady from '../../src/scan/engine/steady';
 export * as log from '../../src/scan/engine/log';
-export * as surface from '../../src/scan/engine/surface';
+export * as surface from './surface-entry';

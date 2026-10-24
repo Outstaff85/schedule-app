@@ -1,12 +1,14 @@
 name: Scanner lab (preview channel)
 
-# Puts the scanner lab (scan-lab/, docs/scan-plan.md → Scanner lab) with the
-# branch's changes on a Firebase Hosting PREVIEW channel, to try them on a phone
-# before they go live: https://schedule-odinson--scan-test-<id>.web.app/scan-lab/
+# Puts the scanner lab with the branch's changes on a Firebase Hosting PREVIEW channel, to try them on a phone
+# before they go live (docs/scan-plan.md → Scanner lab, S9): the whole site is built (the channel serves dist/),
+# then the lab's models and ONNX Runtime are put under /scan-lab/, so both the new-stack lab (/scan-next/, the
+# scanner of src/scan/ in lab mode) and the plain lab page (/scan-lab/) run on the lab's models:
+#   https://schedule-odinson--scan-test-<id>.web.app/scan-next/  and  …/scan-lab/
 on:
   push:
     branches-ignore: [main]
-    paths: ['scan-lab/**', 'scripts/scan-lab/**', '.github/workflows/scan-lab-preview.yml']
+    paths: ['scan-lab/**', 'scan-next/**', 'src/scan/**', 'scripts/scan-lab/**', '.github/workflows/scan-lab-preview.yml']
   workflow_dispatch:
 
 jobs:
@@ -24,6 +26,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
+          node tests/build/check.js
       - uses: actions/cache@v4
         with:
           path: /tmp/models
@@ -44,5 +47,7 @@ jobs:
           projectId: schedule-odinson
           channelId: scan-test
           expires: 7d
-      - name: Lab link
-        run: echo "SCANNER LAB ${{ steps.deploy.outputs.details_url }}/scan-lab/"
+      - name: Lab links
+        run: |
+          echo "SCANNER LAB (new stack) ${{ steps.deploy.outputs.details_url }}/scan-next/"
+          echo "SCANNER LAB (plain page) ${{ steps.deploy.outputs.details_url }}/scan-lab/"
