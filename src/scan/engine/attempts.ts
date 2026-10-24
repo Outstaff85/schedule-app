@@ -121,6 +121,9 @@ export class Attempts {
   modelsVersion = '';
   /** Attempt id → its folder on the server (for a page deleted later). */
   readonly attemptDirs = new Map<string, string>();
+  /** Told the folders the server gave each batch of attempts sent ({attempt id: folder}): the site's scan window
+   *  keeps its scan's, to tell them "saved" with the worker's id when the worker window saves (src/scan/server.ts). */
+  onDirs: ((dirs: Record<string, string>) => void) | null = null;
   /** Attempts not decided yet (their pages on the screen). */
   private onScreen: Live[] = [];
   /** Kept, waiting for Done (the site). */
@@ -390,6 +393,7 @@ export class Attempts {
           while (items.length) {
             const batch = items.slice(0, QUEUE_MAX);
             const j = await this.post({ action: 'attempt', attempts: batch.map(x => x.a) });
+            if (j.dirs && typeof j.dirs === 'object' && this.onDirs) { try { this.onDirs(j.dirs as Record<string, string>); } catch { /* the listener's own */ } }
             for (const [id, dir] of Object.entries((j.dirs || {}) as Record<string, string>)) {
               this.attemptDirs.set(id, dir);
               for (const pg of this.lateDeletes.get(id) || []) void this.post({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {});

@@ -81,6 +81,12 @@ jobs:
       - name: Scanner picked files and attempts (src/scan/engine/ files on threads, the training attempts)
         run: node tests/scan/files.test.mjs
 
+      - name: Phone mirror parity (gen/phone.py vs src/scan/engine/ corners, warpRGBA, mrzFind, findNext, faceTurn, smallRGBA)
+        run: node tests/scan/phone_parity.test.mjs
+
+      - name: Passport zone sex rule (mrzmodel.py fields vs src/scan-process/mrz.ts parseMrz)
+        run: node tests/scan/mrz-sex.test.mjs
+
       # LibreOffice for the Word templates' conversion (services/docx2pdf, docs/contracts.md → Word templates)
       # its packages kept between runs: the runners' Ubuntu mirror was down to ~40 KB/s (2026-10-22) and
       # the 60 MB of them took the whole job's time; a kept package is not downloaded again
@@ -109,10 +115,21 @@ jobs:
           path: ~/lo-debs
           key: lo-debs-noble-1
 
+      # pip's downloads kept between runs: the scanner's training packages (CPU torch ~200 MB) are not downloaded again
+      - name: Python packages kept
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('functions-auth/requirements.txt', 'scripts/scan-train/requirements-synth.txt') }}-scan-train-1
+
       - name: Python for the functions
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
           "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi flask opencv-python-headless onnx
+          # the scanner's training checks (tests/auth/test_scan_train_*: the losses, ONNX parity, gen build --focus...):
+          # CPU torch first (PyPI's is the CUDA build), then the rest; albumentations pinned as requirements-synth.txt
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q onnxruntime timm onnx2torch albumentations==2.0.8 albucore==0.0.24
 
       - name: Rules tests
         working-directory: tests/rules
@@ -124,6 +141,7 @@ jobs:
         working-directory: tests/rules
         env:
           PYTHON: ${{ runner.temp }}/testvenv/bin/python
+          SCAN_TRAIN_FULL: '1'   # a missing training package fails the scanner-training checks, never skips them (tests/auth/conftest.py)
         run: npm run test:auth
 
       - name: Browser tests

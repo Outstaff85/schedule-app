@@ -13,14 +13,17 @@
 // type picked meanwhile counts; at most WAIT_MS, then a page not typed goes untyped — the scan process types it),
 // sends the scan's training attempts (held until Done), runs the scan process (read, src/scan-process/) with
 // its progress in the window — an error text keeps the window open with the pages — and then gives the pages
-// (onDone) and sends the pages' document type examples. A typing that ends after the window closed (or after
+// (onDone) and sends the pages' document type examples — each with the scan's session id, the worker's id on a
+// known worker's scan, and who set its turn (the face finder, or whoever typed it). The scan's attempts are kept
+// by server.ts (their ids from the pages, their folders as the server gives them back) and told the worker's id
+// when the worker window saves. A typing that ends after the window closed (or after
 // Done) gives nothing back to the session: its scan is over (gen).
 import * as React from 'react';
 import { tr } from '@/lib/i18n';
 import { Window } from '@/components/shared/window';
 import { loadFirestoreBackend } from '@/manager/data/api';
 import { DOCTYPES, detectDoctype, pageCopy, type Doctype } from './doctype';
-import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
+import { attemptFolders, doctypeMode, scanAttempts, scanSessionId, sendFeedback, type DoctypeMode, type Example } from './server';
 import { loadBatches, saveBatches } from './store';
 import { engineStatusText } from './status-text';
 import { releaseSession, takeSession } from './keep';
@@ -56,8 +59,9 @@ export type ReadFn = (pages: ScannedPage[], progress: (label: string, pct: numbe
 
 /** A page as the window keeps it (on the phone too): what Done gives, and how it was typed — Haiku's or the
  * model's type (doctypeModel, doctypeBy), the model's answer beside it (modelSaid) and, in Shadow, kept for the
- * example (doctypeShadow). */
-type Stored = ScannedPage & { id: string; doctypeModel?: Doctype | null; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype };
+ * example (doctypeShadow); turnBy: who set the turn the page is at — the face finder when it set the page upright
+ * by its face (the cut's turn ≥ 0), else the same who gave its type. */
+type Stored = ScannedPage & { id: string; doctypeModel?: Doctype | null; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype; turnBy?: 'face' | 'haiku' | 'model' };
 /** A batch: a camera shot (s<n>), the pictures of one pick (f<n>), or the pages before a Scan again. */
 type Batch = { key: string; source: 'camera' | 'file' | 'before'; pages: Stored[] };
 /** A page kept from before, with its batch. */
@@ -75,16 +79,18 @@ let rightSeen = 0; // one right page in five keeps its copy (the document type m
 let nextBefore = 0;
 
 /** The pages' training examples (functions/feedback.py, source "page"): every page with a type from
- * Haiku or the model — a changed one with its copy, one right page in five with its copy too. */
-async function examples(pages: Stored[]): Promise<Example[]> {
-  const out: Example[] = [];
+ * Haiku or the model — a changed one with its copy, one right page in five with its copy too —, each with the
+ * scan's session id, the worker's id when known, and who set its turn. */
+async function examples(pages: Stored[], workerId?: string): Promise<Example[]> {
+  const out: Example[] = [], sessionId = scanSessionId();
   for (const p of pages) {
     if (!p.doctypeModel) continue;
     const fixed = p.kind || p.doctypeModel, changed = fixed !== p.doctypeModel, keep = !changed && rightSeen++ % 5 === 0;
     const copy = changed || keep ? await pageCopy(p.b64, p.mediaType).catch(() => undefined) : undefined;
     if (changed && !copy) continue;
     out.push({ source: 'page', doctypeModel: p.doctypeModel, doctypeFixed: fixed, doctypeBy: p.doctypeBy || 'haiku',
-      ...(p.doctypeShadow ? { doctypeShadow: p.doctypeShadow } : {}), ...(copy ? { pageImage: copy } : {}), ...(keep && copy ? { keep: true } : {}) });
+      ...(p.doctypeShadow ? { doctypeShadow: p.doctypeShadow } : {}), ...(copy ? { pageImage: copy } : {}), ...(keep && copy ? { keep: true } : {}),
+      sessionId, ...(workerId ? { workerId } : {}), turnBy: p.turnBy || p.doctypeBy || 'haiku' });
   }
   return out;
 }
@@ -130,8 +136,10 @@ function siteView(s: ScanSession, removed: (id: string) => void): ScanSessionLik
   };
 }
 
-export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
+export function Scanner({ open, onDone, onClose, initial, read, superAdmin, workerId }: {
   open: boolean; onDone: (pages: ScannedPage[]) => void; onClose: () => void;
+  /** the worker scanned again, when the scan started from their window (sent with the pages' examples) */
+  workerId?: string;
   /** a super-admin sees the document type model's chip on each page */
   superAdmin?: boolean;
   /** pages already scanned (this session's, for "Scan again"): shown first */
@@ -203,7 +211,9 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
   };
 
   // A page's type and turn: Mixed takes the model's when it is sure of both, else Haiku's (Shadow keeps the
-  // model's answer beside it); a page said to be turned is set upright and given back to the session.
+  // model's answer beside it); a page said to be turned is set upright and given back to the session. A page the
+  // face finder already set upright (its cut's turn ≥ 0) keeps its turn — the model or Haiku only types it (as the
+  // PC's docfind.with_doctype: the model's turn only for a page with no face), and Mixed needs only the type sure.
   const classify = React.useCallback(async (s: ScanSession, p: ShotPage) => {
     const canvas = p.canvas, g = gen.current;
     typedOn.current.set(p.id, canvas);
@@ -211,18 +221,20 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
     // its picture: tried again lighter when the phone could not make it (low on memory); '' when it cannot be
     // made at all — the page is then recorded with no picture (Done leaves it out), so Done never waits on it
     const b64 = await jpegB64(canvas, 0.9).catch(() => jpegB64(canvas, 0.7)).catch(() => '');
+    const faced = p.turn >= 0;
     let kind: Doctype | null = null, rotate = 0, sure = false, m: DoctypeMode = 'shadow';
     let a: { doctype: Doctype; conf: number; turn: number; turnConf: number } | null = null;
     try {
       m = await mode.current;
       const d = p.readouts?.doctype || null;
       a = m === 'off' || !d || !isDoctype(d.doctype) ? null : { doctype: d.doctype, conf: d.conf, turn: d.turn * 90, turnConf: d.turnConf };
-      sure = !!a && m === 'mixed' && a.conf >= SURE && a.turnConf >= SURE;
+      sure = !!a && m === 'mixed' && a.conf >= SURE && (faced || a.turnConf >= SURE);
       ({ kind, rotate } = sure && a ? { kind: a.doctype as Doctype | null, rotate: a.turn } : b64 ? await detectDoctype(b64, 'image/jpeg') : { kind: null, rotate: 0 });
+      if (faced) rotate = 0;
     } catch { kind = null; rotate = 0; sure = false; }
     if (!still()) return;  // cut again (or deleted) meanwhile: that cut is typed on its own
     const lines = p.readouts?.mrz?.lines, he = cleanHe(p.readouts?.he?.read);
-    const t: Typed = { b64, mediaType: 'image/jpeg', doctypeModel: kind, doctypeBy: sure ? 'model' : 'haiku',
+    const t: Typed = { b64, mediaType: 'image/jpeg', doctypeModel: kind, doctypeBy: sure ? 'model' : 'haiku', turnBy: faced ? 'face' : sure ? 'model' : 'haiku',
       ...(kind ? { kind } : {}), ...(a ? { modelSaid: a.doctype } : {}), ...(m === 'shadow' && a ? { doctypeShadow: a.doctype } : {}),
       ...(Array.isArray(lines) ? { mrz: lines.filter(x => typeof x === 'string').slice(0, 2).map(x => x.slice(0, 60)) } : {}), ...(he ? { he } : {}) };
     // a page turned here was read by the zone reader and the field reader on its side: what they read says nothing
@@ -262,6 +274,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
     const offs = [
       session.on('page', p => {
         shots.current.set(p.id, p);
+        scanAttempts([p.record.attempt]);  // this scan's attempts: told the worker's id when the worker window saves
         if (typedOn.current.get(p.id) === p.canvas) return;  // typed on this cut already (or turned upright here)
         if (typedOn.current.has(p.id)) { typedOn.current.delete(p.id); untype(p.id); }  // a new cut: typed again once read
         typeWaiting(session);
@@ -275,6 +288,9 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
       session.log.on('status', st => { if (!seen) setEngineText(engineStatusText(st, false)); }),
       session.attempts.on(f => setQueue(f.waiting)),
     ];
+    // the folders the server gives this session's attempts (sent at Done, or later from the queue — so it is left
+    // set after the window closes): server.ts keeps this scan's for the worker window's save
+    session.attempts.onDirs = attemptFolders;
     return () => offs.forEach(off => off());
   }, [session, typeWaiting]);
 
@@ -339,7 +355,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
       if (t && t.b64) list.push({ id: u.id, turn: -1, blurry: false, ...t, kind: u.chosen || chosen.current.get(u.id) || t.kind });
     }
     if (gen.current !== g) return false;
-    void examples(list).then(sendFeedback);  // in the background, queued when offline
+    void examples(list, workerId).then(sendFeedback);  // in the background, queued when offline
     const out: ScannedPage[] = list.filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind, mrz, he }) => ({ b64, mediaType, turn, blurry, kind, ...(mrz ? { mrz } : {}), ...(he ? { he } : {}) }));
     if (read) {
       setReading({ label: tr('Reading the pages…'), pct: 2 });

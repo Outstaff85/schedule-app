@@ -5,7 +5,9 @@ import importlib.util
 import pathlib
 import random
 import re
+import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts" / "scan-train"))   # synth.py reads gen.common
 _spec = importlib.util.spec_from_file_location("synth", pathlib.Path(__file__).resolve().parents[2] / "scripts" / "scan-train" / "synth.py")
 synth = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(synth)
@@ -73,12 +75,12 @@ def test_a_made_up_document_lies_inside_the_photo_and_is_convex():
     assert synth.scene_quad(random.Random(1), 1.5, 900, 1200) == synth.scene_quad(random.Random(1), 1.5, 900, 1200)
 
 
-def test_the_same_real_pages_are_kept_apart_for_the_exam():
-    names = [f"{k}/own-{i}.jpg" for k in ("id_front", "sefach", "passport") for i in range(200)]
-    kept = [n for n in names if synth.held_out("/home/x/templates/" + n)]
-    assert kept == [n for n in names if synth.held_out("C:/other/templates/" + n)]   # by the folder and name only
-    assert 0.1 < len(kept) / len(names) < 0.25
-    assert synth.held_out("t/id_front/own-old_type.jpg") and not synth.held_out("t/id_front/own-new_type.jpg")
+def test_the_same_real_pages_are_kept_apart_for_the_exam(tmp_path):
+    # by their content in heldout.json (test_scan_train_split.py: a renamed file moves nothing); a page not listed is not
+    p = tmp_path / "id_front" / "own-old_type.jpg"
+    p.parent.mkdir()
+    p.write_bytes(b"not one of the owner's held-out pages")
+    assert not synth.held_out(p) and not synth.held_out(tmp_path / "missing.jpg")
 
 
 def test_a_card_on_its_sheet_lies_inside_it():

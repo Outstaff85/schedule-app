@@ -1,7 +1,10 @@
 """The passport zone reader (docs/hf-plan.md → H8b): a small CRNN that reads one MRZ line, and how
 a passport page's two MRZ lines are found — shared by train_mrz.py and exam_mrz.py; the phone
-does the same (src/scan/engine/readers.ts mrzFind / lineInput / ctcDecode and the Readers' mrzRead: the
-same line finding, the same input, the same decoding — a change here is mirrored there).
+does the same (src/scan/engine/readers.ts mrzFind / lineInput / ctcDecode and the Readers' mrzRead: the same line
+finding, the same input, the same decoding — a change here is mirrored there; gen/phone.py mrz_find is the exact port
+of mrzFind, and tests/scan/phone_parity.test.mjs checks the scanner's boxes within 1 px of find_boxes). The phone draws
+a line into the 32 × 512 input at imageSmoothingQuality 'high' (phone.line_input); line_input here still shrinks by
+INTER_AREA.
 
 The model's contract (mrz.onnx): input "img" [1, 1, 32, 512] — the line in grey 0..1, its height
 scaled to 32, left-aligned, the rest of the width filled with white; output "logits" [1, 128, 38]
@@ -55,7 +58,13 @@ def dark_marks(gray, r=15, c=15):
 
 def find_lines(gray):
     """A passport page, upright (uint8 grey) → the two MRZ lines' pictures [line 1, line 2], or [] when
-    none is found. The zone is the page's lowest two text lines that run across most of its width: in
+    none is found (find_boxes: where they are)."""
+    return [gray[y0:y1, x0:x1] for x0, y0, x1, y1 in find_boxes(gray)]
+
+
+def find_boxes(gray):
+    """A passport page, upright (uint8 grey) → the two MRZ lines' boxes [(x0, y0, x1, y1)] in pixels (x1, y1
+    exclusive), line 1 then line 2, or [] when none is found. The zone is the page's lowest two text lines that run across most of its width: in
     the lower 45 % of the page, the dark marks of each pixel row (an adaptive threshold) are counted,
     rows whose dark marks (dark_marks, then joined along the row) fill at least 35 % of the width are text (a zone line's letters, joined, fill most of it; scattered specks do not), and the last two bands of such rows are
     the lines, each cut with a little margin; a last band less than half as tall as the one above it is the page's
@@ -87,8 +96,8 @@ def find_lines(gray):
         y0, y1 = max(0, top + s - m), min(h, top + e + m)
         row = bw[max(0, s - m):min(bw.shape[0], e + m)]
         xs = np.flatnonzero(row.any(0))
-        x0, x1 = (max(0, xs[0] - m), min(w, xs[-1] + m)) if xs.size else (0, w)
-        out.append(gray[y0:y1, x0:x1])
+        x0, x1 = (max(0, int(xs[0]) - m), min(w, int(xs[-1]) + m)) if xs.size else (0, w)
+        out.append((x0, y0, x1, y1))
     return out
 
 
@@ -103,7 +112,9 @@ def check(s):
 
 def fields(line2, this_year=None):
     """The values of MRZ line 2 whose check digit is right, as the worker window keeps them
-    (docId, docDob and docExpiry DD/MM/YYYY, docSex) — src/scan-process/mrz.ts parseMrz without its mending."""
+    (docId, docDob and docExpiry DD/MM/YYYY, docSex) — src/scan-process/mrz.ts parseMrz without its mending. The sex has
+    no check digit of its own: it is given only when the composite check digit (position 44, over 1–10, 14–20 and 22–43)
+    is right, as parseMrz gives it (tests/scan/mrz_sex.json holds the cases both must agree on)."""
     import datetime
     l2 = (line2 + "<" * 44)[:44]
     yy = (this_year or datetime.date.today().year) % 100
@@ -114,6 +125,6 @@ def fields(line2, this_year=None):
         part, c = l2[s:e], l2[e]
         if part.isdigit() and c.isdigit() and check(part) == int(c) and 1 <= int(part[2:4]) <= 12 and 1 <= int(part[4:6]) <= 31:
             out[key] = f"{part[4:6]}/{part[2:4]}/{century(int(part[:2]))}{part[:2]}"
-    if l2[20] in "MF":
+    if l2[20] in "MF" and l2[43].isdigit() and check(l2[0:10] + l2[13:20] + l2[21:43]) == int(l2[43]):
         out["docSex"] = l2[20]
     return out

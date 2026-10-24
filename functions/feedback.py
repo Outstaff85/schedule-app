@@ -1,11 +1,14 @@
-"""The scanner's training examples (docs/scan-plan.md → S6): a page whose corners the
-user moved in the scan window teaches the document edges model. The phone sends, per page,
-a 256×256 copy of the photo the model saw (never the full photo) with the model's
-corners and the user's; scan_feedback (main.py) keeps them 12 months in Storage
-training/scan/<YYYY-MM>/<id>.jpg and Firestore scanTraining/<id>, and counts them in
-scanTrainingStats/current for the "time to retrain" notice. Pure checks here."""
+"""The scanner's training data (docs/scan-training.md → 1): the pages' examples (a 256×256 copy
+of a page whose document type was changed, or one right page in five — with the scan's session, the
+worker once known and who set the copy's turn), the full documents saved after a scan (H8a) and every
+scan attempt (S8). scan_feedback (main.py) keeps them in the private Hugging Face bucket (datastore.py;
+without a time limit, deleted on request by scripts/scan-train/delete_data.py), else in Firebase until
+moved to the bucket (there a record's deleteAt is +KEEP_DAYS, 365 days: the Firestore TTL policy, and the
+Storage lifecycle rule on training/), and counts them in scanTrainingStats/current for the "time to
+retrain" notices. Pure checks here."""
 import base64
 import datetime
+import hashlib
 import math
 
 MAX_EXAMPLES = 20          # per request
@@ -22,6 +25,11 @@ DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 DOCTYPES_TRAINED = DOCTYPES[:5]  # the types the document type model must have enough of ("other" is rare by design)
 # The names an example had before H0 (docs/hf-plan.md): a phone with the old app, or a queued example, still sends them.
 OLD_NAMES = {"cornersModel": "edgesModel", "cornersFixed": "edgesFixed", "kindModel": "doctypeModel", "kindFixed": "doctypeFixed", "kindBy": "doctypeBy"}
+# Where an example was made: the site's scan window, or the scanner lab's own page (which names its own model version).
+ORIGINS = ("site", "lab")
+# Who set the page copy's turn (the training audit, 2026-10-24): the lab's face finder, the owner by hand, the
+# document type model, or Haiku — a copy turned only by a model's guess is no proof the page is upright.
+TURN_BY = ("face", "owner", "model", "haiku")
 
 
 def _corners(v):
@@ -53,6 +61,22 @@ def _jpeg(v):
     except Exception:
         return None
     return b if b.startswith(b"\xff\xd8") and len(b) <= MAX_IMAGE_BYTES else None
+
+
+def worker_id(v):
+    """A worker's id as sent (Firestore ids are 20 characters): at most 64 characters, "" for none."""
+    return str(v or "")[:64]
+
+
+def _session_id(v):
+    """A scan's session id (one per scan, src/scan/server.ts): letters, digits, - and _, at most 64; else None."""
+    s = str(v or "")
+    return s if 1 <= len(s) <= 64 and set(s) <= _ID_CHARS else None
+
+
+def _quarter(v):
+    """A turn in clockwise quarter turns, 0..3; else None."""
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 3 else None
 
 
 def check(example):
@@ -92,8 +116,25 @@ def check(example):
         page_image = _jpeg(example.get("pageImage"))
     return {"image": image, "edgesModel": model, "edgesFixed": fixed, "source": source, "model": version,
             "moved": shift, "doctypeModel": doctype_model, "doctypeFixed": doctype_fixed, "doctypeBy": doctype_by, "pageImage": page_image, "right": keep_right,
+            # a person ticked (✓) or picked the type (the scanner lab's own page sends it with every type it sends): a
+            # label even when it is the model's own answer — unlike a site page sampled with keep that nobody looked at
+            "doctypeConfirmed": source == "page" and doctype_fixed is not None and example.get("doctypeConfirmed") is True,
             # the document type model's answer in shadow mode (Admin → Scanner): only compared, never trusted
-            "doctypeShadow": example.get("doctypeShadow") if example.get("doctypeShadow") in DOCTYPES else None}, None
+            "doctypeShadow": example.get("doctypeShadow") if example.get("doctypeShadow") in DOCTYPES else None,
+            # where it was made; the scan it belongs to and the worker, once known (a training keeps one scan, one
+            # worker on one side of its exam; delete_data.py finds a worker's copies by it)
+            "origin": example.get("origin") if example.get("origin") in ORIGINS else "site",
+            "sessionId": _session_id(example.get("sessionId")), "workerId": worker_id(example.get("workerId")) or None,
+            # the page copy's turn: the document type model's answer (quarter turns clockwise to set it upright), the
+            # turn the owner gave it by hand, and who set the turn the copy is stored at
+            "turnModel": _quarter(example.get("turnModel")), "turnFixed": _quarter(example.get("turnFixed")),
+            "turnBy": example.get("turnBy") if example.get("turnBy") in TURN_BY else None}, None
+
+
+def example_version(ex, site_version):
+    """The model version an example is recorded with: the one the scanner lab names (it runs its own version,
+    scripts/scan-lab/models-version), else the site's (functions/scan_models_version.txt)."""
+    return ex["model"] if ex.get("origin") == "lab" else site_version
 
 
 def kept(ex):
@@ -147,7 +188,9 @@ def record(ex, tenant_id, now, path, page_path=None):
     return {"edgesModel": ex["edgesModel"], "edgesFixed": ex["edgesFixed"], "moved": ex["moved"],
             "source": ex["source"], "model": ex["model"], "tenantId": tenant_id or "", "image": path,
             "doctypeModel": ex["doctypeModel"], "doctypeFixed": ex["doctypeFixed"], "doctypeBy": ex.get("doctypeBy", "haiku"), "pageImage": page_path, "right": ex["right"],
-            "doctypeShadow": ex.get("doctypeShadow"),
+            "doctypeConfirmed": bool(ex.get("doctypeConfirmed")),
+            "doctypeShadow": ex.get("doctypeShadow"), "origin": ex.get("origin", "site"), "sessionId": ex.get("sessionId"), "workerId": ex.get("workerId"),
+            "turnModel": ex.get("turnModel"), "turnFixed": ex.get("turnFixed"), "turnBy": ex.get("turnBy"),
             "createdAt": now, "deleteAt": now + datetime.timedelta(days=KEEP_DAYS)}
 
 
@@ -204,7 +247,7 @@ def check_document(p):
         return None, "nothing saved"
     corrected = sorted(k for k in set(scanned) | set(saved) if str(scanned.get(k, "")) != str(saved.get(k, "")))
     doc = {"pages": out, "read": read, "reads": reads, "scanned": scanned, "saved": saved, "corrected": corrected,
-           "workerId": str(p.get("workerId") or "")[:64]}
+           "workerId": worker_id(p.get("workerId")), "sessionId": _session_id(p.get("sessionId"))}
     zone = mrz_shadow(p.get("mrzShadow"))
     if zone is not None:
         doc["mrzShadow"] = zone
@@ -296,9 +339,38 @@ def he_counts(doc):
             "heAiRight": int(all(_same_he(scanned.get(k), saved[k]) for k in keys))}
 
 
+# ---------- the readers' real documents, for the bell (docs/scan-plan.md → the bell) ----------
+# A reader is worth retraining once REAL_NEEDED new real documents of its kind were saved with the fields a person kept
+# (the PC's gen.real.REAL_NEEDED — duplicated on purpose): a passport for the passport zone reader, an Israeli ID card's
+# front for the Hebrew field reader. publish.py resets the counter of a reader it publishes.
+REAL_NEEDED = 30
+
+
+def reader_counts(doc):
+    """What a saved full document adds to the readers' counters: {passportsSince: 1} for a passport (a page typed
+    passport, the saved docType passport and a zone field kept — MRZ_COMPARED), {idCardsSince: 1} for an Israeli ID card
+    (a page typed id_front, the saved docType israeli_id and a field the Hebrew reader reads kept — HE_COMPARED)."""
+    saved = doc.get("saved") or {}
+    kinds = {pg.get("doctype") for pg in doc.get("pages") or []}
+    out = {}
+    if "passport" in kinds and saved.get("docType") == "passport" and any(saved.get(k) for k in MRZ_COMPARED):
+        out["passportsSince"] = 1
+    if "id_front" in kinds and saved.get("docType") == "israeli_id" and any(saved.get(k) for k in HE_COMPARED):
+        out["idCardsSince"] = 1
+    return out
+
+
+def readers_due(stats):
+    """The readers' counters for the stats answer: the real passports and ID cards saved since each reader's last
+    training, REAL_NEEDED, and whether each is due."""
+    p, c = int(stats.get("passportsSince") or 0), int(stats.get("idCardsSince") or 0)
+    return {"passportsSince": p, "idCardsSince": c, "realNeeded": REAL_NEEDED,
+            "passportsDue": p >= REAL_NEEDED, "idCardsDue": c >= REAL_NEEDED}
+
+
 def document_record(doc, tenant_id, now, doc_id, page_paths):
     """The record kept beside a document's pages."""
-    return {"id": doc_id, "tenantId": tenant_id or "", "workerId": doc["workerId"], "createdAt": now,
+    return {"id": doc_id, "tenantId": tenant_id or "", "workerId": doc["workerId"], "sessionId": doc.get("sessionId"), "createdAt": now,
             "pages": [{"path": path, "doctype": pg["doctype"], "primary": pg["primary"]} for path, pg in zip(page_paths, doc["pages"])],
             "read": doc["read"], "reads": doc["reads"], "scanned": doc["scanned"], "saved": doc["saved"], "corrected": doc["corrected"],
             **({"mrzShadow": doc["mrzShadow"]} if "mrzShadow" in doc else {}),
@@ -315,6 +387,9 @@ MAX_ATTEMPTS = 10                # per request (the phone's queue holds 5)
 MAX_ATTEMPT_BYTES = 1_500_000    # a JPEG at most 1600 px on the long side
 ATTEMPT_SOURCES = ("site", "lab")
 OUTCOMES = ("kept", "retaken", "deleted")
+# a later outcome of a kept attempt: a page deleted from its batch, or the worker window saved after its scan (with
+# the worker's id: delete_data.py --worker finds the attempt by it)
+LATER_OUTCOMES = ("deleted", "saved")
 INPUTS = ("camera", "photo", "pdf")
 _ID_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
@@ -401,6 +476,30 @@ def outcome_dir(v):
     except ValueError:
         return None
     return s if _attempt_id(parts[4]) else None
+
+
+def attempt_key(base):
+    """The id of an attempt's owner note (Firestore scanAttempts/<id>: {tenantId, dir, createdAt}) — its folder hashed
+    (a folder has slashes, a Firestore id may not)."""
+    return hashlib.sha1(str(base).encode()).hexdigest()
+
+
+def check_outcome(p, tenant_id, answer):
+    """A later outcome of a kept attempt ({"action": "attemptOutcome", "dir", "outcome", "page"?, "workerId"?}):
+    (the outcome as kept — {outcome, page, workerId} —, None) or (None, why it is refused). answer: the attempt's
+    answer.json as kept (None when it is not there); only a login of the attempt's own firm may add to it."""
+    outcome = p.get("outcome") if p.get("outcome") in LATER_OUTCOMES else None
+    if not outcome:
+        return None, "bad outcome"
+    wid = worker_id(p.get("workerId"))
+    if outcome == "saved" and not wid:
+        return None, "a saved attempt needs its worker"
+    if not isinstance(answer, dict):
+        return None, "no such attempt"
+    if str(answer.get("tenantId") or "") != str(tenant_id or ""):
+        return None, "not this firm's attempt"
+    page = p.get("page") if isinstance(p.get("page"), int) and not isinstance(p.get("page"), bool) and 0 <= p.get("page") < 20 else None
+    return {"outcome": outcome, "page": page, "workerId": wid or None}, None
 
 
 def attempts_wanted(tenant_id, collects):

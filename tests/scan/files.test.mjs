@@ -29,7 +29,8 @@
 //    also once a shot still looking for more settles with none shown; keepCanvases (the lab) keeps the newest
 //    pages' pixels only; switchWay while the models load starts them again on the new settings, the newest
 //    change winning;
-//  - the lab's document type collection (src/scan/lab/kinds.ts): the tick sends the type shown at once (keep
+//  - the lab's document type collection (src/scan/lab/kinds.ts; each example origin "lab", doctypeConfirmed, the
+//    model's turn and who set the copy's turn — the face finder or the model): the tick sends the type shown at once (keep
 //    when it is the model's), a pick goes KIND_WAIT after the last change or when the page is left (keepalive),
 //    each page once; a failed send is not shown as sent and goes again back online; never an untouched answer,
 //    nothing with no model, nothing of a deleted page.
@@ -98,6 +99,7 @@ class StubCtx {
   moveTo(x, y) { this.path.push([x, y]); }
   lineTo(x, y) { this.path.push([x, y]); }
   closePath() {}
+  clearRect(x, y, w, h) { const c = this.c; for (let j = Math.max(0, y); j < Math.min(c.height, y + h); j++) c.pixels.fill(0, (j * c.width + Math.max(0, x)) * 4, (j * c.width + Math.min(c.width, x + w)) * 4); }
   fill() { const [r, g, b] = parseRgb(this.fillStyle), c = this.c; for (let j = 0; j < c.height; j++) for (let i = 0; i < c.width; i++) if (inPoly(this.path, i + 0.5, j + 0.5)) c.pixels.set([r, g, b, 255], (j * c.width + i) * 4); }
 }
 class StubCanvas {
@@ -754,11 +756,16 @@ await run('the lab\'s kinds: the tick sends the type shown at once, keep when it
   await settle();
   const ex = examplesOf(posts);
   assert.equal(ex.length, 1, 'once');
-  assert.deepEqual(ex[0], { source: 'page', model: 'v5', doctypeModel: 'sefach', doctypeFixed: 'sefach', doctypeBy: 'model', pageImage: 'copy256', keep: true });
+  assert.deepEqual(ex[0], { source: 'page', model: 'v5', doctypeModel: 'sefach', doctypeFixed: 'sefach', doctypeBy: 'model', pageImage: 'copy256', keep: true,
+    origin: 'lab', doctypeConfirmed: true, turnModel: 0, turnBy: 'model' });
   assert.ok(k.sent('p1'));
   k.offer('p2', answer('id_front')); k.tick('p2', 'passport'); await settle();
   const e2 = examplesOf(posts)[1];
   assert.equal(e2.doctypeFixed, 'passport'); assert.equal(e2.doctypeModel, 'id_front'); assert.equal(e2.keep, undefined, 'not the model\'s: no keep');
+  // a page the face finder set upright: its copy's turn is the face's (turnBy "face"), the model's turn answer beside it
+  k.offer('p3', { ...answer('passport'), turn: 1 }, 2); k.tick('p3', 'passport'); await settle();
+  const e3 = examplesOf(posts)[2];
+  assert.deepEqual([e3.origin, e3.doctypeConfirmed, e3.turnModel, e3.turnBy, e3.model], ['lab', true, 1, 'face', 'v5']);
 });
 
 await run('the lab\'s kinds: a pick goes KIND_WAIT after the last change, or when the page is left; never an untouched answer', async () => {

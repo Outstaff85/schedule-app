@@ -133,8 +133,9 @@ def _shown(text):
     return get_display(text)
 
 
-def vary(rng, fonts, path, spec):
-    """The template at path with every marked field's value made up: (RGB PIL page, [(kind, text, box px)])."""
+def vary(rng, fonts, path, spec, held=False):
+    """The template at path with every marked field's value made up: (RGB PIL page, [(kind, text, box px)]);
+    held: the values from the check vocabulary (synth_fields.py --check, synth.field_value)."""
     from synth_docs import RTL, portrait
     img = load_page(path, spec)
     s = max(1.0, WIDTH / img.shape[1])
@@ -166,7 +167,7 @@ def vary(rng, fonts, path, spec):
             text = same[key]
         else:
             n = max(1, min(9, int(w / (h * 0.62)))) if kind == "digits" else None
-            text = synth.field_value(kind, rng, n)
+            text = synth.field_value(kind, rng, n, held=held)
             if key:
                 same[key] = text
         font = fit_font(fonts, rng, text, w, h)

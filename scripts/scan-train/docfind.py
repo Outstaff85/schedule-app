@@ -11,17 +11,29 @@ and the lab both run, with the accurate model in full precision:
   the sides are then pulled onto the strongest edge nearby (`refine_edges`);
 - more documents on the same photo (a passport and its ספח, a card…; up to 4):
   the found ones painted over, then a 10 % margin around the photo, then the
-  strips beside the first (`find_next`);
+  strips beside the first (`find_next`; with lab=True the lab's findNext rules
+  exactly, `find_next_lab`); a document lying on a found one, on its flat cut
+  (`find_inside`, the lab's findInside);
 - every page is cut flat (`warp`) and turned upright by the face on it (YuNet).
+
+The corner picking is the phone's own (gen/phone.py corners, re-exported here).
+The model's 256 input is shrunk by INTER_AREA unless `resize` names a phone path
+("live", "capture", "high": gen/phone.py frame_to_S — the edges exam on the
+phone's path, python -m gen exam-phone).
 
 Pure numpy / OpenCV / ONNX Runtime: the sessions are passed in, so the tests run
 it with the real models or with stand-ins.
 """
-import itertools
 from functools import cmp_to_key
 
 import numpy as np
 import cv2
+
+# The corner picking is the phone's, ported exactly (gen/phone.py corners, from src/scan/engine/geometry.ts corners): one
+# copy, re-exported here under its old names.
+from gen.phone import PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE, corners, _spots, _frame_score  # noqa: F401
+# src/scan/engine/shot.ts findInside: a document lying on another covers 3–60 % of its flat cut (one copy: gen/phone.py)
+from gen.phone import INSIDE_MIN, INSIDE_MAX  # noqa: F401
 
 S, HM = 256, 128      # the document edges model's input and heatmap sides
 FN = 640              # the face finder's input side (yunet640.onnx)
@@ -39,91 +51,38 @@ def quad_error(pts, right):
     return float(min(np.hypot(*(np.roll(p, k, 0) - r).T).max() for k in range(4)))
 
 
-def detect(sess, img):
+RESIZES = ("area", "live", "capture", "high")
+
+
+def model_input(img, resize=None):
+    """The edges model's 256 input from a BGR image: resize "area" (None; cv2.INTER_AREA, as the exam always did) or a
+    phone path — "live", "capture" or "high", optionally ":<kernel>" (gen/phone.py frame_to_S; with no kernel named the
+    profile's exam kernel: the measured one, else the mix's heaviest) — as float32 RGB 0..1, H × W × 3."""
+    if resize in (None, "area"):
+        small = cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA)
+    else:
+        from gen import phone
+        op, _, kernel = str(resize).partition(":")
+        small = phone.frame_to_S(img, op, kernel=kernel or phone.kernel_for(op))
+    return cv2.cvtColor(small, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+
+
+def detect(sess, img, resize=None):
     """The document edges model on a BGR image: (pts 4×2 in 0..1 or None, conf). sess may be a
-    list of models (the accurate one, then the light one): the first that is sure wins."""
+    list of models (the accurate one, then the light one): the first that is sure wins. resize: how the
+    picture is shrunk to the model's 256 input (model_input: INTER_AREA by default, or the phone's path)."""
     if isinstance(sess, (list, tuple)):
         best = (None, 0.0)
         for one in sess:
-            pts, conf = detect(one, img)
+            pts, conf = detect(one, img, resize)
             if good_quad(pts, conf):
                 return pts, conf
             if best[0] is None:
                 best = (pts, conf)
         return best
-    x = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), (S, S), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+    x = model_input(img, resize)
     hm = sess.run(None, {sess.get_inputs()[0].name: x.transpose(2, 0, 1)[None]})[0][0]
     return corners(hm)
-
-
-PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE = 3, 6, 10, 1.6, 4, np.radians(5)
-
-
-def _spots(m):
-    """Up to PEAKS spots of one heatmap (>= 0.3 and at least half its highest): (centre of the blob
-    around it, within BLOB_R, in 0..1; its value)."""
-    out, left, top = [], m.copy(), float(m.max())
-    n, lab = cv2.connectedComponents((m >= 0.3).astype(np.uint8), connectivity=4)
-    ys, xs = np.mgrid[0:m.shape[0], 0:m.shape[1]]
-    for _ in range(PEAKS):
-        i = int(np.argmax(left))
-        py, px = np.unravel_index(i, m.shape)
-        v = float(left[py, px])
-        if v < 0.3 or v < top * 0.5:
-            break
-        near = (np.abs(xs - px) <= BLOB_R) & (np.abs(ys - py) <= BLOB_R)
-        w = m * (lab == lab[py, px]) * near
-        sw = float(w.sum())
-        out.append(([(float((xs * w).sum()) / sw + 0.5) / m.shape[1], (float((ys * w).sum()) / sw + 0.5) / m.shape[0]], v))
-        left[max(0, py - PEAK_R):py + PEAK_R + 1, max(0, px - PEAK_R):px + PEAK_R + 1] = 0
-    return out, top
-
-
-def _frame_score(c):
-    q = [p for p, _ in c]
-    sg = 0
-    for i in range(4):
-        a, b, d = q[i], q[(i + 1) % 4], q[(i + 2) % 4]
-        z = (b[0] - a[0]) * (d[1] - b[1]) - (b[1] - a[1]) * (d[0] - b[0])
-        if not z or (sg and np.sign(z) != sg):
-            return -1.0
-        sg = np.sign(z)
-    side = [float(np.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1])) for i in range(4)]
-
-    def even(a, b):
-        r = max(a, b) / max(1e-6, min(a, b))
-        return (SIDES / r) ** 2 if r > SIDES else 1.0
-    def ang(i):
-        return np.arctan2(q[(i + 1) % 4][1] - q[i][1], q[(i + 1) % 4][0] - q[i][0])
-
-    def off(a, b):   # how far opposite sides are from parallel (they run opposite ways)
-        d = abs(ang(a) - ang(b) - np.pi) % (2 * np.pi)
-        return min(d, 2 * np.pi - d)
-    # a page in perspective keeps one pair of sides near parallel; a frame with both pairs off is
-    # counted down by cos^PAR of the smaller one beyond FREE
-    par = max(0.0, float(np.cos(max(0.0, min(off(0, 2), off(1, 3)) - FREE)))) ** PAR
-    return sum(v for _, v in c) * even(side[0], side[2]) * even(side[1], side[3]) * par
-
-
-def corners(hm):
-    """The 4 corners picked together from up to PEAKS spots of each heatmap: with two documents on a
-    picture every heatmap has a spot on each, and the highest spots alone can put one corner on one
-    document and three on the other (an ID card below its ספח, 2026-10-22). The convex frame with the
-    highest spots wins, a frame whose opposite sides differ more than SIDES× counted down, and one with both
-    pairs of sides more than FREE from parallel (a frame mixed of two documents) by cos^PAR of the rest. One spot on
-    each heatmap: that frame, as before. The phone does the same (src/scan/engine/geometry.ts corners, the one copy
-    the site's scanner and the lab run — a change here is mirrored there)."""
-    found = [_spots(hm[k]) for k in range(4)]
-    conf0 = min(top for _, top in found)
-    if any(not s for s, _ in found):
-        return None, conf0
-    best = [s[0] for s, _ in found]
-    best_score = _frame_score(best)
-    for c in itertools.product(*(s for s, _ in found)):
-        sc = _frame_score(c)
-        if sc > best_score:
-            best, best_score = list(c), sc
-    return np.array([p for p, _ in best], np.float64), min(v for _, v in best)
 
 
 def quad_area(q):
@@ -228,31 +187,36 @@ def border_colour(img):
     return [int(v) for v in np.median(ring, axis=0)]
 
 
-def detect_padded(sess, img, col=None):
+def detect_padded(sess, img, col=None, resize=None):
     """detect() on the image inside a 10 % margin of its background's colour: a document
     cut off by the photo's edge (or cut to its edges already) then lies whole inside,
     its corners on the edge. The corners are given in the image's own 0..1."""
     h, w = img.shape[:2]
     pad = round(0.1 * max(w, h))
     padded = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=col or border_colour(img))
-    pts, conf = detect(sess, padded)
+    pts, conf = detect(sess, padded, resize)
     if pts is None:
         return None, conf
     return np.clip((pts * [w + 2 * pad, h + 2 * pad] - pad) / [w, h], 0, 1), conf
 
 
-def find_next(models, img, found):
+def find_next(models, img, found, resize=None, lab=False):
     """The next document's corners (0..1) on the photo, or None: the found ones painted
     over in the background's colour, then a 10 % margin of that colour around the photo
     (a document cut off by the photo's edge then lies whole inside) — each with the
     accurate model, then the light one, as the scanner lab does —, then the widest strips
     left beside the first (the accurate model only). A frame overlapping a found one by
-    over 30 % is that one again. models: a session, or a list (accurate, light)."""
+    over 30 % is that one again. models: a session, or a list (accurate, light); resize: as detect's.
+
+    lab=False (pages(): this file's own finder) takes a frame by good_quad with the photo's shape (no longer than
+    3 : 1) and paints in border_colour; lab=True runs the lab's findNext exactly (find_next_lab: E4's shot)."""
     models = list(models) if isinstance(models, (list, tuple)) else [models]
+    if lab:
+        return find_next_lab(models, img, found, resize)
     h, w = img.shape[:2]
 
     def try_on(src, back, sess):
-        pts, conf = detect(sess, src)
+        pts, conf = detect(sess, src, resize)
         q = back(pts) if good_quad(pts, conf) else None
         if q is None or not good_quad(q, conf, img.shape):
             return None
@@ -269,7 +233,7 @@ def find_next(models, img, found):
         if q is not None:
             return q
     for sess in models:
-        pts, conf = detect_padded(sess, painted, col)
+        pts, conf = detect_padded(sess, painted, col, resize)
         q = pts if good_quad(pts, conf, img.shape) and all(quad_iou(pts, f) <= 0.3 for f in found) else None
         if q is not None:
             return q
@@ -288,6 +252,98 @@ def find_next(models, img, found):
     return None
 
 
+def _border_kernel(resize):
+    """The kernel findNext's 32 × 32 paint colour is drawn with: drawImage at the default smoothing (the capture op's
+    kernel — the one resize names, else the profile's), INTER_AREA on the "area" path."""
+    from gen import phone
+    if resize in (None, "area"):
+        return "area"
+    _, _, kernel = str(resize).partition(":")
+    return kernel or phone.kernel_for("capture")
+
+
+def find_next_lab(models, img, found, resize=None):
+    """src/scan/engine/shot.ts findNext, step by step: the found ones (each grown 4 % from its centre) painted over in the colour of
+    the photo's border (phone.lab_border_colour), each model on it (the accurate one, then the light one), then the
+    same inside a margin of that colour (Math.round of 10 % of the long side; the corners taken back and clamped to
+    the photo), then — when one is found already — the two widest strips beside the first (at least 25 % wide and
+    20 % high, Math.round sides, no smallest size), the accurate model only. A frame is taken when the model's answer
+    is phone.lab_good_quad (no aspect rule) and, back on the photo, phone.doc_shape in its pixels and overlapping
+    no found one by over 30 % (phone.lab_quad_iou). The painting is antialiased like a canvas fill; every model input
+    is smallRGBA's (resize, "capture" on the phone's path). models: a list (accurate, light) or one session."""
+    from gen import phone
+    models = list(models) if isinstance(models, (list, tuple)) else [models]
+    h, w = img.shape[:2]
+    found = [np.asarray(f, np.float64) for f in found]
+
+    def fresh(q):
+        return phone.doc_shape(q, w, h) and all(phone.lab_quad_iou(q, f) <= 0.3 for f in found)
+
+    def try_it(sess, src, back):
+        pts, conf = detect(sess, src, resize)
+        if not phone.lab_good_quad(pts, conf):
+            return None
+        q = back(np.asarray(pts, np.float64))
+        return q if fresh(q) else None
+
+    col = phone.lab_border_colour(img, _border_kernel(resize))
+    painted = phone.lab_paint(img, found, colour=col)   # each found one grown 4 %, an antialiased canvas fill
+    for sess in models:
+        q = try_it(sess, painted, lambda p: p)
+        if q is not None:
+            return q
+    P = phone.js_round(0.1 * max(w, h))
+    padded = cv2.copyMakeBorder(painted, P, P, P, P, cv2.BORDER_CONSTANT, value=col)
+    pw, ph = w + 2 * P, h + 2 * P
+    for sess in models:
+        q = try_it(sess, padded, lambda p: np.clip((p * [pw, ph] - P) / [w, h], 0, 1))
+        if q is not None:
+            return q
+    if not found:
+        return None
+    q1 = found[0]
+    x0, y0 = q1.min(0)
+    x1, y1 = q1.max(0)
+    strips = [s for s in [(0, 0, 1, y0), (0, y1, 1, 1), (0, 0, x0, 1), (x1, 0, 1, 1)] if s[2] - s[0] >= 0.25 and s[3] - s[1] >= 0.2]
+    strips.sort(key=lambda s: -(s[2] - s[0]) * (s[3] - s[1]))
+    for a, b, c2, d2 in strips[:2]:
+        sw, sh = phone.js_round((c2 - a) * w), phone.js_round((d2 - b) * h)
+        X0, Y0 = phone.js_round(a * w), phone.js_round(b * h)
+        if sw < 1 or sh < 1:
+            continue
+        strip = np.zeros((sh, sw, 3), np.uint8)   # drawImage of a source rectangle past the photo's edge: left blank
+        part = painted[Y0:Y0 + sh, X0:X0 + sw]
+        strip[:part.shape[0], :part.shape[1]] = part
+        q = try_it(models[0], strip, lambda p, a=a, b=b, c2=c2, d2=d2: np.stack([a + p[:, 0] * (c2 - a), b + p[:, 1] * (d2 - b)], 1))
+        if q is not None:
+            return q
+    return None
+
+
+def find_inside(sess, img, q, found, resize="capture"):
+    """A document lying on the found one q (an ID card on its ספח; src/scan/engine/shot.ts findInside), or None: q cut flat from
+    the photo as the phone cuts it (gen/phone.py warp_rgba: not turned, no exact proportion, what falls outside the
+    photo black), the model on the cut, and a sure frame of a document's shape (phone.doc_shape) covering 3–60 % of
+    the cut taken back onto the photo through the cut's homography — unless it is a document found already (q itself
+    left out; the overlap by phone.lab_quad_iou, the lab's quadIoU). sess: one model (the lab uses its capture model, the
+    light one when it has none); img: BGR; resize: as detect's ("capture": the lab's smallRGBA)."""
+    from gen import phone
+    q = np.asarray(q, np.float64)
+    flat = phone.warp_rgba(img, q.tolist())[..., :3]
+    H, W = flat.shape[:2]
+    if W < 2 or H < 2:
+        return None
+    pts, conf = detect(sess, flat, resize)
+    if not phone.lab_good_quad(pts, conf) or not phone.doc_shape(pts, W, H):
+        return None
+    pts = np.asarray(pts, np.float64)
+    a = quad_area(pts)
+    if a < INSIDE_MIN or a > INSIDE_MAX:
+        return None
+    c = np.array(phone.unwarp(q.tolist(), pts.tolist()), np.float64)
+    return c if all(np.array_equal(np.asarray(f), q) or phone.lab_quad_iou(c, np.asarray(f)) <= 0.3 for f in found) else None
+
+
 # ---------- photos on a white page ----------
 
 def photos_on_page(img):
@@ -297,7 +353,7 @@ def photos_on_page(img):
     gives a photo's sides; then the blocks of ink (ink_blocks: a ספח, a black-and-white copy)
     not already in a photo. None when the picture is (nearly) one photo already. A band mostly
     dark (a screenshot's bar) is not a photo; a picture whose rest is not mostly white is not a
-    white page (none). The phone's copy: src/scan/find.ts photosOnPage."""
+    white page (none). The phone's copy: src/scan/engine/pictures.ts photosOnPage."""
     H, W = img.shape[:2]
     sc = 300 / max(W, H)
     w, h = max(1, round(W * sc)), max(1, round(H * sc))

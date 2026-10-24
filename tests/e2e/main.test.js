@@ -748,6 +748,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Haiku's page kinds (aiDetectAlign): the page it is asked about is the ספח (the ID card is the model's, in Mixed); the ID card's read (aiReadDoc)
   let kindCalls = 0;
   const readCalls = [];
+  let haikuTurn = 90;   // Haiku's turn for the ספח in the first scan below (none after it)
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
     const body = JSON.parse(r.request().postData() || '{}');
@@ -758,7 +759,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: 0}})});
+    // the ספח is said to need a quarter turn (haikuTurn, this scan only): the face finder set it upright already (its
+    // turn 0, given below), so it is not turned
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: haikuTurn}})});
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
@@ -798,8 +801,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const first = {b64: a, doctype: sure, mrz: zones, he: hes};
     const s = await H.inject({pics: [first]});
     r.one = await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 1, 15000);
-    await H.inject({attempt: s.attempt, pics: [first, {b64: b}]});
+    // the ספח set upright by its face (the face finder's turn 0): Haiku's quarter turn is not applied to it
+    const two = await H.inject({attempt: s.attempt, pics: [first, {b64: b, turn: 0}]});
+    const c2 = H.session().pages.get(two.ids[1]).canvas;
     r.two = await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 2, 15000);
+    await T.tick(300);
+    r.unturned = !!H.session().pages.get(two.ids[1]) && H.session().pages.get(two.ids[1]).canvas === c2;
     r.kinds0 = [...document.querySelectorAll('[data-testid="scan-thumb"]')].map(e => e.dataset.kind).join(',');
     r.attempt = s.attempt;
     return r;
@@ -835,6 +842,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.given = T.val('wGiven'); r.docId = T.val('wDocId'); r.city = T.val('wCity');
     r.front = !!window.__aiScanImage;
     r.kinds = ['front', ...(window.__aiPacketOtherPages || []).map(x => x.kind + (x.contract ? ':contract' : ''))].join(',');
+    r.otherTail = (window.__aiPacketOtherPages || []).map(x => x.b64.slice(-24));
     // the save after a scan sends the document with what was saved (docs/hf-plan.md → H8a)
     ManagerBridge.sendScanDocument('w-test', {docType: 'israeli_id', docGiven: 'Scanned', docSurname: 'Persson', docId: '123456782'});
     closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
@@ -842,6 +850,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   await p.waitForTimeout(800);
   const kindAtDone = kindCalls; // the Haiku calls of this scan, before the next checks give their own pages
+  haikuTurn = 0;
   const sentAtDone = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []).find(x => x.id === shot.attempt) || {};
   ok(look.full && look.site && look.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done' && look.noFrame && look.base === '/scan/' && look.source === 'site'
     && shot.one && shot.two && shot.kinds0 === 'id_front,sefach' && view.back && /· 1/.test(view.otherDone) && view.notSaved && /· 2/.test(scw.done)
@@ -975,7 +984,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
   const atA = sent.find(x => x.id === att.a) || {}, atB = sent.find(x => x.id === att.b) || {};
-  const outc = feedbackCalls.find(c => c.action === 'attemptOutcome') || {};
+  const outc = feedbackCalls.find(c => c.action === 'attemptOutcome' && c.outcome !== 'saved') || {};
   const sizeB = atB.picture ? await p.evaluate(b64 => JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)))), atB.picture) : '';
   ok(att.held === 1 && att.sent && atA.group === atB.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
     && sizeB === '{"h":1200,"w":1600}' && outc.dir === 'attempts/new/site/2026-10-20/' + att.b && outc.outcome === 'deleted' && outc.page === 1,
@@ -1185,9 +1194,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
   const exOk = ex.length === 2 && ex.every(e => e.source === 'page')
     && ex[0].doctypeBy === 'model' && ex[0].doctypeModel === 'id_front' && ex[0].doctypeFixed === 'id_front'
-    && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage;
+    && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage
+    // each carries its scan's session and who set its turn (the training audit, 2026-10-24)
+    && typeof ex[0].sessionId === 'string' && !!ex[0].sessionId && ex[1].sessionId === ex[0].sessionId && ex[0].turnBy === 'model'
+    // the ספח set upright by the face finder: turnBy "face", and Haiku's quarter turn not applied (the page as cut)
+    && ex[1].turnBy === 'face' && shot.unturned;
   ok(exOk && kindAtDone === 1 && feedbackCalls.some(c => c.action === 'mode'),
-    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep}))}));
+    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep, session: !!e.sessionId, turnBy: e.turnBy})), unturned: shot.unturned}));
   const docCall = feedbackCalls.find(c => c.action === 'document') || {};
   const zs = docCall.mrzShadow || {};
   ok((zs.lines || []).length === 2 && zs.docId === 'NW259050' && zs.docDob === '12/03/1984' && zs.docExpiry === '19/05/2029' && zs.docSex === 'M'
@@ -1200,6 +1213,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',
     'scan, the save after it: the document goes to scan_feedback (H8a) — its own pages (not the contract), the AI\'s read, the fields the scan filled and the ones saved '
     + JSON.stringify({workerId: docCall.workerId, pages: (docCall.pages || []).map(x => x.doctype + (x.primary ? '*' : '')), scanned: docCall.scanned, saved: docCall.saved}));
+  // the scan's attempts told "saved" with the worker's id once the worker window saved (src/scan/server.ts), so the
+  // deletion of a worker's data on request finds them (delete_data.py --worker); each scan has its own session id
+  const savedOut = feedbackCalls.filter(c => c.action === 'attemptOutcome' && c.outcome === 'saved');
+  ok(savedOut.some(c => c.workerId === 'w-test' && c.dir === 'attempts/new/site/2026-10-20/' + shot.attempt) && typeof docCall.sessionId === 'string' && docCall.sessionId === (ex[0] || {}).sessionId,
+    "scan, the save after it: the scan's attempts are told 'saved' with the worker's id, and the document carries the scan's session id " + JSON.stringify({savedOut, attempt: shot.attempt, session: docCall.sessionId}));
   await p.unroute(/cloudfunctions\.net\/scan_feedback$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
   // The contract pages of a scan become one PDF, a page per photo (src/scan/pdf.ts).
   const cpdf = await p.evaluate(async jpg => {
@@ -2546,9 +2564,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
 
   // ── Super-admin: cross-firm summary uses each firm's own clients ──
   ctx = await newCtx(); p = await page(ctx);
+  // The scanner's training counts (scan_feedback stats, read for the bell at most every 6 hours): 18 new
+  // scan attempts of the 15 needed — the super-admin's bell says it is time to train (src/scan/server.ts trainingStats).
+  await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
+    const h = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:h});
+    if (JSON.parse(r.request().postData() || '{}').action !== 'stats') return r.fallback();
+    return r.fulfill({status:200, contentType:'application/json', headers:h, body: JSON.stringify({ok: true, due: false, edgesSince: 3, doctypesDue: false, doctypes: {},
+      stats: {attemptsSince: 18}, attemptsSince: 18, attemptsAt: 15, attemptsDue: true,
+      passportsSince: 31, idCardsSince: 4, realNeeded: 30, passportsDue: true, idCardsDue: false})});
+  });
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2 && document.querySelectorAll('#firmsScreenRoot [data-testid="firm-row"]').length === 2), 'boss: firms list (listTenants)');
+  const attemptsBell = await waitFor(p, () => notifList().some(n => /^scan-attempts:/.test(n.id) && /18 new scan attempts/.test(n.detail)), 10000);
+  ok(attemptsBell, 'boss: the bell says "New scan attempts — time to train" with the count from scan_feedback (attemptsSince / attemptsDue reach the header)');
+  const readersBell = await p.evaluate(() => ({passports: notifList().some(n => /^scan-passports:/.test(n.id) && /31 real passports/.test(n.detail)),
+    cards: notifList().some(n => /^scan-idcards:/.test(n.id))}));
+  ok(readersBell.passports && !readersBell.cards, 'boss: the bell says "Enough real passports to train the passport zone reader" at 30 (passportsDue), and nothing for the ID cards under 30 ' + JSON.stringify(readersBell));
   // The firms list (React, stage 6f-2): ✎ and a bare ⋮ (Edit, Disable, Delete last via Undo); Select; a tap opens the firm (below).
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));

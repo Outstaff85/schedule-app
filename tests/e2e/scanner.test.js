@@ -414,8 +414,11 @@ const READS = {
   await sleep(1500);
   const adds = labCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
   const latt = labCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []).find(x => x.id === lshot.attempt) || {};
-  ok(ltrain.opened && ltrain.tick && ltrain.sent && adds.length === 1 && adds[0].doctypeModel === 'id_front' && adds[0].doctypeFixed === 'id_front' && adds[0].keep === true && adds[0].doctypeBy === 'model' && !!adds[0].pageImage,
-    'lab: the tick on the model\'s type sends it once (keep, with its 256×256 copy) ' + JSON.stringify({ltrain, adds: adds.map(x => ({m: x.doctypeModel, f: x.doctypeFixed, keep: x.keep, by: x.doctypeBy, copy: !!x.pageImage}))}));
+  ok(ltrain.opened && ltrain.tick && ltrain.sent && adds.length === 1 && adds[0].doctypeModel === 'id_front' && adds[0].doctypeFixed === 'id_front' && adds[0].keep === true && adds[0].doctypeBy === 'model' && !!adds[0].pageImage
+    // a person's answer from the lab (origin "lab", doctypeConfirmed) with the copy's turn: no face on these pages, so
+    // the model's guess (turnBy "model") beside its turn answer
+    && adds[0].origin === 'lab' && adds[0].doctypeConfirmed === true && adds[0].turnBy === 'model' && Number.isInteger(adds[0].turnModel),
+    'lab: the tick on the model\'s type sends it once (keep, with its 256×256 copy, origin lab, the copy\'s turn) ' + JSON.stringify({ltrain, adds: adds.map(x => ({m: x.doctypeModel, f: x.doctypeFixed, keep: x.keep, by: x.doctypeBy, copy: !!x.pageImage, origin: x.origin, confirmed: x.doctypeConfirmed, turnBy: x.turnBy, turnModel: x.turnModel}))}));
   ok(ltrain.looked === 2 && latt.outcome === 'kept' && latt.source === 'lab' && latt.input === 'camera' && (latt.edgesMore || []).length === 1 && Array.isArray(latt.edgesModel),
     'lab: Looks good on every page of the camera shot sends its attempt at once (source lab, no Done in the lab), with the model\'s corners of both documents '
     + JSON.stringify({looked: ltrain.looked, outcome: latt.outcome, source: latt.source, input: latt.input, more: (latt.edgesMore || []).length}));

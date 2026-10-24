@@ -1,0 +1,14 @@
+{
+  "name": "default-mix",
+  "measured": false,
+  "about": "Which resampling kernel each of the phone's paths uses (gen/phone.py). No phone has been measured yet (the lab's probe page is deferred: it needs the owner's phones), so each op draws from a mix and its name (phone.profile_id) is written beside what it made. The heaviest kernel of each mix is the one the exams use. A measured profile comes from `python -m gen profile --from probe.json`. Chromium (desktop, headless) is measured on every PR by tests/e2e/phone-parity.test.js: createImageBitmap 'low' and drawImage at the default smoothing are 'bilinear', imageSmoothingQuality 'high' is 'high'. Safari is not measured.",
+  "ops": {
+    "live": {"mix": {"bilinear": 0.6, "mipmap": 0.25, "area": 0.15}},
+    "capture": {"mix": {"bilinear": 0.6, "mipmap": 0.25, "area": 0.15}},
+    "high": {"mix": {"high": 0.6, "mipmap": 0.2, "area": 0.2}}
+  },
+  "browsers": {
+    "chromium": {"live": "bilinear", "capture": "bilinear", "high": "high", "by": "tests/e2e/phone-parity.test.js"},
+    "safari": null
+  }
+}

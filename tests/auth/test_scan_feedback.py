@@ -5,6 +5,7 @@ import base64
 import datetime
 import importlib.util
 import pathlib
+import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -226,6 +227,21 @@ def test_a_phone_cut_page_teaches_only_its_document_type():
     assert feedback.check({"source": "page", "doctypeModel": "id_front", "doctypeFixed": "sefach"})[1] == "a changed document type needs a small JPEG of the page"
 
 
+def test_a_tick_in_the_lab_is_kept_as_doctype_confirmed_and_a_site_sample_is_not():
+    now = datetime.datetime(2026, 10, 24, tzinfo=datetime.timezone.utc)
+    lab = {"source": "page", "origin": "lab", "model": "v6", "doctypeModel": "passport", "doctypeFixed": "passport",
+           "doctypeBy": "model", "pageImage": JPG, "doctypeConfirmed": True, "keep": True}
+    e, why = feedback.check(lab)
+    assert why is None and e["doctypeConfirmed"] is True and feedback.kept(e) and not feedback.correction(e)
+    assert feedback.record(e, "t", now, None, "p")["doctypeConfirmed"] is True
+    site, _ = feedback.check({"source": "page", "doctypeModel": "passport", "doctypeBy": "model", "pageImage": JPG, "keep": True})
+    assert site["doctypeConfirmed"] is False and feedback.record(site, "t", now, None, "p")["doctypeConfirmed"] is False
+    # only a phone-cut page carries it, as a bool, and only with a type
+    assert feedback.check(ex(keep=True, doctypeModel="passport", doctypeConfirmed=True))[0]["doctypeConfirmed"] is False
+    assert feedback.check({"source": "page", "doctypeModel": "passport", "doctypeConfirmed": "yes", "keep": True})[0]["doctypeConfirmed"] is False
+    assert feedback.check({"source": "page", "doctypeConfirmed": True, "keep": True})[0]["doctypeConfirmed"] is False
+
+
 def test_a_corner_fix_from_the_old_window_still_counts_toward_the_edges_retraining():
     fixed = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.95]]
     e, _ = feedback.check(ex(edgesFixed=fixed))
@@ -306,3 +322,257 @@ def test_a_training_is_due_at_15_attempts():
 def test_a_firm_with_its_collection_off_sends_no_attempts():
     assert feedback.attempts_wanted("t1", True) and not feedback.attempts_wanted("t1", False)
     assert feedback.attempts_wanted("", False)  # the super-admin in the lab
+
+
+# ---------- Training 2: the scan's session, the worker, the copy's turn; attempts told the worker; firm checks ----------
+def test_a_page_copy_keeps_its_scan_session_worker_and_who_set_its_turn():
+    e, why = feedback.check({"source": "page", "doctypeModel": "sefach", "doctypeFixed": "id_back", "pageImage": JPG,
+                             "sessionId": "3f1c-9a_b", "workerId": "w1", "turnBy": "haiku", "turnModel": 2, "turnFixed": 0})
+    assert why is None and e["sessionId"] == "3f1c-9a_b" and e["workerId"] == "w1" and e["origin"] == "site"
+    assert e["turnBy"] == "haiku" and e["turnModel"] == 2 and e["turnFixed"] == 0
+    now = datetime.datetime(2026, 10, 24, tzinfo=datetime.timezone.utc)
+    r = feedback.record(e, "t1", now, None, "p")
+    assert {k: r[k] for k in ("sessionId", "workerId", "turnBy", "turnModel", "turnFixed", "origin")} == \
+        {"sessionId": "3f1c-9a_b", "workerId": "w1", "turnBy": "haiku", "turnModel": 2, "turnFixed": 0, "origin": "site"}
+
+
+def test_bad_session_worker_and_turn_fields_are_dropped_not_refused():
+    e, why = feedback.check({"source": "page", "doctypeModel": "sefach", "sessionId": "../x", "workerId": "w" * 80,
+                             "turnBy": "guess", "turnModel": 4, "turnFixed": True, "origin": "elsewhere"})
+    assert why is None and e["sessionId"] is None and e["workerId"] == "w" * 64 and e["turnBy"] is None
+    assert e["turnModel"] is None and e["turnFixed"] is None and e["origin"] == "site"
+    e, _ = feedback.check({"source": "page", "doctypeModel": "sefach"})
+    assert e["workerId"] is None and e["sessionId"] is None
+    for who in feedback.TURN_BY:
+        assert feedback.check({"source": "page", "doctypeModel": "sefach", "turnBy": who})[0]["turnBy"] == who
+
+
+def test_a_lab_example_keeps_the_version_the_lab_names():
+    lab, _ = feedback.check({"source": "page", "origin": "lab", "model": "v5", "doctypeModel": "sefach", "doctypeFixed": "id_back",
+                             "pageImage": JPG, "turnModel": 1, "turnBy": "face"})
+    site, _ = feedback.check({"source": "page", "model": "v5", "doctypeModel": "sefach", "doctypeFixed": "id_back", "pageImage": JPG})
+    assert lab["origin"] == "lab" and feedback.example_version(lab, "base-v1") == "v5"
+    assert site["origin"] == "site" and feedback.example_version(site, "base-v1") == "base-v1"
+
+
+def test_a_full_document_keeps_its_scan_session():
+    d, _ = feedback.check_document(doc(sessionId="s-1"))
+    assert d["sessionId"] == "s-1" and feedback.document_record(d, "t1", "now", "x", ["p1", "p2"])["sessionId"] == "s-1"
+    d, _ = feedback.check_document(doc(workerId="w" * 70, sessionId="bad id"))
+    assert d["workerId"] == "w" * 64 and d["sessionId"] is None
+
+
+NOT_FIRM = "not this firm" + chr(39) + "s attempt"
+
+
+def test_a_saved_outcome_needs_the_worker_and_the_attempts_own_firm():
+    answer = {"id": "s12", "tenantId": "t1"}
+    out, why = feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "t1", answer)
+    assert why is None and out == {"outcome": "saved", "page": None, "workerId": "w1"}
+    assert feedback.check_outcome({"outcome": "saved"}, "t1", answer)[1] == "a saved attempt needs its worker"
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "t2", answer)[1] == NOT_FIRM
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "", answer)[1] == NOT_FIRM
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w1"}, "t1", None)[1] == "no such attempt"
+    assert feedback.check_outcome({"outcome": "kept"}, "t1", answer)[1] == "bad outcome"
+    out, _ = feedback.check_outcome({"outcome": "deleted", "page": 2}, "t1", answer)
+    assert out == {"outcome": "deleted", "page": 2, "workerId": None}
+    # the super-admin's lab attempts carry no firm: only a login with no firm adds to them
+    assert feedback.check_outcome({"outcome": "deleted"}, "", {"tenantId": ""})[0]["outcome"] == "deleted"
+    assert feedback.check_outcome({"outcome": "saved", "workerId": "w" * 80}, "t1", answer)[0]["workerId"] == "w" * 64
+
+
+# ---------- the server's side (functions/main.py) with Storage, the bucket and Firestore mocked ----------
+def _main():
+    """functions/main.py under a name of its own (functions-auth's tests import theirs as "main")."""
+    import sys
+    if "scan_functions_main" in sys.modules:
+        return sys.modules["scan_functions_main"]
+    fn = str(ROOT / "functions")
+    if fn not in sys.path:
+        sys.path.append(fn)  # its own modules (contracts, signing, datastore, feedback, gate)
+    spec = importlib.util.spec_from_file_location("scan_functions_main", ROOT / "functions" / "main.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["scan_functions_main"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _Ref:
+    def __init__(self, store, n):
+        self.id, self.store = f"r{n}", store
+
+    def set(self, rec, merge=False):
+        self.store.append((self.id, rec))
+
+
+class _Note:
+    """An attempt's owner note, Firestore scanAttempts/<id>."""
+    def __init__(self, notes, nid):
+        self.notes, self.nid = notes, nid
+
+    def set(self, rec, merge=False):
+        self.notes[self.nid] = rec
+
+    def get(self):
+        rec = self.notes.get(self.nid)
+        return types.SimpleNamespace(exists=rec is not None, to_dict=lambda: dict(rec) if rec is not None else None)
+
+
+class _Db:
+    def __init__(self, notes=None):
+        self.records, self.n, self.notes, self._col = [], 0, dict(notes or {}), None
+
+    def collection(self, name):
+        assert name in ("scanTraining", "scanAttempts")
+        self._col = name
+        return self
+
+    def document(self, nid=None):
+        if self._col == "scanAttempts":
+            return _Note(self.notes, nid)
+        self.n += 1
+        return _Ref(self.records, self.n)
+
+
+class _Stats:
+    def __init__(self):
+        self.updates = []
+
+    def set(self, update, merge=False):
+        self.updates.append(update)
+
+
+def _body(resp):
+    import json
+    return resp.status_code, json.loads(resp.get_data())
+
+
+def _server(monkeypatch, collects=True, answer=None):
+    main = _main()
+    put, asked = [], []
+    monkeypatch.setattr(main, "collects_documents", lambda db, t: asked.append(t) or collects)
+    monkeypatch.setattr(main.datastore, "put", lambda files, fb=None: put.extend(files) or [p for p, _ in files])
+    monkeypatch.setattr(main.datastore, "on_hf", lambda: False)
+    monkeypatch.setattr(main.datastore, "get", lambda path, fb=None: answer(path) if callable(answer) else answer)
+    return main, put, asked
+
+
+PAGE = {"source": "page", "doctypeModel": "sefach", "doctypeFixed": "id_back", "pageImage": JPG}
+
+
+def test_the_server_keeps_the_lab_version_and_the_new_fields(monkeypatch):
+    main, put, _ = _server(monkeypatch)
+    db, stats = _Db(), _Stats()
+    lab = dict(PAGE, origin="lab", model="v5", turnModel=1, turnBy="face")
+    site = dict(PAGE, model="v5", sessionId="s1", workerId="w1", turnBy="haiku")
+    code, j = _body(main._scan_add({"examples": [lab, site]}, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] == 2
+    recs = dict(db.records)
+    assert recs["r1"]["model"] == "v5" and recs["r1"]["origin"] == "lab" and recs["r1"]["turnBy"] == "face" and recs["r1"]["turnModel"] == 1
+    assert recs["r2"]["model"] == main.SITE_VERSION and recs["r2"]["sessionId"] == "s1" and recs["r2"]["workerId"] == "w1" and recs["r2"]["turnBy"] == "haiku"
+    assert len(put) == 2
+
+
+def test_a_firm_with_its_collection_off_keeps_no_page_copy(monkeypatch):
+    main, put, asked = _server(monkeypatch, collects=False)
+    db, stats = _Db(), _Stats()
+    code, j = _body(main._scan_add({"examples": [PAGE, dict(PAGE, doctypeFixed="sefach", keep=True)]}, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] == 0 and j["right"] == 1 and put == [] and db.records == [] and asked == ["t1"]
+    assert "doctypesSince" not in stats.updates[-1]
+    # the super-admin in the lab (no firm) always keeps them
+    main, put, asked = _server(monkeypatch, collects=False)
+    code, j = _body(main._scan_add({"examples": [PAGE]}, {"role": "superadmin"}, _Db(), _Stats(), None))
+    assert j["kept"] == 1 and len(put) == 1 and asked == []
+
+
+DIR = "attempts/new/site/2026-10-24/s12"
+
+
+def test_a_kept_attempt_gets_an_owner_note_and_a_saved_outcome_is_checked_against_it_without_reading_the_bucket(monkeypatch):
+    import json
+    seen = []
+    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or None)
+    db = _Db()
+    code, j = _body(main._scan_attempts({"attempts": [att()]}, {"tenantId": "t1"}, db, _Stats(), None))
+    base = j["dirs"]["s12"]
+    assert code == 200 and db.notes == {feedback.attempt_key(base): {"tenantId": "t1", "dir": base, "createdAt": db.notes[feedback.attempt_key(base)]["createdAt"]}}
+    put.clear()
+    code, j = _body(main._scan_attempt_outcome({"dir": base, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t1"}, db, None))
+    assert code == 200 and j["ok"] and seen == []   # the server's bucket token may only write: nothing read back
+    (path, data), = put
+    rec = json.loads(data)
+    assert path.startswith(base + "/outcome-") and path.endswith(".json")
+    assert rec["outcome"] == "saved" and rec["workerId"] == "w1" and rec["page"] is None and rec["at"]
+    assert _body(main._scan_attempt_outcome({"dir": base, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, db, None))[0] == 403
+
+
+def test_an_attempt_kept_before_the_notes_is_checked_by_its_answer_json(monkeypatch):
+    import json
+    seen = []
+    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or json.dumps({"tenantId": "t1"}).encode())
+    code, j = _body(main._scan_attempt_outcome({"dir": DIR, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t1"}, _Db(), None))
+    assert code == 200 and j["ok"] and seen == [DIR + "/answer.json"] and len(put) == 1
+    # a note for another folder under the same key is never taken
+    db = _Db({feedback.attempt_key(DIR): {"tenantId": "t2", "dir": "attempts/new/site/2026-10-24/other"}})
+    assert _body(main._scan_attempt_outcome({"dir": DIR, "outcome": "deleted"}, {"tenantId": "t1"}, db, None))[0] == 200
+
+
+def test_an_outcome_from_another_firm_or_for_no_attempt_is_refused(monkeypatch):
+    import json
+    dir_ = DIR
+    main, put, _ = _server(monkeypatch, answer=json.dumps({"tenantId": "t1"}).encode())
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, _Db(), None))[0] == 403
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "kept"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
+    assert _body(main._scan_attempt_outcome({"dir": "documents/t1/x", "outcome": "deleted"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
+    assert put == []
+    main, put, _ = _server(monkeypatch, answer=None)
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted", "page": 1}, {"tenantId": "t1"}, _Db(), None))[0] == 404
+    # the firm in the note decides, not the answer.json
+    db = _Db({feedback.attempt_key(dir_): {"tenantId": "t9", "dir": dir_}})
+    assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted"}, {"tenantId": "t1"}, db, None))[0] == 403
+    assert put == []
+
+
+# ---------- the readers' counters for the bell (completeness fixes 2) ----------
+PASSPORT = {"docType": "passport", "docId": "FA123456", "docDob": "01/02/1990", "docGiven": "OKSANA"}
+IL_ID = {"docType": "israeli_id", "docSurname": "כהן", "docId": "123456782"}
+
+
+def test_a_saved_passport_or_id_card_counts_toward_its_reader():
+    pp = [{"b64": DOC_JPG, "doctype": "passport", "primary": True}]
+    d, _ = feedback.check_document(doc(pages=pp, saved=PASSPORT, scanned=PASSPORT))
+    assert feedback.reader_counts(d) == {"passportsSince": 1}
+    d, _ = feedback.check_document(doc(saved=IL_ID, scanned=IL_ID))   # doc(): an id_front page and a ספח
+    assert feedback.reader_counts(d) == {"idCardsSince": 1}
+    # no zone field kept, no page of its kind, another docType: nothing
+    d, _ = feedback.check_document(doc(pages=pp, saved={"docType": "passport", "docGiven": "OKSANA"}))
+    assert feedback.reader_counts(d) == {}
+    d, _ = feedback.check_document(doc(saved=PASSPORT))                     # an id_front page, a passport saved
+    assert feedback.reader_counts(d) == {}
+    d, _ = feedback.check_document(doc(pages=pp, saved=IL_ID))              # a passport page, an ID card saved
+    assert feedback.reader_counts(d) == {}
+    d, _ = feedback.check_document(doc())                                   # no docType saved
+    assert feedback.reader_counts(d) == {}
+
+
+def test_the_readers_are_due_at_30_real_documents():
+    assert feedback.REAL_NEEDED == 30
+    assert feedback.readers_due({}) == {"passportsSince": 0, "idCardsSince": 0, "realNeeded": 30, "passportsDue": False, "idCardsDue": False}
+    got = feedback.readers_due({"passportsSince": 30, "idCardsSince": 29})
+    assert got["passportsDue"] and not got["idCardsDue"] and got["idCardsSince"] == 29
+
+
+def test_the_server_counts_a_saved_passport_and_a_lab_tick(monkeypatch):
+    main, put, _ = _server(monkeypatch)
+    db, stats = _Db(), _Stats()
+    payload = doc(pages=[{"b64": DOC_JPG, "doctype": "passport", "primary": True}], saved=PASSPORT, scanned=PASSPORT)
+    code, j = _body(main._scan_document(payload, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] is True
+    upd = stats.updates[-1]
+    assert upd["passportsSince"].value == 1 and "idCardsSince" not in upd
+    # the lab's tick on the model's own type: kept with doctypeConfirmed in its record
+    tick = dict(PAGE, origin="lab", model="v6", doctypeModel="passport", doctypeFixed="passport", doctypeBy="model", keep=True,
+                doctypeConfirmed=True)
+    code, j = _body(main._scan_add({"examples": [tick]}, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] == 1 and db.records[-1][1]["doctypeConfirmed"] is True

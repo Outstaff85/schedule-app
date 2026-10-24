@@ -2,6 +2,7 @@
 environment variable names (another disk: set SCAN_TRAIN_HOME=D:\\scan-train). Pure: no Google or
 Hugging Face packages, so every script and the tests can import it. The scripts print in UTF-8 whatever
 the console's code page (a Hebrew Windows' cp1255 has no "→" and stopped them)."""
+import hashlib
 import os
 import pathlib
 import sys
@@ -12,6 +13,29 @@ for _stream in (sys.stdout, sys.stderr):
 
 WORK = pathlib.Path(os.environ.get("SCAN_TRAIN_HOME") or pathlib.Path.home() / ".scan-train")
 DATA = "OutStaff/scanner-data"   # the training data on Hugging Face (a PRIVATE bucket, docs/hf-plan.md → H7)
+HE_FILES = ("he.onnx", "he-layouts.json")   # the Hebrew field reader and where it reads on a card (train_he.py; H8c) — here, so train_he.py needs no Google package
+
+
+def sha256_of(path):
+    """A file's sha256 (hex): what binds an exam's report to the exact model file it examined."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def model_hashes(names, folder=None):
+    """{name: sha256} of the files of ~/.scan-train/new/ (or folder) an exam examined — written into its
+    report as "model_sha256"; publish.py recomputes them and refuses a report written for another file."""
+    folder = pathlib.Path(folder) if folder else WORK / "new"
+    return {n: sha256_of(folder / n) for n in names if (folder / n).exists()}
+
+
+def drop_report(*names):
+    """A training that writes a new model deletes the report of the one before (the exam is run again)."""
+    for n in names:
+        (WORK / n).unlink(missing_ok=True)
 
 
 def spare_cores(n):

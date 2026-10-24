@@ -1,38 +1,152 @@
-"""The last step of /scan-train, only on the owner's yes: the new models go to Hugging Face
-(REPO, public; docs/hf-plan.md → H5) as the next version — one commit holding every file of
-the version, tagged v<N>: the document edges models (S6), the document type models (S7) and / or
-the passport zone reader (docs/hf-plan.md → H8b) and / or the Hebrew field reader with its card layouts (H8c), whichever were trained and examined this time, with the exams' reports; every model not
-retrained is carried over from the lab's version (a document type model or a passport zone
-reader only when that version has one), the face finder too. The counters are reset (scanTrainingStats/current: edgesSince
-after the edges, doctypesSince after the document types; their names before H0 are cleared
-too), the lab is pointed at the new version (scripts/scan-lab/models-version — committed and
-deployed by the skill; the site follows only after the owner tried it in the lab), and the
-copies on this PC are deleted (--keep-copies: kept, for a training still to come). With the edges
-published, the scan attempts this run trained on (S8, pull.py's attempts.json) move from attempts/new/ to attempts/used/v<N>/, so the next run takes only new ones, and
-attemptsSince is reset. Needs the owner's HF token on the PC (`hf auth login`)."""
+"""The last step of /scan-train, only on the owner's yes: the new models named on the command line go to
+Hugging Face (REPO, public; docs/hf-plan.md → H5) as the next version — one commit holding every file of
+the version, tagged v<N>.
+
+  python publish.py --doctypes --dry-run      # the plan only: nothing written anywhere
+  python publish.py --doctypes                # the phone's document type model (S7)
+  python publish.py --edges --mrz             # the document edges models (S6) and the passport zone reader (H8b)
+
+Each model is named by its flag — --edges, --doctypes, --mrz, --he (the Hebrew field reader with its card
+layouts, H8c) — and only a named model's report is read: with no flag the reports found are printed and
+nothing is published. A report is bound to the exact files its exam examined (its "model_sha256",
+written by exam.py, exam_doctypes.py, exam_mrz.py and train_he.py): a report written for another file is
+refused ("report_X.json is for a different model; run the exam again"). Each named model's gate is printed first
+(gate_lines: the rules its exam says failed, or that none did, and the warnings — no real passport examined
+(realExamined false), no real ID card examined the Hebrew reader (realExamined false or fewer than 30 real cards on
+the exam side: realCards), MIDV not examined (midvSkipped), the templates set contaminated, the document type model with no
+real page kept apart). A model whose exam said not worth publishing is left out unless forced (--force-edges, --force-doctypes, --force-mrz, --force-he; the owner's
+explicit call); a model is also refused when its new .onnx file is the very file of the lab's version
+(nothing new — the old edges left on the PC, a model already published; its --force-<model> overrides),
+and --force-doctypes is refused while the only exam is "your documents" with a document type or the turn
+not measured (or its sure turns right on less than 98 %). Every model not named is carried over from the lab's version
+(the passport zone reader and the Hebrew field reader only when that version has them), the face finder
+too; only the phone's document type model (doctype-lite.onnx) is published — a server's doctype.onnx is
+never carried forward.
+
+Then: the counters of the published models are reset (scanTrainingStats/current: edgesSince after the
+edges, doctypesSince after the document type model, passportsSince after the passport zone reader, idCardsSince
+after the Hebrew field reader — the bell's real documents, functions/feedback.py reader_counts; their names before H0
+are cleared too), the lab is
+pointed at the new version (scripts/scan-lab/models-version — committed and deployed by the skill; the
+site follows only after the owner tried it in the lab). With the edges published, the scan attempts of
+this run (S8, pull.py's attempts.json) leave attempts/new/: the train folders to attempts/used/v<N>/, the
+exam ones to attempts/exam/ (pulled as the exam on every later run); attempts/golden/ is never moved;
+attemptsSince is lowered by the folders really moved. After a publish only what it used up is deleted, even
+with --keep-copies: the exam report of each model published (report.json and report.html with the edges,
+report_doctypes.json, report_mrz.json, report_he.json) and attempts.json with the edges — the reports of
+models not named and the training figures (report_mrz_train.json) stay; the other copies on this PC go too
+unless --keep-copies (for a training still to come). The training progress of each published model
+(~/.scan-train/checkpoints/<model>.pt, kept) is stamped with the version ("published": {version, at}), so a later
+train.py --more says what it goes on from. A version whose models may have seen what the exam keeps is added to
+heldout.json "versions" (heldout_clean false, those models, why — gen.common.mark_version): a model carried over from
+a version marked so for it, or a new one whose base chain (the lab's version it was trained from, its checkpoint's
+info.base / info.from.base) holds one or whose exam report says "contaminated" — so a version descended from v3/v4/v5
+is never reported clean (the skill commits heldout.json with models-version). --dry-run prints the files of the version (new or carried
+over), the counters it would set, the folders it would move, the checkpoint stamps and the heldout.json mark, and stops before any write to Hugging
+Face, Firestore or Storage. Needs the owner's HF token on the PC (`hf auth login`)."""
 import argparse
 import datetime
 import pathlib
 
-from google.cloud import firestore
+from common import (DATA, DOCTYPE_MODELS, DOCTYPES, HE_FILES, KEEP, MODELS, MRZ_MODEL, REPO, ROOT, WORK, bucket, clear_work, db,
+                    model_path, next_version, read_json, sha256_of, version_of)
+from gen.real import REAL_NEEDED
 
-from common import DATA, DOCTYPE_MODELS, DOCTYPES, HE_FILES, KEEP, MODELS, MRZ_MODEL, REPO, ROOT, WORK, bucket, clear_work, db, model_path, next_version, read_json, version_of
+# flag → (its report, what it is, what writes the report, its files in ~/.scan-train/new/)
+REPORTS = {
+    "edges": ("report.json", "the document edges models", "exam.py", MODELS),
+    "doctypes": ("report_doctypes.json", "the document type model", "exam_doctypes.py", tuple(DOCTYPE_MODELS)),
+    "mrz": ("report_mrz.json", "the passport zone reader", "exam_mrz.py", (MRZ_MODEL,)),
+    "he": ("report_he.json", "the Hebrew field reader", "train_he.py", HE_FILES),
+}
+ATTEMPT_DIRS = {"train": "attempts/used/{v}/", "exam": "attempts/exam/"}   # where a run's attempts go from attempts/new/
+# flag → the checkpoints (checkpoint.py) of its models, stamped with the version they were published as (train.py --more
+# names it in info.from); the passport zone reader keeps its own weights (mrz-ckpt/) and is not stamped
+CHECKPOINTS = {"edges": tuple(f"{n}.pt" for n in MODELS), "doctypes": tuple(f"{n}.pt" for n in DOCTYPE_MODELS), "mrz": (), "he": ("he.pt",)}
+
+
+def checkpoint_stamps(on, v, now):
+    """[(checkpoint file, the stamp)] of the published models whose training progress is on this PC."""
+    stamp = {"version": v, "at": now.isoformat(timespec="seconds")}
+    return [(WORK / "checkpoints" / f, stamp) for k in on for f in CHECKPOINTS[k] if (WORK / "checkpoints" / f).exists()]
+
+
+def base_chain(name, base):
+    """The versions a new model rests on: the lab's (train.py fine-tunes from its weights) and the ones its checkpoint
+    records (info.base, info.from.base) — as exam.chain_of; the checkpoint left out when it cannot be read."""
+    chain = [base]
+    f = WORK / "checkpoints" / f"{name}.pt"   # where checkpoint.py keeps it (checkpoint_stamps reads the same)
+    if f.exists():
+        try:
+            import torch
+            info = (torch.load(f, map_location="cpu", weights_only=False) or {}).get("info") or {}
+            chain += [info.get("base"), (info.get("from") or {}).get("base")]
+        except Exception:
+            pass
+    return [c for c in chain if c]
+
+
+def inherited_dirt(files, base, reports):
+    """{model: why} of the version's models that may have seen what the exam keeps: one carried over from a version
+    heldout.json marks for it, a new one whose base chain holds such a version, or whose exam report names it
+    "contaminated" (exam.py)."""
+    from gen.common import dirty_versions
+    out = {}
+    for name, (_, how) in sorted(files.items()):
+        if not name.endswith(".onnx"):
+            continue
+        dirty = dirty_versions(name)
+        if how != "new":
+            if base in dirty:
+                out[name] = f"{name} carried over from {base}"
+            continue
+        parents = sorted(set(base_chain(name, base)) & dirty)
+        said = sorted({v for r in reports.values() for v in ((r.get("contaminated") or {}).get(name) or [])})
+        if parents or said:
+            out[name] = f"{name} trained from {', '.join(sorted(set(parents) | set(said)))}"
+    return out
+
+
+def dirt_note(dirt):
+    """heldout.json's mark of the new version: (models, why) or None."""
+    if not dirt:
+        return None
+    return sorted(dirt), "may have seen what the exam keeps: " + "; ".join(dirt[n] for n in sorted(dirt))
+
+
+def moved_path(path, to):
+    """attempts/new/<source>/<date>/<id>/<file> → <to><source>/<date>/<id>/<file>."""
+    return to + path[len("attempts/new/"):]
 
 
 def used_path(path, v):
     """attempts/new/<source>/<date>/<id>/<file> → attempts/used/<v>/<source>/<date>/<id>/<file>."""
-    return "attempts/used/" + v + "/" + path[len("attempts/new/"):]
+    return moved_path(path, ATTEMPT_DIRS["train"].format(v=v))
 
 
-def move_attempts(v):
-    """The attempts trained on: attempts/new/ → attempts/used/<v>/, in the bucket and in Firebase Storage."""
+def attempt_plan(v):
+    """pull.py's attempts.json as [(folder, where it goes)] — only folders under attempts/new/ (never
+    attempts/exam/ or attempts/golden/); an old list (before {"train", "exam"}) is all train."""
     path = WORK / "attempts.json"
-    folders = read_json(path) if path.exists() else []
-    if not folders:
+    got = read_json(path) if path.exists() else {}
+    if isinstance(got, list):
+        got = {"train": got}
+    return [(d.rstrip("/"), to.format(v=v)) for kind, to in ATTEMPT_DIRS.items()
+            for d in got.get(kind) or [] if isinstance(d, str) and d.startswith("attempts/new/")]
+
+
+def move_attempts(v, plan=None):
+    """A run's attempts leave attempts/new/ — the train folders to attempts/used/<v>/, the exam ones to
+    attempts/exam/ — in the bucket and in Firebase Storage. → the folders really moved (something was
+    listed in the bucket or in Storage): what attemptsSince is lowered by."""
+    plan = attempt_plan(v) if plan is None else plan
+    if not plan:
         return 0
     from huggingface_hub import HfApi
     api = HfApi()
-    for d in folders:
+    b = bucket()
+    moved = 0
+    for d, to in plan:
         try:
             files = [f.path for f in api.list_bucket_tree(DATA, prefix=d + "/", recursive=True)]
         except Exception:
@@ -41,106 +155,253 @@ def move_attempts(v):
             import tempfile
             with tempfile.TemporaryDirectory() as tmp:
                 api.download_bucket_files(DATA, [(f, f"{tmp}/{i}") for i, f in enumerate(files)])
-                api.batch_bucket_files(DATA, add=[(pathlib.Path(f"{tmp}/{i}").read_bytes(), used_path(f, v)) for i, f in enumerate(files)])
+                api.batch_bucket_files(DATA, add=[(pathlib.Path(f"{tmp}/{i}").read_bytes(), moved_path(f, to)) for i, f in enumerate(files)])
             api.batch_bucket_files(DATA, delete=files)
-        b = bucket()
-        for blob in list(b.list_blobs(prefix="training/" + d + "/")):
-            b.rename_blob(blob, "training/" + used_path(blob.name[len("training/"):], v))
-    return len(folders)
+        blobs = list(b.list_blobs(prefix="training/" + d + "/"))
+        for blob in blobs:
+            b.rename_blob(blob, "training/" + moved_path(blob.name[len("training/"):], to))
+        moved += bool(files or blobs)
+    return moved
+
+
+def bound(key, report):
+    """A report is for the files in ~/.scan-train/new/ only when its model_sha256 names each of them with
+    the same hash, and no other; else SystemExit."""
+    file, what, exam, names = REPORTS[key]
+    have = {n: sha256_of(WORK / "new" / n) for n in names if (WORK / "new" / n).exists()}
+    want = report.get("model_sha256") or {}
+    if not have:
+        raise SystemExit(f"{file}: no new model for it in {WORK / 'new'} — train {what} first")
+    if have != want:
+        why = "it names no model file (written before reports were bound to their models)" if not want else ", ".join(
+            f"new/{n} {'missing' if n not in have else 'not examined' if n not in want else 'changed since'}"
+            for n in sorted(set(have) | set(want)) if have.get(n) != want.get(n))
+        raise SystemExit(f"{file} is for a different model; run the exam again ({exam}) — {why}")
+
+
+def base_hash(base, name):
+    """The sha256 of a model of the lab's version; None when that version has none."""
+    try:
+        return sha256_of(model_path(base, name))
+    except SystemExit:
+        return None
+
+
+def doctypes_measured(report):
+    """--force-doctypes needs more than "your documents" with a document type or the turn not measured: on the
+    phone the turn head decides a page's rotation, so its sure turns must be right on ≥ 98 % there too."""
+    if report.get("models"):
+        return True
+    yours = report.get("yoursModels") or {}
+    return bool(yours) and all(v is not None for r in yours.values() for v in (r.get("byDoctype") or {}).values()) and all(
+        r.get("sureTurnRight") is not None and r["sureTurnRight"] >= 0.98 for r in yours.values())
+
+
+def gate_lines(k, report):
+    """What a model's exam decided, in lines: the rules that failed (its report's "failed"), or that none did, and the
+    warnings the owner must see before a yes."""
+    what = REPORTS[k][1]
+    pub = report.get("publish")
+    head = f"{what[0].upper() + what[1:]} — the exam: " + ("worth publishing" if pub else "nothing to set it against (not decided)"
+                                                          if pub is None else "NOT worth publishing")
+    out = [head] + [f"  rule failed: {f}" for f in report.get("failed") or [] if pub is not None and not pub]
+    if pub and not report.get("failed"):
+        out.append("  no rule failed")
+    warn = []
+    if k == "mrz":
+        if report.get("realExamined") is False:
+            warn.append("no real passport examined this reader (realExamined false): try it in the lab before the site")
+        if report.get("midvSkipped"):
+            warn.append("MIDV's exam passports were not examined (--no-midv: midvSkipped)")
+        if report.get("passportsSkipped"):
+            warn.append(f"{report['passportsSkipped']} real passport pages could not be downloaded or read (passportsSkipped)")
+    if k == "he" and (report.get("realExamined") is not True or (report.get("realCards") or 0) < REAL_NEEDED):
+        warn.append(f"no real ID card examined this reader (realExamined {str(report.get('realExamined', False)).lower()}; "
+                    f"real cards on the exam side {report.get('realCards') or 0} of {REAL_NEEDED}): try it in the lab before the site")
+    if k == "edges" and report.get("contaminated"):
+        warn.append("the templates set is contaminated for " + ", ".join(f"{n} ({', '.join(v)})" for n, v in report["contaminated"].items())
+                    + ": never the gate alone")
+    if k == "doctypes" and pub is None:
+        warn.append("no page copies from the site kept apart: not set against Haiku")
+    t = report.get("turnExam") or {}
+    if k == "doctypes" and not t.get("pages"):
+        warn.append("the turn exam was not measured (no page whose turn is known)")
+    elif k == "doctypes" and t.get("sureTurnRight") is None:
+        warn.append(f"the turn exam: no turn the model is sure of on {t['pages']} pages (turn right {t.get('turn')})")
+    return out + [f"  warning: {w}" for w in warn]
+
+
+def load(a):
+    """The reports of the models named: {flag: report}. SystemExit with no flag (the reports found printed),
+    for a missing report, a report bound to another file, a refused force or a model with nothing new."""
+    named = [k for k in REPORTS if getattr(a, k)]
+    if not named:
+        found = [(k, r[0]) for k, r in REPORTS.items() if (WORK / r[0]).exists()]
+        print("Reports found: " + (", ".join(f"{f} ({REPORTS[k][1]}: --{k})" for k, f in found) if found else "none"))
+        raise SystemExit("name the models to publish: --edges, --doctypes, --mrz and / or --he (nothing is published without them)")
+    out = {}
+    for k in named:
+        file, what, exam, _ = REPORTS[k]
+        if not (WORK / file).exists():
+            raise SystemExit(f"no {file} — run {exam} first ({what})")
+        report = read_json(WORK / file)
+        bound(k, report)
+        print("\n".join(gate_lines(k, report)))
+        if not report.get("publish"):
+            if not getattr(a, "force_" + k):
+                print(f"{what[0].upper() + what[1:]}: left out — the exam said not worth publishing (--force-{k} to publish anyway)")
+                continue
+            if k == "doctypes" and not doctypes_measured(report):
+                raise SystemExit("--force-doctypes refused: the only exam is \"your documents\" and some document types or the turn were not "
+                                 "measured, or its sure turns are right on less than 98 % (no page copies from the site kept apart) — collect "
+                                 "them, or draw the exam photos again (synth_docs.py --templates --exam) and examine again")
+        out[k] = report
+    base = version_of("scan-lab")
+    for k in out:
+        same = [n for n in REPORTS[k][3] if n.endswith(".onnx") and (WORK / "new" / n).exists() and sha256_of(WORK / "new" / n) == base_hash(base, n)]
+        if same and not getattr(a, "force_" + k):
+            raise SystemExit(", ".join("new/" + n for n in same) + f": the very file of the lab's version {base} — nothing new to publish (--force-{k} to publish anyway)")
+    if not out:
+        raise SystemExit("nothing examined to publish — every model named was left out")
+    return out
+
+
+def version_files(on, base):
+    """The files of the new version: {name: (local path, "new" or "carried over from <base>")}."""
+    files = {}
+    carried = f"carried over from {base}"
+
+    def take(name, new, optional=True):
+        if new:
+            files[name] = (WORK / "new" / name, "new")
+            return
+        try:
+            files[name] = (model_path(base, name), carried)
+        except SystemExit:
+            if not optional:
+                raise   # the base version has none: only a model the lab may lack is skipped
+    for name in MODELS:
+        take(name, "edges" in on and (WORK / "new" / name).exists(), optional=False)
+    for name in DOCTYPE_MODELS:   # the phone's only: a server's doctype.onnx is never carried forward
+        take(name, "doctypes" in on and (WORK / "new" / name).exists())
+    take(MRZ_MODEL, "mrz" in on)
+    he_new = "he" in on and all((WORK / "new" / n).exists() for n in HE_FILES)
+    for name in HE_FILES:   # the Hebrew field reader and its layouts go together
+        take(name, he_new)
+    for name in KEEP:
+        take(name, False, optional=False)
+    for k in on:
+        files[REPORTS[k][0]] = (WORK / REPORTS[k][0], "new")
+    return files
+
+
+def stats_update(on, v, now, moved):
+    from google.cloud import firestore
+    stats = {"lastVersion": v}
+    if "edges" in on:
+        stats.update({"edgesSince": 0, "newSince": firestore.DELETE_FIELD, "lastTrainedAt": now, "lastReport": on["edges"]})
+    if "doctypes" in on:
+        stats.update({"doctypesSince": {k: 0 for k in DOCTYPES}, "kindsSince": firestore.DELETE_FIELD, "lastDoctypesTrainedAt": now, "lastDoctypesReport": on["doctypes"]})
+    if "mrz" in on:   # the bell's real passports since the reader's last training (functions/feedback.py reader_counts)
+        stats.update({"passportsSince": 0, "lastMrzTrainedAt": now, "lastMrzReport": on["mrz"]})
+    if "he" in on:    # the bell's real ID cards since the reader's last training
+        stats.update({"idCardsSince": 0, "lastHeTrainedAt": now, "lastHeReport": on["he"]})
+    if moved:
+        stats["attemptsSince"] = firestore.Increment(-moved)  # the attempts that came in since the pull stay counted
+    return stats
+
+
+def described(stats):
+    """The counters a publish sets, in words (the dry run)."""
+    out = []
+    for k, s in stats.items():
+        name = type(s).__name__
+        out.append(f"{k} lowered by the folders really moved (at most {-s.value})" if name == "Increment" else
+                   f"{k} cleared" if name == "Sentinel" else f"{k} set to the report" if k.endswith("Report") else
+                   f"{k} reset" if s == 0 or isinstance(s, dict) else f"{k} now" if k.endswith("At") else f"{k} {s}")
+    return out
+
+
+def drop_reports(on):
+    """What this publish used up: the exam report of each model published (a report kept would arm the next
+    publish) and, with the edges, report.html and attempts.json (the attempts they were trained on). The
+    reports of models not named and the training figures (report_mrz_train.json, read by exam_mrz.py) stay."""
+    used = [WORK / REPORTS[k][0] for k in on]
+    if "edges" in on:
+        used += [WORK / "report.html", WORK / "attempts.json"]
+    for p in used:
+        p.unlink(missing_ok=True)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--force-doctypes", action="store_true", help="publish document type models the exam called not worth it (the owner's explicit call)")
-    ap.add_argument("--force-mrz", action="store_true", help="publish a passport zone reader the exam called not worth it (the owner's explicit call)")
-    ap.add_argument("--keep-copies", action="store_true", help="keep the copies on this PC (the examples, templates and made-up photos for a training still to come)")
-    ap.add_argument("--force-he", action="store_true", help="publish a Hebrew field reader its check called not ready (the owner's explicit call)")
+    for k, (file, what, exam, _) in REPORTS.items():
+        ap.add_argument("--" + k, action="store_true", help=f"publish {what} ({file}, from {exam})")
+        ap.add_argument("--force-" + k, action="store_true", help=f"publish {what} though its exam said not worth it (the owner's explicit call)")
+    ap.add_argument("--keep-copies", action="store_true", help="keep the copies on this PC (the examples, templates and made-up photos for a training still to come); the published models' reports (and attempts.json with the edges) go anyway")
+    ap.add_argument("--dry-run", action="store_true", help="print the version's files, the counters and the folders to move; write nothing")
     a = ap.parse_args()
-    edges = read_json(WORK / "report.json") if (WORK / "report.json").exists() else None
-    doctypes = read_json(WORK / "report_doctypes.json") if (WORK / "report_doctypes.json").exists() else None
-    if doctypes and not doctypes.get("publish") and not a.force_doctypes:
-        print("The document type models are left out: their exam said not worth publishing (--force-doctypes to publish them anyway)")
-        doctypes = None
-    mrz = read_json(WORK / "report_mrz.json") if (WORK / "report_mrz.json").exists() else None
-    if mrz and not mrz.get("publish") and not a.force_mrz:
-        print("The passport zone reader is left out: its exam said not worth publishing (--force-mrz to publish it anyway)")
-        mrz = None
-    he = read_json(WORK / "report_he.json") if (WORK / "report_he.json").exists() else None
-    if he and not he.get("publish") and not a.force_he:
-        print("The Hebrew field reader is left out: its check said not ready (--force-he to publish it anyway)")
-        he = None
-    if not edges and not doctypes and not mrz and not he:
-        raise SystemExit("nothing examined to publish — run exam.py, exam_doctypes.py, exam_mrz.py or train_he.py first")
-    from huggingface_hub import CommitOperationAdd, HfApi
-    api, base = HfApi(), version_of("scan-lab")
+    on = load(a)
+    base = version_of("scan-lab")
+    v = next_version(None if a.dry_run else bucket())   # the dry run reads no Storage: the versions on Hugging Face only
+    files = version_files(on, base)
+    from huggingface_hub import HfApi
+    api = HfApi()
+    try:
+        have = set(api.list_repo_files(REPO)) - {".gitattributes", "README.md"}
+    except Exception:
+        if not a.dry_run:
+            raise   # a version must hold exactly its files: without the listing the old ones would be carried forward
+        have = None
+    gone = sorted((have or set()) - set(files))
+    plan = attempt_plan(v) if "edges" in on else []   # the attempts are the edges' examples: moved only once the edges are trained on them
+    now = datetime.datetime.now(datetime.timezone.utc)
+    mark = dirt_note(inherited_dirt(files, base, on))   # a version descended from a contaminated one is marked too
+    if a.dry_run:
+        print(f"Dry run — the plan for {v} (the lab is on {base}); nothing is written:")
+        for n, (p, how) in sorted(files.items()):
+            print(f"  {n}: {how}" + (f" (sha256 {sha256_of(p)[:12]})" if p.exists() else ""))
+        if have is None:
+            print("  left out of the version: unknown (the repo's files could not be listed)")
+        elif gone:
+            print("  left out of the version (in the repo now): " + ", ".join(gone))
+        print("  scanTrainingStats/current: " + "; ".join(described(stats_update(on, v, now, len(plan)))))
+        for d, to in plan:
+            print(f"  move {d}/ → {moved_path(d + '/', to)}")
+        if not plan:
+            print("  no scan attempts moved" + ("" if "edges" in on else " (only with the edges in the version)"))
+        for f, st in checkpoint_stamps(on, v, now):
+            print(f"  checkpoints/{f.name}: stamped published {st}")
+        print(f"  heldout.json versions: {v} marked not held-out clean for {', '.join(mark[0])} ({mark[1]})" if mark
+              else f"  heldout.json versions: {v} not marked (no model of it rests on a contaminated version)")
+        used = ", ".join([REPORTS[k][0] for k in on] + (["report.html", "attempts.json"] if "edges" in on else []))
+        print(f"  then: scripts/scan-lab/models-version → {v}; deleted: {used}" + ("" if a.keep_copies else "; the copies on this PC deleted"))
+        return
+    from huggingface_hub import CommitOperationAdd, CommitOperationDelete
     api.create_repo(REPO, repo_type="model", private=False, exist_ok=True)
-    v = next_version(bucket())
-    files = {}
-    for name in MODELS:
-        new = WORK / "new" / name
-        files[name] = new if edges and new.exists() else model_path(base, name)  # not retrained: carried over
-    for name in DOCTYPE_MODELS:
-        new = WORK / "new" / name
-        if doctypes and new.exists():
-            files[name] = new
-        else:
-            try:
-                files[name] = model_path(base, name)  # the base version's document type model, carried over
-            except SystemExit:
-                pass  # the base version has none
-    new = WORK / "new" / MRZ_MODEL
-    if mrz and new.exists():
-        files[MRZ_MODEL] = new
-    else:
-        try:
-            files[MRZ_MODEL] = model_path(base, MRZ_MODEL)  # the base version's passport zone reader, carried over
-        except SystemExit:
-            pass  # the base version has none
-    for name in HE_FILES:   # the Hebrew field reader and its layouts go together
-        new = WORK / "new" / name
-        if he and all((WORK / "new" / n).exists() for n in HE_FILES):
-            files[name] = new
-        else:
-            try:
-                files[name] = model_path(base, name)  # the base version's, carried over
-            except SystemExit:
-                pass  # the base version has none
-    for name in KEEP:
-        files[name] = model_path(base, name)
-    if edges:
-        files["report.json"] = WORK / "report.json"
-    if doctypes:
-        files["report_doctypes.json"] = WORK / "report_doctypes.json"
-    if mrz:
-        files["report_mrz.json"] = WORK / "report_mrz.json"
-    if he:
-        files["report_he.json"] = WORK / "report_he.json"
     # a commit holds exactly this version's files: those of the version before that are not in it go
-    have = set(api.list_repo_files(REPO)) - {".gitattributes", "README.md"}
-    ops = [CommitOperationAdd(path_in_repo=n, path_or_fileobj=str(p)) for n, p in files.items()]
-    from huggingface_hub import CommitOperationDelete
-    ops += [CommitOperationDelete(path_in_repo=n) for n in sorted(have - set(files))]
+    ops = [CommitOperationAdd(path_in_repo=n, path_or_fileobj=str(p)) for n, (p, _) in files.items()]
+    ops += [CommitOperationDelete(path_in_repo=n) for n in gone]
     info = api.create_commit(REPO, ops, commit_message=f"{v}: " + ", ".join(sorted(files)))
     api.create_tag(REPO, tag=v, revision=info.oid)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    stats = {"lastVersion": v}
-    if edges:
-        stats.update({"edgesSince": 0, "newSince": firestore.DELETE_FIELD, "lastTrainedAt": now, "lastReport": edges})
-    if doctypes:
-        stats.update({"doctypesSince": {k: 0 for k in DOCTYPES}, "kindsSince": firestore.DELETE_FIELD, "lastDoctypesTrainedAt": now, "lastDoctypesReport": doctypes})
-    if mrz:
-        stats.update({"lastMrzTrainedAt": now, "lastMrzReport": mrz})
-    if he:
-        stats.update({"lastHeTrainedAt": now, "lastHeReport": he})
-    moved = move_attempts(v) if edges else 0   # the attempts are the edges' examples: used only once the edges are trained on them
-    if moved:
-        stats["attemptsSince"] = firestore.Increment(-moved)  # the attempts that came in since the pull stay counted
-    db().collection("scanTrainingStats").document("current").set(stats, merge=True)
+    moved = move_attempts(v, plan) if plan else 0
+    db().collection("scanTrainingStats").document("current").set(stats_update(on, v, now, moved), merge=True)
     (ROOT / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
+    if mark:   # committed with models-version: exam.py then marks the templates set contaminated for its descendants too
+        from gen.common import mark_version
+        mark_version(v, *mark)
+        print(f"heldout.json: {v} marked not held-out clean for {', '.join(mark[0])}")
+    for f, st in checkpoint_stamps(on, v, now):   # the runs the published models came from: --more names the version
+        try:
+            import checkpoint
+            checkpoint.stamp(f, st)
+        except Exception as e:   # the version is out; only the stamp is missing
+            print(f"warning: checkpoints/{f.name} not stamped ({e})")
+    drop_reports(on)
     if not a.keep_copies:
         clear_work()
-    what = " and ".join(x for x, on in (("the document edges models", edges), ("the document type models", doctypes), ("the passport zone reader", mrz), ("the Hebrew field reader", he)) if on)
-    print(f"Published as {v} on Hugging Face (https://huggingface.co/{REPO}/tree/{v}; {what} new); "
+    what = " and ".join(REPORTS[k][1] for k in on)
+    print(f"Published as {v} on Hugging Face (https://huggingface.co/{REPO}/tree/{v}; {what} new; {moved} scan attempt folders moved); "
           f"the lab now names {v} (scripts/scan-lab/models-version); " + ("the copies on this PC are kept." if a.keep_copies else "the copies on this PC are deleted."))
 
 

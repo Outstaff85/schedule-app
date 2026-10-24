@@ -85,6 +85,7 @@ class StubCtx {
   moveTo(x, y) { this.path.push([x, y]); }
   lineTo(x, y) { this.path.push([x, y]); }
   closePath() {}
+  clearRect(x, y, w, h) { const c = this.c; for (let j = Math.max(0, y); j < Math.min(c.height, y + h); j++) c.pixels.fill(0, (j * c.width + Math.max(0, x)) * 4, (j * c.width + Math.min(c.width, x + w)) * 4); }
   fill() { const [r, g, b] = parseRgb(this.fillStyle), c = this.c; for (let j = 0; j < c.height; j++) for (let i = 0; i < c.width; i++) if (inPoly(this.path, i + 0.5, j + 0.5)) c.pixels.set([r, g, b, 255], (j * c.width + i) * 4); }
 }
 class StubCanvas {
