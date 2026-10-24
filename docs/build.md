@@ -12,7 +12,7 @@ Firebase Hosting serves `dist/`, which `npm run build` makes from both.
 | Path | What |
 |---|---|
 | `package.json`, `package-lock.json` | the new stack's packages and scripts; Node `^20.19` or `>=22.12`. Runtime: React, `radix-ui`, `vaul` (Drawer), `sonner` (toasts), `react-day-picker` + `date-fns` (Calendar), `cmdk` (Combobox), `react-hook-form` + `zod` + `@hookform/resolvers` (Form), `@tanstack/react-table` (Data Table), `recharts` (Chart), `@tanstack/react-query` (the supplier portal's reads), `motion`, `@tabler/icons-react`, `class-variance-authority`, `clsx` / `tailwind-merge`; build: Vite, TypeScript, Tailwind, `tw-animate-css` |
-| `vite.config.mts` | Vite: React and Tailwind plugins, alias `@` → `src/`, the pages it builds (`build.rolldownOptions.input`), `__BUILD_TIME__`; the project root is the repo root |
+| `vite.config.mts` | Vite: React and Tailwind plugins, alias `@` → `src/`, the pages it builds (`build.rolldownOptions.input`), `__BUILD_TIME__`, `worker.format: 'es'` (the scanner engine's module worker, `src/scan/engine/worker.ts`, which imports ONNX Runtime from the surface's own copy at run time — docs/scan-plan.md → S9); the project root is the repo root |
 | `tsconfig.json` | TypeScript, `strict`; checks `src/` and the Vite config |
 | `components.json` | shadcn/ui settings (`npx shadcn add <component>` writes into `src/components/ui`, CSS `src/styles/globals.css`, alias `@/lib/utils`) |
 | `src/components/ui/`, `src/components/shared/`, `src/hooks/` | the components every new page is built from (docs/components.md) |

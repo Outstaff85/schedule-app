@@ -74,9 +74,11 @@ printf '{"version":"%s","doctype":%s,"mrz":%s,"he":%s}\n' "$SCAN_MODELS_VERSION"
 # The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).
+# ort.all.min.js for the plain page; ort.all.min.mjs for the new stack's engine (src/scan/engine/ort.ts imports it at
+# run time); the ort-wasm-simd-threaded*.mjs are what both builds' wasm loaders import (docs/scan-plan.md → S9).
 T="$(mktemp -d)"
 for v in 1.22.0:ort 1.30.0:ort130; do
   (cd "$T" && mkdir -p "${v#*:}" && cd "${v#*:}" && npm pack "onnxruntime-web@${v%%:*}" --silent >/dev/null && tar xzf "onnxruntime-web-${v%%:*}.tgz")
-  cp "$T/${v#*:}/package/dist/ort.all.min.js" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
+  cp "$T/${v#*:}/package/dist/ort.all.min.js" "$T/${v#*:}/package/dist/ort.all.min.mjs" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
 done
 ls -la "$OUT"

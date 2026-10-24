@@ -540,8 +540,8 @@ await run('the way-failure log: failKind, noteFail, showFails', () => {
 });
 
 // ── the document types ──
-await run('the document types: src/scan/doctype.ts DOCTYPES in the lab\'s model order, the same labels', () => {
-  const src = read('src/scan/doctype.ts');
+await run('the document types: src/scan/engine/doctypes.ts DOCTYPES in the lab\'s model order, the same labels', () => {
+  const src = read('src/scan/engine/doctypes.ts');
   const list = Function('return ' + src.match(/export const DOCTYPES = (\[[^\]]*\])/)[1])();
   const labels = Function('return ' + src.match(/export const DOCTYPE_LABELS[^=]*= (\{[\s\S]*?\});/)[1])();
   const lab = vm.runInContext('DOCTYPE_NAMES', page);

@@ -5,7 +5,15 @@
 // (tests/scan/engine.test.mjs). Mirrored in scripts/scan-train/mrzmodel.py (find_lines / line_input /
 // decode) and hemodel.py (CHARS / line_input / logical_simple), and heIdOk in synth.py valid_israeli_id:
 // a change in one is made in the others.
+//
+// The runtime part (Readers, at the end): the readers' sessions as the surface's models.json says, and the
+// lab's doctypeAnswer, mrzRead and heRead on canvases (index.html), ported unchanged.
 import { mrzCheck } from '@/scan-process/mrz';
+import { DOCTYPES, type Doctype } from './doctypes';
+import { cpuSession, errText, readModels, type ModelsInfo } from './models';
+import { loadOrt, tensor, type Ort, type OrtSession } from './ort';
+import { CPU_ORT, layoutsUrl, type OrtDir, type SurfaceRef } from './surface';
+import { mkCanvas, type Drawable } from './upright';
 import type { PixelsLike } from './types';
 
 export const MRZ_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<', MRZ_H = 32, MRZ_W = 512;
@@ -165,4 +173,92 @@ export async function heReadLayouts(w: number, h: number, layouts: HeLayouts, li
     if (score > bestScore) { best = got; bestScore = score; }
   }
   return best || {};
+}
+
+// ── the runtime ──
+
+/** The document type model's answer on a page: the kind, how sure, the clockwise quarter-turns it needs and
+ *  how sure, the time, and the 256×256 copy it was given (the kind's training copy). */
+export interface DoctypeAnswer { doctype: Doctype; conf: number; turn: number; turnConf: number; ms: number; square: OffscreenCanvas }
+
+const ctx = (c: OffscreenCanvas): OffscreenCanvasRenderingContext2D =>
+  c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+const now = (): number => performance.now();
+
+/** The on-device readers of a surface: the document type model (docs/scan-plan.md → S7), the passport zone
+ *  reader (docs/hf-plan.md → H8b) and the Hebrew field reader with its card layouts (H8c) — each only when
+ *  the surface's models.json says its version has it. */
+export class Readers {
+  info: ModelsInfo | null = null;
+  doctype: OrtSession | null = null;
+  mrz: OrtSession | null = null;
+  he: OrtSession | null = null;
+  layouts: HeLayouts | null = null;
+  private ort: Ort | null = null;
+  private loading: Promise<ModelsInfo | null> | null = null;
+
+  constructor(readonly surface: SurfaceRef, private log: (text: string) => void = () => {}, private cpuDir: OrtDir = CPU_ORT) {}
+
+  /** models.json read and the readers it names loaded (once); null when that failed (said in the log). */
+  load(): Promise<ModelsInfo | null> {
+    return this.loading || (this.loading = this.loadNow());
+  }
+  private async loadNow(): Promise<ModelsInfo | null> {
+    const s = this.surface;
+    try {
+      const mj = await readModels(s); this.info = mj;
+      if (mj.doctype || mj.mrz || mj.he) this.ort = await loadOrt(s, this.cpuDir);
+      const ort = this.ort as Ort;
+      if (mj.doctype) { this.doctype = await cpuSession(ort, s, 'doctype.onnx'); this.log('Document type model loaded'); }
+      if (mj.mrz) { this.mrz = await cpuSession(ort, s, 'mrz.onnx'); this.log('Passport zone reader loaded'); }
+      if (mj.he) {
+        const lr = await fetch(layoutsUrl(s), { cache: 'no-cache' });
+        if (lr.ok) { this.layouts = await lr.json() as HeLayouts; this.he = await cpuSession(ort, s, 'he.onnx'); this.log('Hebrew field reader loaded'); }
+      }
+      return mj;
+    } catch (e) { this.log('Document type model / passport zone reader / Hebrew field reader: ' + errText(e)); return this.info; }
+  }
+
+  /** The document type model's answer on a page (a canvas or a loaded image), null with no model in this
+   *  version. */
+  async doctypeAnswer(src: Drawable | null): Promise<DoctypeAnswer | null> {
+    if (!this.doctype || !this.ort || !src) return null;
+    const sess = this.doctype, sq = mkCanvas(256, 256), g = ctx(sq); g.drawImage(src, 0, 0, 256, 256);
+    const d = g.getImageData(0, 0, 256, 256).data, n = 256 * 256, f = new Float32Array(3 * n);
+    for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
+    const t0 = now(), r = await sess.run({ [sess.inputNames[0]]: tensor(this.ort, f, [1, 3, 256, 256]) });
+    const kp = Array.from(r.doctype.data), tp = Array.from(r.turn.data), k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
+    return { doctype: DOCTYPES[k], conf: kp[k], turn: t, turnConf: tp[t], ms: now() - t0, square: sq };
+  }
+
+  /** One line's box on the page read by a line reader (the zone's or the Hebrew one), as the lab draws it. */
+  private async readLine(sess: OrtSession, page: Drawable, x: number, y: number, w: number, h: number, nw: number, chars: string): Promise<string> {
+    const c = mkCanvas(MRZ_W, MRZ_H), g = ctx(c);
+    g.fillStyle = '#fff'; g.fillRect(0, 0, MRZ_W, MRZ_H); g.imageSmoothingQuality = 'high';
+    g.drawImage(page, x, y, w, h, 0, 0, nw, MRZ_H);
+    const out = await sess.run({ [sess.inputNames[0]]: tensor(this.ort as Ort, lineInput(g.getImageData(0, 0, MRZ_W, MRZ_H).data), [1, 1, MRZ_H, MRZ_W]) });
+    const lg = out[sess.outputNames[0]];
+    return ctcDecode(lg.data, lg.dims, chars);
+  }
+
+  /** The passport zone's two lines read on a page: their text, [] when no zone was found, null with no reader. */
+  async mrzRead(canvas: OffscreenCanvas | null): Promise<string[] | null> {
+    if (!this.mrz || !canvas) return null;
+    const w = canvas.width, h = canvas.height, top = mrzTop(h), lines: string[] = [];
+    const boxes = w < 50 || h - top < 20 ? [] : mrzFind(grayPixels(ctx(canvas).getImageData(0, top, w, h - top)), w, h);
+    for (const b of boxes) lines.push(await this.readLine(this.mrz, canvas, b.x, b.y, b.w, b.h, mrzLineWidth(b), MRZ_CHARS));
+    return lines;
+  }
+
+  /** The Hebrew fields of a page shaped like an ID card, by the layout whose ID number's check digit agrees:
+   *  {layout, surname, given, idNo, dob, expiry, idOk}, {} when the page is no card, null with no reader. */
+  async heRead(canvas: OffscreenCanvas | null): Promise<HeRead | Record<string, never> | null> {
+    const sess = this.he;
+    if (!sess || !this.layouts || !canvas) return null;
+    const W = canvas.width, H = canvas.height;
+    return heReadLayouts(W, H, this.layouts, async box => {
+      const b = heLineBox(W, H, box);
+      return b ? heLogical((await this.readLine(sess, canvas, b.x0, b.y0, b.w, b.h, b.nw, HE_CHARS)).trim()) : '';
+    });
+  }
 }

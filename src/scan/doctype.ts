@@ -5,14 +5,9 @@
 import { API_URL } from '@/manager/data/api';
 import { gsAuth } from '@/manager/data/session';
 
-// The one list of the kinds (docs/scan-plan.md → S9): its order is the document type model's output order
-// (the scanner engine reads the model's answer by it; tests/scan/engine.test.mjs checks it against the lab's).
-export const DOCTYPES = ['id_front', 'id_back', 'sefach', 'passport', 'contract', 'other'] as const;
-export type Doctype = (typeof DOCTYPES)[number];
-/** The labels (through tr() where they are shown). */
-export const DOCTYPE_LABELS: Record<Doctype, string> = {
-  id_front: 'ID card', id_back: 'ID card back', sefach: 'Appendix (ספח)', passport: 'Passport', contract: 'Contract', other: 'Other',
-};
+// The one list of the kinds, in the document type model's output order: src/scan/engine/doctypes.ts.
+export { DOCTYPES, DOCTYPE_LABELS, type Doctype } from './engine/doctypes';
+import { DOCTYPES, type Doctype } from './engine/doctypes';
 
 export async function detectDoctype(b64: string, mediaType: string): Promise<{ kind: Doctype | null; rotate: number }> {
   try {

@@ -19,6 +19,9 @@ export default defineConfig({
   resolve: { alias: { '@': r('src') } },
   publicDir: false,
   define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
+  // The scanner's background thread (src/scan/engine/worker.ts) is a module worker: it imports ONNX Runtime
+  // from the surface's own copy at run time (docs/scan-plan.md → S9).
+  worker: { format: 'es' },
   optimizeDeps: { entries: ['next/index.html', 'worker-punch.html', 'schedule-manager.html'] },
   build: {
     outDir: 'dist',
