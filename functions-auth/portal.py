@@ -57,9 +57,11 @@ PUNCH_FIELDS = ("workerName", "type", "site", "dist", "gpsAccuracy",
 # marked: later than this is the phone's clock ahead (the server's time is
 # used), earlier is a punch sent late (an offline punch, or a clock set back).
 CLOCK_SLACK = timedelta(minutes=5)
-# A punch sent later than this after its time is refused: longer than the
-# offline queue plausibly holds one, and it would land in a month whose hours
-# may already be approved or signed (a manager adds it by hand instead).
+# A punch sent later than this after its time is still stored (a phone left
+# offline over a weekend and a holiday: refusing it would lose the worked
+# shift and turn the next tap into the wrong IN / OUT), but its warning names
+# the days and asks to check its month, whose hours may already be approved or
+# signed (an approved day whose shifts change shows as changed in the review).
 MAX_LATE = timedelta(days=3)
 SITE_FIELDS = ("id", "name", "object", "lat", "lng", "radius")
 
@@ -147,7 +149,8 @@ def _save_punch(db, tid, w, data):
     has changed since) is answered ok and left as it is. The time is checked
     against the server's clock: a time ahead of it is replaced by the server's
     time, a time behind it (sent late) is kept; both are marked suspicious with
-    a warning the punch log shows. A time more than MAX_LATE behind is refused. `day` and `time` come from that ts in Israel
+    a warning the punch log shows. A time more than MAX_LATE behind is kept
+    too, its warning in days. `day` and `time` come from that ts in Israel
     time, whatever the page's clock or time zone said."""
     if not isinstance(data, dict):
         return {"error": "No punch data"}
@@ -195,10 +198,12 @@ def _save_punch(db, tid, w, data):
         warnings.append(f"clock ahead {round((ts - now).total_seconds() / 60)} min (server time used)")
         ts = now
         doc["gpsSuspicious"] = True
-    elif ts < now - MAX_LATE:
-        return {"error": "Punch time too old"}
     elif ts < now - CLOCK_SLACK:
-        warnings.append(f"sent {round((now - ts).total_seconds() / 60)} min after the punch time")
+        late = now - ts
+        if late > MAX_LATE:
+            warnings.append(f"sent {late.days} days after the punch time (check its month's approved hours)")
+        else:
+            warnings.append(f"sent {round(late.total_seconds() / 60)} min after the punch time")
         doc["gpsSuspicious"] = True
     local = ts.astimezone(TZ)
     doc["gpsWarnings"] = warnings

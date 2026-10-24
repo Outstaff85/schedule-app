@@ -459,12 +459,16 @@ def _resolve(db, t_ref, caller, body):
         in_ts = _at(day, entry["inT"])
         out_ts = _at(day, entry["outT"])
         if out_ts <= in_ts:
-            # A night shift: with its IN on the day it ends the next day; a
-            # shift with no IN keeps its real OUT on the day, the IN the evening before.
-            if p_in is None and p_out is not None:
-                in_ts -= timedelta(days=1)
-            else:
-                out_ts += timedelta(days=1)
+            # A night shift ends the next day — also one that had no IN: its IN
+            # goes on the reviewed day and its OUT moves to the next morning, so
+            # the shift stays on that day (a shift is dated by its IN: the review
+            # row, its month and its pay) instead of moving to the day before.
+            out_ts += timedelta(days=1)
+        # The fixed shift may not swallow another punch of the worker (a shift of
+        # the next morning): those are put right in the punch log.
+        moving = {x[0].id for x in (p_in, p_out) if x is not None}
+        if any(p.id not in moving and in_ts < d.get("ts") < out_ts for p, d in ps):
+            return {"error": "The fixed shift overlaps other punches — edit them in the punch log"}
         stamp = {"editedBy": "approval", "editedAt": _now()}
         # day (YYYY-MM-DD) and date (DD/MM/YYYY, what the punch log shows)
         # follow the new time: an out moved past midnight is on the next day.
@@ -480,15 +484,18 @@ def _resolve(db, t_ref, caller, body):
                 doc = {k: base[k] for k in _PUNCH_COPY if base.get(k) is not None}
                 doc.update(fields, id=new_ref.id, type=typ, archived=False)
                 writes.append((new_ref, doc, True))
-        # The day's line with that shift's times replaced (the review compares lines).
+        # The day's line with that shift's times replaced (the review compares
+        # lines), its shifts in the order they open — by the IN, or by the OUT
+        # of a shift with no IN, as the review lists them: a shift with no IN
+        # fixed into a night one now opens in the evening.
         if len(old) == 4:
             ins, outs = old[2].split(","), old[3].split(",")
+            outs += [""] * (len(ins) - len(outs))
             i = int(entry.get("shift") or 0)
             if i < len(ins):
-                ins[i] = entry["inT"]
-            if i < len(outs):
-                outs[i] = entry["outT"]
-            new_line = f"{wid}|{day}|{','.join(ins)}|{','.join(outs)}"
+                ins[i], outs[i] = entry["inT"], entry["outT"]
+            shifts = sorted(zip(ins, outs), key=lambda s: s[0] or s[1])
+            new_line = f"{wid}|{day}|{','.join(s[0] for s in shifts)}|{','.join(s[1] for s in shifts)}"
         else:
             new_line = f"{wid}|{day}|{entry['inT']}|{entry['outT']}"
         entry = dict(entry, status="fixed", line=new_line)

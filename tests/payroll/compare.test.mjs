@@ -146,15 +146,21 @@ const hw = a => ({ hours: a.hours, warnings: [...a.warnings] }); // (in this rea
 // Intended differences (2026-10-24, docs/history.md → Payroll: a pair's length
 // from its time stamps): the old copies counted a pair from its 'HH:MM'
 // strings, so a shift across a clock change (Israel: late March, late October)
-// or longer than 24h came out 1h off or a day short. A bucket like that is
-// checked against its time stamps instead of the old copy.
-const stampChanged = entries => {
+// or longer than 24h came out 1h off or a day short. From 1 November 2026
+// (Payroll.PAIR_STAMPS_FROM) a bucket like that is checked against its time
+// stamps instead of the old copy; before it every bucket must give the old
+// copy's numbers (past months never change), and `kept` counts the buckets
+// whose stamps would have changed them.
+const CUT = P.PAIR_STAMPS_FROM;
+const stampDiffers = entries => {
   const t = entries.map(e => new RealDate(e.ts));
   return t.length > 1 && (t.some(d => d.getTimezoneOffset() !== t[0].getTimezoneOffset()) || Math.max(...t) - Math.min(...t) >= 24 * 3600e3);
 };
+const opensFromCut = entries => entries.length > 0 && Math.min(...entries.map(e => +new RealDate(e.ts))) >= CUT;
+const stampChanged = entries => opensFromCut(entries) && stampDiffers(entries);
 function compareDataset(label, workers, cls, punches) {
   clients = cls;
-  let shifts = 0, payOld = 0, payNew = 0, changed = 0;
+  let shifts = 0, payOld = 0, payNew = 0, changed = 0, kept = 0;
   const pages = [
     ['manager', OLD.manager, NEW.manager.analyze],
     ['supplier', OLD.supplier, NEW.short.analyze],
@@ -181,7 +187,10 @@ function compareDataset(label, workers, cls, punches) {
             assert.equal(aNew.hours, (Math.floor(new RealDate(o.ts) / 6e4) - Math.floor(new RealDate(i.ts) / 6e4)) / 60, `${label} ${page} ${w.id} ${b.date.toISOString()}: hours by the time stamps`);
           aOld = { ...aOld, hours: aNew.hours }; // the pay below is still compared on the same hours
           changed++;
-        } else assert.deepStrictEqual(hw(aNew), hw(aOld), `${label} ${page} ${w.id} ${b.date.toISOString()}: hours and warnings`);
+        } else {
+          if (stampDiffers(b.entries)) kept++;
+          assert.deepStrictEqual(hw(aNew), hw(aOld), `${label} ${page} ${w.id} ${b.date.toISOString()}: hours and warnings`);
+        }
         const cid = (b.entries.find(e => e.clientId) || {}).clientId;
         const sat = SAT(b.date);
         assert.deepStrictEqual(P.effectiveRates(w, cid, clients), old.effectiveRates(w, cid), `${label} ${page} ${w.id} ${cid}: rates`);
@@ -209,7 +218,7 @@ function compareDataset(label, workers, cls, punches) {
     }
   }
   for (const [page, old] of pages) assert.deepStrictEqual(P.PAY_RULES, old.PAY_RULES || P.PAY_RULES, `${page}: PAY_RULES`);
-  return { shifts, payOld, payNew, changed };
+  return { shifts, payOld, payNew, changed, kept };
 }
 
 function run(label, fn) {
@@ -217,9 +226,11 @@ function run(label, fn) {
   catch (e) { failed++; console.log((process.env.GITHUB_ACTIONS ? '::error::' : '') + `FAIL ${label}: ${e.message.split('\n')[0]}`); }
 }
 
-// Generated months: 2025-01 … 2026-10, plus today's month with open shifts "now".
-let total = { shifts: 0, payOld: 0, payNew: 0, months: 0, changed: 0 };
-for (let i = 0; i < 22; i++) {
+// Generated months: 2025-01 … 2027-10 — before 1 November 2026 (the old rule)
+// and after it (the time stamps; two more clock changes) — plus today's month
+// with open shifts "now".
+let total = { shifts: 0, payOld: 0, payNew: 0, months: 0, changed: 0, kept: 0, payOldMonths: 0, payOldMonthsLegacy: 0 };
+for (let i = 0; i < 34; i++) {
   const year = 2025 + Math.floor(i / 12), month = i % 12;
   R = rng(1000 + i);
   const cls = genClients();
@@ -227,7 +238,8 @@ for (let i = 0; i < 22; i++) {
   const punches = workers.flatMap(w => genPunches(w, year, month));
   run(`${year}-${String(month + 1).padStart(2, '0')}`, () => {
     const r = compareDataset(`${year}-${month + 1}`, workers, cls, punches);
-    total.shifts += r.shifts; total.payOld += r.payOld; total.payNew += r.payNew; total.months++; total.changed += r.changed;
+    total.shifts += r.shifts; total.payOld += r.payOld; total.payNew += r.payNew; total.months++; total.changed += r.changed; total.kept += r.kept;
+    if (new RealDate(year, month + 1, 1) <= new RealDate(CUT)) { total.payOldMonths += r.payNew; total.payOldMonthsLegacy += r.payOld; }
   });
 }
 // Today: an open shift since this morning counts up to now in the manager.
@@ -280,17 +292,41 @@ ok(P.salaryPeriodKey('week', new FixedDate(2026, 9, 15)) === 'w:2026-10-11', 'we
   ok(b.length === 1 && P.analyzeDayPunches(b[0].entries, b[0].date).hours === 8.5, 'a night shift stays one 8.5h shift');
 }
 {
-  // The clocks go back at 02:00 on Sun 2026-10-25: Sat 22:00 (UTC+3) → Sun 06:00 (UTC+2) is 9 real hours.
-  const dst = [{ type: 'in', ts: '2026-10-24T19:00:00Z', time: '22:00' }, { type: 'out', ts: '2026-10-25T04:00:00Z', time: '06:00' }];
+  // From 1 November 2026 a pair counts by its time stamps.
+  // The clocks go back at 02:00 on Sun 2027-10-31: Sat 22:00 (UTC+3) → Sun 06:00 (UTC+2) is 9 real hours.
+  const dst = [{ type: 'in', ts: '2027-10-30T19:00:00Z', time: '22:00' }, { type: 'out', ts: '2027-10-31T04:00:00Z', time: '06:00' }];
   const b = P.groupPunchesIntoShifts(dst), a = P.analyzeDayPunches(b[0].entries, b[0].date, { tr });
   ok(b.length === 1 && a.hours === 9 && !a.warnings.length && P.analyzeDayPunches(dst, b[0].date).hours === 9, 'the night the clocks go back: 22:00–06:00 is 9h ' + JSON.stringify(a));
-  // And forward (Fri 2026-03-27 02:00 → 03:00): Thu 22:00 (UTC+2) → Fri 06:00 (UTC+3) is 7 hours.
-  const fwd = [{ type: 'in', ts: '2026-03-26T20:00:00Z', time: '22:00' }, { type: 'out', ts: '2026-03-27T03:00:00Z', time: '06:00' }];
+  // And forward (Fri 2027-03-26 02:00 → 03:00): Thu 22:00 (UTC+2) → Fri 06:00 (UTC+3) is 7 hours.
+  const fwd = [{ type: 'in', ts: '2027-03-25T20:00:00Z', time: '22:00' }, { type: 'out', ts: '2027-03-26T03:00:00Z', time: '06:00' }];
   ok(P.analyzeDayPunches(fwd, new FixedDate(fwd[0].ts), { tr }).hours === 7, 'the night the clocks go forward: 22:00–06:00 is 7h');
   // A forgotten OUT punched 25 hours later: 25h and the >12h warning (it was 1h).
-  const long = [{ type: 'in', ts: '2026-10-05T05:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-10-06T06:00:00Z', time: '09:00' }];
+  const long = [{ type: 'in', ts: '2026-11-05T06:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-11-06T07:00:00Z', time: '09:00' }];
   const l = P.analyzeDayPunches(long, new FixedDate(long[0].ts), { tr });
   ok(l.hours === 25 && l.warnings.length === 1 && /shift >12h/.test(l.warnings[0]) && l.codes.join() === 'gt12', 'a forgotten OUT 25h later: 25h and the >12h warning ' + JSON.stringify(l));
+  // An edited pair more than 24h apart by its stamps (the old punch window moved only the
+  // HH:MM within the stamp's own day): its HH:MM strings, as before — 08:00 → 17:00 is 9h, not 33h.
+  const ed = [{ type: 'in', ts: '2026-11-05T06:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-11-06T15:00:00Z', time: '17:00', editedBy: 'admin', editedAt: '2026-11-07T09:00:00Z' }];
+  ok(P.analyzeDayPunches(ed, new FixedDate(ed[0].ts), { tr }).hours === 9 && P.analyzeDayPunches(ed, new FixedDate(ed[0].ts)).hours === 9, 'an edited pair over 24h: its HH:MM, 9h');
+  // An edited night within 24h counts by its stamps like any other.
+  const edN = [{ type: 'in', ts: '2027-10-30T19:00:00Z', time: '22:00', editedBy: 'approval', editedAt: '2027-11-01T09:00:00Z' }, dst[1]];
+  ok(P.analyzeDayPunches(edN, new FixedDate(edN[0].ts), { tr }).hours === 9, 'an edited pair within 24h: its stamps');
+  // Before 1 November 2026: every one of these gives the old copy's numbers (past months never change).
+  const old = {
+    'the night the clocks went back (Sat 2026-10-24)': [[{ type: 'in', ts: '2026-10-24T19:00:00Z', time: '22:00' }, { type: 'out', ts: '2026-10-25T04:00:00Z', time: '06:00' }], 8],
+    'the night the clocks went forward (Thu 2026-03-26)': [[{ type: 'in', ts: '2026-03-26T20:00:00Z', time: '22:00' }, { type: 'out', ts: '2026-03-27T03:00:00Z', time: '06:00' }], 8],
+    'a forgotten OUT 25h later (2026-10-05)': [[{ type: 'in', ts: '2026-10-05T05:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-10-06T06:00:00Z', time: '09:00' }], 1],
+    "an old edit: the next morning's OUT moved to 17:00 on its own day": [[{ type: 'in', ts: '2026-10-05T05:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-10-06T14:00:00Z', time: '17:00', editedBy: 'admin', editedAt: '2026-10-07T08:00:00Z' }], 9],
+    'an old edit: an OUT at 00:10 moved to 23:55 of its day': [[{ type: 'in', ts: '2026-10-05T05:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-10-06T20:55:00Z', time: '23:55', editedBy: 'admin', editedAt: '2026-10-07T08:00:00Z' }], 15 + 55 / 60],
+    'a night into 1 November 2026 (opened before)': [[{ type: 'in', ts: '2026-10-31T20:00:00Z', time: '22:00' }, { type: 'out', ts: '2026-11-01T04:00:00Z', time: '06:00' }], 8],
+  };
+  for (const [name, [es, h]] of Object.entries(old)) {
+    const d = new FixedDate(es[0].ts);
+    for (const [pg, mine] of [['manager', P.analyzeDayPunches(es, d, { tr })], ['short', P.analyzeDayPunches(es, d)]]) {
+      const legacyA = (pg === 'manager' ? OLD.manager : OLD.supplier).analyzeDayPunches(es, d);
+      ok(Math.abs(mine.hours - h) < 1e-9 && mine.hours === legacyA.hours, `before November 2026, ${name} (${pg}): ${mine.hours}h, the old copy ${legacyA.hours}h, expected ${h}h`);
+    }
+  }
   // Every warning has its code, in the same order; a translated text keeps its code.
   const he = (s2, p2) => 'HE:' + tr(s2, p2);
   const mix = [{ type: 'out', ts: '2026-10-05T04:00:00Z', time: '07:00' }, { type: 'in', ts: '2026-10-05T05:00:00Z', time: '08:00' }, { type: 'in', ts: '2026-10-05T06:00:00Z', time: '09:00' }];
@@ -301,8 +337,13 @@ ok(P.salaryPeriodKey('week', new FixedDate(2026, 9, 15)) === 'w:2026-10-11', 'we
 }
 
 if (total.months) {
-  console.log(`PASS ${total.months} generated months: ${total.shifts} manager shifts, pay ${total.payNew.toFixed(2)} new = ${total.payOld.toFixed(2)} old (${total.changed} buckets across a clock change or over 24h checked by their time stamps)`);
+  console.log(`PASS ${total.months} generated months: ${total.shifts} manager shifts, pay ${total.payNew.toFixed(2)} new, ${total.payOld.toFixed(2)} old on the same hours (${total.changed} buckets from November 2026 across a clock change or over 24h checked by their time stamps; ${total.kept} such buckets before it kept the old numbers)`);
   ok(Object.is(total.payNew, total.payOld), 'month totals identical');
+  // The months before 1 November 2026: the module's pay is the old copy's, to the agora,
+  // also for the buckets whose stamps say otherwise (a clock change, a pair over 24h).
+  ok(Object.is(total.payOldMonths, total.payOldMonthsLegacy) && total.payOldMonths > 0, `past months unchanged: ${total.payOldMonths} vs ${total.payOldMonthsLegacy}`);
+  ok(total.kept > 0, 'the past months hold buckets the time stamps would have changed (so the check above means something)');
+  ok(total.changed > 0, 'the months from November 2026 hold buckets counted by their time stamps');
 }
 console.log(failed ? `${failed} FAILED (${passed} passed)` : `ALL PASSED (${passed})`);
 process.exit(failed ? 1 : 0);

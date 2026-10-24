@@ -212,7 +212,10 @@ export function wpToken(): string | null { return (st.worker && st.worker.token)
 // 'retry': no network, a server failure (5xx) or an unreadable reply — the
 // punch is queued. 'refused': the function answered with json.error (a link
 // that no longer works, a punch that isn't this worker's) — a retry can never
-// succeed, so it isn't queued forever; the punch stays in the local history.
+// succeed, so it isn't queued, and the punch is taken out of this device's
+// history (dropFromLog) so it no longer decides the next IN / OUT. A punch sent
+// late (an offline queue held for days) is never refused: the server keeps it
+// with a warning for the manager (functions-auth/portal.py, MAX_LATE).
 async function sendPunch(e: PunchEntry): Promise<'ok' | 'retry' | { refused: string }> {
   try {
     const res = await postPunch(e);
@@ -222,7 +225,8 @@ async function sendPunch(e: PunchEntry): Promise<'ok' | 'retry' | { refused: str
     return res.ok && json?.error ? { refused: json.error } : 'retry';
   } catch { return 'retry'; }
 }
-function showRefused(msg: string) { showToast(tr('Punch not recorded: {0}', { 0: msg })); }
+/** A refusal is always an error toast (its text matches none of toastKind's words). */
+function showRefused(msg: string) { toast.error(tr('Punch not recorded: {0}', { 0: msg })); }
 async function gsSavePunch(entry: PunchEntry) {
   if (!navigator.onLine) { queueEntry(entry); return; }
   const r = await sendPunch(entry);
@@ -235,26 +239,28 @@ function queueEntry(entry: PunchEntry) {
   set({ queued: q.length });
 }
 let _flushingQueue = false;
-/** Sends the queued punches one at a time ('online' and on load); the failed ones stay. */
+/** Sends the queued punches one at a time ('online' and on load); the failed ones stay.
+ *  "Synced N" counts only the punches the server stored, never the refused ones. */
 export async function flushQueue() {
   if (_flushingQueue) return; // two overlapping runs would both read the same queue and double-post
   const q = getQueue();
   if (!q.length || !navigator.onLine) return;
   _flushingQueue = true;
   const failed: PunchEntry[] = [];
-  let left = failed;
+  let left = failed, sent = 0;
   try {
     for (const e of q) {
       const r = await sendPunch(e);
       if (r === 'retry') failed.push(e);
-      else if (r !== 'ok') { dropFromLog(e); showRefused(r.refused); }
+      else if (r === 'ok') sent++;
+      else { dropFromLog(e); showRefused(r.refused); }
     }
     // Keep what was queued while this loop was waiting on the network.
     left = failed.concat(getQueue().slice(q.length));
     saveQueue(left);
   } finally { _flushingQueue = false; }
   set({ queued: left.length });
-  if (!left.length && q.length) showToast(q.length > 1 ? tr('Synced {0} offline punches', { 0: q.length }) : tr('Synced 1 offline punch'));
+  if (!left.length && sent) showToast(sent > 1 ? tr('Synced {0} offline punches', { 0: sent }) : tr('Synced 1 offline punch'));
 }
 /** At startup: a queue left from before shows its badge and is sent. */
 export function startQueue() {

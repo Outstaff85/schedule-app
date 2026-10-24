@@ -3203,6 +3203,28 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   on.toast = await waitFor(p, () => /Synced 1 offline punch/.test(document.body.innerText), 5000);
   on.sent = (await srv('/punches')).n === n0 + 1;
   ok(on.flushed && on.toast && on.sent, 'punch: when the connection returns the queued punch is sent and the badge goes ' + JSON.stringify(on));
+  // A queue held for days (an OUT punched offline 5 days ago) is stored, never refused or taken off the phone;
+  // a refused punch (not this link's worker) is an error toast, leaves the history, and "Synced" counts only the stored one.
+  const n1 = (await srv('/punches')).n;
+  const lq = await p.evaluate(() => {
+    const log = JSON.parse(localStorage.getItem('punchLog') || '[]'), base = log[log.length - 1];
+    const t = new Date(Date.now() - 5 * 864e5), hm = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    const late = {...base, id: 'late-' + Date.now(), type: 'out', ts: t.toISOString(), time: hm};
+    const bad = {...base, id: 'bad-' + Date.now(), workerId: 'w-not-this-link', ts: new Date().toISOString()};
+    localStorage.setItem('punchLog', JSON.stringify(log.concat([late, bad])));
+    localStorage.setItem('punchQueue', JSON.stringify([late, bad]));
+    return {late: late.id, bad: bad.id};
+  });
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  const lt = {flushed: await waitFor(p, () => JSON.parse(localStorage.getItem('punchQueue') || '[]').length === 0, 15000)};
+  lt.err = await waitFor(p, () => [...document.querySelectorAll('[data-sonner-toast][data-type="error"]')].some(x => /Punch not recorded/.test(x.textContent)), 5000);
+  lt.synced1 = await waitFor(p, () => /Synced 1 offline punch\b/.test(document.body.innerText), 5000);
+  lt.noSynced2 = !/Synced 2 offline punches/.test(await p.evaluate(() => document.body.innerText));
+  const srvAfter = await srv('/punches');
+  lt.stored = srvAfter.n === n1 + 1 && srvAfter.ids.includes(lq.late) && !srvAfter.ids.includes(lq.bad);
+  lt.log = await p.evaluate(ids => { const l = JSON.parse(localStorage.getItem('punchLog') || '[]').map(e => String(e.id)); return {late: l.includes(ids.late), bad: l.includes(ids.bad)}; }, lq);
+  ok(lt.flushed && lt.err && lt.synced1 && lt.noSynced2 && lt.stored && lt.log.late && !lt.log.bad,
+    'punch: a punch sent 5 days late is stored and stays on the phone; a refused one is an error toast and leaves the history; Synced counts only the stored ' + JSON.stringify(lt));
   await srv('/revoke');
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: a regenerated link is revoked even from the cache');

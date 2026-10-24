@@ -153,13 +153,19 @@ def test_a_punch_time_is_checked_against_the_servers_clock():
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": ok})["ok"]
     d = P(T1, "f3").get().to_dict()
     assert d["gpsWarnings"] == [] and "gpsSuspicious" not in d
-    # Older than MAX_LATE (3 days): refused, nothing written.
-    old = {"id": "f4", "workerId": "w1", "type": "in", "ts": _iso(now - portal.MAX_LATE - timedelta(minutes=1))}
-    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": old}) == {"error": "Punch time too old"}
-    assert not P(T1, "f4").get().exists
+    # Older than MAX_LATE (3 days: a phone offline over a long weekend): never refused, so the
+    # worked shift isn't lost — kept with its own time, marked, the warning in days.
+    back5 = now - portal.MAX_LATE - timedelta(days=2, minutes=1)
+    old = {"id": "f4", "workerId": "w1", "type": "in", "ts": _iso(back5)}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": old}) == {"ok": True, "id": "f4"}
+    d = P(T1, "f4").get().to_dict()
+    assert abs((d["ts"] - back5).total_seconds()) < 1 and d["gpsSuspicious"] is True
+    assert d["day"] == back5.astimezone(portal.TZ).strftime("%Y-%m-%d") and d["time"] == back5.astimezone(portal.TZ).strftime("%H:%M")
+    assert d["gpsWarnings"] == ["sent 5 days after the punch time (check its month's approved hours)"]
     months = {"id": "f5", "workerId": "w1", "type": "out", "ts": "2026-01-15T06:00:00Z"}
-    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": months})["error"] == "Punch time too old"
-    assert not P(T1, "f5").get().exists
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": months})["ok"]
+    d = P(T1, "f5").get().to_dict()
+    assert d["day"] == "2026-01-15" and d["time"] == "08:00" and d["gpsSuspicious"] is True and "days after the punch time" in d["gpsWarnings"][0]
     # Just inside the limit: kept and marked.
     edge = {"id": "f6", "workerId": "w1", "type": "in", "ts": _iso(now - portal.MAX_LATE + timedelta(minutes=5))}
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": edge})["ok"]

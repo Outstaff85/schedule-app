@@ -308,6 +308,21 @@ run('totals', () => { sameNum(tally.pay, tally.payOld, 'pay + travel over every 
     assert.ok(wk.hours === 4 && wk.warns.length === 0, 'This Week: only Monday\'s 4h, no warning ' + JSON.stringify({ h: wk.hours, w: wk.warns }));
     assert.ok(oct.hours === 12 && oct.warns.length === 0, 'the month: both shifts ' + JSON.stringify({ h: oct.hours, w: oct.warns }));
   });
+  run('a month before November 2026 keeps its numbers: a clock change, a forgotten OUT, an old edit', () => {
+    // Pairs that count by their time stamps from 1 November 2026 (Payroll.PAIR_STAMPS_FROM) keep the old
+    // 'HH:MM' numbers before it: the night the clocks went back (Sat 2026-10-24 22:00 → Sun 06:00: 8h, not 9h),
+    // an OUT the old punch window moved to 17:00 on the next morning's day (08:00 → 17:00: 9h, not 33h),
+    // a forgotten OUT 25h later (2026-09-10 08:00 → 09-11 09:00: 1h, not 25h).
+    const log = [P('a', 'in', '2026-10-05T05:00:00Z', '08:00'), { ...P('b', 'out', '2026-10-06T14:00:00Z', '17:00'), editedBy: 'admin', editedAt: '2026-10-07T08:00:00Z' },
+      P('c', 'in', '2026-10-24T19:00:00Z', '22:00'), P('d', 'out', '2026-10-25T04:00:00Z', '06:00'),
+      P('e', 'in', '2026-09-10T05:00:00Z', '08:00'), P('f', 'out', '2026-09-11T06:00:00Z', '09:00')];
+    compare('old month', W, CL, SP, log, null); // every figure the old tab showed, identical
+    const D = { log, workers: W, clients: CL, suppliers: SP, tr };
+    const oct = A.salaryEntriesFor(D, 'month').byWorker.n1, sep = A.salaryEntriesFor(D, 'm:2026-09').byWorker.n1;
+    assert.ok(oct.hours === 17 && sep.hours === 1, 'October 9h + 8h, September 1h ' + JSON.stringify({ oct: oct.hours, sep: sep.hours }));
+    assert.equal(oct.total, Payroll.shiftPay(9, W[0], false, 'c1', CL) + Payroll.shiftPay(8, W[0], true, 'c1', CL), 'October paid as before');
+    assert.equal(A.salaryEntriesFor(D, 'month').byClient.c1.total, 17 * 50, 'the client\'s bill as before');
+  });
   run('the alerts by the warning\'s code, in any language', () => {
     const he = (t, p) => 'HE ' + tr(t, p);
     // today (2026-10-15) still at work since 08:00; the 5th: an IN with no OUT, then a >12h shift; the 6th: an OUT without IN.

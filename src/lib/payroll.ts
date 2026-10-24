@@ -5,8 +5,9 @@
 // a global `Payroll`) and call it through thin wrappers that pass their own
 // `clients` list and `tr`; the new pages import it. tests/payroll/ runs it
 // against the old copies (tests/payroll/legacy.mjs) and requires identical
-// results (but for a pair across a clock change or over 24h, which now counts
-// by its time stamps — docs/history.md) — a change here is a payroll change.
+// results (but for a pair from 1 November 2026 across a clock change or over
+// 24h, which counts by its time stamps — PAIR_STAMPS_FROM, docs/history.md) —
+// a change here is a payroll change.
 
 // ── Data shapes (only the fields payroll reads) ──
 export interface Punch {
@@ -97,10 +98,24 @@ const nowHHMM = () => { const n = new Date(); return String(n.getHours()).padSta
 // minutes as the clock showed them — so a night across a clock change (Israel,
 // last Sunday of October / Friday before the last Sunday of March) counts its
 // real 9 or 7 hours and a forgotten OUT a day later counts 25h, not 1h. The
-// 'HH:MM' strings only when a stamp is missing or unreadable.
+// 'HH:MM' strings (the old rule, a length under 24h) when a stamp is missing
+// or unreadable, and also:
+// - for a pair that opened before PAIR_STAMPS_FROM: the months before it keep
+//   exactly the numbers they had (owner, 2026-10-24: past months' pay never
+//   changes because of this rule);
+// - for a pair with an edited punch (editedBy / editedAt) whose stamps are more
+//   than 24h apart: the punch window used to move only the HH:MM within the
+//   stamp's own day, so an old edit can leave its stamp a day off; an edit now
+//   keeps the pair within 24h (src/manager/logic/punches.ts editedPunchTs), as
+//   does an accepted hours fix (functions-auth/hours.py).
+export const PAIR_STAMPS_FROM = Date.parse('2026-11-01T00:00:00+02:00'); // 1 November 2026, Israel time
+const edited = (p: Punch | null) => !!(p && (p.editedBy || p.editedAt));
 function pairMins(a: Punch, b: Punch | null, mins: (t: string) => number, bTime: string): number {
   const ta = tsOf(a), tb = b ? tsOf(b) : Date.now();
-  if (isFinite(ta) && isFinite(tb) && tb >= ta) return Math.floor(tb / 60000) - Math.floor(ta / 60000);
+  if (isFinite(ta) && isFinite(tb) && tb >= ta && ta >= PAIR_STAMPS_FROM) {
+    const m = Math.floor(tb / 60000) - Math.floor(ta / 60000);
+    if (m <= 1440 || !(edited(a) || edited(b))) return m;
+  }
   let dur = mins(bTime) - mins(a.time as string); if (dur < 0) dur += 1440;
   return dur;
 }
@@ -111,7 +126,8 @@ function pairMins(a: Punch, b: Punch | null, mins: (t: string) => number, bTime:
 // without IN, 0-minute or >12h shift, an open shift) and today's open shift
 // counts up to now. Without it (the portals and the punch page): only closed
 // IN→OUT pairs count and warnings stays empty. A pair's length comes from the
-// punches' time stamps (pairMins); `codes` names each warning.
+// punches' time stamps from 1 November 2026, from the 'HH:MM' strings before
+// (pairMins); `codes` names each warning.
 export function analyzeDayPunches(entries: Punch[], date: string | number | Date, opts?: { tr: Translate }): DayAnalysis {
   const chrono = [...entries].sort((a, b) => tsOf(a) - tsOf(b));
   let hours = 0, openIn: Punch | null = null;
