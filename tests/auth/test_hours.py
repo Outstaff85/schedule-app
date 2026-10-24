@@ -195,35 +195,40 @@ def _review_lines(wid, month):
     return {f"{wid}|{day}": f"{wid}|{day}|{','.join(s[0] for s in sh)}|{','.join(s[1] for s in sh)}" for day, sh in rows.items()}
 
 
-@pytest.mark.parametrize("day,out_utc,month,next_day", [
-    ("2026-10-10", "2026-10-10T03:00:00", "2026-10", "2026-10-11"),   # mid-month
-    ("2026-11-01", "2026-11-01T04:00:00", "2026-11", "2026-11-02"),   # the 1st: never moved into October
+def _days(month):
+    return DB.collection("tenants").document(T1).collection("hourApprovals").document(f"client_c1_{month}").get().to_dict()["days"]
+
+
+@pytest.mark.parametrize("day,out_utc,prev", [
+    ("2026-10-10", "2026-10-10T03:00:00", "2026-10-09"),   # mid-month
+    ("2026-11-01", "2026-11-01T04:00:00", "2026-10-31"),   # the 1st: the shift's row is October's
 ])
-def test_a_fix_of_a_night_shift_with_no_in_keeps_the_shift_on_its_day(day, out_utc, month, next_day):
+def test_a_fix_of_a_night_shift_with_no_in_keeps_the_real_out_and_puts_the_in_the_evening_before(day, out_utc, prev):
     # Avi's OUT at 06:00 has no IN; the reviewer fixes the day's shift to 22:00–06:00.
     P("n1").set({"id": "n1", "workerId": "w1", "type": "out", "time": "06:00", "clientId": "c1", "hrId": "u-hr",
                  "ts": at(out_utc), "day": day})
-    key = f"w1|{day}"
+    key, pkey, month, pmonth = f"w1|{day}", f"w1|{prev}", day[:7], prev[:7]
     assert _review_lines("w1", month)[key] == f"w1|{day}||06:00"
     assert hours.hours_action(DB, CL, {"action": "fix", "month": month, "workerId": "w1", "day": day,
                                        "line": f"w1|{day}||06:00", "inT": "22:00", "outT": "06:00"})["ok"]
     r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": f"client_c1_{month}", "key": key, "accept": True})
-    assert r["ok"] and r["entry"]["status"] == "fixed" and r["entry"]["line"] == f"w1|{day}|22:00|06:00"
-    # The IN on the reviewed day at 22:00, the OUT the next morning: the shift stays on that day.
+    assert r["ok"] and r["key"] == pkey and r["entry"]["status"] == "fixed" and r["entry"]["line"] == f"w1|{prev}|22:00|06:00"
+    # The worker's real OUT is never moved; the new IN is the evening before.
+    out = P("n1").get().to_dict()
+    assert out["ts"] == at(out_utc) and out["day"] == day and out["time"] == "06:00"
     ps = [p.to_dict() for p in DB.collection("tenants").document(T1).collection("punches").stream()]
     new_in = next(d for d in ps if d["type"] == "in" and d.get("editedBy") == "approval")
-    assert new_in["time"] == "22:00" and new_in["day"] == day and new_in["ts"].astimezone(hours.TZ).strftime("%Y-%m-%d %H:%M") == f"{day} 22:00"
-    out = P("n1").get().to_dict()
-    assert out["time"] == "06:00" and out["day"] == next_day and out["ts"].astimezone(hours.TZ).strftime("%Y-%m-%d %H:%M") == f"{next_day} 06:00"
-    # The review row of that day is the fixed entry's line, so it shows as Fixed; no row the day before.
-    lines = _review_lines("w1", month)
-    assert lines[key] == r["entry"]["line"]
-    days = DB.collection("tenants").document(T1).collection("hourApprovals").document(f"client_c1_{month}").get().to_dict()["days"]
-    assert sorted(k for k in days if k.startswith("w1|")) == [key] and days[key]["line"] == lines[key]
+    assert new_in["time"] == "22:00" and new_in["day"] == prev and new_in["clientId"] == "c1"
+    assert new_in["ts"].astimezone(hours.TZ).strftime("%Y-%m-%d %H:%M") == f"{prev} 22:00"
+    # The shift's row is now the day before's and its entry there is the fix (Fixed); the reviewed day has no row and no entry.
+    lines = _review_lines("w1", pmonth)
+    assert lines[pkey] == r["entry"]["line"] and _days(pmonth)[pkey]["line"] == lines[pkey]
+    assert _days(pmonth)[pkey]["status"] == "fixed" and _days(pmonth)[pkey]["resolvedBy"] == "Owner"
+    assert key not in _review_lines("w1", month) and key not in _days(month)
 
 
-def test_a_night_fix_with_no_in_beside_a_day_shift_and_one_that_would_swallow_a_punch():
-    # The 12th: an OUT at 06:00 with no IN, then 08:00–12:00. Fixing the first into 22:00–06:00 puts it last.
+def test_a_night_fix_with_no_in_beside_a_day_shift_and_one_after_it():
+    # The 12th: an OUT at 06:00 with no IN, then 08:00–12:00. The fixed night is the 11th's; the 12th keeps 08:00–12:00.
     P("m1").set({"id": "m1", "workerId": "w1", "type": "out", "time": "06:00", "clientId": "c1", "ts": at("2026-10-12T03:00:00"), "day": "2026-10-12"})
     P("m2").set({"id": "m2", "workerId": "w1", "type": "in", "time": "08:00", "clientId": "c1", "ts": at("2026-10-12T05:00:00"), "day": "2026-10-12"})
     P("m3").set({"id": "m3", "workerId": "w1", "type": "out", "time": "12:00", "clientId": "c1", "ts": at("2026-10-12T09:00:00"), "day": "2026-10-12"})
@@ -232,16 +237,58 @@ def test_a_night_fix_with_no_in_beside_a_day_shift_and_one_that_would_swallow_a_
     assert hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-12",
                                        "line": line, "shift": 0, "inT": "22:00", "outT": "06:00"})["ok"]
     r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-12", "accept": True})
-    assert r["ok"] and r["entry"]["line"] == "w1|2026-10-12|08:00,22:00|12:00,06:00"
-    assert _review_lines("w1", "2026-10")["w1|2026-10-12"] == r["entry"]["line"]
-    # The 20th: an OUT at 06:00 with no IN, and the 21st starts at 05:00 — a 22:00–06:00 fix would swallow that IN.
+    assert r["ok"] and r["entry"]["line"] == "w1|2026-10-11|22:00|06:00"
+    lines, days = _review_lines("w1", "2026-10"), _days("2026-10")
+    assert lines["w1|2026-10-11"] == days["w1|2026-10-11"]["line"] == "w1|2026-10-11|22:00|06:00"
+    assert lines["w1|2026-10-12"] == days["w1|2026-10-12"]["line"] == "w1|2026-10-12|08:00|12:00"
+    assert days["w1|2026-10-12"]["status"] == "fixed"
+    assert P("m1").get().to_dict()["ts"] == at("2026-10-12T03:00:00") and P("m2").get().to_dict().get("editedBy") is None
+    # The 20th: an OUT at 06:00 with no IN, and the 21st starts at 05:00 — the night goes on the 19th, the 21st is untouched.
     P("k1").set({"id": "k1", "workerId": "w1", "type": "out", "time": "06:00", "clientId": "c1", "ts": at("2026-10-20T03:00:00"), "day": "2026-10-20"})
     P("k2").set({"id": "k2", "workerId": "w1", "type": "in", "time": "05:00", "clientId": "c1", "ts": at("2026-10-21T02:00:00"), "day": "2026-10-21"})
     assert hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-20",
                                        "line": "w1|2026-10-20||06:00", "inT": "22:00", "outT": "06:00"})["ok"]
     r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-20", "accept": True})
-    assert "overlaps other punches" in r["error"]
-    assert P("k1").get().to_dict()["day"] == "2026-10-20" and P("k1").get().to_dict().get("editedBy") is None
+    assert r["ok"] and r["entry"]["line"] == "w1|2026-10-19|22:00|06:00"
+    assert P("k1").get().to_dict()["ts"] == at("2026-10-20T03:00:00") and P("k2").get().to_dict().get("editedBy") is None
+
+
+def test_a_night_fix_with_no_in_before_back_to_back_nights():
+    # Night 1: Avi missed his IN on the 14th, OUT 06:00 on the 15th. Night 2: the 15th 21:55 to the 16th 06:05.
+    P("x1").set({"id": "x1", "workerId": "w1", "type": "out", "time": "06:00", "clientId": "c1", "ts": at("2026-10-15T03:00:00"), "day": "2026-10-15"})
+    P("x2").set({"id": "x2", "workerId": "w1", "type": "in", "time": "21:55", "clientId": "c1", "ts": at("2026-10-15T18:55:00"), "day": "2026-10-15"})
+    P("x3").set({"id": "x3", "workerId": "w1", "type": "out", "time": "06:05", "clientId": "c1", "ts": at("2026-10-16T03:05:00"), "day": "2026-10-16"})
+    line = _review_lines("w1", "2026-10")["w1|2026-10-15"]
+    assert line == "w1|2026-10-15|,21:55|06:00,06:05"
+    assert hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-15",
+                                       "line": line, "shift": 0, "inT": "22:00", "outT": "06:00"})["ok"]
+    r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-15", "accept": True})
+    assert r["ok"]
+    # Night 1 lands on the 14th, night 2 is untouched — each once.
+    ps = sorted((p.to_dict() for p in DB.collection("tenants").document(T1).collection("punches").stream()
+                 if p.to_dict().get("workerId") == "w1" and p.to_dict()["ts"] >= at("2026-10-14T00:00:00")), key=lambda d: d["ts"])
+    assert [(d["type"], d["ts"].astimezone(hours.TZ).strftime("%d %H:%M")) for d in ps] == [
+        ("in", "14 22:00"), ("out", "15 06:00"), ("in", "15 21:55"), ("out", "16 06:05")]
+    assert all(P(i).get().to_dict().get("editedBy") is None for i in ("x1", "x2", "x3"))
+    lines, days = _review_lines("w1", "2026-10"), _days("2026-10")
+    assert lines["w1|2026-10-14"] == days["w1|2026-10-14"]["line"] == "w1|2026-10-14|22:00|06:00"
+    assert lines["w1|2026-10-15"] == days["w1|2026-10-15"]["line"] == "w1|2026-10-15|21:55|06:05"
+
+
+def test_a_fix_that_touches_or_sits_inside_another_shift_is_refused():
+    # The 5th is 08:00–17:00 (a1, a2); a second shift 18:00–20:00.
+    P("a3").set({"id": "a3", "workerId": "w1", "type": "in", "time": "18:00", "clientId": "c1", "ts": at("2026-10-05T15:00:00"), "day": "2026-10-05"})
+    P("a4").set({"id": "a4", "workerId": "w1", "type": "out", "time": "20:00", "clientId": "c1", "ts": at("2026-10-05T17:00:00"), "day": "2026-10-05"})
+    line = "w1|2026-10-05|08:00,18:00|17:00,20:00"
+    # The first shift's OUT moved to 18:00, the minute the next shift opens (bounds included),
+    # or the whole first shift moved inside the second: refused, nothing changed.
+    for in_t, out_t in (("08:00", "18:00"), ("18:30", "19:30")):
+        assert hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-05",
+                                           "line": line, "shift": 0, "inT": in_t, "outT": out_t})["ok"]
+        r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-05", "accept": True})
+        assert "overlaps other punches" in r["error"]
+        assert P("a1").get().to_dict()["time"] == "08:00" and P("a2").get().to_dict()["time"] == "17:00"
+        assert _days("2026-10")["w1|2026-10-05"]["status"] == "fix"
 
 
 def test_concurrent_reviews_of_one_document_lose_nothing():

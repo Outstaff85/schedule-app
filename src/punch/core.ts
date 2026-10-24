@@ -214,8 +214,9 @@ export function wpToken(): string | null { return (st.worker && st.worker.token)
 // that no longer works, a punch that isn't this worker's) — a retry can never
 // succeed, so it isn't queued, and the punch is taken out of this device's
 // history (dropFromLog) so it no longer decides the next IN / OUT. A punch sent
-// late (an offline queue held for days) is never refused: the server keeps it
-// with a warning for the manager (functions-auth/portal.py, MAX_LATE).
+// late (an offline queue held for days) is kept by the server with a warning
+// for the manager; only one more than 30 days late is refused (a clock set
+// back, never a queue — functions-auth/portal.py, MAX_LATE / MAX_KEEP).
 async function sendPunch(e: PunchEntry): Promise<'ok' | 'retry' | { refused: string }> {
   try {
     const res = await postPunch(e);

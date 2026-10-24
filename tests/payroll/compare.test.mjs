@@ -304,10 +304,11 @@ ok(P.salaryPeriodKey('week', new FixedDate(2026, 9, 15)) === 'w:2026-10-11', 'we
   const long = [{ type: 'in', ts: '2026-11-05T06:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-11-06T07:00:00Z', time: '09:00' }];
   const l = P.analyzeDayPunches(long, new FixedDate(long[0].ts), { tr });
   ok(l.hours === 25 && l.warnings.length === 1 && /shift >12h/.test(l.warnings[0]) && l.codes.join() === 'gt12', 'a forgotten OUT 25h later: 25h and the >12h warning ' + JSON.stringify(l));
-  // An edited pair more than 24h apart by its stamps (the old punch window moved only the
-  // HH:MM within the stamp's own day): its HH:MM strings, as before — 08:00 → 17:00 is 9h, not 33h.
-  const ed = [{ type: 'in', ts: '2026-11-05T06:00:00Z', time: '08:00' }, { type: 'out', ts: '2026-11-06T15:00:00Z', time: '17:00', editedBy: 'admin', editedAt: '2026-11-07T09:00:00Z' }];
-  ok(P.analyzeDayPunches(ed, new FixedDate(ed[0].ts), { tr }).hours === 9 && P.analyzeDayPunches(ed, new FixedDate(ed[0].ts)).hours === 9, 'an edited pair over 24h: its HH:MM, 9h');
+  // An edited pair counts by its stamps too: the IN corrected from 08:12 to 08:00 while the
+  // worker was at work, the OUT forgotten until 09:00 the next day — 25h and the >12h warning, never 1h.
+  const ed = [{ type: 'in', ts: '2026-11-05T06:00:00Z', time: '08:00', editedBy: 'admin', editedAt: '2026-11-05T09:00:00Z' }, { type: 'out', ts: '2026-11-06T07:00:00Z', time: '09:00' }];
+  const e1 = P.analyzeDayPunches(ed, new FixedDate(ed[0].ts), { tr });
+  ok(e1.hours === 25 && e1.codes.join() === 'gt12' && P.analyzeDayPunches(ed, new FixedDate(ed[0].ts)).hours === 25, 'an edited pair over 24h: its stamps, 25h and >12h ' + JSON.stringify(e1));
   // An edited night within 24h counts by its stamps like any other.
   const edN = [{ type: 'in', ts: '2027-10-30T19:00:00Z', time: '22:00', editedBy: 'approval', editedAt: '2027-11-01T09:00:00Z' }, dst[1]];
   ok(P.analyzeDayPunches(edN, new FixedDate(edN[0].ts), { tr }).hours === 9, 'an edited pair within 24h: its stamps');

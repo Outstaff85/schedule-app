@@ -162,18 +162,25 @@ def test_a_punch_time_is_checked_against_the_servers_clock():
     assert abs((d["ts"] - back5).total_seconds()) < 1 and d["gpsSuspicious"] is True
     assert d["day"] == back5.astimezone(portal.TZ).strftime("%Y-%m-%d") and d["time"] == back5.astimezone(portal.TZ).strftime("%H:%M")
     assert d["gpsWarnings"] == ["sent 5 days after the punch time (check its month's approved hours)"]
-    months = {"id": "f5", "workerId": "w1", "type": "out", "ts": "2026-01-15T06:00:00Z"}
-    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": months})["ok"]
-    d = P(T1, "f5").get().to_dict()
-    assert d["day"] == "2026-01-15" and d["time"] == "08:00" and d["gpsSuspicious"] is True and "days after the punch time" in d["gpsWarnings"][0]
-    # Just inside the limit: kept and marked.
+    # Just inside MAX_KEEP (30 days): still kept, marked.
+    back29 = now - portal.MAX_KEEP + timedelta(hours=12)
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi",
+                                    "data": {"id": "f7", "workerId": "w1", "type": "out", "ts": _iso(back29)}})["ok"]
+    assert P(T1, "f7").get().to_dict()["gpsWarnings"] == ["sent 29 days after the punch time (check its month's approved hours)"]
+    # Older than MAX_KEEP: no offline queue holds a punch that long — a phone's clock set back, or a
+    # link filling in old months: refused, nothing written (a 9-month-old stamp, and one just past the bound).
+    for pid, ts in (("f5", "2026-01-15T06:00:00Z"), ("f8", _iso(now - portal.MAX_KEEP - timedelta(minutes=5)))):
+        r = portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": {"id": pid, "workerId": "w1", "type": "out", "ts": ts}})
+        assert r == {"error": "Punch time too old"}
+        assert not P(T1, pid).get().exists
+    # Just inside MAX_LATE: kept and marked, its warning in minutes.
     edge = {"id": "f6", "workerId": "w1", "type": "in", "ts": _iso(now - portal.MAX_LATE + timedelta(minutes=5))}
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": edge})["ok"]
     assert P(T1, "f6").get().to_dict()["gpsSuspicious"] is True
 
 
 def test_the_time_is_israel_time_whatever_the_phones_zone(monkeypatch):
-    monkeypatch.setattr(portal, "MAX_LATE", timedelta(days=100000))  # a fixed winter date
+    monkeypatch.setattr(portal, "MAX_KEEP", timedelta(days=100000))  # a fixed winter date
     ts = datetime(2026, 1, 15, 6, 0, tzinfo=timezone.utc)                # 08:00 in Israel (winter, UTC+2)
     data = {"id": "z1", "workerId": "w1", "type": "in", "ts": _iso(ts), "time": "14:00"}  # a phone on Manila time
     assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]

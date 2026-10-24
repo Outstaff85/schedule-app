@@ -3203,7 +3203,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   on.toast = await waitFor(p, () => /Synced 1 offline punch/.test(document.body.innerText), 5000);
   on.sent = (await srv('/punches')).n === n0 + 1;
   ok(on.flushed && on.toast && on.sent, 'punch: when the connection returns the queued punch is sent and the badge goes ' + JSON.stringify(on));
-  // A queue held for days (an OUT punched offline 5 days ago) is stored, never refused or taken off the phone;
+  // A queue held for days (an OUT punched offline 5 days ago, within MAX_KEEP) is stored, not refused or taken off the phone;
   // a refused punch (not this link's worker) is an error toast, leaves the history, and "Synced" counts only the stored one.
   const n1 = (await srv('/punches')).n;
   const lq = await p.evaluate(() => {

@@ -99,23 +99,17 @@ const nowHHMM = () => { const n = new Date(); return String(n.getHours()).padSta
 // last Sunday of October / Friday before the last Sunday of March) counts its
 // real 9 or 7 hours and a forgotten OUT a day later counts 25h, not 1h. The
 // 'HH:MM' strings (the old rule, a length under 24h) when a stamp is missing
-// or unreadable, and also:
-// - for a pair that opened before PAIR_STAMPS_FROM: the months before it keep
-//   exactly the numbers they had (owner, 2026-10-24: past months' pay never
-//   changes because of this rule);
-// - for a pair with an edited punch (editedBy / editedAt) whose stamps are more
-//   than 24h apart: the punch window used to move only the HH:MM within the
-//   stamp's own day, so an old edit can leave its stamp a day off; an edit now
-//   keeps the pair within 24h (src/manager/logic/punches.ts editedPunchTs), as
-//   does an accepted hours fix (functions-auth/hours.py).
+// or unreadable, and for a pair that opened before PAIR_STAMPS_FROM: the
+// months before it keep exactly the numbers they had (owner, 2026-10-24: past
+// months' pay never changes because of this rule) — among them every pair the
+// old punch window edited (it moved only the HH:MM within the stamp's own day,
+// so such a stamp can sit a day off); since then an edit keeps the pair within
+// 24h (src/manager/logic/punches.ts editedPunchTs), as does an accepted hours
+// fix (functions-auth/hours.py), so an edited pair counts by its stamps too.
 export const PAIR_STAMPS_FROM = Date.parse('2026-11-01T00:00:00+02:00'); // 1 November 2026, Israel time
-const edited = (p: Punch | null) => !!(p && (p.editedBy || p.editedAt));
 function pairMins(a: Punch, b: Punch | null, mins: (t: string) => number, bTime: string): number {
   const ta = tsOf(a), tb = b ? tsOf(b) : Date.now();
-  if (isFinite(ta) && isFinite(tb) && tb >= ta && ta >= PAIR_STAMPS_FROM) {
-    const m = Math.floor(tb / 60000) - Math.floor(ta / 60000);
-    if (m <= 1440 || !(edited(a) || edited(b))) return m;
-  }
+  if (isFinite(ta) && isFinite(tb) && tb >= ta && ta >= PAIR_STAMPS_FROM) return Math.floor(tb / 60000) - Math.floor(ta / 60000);
   let dur = mins(bTime) - mins(a.time as string); if (dur < 0) dur += 1440;
   return dur;
 }

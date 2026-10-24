@@ -33,13 +33,9 @@ var Payroll = (function(exports) {
 		return String(n.getHours()).padStart(2, "0") + ":" + String(n.getMinutes()).padStart(2, "0");
 	};
 	var PAIR_STAMPS_FROM = Date.parse("2026-11-01T00:00:00+02:00");
-	var edited = (p) => !!(p && (p.editedBy || p.editedAt));
 	function pairMins(a, b, mins, bTime) {
 		const ta = tsOf(a), tb = b ? tsOf(b) : Date.now();
-		if (isFinite(ta) && isFinite(tb) && tb >= ta && ta >= PAIR_STAMPS_FROM) {
-			const m = Math.floor(tb / 6e4) - Math.floor(ta / 6e4);
-			if (m <= 1440 || !(edited(a) || edited(b))) return m;
-		}
+		if (isFinite(ta) && isFinite(tb) && tb >= ta && ta >= PAIR_STAMPS_FROM) return Math.floor(tb / 6e4) - Math.floor(ta / 6e4);
 		let dur = mins(bTime) - mins(a.time);
 		if (dur < 0) dur += 1440;
 		return dur;

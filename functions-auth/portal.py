@@ -63,6 +63,12 @@ CLOCK_SLACK = timedelta(minutes=5)
 # the days and asks to check its month, whose hours may already be approved or
 # signed (an approved day whose shifts change shows as changed in the review).
 MAX_LATE = timedelta(days=3)
+# A punch sent later than this after its time is refused: far longer than any
+# offline queue plausibly holds one (a holiday week included), so it is a phone
+# whose clock is set back (a reset date, a wrong year) or a link used to fill
+# in old months — the worker sees the refusal, and a manager adds an old shift
+# by hand.
+MAX_KEEP = timedelta(days=30)
 SITE_FIELDS = ("id", "name", "object", "lat", "lng", "radius")
 
 E_LINK = "Unknown worker link"
@@ -150,7 +156,7 @@ def _save_punch(db, tid, w, data):
     against the server's clock: a time ahead of it is replaced by the server's
     time, a time behind it (sent late) is kept; both are marked suspicious with
     a warning the punch log shows. A time more than MAX_LATE behind is kept
-    too, its warning in days. `day` and `time` come from that ts in Israel
+    too, its warning in days; one more than MAX_KEEP behind is refused. `day` and `time` come from that ts in Israel
     time, whatever the page's clock or time zone said."""
     if not isinstance(data, dict):
         return {"error": "No punch data"}
@@ -198,6 +204,8 @@ def _save_punch(db, tid, w, data):
         warnings.append(f"clock ahead {round((ts - now).total_seconds() / 60)} min (server time used)")
         ts = now
         doc["gpsSuspicious"] = True
+    elif ts < now - MAX_KEEP:
+        return {"error": "Punch time too old"}
     elif ts < now - CLOCK_SLACK:
         late = now - ts
         if late > MAX_LATE:
