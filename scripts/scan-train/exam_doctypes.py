@@ -279,6 +279,7 @@ def run_cut_pages(run):
     each the 256 square the phone draws."""
     import json
     import pathlib
+    import re
     run = pathlib.Path(run)
     pages, missed = [], 0
     for e in json.loads((run / "doctype" / "pages.json").read_text(encoding="utf-8")):
@@ -288,7 +289,8 @@ def run_cut_pages(run):
             missed += 1
             continue
         pages.append({"file": str(run / e["file"]), "doctype": e["doctype"], "doc": str(e["templateSha1"])[:10],
-                      "turn_k": e.get("turn_k"), "id": e.get("id"), "manifest": e.get("id"), "iou": e.get("iou")})
+                      "turn_k": e.get("turn_k"), "id": e.get("id"), "manifest": re.sub(r"-d\d+$", "", str(e.get("id"))),
+                      "iou": e.get("iou")})   # the scene's manifest id (cut-<seed>-<i>); the page's is its id (-d<j>)
     return pages, missed
 
 

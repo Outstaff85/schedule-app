@@ -136,6 +136,115 @@ def test_the_stage_and_tilt_bucket_come_from_the_picture_id_and_the_camera():
                                                         "tilt": "15-30"}
 
 
+def test_real_set_rows_with_many_errors_never_move_the_made_up_pictures_multipliers(tmp_path):
+    run = tmp_path / "exam"
+    ids = _exam_run(run, ["fabric"], per=60, recipe="pair")
+    scenes = ids["fabric"]
+    rows = []
+    for k, x in enumerate(scenes):   # the first answer and the next picture: both wrong one time in ten
+        for ident in (x, f"{x}-n1"):
+            rows.append({"exam": "edges", "model": "edges-lite.onnx", "which": "new", "set": "e2", "id": ident, "manifest": x,
+                         "ok": k % 10 != 0})
+    for k in range(200):              # users, MIDV: real photos, no scene — 40 % wrong
+        rows.append({"exam": "edges", "model": "edges-lite.onnx", "which": "new", "set": "users" if k < 120 else "midv",
+                     "id": f"real-{k}", "manifest": None, "ok": k % 5 >= 2})
+    f = mine.mine([_write_rows(tmp_path / "rows.jsonl", rows), run], real=tmp_path / "no-real", out=tmp_path / "mine",
+                  work=tmp_path)
+    st = f["models"]["edges"]["stage"]
+    assert st["answer"]["n"] == 60 and st["next"]["n"] == 60
+    assert st["answer"]["mult"] == 1.0 and st["next"]["mult"] == 1.0   # the same rate on both: neither drawn less
+    c = f["counts"]["edges"]
+    assert c["examples"] == 120 and c["errors"] == 12 and c["unjoined"] == 200 and c["unjoinedErrors"] == 80
+    note = (tmp_path / "mine" / "note.txt").read_text(encoding="utf-8")
+    assert "12 wrong of 120 made-up pictures" in note and "80 wrong of 200" in note
+
+
+def test_one_scene_examined_by_several_sets_and_both_model_files_counts_once(tmp_path):
+    run = tmp_path / "exam"
+    ids = _exam_run(run, ["fabric"], per=10, recipe="card_on_sheet")["fabric"]
+    rows = []
+    for k, x in enumerate(ids):   # E2, E4 (phone) and golden (E2's card_on_sheet again), each for both model files
+        for s in ("e2", "phone", "golden"):
+            for n in ("edges.onnx", "edges-lite.onnx"):
+                # the stored JPEG's path (e2, golden) wrong on the first five, the phone's own input right on all but one
+                ok = (k != 0) if s == "phone" else (k >= 5)
+                rows.append({"exam": "edges", "model": n, "which": "new", "set": s, "id": x, "manifest": x, "ok": ok})
+    f = mine.mine([_write_rows(tmp_path / "rows.jsonl", rows), run], real=tmp_path / "no-real", out=tmp_path / "mine",
+                  work=tmp_path)
+    fab = f["models"]["edges"]["bgCategory"]["fabric"]
+    assert fab["n"] == 10 and fab["errors"] == 1 and fab["why"] == "too few"   # 10 pictures, not 60 rows: under MIN_N
+    assert f["counts"]["edges"]["rows"] == 60 and f["counts"]["edges"]["examples"] == 10
+
+
+def test_exam_phone_rows_count_only_each_model_files_own_phone_input(tmp_path):
+    run = tmp_path / "exam"
+    ids = _exam_run(run, ["wood"], per=10)["wood"]
+    rows = []
+    for k, x in enumerate(ids):
+        for n, own in (("edges-lite.onnx", "live"), ("edges.onnx", "capture")):
+            for op in ("area", "live", "capture"):
+                ok = True if op == own else False          # only the model's own phone input is right
+                if n == "edges.onnx" and op == own and k < 3:
+                    ok = False                              # the shot model wrong on three: the picture is wrong
+                rows.append({"exam": "exam-phone", "model": n, "which": "lab", "set": f"templates@{op}", "id": x,
+                             "manifest": x, "ok": ok})
+    obs, rest = mine.observations(mine.latest(rows)["edges"], mine.exam_manifests(mine.read_inputs([run], tmp_path)[1]))
+    assert len(obs) == 10 and sum(not ok for _, ok in obs) == 3 and rest == {"examples": 0, "errors": 0}
+    assert mine.phone_rank({"set": "x@area", "model": "edges.onnx"}) is None
+    assert mine.phone_rank({"set": "x@live", "model": "edges.onnx"}) is None
+    assert mine.phone_rank({"set": "x@capture", "model": "edges.onnx"}) == 0
+    assert mine.phone_rank({"set": "phone", "model": "edges.onnx"}) == 0 and mine.phone_rank({"set": "e2", "model": "x"}) == 1
+
+
+def _cuts_run(folder, n=40, seed=7):
+    """A cuts exam run (gen/phone_run.py): scenes cut-<seed>-<i>, each with two documents (j 0 the answer, a passport;
+    j 1 the next, an id_front), plus one real attempt the run took in."""
+    folder = pathlib.Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    rows = [{"id": f"cut-{seed}-{i}", "index": i, "split": "exam", "bgCategory": "wood", "class": "passport",
+             "scene": {"recipe": "pair"}, "camera": {"tilt": 5},
+             "labels": {"docs": [{"j": 0, "doctype": "passport", "role": "answer"}, {"j": 1, "doctype": "id_front", "role": "next"}]}}
+            for i in range(n)]
+    rows.append({"id": f"cut-{seed}-{n}", "index": n, "split": "exam", "class": "passport", "source": "attempt",
+                 "scene": {"recipe": "real"}, "labels": {"docs": [{"j": 0, "doctype": "passport", "role": "answer"}]}})
+    (folder / "manifest.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    (folder / "run.json").write_text(json.dumps({"model": "doctype", "split": "exam"}), encoding="utf-8")
+    return [r["id"] for r in rows]
+
+
+def test_doctype_phone_cut_rows_join_their_scene_and_take_their_own_documents_kind(tmp_path):
+    run = tmp_path / "cuts"
+    ids = _cuts_run(run)
+    rows = []
+    for i, x in enumerate(ids[:-1]):
+        for j in (0, 1):
+            # rows exam_doctypes wrote before naming the scene carry the page's id as manifest: both forms join
+            rows.append({"exam": "doctypes", "model": "doctype-lite.onnx", "which": "new", "set": "phoneCut",
+                         "id": f"{x}-d{j}", "manifest": f"{x}-d{j}" if i % 2 else x, "ok": not (j == 1 and i < 20)})
+    rows.append({"exam": "doctypes", "model": "doctype-lite.onnx", "which": "new", "set": "phoneCut", "id": f"{ids[-1]}-d0",
+                 "manifest": ids[-1], "ok": False})   # the real attempt's page: not a made-up scene
+    f = mine.mine([_write_rows(tmp_path / "rows.jsonl", rows), run], real=tmp_path / "no-real", out=tmp_path / "mine",
+                  work=tmp_path)
+    c = f["counts"]["doctype"]
+    assert c["examples"] == 80 and c["unjoined"] == 1
+    cls, st = f["models"]["doctype"]["class"], f["models"]["doctype"]["stage"]
+    assert cls["id_front"]["n"] == 40 and cls["id_front"]["errors"] == 20 and cls["id_front"]["why"] == "exam"
+    assert cls["id_front"]["mult"] > 1.0 > cls["passport"]["mult"]
+    assert st["next"]["n"] == 40 and st["answer"]["n"] == 40
+    assert mine.scene_id("cut-7-3-d1") == "cut-7-3" and mine.scene_id("gen-7-3-n1") == "gen-7-3-n1"
+
+
+def test_exam_doctypes_names_a_phone_cut_page_by_its_scene(tmp_path):
+    pytest.importorskip("onnxruntime")
+    import exam_doctypes as ed
+    (tmp_path / "doctype").mkdir()
+    pages = [{"file": "doctype/a.png", "doctype": ed.DOCTYPES[0], "templateSha1": "abcdef0123456", "cut_by": "phone",
+              "id": "cut-7-3-d1", "turn_k": 0, "iou": 0.9}]
+    (tmp_path / "doctype" / "pages.json").write_text(json.dumps(pages), encoding="utf-8")
+    got, missed = ed.run_cut_pages(tmp_path)
+    assert missed == 0 and got[0]["id"] == "cut-7-3-d1" and got[0]["manifest"] == "cut-7-3"
+
+
 def test_apply_keeps_every_value_above_its_floor_share():
     base = {"a": 1.0, "b": 1.0, "c": 1.0, "d": 1.0}
     got = mine.apply(base, {"a": 3.0, "b": 3.0, "c": 3.0, "d": 0.1})

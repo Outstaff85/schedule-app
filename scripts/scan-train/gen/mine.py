@@ -6,19 +6,24 @@
 
 What it reads (read-only): the exam rows (exam_rows.jsonl, written by exam.py, exam_doctypes.py, exam_mrz.py and gen
 exam-phone; gen/exam_sets.py) — `--run` names exam_rows.jsonl files, folders holding one (the work folder) and gen
-runs (folders with manifest.jsonl); default: the work folder's exam_rows.jsonl and every run under <home>/gen/runs —,
-the manifests of the gen runs (an exam row's "manifest" is its scene's manifest id: its background category, recipe,
-document kind and camera tilt), and gen real's index (<home>/real, --real) for the real pictures people corrected.
+runs (folders with manifest.jsonl); default: the work folder's exam_rows.jsonl, every run under <home>/gen/runs and
+synth/docs-exam when it has a manifest —, the manifests of the gen runs (an exam row's "manifest" is its scene's
+manifest id — a phone cut's page id <scene>-d<j> is stripped to it —: its background category, recipe, document kind
+and camera tilt), and gen real's index (<home>/real, --real) for the real pictures people corrected.
 
 1. focus.json — per model (edges, doctype, mrz, he, face: the exam row's model file), a sampling multiplier for each
    value of each axis: the background category (bgCategory), the configuration (recipe: single, pair, card_on_sheet,
    painted, none, partial), the document kind (class), the camera's tilt bucket (tilt: 0-15, 15-30, 30-45 degrees) and
    the stage in the phone's search (stage: answer — the first page found, next — a page found after others were painted
    over, inside — a card found inside its sheet). Only the newest model examined counts (new/, else the lab's, else
-   the parent: the rows' "which"), and only rows that measured something (ok not null). A value's raw multiplier is its
-   error rate over the axis' error rate. The guards:
-   - at least MIN_N (30) exam rows: a value with fewer is not reweighted from this run (it keeps the last run's,
-     halved toward 1);
+   the parent: the rows' "which"), and only rows that measured something (ok not null). Only the made-up scenes of the
+   exam runs count (observations): the real photos and the open sets are counted apart in the note, never in the
+   focus. Each picture counts once, however many sets and model files examined it: per model file the phone's own
+   input (exam.py's set phone, exam-phone's <set>@<the model's op>) before the stored JPEG's (e2, golden, templates),
+   exam-phone's area and other-op rows dropped, and the picture wrong when either model file got it wrong. A value's
+   raw multiplier is its error rate over the axis' error rate. The guards:
+   - at least MIN_N (30) examples (pictures, not rows): a value with fewer is not reweighted from this run (it keeps
+     the last run's, halved toward 1);
    - DECAY (50 %) per run: the last run's multiplier (--prev, default the out folder's focus.json) moves halfway back
      to 1; the new one is this run's when it is further from 1, else the halved old one — a weakness the exam stops
      showing fades out over a few runs, one it shows again stays;
@@ -83,22 +88,50 @@ def tilt_bucket(t):
     return f"{lo}-{hi}"
 
 
-def stage_of(ident):
+CUT = re.compile(r"-d(\d+)$")   # a page the phone's own cuts took from a scene: <scene>-d<j> (gen/phone_run.py)
+
+
+def scene_id(manifest):
+    """The scene's manifest id an exam row names: a phone cut's page id (<scene>-d<j>, as exam rows written before
+    exam_doctypes named the scene carry) stripped to its scene's."""
+    return CUT.sub("", str(manifest)) if manifest is not None else None
+
+
+def _docs(m):
+    return ((m.get("labels") or {}).get("docs") or []) if m and isinstance(m.get("labels"), dict) else []
+
+
+def _cut_doc(m, ident):
+    """The labels.docs entry of a phone cut's page (<scene>-d<j>: the entry whose j is j), else None."""
+    k = CUT.search(str(ident or ""))
+    if not k:
+        return None
+    return next((d for d in _docs(m) if str(d.get("j")) == k.group(1)), None)
+
+
+def stage_of(ident, m=None):
     """The picture's stage in the phone's search, by its id (gen/outputs/edges.py: <scene>-n<k> a next picture,
-    <scene>-in<k> an inside cut, else the frame's first answer)."""
+    <scene>-in<k> an inside cut; a phone cut's page <scene>-d<j>: its document's role in the scene's manifest m; else
+    the frame's first answer)."""
     s = str(ident or "")
     if re.search(r"-n\d+$", s):
         return "next"
     if re.search(r"-in\d+$", s):
         return "inside"
+    d = _cut_doc(m, s)
+    if d and d.get("role") in ("next", "inside"):
+        return d["role"]
     return "answer"
 
 
 def _doc_class(m, ident):
     """The document kind the picture asks for: the manifest's class for the first answer, else the k-th next / inside
-    page's own type (labels.docs in role order)."""
-    docs = ((m.get("labels") or {}).get("docs") or []) if isinstance(m.get("labels"), dict) else []
+    page's own type (labels.docs in role order), or a phone cut's page's own type (labels.docs by j)."""
+    docs = _docs(m)
     s = str(ident or "")
+    d = _cut_doc(m, s)
+    if d is not None:
+        return d.get("doctype") or m.get("class")
     k = re.search(r"-(n|in)(\d+)$", s)
     if k and docs:
         roles = ("answer", "next") if k.group(1) == "n" else ("inside",)
@@ -111,7 +144,7 @@ def _doc_class(m, ident):
 
 def attributes(row, m=None):
     """{axis: value} of an exam row (m: its scene's manifest row, or None — then only the stage)."""
-    out = {"stage": stage_of(row.get("id"))}
+    out = {"stage": stage_of(row.get("id"), m)}
     if m:
         out.update({"bgCategory": m.get("bgCategory"), "recipe": m.get("recipe") or (m.get("scene") or {}).get("recipe"),
                     "class": _doc_class(m, row.get("id")), "tilt": tilt_bucket((m.get("camera") or {}).get("tilt"))})
@@ -140,6 +173,8 @@ def read_inputs(paths=None, work=None):
     work = pathlib.Path(work or home.WORK)
     if not paths:
         paths = [work / ROWS] + sorted(p for p in (work / "gen" / "runs").glob("*") if (p / gm.RUN).exists())
+        if (work / "synth" / "docs-exam" / gm.MANIFEST).exists():   # the templates exam set, when drawn through gen build
+            paths.append(work / "synth" / "docs-exam")
     rows, runs = [], []
     for p in map(pathlib.Path, paths):
         if p.is_file():
@@ -181,6 +216,56 @@ def exam_manifests(runs):
             for r in rows:
                 out.setdefault(r.get("id"), r)
     return out
+
+
+def made_up(m):
+    """A scene gen drew (not a real attempt a cuts run took in: recipe "real", source "attempt")."""
+    return bool(m) and m.get("source") != "attempt" and "real" not in (m.get("recipe"), (m.get("scene") or {}).get("recipe"))
+
+
+def phone_rank(r):
+    """0: a row of the input the phone gives its model file (exam.py's set "phone"; exam-phone's "<set>@<op>" with the
+    model's own op, PHONE_OP); 1: another path (e2, golden, templates: the stored JPEG at INTER_AREA); None: a row of
+    exam-phone's area input or the other model's op — never the phone's, dropped."""
+    s = str(r.get("set") or "")
+    if "@" in s:
+        from .exam_phone import PHONE_OP
+        return 0 if s.rsplit("@", 1)[1] == PHONE_OP.get(str(r.get("model"))) else None
+    return 0 if s == "phone" else 1
+
+
+def observations(rows, scenes):
+    """One model's picked rows → ([(attrs, ok)] one per example of a made-up scene, the rest {"examples", "errors"}).
+    An example is one picture (its scene id and its own id), counted once however many sets and model files examined
+    it: of each model file's rows the phone's own input first (phone_rank; e2 and golden repeat the phone set's
+    pictures), and it is wrong when any model file got it wrong (the phone runs both). Only rows joined to a made-up
+    scene of an exam run feed the focus; the real photos and the open sets (users, MIDV, SmartDoc, golden attempts, a
+    cuts run's real attempts) are counted apart, never reweighting the made-up draws."""
+    best = {}   # (model file, example) → (rank, row, scene)
+    for r in rows:
+        rank = phone_rank(r)
+        if rank is None:
+            continue
+        sc = scenes.get(r.get("manifest")) or scenes.get(scene_id(r.get("manifest")))
+        if not made_up(sc):
+            sc = None
+        ex = (sc.get("id") if sc else None, str(r.get("id")))
+        k = (str(r.get("model")), ex)
+        if k not in best or rank < best[k][0]:
+            best[k] = (rank, r, sc)
+    by = {}
+    for (_, ex), (_, r, sc) in best.items():
+        got = by.setdefault(ex, [r, sc, True])
+        got[2] = got[2] and bool(r["ok"])
+    obs, rest = [], {"examples": 0, "errors": 0}
+    for ex in sorted(by, key=lambda e: (e[0] is None, str(e[0]), e[1])):
+        r, sc, ok = by[ex]
+        if sc is None:
+            rest["examples"] += 1
+            rest["errors"] += 0 if ok else 1
+        else:
+            obs.append((attributes(r, sc), ok))
+    return obs, rest
 
 
 # ---------- the multipliers ----------
@@ -383,13 +468,10 @@ def mine(paths=None, real=None, prev=None, out=None, work=None):
     picked = latest(rows)
     models, counts = {}, {}
     for m in sorted(set(picked) | set(old_models)):
-        obs, joined = [], 0
-        for r in picked.get(m, []):
-            sc = scenes.get(r.get("manifest"))
-            joined += sc is not None
-            obs.append((attributes(r, sc), bool(r["ok"])))
+        obs, rest = observations(picked.get(m, []), scenes)
         models[m] = multipliers(evidence(obs), old_models.get(m))
-        counts[m] = {"rows": len(obs), "joined": joined, "errors": sum(not ok for _, ok in obs),
+        counts[m] = {"rows": len(picked.get(m, [])), "examples": len(obs), "errors": sum(not ok for _, ok in obs),
+                     "unjoined": rest["examples"], "unjoinedErrors": rest["errors"],
                      "which": picked[m][0].get("which") if picked.get(m) else None}
     # 2. the hard pool
     real_dir = pathlib.Path(real or work / "real")
@@ -449,8 +531,10 @@ def note(focus, out):
     for m, axes in sorted(focus["models"].items()):
         c = focus["counts"].get(m) or {}
         lines.append("")
-        lines.append(f"{WHAT.get(m, m)}: {c.get('errors', 0)} wrong of {c.get('rows', 0)} examined"
-                     + (f" ({c['which']} model)" if c.get("which") else "") + f", {c.get('joined', 0)} matched to a made-up scene.")
+        lines.append(f"{WHAT.get(m, m)}: {c.get('errors', 0)} wrong of {c.get('examples', 0)} made-up pictures examined"
+                     + (f" ({c['which']} model)" if c.get("which") else "") + "; these set the focus.")
+        if c.get("unjoined"):
+            lines.append(f"  Real photos and open sets (not used for the focus): {c['unjoinedErrors']} wrong of {c['unjoined']}.")
         up, few, faded = [], [], []
         for axis, vals in axes.items():
             for v, x in vals.items():
