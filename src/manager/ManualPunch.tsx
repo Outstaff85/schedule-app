@@ -34,9 +34,12 @@ export function ManualPunch({ clientId, api }: { clientId: string; api: ManagerB
     if (!wid) { api.toast(tr('Please select a worker')); return; }
     if (!time) { api.toast(tr('Please enter a time')); return; }
     const w = workers.find(x => x.id === wid);
+    // `date` from the field's own parts (new Date('yyyy-mm-dd') is UTC midnight:
+    // a day early on a device west of UTC), so it is the same day as `ts`.
+    const [y, m, d] = date.split('-');
     const p: Punch = {
       id: Date.now(), workerId: wid, workerName: w?.name || 'Unknown', type, time,
-      date: new Date(date).toLocaleDateString('en-GB'), ts: new Date(date + 'T' + time + ':00').toISOString(),
+      date: d + '/' + m + '/' + y, ts: new Date(date + 'T' + time + ':00').toISOString(),
       site: client.name || '', clientId: client.id || null, dist: null, gpsVerified: false, manual: true, notes: note.trim(),
       gpsWarnings: ['Manual entry by manager'],
     };

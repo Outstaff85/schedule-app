@@ -16,6 +16,7 @@ import { canChange, hasEditPay, hasPermission, hrPayOnly, isAccTab, isFirmAdminS
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { csvText } from '../../lib/utils';
+import { hasBillRate } from '../accounting';
 import { editedPunchTs, punchDate } from '../logic/punches';
 import { autoSave, latestHoursBatch } from '../data/store';
 import { fsTenantId, getSession, gsAuth } from '../data/session';
@@ -207,11 +208,10 @@ provideBridge({
   clients(){
     const byClient=salaryEntriesFor('month').byClient||{};
     const waiting=new Set((__hoursBatches||[]).filter((b?: any)=>b.status==='pending').flatMap((b?: any)=>(b.entries||[]).map((e?: any)=>e.clientId)));
-    const empty=(v?: any)=>v==null||v==='';
     return {ready:__dataReady, canEdit:hasPermission('clients'), canPunch:canChange('editPunches'),
       clients:clients.map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||'', address:c.address||'', object:c.object||'',
         workers:workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length, monthHours:(byClient[c.id]||{}).hours||0,
-        noRate:empty(c.billRate)&&empty(c.defaultHourlyRate)&&!c.fixedBillRate&&!c.dailyBillRate, waiting:waiting.has(c.id)}))};
+        noRate:!hasBillRate(c), waiting:waiting.has(c.id)}))};
   },
   suppliers(){
     const hours=workersMonthHours();

@@ -3097,6 +3097,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const after = await srv('/punches');
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');
   ok(!after.days.includes(null), 'punch: the new punch has a day');
+  // A new phone (no local history) with an IN on the server: the button offers Punch out (myMonth's punches count too).
+  const keptLog = await p.evaluate(() => { const l = localStorage.getItem('punchLog'); localStorage.removeItem('punchLog'); return l; });
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  ok(await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'out' && !localStorage.getItem('punchLog'), 8000),
+    'punch: an empty local history and an IN on the server give Punch out');
+  await p.evaluate(l => { if (l) localStorage.setItem('punchLog', l); }, keptLog);
   const load0 = JSON.parse((punchReplies.find(x => x.action === 'load') || {text: '{}'}).text);
   await p.click('[data-testid="tile-schedule"]');
   await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));

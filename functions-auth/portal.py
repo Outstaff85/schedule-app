@@ -176,6 +176,16 @@ def _save_punch(db, tid, w, data):
         doc.pop("clientId", None)
         doc.pop("site", None)
     doc["type"] = str(data.get("type")).lower()
+    # The name the Punch Log lists and exports is the worker record's, never
+    # the page's; the free text is clipped (the log and its CSV).
+    name = (w.to_dict() or {}).get("name")
+    if name:
+        doc["workerName"] = _clip(name, 120)
+    else:
+        doc.pop("workerName", None)
+    for k, n in (("site", 200), ("notes", 500)):
+        if k in doc:
+            doc[k] = _clip(doc[k], n)
     warnings = [_clip(x, 200) for x in (data.get("gpsWarnings") or [])][:20]
     now = datetime.now(timezone.utc)
     ts = _to_dt(data.get("ts")) or now
@@ -424,6 +434,11 @@ def strip_worker(d, supplier_id, pay=False):
     # A worker paid by the day: the supplier's commission is a fixed ₪ per day
     # (dayRate) when one is set; never the worker's own pay inputs.
     o["supplierDayRate"] = sr.get("dayRate") if d.get("payMode") == "daily" else None
+    # That commission counts the days set by hand when there are some (as the
+    # manager's Salary table does): the day counts go with it even without
+    # "See workers' pay" — a commission input, never a wage.
+    if o["supplierDayRate"] is not None and isinstance(d.get("dayOverrides"), dict):
+        o["dayOverrides"] = d["dayOverrides"]
     return o
 
 

@@ -58,12 +58,14 @@ const _urlHasGeo = !!(params.get('lat') && params.get('lng'));
 const _rawLat = (_siteEff?.lat as string | undefined) ?? params.get('lat');
 const _rawLng = (_siteEff?.lng as string | undefined) ?? params.get('lng');
 const num = (v: unknown) => (v != null && v !== '' && !isNaN(parseFloat(String(v))) ? parseFloat(String(v)) : null);
+/** A site's radius in metres: 100 when unset, never under 10 (as the client window saves it). */
+function siteRadius(v: unknown): number { return Math.max(10, parseInt(String(v ?? ''), 10) || 100); }
 export const SITE: { name: string; object: string; lat: number | null; lng: number | null; radius: number; clientId: string | null } = {
   name: (_siteEff?.clientName as string) || params.get('site') || 'Work Site',
   object: '',
   lat: num(_rawLat),
   lng: num(_rawLng),
-  radius: parseInt(String(_siteEff?.radius || params.get('r'))) || 100,
+  radius: siteRadius(_siteEff?.radius || params.get('r')),
   clientId: (_siteEff?.clientId as string) || null,
 };
 
@@ -142,6 +144,35 @@ export function showToast(msg: string) {
 // ── The device's punch log ──
 export function getPunchLog(): PunchEntry[] { try { return JSON.parse(localStorage.getItem('punchLog') || '[]'); } catch { return []; } }
 function savePunchLog(log: PunchEntry[]) { localStorage.setItem('punchLog', JSON.stringify(log)); }
+/** A punch the server answered refused never reached it: it leaves this device's
+ *  history too, so it no longer decides the next IN / OUT. */
+function dropFromLog(e: PunchEntry) {
+  const log = getPunchLog(), left = log.filter(x => !(x.id === e.id && x.workerId === e.workerId));
+  if (left.length !== log.length) savePunchLog(left);
+}
+// The worker's punches the server holds (myMonth: this month, with a day of
+// margin, so last night's IN is there too): another phone's punches, or one a
+// manager added, count for the next IN / OUT as well as this device's history.
+const _serverPunches = new Map<string, { workerId: string; type: string; ts: string; time?: string }>();
+/** Keeps the server's punches of a myMonth reply (figures.ts); redraws when the latest one changed. */
+export function noteServerPunches(list: Record<string, unknown>[] | undefined) {
+  const wid = st.worker?.id, before = lastPunch(wid);
+  (list || []).forEach(p => {
+    if (!p || !p.ts || (p.type !== 'in' && p.type !== 'out')) return;
+    _serverPunches.set(String(p.workerId) + '|' + String(p.id ?? p.ts), { workerId: String(p.workerId), type: String(p.type), ts: String(p.ts), time: p.time as string | undefined });
+  });
+  const after = lastPunch(wid);
+  if (before?.ts !== after?.ts || before?.type !== after?.type) set({ rev: st.rev + 1 });
+}
+/** The worker's latest punch, by ts: this device's history and the server's punches together. */
+export function lastPunch(wid?: string): { type: string; ts: string; time?: string } | null {
+  const local = getLastEntry(getPunchLog(), wid);
+  let best: { type: string; ts: string; time?: string } | null = local;
+  _serverPunches.forEach(p => {
+    if (p.workerId === wid && (!best || new Date(p.ts).getTime() > new Date(best.ts).getTime())) best = p;
+  });
+  return best;
+}
 export function getLastEntry(log: PunchEntry[], wid?: string): PunchEntry | null {
   const es = log.filter(e => e.workerId === wid);
   if (!es.length) return null;
@@ -188,7 +219,7 @@ async function gsSavePunch(entry: PunchEntry) {
   if (!navigator.onLine) { queueEntry(entry); return; }
   const r = await sendPunch(entry);
   if (r === 'retry') queueEntry(entry);
-  else if (r !== 'ok') showRefused(r.refused);
+  else if (r !== 'ok') { dropFromLog(entry); showRefused(r.refused); }
 }
 function queueEntry(entry: PunchEntry) {
   entry.workerToken = entry.workerToken || wpToken();
@@ -208,7 +239,7 @@ export async function flushQueue() {
     for (const e of q) {
       const r = await sendPunch(e);
       if (r === 'retry') failed.push(e);
-      else if (r !== 'ok') showRefused(r.refused);
+      else if (r !== 'ok') { dropFromLog(e); showRefused(r.refused); }
     }
     // Keep what was queued while this loop was waiting on the network.
     left = failed.concat(getQueue().slice(q.length));
@@ -326,7 +357,7 @@ function resolveSiteFromWorker(w: PWorker) {
   const geo = cs.find(hasGeo);
   if (geo) {
     SITE.name = geo.name || SITE.name; SITE.object = geo.object || '';
-    SITE.lat = Number(geo.lat); SITE.lng = Number(geo.lng); SITE.radius = Number(geo.radius) || 100; SITE.clientId = geo.id;
+    SITE.lat = Number(geo.lat); SITE.lng = Number(geo.lng); SITE.radius = siteRadius(geo.radius); SITE.clientId = geo.id;
   } else if (cs[0]) {
     SITE.name = cs[0].name || ''; SITE.object = cs[0].object || ''; SITE.clientId = cs[0].id;
   }
@@ -353,7 +384,7 @@ export function pickObject(clientId: string) {
   const c = allClients.find(x => x.id === clientId);
   if (c) {
     SITE.name = c.name || SITE.name; SITE.object = c.object || ''; SITE.clientId = c.id;
-    if (hasGeo(c)) { SITE.lat = Number(c.lat); SITE.lng = Number(c.lng); SITE.radius = Number(c.radius) || 100; }
+    if (hasGeo(c)) { SITE.lat = Number(c.lat); SITE.lng = Number(c.lng); SITE.radius = siteRadius(c.radius); }
     else { SITE.lat = null; SITE.lng = null; }
   }
   _geoLocked = true;
@@ -452,8 +483,9 @@ export const openGpsHelp = () => set({ gpsHelp: true });
 export const closeGpsHelp = () => set({ gpsHelp: false });
 
 // ── A punch ──
-/** IN or OUT: the opposite of the worker's last punch across all days (an overnight shift closes correctly). */
-export function nextType(): 'in' | 'out' { return getLastEntry(getPunchLog(), st.worker?.id)?.type === 'in' ? 'out' : 'in'; }
+/** IN or OUT: the opposite of the worker's last punch across all days (an overnight shift closes correctly),
+ *  on this device or on the server (a new phone, a punch a manager added). */
+export function nextType(): 'in' | 'out' { return lastPunch(st.worker?.id)?.type === 'in' ? 'out' : 'in'; }
 const IL_TIME = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 export function doPunch() {
   const w = st.worker;
@@ -465,7 +497,7 @@ export function doPunch() {
   _lastPunchAt = Date.now();
   // The time in Israel, as the punch function stores it (from ts), whatever this phone's time zone.
   const now = new Date(), [hh, mm] = IL_TIME.format(now).split(':');
-  const log = getPunchLog(), last = getLastEntry(log, w.id), type = last?.type === 'in' ? 'out' : 'in';
+  const log = getPunchLog(), last = lastPunch(w.id), type = last?.type === 'in' ? 'out' : 'in';
   const gps = lastGps || ({} as Partial<NonNullable<typeof lastGps>>);
   const entry: PunchEntry = {
     id: Date.now(), workerId: w.id, workerName: w.name,
@@ -479,7 +511,7 @@ export function doPunch() {
   };
   log.push(entry); savePunchLog(log);
   void gsSavePunch(entry);
-  if (type === 'out' && last) updateScheduleManager(w.id, last.time, hh + ':' + mm);
+  if (type === 'out' && last && last.time) updateScheduleManager(w.id, last.time, hh + ':' + mm);
   // The page stays: the face flashes its colour, a check draws, the phone vibrates, the line says so.
   try { navigator.vibrate?.([30, 40, 60]); } catch { /* not allowed */ }
   let text: string;

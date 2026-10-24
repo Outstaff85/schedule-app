@@ -9,7 +9,7 @@ import {
   analyzeDayPunches, dailyRate, dayOverride, groupPunchesIntoShifts, isDailyPay, localYMD, PAY_RULES, shiftPayFor, travelPay,
   type PayClient, type PayWorker, type Punch,
 } from '@/lib/payroll';
-import { getPunchLog, getState, punchFn, set, URL_TOKEN, wpToken, type MonthData, type PWorker } from './core';
+import { getPunchLog, getState, noteServerPunches, punchFn, set, URL_TOKEN, wpToken, type MonthData, type PWorker } from './core';
 
 // ── My Schedule ──
 export interface SchedDay { work: boolean; start?: string; end?: string; night?: boolean; hours: number; dated: boolean }
@@ -55,6 +55,7 @@ export async function loadMonth(key: string) {
   try {
     const r = await (await punchFn({ action: 'myMonth', token: wpToken(), month: key })).json();
     hoursData[key] = (r && !r.error) ? r : (hoursData[key] || { failed: true });
+    if (r && !r.error) noteServerPunches(r.punches);
   } catch { hoursData[key] = hoursData[key] && !hoursData[key].failed ? hoursData[key] : { failed: true }; }
   if (hoursData[key].failed) { const l = localMonthData(); if (l.punches!.length) hoursData[key] = l; }
   bump();
@@ -67,10 +68,16 @@ export function refreshTileHours() {
   if (URL_TOKEN && navigator.onLine && Date.now() - _tileAt > 60e3) {
     _tileAt = Date.now();
     punchFn({ action: 'myMonth', token: wpToken(), month: key }).then(r => r.json()).then(r => {
-      if (r && !r.error) { hoursData[key] = r; try { set({ tileHours: tr('{h}h', { h: myMonthFigures(r, key).hours.toFixed(1) }) }); } catch { /* bad data */ } }
+      if (r && !r.error) { hoursData[key] = r; noteServerPunches(r.punches); try { set({ tileHours: tr('{h}h', { h: myMonthFigures(r, key).hours.toFixed(1) }) }); } catch { /* bad data */ } }
     }).catch(() => {});
   }
 }
+
+// Back to the page: this month is read again at once (the next IN / OUT counts
+// the server's punches — another phone's, or one a manager added meanwhile).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && getState().worker) { _tileAt = 0; refreshTileHours(); }
+});
 
 export interface MonthShift { date: Date; inT?: string; outT?: string; h: number; pay: number; entries: (Punch & { type: string; time?: string; ts: string; dist?: number; clientId?: string; site?: string })[] }
 export interface MonthFigures { shifts: MonthShift[]; hours: number; regH: number; otH: number; shabH: number; total: number; travel: number; days: number; ov: number | null; hasRate: boolean }

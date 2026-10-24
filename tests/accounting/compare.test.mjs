@@ -331,5 +331,42 @@ run('totals', () => { sameNum(tally.pay, tally.payOld, 'pay + travel over every 
   });
 }
 
+// ── The supplier portal's payable summary (src/supplier/money.ts) ──
+// Bundled the same way, with a plain tr() in place of the React i18n module.
+{
+  const stub = path.join(HERE, 'i18n-stub.mjs');
+  const mres = await build({
+    configFile: false, root: ROOT, logLevel: 'silent', publicDir: false,
+    resolve: { alias: [{ find: '@/lib/i18n', replacement: stub }, { find: '@', replacement: path.join(ROOT, 'src') }] },
+    build: { write: false, minify: false, emptyOutDir: false, target: 'es2019',
+      lib: { entry: path.join(ROOT, 'src/supplier/money.ts'), formats: ['iife'], name: 'SupMoney', fileName: () => 'money.js' } },
+  });
+  const code = (Array.isArray(mres) ? mres : [mres]).flatMap(r => r.output).find(o => o.type === 'chunk').code;
+  vm.runInContext(code + '\nthis.SupMoney = SupMoney;', ctx);
+  const money = ctx.SupMoney;
+  const P = (id, type, ts, time) => ({ id, workerId: 'd1', type, ts, time, clientId: 'c1' });
+  // Two punched days in October (Israel, UTC+3), 20 days set by hand for the month, ₪50 per day to the supplier.
+  const log = [P('a', 'in', '2026-10-05T05:00:00Z', '08:00'), P('b', 'out', '2026-10-05T13:00:00Z', '16:00'),
+    P('c', 'in', '2026-10-06T05:00:00Z', '08:00'), P('d', 'out', '2026-10-06T13:00:00Z', '16:00')];
+  run('the portal\'s payable summary counts the days set by hand, as Pay and the manager do', () => {
+    // With "See workers' pay": the pay mode and the days come with the worker.
+    const wPay = { id: 'd1', name: 'Daily', payMode: 'daily', dailyRate: 300, dayOverrides: { 'm:2026-10': 20 }, supplierRate: null, supplierDayRate: 50 };
+    const d = { workers: [wPay], clients: [{ id: 'c1', name: 'Site' }], punches: log, showPay: true, commission: [] };
+    const pay = money.payRows(d, 2026, 9), sum = money.summaryRows(d, 2026, 9);
+    assert.equal(pay[0].commission, 1000, 'Pay: 20 × ₪50');
+    assert.equal(sum[0].total, 1000, 'Summary: the same 20 × ₪50');
+    // The manager's figure for the same worker (Payable by supplier).
+    const mw = { id: 'd1', name: 'Daily', payMode: 'daily', dailyRate: 300, dayOverrides: { 'm:2026-10': 20 }, supplierId: 's1', supplierRates: { s1: { dayRate: 50 } } };
+    const r = A.salaryEntriesFor({ log, workers: [mw], clients: [{ id: 'c1', name: 'Site' }], suppliers: [{ id: 's1', name: 'Agency' }], tr }, 'm:2026-10');
+    assert.equal(A.supplierCommission(mw, r.byWorker.d1, 's1'), 1000, 'the manager (Payable by supplier): 20 × ₪50');
+    // Without "See workers' pay": no pay mode, only the day commission and its day counts (strip_worker).
+    const wNo = { id: 'd1', name: 'Daily', dayOverrides: { 'm:2026-10': 20 }, supplierRate: null, supplierDayRate: 50 };
+    assert.equal(money.summaryRows({ ...d, workers: [wNo], showPay: false }, 2026, 9)[0].total, 1000, 'Summary without pay: 20 × ₪50');
+    // No days set by hand: the punched days.
+    const wNone = { ...wNo, dayOverrides: {} };
+    assert.equal(money.summaryRows({ ...d, workers: [wNone], showPay: false }, 2026, 9)[0].total, 100, 'Summary: 2 punched days × ₪50');
+  });
+}
+
 console.log(failed ? `${failed} FAILED (${passed} passed)` : `ALL PASSED (${passed})`);
 process.exit(failed ? 1 : 0);

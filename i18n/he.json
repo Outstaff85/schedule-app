@@ -975,6 +975,8 @@
   "Punch in": "החתמת כניסה",
   "Applies from": "בתוקף מ־",
   "from {0}": "מ־{0}",
+  "from {0} (upcoming)": "מ־{0} (עתידי)",
+  "Google Maps failed to load": "טעינת Google Maps נכשלה",
   "Empty = ₪{0} per hour. A worker's own commission in Accounting wins over this rate.": "ריק = ₪{0} לשעה. עמלה אישית של עובד בהנהלת חשבונות גוברת על התעריף הזה.",
   "{0} firms": "{0} חברות",
   "{0} firms deleted": "{0} חברות נמחקו",

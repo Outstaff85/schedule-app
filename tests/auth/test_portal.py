@@ -103,6 +103,20 @@ def test_save_punch():
     assert P(T1, "late1").get().to_dict()["day"] == (y + timedelta(days=1)).strftime("%Y-%m-%d")
 
 
+def test_save_punch_takes_the_name_from_the_record_and_clips_free_text():
+    now = datetime.now(timezone.utc)
+    data = {"id": "n1", "workerId": "w1", "workerName": '=HYPERLINK("http://evil","Open")', "type": "in",
+            "ts": _iso(now), "site": "S" * 900, "notes": "N" * 5000}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi", "data": data})["ok"]
+    d = P(T1, "n1").get().to_dict()
+    assert d["workerName"] == "Avi Cohen"
+    assert d["site"] == "S" * 200 and d["notes"] == "N" * 500
+    W(T1, "w2").update({"name": ""})
+    data = {"id": "n2", "workerId": "w2", "workerName": "Avi Cohen", "type": "in", "ts": _iso(now)}
+    assert portal.punch_action(DB, {"action": "savePunch", "token": "tok-dana", "data": data})["ok"]
+    assert "workerName" not in P(T1, "n2").get().to_dict()
+
+
 def test_a_link_cannot_punch_for_someone_else():
     r = portal.punch_action(DB, {"action": "savePunch", "token": "tok-avi",
                                  "data": {"id": 5, "workerId": "w2", "type": "in", "date": "01/10/2026"}})
@@ -231,6 +245,14 @@ def test_supplier_day_commission_only_for_a_daily_worker():
     ref.update({"payMode": "daily", "supplierRates": {"sp1": {"rate": 7, "dayRate": 60}}})
     w = portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["workers"][0]
     assert w["supplierDayRate"] == 60 and "payMode" not in w  # the pay mode itself only with "sees pay"
+    assert "dayOverrides" not in w
+    # The days set by hand price that commission, so they go with it even
+    # without "sees pay"; never with an hourly worker or an hour commission.
+    ref.update({"dayOverrides": {"m:2026-10": 20}})
+    w = portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["workers"][0]
+    assert w["dayOverrides"] == {"m:2026-10": 20} and "dailyRate" not in w and "hourlyRate" not in w
+    ref.update({"supplierRates": {"sp1": {"rate": 7}}})
+    assert "dayOverrides" not in portal.supplier_action(DB, SUP1, {"action": "loadSchedule"})["workers"][0]
     ref.set(keep)
 
 
