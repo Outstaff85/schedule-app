@@ -10,7 +10,8 @@ templates/<kind>/ (hf buckets sync <folder> hf://buckets/OutStaff/scanner-data/t
 too, every one of them, as own-<name>.
 
 Kept apart (docs/scan-training.md → "Kept apart"): a document whose split key (gen.common.split_key: its
-worker's id) is on the exam side is never copied — its pages would become made-up training photos while its page
+worker's id) is on the exam side — by its hash, or one of the keys of the attempts kept as the exam
+(pull.kept_exam_keys) — is never copied — its pages would become made-up training photos while its page
 copies are in the document type exam — and a page of it pulled before is deleted. templates/index.json records
 each copied site page's key and side (synth.held_out and `python -m gen sources --check` read it).
 
@@ -32,14 +33,15 @@ PICTURES = (".jpg", ".jpeg", ".png", ".webp")
 PULLED = re.compile(r"([A-Za-z0-9]{20})-\d+\.jpg")
 
 
-def site_pages(records, per, folder):
+def site_pages(records, per, folder, exam_keys=frozenset()):
     """The site documents' pages to copy: records [(record, its index)] → (want {kind: [(bucket path, dest)]}, the
     pages of exam-side documents [dest] (never copied; deleted when copied before), index {"<kind>/<file>": {"key",
-    "split"}}). Up to per pages of each kind, in the records' order."""
+    "split"}}). Up to per pages of each kind, in the records' order. exam_keys: the keys of the attempts kept as the
+    exam (pull.kept_exam_keys) — their workers' documents are exam-side too."""
     want, apart, index = {k: [] for k in KINDS}, [], {}
     folder = pathlib.Path(folder)
     for r, i in records:
-        key, split, _ = side(r)
+        key, split, _ = side(r, exam_keys=exam_keys)
         for n, pg in enumerate(r.get("pages") or []):
             k = pg.get("doctype")
             if k not in want or not pg.get("path"):
@@ -90,7 +92,7 @@ def main():
     gone = stale(WORK / "templates", {f.split("/")[3] for f in records if len(f.split("/")) == 5})
     for p in gone:
         p.unlink(missing_ok=True)
-    docs = []
+    docs, unread = [], 0
     with tempfile.TemporaryDirectory() as tmp:
         if records:
             api.download_bucket_files(DATA, [(f, f"{tmp}/{i}.json") for i, f in enumerate(records)])
@@ -98,8 +100,10 @@ def main():
             try:
                 docs.append((json.loads(open(f"{tmp}/{i}.json", encoding="utf-8").read()), i))
             except Exception:
-                continue
-    want, apart, index = site_pages(docs, a.per, WORK / "templates")
+                unread += 1   # its pages pulled before stay out of index.json: gen.common.page_side "unknown", in neither set
+    from pull import kept_exam_keys
+    _, exam_keys = kept_exam_keys()   # a worker whose attempt is kept as the exam: its documents' pages too
+    want, apart, index = site_pages(docs, a.per, WORK / "templates", exam_keys)
     dropped = [p for p in apart if p.exists()]
     for p in dropped:
         p.unlink(missing_ok=True)   # an exam-side document's page copied before this rule
@@ -117,7 +121,8 @@ def main():
         api.download_bucket_files(DATA, [(src, str(dest)) for src, dest in pairs])
     print(f"templates in {WORK / 'templates'}: " + ", ".join(f"{k} {len(v)}" for k, v in want.items())
           + f"; the owner's own pages: {len(mine)}; deleted (their document no longer in the bucket): {len(gone)}; "
-          f"kept apart (their worker is on the exam side): {len(apart)} pages, {len(dropped)} of them deleted here")
+          f"kept apart (their worker is on the exam side): {len(apart)} pages, {len(dropped)} of them deleted here"
+          + (f"; {unread} documents' records unreadable (their pages in neither set)" if unread else ""))
 
 
 if __name__ == "__main__":

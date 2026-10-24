@@ -21,6 +21,7 @@ import onnxruntime as ort
 import torch
 
 import checkpoint
+from gen.common import trains
 from gen.sources import assert_clean
 from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
@@ -158,7 +159,7 @@ def main():
     checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
-    ex = [e for e in read_json(WORK / "examples.json") if not e["exam"]] if (WORK / "examples.json").exists() else []
+    ex = [e for e in read_json(WORK / "examples.json") if trains(e)] if (WORK / "examples.json").exists() else []   # not the exam's, none left out of both
     for n, folder, how in ((a.synth, "synth/docs", "synth_docs.py"), (a.midv, "midv", "midv.py"),
                             (a.smartdoc, "smartdoc", "smartdoc.py")):
         if not n:

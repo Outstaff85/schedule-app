@@ -700,7 +700,7 @@ def main():
     pages = templates_in(a.templates) if a.templates else []
     if a.templates and not pages:
         raise SystemExit(f"no pages in {a.templates} — run pull_templates.py or put photos into its id_front/, sefach/… folders")
-    kept = [pg for pg in pages if synth.held_out(pg[0])]
+    kept = [pg for pg in pages if synth.exam_page(pg[0])]   # the exam's pages (a site page with no side: in neither)
     if a.exam:
         if not kept:
             raise SystemExit("no real page is kept apart for the exam — put more pages into the templates folder")
@@ -712,9 +712,12 @@ def main():
             a.seed = 7
         pages, a.template_share = kept, 1.0
         print(f"exam photos from {len(kept)} real pages kept apart: " + ", ".join(sorted((file_sha1(p) or "?")[:8] for p, _ in kept)))
-    elif kept:
-        pages = [pg for pg in pages if not synth.held_out(pg[0])]
-        print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), {len(pages)} laid here")
+    else:
+        laid = [pg for pg in pages if not synth.held_out(pg[0])]
+        if len(laid) < len(pages):
+            print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), "
+                  f"{len(pages) - len(laid) - len(kept)} with no known side (in neither), {len(laid)} laid here")
+        pages = laid
     folder, ex = draw(a.count, a.out, a.seed, a.jobs, photos, a.show, a.latin, a.hebrew, (pages, a.template_share, a.sharp))
     if a.exam:
         record_exam_set("synth/docs-exam", pathlib.Path(folder) / "examples.json")   # gen sources --check: made with today's heldout.json

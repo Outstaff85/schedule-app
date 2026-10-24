@@ -7,6 +7,9 @@ import it).
   one scan's page copies and its full document, the retakes of one shot all land on one side.
 - split_of(key): train / select / exam by fixed remainders of the key's hash. golden is never a hash's
   answer: it is given (attempts/golden/, or a flag).
+- side(rec, ..., exam_keys): every pull's one decision — the keys of the attempts kept as the exam before are the
+  exam whatever their hash (pull.kept_exam_keys), and a record the rule before (its id) put on the training side,
+  kept before KEY_RULE_FROM, never enters the exam (in neither set: a published version learned it).
 - heldout.json (committed, beside this package): the owner's real pages kept for the exam by their content
   sha1 and document group, the exam backgrounds and fonts, the vocabulary salt, and the open sets' exam
   documents. A renamed file moves nothing.
@@ -116,15 +119,50 @@ def session_links(recs):
     return out
 
 
-def side(rec, links=None, rid=None, golden=False):
-    """→ (key, split, legacy): golden when given; else the split of the record's key; a record with no key at
-    all is split by its id the old way (legacy True; rid None: training)."""
+# The key rule's first day (Training 3): a record or page copy kept before it was split by its own id (legacy_split),
+# and the published versions the trainings fine-tune from (the lab's v5) learned the ones that rule put on the
+# training side. Such a record never enters the exam: when its key says exam it is in neither set ("none"). A
+# version trained with the old per-id rule after this day would move it forward.
+KEY_RULE_FROM = "2026-11-01"
+
+
+def _day(v):
+    """A record's createdAt as "YYYY-MM-DD" (a Firestore datetime, or the bucket's str of one); None when it has none."""
+    if isinstance(v, (datetime.datetime, datetime.date)):
+        return v.isoformat()[:10]
+    if isinstance(v, str) and re.match(r"\d{4}-\d{2}-\d{2}", v):
+        return v[:10]
+    return None
+
+
+def learned_before(rec, rid):
+    """Was this record (or page copy) on the training side of the rule before the key, kept before KEY_RULE_FROM (or
+    with no date: counted as before) — so a published version may have learned it?"""
+    if not rid:
+        return False
+    day = _day((rec or {}).get("createdAt"))
+    return (day is None or day < KEY_RULE_FROM) and legacy_split(rid) == "train"
+
+
+def side(rec, links=None, rid=None, golden=False, exam_keys=frozenset()):
+    """→ (key, split, legacy): golden when given; else the exam when the key is one of exam_keys (the keys of the
+    attempts kept as the exam before: pull.kept_exam_keys), else the split of the record's key; a record with no key
+    at all is split by its id the old way (legacy True; rid None: training). A record whose key says exam but that the
+    rule before put on the training side (learned_before) is "none" — in neither set."""
     key = split_key(rec, links)
     if golden:
         return key, "golden", False
     if key:
-        return key, split_of(key), False
+        split = "exam" if key in exam_keys else split_of(key)
+        if split == "exam" and learned_before(rec, rid):
+            split = "none"
+        return key, split, False
     return None, legacy_split(rid) if rid else "train", True
+
+
+def trains(e):
+    """Does a pulled example (examples.json, doctypes.json) go to training? Not the exam's, not one left out of both."""
+    return not e.get("exam") and not e.get("hard") and e.get("split") != "none"
 
 
 # ---------- heldout.json ----------
@@ -210,17 +248,33 @@ def template_index(folder):
     return got if isinstance(got, dict) else {}
 
 
-def held_out_page(path):
-    """Is this real page kept for the exam — never laid on a training photo? By its content (heldout.json), or a
-    site page whose document is on the exam side (templates/index.json)."""
+def page_side(path):
+    """A real page's side: "exam" — by its content (heldout.json), or a site page whose document is on the exam side
+    (templates/index.json); "unknown" — a site page (PULLED) index.json gives no training side (pulled before it, its
+    record unreadable, or index.json missing); "train" — the rest. None when the file is not there."""
     p = pathlib.Path(path)
     sha = file_sha1(p)
     if sha is None:
-        return False
+        return None
     if sha in held_sha1s():
-        return True
-    info = template_index(p.parent.parent).get(f"{p.parent.name}/{p.name}")
-    return bool(info) and info.get("split") in EXAM_SIDE
+        return "exam"
+    if PULLED.fullmatch(p.name):
+        info = template_index(p.parent.parent).get(f"{p.parent.name}/{p.name}") or {}
+        s = info.get("split")
+        return s if s in TRAIN_SIDE else "exam" if s in EXAM_SIDE else "unknown"
+    return "train"
+
+
+def held_out_page(path):
+    """Is this real page never laid on a training photo? The exam's pages, and — failing closed — a site page with no
+    known training side (page_side "unknown")."""
+    return page_side(path) in ("exam", "unknown")
+
+
+def exam_page(path):
+    """Is this real page laid on the exam photos (synth_docs.py --exam, synth_fields.py --check)? The exam's only — a
+    site page with no known side is in neither."""
+    return page_side(path) == "exam"
 
 
 def crc32_held_out(path):
@@ -257,11 +311,21 @@ def record_exam_set(name, file, work=None):
     p.write_text(json.dumps({"sets": sets}, indent=1), encoding="utf-8")
 
 
+# the exam sets on disk (their folder under the work folder, the file that marks one made) by their exam_sets.json name
+EXAM_SET_FOLDERS = {"he-fields/check": ("synth/he-fields/check", "labels.tsv"), "synth/docs-exam": ("synth/docs-exam", "examples.json")}
+
+
 def stale_exam_sets(work=None):
-    """The exam sets made with another heldout.json: [name]."""
+    """The exam sets made with another heldout.json, or on disk with no exam_sets.json entry (made before it was
+    recorded): [name]."""
+    import home
+    base = pathlib.Path(work or home.WORK)
     try:
         got = json.loads(exam_sets_path(work).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return []
+        got = {}
+    sets = got.get("sets") if isinstance(got, dict) and isinstance(got.get("sets"), dict) else {}
     now = heldout_sha256()
-    return sorted(n for n, s in (got.get("sets") or {}).items() if isinstance(s, dict) and s.get("heldout_sha256") != now)
+    out = {n for n, s in sets.items() if not isinstance(s, dict) or s.get("heldout_sha256") != now}
+    out |= {n for n, (folder, mark) in EXAM_SET_FOLDERS.items() if n not in sets and (base / folder / mark).exists()}
+    return sorted(out)

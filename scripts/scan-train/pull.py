@@ -5,8 +5,11 @@ chosen by gen.common.split_key (docs/scan-training.md → "Kept apart"): the wor
 (a page copy sent before the worker was saved goes with its document, by the documents' session ids), else the
 retake group's — never a record's id, so one worker's or one shot's pages are all on one side; a record kept
 before those ids were has none and is split by its id as before (legacy). The attempts kept as the exam before
-(attempts/exam/, moved there by publish.py) are pulled on every run, always as the exam, and their retake groups'
-new attempts with them. A retaken page with no fix whose group is on the training side is in neither the exam nor
+(attempts/exam/, moved there by publish.py) are pulled on every run, always as the exam, and every example with
+their keys goes with them — their retake groups' new attempts, their worker's records (kept_exam_keys; pull_doctypes.py
+and pull_templates.py apply the same keys to the page copies and the documents' pages). A record the rule before (its
+id) put on the training side, kept before gen.common.KEY_RULE_FROM, is in neither set when its key says exam: the
+version fine-tuned from learned it. A retaken page with no fix whose group is on the training side is in neither the exam nor
 training (counted: attempts.json "hardLeftOut"), so no exam page has a sibling in training. Writes
 ~/.scan-train/examples.json (each example with its "key", "split" and an attempt's "group") and attempts.json —
 the new attempts' folders, {"train": [...], "exam": [...], "hardLeftOut": n}: publish.py moves the train folders
@@ -17,23 +20,28 @@ import tempfile
 
 import attempts as attempt_rules
 from common import DATA, WORK, bucket, data_file, data_records, db, named, write_json
-from gen.common import session_links, side, split_key, split_of
+from gen.common import session_links, side, split_key, split_of, trains
 
 
 def document_records():
     """The full documents' records (H8a: documents/<tenant>/<month>/<id>/record.json in the private bucket) — each
-    with the worker's and the scan session's ids, so a page copy of that scan goes with its document; [] when the
-    bucket cannot be read."""
+    with the worker's and the scan session's ids, so a page copy of that scan goes with its document. A bucket that
+    cannot be read stops the run (a failed listing is not an empty one: the page copies sent before their worker was
+    saved would be keyed by their session, maybe to the other side)."""
     try:
         from huggingface_hub import HfApi
         api = HfApi()
         files = [f.path for f in api.list_bucket_tree(DATA, prefix="documents/", recursive=True) if f.path.endswith("/record.json")]
-    except Exception:
-        return []
+    except Exception as e:
+        raise SystemExit(f"the full documents' records in {DATA} cannot be read ({type(e).__name__}) - the split would not "
+                         "link page copies to their worker; hf auth login as OutStaff and run again")
     out = []
     with tempfile.TemporaryDirectory() as tmp:
         if files:
-            api.download_bucket_files(DATA, [(f, f"{tmp}/{i}.json") for i, f in enumerate(files)])
+            try:
+                api.download_bucket_files(DATA, [(f, f"{tmp}/{i}.json") for i, f in enumerate(files)])
+            except Exception as e:
+                raise SystemExit(f"the full documents' records in {DATA} cannot be downloaded ({type(e).__name__}) - run again")
         for i, _ in enumerate(files):
             try:
                 out.append(json.loads(pathlib.Path(f"{tmp}/{i}.json").read_text(encoding="utf-8")))
@@ -62,14 +70,16 @@ def records():
 def attempt_folders(prefix="attempts/new/"):
     """Every scan attempt under prefix (attempts/new/, or attempts/exam/): [(folder, answer, outcomes,
     fetch(dest) -> bool)] — the private bucket's and, for those the bucket refused, Firebase Storage's
-    training/<prefix>."""
+    training/<prefix>. A bucket listing that fails stops the run (an empty prefix lists nothing; a failure is not
+    that: the attempts kept as the exam would be missing, and their keys with them)."""
     out, seen = [], set()
     try:
         from huggingface_hub import HfApi
         api = HfApi()
         files = [f.path for f in api.list_bucket_tree(DATA, prefix=prefix, recursive=True)]
-    except Exception:
-        api, files = None, []
+    except Exception as e:
+        raise SystemExit(f"the scan attempts under {prefix} in {DATA} cannot be listed ({type(e).__name__}) - "
+                         "hf auth login as OutStaff and run again")
     folders = {}
     for f in files:
         folders.setdefault(f.rsplit("/", 1)[0], []).append(f)
@@ -134,6 +144,16 @@ def attempt_keys(folders):
     return {d: split_key({"workerId": workers.get(group_of(d, ans)), "group": group_of(d, ans)}) for d, ans, _, _ in folders}
 
 
+def kept_exam_keys(new=None, kept=None):
+    """The split keys of the attempts kept as the exam before (attempts/exam/), each by its retake group across the new
+    and the kept attempts (attempt_keys) → (keys {folder: key} of new + kept, the exam keys). Every pull applies the exam
+    keys (gen.common.side exam_keys): that group's new retakes, its worker's records, page copies and documents."""
+    new = list(attempt_folders() if new is None else new)
+    kept = list(attempt_folders("attempts/exam/") if kept is None else kept)
+    keys = attempt_keys(new + kept)
+    return keys, frozenset(keys[d] for d, _, _, _ in kept if keys.get(d))
+
+
 def attempt_examples(out, folders=None, kept_exam=False, exam_keys=frozenset(), keys=None):
     """The attempts' examples, added to out; → the new folders pulled, {"train": [...], "exam": [...], "hardLeftOut": n}.
     A folder's side is its retake group's (attempt_keys; split_of), or the exam when its key is one of exam_keys
@@ -171,9 +191,10 @@ def attempt_examples(out, folders=None, kept_exam=False, exam_keys=frozenset(), 
     return pulled
 
 
-def record_examples(recs, links):
+def record_examples(recs, links, exam_keys=frozenset()):
     """The kept records' edges examples (a record with only a document type changed has none): [example] — each with
-    its split key, its side and, for a record kept before the ids were, legacy True."""
+    its split key, its side (gen.common.side: the exam when its key is one of exam_keys; "none" when the rule before
+    trained it) and, for a record kept before the ids were, legacy True."""
     out = []
     for rid, r, fetch in recs:
         if not r.get("image"):
@@ -181,7 +202,7 @@ def record_examples(recs, links):
         path = WORK / "img" / f"{rid}.jpg"
         if not path.exists() and not fetch(r["image"], path):
             continue
-        key, split, legacy = side(r, links, rid)
+        key, split, legacy = side(r, links, rid, exam_keys=exam_keys)
         out.append({"id": rid, "file": str(path), "model": r["edgesModel"], "fixed": r["edgesFixed"],
                     "moved": r.get("moved", 0), "exam": split == "exam", "key": key, "split": split, **({"legacy": True} if legacy else {})})
     return out
@@ -191,10 +212,9 @@ def main():
     (WORK / "img").mkdir(parents=True, exist_ok=True)
     recs = records()
     links = session_links([r for _, r, _ in recs] + document_records())
-    out = record_examples(recs, links)
     new, kept = list(attempt_folders()), list(attempt_folders("attempts/exam/"))
-    keys = attempt_keys(new + kept)                       # one retake group, one key — across new and kept attempts
-    exam_keys = frozenset(keys[d] for d, _, _, _ in kept)  # a group kept as the exam keeps its new retakes there too
+    keys, exam_keys = kept_exam_keys(new, kept)   # one retake group, one key; a group kept as the exam keeps its worker there
+    out = record_examples(recs, links, exam_keys)
     pulled = attempt_examples(out, new, exam_keys=exam_keys, keys=keys)
     before = len(out)
     attempt_examples(out, kept, kept_exam=True, keys=keys)   # the real exam kept from the trainings before
@@ -203,11 +223,13 @@ def main():
     n_exam = sum(e["exam"] for e in out)
     n_att = sum(1 for e in out if e.get("attempt"))
     n_legacy = sum(1 for e in out if e.get("legacy"))
-    n_train = sum(1 for e in out if not e["exam"] and not e.get("hard"))
+    n_train = sum(1 for e in out if trains(e))
+    n_none = sum(1 for e in out if not e.get("attempt") and e["split"] == "none")
     print(f"{len(out)} examples ({n_att} from {len(pulled['train']) + len(pulled['exam'])} new scan attempts, "
           f"{len(out) - before} from the attempts kept as the exam): {n_train} to train on, {n_exam} for the exam; "
-          f"{pulled['hardLeftOut']} retaken pages left out (their group trains); {n_legacy} records with no worker, session "
-          f"or group, split by their id as before")
+          f"{pulled['hardLeftOut']} retaken pages left out (their group trains); {n_none} records left out (their key is "
+          f"the exam's, the rule before trained them); {n_legacy} records with no worker, session or group, split by "
+          f"their id as before")
 
 
 if __name__ == "__main__":

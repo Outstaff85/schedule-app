@@ -33,6 +33,7 @@ from torch import nn
 
 import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SERVER, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
+from gen.common import trains
 from gen.sources import assert_clean
 from home import drop_report, gentle
 
@@ -149,7 +150,7 @@ def gather(a):
     """The entries to train on: the site's page copies but the exam's, and a.synth made-up pages (synth_pages.py) —
     refused (gen.sources.assert_clean) when any holds a held-out real page, an exam split key or an open set's exam
     document (docs/scan-training.md → "Kept apart")."""
-    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]] if (WORK / "doctypes.json").exists() else []
+    ex = [e for e in read_json(WORK / "doctypes.json") if trains(e)] if (WORK / "doctypes.json").exists() else []   # not the exam's, none left out of both
     if a.synth:
         made = WORK / "synth" / "pages" / "pages.json"
         if not made.exists():

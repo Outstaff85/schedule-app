@@ -29,6 +29,9 @@ def _load(name, alias=None):
     return mod
 
 
+NEW = "2026-11-02 08:00:00+00:00"   # kept after gen.common.KEY_RULE_FROM: the key rule alone decides
+
+
 def _side_of(make, want):
     """The first n whose record make(n) lands on the side want."""
     for n in range(10000):
@@ -60,7 +63,7 @@ def picture(path, content):
 # ---------- the split key ----------
 def test_one_workers_records_always_land_on_one_side():
     for w in ("w1", "Ab3dE", "x" * 40):
-        recs = [{"id": f"r{i}", "workerId": w, "sessionId": f"s{i}", "group": f"g{i}"} for i in range(30)]
+        recs = [{"id": f"r{i}", "workerId": w, "sessionId": f"s{i}", "group": f"g{i}", "createdAt": NEW} for i in range(30)]
         assert len({gc.split_key(r) for r in recs}) == 1 and len({gc.side(r, rid=r["id"])[1] for r in recs}) == 1
     group = [{"id": f"a{i}", "group": "shot-1"} for i in range(10)]   # one retake group, no worker known
     assert len({gc.side(r, rid=r["id"]) for r in group}) == 1
@@ -96,7 +99,8 @@ def test_a_page_copy_and_the_document_of_one_scan_land_on_the_same_side(tmp_path
                                   "pages": [{"path": f"documents/t/2026-10/D{n}/page-0.jpg", "doctype": "id_front", "primary": True}]}, want)
         links = gc.session_links([doc])
         # the page copy was sent while the worker was still new: only the session's id
-        copy = {"pageImage": "doctype/2026-10/r.jpg", "doctypeFixed": "id_front", "doctypeModel": "id_front", "sessionId": doc["sessionId"]}
+        copy = {"pageImage": "doctype/2026-10/r.jpg", "doctypeFixed": "id_front", "doctypeModel": "id_front", "sessionId": doc["sessionId"],
+                "createdAt": NEW}
         e, _ = pull_doctypes.entry("r-other-id", copy, "doctypes/r.jpg", links)
         assert e["key"] == gc.split_key(doc) and e["split"] == want and e["exam"] == (want == "exam")
         wanted, apart, index = pull_templates.site_pages([(doc, 0)], 10, tmp_path / "templates")
@@ -105,6 +109,94 @@ def test_a_page_copy_and_the_document_of_one_scan_land_on_the_same_side(tmp_path
         else:
             assert not apart and len(wanted["id_front"]) == 1
             assert list(index.values()) == [{"key": e["key"], "split": "train"}]
+
+
+def _pull(monkeypatch, tmp_path):
+    pull = _load("pull", "pull_split")
+    monkeypatch.setattr(pull, "WORK", tmp_path)
+    monkeypatch.setattr(pull, "painted", lambda src, dest, quads: True)
+    return pull
+
+
+def _worker_on(want):
+    return next(f"W{n}" for n in range(10000) if gc.split_of(gc.split_key({"workerId": f"W{n}"})) == want)
+
+
+def test_a_kept_exam_attempts_worker_is_the_exam_in_every_pull(tmp_path, monkeypatch, heldout):
+    """An attempt kept as the exam (attempts/exam/, split by its own id before) told "saved" with worker W: W's records,
+    page copies and documents go to the exam with it, whatever the hash of W's key says, and the training entries
+    stay clean."""
+    heldout([])
+    pull = _pull(monkeypatch, tmp_path)
+    pull_doctypes = _load("pull_doctypes", "pull_doctypes_keys")
+    pull_templates = _load("pull_templates", "pull_templates_keys")
+    w = _worker_on("train")
+    fetch = lambda dest: True
+    quad = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    kept = [("attempts/exam/site/d/a1", {"id": "a1", "group": "shot-a1", "outcome": "kept", "edgesModel": quad},
+             [{"outcome": "saved", "workerId": w}], fetch)]
+    keys, exam_keys = pull.kept_exam_keys([], kept)
+    assert exam_keys == {gc.split_key({"workerId": w})} and keys["attempts/exam/site/d/a1"] == gc.split_key({"workerId": w})
+    rec = {"image": "records/r.jpg", "edgesModel": quad, "edgesFixed": quad, "workerId": w, "createdAt": NEW}
+    got = lambda path, dest: True
+    out = pull.record_examples([("rec-1", rec, got), ("rec-2", {**rec, "workerId": _worker_on("train") + "x"}, got)], {}, exam_keys)
+    assert out[0]["exam"] is True and out[0]["split"] == "exam" and out[0]["key"] == gc.split_key({"workerId": w})
+    assert pull.record_examples([("rec-1", rec, got)], {})[0]["exam"] is False   # by its hash alone it would train
+    copy = {"pageImage": "doctype/r.jpg", "doctypeFixed": "id_front", "workerId": w, "createdAt": NEW}
+    assert pull_doctypes.entry("copy-1", copy, "doctypes/c.jpg", {}, exam_keys)[0]["exam"] is True
+    doc = {"id": "D" * 20, "workerId": w, "pages": [{"path": "documents/t/2026-10/D/page-0.jpg", "doctype": "id_front"}]}
+    wanted, apart, index = pull_templates.site_pages([(doc, 0)], 10, tmp_path / "templates", exam_keys)
+    assert apart and not any(wanted.values()) and not index                 # its pages never become training photos
+    attempts = []
+    pull.attempt_examples(attempts, kept, kept_exam=True, keys=keys)
+    assert attempts and all(a["exam"] for a in attempts)
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "examples.json").write_text(json.dumps(out + attempts))
+    sources.assert_clean([e for e in out + attempts if gc.trains(e)], work=work)   # the training entries are clean
+    import gen.__main__ as cli
+    assert cli.main(["sources", "--check", "--work", str(work)]) == 0
+
+
+def test_a_record_the_rule_before_trained_never_enters_the_exam():
+    """Kept before the key rule (gen.common.KEY_RULE_FROM), a record the per-id rule put on the training side was learned
+    by the version fine-tuned from: with an exam key it is in neither set; one the old rule kept for the exam stays there;
+    one kept after the rule's first day goes by its key."""
+    import datetime
+    w = _worker_on("exam")
+    old_train = next(f"r{n}" for n in range(1000) if gc.legacy_split(f"r{n}") == "train")
+    old_exam = next(f"r{n}" for n in range(1000) if gc.legacy_split(f"r{n}") == "exam")
+    for at in ("2026-10-20 10:00:00+00:00", None, datetime.datetime(2026, 10, 1)):
+        rec = {"workerId": w, "createdAt": at}
+        assert gc.side(rec, rid=old_train)[1] == "none" and gc.side(rec, rid=old_exam)[1] == "exam"
+    assert gc.side({"workerId": w, "createdAt": NEW}, rid=old_train)[1] == "exam"
+    assert gc.side({"workerId": _worker_on("train")}, rid=old_exam)[1] == "train"   # the old exam may train now: no leak that way
+    e = {"id": old_train, "key": gc.split_key({"workerId": w}), "split": "none", "exam": False}
+    assert not gc.trains(e) and gc.trains({**e, "split": "train"}) and not gc.trains({**e, "exam": True})
+    assert sources._real_split(e) == "none"
+
+
+def test_a_record_left_out_of_both_is_refused_in_training(tmp_path, heldout):
+    heldout([])
+    e = {"id": "r1", "key": "w:x", "split": "none", "exam": False}
+    with pytest.raises(SystemExit, match="left out of both"):
+        sources.assert_clean([e], work=tmp_path)
+
+
+def test_a_failed_bucket_read_stops_the_pull(monkeypatch):
+    """A failed listing is not an empty one: the session-to-worker links and the kept exam attempts would be lost."""
+    pull = _load("pull", "pull_fail")
+
+    class Broken:
+        def list_bucket_tree(self, *a, **k):
+            raise ConnectionError("no network")
+    hub = types.ModuleType("huggingface_hub")
+    hub.HfApi = Broken
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    with pytest.raises(SystemExit, match="cannot be read"):
+        pull.document_records()
+    with pytest.raises(SystemExit, match="cannot be listed"):
+        pull.attempt_folders("attempts/exam/")
 
 
 # ---------- heldout.json ----------
@@ -153,6 +245,59 @@ def test_a_site_page_on_the_exam_side_is_held_out(tmp_path, heldout):
     (t / "index.json").write_text(json.dumps({f"id_front/{'A' * 20}-0.jpg": {"key": "w:1", "split": "exam"},
                                               f"id_front/{'B' * 20}-0.jpg": {"key": "w:2", "split": "train"}}))
     assert gc.held_out_page(t / "id_front" / ("A" * 20 + "-0.jpg")) and not gc.held_out_page(t / "id_front" / ("B" * 20 + "-0.jpg"))
+
+
+def test_a_site_page_with_no_known_side_is_in_neither_set(tmp_path, heldout):
+    """A pulled site page index.json does not list (no index.json, pulled before it, its record unreadable) fails closed:
+    never laid on a training photo, never an exam page, and a photo made from it is refused."""
+    heldout([])
+    t = tmp_path / "work" / "templates"
+    name = "U" * 20 + "-0.jpg"
+    sha = picture(t / "id_front" / name, b"a site page with no index")
+    own = picture(t / "id_front" / "own-x.png", b"an owner page")
+    page = t / "id_front" / name
+    assert gc.page_side(page) == "unknown" and gc.held_out_page(page) and not gc.exam_page(page)
+    assert gc.page_side(t / "id_front" / "own-x.png") == "train" and not gc.held_out_page(t / "id_front" / "own-x.png")
+    with pytest.raises(SystemExit, match="held-out template"):
+        sources.assert_clean([{"id": "p", "source": "template", "templateSha1": sha}], work=tmp_path / "work")
+    sources.assert_clean([{"id": "p", "source": "template", "templateSha1": own}], work=tmp_path / "work")
+    (t / "index.json").write_text(json.dumps({f"id_front/{name}": {"key": "w:1", "split": "weird"}}))
+    assert gc.page_side(page) == "unknown"
+    (t / "index.json").write_text(json.dumps({f"id_front/{name}": {"key": "w:1", "split": "train"}}))
+    assert gc.page_side(page) == "train" and not gc.held_out_page(page)
+
+
+def test_the_check_set_must_be_the_held_out_one(tmp_path, heldout):
+    """train_he.py's check set: drawn as the check, with today's heldout.json, from the held-out pages only."""
+    kept = "a" * 40
+    heldout([kept])
+    folder = tmp_path / "check"
+    with pytest.raises(SystemExit, match="no sources.json"):
+        sources.assert_check_set(folder, "check")
+    folder.mkdir()
+    good = {"split": "check", "vocabulary": "check", "templates": [kept], "heldout_sha256": gc.heldout_sha256()}
+    (folder / "sources.json").write_text(json.dumps(good))
+    sources.assert_check_set(folder, "check")
+    for bad, why in (({"split": "train", "vocabulary": "train"}, "not drawn as the check"),
+                     ({"heldout_sha256": "0" * 64}, "another heldout.json"),
+                     ({"templates": [kept, "b" * 40]}, "does not keep"), ({"templates": []}, "does not keep")):
+        (folder / "sources.json").write_text(json.dumps({**good, **bad}))
+        with pytest.raises(SystemExit, match=why):
+            sources.assert_check_set(folder, "check")
+
+
+def test_an_exam_set_on_disk_with_no_record_is_stale(tmp_path, heldout):
+    heldout([])
+    w = tmp_path / "work"
+    (w / "synth" / "docs-exam").mkdir(parents=True)
+    assert gc.stale_exam_sets(w) == []
+    (w / "synth" / "docs-exam" / "examples.json").write_text("[]")       # drawn before exam_sets.json was kept
+    (w / "synth" / "he-fields" / "check").mkdir(parents=True)
+    (w / "synth" / "he-fields" / "check" / "labels.tsv").write_text("")
+    assert gc.stale_exam_sets(w) == ["he-fields/check", "synth/docs-exam"]
+    gc.record_exam_set("synth/docs-exam", w / "synth" / "docs-exam" / "examples.json", work=w)
+    gc.record_exam_set("he-fields/check", w / "synth" / "he-fields" / "check" / "labels.tsv", work=w)
+    assert gc.stale_exam_sets(w) == []
 
 
 # ---------- the registry ----------

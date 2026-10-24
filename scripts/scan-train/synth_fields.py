@@ -82,8 +82,8 @@ def split_pages(pages, check):
     """The marked pages a run draws: the held-out ones for the check, the others for training — a clear stop when
     either list is empty (no check without a held-out page, no training on held-out pages alone)."""
     import synth
-    held = [pg for pg in pages if synth.held_out(pg[0])]
-    rest = [pg for pg in pages if not synth.held_out(pg[0])]
+    held = [pg for pg in pages if synth.exam_page(pg[0])]
+    rest = [pg for pg in pages if not synth.held_out(pg[0])]   # a site page with no known side: in neither
     if not held:
         raise SystemExit("no marked real page is held out for the check (heldout.json) — the check would measure "
                          "pages the reader trains on; mark a held-out page in template_fields.json")

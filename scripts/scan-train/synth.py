@@ -14,7 +14,7 @@ check vocabulary (gen.common.vocab_held: crc32 of the word % 5 == 0) is drawn on
 import math
 import random
 
-from gen.common import held_out_page, vocab_held
+from gen.common import exam_page as exam_page_of, held_out_page, vocab_held
 
 # ---------- the passport's machine-readable zone (TD3: two lines of 44) ----------
 MRZ_LEN = 44
@@ -249,8 +249,15 @@ def held_out(path):
     """Is this real page (a template) kept apart for the exam (exam.py's "your documents" set)? By its content
     sha1 in heldout.json (gen.common.held_out_page; of the owner's 22 pages: six), or a site page whose
     document is on the exam side — never laid on a training photo, only on the exam photos (--exam). A renamed
-    file stays where it was."""
+    file stays where it was. A site page with no known side (gen.common.page_side "unknown") is held out too —
+    failing closed — but is no exam page either (exam_page)."""
     return held_out_page(path)
+
+
+def exam_page(path):
+    """Is this real page laid on the exam photos (synth_docs.py --exam, synth_fields.py --check)? The exam's pages only:
+    a site page with no known side is in neither set."""
+    return exam_page_of(path)
 
 
 # ---------- where a made-up document lies on a made-up photo (synth_docs.py) ----------

@@ -6,7 +6,7 @@ pull.py and pull_doctypes.py wrote (records, attempts, page copies). pool(split)
   python -m gen sources            # the counts by kind and side
   python -m gen sources --check    # and fail when an exam or golden key is on the training side, a held-out
                                    # page is in training, a site page has no side, or heldout.json changed
-                                   # after the exam sets were made
+                                   # after the exam sets were made (or an exam set on disk was never recorded)
 
 assert_clean(entries) is what every train*.py calls on its inputs before it trains: it refuses an example of a
 held-out template, an exam background, an exam split key or an open set's exam document. Pure: no torch, no
@@ -64,7 +64,9 @@ def _templates(work):
                  "crc32Held": gc.crc32_held_out(p)}
         if site:
             info = index.get(f"{p.parent.name}/{p.name}") or {}
-            key, split = info.get("key"), info.get("split") or "unknown"
+            key, split = info.get("key"), info.get("split")
+            if split not in gc.TRAIN_SIDE + gc.EXAM_SIDE:
+                split = "unknown"   # no side known: in neither set (gen.common.page_side)
         else:
             group = groups.get(sha) or gc.own_group(sha)
             key, split = gc.split_key({"docGroup": group}), "train"
@@ -161,9 +163,9 @@ def _real_split(e):
         return "golden"
     if e.get("exam"):
         return "exam"
-    if e.get("hard"):
-        return "none"   # a retaken page with no fix on the training side: in neither (pull.py)
     s = e.get("split")
+    if e.get("hard") or s == "none":
+        return "none"   # a retaken page with no fix on the training side, or a record the rule before trained: in neither (pull.py)
     return s if s in gc.TRAIN_SIDE else "train"
 
 
@@ -191,12 +193,13 @@ def pool(split, kind=None, work=None):
 
 # ---------- what must never reach training ----------
 class Held:
-    """What the exam keeps: the held-out templates' sha1s and page ids, the exam backgrounds, the exam split keys."""
+    """What the exam keeps: the held-out templates' sha1s and page ids (and, failing closed, the site pages with no
+    known side), the exam backgrounds, the exam split keys."""
 
     def __init__(self, work=None):
         every = _all(work)
         exam = [s for s in every if s.split in gc.EXAM_SIDE]
-        tpl = [s for s in exam if s.kind.startswith("template")]
+        tpl = [s for s in exam if s.kind.startswith("template")] + [s for s in every if s.kind == "template-site" and s.split == "unknown"]
         self.sha1s = set(gc.held_sha1s()) | {s.sha1 for s in tpl}
         self.page_ids = {i for s in tpl for i in s.attrs.get("pageIds", [])}
         bgs = set(gc.heldout().get("examBackgrounds") or [])
@@ -226,6 +229,8 @@ def problems(entries=(), meta=NO_META, held=None, work=None):
             c["photos on an exam background"] += 1
         if not e.get("exam") and e.get("key") and e["key"] in held.keys:
             c["examples whose split key is the exam's"] += 1
+        if not e.get("exam") and e.get("split") == "none":
+            c["examples left out of both sides"] += 1
         if (e.get("midv") or e.get("smartdoc")) and midv.open_exam(e):
             c["open-set exam documents"] += 1
         o = e.get("open")
@@ -259,6 +264,28 @@ def read_meta(folder):
     """A made-up set's sources.json (synth_fields.py, synth_lines.py), None when it has none."""
     got = _read(pathlib.Path(folder) / "sources.json", None)
     return got if isinstance(got, dict) else None
+
+
+def assert_check_set(folder, what):
+    """Refuse a check set (synth_fields.py --check) that is not the held-out one: its sources.json must name the check
+    split and vocabulary, today's heldout.json (its sha256) and only pages heldout.json keeps — a set drawn before had
+    no sources.json, came from the training pages with the full vocabulary, and the reader would be measured on what
+    it trains on (SystemExit naming why)."""
+    m = read_meta(folder)
+    why = []
+    if m is None:
+        why.append("it has no sources.json (drawn before heldout.json)")
+    else:
+        if m.get("split") != "check" or m.get("vocabulary") != "check":
+            why.append("it was not drawn as the check (split and vocabulary)")
+        if m.get("heldout_sha256") != gc.heldout_sha256():
+            why.append("it was drawn with another heldout.json")
+        held = gc.held_sha1s()
+        if not m.get("templates") or any(t not in held for t in m.get("templates") or []):
+            why.append("it holds pages heldout.json does not keep for the exam")
+    if why:
+        raise SystemExit(f"{what} is not the held-out check set: " + "; ".join(why)
+                         + " — run synth_fields.py --count 300 --check again (docs/scan-training.md → Kept apart)")
 
 
 # ---------- gen sources [--check] ----------
@@ -309,8 +336,8 @@ def report(work=None):
     if legacy:
         lines.append(f"real examples with no worker, session or group (split by their id as before): {legacy}")
     stale = gc.stale_exam_sets(work)
-    lines.append(f"exam sets made with another heldout.json: {len(stale)}" + (f" ({', '.join(stale)})" if stale else ""))
+    lines.append(f"exam sets made with another heldout.json or not recorded: {len(stale)}" + (f" ({', '.join(stale)})" if stale else ""))
     if stale:
-        bad.append("heldout.json changed after the exam sets were made: " + ", ".join(stale)
+        bad.append("exam sets made with another heldout.json or before exam_sets.json recorded them: " + ", ".join(stale)
                    + " — run synth_docs.py --templates --exam and synth_fields.py --check again")
     return lines, bad

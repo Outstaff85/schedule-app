@@ -8,7 +8,8 @@ its back or a ספח from
 It is checked on the held-out real pages only (synth_fields.py --check: …/he-fields/check/, drawn from the pages
 heldout.json keeps and the check vocabulary — names, cities and streets training never draws) — every field read
 right, by kind, and the ID numbers whose check digit agrees. Before training, the training sets' sources.json are
-checked (gen.sources.assert_clean): a set holding a held-out page or drawn with the check vocabulary is refused. Labels are taught in the visual order
+checked (gen.sources.assert_clean): a set holding a held-out page or drawn with the check vocabulary is refused; and
+the check set's (clean_check): one not drawn as the check, with another heldout.json or from other pages is refused. Labels are taught in the visual order
 (hemodel.visual). Exported to ONNX (input "img" [1,1,32,512], output "logits" [1,128,len(CHARS)+1]) and
 checked. Each epoch's progress is saved (checkpoint.py: --resume, --more). Writes
 ~/.scan-train/new/he.onnx, he-layouts.json (the card layouts the phone reads, hemodel.layouts) and
@@ -33,7 +34,7 @@ from home import HE_FILES, WORK, drop_report, gentle, model_hashes
 from mrzmodel import decode, line_input
 from synth import valid_israeli_id
 import checkpoint
-from gen.sources import assert_clean, read_meta
+from gen.sources import assert_check_set, assert_clean, read_meta
 from train_mrz import Lines, MrzNet, collate, export, fit
 
 READ_AT = 0.9   # the share of check fields a model must read right
@@ -64,6 +65,11 @@ def clean_inputs(fields, lines, work=None):
     if lines:
         meta.append(("synth/he", read_meta(work / "synth" / "he")))
     assert_clean((), "the Hebrew field reader's training sets", meta=meta, work=work)
+
+
+def clean_check(work=None):
+    """Refuse a check set that is not the held-out one (gen.sources.assert_check_set)."""
+    assert_check_set(pathlib.Path(work or WORK) / "synth" / "he-fields" / "check", "synth/he-fields/check")
 
 
 def check(net, rows, dev):
@@ -100,6 +106,7 @@ def main():
     if len(fields) + len(lines) < 1000 or not checks:
         raise SystemExit("too few made-up fields — run synth_fields.py --count 3000 and synth_fields.py --count 300 --check first")
     clean_inputs(fields, lines)
+    clean_check()
     items = [(p, t) for p, t, _ in fields + lines]
     random.Random(0).shuffle(items)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
