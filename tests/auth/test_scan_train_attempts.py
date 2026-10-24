@@ -66,3 +66,62 @@ def test_a_document_lying_on_another_is_not_painted_over_with_it():
     # deleted, it teaches nothing ("nothing here" would be said of the photo with the sefach on it)
     ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesMore": [card], "deletedPages": [1]})
     assert kinds(ex) == [("edges", 0)]
+
+
+def _pull():
+    import sys
+    here = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "scan-train"
+    sys.path.insert(0, str(here))
+    spec = importlib.util.spec_from_file_location("pull_retakes", here / "pull.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _group_on(pull, want):
+    """A retake group whose key lands on the side want."""
+    for n in range(10000):
+        if pull.split_of(pull.split_key({"group": f"shot-{n}"})) == want:
+            return f"shot-{n}"
+    raise AssertionError(want)
+
+
+def test_one_retake_group_lands_on_one_side_and_a_hard_page_of_a_training_group_is_left_out(tmp_path, monkeypatch):
+    # pull.py splits attempts by their retake group, not by their own id: a retaken shot (no fix — a "hard" page) and
+    # the kept retake of the same document are on one side; on the training side the hard page is in neither (counted)
+    pull = _pull()
+    monkeypatch.setattr(pull, "WORK", tmp_path)
+    monkeypatch.setattr(pull, "painted", lambda src, dest, quads: True)
+    fetch = lambda dest: True
+    for side in ("train", "exam"):
+        g = _group_on(pull, side)
+        folders = [(f"attempts/new/lab/2026-10-24/{g}", {"id": g, "group": g, "outcome": "retaken", "edgesModel": A}, [], fetch),
+                   (f"attempts/new/lab/2026-10-24/{g}-b", {"id": f"{g}-b", "group": g, "outcome": "kept", "edgesModel": A2}, [], fetch)]
+        out = []
+        pulled = pull.attempt_examples(out, folders)
+        hard, kept = out
+        assert hard["hard"] and not kept["hard"] and hard["group"] == kept["group"] == g and hard["key"] == kept["key"]
+        if side == "train":
+            assert pulled["train"] == [d for d, _, _, _ in folders] and pulled["exam"] == []
+            assert hard["exam"] is False and hard["split"] == "none" and pulled["hardLeftOut"] == 1   # not in the exam, counted
+            assert kept["exam"] is False and kept["split"] == "train"
+        else:
+            assert pulled["exam"] == [d for d, _, _, _ in folders] and pulled["train"] == [] and pulled["hardLeftOut"] == 0
+            assert hard["exam"] is True and kept["exam"] is True
+
+
+def test_a_saved_worker_keys_the_whole_retake_group_and_a_kept_exam_group_keeps_its_new_retakes(tmp_path, monkeypatch):
+    pull = _pull()
+    monkeypatch.setattr(pull, "WORK", tmp_path)
+    monkeypatch.setattr(pull, "painted", lambda src, dest, quads: True)
+    fetch = lambda dest: True
+    g = _group_on(pull, "train")
+    saved = [{"outcome": "saved", "workerId": "W1"}]   # only the kept retake was told the worker's id
+    folders = [("attempts/new/site/d/a1", {"id": "a1", "group": g, "outcome": "retaken", "edgesModel": A}, [], fetch),
+               ("attempts/new/site/d/a2", {"id": "a2", "group": g, "outcome": "kept", "edgesModel": A2}, saved, fetch)]
+    keys = pull.attempt_keys(folders)
+    assert keys["attempts/new/site/d/a1"] == keys["attempts/new/site/d/a2"] == pull.split_key({"workerId": "W1"})
+    # a group kept as the exam before (attempts/exam/): its new retakes go to the exam too, whatever their hash
+    out = []
+    pulled = pull.attempt_examples(out, folders[1:], exam_keys=frozenset({keys["attempts/new/site/d/a2"]}), keys=keys)
+    assert pulled["exam"] == ["attempts/new/site/d/a2"] and out[0]["exam"] is True

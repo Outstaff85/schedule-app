@@ -5,8 +5,10 @@ its back or a ספח from
   ~/.scan-train/synth/he-fields/train/) — the cards' own look, every value made up;
 - the made-up Hebrew lines (synth_lines.py he: ~/.scan-train/synth/he/), if drawn — more names, streets,
   cities and dates in the PC's fonts, made worse like a phone's crop.
-It is checked on the other made-up pages (synth_fields.py --check: …/he-fields/check/) — every field read
-right, by kind, and the ID numbers whose check digit agrees. Labels are taught in the visual order
+It is checked on the held-out real pages only (synth_fields.py --check: …/he-fields/check/, drawn from the pages
+heldout.json keeps and the check vocabulary — names, cities and streets training never draws) — every field read
+right, by kind, and the ID numbers whose check digit agrees. Before training, the training sets' sources.json are
+checked (gen.sources.assert_clean): a set holding a held-out page or drawn with the check vocabulary is refused. Labels are taught in the visual order
 (hemodel.visual). Exported to ONNX (input "img" [1,1,32,512], output "logits" [1,128,len(CHARS)+1]) and
 checked. Each epoch's progress is saved (checkpoint.py: --resume, --more). Writes
 ~/.scan-train/new/he.onnx, he-layouts.json (the card layouts the phone reads, hemodel.layouts) and
@@ -31,6 +33,7 @@ from home import HE_FILES, WORK, drop_report, gentle, model_hashes
 from mrzmodel import decode, line_input
 from synth import valid_israeli_id
 import checkpoint
+from gen.sources import assert_clean, read_meta
 from train_mrz import Lines, MrzNet, collate, export, fit
 
 READ_AT = 0.9   # the share of check fields a model must read right
@@ -48,6 +51,19 @@ def load(folder, visual=True):
             continue
         rows.append((folder / parts[0], hemodel.visual(parts[1]) if visual else parts[1], parts[2] if len(parts) > 2 else "line"))
     return rows
+
+
+def clean_inputs(fields, lines, work=None):
+    """Refuse to train on a held-out page or the check vocabulary (gen.sources.assert_clean): each training set must
+    carry its sources.json (synth_fields.py, synth_lines.py) naming the training split and vocabulary and no held-out
+    page."""
+    work = pathlib.Path(work or WORK)
+    meta = []
+    if fields:
+        meta.append(("synth/he-fields/train", read_meta(work / "synth" / "he-fields" / "train")))
+    if lines:
+        meta.append(("synth/he", read_meta(work / "synth" / "he")))
+    assert_clean((), "the Hebrew field reader's training sets", meta=meta, work=work)
 
 
 def check(net, rows, dev):
@@ -83,6 +99,7 @@ def main():
     checks = load(WORK / "synth" / "he-fields" / "check")
     if len(fields) + len(lines) < 1000 or not checks:
         raise SystemExit("too few made-up fields — run synth_fields.py --count 3000 and synth_fields.py --count 300 --check first")
+    clean_inputs(fields, lines)
     items = [(p, t) for p, t, _ in fields + lines]
     random.Random(0).shuffle(items)
     dev = "cuda" if torch.cuda.is_available() else "cpu"

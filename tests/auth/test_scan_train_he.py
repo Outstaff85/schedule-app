@@ -85,3 +85,82 @@ def test_the_phone_reads_where_the_marked_pages_say_and_in_the_same_order():
             if hemodel.readable(v):
                 shown = hemodel.visual(v)
                 assert hemodel.logical_simple(shown) == hemodel.logical(shown) == v, (k, v)
+
+
+# ---------- kept apart: the check vocabulary and the held-out pages (docs/scan-training.md → "Kept apart") ----------
+VOCAB_KINDS = ("given", "surname", "city", "street", "country", "address")
+
+
+def _check_words(text):
+    return set(synth._tokens(text)) & synth.CHECK_TOKENS
+
+
+def test_no_check_word_comes_out_of_training_values_or_lines():
+    for name in ("given", "surname", "city", "street", "country"):
+        train, check = synth.vocab(name), synth.vocab(name, True)
+        assert train and check and not set(train) & set(check), name
+        assert all(not _check_words(w) for w in train) and all(_check_words(w) for w in check), name
+    rng = random.Random(21)
+    for _ in range(10000):
+        for k in VOCAB_KINDS:
+            v = synth.field_value(k, rng)                     # held=False: the training vocabulary
+            assert not _check_words(v), (k, v)
+    for t, info in synth.lines("he", 10000, seed=4):       # synth_lines.py draws these (held=False)
+        assert not _check_words(t), (info, t)
+    # the check set draws only the check vocabulary's names, cities, streets and countries
+    for _ in range(500):
+        for k in ("given", "surname", "city", "street", "country"):
+            v = synth.field_value(k, rng, held=True)
+            assert all(t in synth.CHECK_TOKENS for t in synth._tokens(v)), (k, v)
+
+
+def test_made_up_names_are_readable_with_final_letters_only_at_the_end():
+    rng = random.Random(8)
+    finals = set("ךםןףץ")
+    names = [synth.he_name(rng, synth.CHECK_TOKENS) for _ in range(3000)]
+    assert len(set(names)) > 2000                                           # words, not a short list
+    for n in names:
+        assert hemodel.readable(n) and n not in synth.CHECK_TOKENS
+        assert not finals & set(n[:-1]), n                                  # a final form only as the last letter
+    assert any(n[-1] in finals for n in names)
+
+
+def test_synth_lines_draws_only_the_training_vocabulary(tmp_path, monkeypatch):
+    synth_lines = _load("synth_lines")
+    seen = {}
+    real = synth_lines.lines
+
+    def lines(kind, n, seed=0, held=None):
+        seen["held"] = held
+        return real(kind, n, seed, held)
+    monkeypatch.setattr(synth_lines, "lines", lines)
+    monkeypatch.setattr(synth_lines, "_batch", lambda job: [])              # no TRDG here
+    folder, _ = synth_lines.draw("he", 20, tmp_path, ["font.ttf"])
+    assert seen["held"] is False
+    assert json.loads((folder / "sources.json").read_text())["vocabulary"] == "train"
+
+
+def test_the_check_set_draws_only_the_held_out_pages(tmp_path, monkeypatch):
+    import hashlib
+    from gen import common as gc
+    synth_fields = _load("synth_fields")
+    pages = []
+    for i in range(5):
+        p = tmp_path / "templates" / "id_front" / f"own-{i}.png"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(f"page {i}".encode())
+        pages.append((str(p), "id_front"))
+    held = [hashlib.sha1(b"page 1").hexdigest(), hashlib.sha1(b"page 3").hexdigest()]
+    h = tmp_path / "heldout.json"
+    h.write_text(json.dumps({"templates": [{"sha1": s, "group": gc.own_group(s), "kind": "id_front"} for s in held],
+                             "vocabulary": {"salt": "", "every": 5}}))
+    monkeypatch.setattr(gc, "HELDOUT", h)
+    check = synth_fields.split_pages(pages, True)
+    train = synth_fields.split_pages(pages, False)
+    assert sorted(gc.file_sha1(p) for p, _ in check) == sorted(held)                 # only the held-out pages
+    assert not {gc.file_sha1(p) for p, _ in train} & set(held) and len(train) == 3   # training: the rest
+    import pytest
+    with pytest.raises(SystemExit, match="held out"):
+        synth_fields.split_pages([pg for pg in pages if gc.file_sha1(pg[0]) not in held], True)   # no held-out page
+    with pytest.raises(SystemExit, match="nothing left"):
+        synth_fields.split_pages([pg for pg in pages if gc.file_sha1(pg[0]) in held], False)  # nothing to train on

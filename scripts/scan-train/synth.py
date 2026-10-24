@@ -6,11 +6,15 @@ are common ones put together at random. Pure — no fonts, no images, so the rul
 
   lines("mrz", 1000, seed=1)       # → [(text, fields)], line 1 and line 2 of each passport in turn
   lines("he", 1000, seed=1)        # → [(text, {"kind": …})], logical order (right to left as read)
+
+The Hebrew names, cities, streets and countries are split in two (docs/scan-training.md → "Kept apart"): the
+check vocabulary (gen.common.vocab_held: crc32 of the word % 5 == 0) is drawn only for the reader's check set
+(held=True); training draws the rest and made-up names (he_name), so the check measures words never seen.
 """
 import math
-import pathlib
 import random
-import zlib
+
+from gen.common import held_out_page, vocab_held
 
 # ---------- the passport's machine-readable zone (TD3: two lines of 44) ----------
 MRZ_LEN = 44
@@ -153,13 +157,65 @@ def valid_israeli_id(s):
     return sum((int(c) * (1 + i % 2)) // 10 + (int(c) * (1 + i % 2)) % 10 for i, c in enumerate(s)) % 10 == 0
 
 
-def he_line(rng):
-    """One field of an ID card as printed: (text in logical order, its kind)."""
+# ---------- the check vocabulary kept apart, and made-up names ----------
+def _tokens(s):
+    """A value's Hebrew words (numbers and dashes are not vocabulary)."""
+    return [t for t in s.split() if any("\u05d0" <= c <= "\u05ea" for c in t)]
+
+
+def _vocab(lists):
+    """→ (training words, check words, the check words' tokens) by list. A word is the check's when
+    vocab_held(word); a training word shares no token with a check word ("בן דוד" stays out when "דוד" is
+    the check's)."""
+    check = {n: tuple(w for w in ws if vocab_held(w)) for n, ws in lists.items()}
+    tokens = frozenset(t for ws in check.values() for w in ws for t in _tokens(w))
+    train = {n: tuple(w for w in ws if not vocab_held(w) and not set(_tokens(w)) & tokens) for n, ws in lists.items()}
+    return train, check, tokens
+
+
+# a made-up name: syllables of these letters, a final letter's own form at the end (ך ם ן ף ץ)
+_CONS = "אבגדהזחטיכלמנסעפצקרשת"
+_MATRES = "ויא"
+_FINAL = {"כ": "ך", "מ": "ם", "נ": "ן", "פ": "ף", "צ": "ץ"}
+NAME_SHARE = 0.5   # training names: half from the lists, half made up
+
+
+def he_name(rng, avoid=frozenset()):
+    """A made-up Hebrew name of 2-4 syllables (a consonant, at times a vowel letter, a geresh after ג ז צ),
+    the last letter in its final form — a word the reader cannot have learned by its shape; never one in avoid."""
+    while True:
+        w = ""
+        for _ in range(rng.randint(2, 4)):
+            c = rng.choice(_CONS)
+            w += c + ("'" if c in "גזצ" and rng.random() < 0.08 else "")
+            if rng.random() < 0.35:
+                w += rng.choice(_MATRES)
+        if w[-1] in _FINAL:
+            w = w[:-1] + _FINAL[w[-1]]
+        if 2 <= len(w) <= 9 and w not in avoid:
+            return w
+
+
+def vocab(name, held=False):
+    """A list's words ("given", "surname", "city", "street", "country"): the check vocabulary (held=True) or
+    the training one."""
+    return (CHECK if held else TRAIN)[name]
+
+
+def _name(rng, name, held):
+    """A given name or a surname: from the check vocabulary (held), else half the training list, half made up."""
+    if held:
+        return rng.choice(CHECK[name])
+    return rng.choice(TRAIN[name]) if rng.random() < NAME_SHARE else he_name(rng, CHECK_TOKENS)
+
+
+def he_line(rng, held=False):
+    """One field of an ID card as printed: (text in logical order, its kind); held: the check vocabulary."""
     k = rng.random()
     if k < 0.25:
-        return rng.choice(HE_GIVEN) + ("" if rng.random() < 0.8 else " " + rng.choice(HE_GIVEN)), "given"
+        return _name(rng, "given", held) + ("" if rng.random() < 0.8 else " " + _name(rng, "given", held)), "given"
     if k < 0.45:
-        return rng.choice(HE_SURNAMES), "surname"
+        return _name(rng, "surname", held), "surname"
     if k < 0.6:
         i = israeli_id(rng)
         return (i if rng.random() < 0.5 else f"{i[0]} {i[1:8]} {i[8]}"), "idNo"
@@ -167,12 +223,12 @@ def he_line(rng):
         y, m, d = _yymmdd(rng, 1950, 2036)
         return f"{d:02d}{rng.choice('./')}{m:02d}{rng.choice('./')}{y}", "date"
     if k < 0.9:
-        return f"{rng.choice(HE_STREETS)} {rng.randint(1, 180)}" + ("" if rng.random() < 0.7 else f"/{rng.randint(1, 30)}"), "street"
-    return rng.choice(HE_CITIES), "city"
+        return f"{rng.choice(vocab('street', held))} {rng.randint(1, 180)}" + ("" if rng.random() < 0.7 else f"/{rng.randint(1, 30)}"), "street"
+    return rng.choice(vocab("city", held)), "city"
 
 
-def lines(kind, n, seed=0):
-    """n made-up lines of a kind ("mrz" or "he"): [(text, info)]."""
+def lines(kind, n, seed=0, held=False):
+    """n made-up lines of a kind ("mrz" or "he"): [(text, info)]; held: the Hebrew check vocabulary."""
     rng = random.Random(seed)
     out = []
     if kind == "mrz":
@@ -182,22 +238,19 @@ def lines(kind, n, seed=0):
         return out[:n]
     if kind == "he":
         for _ in range(n):
-            t, k = he_line(rng)
+            t, k = he_line(rng, held)
             out.append((t, {"kind": k}))
         return out
     raise ValueError(kind)
 
 
 # ---------- the owner's real pages kept apart for the exam (synth_docs.py --exam, exam.py) ----------
-EXAM_EVERY = 6   # about one real page in six (by its kind folder and file name: always the same ones)
-
-
 def held_out(path):
-    """Is this real page (a template) kept apart for the exam (exam.py's "your documents" set)? Chosen by its
-    kind folder and file name, so always the same pages (of the owner's 22: six — ID cards new and old, a
-    passport, two ספחים): never laid on a training photo by synth_docs.py, only on its exam photos (--exam)."""
-    p = pathlib.Path(path)
-    return zlib.crc32(f"exam:0{p.parent.name}/{p.name}".encode("utf-8")) % EXAM_EVERY == 0
+    """Is this real page (a template) kept apart for the exam (exam.py's "your documents" set)? By its content
+    sha1 in heldout.json (gen.common.held_out_page; of the owner's 22 pages: six), or a site page whose
+    document is on the exam side — never laid on a training photo, only on the exam photos (--exam). A renamed
+    file stays where it was."""
+    return held_out_page(path)
 
 
 # ---------- where a made-up document lies on a made-up photo (synth_docs.py) ----------
@@ -298,6 +351,9 @@ HE_SEX = ("זכר", "נקבה")
 HE_MARITAL = ("רווק", "רווקה", "נשוי", "נשואה", "גרוש", "גרושה", "אלמן", "אלמנה")
 HE_COUNTRIES = ("ישראל", "ברית המועצות", "אוקראינה", "רוסיה", "בלרוס", "מולדובה", "אתיופיה", "מרוקו", "צרפת",
                 "ארצות הברית", "ארגנטינה", "רומניה", "עיראק", "תימן", "גאורגיה", "אוזבקיסטן")
+# the five lists split once: the training words, the check words and the check words' tokens
+TRAIN, CHECK, CHECK_TOKENS = _vocab({"given": HE_GIVEN, "surname": HE_SURNAMES, "city": HE_CITIES, "street": HE_STREETS,
+                                     "country": HE_COUNTRIES})
 FIELD_KINDS = ("surname", "given", "idNo", "date", "hedate", "sex", "marital", "city", "street", "country", "digits",
                "address", "latin")
 
@@ -307,12 +363,13 @@ def he_date(rng):
     return f"{rng.choice(HE_DAYS)} ב{rng.choice(HE_MONTHS)} {rng.choice(HE_YEARS)}"
 
 
-def field_value(kind, rng, n=None):
-    """A made-up value of a field kind (FIELD_KINDS), as printed on the document; digits: n of them."""
+def field_value(kind, rng, n=None, held=False):
+    """A made-up value of a field kind (FIELD_KINDS), as printed on the document; digits: n of them; held: the
+    check vocabulary's names, cities, streets and countries (synth_fields.py --check), else the training ones."""
     if kind == "surname":
-        return rng.choice(HE_SURNAMES)
+        return _name(rng, "surname", held)
     if kind == "given":
-        return rng.choice(HE_GIVEN) + ("" if rng.random() < 0.85 else " " + rng.choice(HE_GIVEN))
+        return _name(rng, "given", held) + ("" if rng.random() < 0.85 else " " + _name(rng, "given", held))
     if kind == "idNo":
         i = israeli_id(rng)
         return f"{i[0]} {i[1:8]} {i[8]}" if rng.random() < 0.85 else i
@@ -326,15 +383,15 @@ def field_value(kind, rng, n=None):
     if kind == "marital":
         return rng.choice(HE_MARITAL)
     if kind == "city":
-        return rng.choice(HE_CITIES)
+        return rng.choice(vocab("city", held))
     if kind == "street":
-        return rng.choice(HE_STREETS)
+        return rng.choice(vocab("street", held))
     if kind == "country":
-        return rng.choice(HE_COUNTRIES)
+        return rng.choice(vocab("country", held))
     if kind == "digits":
         return "".join(rng.choice("0123456789") for _ in range(n or rng.randint(1, 9)))
     if kind == "address":   # a driving licence's: the street, the house's number, the city
-        return f"{rng.choice(HE_STREETS)} {rng.randint(1, 180)} {rng.choice(HE_CITIES)}"
+        return f"{rng.choice(vocab('street', held))} {rng.randint(1, 180)} {rng.choice(vocab('city', held))}"
     if kind == "latin":     # a name in Latin letters (a driving licence prints them under the Hebrew)
         return rng.choice(SURNAMES + GIVEN)
     raise ValueError(kind)

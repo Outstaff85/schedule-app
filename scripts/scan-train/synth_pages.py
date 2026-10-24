@@ -9,6 +9,9 @@ with the type the model must answer (common.DOCTYPES) —
 - MIDV's ID cards and passports (midv.py), cut by their own corners, as id_front / passport.
 Each a little changed (light, blur, noise, JPEG, a cut a little off); the model learns the turn itself
 (train_doctypes.py turns every page). Nothing is uploaded: the same seed draws the same pages.
+Every label comes from the one class table (gen.common.LABELS). Kept apart (docs/scan-training.md → "Kept
+apart"): no held-out real page and no open set's exam document is drawn; each entry names the real pages in it
+(templateSha1, templates) and the open-set document it was cut from (open), so train_doctypes.py can check.
 
   python synth_pages.py --count 6000          # → ~/.scan-train/synth/pages/ (img/, pages.json)
   python train_doctypes.py --synth 6000       # the made-up pages beside the site's (or alone, at first)
@@ -24,7 +27,9 @@ from PIL import ImageDraw
 
 import synth
 import synth_docs as sd
+from gen.common import file_sha1, label
 from home import WORK, gentle
+from midv import open_exam
 
 OUT = WORK / "synth" / "pages"
 LONG = 512
@@ -94,17 +99,20 @@ def cut(img, doc):
     return cv2.warpPerspective(img, M, (max(8, W), max(8, H)), flags=cv2.INTER_AREA)
 
 
-def card(rng, F, by_kind):
-    """An ID card to lay on a ספח: one of the owner's made another person's, else a drawn one (BGR, upright)."""
+def card(rng, F, by_kind, used=None):
+    """An ID card to lay on a ספח: one of the owner's made another person's, else a drawn one (BGR, upright);
+    used: the real pages' sha1s, added to."""
     if by_kind.get("id_front") and rng.random() < 0.5:
         p = rng.choice(by_kind["id_front"])
+        if used is not None:
+            used.append(file_sha1(p))
         im = sd.template(rng, F, p, sd.kind_of_page(p, "id_front"), False)[0]
     else:
         im = drawn(rng, F, "id_front")
     return cv2.cvtColor(np.asarray(im.convert("RGB")), cv2.COLOR_RGB2BGR)
 
 
-def sefach_like(rng, F, img, by_kind):
+def sefach_like(rng, F, img, by_kind, used=None):
     """A ספח as the phone sees it (owner, 2026-10-24: the type model took a ספח for an ID card — 88 % right): its
     ID card lying on it (a third of them), only the holder's part of the sheet, a fold's shadow, faded print."""
     h, w = img.shape[:2]
@@ -114,7 +122,7 @@ def sefach_like(rng, F, img, by_kind):
         img = img[y:y + ch, x:x + cw].copy()
         h, w = img.shape[:2]
     if rng.random() < 0.35:  # the ID card lying on it, a little turned, its shadow under it
-        c = card(rng, F, by_kind)
+        c = card(rng, F, by_kind, used)
         cw = int(w * rng.uniform(0.25, 0.5))
         c = cv2.resize(c, (cw, max(8, round(c.shape[0] * cw / c.shape[1]))), interpolation=cv2.INTER_AREA)
         ch = c.shape[0]
@@ -154,16 +162,22 @@ def changed(rng, bgr):
     return cv2.imdecode(enc, cv2.IMREAD_COLOR)
 
 
+def open_ref(e):
+    """What an entry keeps of the open-set example it was cut from (enough for midv.open_exam)."""
+    return {k: e[k] for k in ("id", "source", "midv", "smartdoc", "doc_no") if k in e}
+
+
 def sets():
-    """MIDV's cards and passports and SmartDoc's pages with their own corners: [(file, doc corners, doctype)]."""
+    """MIDV's cards and passports and SmartDoc's pages with their own corners, but their exam documents
+    (midv.open_exam): [(file, doc corners, doctype, open_ref)] — the doctype from the class table (gen.common.LABELS)."""
     out = []
-    for folder, kind_of in (("midv", lambda e: e.get("kind")), ("smartdoc", lambda e: "other")):
+    for folder, kind_of in (("midv", lambda e: e.get("kind")), ("smartdoc", lambda e: label("smartdoc", e.get("kind") or ""))):
         p = WORK / folder / "examples.json"
         if not p.exists():
             continue
         for e in json.loads(p.read_text(encoding="utf-8")):
-            if e.get("doc") and kind_of(e) in SHARE:
-                out.append((str(WORK / folder / "img" / pathlib.Path(e["file"]).name), e["doc"], kind_of(e)))
+            if e.get("doc") and kind_of(e) in SHARE and not open_exam(e):
+                out.append((str(WORK / folder / "img" / pathlib.Path(e["file"]).name), e["doc"], kind_of(e), open_ref(e)))
     return out
 
 
@@ -172,17 +186,20 @@ def _batch(job):
     F = sd.Fonts(latin, hebrew)
     by_kind = {}
     for path, k in pages:
-        by_kind.setdefault("other" if k in ("insert", "licence") else k, []).append(path)   # a loose sheet or a licence: "other"
+        by_kind.setdefault(label("template", k), []).append(path)   # a loose sheet or a licence: "other" (the class table)
     out = []
     for i in range(start, start + n):
         rng = random.Random(seed * 1_000_003 + i)
         kind = rng.choices(list(SHARE), list(SHARE.values()))[0]
         pick = rng.random()
+        used, ref = [], None
         if kind in by_kind and pick < 0.45:      # a real page of the owner's, made another person's
-            img = cv2.cvtColor(np.asarray(sd.template(rng, F, *(lambda p: (p, sd.kind_of_page(p, kind)))(rng.choice(by_kind[kind])), False)[0].convert("RGB")), cv2.COLOR_RGB2BGR)
+            p = rng.choice(by_kind[kind])
+            used.append(file_sha1(p))
+            img = cv2.cvtColor(np.asarray(sd.template(rng, F, p, sd.kind_of_page(p, kind), False)[0].convert("RGB")), cv2.COLOR_RGB2BGR)
             source = "template"
-        elif real and pick < 0.7 and any(k == kind for _, _, k in real):
-            f, doc, _ = rng.choice([r for r in real if r[2] == kind])
+        elif real and pick < 0.7 and any(r[2] == kind for r in real):
+            f, doc, _, ref = rng.choice([r for r in real if r[2] == kind])
             pic = cv2.imread(f)
             if pic is None:
                 continue
@@ -191,12 +208,13 @@ def _batch(job):
             img = cv2.cvtColor(np.asarray(drawn(rng, F, kind)), cv2.COLOR_RGB2BGR)
             source = "drawn"
         if kind == "sefach":
-            img = sefach_like(rng, F, img, by_kind)
+            img = sefach_like(rng, F, img, by_kind, used)
         s = LONG / max(img.shape[:2])
         img = changed(rng, cv2.resize(img, (max(8, round(img.shape[1] * s)), max(8, round(img.shape[0] * s))), interpolation=cv2.INTER_AREA))
         f = pathlib.Path(folder) / "img" / f"{i}.jpg"
         cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 92])
-        out.append({"id": f"page-{seed}-{i}", "file": str(f), "doctype": kind, "exam": False, "synth": True, "source": source})
+        out.append({"id": f"page-{seed}-{i}", "file": str(f), "doctype": kind, "exam": False, "synth": True, "source": source,
+                    **({"templateSha1": used[0], "templates": sorted(set(used))} if used else {}), **({"open": ref} if ref else {})})
     return out
 
 

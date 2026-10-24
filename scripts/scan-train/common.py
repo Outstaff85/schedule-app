@@ -30,7 +30,7 @@ DOCTYPE_SERVER = {"doctype.onnx": "tf_efficientnet_lite2"}
 DOCTYPE_SIZES = [f"tf_efficientnet_lite{i}" for i in range(5)]
 # The passport zone reader (docs/hf-plan.md → H8b; mrzmodel.py): trained on made-up lines (synth_lines.py, train_mrz.py)
 MRZ_MODEL = "mrz.onnx"
-DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
+from gen.common import DOCTYPES, LABELS, label  # noqa: E402,F401 — the one class table (the page kinds and each source's label for them)
 # A record's field names before H0 (docs/hf-plan.md) → today's: records not yet renamed by rename_fields.py
 OLD_NAMES = {"cornersModel": "edgesModel", "cornersFixed": "edgesFixed", "kindModel": "doctypeModel", "kindFixed": "doctypeFixed", "kindBy": "doctypeBy"}
 OLD_STATS = {"newSince": "edgesSince", "kindsSince": "doctypesSince", "lastKindsTrainedAt": "lastDoctypesTrainedAt", "lastKindsReport": "lastDoctypesReport"}

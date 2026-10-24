@@ -9,6 +9,11 @@ photos of Israeli documents, cut straight, are uploaded to the same private buck
 templates/<kind>/ (hf buckets sync <folder> hf://buckets/OutStaff/scanner-data/templates) and copied
 too, every one of them, as own-<name>.
 
+Kept apart (docs/scan-training.md → "Kept apart"): a document whose split key (gen.common.split_key: its
+worker's id) is on the exam side is never copied — its pages would become made-up training photos while its page
+copies are in the document type exam — and a page of it pulled before is deleted. templates/index.json records
+each copied site page's key and side (synth.held_out and `python -m gen sources --check` read it).
+
   python pull_templates.py --per 100
 """
 import argparse
@@ -18,12 +23,35 @@ import re
 import tempfile
 
 from common import DATA, WORK
+from gen.common import side
 
 KINDS = ("id_front", "id_back", "passport", "sefach")
 OWN_KINDS = KINDS + ("insert",)
 PICTURES = (".jpg", ".jpeg", ".png", ".webp")
 # a page this script pulled: <the document's id (a Firestore id, 20 letters and digits)>-<n>.jpg
 PULLED = re.compile(r"([A-Za-z0-9]{20})-\d+\.jpg")
+
+
+def site_pages(records, per, folder):
+    """The site documents' pages to copy: records [(record, its index)] → (want {kind: [(bucket path, dest)]}, the
+    pages of exam-side documents [dest] (never copied; deleted when copied before), index {"<kind>/<file>": {"key",
+    "split"}}). Up to per pages of each kind, in the records' order."""
+    want, apart, index = {k: [] for k in KINDS}, [], {}
+    folder = pathlib.Path(folder)
+    for r, i in records:
+        key, split, _ = side(r)
+        for n, pg in enumerate(r.get("pages") or []):
+            k = pg.get("doctype")
+            if k not in want or not pg.get("path"):
+                continue
+            dest = folder / k / f"{r.get('id') or i}-{n}.jpg"
+            if split == "exam":
+                apart.append(dest)
+                continue
+            index[f"{k}/{dest.name}"] = {"key": key, "split": split}   # every training-side page (one copied on a run before too)
+            if len(want[k]) < per:
+                want[k].append((pg["path"], dest))
+    return want, apart, index
 
 
 def stale(folder, ids):
@@ -62,19 +90,21 @@ def main():
     gone = stale(WORK / "templates", {f.split("/")[3] for f in records if len(f.split("/")) == 5})
     for p in gone:
         p.unlink(missing_ok=True)
-    want = {k: [] for k in KINDS}
+    docs = []
     with tempfile.TemporaryDirectory() as tmp:
         if records:
             api.download_bucket_files(DATA, [(f, f"{tmp}/{i}.json") for i, f in enumerate(records)])
         for i, f in enumerate(records):
             try:
-                r = json.loads(open(f"{tmp}/{i}.json", encoding="utf-8").read())
+                docs.append((json.loads(open(f"{tmp}/{i}.json", encoding="utf-8").read()), i))
             except Exception:
                 continue
-            for n, pg in enumerate(r.get("pages") or []):
-                k = pg.get("doctype")
-                if k in want and len(want[k]) < a.per and pg.get("path"):
-                    want[k].append((pg["path"], WORK / "templates" / k / f"{r.get('id') or i}-{n}.jpg"))
+    want, apart, index = site_pages(docs, a.per, WORK / "templates")
+    dropped = [p for p in apart if p.exists()]
+    for p in dropped:
+        p.unlink(missing_ok=True)   # an exam-side document's page copied before this rule
+    (WORK / "templates").mkdir(parents=True, exist_ok=True)
+    (WORK / "templates" / "index.json").write_text(json.dumps(index, indent=1), encoding="utf-8")
     try:
         own = own_pages([f.path for f in api.list_bucket_tree(DATA, prefix="templates/", recursive=True)])
     except Exception:
@@ -86,7 +116,8 @@ def main():
     if pairs:
         api.download_bucket_files(DATA, [(src, str(dest)) for src, dest in pairs])
     print(f"templates in {WORK / 'templates'}: " + ", ".join(f"{k} {len(v)}" for k, v in want.items())
-          + f"; the owner's own pages: {len(mine)}; deleted (their document no longer in the bucket): {len(gone)}")
+          + f"; the owner's own pages: {len(mine)}; deleted (their document no longer in the bucket): {len(gone)}; "
+          f"kept apart (their worker is on the exam side): {len(apart)} pages, {len(dropped)} of them deleted here")
 
 
 if __name__ == "__main__":

@@ -1,23 +1,45 @@
 """Step 1 of /scan-train: every kept example (the private Hugging Face bucket's records/ and
 edges/, and those still in Firebase — Firestore scanTraining, Storage training/scan/) is downloaded to the work folder,
-and every new scan attempt (attempts/new/, S8 — its examples by attempts.py); about one in seven —
-chosen by its id, so always the same ones — is kept apart as the exam and never
-trained on. The attempts kept as the exam before (attempts/exam/, moved there by publish.py) are pulled
-on every run, always as the exam: a real exam that grows and is never trained on. Writes
-~/.scan-train/examples.json and attempts.json — the new attempts' folders, {"train": [...], "exam": [...]}:
-publish.py moves the train folders to attempts/used/v<N>/ and the exam ones (kept apart by their id, or
-every example of it an exam page) to attempts/exam/; attempts/golden/ is never moved."""
-import hashlib
+and every new scan attempt (attempts/new/, S8 — its examples by attempts.py). What is kept apart as the exam is
+chosen by gen.common.split_key (docs/scan-training.md → "Kept apart"): the worker's id, else the scan session's
+(a page copy sent before the worker was saved goes with its document, by the documents' session ids), else the
+retake group's — never a record's id, so one worker's or one shot's pages are all on one side; a record kept
+before those ids were has none and is split by its id as before (legacy). The attempts kept as the exam before
+(attempts/exam/, moved there by publish.py) are pulled on every run, always as the exam, and their retake groups'
+new attempts with them. A retaken page with no fix whose group is on the training side is in neither the exam nor
+training (counted: attempts.json "hardLeftOut"), so no exam page has a sibling in training. Writes
+~/.scan-train/examples.json (each example with its "key", "split" and an attempt's "group") and attempts.json —
+the new attempts' folders, {"train": [...], "exam": [...], "hardLeftOut": n}: publish.py moves the train folders
+to attempts/used/v<N>/ and the exam ones to attempts/exam/; attempts/golden/ is never moved."""
 import json
 import pathlib
 import tempfile
 
 import attempts as attempt_rules
 from common import DATA, WORK, bucket, data_file, data_records, db, named, write_json
+from gen.common import session_links, side, split_key, split_of
 
 
-def is_exam(doc_id):
-    return int(hashlib.sha1(doc_id.encode()).hexdigest(), 16) % 7 == 0
+def document_records():
+    """The full documents' records (H8a: documents/<tenant>/<month>/<id>/record.json in the private bucket) — each
+    with the worker's and the scan session's ids, so a page copy of that scan goes with its document; [] when the
+    bucket cannot be read."""
+    try:
+        from huggingface_hub import HfApi
+        api = HfApi()
+        files = [f.path for f in api.list_bucket_tree(DATA, prefix="documents/", recursive=True) if f.path.endswith("/record.json")]
+    except Exception:
+        return []
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        if files:
+            api.download_bucket_files(DATA, [(f, f"{tmp}/{i}.json") for i, f in enumerate(files)])
+        for i, _ in enumerate(files):
+            try:
+                out.append(json.loads(pathlib.Path(f"{tmp}/{i}.json").read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue
+    return out
 
 
 def records():
@@ -96,53 +118,96 @@ def painted(src, dest, quads):
     return True
 
 
-def attempt_examples(out, folders=None, kept_exam=False):
-    """The attempts' examples, added to out; → the new folders pulled, {"train": [...], "exam": [...]}: an
-    exam folder is one kept apart by its id, or one whose every example is an exam page (retaken pages).
-    kept_exam: the attempts kept as the exam before (attempts/exam/) — every example an exam page, none listed."""
-    pulled = {"train": [], "exam": []}
-    for d, ans, outs, fetch in (attempt_folders() if folders is None else folders):
+def group_of(d, ans):
+    """An attempt's retake group: the group the scanner gave (the first shot's id), else its own id."""
+    return ans.get("group") or ans.get("id") or d.rsplit("/", 1)[1]
+
+
+def attempt_keys(folders):
+    """{folder: split key} — by the retake group, or by the worker's id when any attempt of the group was told
+    "saved" with one (publish's outcome; S8): every attempt of one group gets the same key."""
+    workers = {}
+    for d, ans, outs, _ in folders:
+        for o in outs or []:
+            if isinstance(o, dict) and o.get("outcome") == "saved" and o.get("workerId"):
+                workers[group_of(d, ans)] = o["workerId"]
+    return {d: split_key({"workerId": workers.get(group_of(d, ans)), "group": group_of(d, ans)}) for d, ans, _, _ in folders}
+
+
+def attempt_examples(out, folders=None, kept_exam=False, exam_keys=frozenset(), keys=None):
+    """The attempts' examples, added to out; → the new folders pulled, {"train": [...], "exam": [...], "hardLeftOut": n}.
+    A folder's side is its retake group's (attempt_keys; split_of), or the exam when its key is one of exam_keys
+    (the attempts kept as the exam before). A retaken page with no fix ("hard") is an exam page only on the exam
+    side; on the training side it is left out of both (counted). kept_exam: the attempts kept as the exam before
+    (attempts/exam/) — every example an exam page, none listed."""
+    folders = list(attempt_folders() if folders is None else folders)
+    keys = keys if keys is not None else attempt_keys(folders)
+    pulled = {"train": [], "exam": [], "hardLeftOut": 0}
+    for d, ans, outs, fetch in folders:
         aid = ans.get("id") or d.rsplit("/", 1)[1]
         pic = WORK / "attempts" / f"{aid}.jpg"
         pic.parent.mkdir(parents=True, exist_ok=True)
         if not pic.exists() and not fetch(pic):
             continue
-        exam = kept_exam or is_exam(aid)
+        key = keys.get(d) or split_key({"group": group_of(d, ans)})
+        split = "exam" if kept_exam or key in exam_keys else split_of(key)
+        exam = split == "exam"
         mine = []
         for x in attempt_rules.examples_of(ans, outs):
             f = WORK / "img" / f"att-{aid}-{x['page']}.jpg"
             if not painted(pic, f, x["paint"]):
                 continue
+            hard = x["kind"] == "hard"
+            if hard and not exam:
+                pulled["hardLeftOut"] += 1   # its kept retake trains: as an exam page it would have a sibling in training
             q = ([ans.get("edgesModel")] + list(ans.get("edgesMore") or []))[x["page"]]
             mine.append({"id": f"att-{aid}-{x['page']}", "file": str(f), "model": q, "fixed": x["target"],
-                         "moved": ans.get("moved", 0) if x["page"] == 0 else 0, "exam": exam or x["kind"] == "hard",
-                         "none": x["kind"] == "none", "hard": x["kind"] == "hard", "rejected": x["rejected"], "attempt": True})
+                         "moved": ans.get("moved", 0) if x["page"] == 0 else 0, "exam": exam,
+                         "none": x["kind"] == "none", "hard": hard, "rejected": x["rejected"], "attempt": True,
+                         "group": group_of(d, ans), "key": key, "split": "none" if hard and not exam else split})
         out += mine
         if not kept_exam:
-            pulled["exam" if exam or (mine and all(e["exam"] for e in mine)) else "train"].append(d)
+            pulled["exam" if exam else "train"].append(d)
     return pulled
 
 
-def main():
+def record_examples(recs, links):
+    """The kept records' edges examples (a record with only a document type changed has none): [example] — each with
+    its split key, its side and, for a record kept before the ids were, legacy True."""
     out = []
-    (WORK / "img").mkdir(parents=True, exist_ok=True)
-    for rid, r, fetch in records():
+    for rid, r, fetch in recs:
         if not r.get("image"):
             continue  # only its document type was changed: for the document type model, not the edges
         path = WORK / "img" / f"{rid}.jpg"
         if not path.exists() and not fetch(r["image"], path):
             continue
+        key, split, legacy = side(r, links, rid)
         out.append({"id": rid, "file": str(path), "model": r["edgesModel"], "fixed": r["edgesFixed"],
-                    "moved": r.get("moved", 0), "exam": is_exam(rid)})
-    pulled = attempt_examples(out)
+                    "moved": r.get("moved", 0), "exam": split == "exam", "key": key, "split": split, **({"legacy": True} if legacy else {})})
+    return out
+
+
+def main():
+    (WORK / "img").mkdir(parents=True, exist_ok=True)
+    recs = records()
+    links = session_links([r for _, r, _ in recs] + document_records())
+    out = record_examples(recs, links)
+    new, kept = list(attempt_folders()), list(attempt_folders("attempts/exam/"))
+    keys = attempt_keys(new + kept)                       # one retake group, one key — across new and kept attempts
+    exam_keys = frozenset(keys[d] for d, _, _, _ in kept)  # a group kept as the exam keeps its new retakes there too
+    pulled = attempt_examples(out, new, exam_keys=exam_keys, keys=keys)
     before = len(out)
-    attempt_examples(out, attempt_folders("attempts/exam/"), kept_exam=True)   # the real exam kept from the trainings before
+    attempt_examples(out, kept, kept_exam=True, keys=keys)   # the real exam kept from the trainings before
     write_json(WORK / "examples.json", out)
     write_json(WORK / "attempts.json", pulled)
     n_exam = sum(e["exam"] for e in out)
     n_att = sum(1 for e in out if e.get("attempt"))
+    n_legacy = sum(1 for e in out if e.get("legacy"))
+    n_train = sum(1 for e in out if not e["exam"] and not e.get("hard"))
     print(f"{len(out)} examples ({n_att} from {len(pulled['train']) + len(pulled['exam'])} new scan attempts, "
-          f"{len(out) - before} from the attempts kept as the exam): {len(out) - n_exam} to train on, {n_exam} for the exam")
+          f"{len(out) - before} from the attempts kept as the exam): {n_train} to train on, {n_exam} for the exam; "
+          f"{pulled['hardLeftOut']} retaken pages left out (their group trains); {n_legacy} records with no worker, session "
+          f"or group, split by their id as before")
 
 
 if __name__ == "__main__":

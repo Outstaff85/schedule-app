@@ -6,7 +6,9 @@ back to ONNX (checked again). Batch norms stay as they are (few examples). The G
 used when there is one (CUDA). Each epoch's progress is saved (checkpoint.py): --resume goes on with a
 run that stopped, --more trains further from the last run's weights. With --synth N, N made-up photos (synth_docs.py), with --midv N, N MIDV
 photos (midv.py), and with --smartdoc N, N SmartDoc frames (smartdoc.py) are added to the users' examples (never to the exam;
-nor MIDV's and SmartDoc's exam documents, midv.open_exam). Writes ~/.scan-train/new/<model>.onnx."""
+nor MIDV's and SmartDoc's exam documents, midv.open_exam). Before training, gen.sources.assert_clean refuses a set
+holding a held-out template's photo, an exam background, an exam split key or an open set's exam document
+(docs/scan-training.md → "Kept apart"). Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
 import pathlib
 import random
@@ -19,6 +21,7 @@ import onnxruntime as ort
 import torch
 
 import checkpoint
+from gen.sources import assert_clean
 from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
 from home import drop_report, gentle
@@ -168,6 +171,7 @@ def main():
         ex += random.sample(more, min(n, len(more)))
     if not ex:
         raise SystemExit("no examples to train on — run pull.py first")
+    assert_clean(ex, "the document edges' training examples", work=WORK)   # no held-out page, exam key or exam document
     X, Y = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     base = a.base or version_of("scan-lab")

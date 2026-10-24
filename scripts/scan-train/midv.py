@@ -28,6 +28,7 @@ import tarfile
 import zipfile
 
 
+from gen.common import heldout, label
 from home import WORK
 from synth import order_corners
 
@@ -42,18 +43,33 @@ IMAGES = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 
 # ---------- reading the annotations (pure: tested without OpenCV) ----------
 
-MIDV_EXAM_FROM = 80  # MIDV-2020's documents 80–99 of each kind: the exam (as midv_mrz.py splits them)
+_OPEN = heldout().get("open") or {}
+MIDV_EXAM_FROM = int(_OPEN.get("midv2020From", 80))   # MIDV-2020's documents 80–99 of each kind: the exam (as midv_mrz.py splits them)
+SMARTDOC_EXAM_PAGE = str(_OPEN.get("smartdocPage", "005"))   # SmartDoc's fifth page of each kind
+# a MIDV-2020 example's document number at the end of its id: a photo's or scan's "…-alb_id-85", a clip
+# frame's "…-alb_id-85-000013" (examples.json made before doc_no was kept)
+_DOC_NO = re.compile(r"-(\d{2})(?:-\d+)?$")
+
+
+def doc_no(e):
+    """A MIDV example's document number: the one build() kept, else read from its id; None when neither."""
+    n = e.get("doc_no")
+    if isinstance(n, str) and n.isdigit():
+        return n
+    m = _DOC_NO.search(e.get("id", ""))
+    return m.group(1) if m else None
 
 
 def open_exam(e):
     """An example of an open set kept for the edges exam, never trained on — by its document, so no
-    photo, scan or frame of an exam document is learned: MIDV-2020's documents 80–99 of each kind,
-    and SmartDoc's fifth page of each kind (datasheet005, letter005…) on every background."""
+    photo, scan or frame of an exam document is learned: MIDV-2020's documents 80–99 of each kind (a clip's
+    frames by their clip's document), and SmartDoc's fifth page of each kind (datasheet005, letter005…) on
+    every background. The numbers are heldout.json's ("open")."""
     if e.get("midv"):
-        m = re.search(r"-(\d{2})$", e["id"])
-        return bool(m) and e.get("source", "").startswith("midv-2020") and int(m.group(1)) >= MIDV_EXAM_FROM
+        n = doc_no(e)
+        return n is not None and e.get("source", "").startswith("midv-2020") and int(n) >= MIDV_EXAM_FROM
     if e.get("smartdoc"):
-        return re.search(r"-[a-z]+005-", e["id"]) is not None
+        return re.search(rf"-[a-z]+{SMARTDOC_EXAM_PAGE}-", e["id"]) is not None
     return False
 
 
@@ -102,9 +118,9 @@ def normalised(quad, w, h):
 
 
 def kind_of(path):
-    """The page kind by the document's folder name (alb_id, 05_aze_passport, rus_internalpassport…)."""
-    s = str(path).lower()
-    return "passport" if "passport" in s and "passportcard" not in s else "id_front"
+    """The page kind by the document's folder name (alb_id, 05_aze_passport, rus_internalpassport…) — the class
+    table's (gen.common.LABELS["midv"]: a driving licence is "other", like the owner's)."""
+    return label("midv", path)
 
 
 # ---------- download ----------
@@ -198,6 +214,14 @@ def is_clip(rel, ann_path):
     return "clips" in rel.parts or "ground_truth" in ann_path.parts
 
 
+def doc_number(rel, ann_path, img_path):
+    """The document a picture shows: a clip frame's is its clip's folder (clips/images/alb_id/85/000013.jpg → "85"),
+    a photo's or scan's its file name (photo/images/alb_id/85.jpg → "85")."""
+    if is_clip(rel, ann_path) and img_path.parent.name.isdigit():
+        return img_path.parent.name
+    return img_path.stem
+
+
 def build(src, out, clip_step=3):
     import cv2
     (out / "img").mkdir(parents=True, exist_ok=True)
@@ -218,7 +242,7 @@ def build(src, out, clip_step=3):
         f = out / "img" / f"{eid}.jpg"
         cv2.imwrite(str(f), small, [cv2.IMWRITE_JPEG_QUALITY, 92])
         ex.append({"id": eid, "file": str(f), "model": None, "fixed": fixed, "moved": 0, "exam": False,
-                   "midv": True, "kind": kind_of(rel), "source": "/".join(rel.parts[:2]),
+                   "midv": True, "kind": kind_of(rel), "source": "/".join(rel.parts[:2]), "doc_no": doc_number(rel, ann_path, img_path),
                    "doc": [[x / w, y / h] for x, y in quad]})   # the document's own top-left first: its upright page (synth_pages.py)
     (out / "examples.json").write_text(json.dumps(ex), encoding="utf-8")
     return ex, outside

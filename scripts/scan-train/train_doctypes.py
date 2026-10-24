@@ -7,7 +7,8 @@ pull_doctypes.py) is shown turned too but has no turn answer (TURN_IGNORE) — i
 it takes the page as RGB 0..1 like the document edges models. Exported to ONNX (input "img"
 [1,3,256,256]; outputs "doctype", "turn" — probabilities) and checked to answer like the
 trained model. With --synth N, N made-up upright pages (synth_pages.py) are added to the site's page
-copies — or train alone while the site has collected none yet; the exam stays the site's pages.
+copies — or train alone while the site has collected none yet; the exam stays the site's pages. A set holding a
+held-out real page, an exam split key or an open set's exam document is refused before training (gather).
 Each epoch's progress is saved (checkpoint.py: --resume goes on with a run that stopped, --more trains
 further from the last run's weights).
 Writes ~/.scan-train/new/doctype-lite.onnx (and deletes report_doctypes.json: exam_doctypes.py runs again).
@@ -32,6 +33,7 @@ from torch import nn
 
 import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SERVER, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
+from gen.sources import assert_clean
 from home import drop_report, gentle
 
 S = 256
@@ -143,6 +145,24 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None)
     print(f"  {name} → {dst}")
 
 
+def gather(a):
+    """The entries to train on: the site's page copies but the exam's, and a.synth made-up pages (synth_pages.py) —
+    refused (gen.sources.assert_clean) when any holds a held-out real page, an exam split key or an open set's exam
+    document (docs/scan-training.md → "Kept apart")."""
+    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]] if (WORK / "doctypes.json").exists() else []
+    if a.synth:
+        made = WORK / "synth" / "pages" / "pages.json"
+        if not made.exists():
+            raise SystemExit("no made-up pages — run synth_pages.py first")
+        pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1])} for e in read_json(made)]
+        assert_clean(pages, "the made-up pages (synth_pages.py)", work=WORK)   # the whole set, not only the sample drawn
+        ex += random.sample(pages, min(a.synth, len(pages)))
+    if not ex:
+        raise SystemExit("no page copies to train on — run pull_doctypes.py (or synth_pages.py and --synth) first")
+    assert_clean(ex, "the document type model's training pages", work=WORK)
+    return ex
+
+
 def main():
     gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
@@ -155,16 +175,7 @@ def main():
     checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
-    ex = [e for e in read_json(WORK / "doctypes.json") if not e["exam"]] if (WORK / "doctypes.json").exists() else []
-    if a.synth:
-        made = WORK / "synth" / "pages" / "pages.json"
-        if not made.exists():
-            raise SystemExit("no made-up pages — run synth_pages.py first")
-        pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1])} for e in read_json(made)]
-        ex += random.sample(pages, min(a.synth, len(pages)))
-    if not ex:
-        raise SystemExit("no page copies to train on — run pull_doctypes.py (or synth_pages.py and --synth) first")
-    X, Y, U = load(ex)
+    X, Y, U = load(gather(a))
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} page copies ({len(U) - sum(U)} with no sure turn: the type only), on {dev}")
     jobs = {"doctype-lite.onnx": a.phone} if a.only == "phone" else {"doctype.onnx": a.server}

@@ -44,6 +44,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 import synth
+from gen.common import file_sha1, record_exam_set
 from home import WORK, gentle
 from synth_lines import hebrew_fonts
 
@@ -529,6 +530,9 @@ def border_colour(img):
     return [int(v) for v in np.median(border, axis=0)]
 
 
+TEMPLATE_SHA1 = {}   # a real page's id → its content sha1 (the examples' templateSha1: train*.py checks it against heldout.json)
+
+
 def page_id(path, kind):
     """A real page's short id in the examples ("template"): a sha1 prefix of its kind folder and file name —
     the exam reports per document (exam_doctypes.py byDocument) without copying a worker's file name."""
@@ -544,7 +548,9 @@ def document(rng, F, tpl, kinds=None):
     if pages and rng.random() < share:
         path, kind = rng.choice(pages)
         doc, rect = template(rng, F, path, kind, sharp)
-        return doc, rect, "template:" + kind, kind in CARDS, page_id(path, kind)
+        pid = page_id(path, kind)
+        TEMPLATE_SHA1[pid] = file_sha1(path)
+        return doc, rect, "template:" + kind, kind in CARDS, pid
     names = [k for k in KINDS if not kinds or k in kinds]
     kind = rng.choices(names, [KINDS[k] for k in names])[0]
     doc, rect = DRAW[kind](rng, F)
@@ -642,7 +648,8 @@ def _batch(job):
             cv2.putText(v, kind, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.imwrite(str(pathlib.Path(folder) / "show" / f"{i}.jpg"), v)
         out.append({"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
-                    "exam": False, "synth": True, "kind": kind, "none": corners is None, **({"template": src} if src else {}),
+                    "exam": False, "synth": True, "kind": kind, "none": corners is None,
+                    **({"template": src, "templateSha1": TEMPLATE_SHA1.get(src)} if src else {}),
                     **({"upright": up} if corners else {})})
     return out
 
@@ -704,11 +711,13 @@ def main():
         if a.seed == 1:
             a.seed = 7
         pages, a.template_share = kept, 1.0
-        print(f"exam photos from {len(kept)} real pages kept apart: " + ", ".join(pathlib.Path(p).name for p, _ in kept))
+        print(f"exam photos from {len(kept)} real pages kept apart: " + ", ".join(sorted((file_sha1(p) or "?")[:8] for p, _ in kept)))
     elif kept:
         pages = [pg for pg in pages if not synth.held_out(pg[0])]
         print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), {len(pages)} laid here")
     folder, ex = draw(a.count, a.out, a.seed, a.jobs, photos, a.show, a.latin, a.hebrew, (pages, a.template_share, a.sharp))
+    if a.exam:
+        record_exam_set("synth/docs-exam", pathlib.Path(folder) / "examples.json")   # gen sources --check: made with today's heldout.json
     by = {}
     for e in ex:
         by[e["kind"]] = by.get(e["kind"], 0) + 1

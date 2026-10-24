@@ -38,6 +38,7 @@ def test_kinds_by_folder():
     assert midv.kind_of("photo/aze_passport/00.jpg") == "passport"
     assert midv.kind_of("39_rus_internalpassport/images/TS") == "passport"
     assert midv.kind_of("48_usa_passportcard/x") == "id_front" and midv.kind_of("alb_id/00.jpg") == "id_front"
+    assert midv.kind_of("21_esp_drvlic/images/TS") == "other"   # a driving licence: "other", like the owner's (the class table)
 
 
 _sd = importlib.util.spec_from_file_location("smartdoc", HERE / "smartdoc.py")
@@ -127,6 +128,15 @@ def test_the_edges_exam_keeps_whole_documents_apart():
     sd = lambda doc: {"id": f"smartdoc-background03-{doc}-frame_0012", "smartdoc": True}
     assert midv.open_exam(sd("tax005")) and midv.open_exam(sd("datasheet005")) and not midv.open_exam(sd("tax004"))
     assert not midv.open_exam({"id": "a-user-page-80", "exam": False})   # the users' own exam is pull.py's
+    # a clip's frames by their clip's document (its folder), not by the frame number at the end of the id
+    clip = {"id": "midv-midv-2020-clips-images-alb_id-85-000013", "midv": True, "source": "midv-2020/clips"}
+    assert midv.open_exam(clip) and not midv.open_exam({**clip, "id": "midv-midv-2020-clips-images-alb_id-07-000013"})
+    assert midv.open_exam({**clip, "doc_no": "85"}) and not midv.open_exam({**clip, "doc_no": "07"})   # build() keeps doc_no
+    p = pathlib.Path
+    assert midv.doc_number(p("midv-2020/clips/images/alb_id/85/000013.jpg"), p("raw/midv-2020/clips/annotations/alb_id/85.json"),
+                           p("raw/midv-2020/clips/images/alb_id/85/000013.jpg")) == "85"
+    assert midv.doc_number(p("midv-2020/photo/images/alb_id/07.jpg"), p("raw/midv-2020/photo/annotations/alb_id.json"),
+                           p("raw/midv-2020/photo/images/alb_id/07.jpg")) == "07"
 
 
 def test_the_work_folder_can_be_on_another_disk(monkeypatch, tmp_path):

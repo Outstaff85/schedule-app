@@ -22,12 +22,12 @@ import pathlib
 import re
 
 from home import WORK
-from midv import OUT as MIDV, is_clip, pictures
+from midv import MIDV_EXAM_FROM, OUT as MIDV, is_clip, pictures
 
 OUT = WORK / "midv-mrz"   # kept by common.clear_work
 TYPES = ("alb_id", "aze_passport", "esp_id", "est_id", "fin_id", "grc_passport", "lva_passport",
          "rus_internalpassport", "srb_passport", "svk_id")
-EXAM_FROM = 80          # documents 80–99 of each kind: the exam
+EXAM_FROM = MIDV_EXAM_FROM   # documents 80–99 of each kind: the exam (heldout.json "open")
 LINE = re.compile(r"[A-Z0-9<]{44}")
 PAGE_W = 1000           # the flat page's width (the scanner's cut pages are about this size)
 
