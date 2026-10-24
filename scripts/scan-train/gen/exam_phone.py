@@ -9,8 +9,9 @@ phone profile gives the exams (the mix's heaviest while no phone is measured; it
 For each model and set: mean corner error, the share within 2 % and the share not found (exam.score), by INTER_AREA,
 by "live" and by "capture" — "phone" names the light model's live and the accurate one's capture. Then the lab's
 whole shot (index.html takeShot), on each path: the light model's live corners (no four corners: no shot), the
-accurate model's confirming them (sure: they are the first document's), up to three more documents by find_next and
-one lying on each found by find_inside (at most 5) — counted: shots, confirmed, moved, documents found, the photos
+accurate model's confirming them (sure: they are the first document's), up to three more documents by the lab's
+findNext (docfind.find_next with lab=True: its goodQuad, docShape and quadIoU, its paint colour) and one lying on each
+found by find_inside (at most 5), the same rules on both paths — counted: shots, confirmed, moved, documents found, the photos
 with two documents where both were found, the photos with none where a shot was taken. Nothing is trained, nothing
 is published: it reports the gap. Writes <out>/exam_phone.json."""
 import json
@@ -20,12 +21,13 @@ import time
 
 import numpy as np
 
+from .phone import LAB_MAX_DOCS as MAX_DOCS   # index.html MAX_DOCS
+
 SETS = {"templates": "your documents (made-up photos of the real pages kept apart)",
         "midv": "MIDV-2020 exam documents", "smartdoc": "SmartDoc exam pages"}
 NAMES = ("edges-lite.onnx", "edges.onnx")
 PHONE_OP = {"edges-lite.onnx": "live", "edges.onnx": "capture"}   # the input each model gets on the phone
 RESIZES = ("area", "live", "capture")
-MAX_DOCS = 5
 
 
 def _name(f):
@@ -53,8 +55,8 @@ def exam_sets(work, count):
 
 
 def shot(models, img, path):
-    """The lab's shot on one photo (index.html takeShot, findNext, findInside): path "phone" (the live frame by
-    createImageBitmap, smallRGBA after) or "area" (INTER_AREA everywhere)."""
+    """The lab's shot on one photo (index.html takeShot, findNext, findInside — their rules on both paths): path
+    "phone" (the live frame by createImageBitmap, smallRGBA after) or "area" (INTER_AREA everywhere)."""
     import docfind
     lite, acc = models
     rl, rc = ("live", "capture") if path == "phone" else ("area", "area")
@@ -67,7 +69,7 @@ def shot(models, img, path):
     moved = bool(confirmed and max(float(np.hypot(*(cp[k] - lp[k]))) for k in range(4)) > 0.002)
     found = [first]
     for _ in range(3):
-        q = docfind.find_next([acc, lite], img, found, rc)
+        q = docfind.find_next([acc, lite], img, found, rc, lab=True)
         if q is None:
             break
         found.append(q)

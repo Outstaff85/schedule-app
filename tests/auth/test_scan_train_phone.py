@@ -116,6 +116,107 @@ def _box(b):
     return [int(b["x"]), int(b["y"]), int(b["w"]), int(b["h"])]
 
 
+# More documents on one photo (index.html findNext / findInside): the model's answers scripted in call order, so the
+# lab's own findNext / findInside (run with a stub canvas and engine) and docfind's must make the same calls and take
+# the same frame. A 400 × 300 photo; each case: the first document found (or none) and the answers.
+PW, PH = 400, 300
+FIRST = [[0.05, 0.05], [0.5, 0.05], [0.5, 0.6], [0.05, 0.6]]
+NEXTS = {
+    "a sliver beside the first (old rule: taken)": (FIRST, [([[0.55, 0.1], [0.95, 0.1], [0.95, 0.9], [0.9, 0.9]], 0.9)]),
+    "a long card, 4.8 : 1 (old rule: dropped)": (FIRST, [([[0.55, 0.3], [0.98, 0.3], [0.98, 0.42], [0.55, 0.42]], 0.9)]),
+    "a triangle": (FIRST, [([[0.6, 0.1], [0.95, 0.1], [0.95, 0.1], [0.7, 0.8]], 0.9)]),
+    "the first again, then on the margin": ([[0.05, 0.1], [0.45, 0.1], [0.45, 0.9], [0.05, 0.9]],
+                                            [([[0.06, 0.1], [0.45, 0.11], [0.44, 0.9], [0.05, 0.88]], 0.9), (None, 0.0),
+                                             ([[0.55, 0.05], [0.95, 0.05], [0.95, 0.7], [0.55, 0.7]], 0.8)]),
+    "a corner missing, unsure, then a strip": ([[0.05, 0.05], [0.6, 0.05], [0.6, 0.5], [0.05, 0.5]],
+                                               [(None, 0.0), ([[0.6, 0.6], [0.9, 0.6], [0.9, 0.9], [0.6, 0.9]], 0.3), (None, 0.0),
+                                                (None, 0.0), ([[0.1, 0.2], [0.6, 0.2], [0.6, 0.8], [0.1, 0.8]], 0.9)]),
+    "nothing found yet": ([], [(None, 0.0), (None, 0.0), ([[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]], 0.9)]),
+    "nothing anywhere": (FIRST, []),
+}
+PAGE = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+CARD = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.6], [0.3, 0.6]]
+TURNED = [[0.5, 0.05], [0.95, 0.5], [0.5, 0.95], [0.05, 0.5]]
+INSIDES = {
+    "a card on its page": (PAGE, CARD, 0.9, []),
+    "too big (64 %)": (PAGE, PAGE, 0.9, []),
+    "a sliver": (PAGE, [[0.2, 0.3], [0.9, 0.3], [0.9, 0.4], [0.2, 0.4]], 0.9, []),
+    "unsure": (PAGE, CARD, 0.4, []),
+    "found already": (PAGE, CARD, 0.9, [[[0.34, 0.34], [0.66, 0.34], [0.66, 0.58], [0.34, 0.58]]]),
+    "on a turned page": (TURNED, [[0.2, 0.25], [0.6, 0.2], [0.65, 0.55], [0.25, 0.6]], 0.9, []),
+}
+
+
+class _Scripted:
+    """docfind.detect replaced by the scripted answers, in call order (then nothing): records which model was asked."""
+
+    def __init__(self, answers):
+        self.answers, self.calls = list(answers), []
+
+    def __enter__(self):
+        self.old = docfind.detect
+        docfind.detect = self
+        return self
+
+    def __exit__(self, *_):
+        docfind.detect = self.old
+
+    def __call__(self, sess, img, resize=None):
+        self.calls.append(sess)
+        if not self.answers:
+            return None, 0.0
+        pts, conf = self.answers.pop(0)
+        return (None if pts is None else np.array(pts, np.float64)), conf
+
+
+def _q(q):
+    return None if q is None else [[float(v) for v in p] for p in q]
+
+
+def _quads(seed=11, n=12):
+    rng = np.random.default_rng(seed)
+    out = [(PAGE, PAGE), (PAGE, [[0.95, 0.95], [1.0, 0.95], [1.0, 1.0], [0.95, 1.0]]), (PAGE, CARD), (TURNED, PAGE),
+           ([[-0.1, -0.05], [0.7, 0.02], [1.15, 1.1], [0.1, 0.8]], CARD), (FIRST, [[0.06, 0.1], [0.45, 0.11], [0.44, 0.9], [0.05, 0.88]])]
+    for _ in range(n):
+        c = rng.uniform(0.2, 0.8, (2, 2))
+        r = rng.uniform(0.05, 0.4, (2, 2))
+        ts = [sorted(rng.uniform(0, 2 * math.pi, 4)) for _ in range(2)]
+        out.append(tuple([[float(c[k, 0] + r[k, 0] * math.cos(t)), float(c[k, 1] + r[k, 1] * math.sin(t))] for t in ts[k]]
+                         for k in range(2)))
+    return out
+
+
+SHAPES = [(PAGE, 400, 300), (CARD, 400, 300), ([[0.2, 0.3], [0.9, 0.3], [0.9, 0.4], [0.2, 0.4]], 320, 240),
+          ([[0.6, 0.1], [0.95, 0.1], [0.95, 0.1], [0.7, 0.8]], 400, 300), (TURNED, 400, 300), (TURNED, 100, 900),
+          ([[0.55, 0.1], [0.95, 0.1], [0.95, 0.9], [0.9, 0.9]], 400, 300), ([[0.1, 0.1], [0.9, 0.1], [0.5, 0.15], [0.1, 0.9]], 400, 300)]
+GOODS = [(PAGE, 0.9), (PAGE, 0.49), (None, 0.9), ([[0.1, 0.1], [0.12, 0.1], [0.12, 0.12], [0.1, 0.12]], 0.9),
+         ([[0.1, 0.1], [0.9, 0.9], [0.9, 0.1], [0.1, 0.9]], 0.9), ([[0.55, 0.3], [0.98, 0.3], [0.98, 0.42], [0.55, 0.42]], 0.6)]
+
+
+def make_more_docs():
+    """The fixtures of findNext / findInside (and their pieces) from docfind / gen/phone.py."""
+    photo = np.full((PH, PW, 3), 120, np.uint8)
+    nexts = []
+    for name, (first, answers) in NEXTS.items():
+        found = [first] if first else []   # the first document (none: nothing found yet)
+        with _Scripted(answers) as sc:
+            q = docfind.find_next(["cap", "live"], photo, [np.array(f, np.float64) for f in found], "capture", lab=True)
+        nexts.append({"name": name, "w": PW, "h": PH, "found": found, "answers": [[a, c] for a, c in answers],
+                      "calls": sc.calls, "q": _q(q)})
+    insides = []
+    for name, (q, pts, conf, others) in INSIDES.items():
+        W, Hh, _ = phone.warp_size(PW, PH, q)
+        with _Scripted([(pts, conf)]):
+            c = docfind.find_inside("cap", photo, q, [np.array(q, np.float64)] + [np.array(o, np.float64) for o in others])
+        insides.append({"name": name, "w": PW, "h": PH, "q": q, "pts": pts, "conf": conf, "others": others,
+                        "W": W, "H": Hh, "c": _q(c)})
+    return {"constants": {"INSIDE_MIN": phone.INSIDE_MIN, "INSIDE_MAX": phone.INSIDE_MAX, "MAX_DOCS": phone.LAB_MAX_DOCS},
+            "nexts": nexts, "insides": insides,
+            "ious": [{"a": a, "b": b, "iou": phone.lab_quad_iou(a, b)} for a, b in _quads()],
+            "shapes": [{"q": q, "w": w, "h": h, "ok": phone.doc_shape(q, w, h)} for q, w, h in SHAPES],
+            "goods": [{"pts": p, "conf": c, "ok": phone.lab_good_quad(p, c)} for p, c in GOODS]}
+
+
 def make_fixtures():
     fx = {"about": "Written once from scripts/scan-train/gen/phone.py by tests/auth/test_scan_train_phone.py --write; "
                    "checked by that test and by tests/scan/phone_parity.test.mjs (the lab's scan-core.js and mrzFind).",
@@ -138,6 +239,7 @@ def make_fixtures():
         page = _zone_page(**kw)
         fx["zones"].append({"name": name, "page": phone.pack(page), "boxes": [_box(b) for b in phone.mrz_find(page)],
                             "findBoxes": [[x0, y0, x1 - x0, y1 - y0] for x0, y0, x1, y1 in mrzmodel.find_boxes(page)]})
+    fx["moreDocs"] = make_more_docs()
     return fx
 
 
@@ -156,6 +258,23 @@ def test_the_parity_fixtures_are_phone_py():
     for a, b in zip(fx["zones"], now["zones"]):
         assert a["boxes"] == b["boxes"] and a["findBoxes"] == b["findBoxes"], a["name"]
     assert len(fx["heatmaps"]) == len(now["heatmaps"]) and len(fx["zones"]) == len(now["zones"])
+    assert fx["moreDocs"] == json.loads(json.dumps(now["moreDocs"]))
+
+
+def test_the_more_documents_fixtures_say_what_they_test():
+    m = _fixtures()["moreDocs"]
+    got = {c["name"]: c for c in m["nexts"]}
+    assert got["a sliver beside the first (old rule: taken)"]["q"] is None
+    assert got["a long card, 4.8 : 1 (old rule: dropped)"]["q"] is not None
+    assert got["a triangle"]["q"] is None and got["nothing anywhere"]["q"] is None
+    assert got["the first again, then on the margin"]["calls"] == ["cap", "live", "cap"]
+    assert got["a corner missing, unsure, then a strip"]["calls"] == ["cap", "live", "cap", "live", "cap"]
+    assert got["nothing found yet"]["q"] is not None and got["nothing anywhere"]["calls"] == ["cap", "live", "cap", "live", "cap", "cap"]
+    ins = {c["name"]: c for c in m["insides"]}
+    assert ins["a card on its page"]["c"] is not None and ins["on a turned page"]["c"] is not None
+    assert all(ins[k]["c"] is None for k in ("too big (64 %)", "a sliver", "unsure", "found already"))
+    assert len({round(c["iou"], 3) for c in m["ious"]}) > 5
+    assert {c["ok"] for c in m["shapes"]} == {True, False} and {c["ok"] for c in m["goods"]} == {True, False}
 
 
 def test_corners_are_one_copy_and_pick_the_document():
@@ -298,7 +417,9 @@ def test_detect_takes_the_phones_path():
     assert np.allclose(pts, m.quad, atol=0.01) and conf > 0.8 and m.seen[-1] == (1, 3, 256, 256)
 
 
-def test_the_labs_shot_on_a_photo():
+def test_the_labs_shot_on_a_photo(monkeypatch):
+    monkeypatch.setitem(sys.modules, "onnxruntime", None)   # as in CI: not installed (exam.py imports it only to run a model)
+    monkeypatch.delitem(sys.modules, "exam", raising=False)
     from gen import exam_phone
     quad = [[0.05, 0.05], [0.95, 0.07], [0.93, 0.95], [0.07, 0.93]]   # 80 % of the photo: nothing lies on it
     lite, acc = QuadModel(quad, 0.7), QuadModel(quad, 0.95)
@@ -311,6 +432,28 @@ def test_the_labs_shot_on_a_photo():
     counts = exam_phone.shot_counts([r, none], [{"fixed": quad, "kind": "template:sefach+2"}, {"none": True, "fixed": None}])
     assert counts["shots"] == 1 and counts["pairs"] == {"n": 1, "bothFound": 0} and counts["none"] == {"n": 1, "shot": 0}
     assert counts["first"]["n"] == 1 and counts["first"]["mean"] < 0.01
+
+
+def test_find_next_lab_drops_a_sliver_the_old_rule_takes():
+    f = _frame()[..., ::-1].copy()
+    first = [np.array(FIRST, np.float64)]
+    sliver = QuadModel([[0.55, 0.1], [0.95, 0.1], [0.95, 0.9], [0.9, 0.9]])
+    assert docfind.find_next(sliver, f, first, "capture", lab=True) is None
+    assert docfind.find_next(sliver, f, first, "capture") is not None   # good_quad's 3 : 1 rule keeps it
+    long_card = QuadModel([[0.55, 0.3], [0.98, 0.3], [0.98, 0.42], [0.55, 0.42]])
+    assert docfind.find_next(long_card, f, first, "capture") is None
+    q = docfind.find_next(long_card, f, first, "capture", lab=True)
+    assert q is not None and np.allclose(q, long_card.quad, atol=0.01)
+
+
+def test_the_labs_paint_colour_is_the_upper_middle():
+    t = np.zeros((32, 32, 3), np.uint8)
+    t[0, 1:] = 10   # with (0, 31) and (31, 0) counted again: 64 of the border's 128 values are 10, 64 are 0
+    t[1:, 0] = 10
+    assert phone.lab_border_colour(t) == [10, 10, 10]   # a.sort()[n >> 1]; np.median would give 5
+    assert docfind.border_colour(t) == [5, 5, 5]
+    big = np.repeat(np.repeat(t, 4, 0), 4, 1)
+    assert phone.lab_border_colour(big, "nearest") == [10, 10, 10]
 
 
 def test_find_inside_takes_a_card_on_its_page_back_onto_the_photo():
@@ -339,6 +482,7 @@ def test_training_makes_the_256_input_like_the_phone():
     pytest.importorskip("torch")
     pytest.importorskip("onnx2torch")
     pytest.importorskip("timm")
+    pytest.importorskip("onnxruntime")
     import train
     import train_doctypes
     f = _frame()[..., ::-1].copy()

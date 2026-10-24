@@ -839,5 +839,1832 @@
   ],
   "dtype": "uint8",
   "z": "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"
+ },
+ "moreDocs": {
+  "constants": {
+   "INSIDE_MIN": 0.03,
+   "INSIDE_MAX": 0.6,
+   "MAX_DOCS": 5
+  },
+  "nexts": [
+   {
+    "name": "a sliver beside the first (old rule: taken)",
+    "w": 400,
+    "h": 300,
+    "found": [
+     [
+      [
+       0.05,
+       0.05
+      ],
+      [
+       0.5,
+       0.05
+      ],
+      [
+       0.5,
+       0.6
+      ],
+      [
+       0.05,
+       0.6
+      ]
+     ]
+    ],
+    "answers": [
+     [
+      [
+       [
+        0.55,
+        0.1
+       ],
+       [
+        0.95,
+        0.1
+       ],
+       [
+        0.95,
+        0.9
+       ],
+       [
+        0.9,
+        0.9
+       ]
+      ],
+      0.9
+     ]
+    ],
+    "calls": [
+     "cap",
+     "live",
+     "cap",
+     "live",
+     "cap",
+     "cap"
+    ],
+    "q": null
+   },
+   {
+    "name": "a long card, 4.8 : 1 (old rule: dropped)",
+    "w": 400,
+    "h": 300,
+    "found": [
+     [
+      [
+       0.05,
+       0.05
+      ],
+      [
+       0.5,
+       0.05
+      ],
+      [
+       0.5,
+       0.6
+      ],
+      [
+       0.05,
+       0.6
+      ]
+     ]
+    ],
+    "answers": [
+     [
+      [
+       [
+        0.55,
+        0.3
+       ],
+       [
+        0.98,
+        0.3
+       ],
+       [
+        0.98,
+        0.42
+       ],
+       [
+        0.55,
+        0.42
+       ]
+      ],
+      0.9
+     ]
+    ],
+    "calls": [
+     "cap"
+    ],
+    "q": [
+     [
+      0.55,
+      0.3
+     ],
+     [
+      0.98,
+      0.3
+     ],
+     [
+      0.98,
+      0.42
+     ],
+     [
+      0.55,
+      0.42
+     ]
+    ]
+   },
+   {
+    "name": "a triangle",
+    "w": 400,
+    "h": 300,
+    "found": [
+     [
+      [
+       0.05,
+       0.05
+      ],
+      [
+       0.5,
+       0.05
+      ],
+      [
+       0.5,
+       0.6
+      ],
+      [
+       0.05,
+       0.6
+      ]
+     ]
+    ],
+    "answers": [
+     [
+      [
+       [
+        0.6,
+        0.1
+       ],
+       [
+        0.95,
+        0.1
+       ],
+       [
+        0.95,
+        0.1
+       ],
+       [
+        0.7,
+        0.8
+       ]
+      ],
+      0.9
+     ]
+    ],
+    "calls": [
+     "cap",
+     "live",
+     "cap",
+     "live",
+     "cap",
+     "cap"
+    ],
+    "q": null
+   },
+   {
+    "name": "the first again, then on the margin",
+    "w": 400,
+    "h": 300,
+    "found": [
+     [
+      [
+       0.05,
+       0.1
+      ],
+      [
+       0.45,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.05,
+       0.9
+      ]
+     ]
+    ],
+    "answers": [
+     [
+      [
+       [
+        0.06,
+        0.1
+       ],
+       [
+        0.45,
+        0.11
+       ],
+       [
+        0.44,
+        0.9
+       ],
+       [
+        0.05,
+        0.88
+       ]
+      ],
+      0.9
+     ],
+     [
+      null,
+      0.0
+     ],
+     [
+      [
+       [
+        0.55,
+        0.05
+       ],
+       [
+        0.95,
+        0.05
+       ],
+       [
+        0.95,
+        0.7
+       ],
+       [
+        0.55,
+        0.7
+       ]
+      ],
+      0.8
+     ]
+    ],
+    "calls": [
+     "cap",
+     "live",
+     "cap"
+    ],
+    "q": [
+     [
+      0.56,
+      0.0
+     ],
+     [
+      1.0,
+      0.0
+     ],
+     [
+      1.0,
+      0.7533333333333333
+     ],
+     [
+      0.56,
+      0.7533333333333333
+     ]
+    ]
+   },
+   {
+    "name": "a corner missing, unsure, then a strip",
+    "w": 400,
+    "h": 300,
+    "found": [
+     [
+      [
+       0.05,
+       0.05
+      ],
+      [
+       0.6,
+       0.05
+      ],
+      [
+       0.6,
+       0.5
+      ],
+      [
+       0.05,
+       0.5
+      ]
+     ]
+    ],
+    "answers": [
+     [
+      null,
+      0.0
+     ],
+     [
+      [
+       [
+        0.6,
+        0.6
+       ],
+       [
+        0.9,
+        0.6
+       ],
+       [
+        0.9,
+        0.9
+       ],
+       [
+        0.6,
+        0.9
+       ]
+      ],
+      0.3
+     ],
+     [
+      null,
+      0.0
+     ],
+     [
+      null,
+      0.0
+     ],
+     [
+      [
+       [
+        0.1,
+        0.2
+       ],
+       [
+        0.6,
+        0.2
+       ],
+       [
+        0.6,
+        0.8
+       ],
+       [
+        0.1,
+        0.8
+       ]
+      ],
+      0.9
+     ]
+    ],
+    "calls": [
+     "cap",
+     "live",
+     "cap",
+     "live",
+     "cap"
+    ],
+    "q": [
+     [
+      0.1,
+      0.6
+     ],
+     [
+      0.6,
+      0.6
+     ],
+     [
+      0.6,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ]
+   },
+   {
+    "name": "nothing found yet",
+    "w": 400,
+    "h": 300,
+    "found": [],
+    "answers": [
+     [
+      null,
+      0.0
+     ],
+     [
+      null,
+      0.0
+     ],
+     [
+      [
+       [
+        0.2,
+        0.2
+       ],
+       [
+        0.8,
+        0.2
+       ],
+       [
+        0.8,
+        0.8
+       ],
+       [
+        0.2,
+        0.8
+       ]
+      ],
+      0.9
+     ]
+    ],
+    "calls": [
+     "cap",
+     "live",
+     "cap"
+    ],
+    "q": [
+     [
+      0.14,
+      0.12
+     ],
+     [
+      0.86,
+      0.12
+     ],
+     [
+      0.86,
+      0.88
+     ],
+     [
+      0.14,
+      0.88
+     ]
+    ]
+   },
+   {
+    "name": "nothing anywhere",
+    "w": 400,
+    "h": 300,
+    "found": [
+     [
+      [
+       0.05,
+       0.05
+      ],
+      [
+       0.5,
+       0.05
+      ],
+      [
+       0.5,
+       0.6
+      ],
+      [
+       0.05,
+       0.6
+      ]
+     ]
+    ],
+    "answers": [],
+    "calls": [
+     "cap",
+     "live",
+     "cap",
+     "live",
+     "cap",
+     "cap"
+    ],
+    "q": null
+   }
+  ],
+  "insides": [
+   {
+    "name": "a card on its page",
+    "w": 400,
+    "h": 300,
+    "q": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "pts": [
+     [
+      0.3,
+      0.3
+     ],
+     [
+      0.7,
+      0.3
+     ],
+     [
+      0.7,
+      0.6
+     ],
+     [
+      0.3,
+      0.6
+     ]
+    ],
+    "conf": 0.9,
+    "others": [],
+    "W": 320,
+    "H": 240,
+    "c": [
+     [
+      0.33999999999999997,
+      0.33999999999999997
+     ],
+     [
+      0.6599999999999999,
+      0.33999999999999997
+     ],
+     [
+      0.6599999999999999,
+      0.58
+     ],
+     [
+      0.33999999999999997,
+      0.58
+     ]
+    ]
+   },
+   {
+    "name": "too big (64 %)",
+    "w": 400,
+    "h": 300,
+    "q": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "pts": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "conf": 0.9,
+    "others": [],
+    "W": 320,
+    "H": 240,
+    "c": null
+   },
+   {
+    "name": "a sliver",
+    "w": 400,
+    "h": 300,
+    "q": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "pts": [
+     [
+      0.2,
+      0.3
+     ],
+     [
+      0.9,
+      0.3
+     ],
+     [
+      0.9,
+      0.4
+     ],
+     [
+      0.2,
+      0.4
+     ]
+    ],
+    "conf": 0.9,
+    "others": [],
+    "W": 320,
+    "H": 240,
+    "c": null
+   },
+   {
+    "name": "unsure",
+    "w": 400,
+    "h": 300,
+    "q": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "pts": [
+     [
+      0.3,
+      0.3
+     ],
+     [
+      0.7,
+      0.3
+     ],
+     [
+      0.7,
+      0.6
+     ],
+     [
+      0.3,
+      0.6
+     ]
+    ],
+    "conf": 0.4,
+    "others": [],
+    "W": 320,
+    "H": 240,
+    "c": null
+   },
+   {
+    "name": "found already",
+    "w": 400,
+    "h": 300,
+    "q": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "pts": [
+     [
+      0.3,
+      0.3
+     ],
+     [
+      0.7,
+      0.3
+     ],
+     [
+      0.7,
+      0.6
+     ],
+     [
+      0.3,
+      0.6
+     ]
+    ],
+    "conf": 0.9,
+    "others": [
+     [
+      [
+       0.34,
+       0.34
+      ],
+      [
+       0.66,
+       0.34
+      ],
+      [
+       0.66,
+       0.58
+      ],
+      [
+       0.34,
+       0.58
+      ]
+     ]
+    ],
+    "W": 320,
+    "H": 240,
+    "c": null
+   },
+   {
+    "name": "on a turned page",
+    "w": 400,
+    "h": 300,
+    "q": [
+     [
+      0.5,
+      0.05
+     ],
+     [
+      0.95,
+      0.5
+     ],
+     [
+      0.5,
+      0.95
+     ],
+     [
+      0.05,
+      0.5
+     ]
+    ],
+    "pts": [
+     [
+      0.2,
+      0.25
+     ],
+     [
+      0.6,
+      0.2
+     ],
+     [
+      0.65,
+      0.55
+     ],
+     [
+      0.25,
+      0.6
+     ]
+    ],
+    "conf": 0.9,
+    "others": [],
+    "W": 225,
+    "H": 225,
+    "c": [
+     [
+      0.47750000000000004,
+      0.2525
+     ],
+     [
+      0.6799999999999999,
+      0.41000000000000003
+     ],
+     [
+      0.545,
+      0.5900000000000001
+     ],
+     [
+      0.3425,
+      0.43250000000000005
+     ]
+    ]
+   }
+  ],
+  "ious": [
+   {
+    "a": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "b": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "iou": 1.0
+   },
+   {
+    "a": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "b": [
+     [
+      0.95,
+      0.95
+     ],
+     [
+      1.0,
+      0.95
+     ],
+     [
+      1.0,
+      1.0
+     ],
+     [
+      0.95,
+      1.0
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "b": [
+     [
+      0.3,
+      0.3
+     ],
+     [
+      0.7,
+      0.3
+     ],
+     [
+      0.7,
+      0.6
+     ],
+     [
+      0.3,
+      0.6
+     ]
+    ],
+    "iou": 0.18269230769230768
+   },
+   {
+    "a": [
+     [
+      0.5,
+      0.05
+     ],
+     [
+      0.95,
+      0.5
+     ],
+     [
+      0.5,
+      0.95
+     ],
+     [
+      0.05,
+      0.5
+     ]
+    ],
+    "b": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "iou": 0.5865102639296188
+   },
+   {
+    "a": [
+     [
+      -0.1,
+      -0.05
+     ],
+     [
+      0.7,
+      0.02
+     ],
+     [
+      1.15,
+      1.1
+     ],
+     [
+      0.1,
+      0.8
+     ]
+    ],
+    "b": [
+     [
+      0.3,
+      0.3
+     ],
+     [
+      0.7,
+      0.3
+     ],
+     [
+      0.7,
+      0.6
+     ],
+     [
+      0.3,
+      0.6
+     ]
+    ],
+    "iou": 0.15598358067571835
+   },
+   {
+    "a": [
+     [
+      0.05,
+      0.05
+     ],
+     [
+      0.5,
+      0.05
+     ],
+     [
+      0.5,
+      0.6
+     ],
+     [
+      0.05,
+      0.6
+     ]
+    ],
+    "b": [
+     [
+      0.06,
+      0.1
+     ],
+     [
+      0.45,
+      0.11
+     ],
+     [
+      0.44,
+      0.9
+     ],
+     [
+      0.05,
+      0.88
+     ]
+    ],
+    "iou": 0.5221774193548387
+   },
+   {
+    "a": [
+     [
+      0.20794368266233632,
+      0.7744559905549073
+     ],
+     [
+      0.17562850594867957,
+      0.4727615330285339
+     ],
+     [
+      0.20378168276898556,
+      0.23973179458069532
+     ],
+     [
+      0.37359943125871087,
+      0.3799863166018135
+     ]
+    ],
+    "b": [
+     [
+      0.6092113476682097,
+      0.2899539548268488
+     ],
+     [
+      0.5490785833793547,
+      0.3114303567356067
+     ],
+     [
+      0.522033198464382,
+      0.13574648307705767
+     ],
+     [
+      0.5785710462320846,
+      0.12450506487193225
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.6384898148047706,
+      0.6284895692139969
+     ],
+     [
+      0.36453069188666354,
+      0.6042971523654292
+     ],
+     [
+      0.27225461372257487,
+      0.4412588197237168
+     ],
+     [
+      0.7289241105277449,
+      0.3923325604182089
+     ]
+    ],
+    "b": [
+     [
+      0.8583182779119685,
+      0.68811052227486
+     ],
+     [
+      0.6486605637254308,
+      0.7455323231297242
+     ],
+     [
+      0.4514352696871564,
+      0.5744856745550178
+     ],
+     [
+      0.8539374201165191,
+      0.36711300993685325
+     ]
+    ],
+    "iou": 0.1602787456445993
+   },
+   {
+    "a": [
+     [
+      0.5294004555351761,
+      0.7624852272657301
+     ],
+     [
+      0.3368354788054216,
+      0.8526099934176034
+     ],
+     [
+      0.0881875046331502,
+      0.8371376458003722
+     ],
+     [
+      -0.03037267352773787,
+      0.761011008951052
+     ]
+    ],
+    "b": [
+     [
+      0.8214169803696845,
+      0.30195132896653587
+     ],
+     [
+      0.2634430753230972,
+      0.39528890723476434
+     ],
+     [
+      0.3392753480565427,
+      0.1694419048262173
+     ],
+     [
+      0.7617244391208331,
+      0.2185357629239967
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.35444269268020706,
+      0.8307877087035406
+     ],
+     [
+      0.3281788660760831,
+      0.8526130136768444
+     ],
+     [
+      0.27096629483589285,
+      0.855613942083136
+     ],
+     [
+      0.2674935031957036,
+      0.8543131593812578
+     ]
+    ],
+    "b": [
+     [
+      0.8177701614448447,
+      0.6539763594121489
+     ],
+     [
+      0.7171217083648961,
+      0.797958429312845
+     ],
+     [
+      0.13749552421120542,
+      0.6683703542055563
+     ],
+     [
+      0.659649163478161,
+      0.39792946292456777
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      1.0047507274205523,
+      0.3240846888879695
+     ],
+     [
+      0.9468724723290773,
+      0.35014541015746053
+     ],
+     [
+      0.5465800740057994,
+      0.3746684673369891
+     ],
+     [
+      0.5914505935292593,
+      0.25857500271722733
+     ]
+    ],
+    "b": [
+     [
+      0.30502572109616743,
+      0.6731299280101237
+     ],
+     [
+      0.10502986509661402,
+      0.6659550662297224
+     ],
+     [
+      -0.09434077895761478,
+      0.5640292326175715
+     ],
+     [
+      0.43706962347629363,
+      0.466009422891739
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.5395672707866207,
+      0.8527719033662695
+     ],
+     [
+      0.36112868053283365,
+      0.9469165384339954
+     ],
+     [
+      0.18800923542904008,
+      0.8777193240547421
+     ],
+     [
+      0.4689996583495756,
+      0.6547652445619063
+     ]
+    ],
+    "b": [
+     [
+      0.4661221417308467,
+      0.3862485948987039
+     ],
+     [
+      0.6002561650400229,
+      0.3500552232421277
+     ],
+     [
+      0.6541705804664929,
+      0.3445704555236912
+     ],
+     [
+      0.7485868437322964,
+      0.34049190492949377
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.766429211617857,
+      0.8017550452458495
+     ],
+     [
+      0.7207230918841127,
+      0.9317483555978806
+     ],
+     [
+      0.6050058078394326,
+      0.9150124635644223
+     ],
+     [
+      0.6744433677966322,
+      0.551750391747635
+     ]
+    ],
+    "b": [
+     [
+      0.4907441755378604,
+      0.8612358495803109
+     ],
+     [
+      0.30145587460515627,
+      0.9385906316532864
+     ],
+     [
+      0.08695966883439438,
+      0.8594863152814773
+     ],
+     [
+      0.6150315749938183,
+      0.5729457534939026
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.4543455447052504,
+      0.7408700476376822
+     ],
+     [
+      0.4046308081982574,
+      0.7735921121861097
+     ],
+     [
+      0.02552974021977794,
+      0.6958467630429298
+     ],
+     [
+      0.09024371782791221,
+      0.6634379597834843
+     ]
+    ],
+    "b": [
+     [
+      0.7616318314131527,
+      0.3917744334505187
+     ],
+     [
+      0.4623292269860128,
+      0.4127184257726138
+     ],
+     [
+      0.42397603210363677,
+      0.40088749209128505
+     ],
+     [
+      0.41808617965136124,
+      0.19305983730633602
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.46233632880454284,
+      0.5375509387591806
+     ],
+     [
+      0.3565422840980024,
+      0.21192241584855206
+     ],
+     [
+      0.3644731133316831,
+      0.20258450905722958
+     ],
+     [
+      0.4169415368163504,
+      0.205953937871986
+     ]
+    ],
+    "b": [
+     [
+      1.1163263421368863,
+      0.38148344195755435
+     ],
+     [
+      0.9869442244362746,
+      0.5582885548415041
+     ],
+     [
+      0.3697504408086781,
+      0.3496992569375989
+     ],
+     [
+      0.8715628242872419,
+      -0.07879144225079632
+     ]
+    ],
+    "iou": 0.010146561443066516
+   },
+   {
+    "a": [
+     [
+      0.5583320048063551,
+      0.8165257289395623
+     ],
+     [
+      0.3048014006934507,
+      0.6846386651127571
+     ],
+     [
+      0.37016070882260893,
+      0.6003907943388285
+     ],
+     [
+      0.3742539116949621,
+      0.598147753081605
+     ]
+    ],
+    "b": [
+     [
+      0.6625317483127477,
+      0.5466092248604113
+     ],
+     [
+      0.5949300333683624,
+      0.5061923414196697
+     ],
+     [
+      0.5857128435911803,
+      0.23041498772005617
+     ],
+     [
+      0.6468112040978035,
+      0.17458094254075066
+     ]
+    ],
+    "iou": 0.0
+   },
+   {
+    "a": [
+     [
+      0.6552896792419338,
+      0.7207844683497554
+     ],
+     [
+      0.6094538969018027,
+      0.8106266340488577
+     ],
+     [
+      0.244680833340409,
+      0.8855339141371696
+     ],
+     [
+      0.10207315647443171,
+      0.6089883737839309
+     ]
+    ],
+    "b": [
+     [
+      0.5279147650070705,
+      0.8566871751451948
+     ],
+     [
+      0.35767868855484825,
+      0.23412611434053254
+     ],
+     [
+      0.47862277668990794,
+      0.14799243481948715
+     ],
+     [
+      0.4917635012163323,
+      0.15782779411079922
+     ]
+    ],
+    "iou": 0.022556390977443608
+   },
+   {
+    "a": [
+     [
+      0.5837640680233989,
+      0.5390294535411589
+     ],
+     [
+      0.6792566987201046,
+      0.36251744738775143
+     ],
+     [
+      0.7354294599930451,
+      0.3410431099731213
+     ],
+     [
+      0.8616900821141851,
+      0.43441290213920913
+     ]
+    ],
+    "b": [
+     [
+      0.5498623815144165,
+      0.6266177482488273
+     ],
+     [
+      0.2044098546238178,
+      0.6202590304663218
+     ],
+     [
+      0.21014934130668453,
+      0.5452880128406088
+     ],
+     [
+      0.4172226372850864,
+      0.4854966926333723
+     ]
+    ],
+    "iou": 0.0
+   }
+  ],
+  "shapes": [
+   {
+    "q": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "w": 400,
+    "h": 300,
+    "ok": true
+   },
+   {
+    "q": [
+     [
+      0.3,
+      0.3
+     ],
+     [
+      0.7,
+      0.3
+     ],
+     [
+      0.7,
+      0.6
+     ],
+     [
+      0.3,
+      0.6
+     ]
+    ],
+    "w": 400,
+    "h": 300,
+    "ok": true
+   },
+   {
+    "q": [
+     [
+      0.2,
+      0.3
+     ],
+     [
+      0.9,
+      0.3
+     ],
+     [
+      0.9,
+      0.4
+     ],
+     [
+      0.2,
+      0.4
+     ]
+    ],
+    "w": 320,
+    "h": 240,
+    "ok": false
+   },
+   {
+    "q": [
+     [
+      0.6,
+      0.1
+     ],
+     [
+      0.95,
+      0.1
+     ],
+     [
+      0.95,
+      0.1
+     ],
+     [
+      0.7,
+      0.8
+     ]
+    ],
+    "w": 400,
+    "h": 300,
+    "ok": false
+   },
+   {
+    "q": [
+     [
+      0.5,
+      0.05
+     ],
+     [
+      0.95,
+      0.5
+     ],
+     [
+      0.5,
+      0.95
+     ],
+     [
+      0.05,
+      0.5
+     ]
+    ],
+    "w": 400,
+    "h": 300,
+    "ok": true
+   },
+   {
+    "q": [
+     [
+      0.5,
+      0.05
+     ],
+     [
+      0.95,
+      0.5
+     ],
+     [
+      0.5,
+      0.95
+     ],
+     [
+      0.05,
+      0.5
+     ]
+    ],
+    "w": 100,
+    "h": 900,
+    "ok": false
+   },
+   {
+    "q": [
+     [
+      0.55,
+      0.1
+     ],
+     [
+      0.95,
+      0.1
+     ],
+     [
+      0.95,
+      0.9
+     ],
+     [
+      0.9,
+      0.9
+     ]
+    ],
+    "w": 400,
+    "h": 300,
+    "ok": false
+   },
+   {
+    "q": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.5,
+      0.15
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "w": 400,
+    "h": 300,
+    "ok": false
+   }
+  ],
+  "goods": [
+   {
+    "pts": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "conf": 0.9,
+    "ok": true
+   },
+   {
+    "pts": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "conf": 0.49,
+    "ok": false
+   },
+   {
+    "pts": null,
+    "conf": 0.9,
+    "ok": false
+   },
+   {
+    "pts": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.12,
+      0.1
+     ],
+     [
+      0.12,
+      0.12
+     ],
+     [
+      0.1,
+      0.12
+     ]
+    ],
+    "conf": 0.9,
+    "ok": false
+   },
+   {
+    "pts": [
+     [
+      0.1,
+      0.1
+     ],
+     [
+      0.9,
+      0.9
+     ],
+     [
+      0.9,
+      0.1
+     ],
+     [
+      0.1,
+      0.9
+     ]
+    ],
+    "conf": 0.9,
+    "ok": false
+   },
+   {
+    "pts": [
+     [
+      0.55,
+      0.3
+     ],
+     [
+      0.98,
+      0.3
+     ],
+     [
+      0.98,
+      0.42
+     ],
+     [
+      0.55,
+      0.42
+     ]
+    ],
+    "conf": 0.6,
+    "ok": true
+   }
+  ]
  }
 }

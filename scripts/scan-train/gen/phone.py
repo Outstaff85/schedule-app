@@ -10,7 +10,10 @@ Exact ports (pure numpy, no randomness):
 - homography / warp_rgba: the cut (scan-core.js warpRGBA) — bilinear, no antialiasing, the sides by Math.round, no
   exact proportion, what falls outside the photo left 0 (alpha too);
 - mrz_find: the passport zone's two line boxes (index.html mrzFind), and line_input (mrzRead's 32 × 512 input);
-- he_line(page, box): the Hebrew field reader's input (index.html heLine: margins 0.015 / 0.25 of the box).
+- he_line(page, box): the Hebrew field reader's input (index.html heLine: margins 0.015 / 0.25 of the box);
+- doc_shape, lab_good_quad, in_quad / lab_quad_iou, lab_border_colour, unwarp, INSIDE_MIN / INSIDE_MAX: the rules by
+  which the lab takes more documents on one photo (index.html docShape, goodQuad, inQuad / quadIoU, findNext's paint
+  colour, findInside) — docfind.find_next(lab=True) and docfind.find_inside run the lab's steps with them.
 
 The resampling (the one thing a browser decides for itself): frame_to_S(img, op) — "live" (the camera frame by
 createImageBitmap, resizeQuality 'low'), "capture" (drawImage onto the 256 canvas at the default smoothing: smallRGBA;
@@ -614,6 +617,73 @@ def doc_shape(q, w, h):
         if not 35 <= deg <= 145:
             return False
     return True
+
+
+# ---------- more documents on one photo: findNext's and findInside's rules (index.html) ----------
+
+INSIDE_MIN, INSIDE_MAX = 0.03, 0.6   # findInside: a document lying on another covers 3–60 % of its flat cut
+LAB_MAX_DOCS = 5                     # index.html MAX_DOCS: the documents of one shot, those lying on others included
+
+
+def _quad_area(q):
+    return abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))) / 2
+
+
+def _quad_convex(q):
+    sg = 0
+    for i in range(4):
+        a, b, c = q[i], q[(i + 1) % 4], q[(i + 2) % 4]
+        z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+        if z:
+            s = 1 if z > 0 else -1
+            if sg and s != sg:
+                return False
+            sg = s
+    return True
+
+
+def lab_good_quad(pts, conf):
+    """index.html goodQuad: four corners, sure (conf ≥ 0.5), convex and over 3 % of the picture — no aspect rule (the
+    lab's shape rule is doc_shape, in the photo's pixels)."""
+    if pts is None or len(pts) != 4 or any(p is None for p in pts) or conf < 0.5:
+        return False
+    q = [(float(p[0]), float(p[1])) for p in pts]
+    return _quad_convex(q) and _quad_area(q) > 0.03
+
+
+def in_quad(q, x, y):
+    """index.html inQuad: the crossing test of the points (x, y) — numbers or numpy arrays — against the quad q."""
+    x, y = np.asarray(x, np.float64), np.asarray(y, np.float64)
+    inside = np.zeros(np.broadcast(x, y).shape, bool)
+    j = 3
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for i in range(4):
+            xi, yi = float(q[i][0]), float(q[i][1])
+            xj, yj = float(q[j][0]), float(q[j][1])
+            inside ^= ((yi > y) != (yj > y)) & (x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+            j = i
+    return inside
+
+
+_GRID = (np.arange(64) + 0.5) / 64
+
+
+def lab_quad_iou(a, b):
+    """index.html quadIoU: the overlap of two quads (0..1) counted at the centres of a 64 × 64 grid."""
+    gx, gy = np.meshgrid(_GRID, _GRID)
+    p, q = in_quad(a, gx, gy), in_quad(b, gx, gy)
+    both, any_ = int((p & q).sum()), int((p | q).sum())
+    return both / any_ if any_ else 0.0
+
+
+def lab_border_colour(img, kernel="bilinear"):
+    """findNext's paint colour: the photo drawn onto a 32 × 32 canvas (drawImage at the default smoothing: the capture
+    op's kernel), its border's 128 pixels (each i: (i, 0), (i, 31), (0, i), (31, i) — the corners twice) and of each
+    channel the upper middle value (a.sort()[n >> 1]). In the image's own channel order."""
+    t = resample(np.ascontiguousarray(img[..., :3]), (32, 32), kernel)
+    ring = [t[y, x] for i in range(32) for x, y in ((i, 0), (i, 31), (0, i), (31, i))]
+    ring = np.sort(np.array(ring, np.int64), axis=0)
+    return [int(v) for v in ring[len(ring) >> 1]]
 
 
 # ---------- the probe: fixed frames for measuring a browser's resamplers ----------

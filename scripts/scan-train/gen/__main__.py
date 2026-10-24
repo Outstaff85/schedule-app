@@ -48,7 +48,7 @@ def main(argv=None):
     p.add_argument("--from", dest="probe", help="probe.json: a browser's outputs of every path on the frames")
     p.add_argument("--out", help="where the fitted profile is written (default: print only)")
     e = sub.add_parser("exam-phone", help="E4: today's lab models through INTER_AREA and through the phone's path "
-                       "(live → cap → find_next / find_inside), without retraining")
+                       "(live → cap → the lab's findNext / findInside), without retraining")
     e.add_argument("--model", required=True, choices=("edges",))
     e.add_argument("--count", type=int, default=40, help="photos of each exam set (the same ones every run)")
     e.add_argument("--version", help="the model version (default: the lab's, scripts/scan-lab/models-version)")

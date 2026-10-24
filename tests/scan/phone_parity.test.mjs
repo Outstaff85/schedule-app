@@ -3,7 +3,10 @@
 // phone_parity.json (and checks phone.py still gives them). Here the lab's own code gives them too, in both copies
 // (scan-lab/ and its copy scan/): scan-core.js corners — exactly the same points —, warpRGBA — within 1 grey level —
 // and index.html mrzFind, run with a stub canvas — the same boxes as phone.mrz_find, and within 1 px of
-// mrzmodel.find_boxes (the training's line finding).
+// mrzmodel.find_boxes (the training's line finding) —; and more documents on one photo: index.html findNext and
+// findInside, run with a stub canvas and a stub engine answering as scripted, make the same model calls and take the
+// same frame as docfind.find_next(lab=True) / find_inside, and goodQuad, docShape, quadIoU and the constants
+// INSIDE_MIN / INSIDE_MAX / MAX_DOCS are gen/phone.py's.
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import vm from 'node:vm';
@@ -16,12 +19,46 @@ function unpack(d) {
   const buf = new Uint8Array(raw).buffer;
   return { a: new TYPES[d.dtype](buf), shape: d.shape };
 }
-// mrzFind as the lab's page has it: from its first line to its closing brace at column 0
+// a function as the lab's page has it: from its first line to its closing brace at column 0
 function grab(src, name) {
   src = src.replace(/\r\n/g, '\n');   // a Windows checkout's CRLF
-  const at = src.indexOf('\nfunction ' + name + '(');
+  let at = src.indexOf('\nfunction ' + name + '(');
+  if (at < 0) at = src.indexOf('\nasync function ' + name + '(');
   assert.ok(at >= 0, 'no function ' + name);
   return src.slice(at + 1, src.indexOf('\n}\n', at) + 2);
+}
+// a one-line definition (function x(...) { ... } or const x = ...;)
+function grabLine(src, start) {
+  const line = src.replace(/\r\n/g, '\n').split('\n').find(l => l.startsWith(start));
+  assert.ok(line, 'no line ' + start);
+  return line + '\n';
+}
+// a canvas that draws nothing: findNext's painting and strips need only its calls (the model answers are scripted)
+function blankCanvas() {
+  const c = { width: 0, height: 0 };
+  c.getContext = () => ({
+    fillStyle: '', drawImage() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, fillRect() {},
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+  });
+  return c;
+}
+// an engine answering findNext's / findInside's detect calls from a script, in order (then nothing), and recording them
+function scriptedEngine(answers, W = 0, H = 0) {
+  const left = answers.slice(), calls = [];
+  return {
+    calls, hasCap: () => true,
+    warp: async () => ({ width: W, height: H, data: new Uint8ClampedArray(0) }),
+    detect: async which => {
+      calls.push(which);
+      const [pts, conf] = left.length ? left.shift() : [null, 0];
+      return { res: { pts: pts ?? [null, null, null, null], conf } };
+    },
+  };
+}
+function near(got, want, what) {
+  if (want === null) return assert.equal(got, null, what);
+  assert.ok(got, what + ': none taken');
+  got.forEach((p, i) => p.forEach((v, k) => assert.ok(Math.abs(v - want[i][k]) <= 1e-12, `${what}: ${JSON.stringify(got)} vs ${JSON.stringify(want)}`)));
 }
 // a canvas whose 2-D context hands out the grey page as RGBA (R = G = B), as getImageData does
 function canvasOf(grey, w, h) {
@@ -68,5 +105,28 @@ for (const dir of ['scan-lab', 'scan']) {
     got.forEach((b, i) => b.forEach((v, k) => assert.ok(Math.abs(v - z.findBoxes[i][k]) <= 1,
       `${dir}: mrzFind within 1 px of mrzmodel.find_boxes, ${z.name}: ${JSON.stringify(got)} vs ${JSON.stringify(z.findBoxes)}`)));
   }
-  console.log(`PASS ${dir}: corners (${fx.heatmaps.length} maps) exactly, warpRGBA (${fx.warps.length}) within 1, mrzFind (${fx.zones.length}) as phone.py`);
+  // more documents on one photo: findNext and findInside as docfind runs them (find_next(lab=True), find_inside)
+  const html = readFileSync(new URL(`../../${dir}/index.html`, import.meta.url), 'utf8'), m = fx.moreDocs;
+  const lab = { document: { createElement: blankCanvas }, smallRGBA: () => null, toCanvas: out => ({ width: out.width, height: out.height }) };
+  vm.runInNewContext(readFileSync(new URL(`../../${dir}/scan-core.js`, import.meta.url), 'utf8') + '\n' +
+    ['const MAX_DOCS = ', 'function quadArea(', 'function quadConvex(', 'function inQuad(', 'function quadIoU(', 'const goodQuad = ']
+      .map(start => grabLine(html, start)).join('') + grab(html, 'docShape') + grab(html, 'findNext') + grab(html, 'findInside') +
+    ';this.lab = { MAX_DOCS, INSIDE_MIN, INSIDE_MAX, quadIoU, goodQuad, docShape, findNext, findInside };', lab);
+  const L = lab.lab;
+  assert.deepEqual({ INSIDE_MIN: L.INSIDE_MIN, INSIDE_MAX: L.INSIDE_MAX, MAX_DOCS: L.MAX_DOCS }, m.constants, `${dir}: findInside's constants`);
+  for (const c of m.ious) assert.equal(L.quadIoU(c.a, c.b), c.iou, `${dir}: quadIoU = phone.lab_quad_iou, ${JSON.stringify(c.a)}`);
+  for (const c of m.shapes) assert.equal(L.docShape(c.q, c.w, c.h), c.ok, `${dir}: docShape = phone.doc_shape, ${JSON.stringify(c.q)}`);
+  for (const c of m.goods) assert.equal(L.goodQuad({ pts: c.pts ?? [null, null, null, null], conf: c.conf }), c.ok, `${dir}: goodQuad, ${JSON.stringify(c.pts)}`);
+  for (const c of m.nexts) {
+    const eng = scriptedEngine(c.answers), q = await L.findNext(blankCanvas(), c.w, c.h, c.found, eng);
+    assert.deepEqual([...eng.calls], c.calls, `${dir}: findNext's model calls, ${c.name}`);
+    near(q && JSON.parse(JSON.stringify(q)), c.q, `${dir}: findNext, ${c.name}`);
+  }
+  for (const c of m.insides) {
+    const eng = scriptedEngine([[c.pts, c.conf]], c.W, c.H);
+    const got = await L.findInside(new Uint8ClampedArray(0), c.w, c.h, c.q, eng, [c.q, ...c.others]);
+    near(got && JSON.parse(JSON.stringify(got)), c.c, `${dir}: findInside, ${c.name}`);
+  }
+  console.log(`PASS ${dir}: corners (${fx.heatmaps.length} maps) exactly, warpRGBA (${fx.warps.length}) within 1, mrzFind (${fx.zones.length}) as phone.py; ` +
+    `findNext (${m.nexts.length}) and findInside (${m.insides.length}) as docfind, quadIoU / docShape / goodQuad as phone.py`);
 }

@@ -26,7 +26,6 @@ import webbrowser
 
 import cv2
 import numpy as np
-import onnxruntime as ort
 
 from midv import open_exam
 from common import MODELS, WORK, model_hashes, model_path, read_json, version_of, write_json
@@ -42,6 +41,7 @@ SETS = {"users": "the users' pages", "templates": "your documents (made-up photo
 
 def read_all(path, examples):
     """Each example's answer by one model: [(pts or None)]."""
+    import onnxruntime as ort   # here, not at the top: score / err are imported where ONNX Runtime is not installed (E4's tests)
     sess = ort.InferenceSession(str(path))
     out = []
     for e in examples:
