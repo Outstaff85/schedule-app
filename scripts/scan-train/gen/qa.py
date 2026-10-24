@@ -10,7 +10,10 @@ The sheet (local only — the pictures come from the owner's real pages; it is n
 - the table source × class: every cell has its count and its sheet, or n=0;
 - histograms by class, by source and by background category;
 - the line "intersection with held-out = N" (gen.manifest.held_refs over every row) and the verify result (gen
-  verify on a sample, run here when the set has none for its fingerprint).
+  verify on a sample, run here when the set has none for its fingerprint);
+- for scenes (gen/scene.py: rows with a recipe) the per-recipe strata too: the tables recipe × class and recipe ×
+  background category (every cell a count or n=0), a histogram by recipe, and a contact sheet per recipe showing every
+  picture of a scene — the frame, each "next" one (found pages painted over) and each "inside" cut — with its answer.
 purity.json records it: passed when the intersection is 0 and verify passed. Every train*.py calls require_qa on a
 made-up set drawn through gen build: no qa/purity.json, one not passed, or one of another drawing (fingerprint) or
 another heldout.json, or a manifest that references what the exam keeps today (held_refs run again at training
@@ -35,12 +38,13 @@ def stratum(r):
     return (str(r.get("source")), str(r.get("class")))
 
 
-def _thumb(folder, r):
-    """One example's picture for the sheet (BGR), its labels drawn on it."""
+def _thumb(folder, r, out=0, labels=None, title=None):
+    """One example's picture for the sheet (BGR), its labels drawn on it (out: which of its outputs; labels: that
+    picture's own — a scene's next / inside pictures)."""
     import cv2
     import numpy as np
-    outs = r.get("outputs") or []
-    labels = r.get("labels") or {}
+    outs = (r.get("outputs") or [])[out:]
+    labels = labels if labels is not None else (r.get("labels") or {})
     if r.get("model") == "he":
         crops = []
         for (f, _), fl in zip(outs[:4], labels.get("fields") or []):
@@ -69,17 +73,27 @@ def _thumb(folder, r):
             cv2.circle(img, (int(doc[0][0] * w), int(doc[0][1] * h)), 3, (255, 120, 0), -1)   # the document's own top-left: blue
         turn = labels.get("turn", labels.get("upright"))
         cv2.rectangle(img, (0, 0), (w, 14), (255, 255, 255), -1)
-        cv2.putText(img, f"{r.get('class')} turn {turn}", (2, 11), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
+        cv2.putText(img, title or f"{r.get('class')} turn {turn}", (2, 11), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
     pad = np.full((img.shape[0] + 4, THUMB + 4, 3), 255, np.uint8)
     pad[2:2 + img.shape[0], 2:2 + min(THUMB, img.shape[1])] = img[:, :THUMB]
     return pad
 
 
-def contact_sheet(folder, rows, dest):
-    """Up to PER_SHEET examples of a stratum in one picture."""
+def scene_thumbs(folder, r):
+    """Every picture of a scene (the frame, its next and inside pictures), each with its own answer and role."""
+    entries = (r.get("labels") or {}).get("entries") or []
+    out = []
+    for k, e in enumerate(entries):
+        lab = {"fixed": e.get("fixed")}
+        out.append(_thumb(folder, r, k, lab, f"{r.get('recipe')} {e.get('role')}"[:30]))
+    return out or [_thumb(folder, r)]
+
+
+def contact_sheet(folder, rows, dest, every=False):
+    """Up to PER_SHEET examples of a stratum in one picture (every: all the pictures of each scene)."""
     import cv2
     import numpy as np
-    thumbs = [_thumb(folder, r) for r in rows[:PER_SHEET]]
+    thumbs = ([t for r in rows for t in scene_thumbs(folder, r)] if every else [_thumb(folder, r) for r in rows])[:PER_SHEET]
     lines = []
     for k in range(0, len(thumbs), COLS):
         part = thumbs[k:k + COLS]
@@ -110,10 +124,43 @@ def classes_of(model, rows):
     return base + sorted({str(r.get("class")) for r in rows} - set(base))
 
 
-SOURCES = {"edges": ("drawn", "template", "none"), "doctype": ("drawn", "template", "midv", "smartdoc"), "he": ("template",)}
+SOURCES = {"edges": ("drawn", "template", "washed", "pdf", "none"), "doctype": ("drawn", "template", "midv", "smartdoc"),
+           "he": ("template",)}
+RECIPES = ("single", "pair", "card_on_sheet", "painted", "none", "partial")   # gen/scene.py's
 
 
-def page(run, rows, sheets, refs, ver):
+def _table(rows, key_row, key_col, rows_order, cols_order, link=None):
+    t = _count(rows, lambda r: (str(key_row(r)), str(key_col(r))))
+    head = "".join(f"<th>{html.escape(c)}</th>" for c in cols_order)
+    body = ""
+    for a in rows_order:
+        cells = ""
+        for c in cols_order:
+            n = t.get(str((a, c)), 0)
+            cells += (f'<td class="n">{n}</td>' if n else '<td class="zero">n=0</td>')
+        name = f'<a href="#{link(a)}">{html.escape(a)}</a>' if link else html.escape(a)
+        body += f"<tr><th>{name}</th>{cells}</tr>"
+    return f"<table><tr><th></th>{head}</tr>{body}</table>"
+
+
+def recipe_part(model, rows, recipe_sheets):
+    """The per-recipe strata of a scenes' set ("" for a set with no recipes)."""
+    if not any(r.get("recipe") for r in rows):
+        return ""
+    recipes = list(RECIPES) + sorted({str(r.get("recipe")) for r in rows} - set(RECIPES))
+    classes = classes_of(model, rows)
+    cats = sorted({str(r.get("bgCategory")) for r in rows})
+    blocks = "".join(f'<section id="recipe-{_slug(rc)}"><h3>{html.escape(rc)} — {n} scenes</h3>'
+                     f'<img src="{html.escape(f)}" alt="{html.escape(rc)}"></section>' for rc, (f, n) in sorted(recipe_sheets.items()))
+    return (f"<h2>Recipes</h2><p>Each recipe's scenes (partial: weight 0 until the owner confirms its label).</p>"
+            f"<h3>Recipe × class</h3>{_table(rows, lambda r: r.get('recipe'), lambda r: r.get('class'), recipes, classes, lambda a: 'recipe-' + _slug(a))}"
+            f"<h3>Recipe × background category</h3>{_table(rows, lambda r: r.get('recipe'), lambda r: r.get('bgCategory'), recipes, cats)}"
+            f"{_bars('by recipe', _count(rows, lambda r: r.get('recipe')))}"
+            f"<h3>Every picture of a scene, per recipe</h3><p>The frame, the next pictures (found pages painted over) and the inside "
+            f"cuts, each with its own answer.</p>{blocks}")
+
+
+def page(run, rows, sheets, refs, ver, recipe_sheets=None):
     model = run.get("model")
     classes = classes_of(model, rows)
     sources = list(SOURCES.get(model, ())) + sorted({str(r.get("source")) for r in rows} - set(SOURCES.get(model, ())))
@@ -145,6 +192,7 @@ fingerprint {html.escape(str(run.get('fingerprint'))[:12])}; heldout.json {html.
 <h2>Source × class</h2><table><tr><th></th>{head}</tr>{body}</table>
 <h2>Histograms</h2>{_bars("by class", _count(rows, lambda r: r.get("class")))}{_bars("by source", _count(rows, lambda r: r.get("source")))}
 {_bars("by background category", _count(rows, lambda r: r.get("bgCategory")))}
+{recipe_part(model, rows, recipe_sheets or {})}
 <h2>Contact sheets</h2><p>First corner red, the document's own top-left blue; a field's text only as a sha1 prefix.</p>{blocks}"""
 
 
@@ -174,7 +222,16 @@ def qa(folder, sample=20, jobs=1, work=None):
         name = f"sheet-{_slug(s)}-{_slug(c)}.jpg"
         contact_sheet(folder, rs, out / name)
         sheets[(s, c)] = (name, len(rs))
-    (out / "index.html").write_text(page(run, rows, sheets, refs, ver), encoding="utf-8")
+    recipe_sheets = {}
+    by_recipe = {}
+    for r in rows:
+        if r.get("recipe"):
+            by_recipe.setdefault(str(r["recipe"]), []).append(r)
+    for rc, rs in by_recipe.items():
+        name = f"sheet-recipe-{_slug(rc)}.jpg"
+        contact_sheet(folder, rs, out / name, every=True)
+        recipe_sheets[rc] = (name, len(rs))
+    (out / "index.html").write_text(page(run, rows, sheets, refs, ver, recipe_sheets), encoding="utf-8")
     purity = {"passed": bool(not refs and ver.get("passed")), "heldoutIntersection": len(refs),
               "verify": {k: ver.get(k) for k in ("sample", "matched", "passed")}, "fingerprint": run.get("fingerprint"),
               "heldoutSha256": gc.heldout_sha256(), "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}

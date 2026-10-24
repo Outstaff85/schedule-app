@@ -4,7 +4,10 @@
   python -m gen build --model doctype --count 6000  --seed 1 --jobs 6 --out ~/.scan-train/synth/pages  # synth_pages.py
   python -m gen build --model he      --count 3000  --seed 1 --jobs 6 --out ~/.scan-train/synth/he-fields/train  # synth_fields.py
 
-Each generator draws exactly as it always did (one stream per example, gen.rng.legacy: an example depends only on
+`python -m gen build --model edges` draws scenes (gen/scene.py, written by gen/outputs/edges.py: one camera for the
+table and the documents); synth_docs.py keeps today's flat-crop photos for comparison (its run.json names its generator).
+
+Each of today's generators draws exactly as it always did (one stream per example, gen.rng.legacy: an example depends only on
 the seed and its index) and writes what it always wrote (examples.json, pages.json, labels.tsv), and the set's
 folder also gets manifest.jsonl and run.json (gen/manifest.py). The old CLIs (synth_docs.py, synth_pages.py,
 synth_fields.py) are thin wrappers over this with their own defaults (20000 / 6000 / 3000).
@@ -19,27 +22,31 @@ import pathlib
 
 from . import manifest
 
-GENERATORS = {"edges": "synth_docs", "doctype": "synth_pages", "he": "synth_fields"}
+GENERATORS = {"edges": "synth_docs", "doctype": "synth_pages", "he": "synth_fields"}   # today's (the old CLIs)
+SCENES = {"edges": "gen.outputs.edges"}   # python -m gen build --model edges: the scenes
 
 
-def module(model):
+def module(model, generator=None):
+    """A generator module: the one a run's params name ("generator"), else today's for the model."""
+    if generator:
+        return importlib.import_module(generator)
     if model not in GENERATORS:
         raise SystemExit(f"no generator for {model!r} (one of {', '.join(GENERATORS)})")
     return importlib.import_module(GENERATORS[model])
 
 
-def parser(model, prog=None):
+def parser(model, prog=None, generator=None):
     ap = argparse.ArgumentParser(prog=prog)
-    module(model).gen_args(ap)
+    module(model, generator).gen_args(ap)
     return ap
 
 
-def cli(model, argv=None, prog=None):
-    """The old CLI of a generator (its options and defaults) → build()."""
+def cli(model, argv=None, prog=None, generator=None):
+    """A generator's CLI (its options and defaults) → build()."""
     from home import gentle
-    a = parser(model, prog).parse_args(argv)
+    a = parser(model, prog, generator).parse_args(argv)
     jobs = gentle()   # below-normal priority, the first core left free (the default number of processes)
-    mod = module(model)
+    mod = module(model, generator)
     return build(model, mod.gen_params(a), a.jobs or jobs)
 
 
@@ -63,7 +70,7 @@ def rows_of(model, params, items, folder):
 
 def build(model, params, jobs):
     """Draw the set into params["out"]: the generator's own files, manifest.jsonl and run.json. → (folder, rows, run)."""
-    mod = module(model)
+    mod = module(model, params.get("generator"))
     folder = pathlib.Path(params["out"])
     folder.mkdir(parents=True, exist_ok=True)
     for stale in (folder / "verify.json", folder / "qa" / "purity.json"):   # of a set drawn here before
@@ -96,18 +103,23 @@ def _found(entry, roots):
     return None
 
 
+WHAT = {"pages": "page", "photos": "background", "pdfs": "PDF", "occluders": "cut-out"}
+
+
 def resolve(params, work=None):
     """The run's parameters with every input file found on this PC (SystemExit naming the missing one by a sha1
     prefix: the example cannot be drawn again without it)."""
     import home
     work = pathlib.Path(work or home.WORK)
     out = dict(params)
-    for key, roots in (("pages", [work / "templates"]), ("photos", [work / "backgrounds"])):
+    assets = pathlib.Path(__file__).resolve().parents[3] / "functions" / "assets"
+    for key, roots in (("pages", [work / "templates"]), ("photos", [work / "backgrounds", work / "backgrounds-own"]),
+                       ("pdfs", [work / "contracts", assets]), ("occluders", [work / "occluders"])):
         fixed = []
         for e in params.get(key) or []:
             got = _found(e, roots)
             if got is None:
-                raise SystemExit(f"a {'page' if key == 'pages' else 'background'} the run used ({(e.get('sha1') or '?')[:8]}) is not on "
+                raise SystemExit(f"a {WHAT[key]} the run used ({(e.get('sha1') or '?')[:8]}) is not on "
                                  "this PC with the same content — the run cannot be drawn again")
             fixed.append({**e, "path": got})
         out[key] = fixed
@@ -122,7 +134,7 @@ def regenerate(run, indices, folder, jobs=1, work=None):
     """Draw the chosen indices of a run (its run.json) again into folder → their manifest rows."""
     model, params = run["model"], resolve(run["params"], work)
     params = {**params, "out": str(folder), "show": False}
-    mod = module(model)
+    mod = module(model, params.get("generator"))
     mod.gen_prepare(pathlib.Path(folder), params)
     items = draw(mod, params, sorted(indices), folder, jobs)
     return rows_of(model, params, items, folder)

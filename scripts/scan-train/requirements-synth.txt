@@ -17,3 +17,5 @@ requests
 # the photos' colours and quality (synth_docs.py): 2.0.8 is the last MIT release (AlbumentationsX after it is AGPL)
 albumentations==2.0.8
 albucore==0.0.24
+# the scenes' PDF pages (gen/pages.py: the Form 101 template, the firm's contract PDFs); without it they are skipped and counted
+pymupdf==2.0

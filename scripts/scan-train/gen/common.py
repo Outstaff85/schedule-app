@@ -28,16 +28,18 @@ HELDOUT = HERE / "heldout.json"
 # ---------- the page kinds (the document type model's 6 answers, in its output order) ----------
 DOCTYPES = ("id_front", "id_back", "sefach", "passport", "contract", "other")
 # a real page's template folder (pull_templates.py, synth_docs.TEMPLATE_KINDS)
-TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence")
-# the documents synth_docs.py / synth_pages.py draw from nothing
-DRAWN_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "contract")
+TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence", "contract", "other")
+# the documents synth_docs.py / synth_pages.py draw from nothing (he_sheet: a Hebrew A4 page that is not a contract)
+DRAWN_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "contract", "he_sheet")
 # Every source's own kind → the page kind it teaches. The wording of Haiku's prompt for contract / other is
 # not changed here (the training audit: deferred); SmartDoc's printed pages stay "other" as before.
 LABELS = {
     "template": {"id_front": "id_front", "id_back": "id_back", "passport": "passport", "sefach": "sefach",
-                 "insert": "other", "licence": "other"},
+                 "insert": "other", "licence": "other", "contract": "contract", "other": "other"},
     "drawn": {"id_front": "id_front", "id_back": "id_back", "passport": "passport", "sefach": "sefach",
-              "insert": "other", "contract": "contract"},
+              "insert": "other", "contract": "contract", "he_sheet": "other"},
+    # PDFs rendered by gen/pages.py: the Form 101 template (functions/assets) and the firm's contract templates
+    "pdf": {"form101": "other", "contract": "contract"},
     "smartdoc": {"datasheet": "other", "letter": "other", "magazine": "other", "paper": "other", "patent": "other",
                  "tax": "other"},
     "midv": {"id": "id_front", "passportcard": "id_front", "passport": "passport", "drvlic": "other"},

@@ -1,7 +1,7 @@
 """The real pages for synth_docs.py --templates (docs/scan-training.md → 4, "Made-up document photos"):
 the cut pages of the full documents the site collected (H8a: documents/…/record.json with its pages,
 each with the kind the user left) are copied from the private bucket to
-~/.scan-train/templates/<kind>/ — ID cards, their backs, passports, ספחים — up to --per pages of each
+~/.scan-train/templates/<kind>/ — ID cards, their backs, passports, ספחים, contracts and other pages — up to --per pages of each
 kind, the newest first. They are workers' documents: they stay on this PC, synth_docs.py washes out
 their face and text, and clean.py / publish.py delete them with the other copies; a page pulled before whose document
 is no longer in the bucket (deleted on request, delete_data.py) is deleted here too. The owner's own
@@ -26,7 +26,7 @@ import tempfile
 from common import DATA, WORK
 from gen.common import side
 
-KINDS = ("id_front", "id_back", "passport", "sefach")
+KINDS = ("id_front", "id_back", "passport", "sefach", "contract", "other")   # every page kind a site document carries
 OWN_KINDS = KINDS + ("insert",)
 PICTURES = (".jpg", ".jpeg", ".png", ".webp")
 # a page this script pulled: <the document's id (a Firestore id, 20 letters and digits)>-<n>.jpg

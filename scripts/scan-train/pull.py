@@ -114,17 +114,11 @@ def painted(src, dest, quads):
     """The photo with the given frames painted over in its border's colour (what the next document
     search sees — as the lab's findNext does), saved to dest."""
     import cv2
-    import numpy as np
+    from gen.scene import paint   # the one copy: the scenes' next pictures are painted the same way
     img = cv2.imread(str(src))
     if img is None:
         return False
-    if quads:
-        h, w = img.shape[:2]
-        border = np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]])
-        colour = [int(v) for v in np.median(border, axis=0)]
-        for q in quads:
-            cv2.fillPoly(img, [np.array([[x * w, y * h] for x, y in q], np.int32)], colour)
-    cv2.imwrite(str(dest), img)
+    cv2.imwrite(str(dest), paint(img, quads))
     return True
 
 

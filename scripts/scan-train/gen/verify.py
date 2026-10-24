@@ -38,7 +38,9 @@ def sample_indices(rows, n):
 
 def library_warnings(run):
     now, then = manifest.libraries(), run.get("libraries") or {}
-    return [f"{k} {then.get(k)} when drawn, {now.get(k)} now" for k in sorted(set(now) | set(then)) if now.get(k) != then.get(k)]
+    # a library a run drawn before did not record yet (PyMuPDF since the scenes) is no difference
+    return [f"{k} {then.get(k)} when drawn, {now.get(k)} now" for k in sorted(set(now) | set(then))
+            if k in then and now.get(k) != then.get(k)]
 
 
 def compare(want, got):

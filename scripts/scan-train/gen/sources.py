@@ -93,16 +93,28 @@ def _pdfs(work):
 
 
 def _backgrounds(work):
-    folder = work / "backgrounds"
-    if not folder.is_dir():
-        return []
+    """The background photos (backgrounds/, backgrounds-own/): exam when heldout.json's examBackgrounds or the bank's
+    catalog (gen/backgrounds.py `bg split`) says so; none when the catalog leaves it out of both or never uses it (its
+    check failed, or its licence is not confirmed)."""
+    from .backgrounds import usable
     exam = set(gc.heldout().get("examBackgrounds") or [])
     out = []
-    for p in sorted(folder.rglob("*")):
-        if p.suffix.lower() in PICTURES and p.is_file():
-            sha = gc.file_sha1(p)
-            split = "exam" if sha in exam or sha[:12] in exam or p.stem in exam else "train"
-            out.append(Source("bg:" + sha[:12], "background", None, split, sha, str(p), {}))
+    for name in ("backgrounds", "backgrounds-own"):
+        folder = work / name
+        if not folder.is_dir():
+            continue
+        files = (_read(folder / "catalog.json", {}) or {}).get("files") or {}
+        for p in sorted(folder.rglob("*")):
+            if p.suffix.lower() in PICTURES and p.is_file():
+                sha = gc.file_sha1(p)
+                e = files.get(p.name) if isinstance(files.get(p.name), dict) else None
+                split = "train"
+                if e is not None:
+                    split = "none" if not usable(e) or e.get("split") == "none" else ("exam" if e.get("split") == "exam" else "train")
+                if sha in exam or sha[:12] in exam or p.stem in exam:
+                    split = "exam"
+                out.append(Source("bg:" + sha[:12], "background", None, split, sha, str(p),
+                                  {"category": (e or {}).get("category"), "series": (e or {}).get("series")}))
     return out
 
 

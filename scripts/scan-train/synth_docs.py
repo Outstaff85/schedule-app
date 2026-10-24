@@ -67,7 +67,7 @@ NONE_SHARE, PAINTED_SHARE = 0.05, 0.1
 PAIR_SHARE, PAIR_ON = 0.15, 0.6
 SHEETS = ("sefach", "insert")
 TEMPLATES = WORK / "templates"   # deleted by clean / publish
-TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence")   # a licence: "other" to the page kinds
+TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence", "contract", "other")   # a licence: "other" to the page kinds
 WIDTH = {"id_front": 85.6, "id_back": 85.6, "licence": 85.6, "passport": 125.0}  # mm; a sheet keeps its own size
 CARDS = ("id_front", "id_back", "licence")   # ID-1 cards: rounded corners, a laminate's glare
 WIN_LATIN = ("arial.ttf", "arialbd.ttf", "times.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf", "segoeui.ttf")
@@ -108,6 +108,44 @@ def put(d, xy, s, font, fill, rtl=False):
     else:
         from bidi.algorithm import get_display
         d.text(xy, get_display(s), font=font, fill=fill, anchor="ra")
+
+
+def text_box(d, xy, s, font, rtl=False):
+    """The box (x, y, w, h) put(d, xy, s, font, …, rtl) inks — measured, nothing drawn, no draw of the stream."""
+    if not rtl:
+        b = d.textbbox(xy, s, font=font)
+    elif RTL:
+        b = d.textbbox(xy, s, font=font, direction="rtl", anchor="ra")
+    else:
+        from bidi.algorithm import get_display
+        b = d.textbbox(xy, get_display(s), font=font, anchor="ra")
+    return (int(b[0]), int(b[1]), max(1, int(b[2] - b[0])), max(1, int(b[3] - b[1])))
+
+
+class Drawn(tuple):
+    """A drawn document: it unpacks as (RGBA, rect) as always — rect the document's own part of the picture (a
+    passport's data page under the booklet's other page) — and also carries what gen/pages.py needs: .fields
+    [(role, text, box)] (box: the text's (x, y, w, h) in the picture's pixels, or its four corners when a fold's bow
+    moved it), .mrz the zone's two lines (a passport) or None, .face the holder's photo's box or None, and .quad the
+    document's corners in the picture, its own top-left first."""
+
+    def __new__(cls, im, rect, fields=(), mrz=None, face=None):
+        t = super().__new__(cls, (im, rect))
+        t.fields, t.mrz, t.face = list(fields), mrz, face
+        x0, y0, x1, y1 = rect
+        t.quad = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+        return t
+
+
+# a printed label → the field's role (gen/pages.py: the field reader's kinds)
+ROLES = {"שם משפחה": "surname", "שם פרטי": "given", "תאריך לידה": "dob", "מספר זהות": "idNo", "כתובת": "address",
+         "מקום לידה": "birthplace", "תאריך הנפקה": "issued", "מין": "sex", "Surname": "surname", "Given names": "given",
+         "Nationality": "nationality", "Date of birth": "dob", "Sex": "sex", "Date of expiry": "expiry",
+         "Passport No.": "passportNo"}
+
+
+def _moved(boxes, dy=0):
+    return [(r, t, (b[0], b[1] + dy, b[2], b[3])) for r, t, b in boxes]
 
 
 # ---------- the flat documents ----------
@@ -158,20 +196,24 @@ def rounded(im, r):
     return im
 
 
-def fields(d, F, rng, x, y, w, rows, rtl, size, gap):
-    """Label / value pairs down a column (the labels small and grey)."""
+def fields(d, F, rng, x, y, w, rows, rtl, size, gap, boxes=None):
+    """Label / value pairs down a column (the labels small and grey); boxes (a list): each value's (role, text, box)
+    is added to it."""
     for label, value in rows:
         lf, vf = F.get("hebrew" if rtl else "latin", size // 2, rng), F.get("hebrew" if rtl else "latin", size, rng)
         xx = x + w if rtl else x
         put(d, (xx, y), label, lf, (90, 90, 100), rtl)
         put(d, (xx, y + size // 2 + 4), value, vf, (15, 15, 25), rtl)
+        if boxes is not None:
+            boxes.append((ROLES.get(label, "text"), value, text_box(d, (xx, y + size // 2 + 4), value, vf, rtl)))
         y += size + size // 2 + gap
     return y
 
 
-def he_value(rng, kind):
+def he_value(rng, kind, held=False):
+    """A Hebrew value of a kind; held: from the check vocabulary (synth.he_line)."""
     while True:
-        t, k = synth.he_line(rng)
+        t, k = synth.he_line(rng, held=held)
         if k == kind:
             return t
 
@@ -181,7 +223,7 @@ def date(rng, y0, y1):
     return f"{dd:02d}.{m:02d}.{y}"
 
 
-def id_front(rng, F):
+def id_front(rng, F, held=False):
     w, h = int(85.6 * PX), int(54 * PX)
     im = security_print(rng, w, h, pastel(rng))
     d = ImageDraw.Draw(im)
@@ -198,24 +240,25 @@ def id_front(rng, F):
         im.paste(Image.blend(g, Image.new("RGB", g.size, (235, 235, 235)), 0.6), (w // 2, h - ph // 3 - 20))
     tx0 = (px + pw + 30) if photo_left else 30
     tw = w - pw - 90
-    rows = [("שם משפחה", he_value(rng, "surname")), ("שם פרטי", he_value(rng, "given")),
+    rows = [("שם משפחה", he_value(rng, "surname", held)), ("שם פרטי", he_value(rng, "given", held)),
             ("תאריך לידה", date(rng, 1955, 2007)), ("מספר זהות", synth.israeli_id(rng))]
-    fields(d, F, rng, tx0, int(h * 0.22), tw, rows, True, rng.randint(26, 34), 6)
+    boxes = []
+    fields(d, F, rng, tx0, int(h * 0.22), tw, rows, True, rng.randint(26, 34), 6, boxes)
     if rng.random() < 0.6:
         d.rounded_rectangle((px + pw // 4, int(h * 0.82), px + pw // 4 + 90, int(h * 0.82) + 70), 10, fill=(205, 175, 90))
     put(d, (w // 2 - 120, h // 2), "SPECIMEN", F.get("latin", 60, rng), tuple((c + 3 * 230) // 4 for c in band))
-    return rounded(im, 3 * PX), (0, 0, w, h)
+    return Drawn(rounded(im, 3 * PX), (0, 0, w, h), boxes, None, (px, int(h * 0.25), pw, ph))
 
 
-def id_back(rng, F):
+def id_back(rng, F, held=False):
     w, h = int(85.6 * PX), int(54 * PX)
     im = security_print(rng, w, h, pastel(rng))
     d = ImageDraw.Draw(im)
-    y = 30
+    y, boxes = 30, []
     for label in ("כתובת", "מקום לידה", "תאריך הנפקה", "מין"):
-        v = {"כתובת": f"{he_value(rng, 'street')}, {he_value(rng, 'city')}", "מקום לידה": he_value(rng, "city"),
+        v = {"כתובת": f"{he_value(rng, 'street', held)}, {he_value(rng, 'city', held)}", "מקום לידה": he_value(rng, "city", held),
              "תאריך הנפקה": date(rng, 2010, 2025), "מין": rng.choice(("זכר", "נקבה"))}[label]
-        y = fields(d, F, rng, 30, y, w - 60, [(label, v)], True, rng.randint(24, 30), 4)
+        y = fields(d, F, rng, 30, y, w - 60, [(label, v)], True, rng.randint(24, 30), 4, boxes)
     if rng.random() < 0.7:   # a barcode-like strip
         x, bw = 40, rng.randint(300, 500)
         while x < 40 + bw:
@@ -225,13 +268,17 @@ def id_back(rng, F):
     else:                    # or three lines of a card's zone
         mf = F.get("mrz", 34, rng)
         for k in range(3):
-            put(d, (30, h - 150 + k * 42), "".join(rng.choice(synth.MRZ_CHARS) for _ in range(30)), mf, (20, 20, 20))
-    return rounded(im, 3 * PX), (0, 0, w, h)
+            line = "".join(rng.choice(synth.MRZ_CHARS) for _ in range(30))
+            put(d, (30, h - 150 + k * 42), line, mf, (20, 20, 20))
+            boxes.append(("zone", line, text_box(d, (30, h - 150 + k * 42), line, mf)))
+    return Drawn(rounded(im, 3 * PX), (0, 0, w, h), boxes)
 
 
-def passport(rng, F):
+def passport(rng, F, held=False, fit=False):
     """The data page; often with the booklet's other page above it (the passport lies open): the
-    corners are the data page's only."""
+    corners are the data page's only. fit: the zone's font made small enough for its 44 characters to stay on the
+    page (gen/pages.py; synth_docs.py's own photos keep today's size, whose zone runs past the page's right edge, so a
+    set drawn before is drawn again byte for byte — the mrz font takes no draw of the stream either way)."""
     w, h = int(125 * PX), int(88 * PX)
     im = security_print(rng, w, h, pastel(rng, (215, 245)))
     d = ImageDraw.Draw(im)
@@ -244,15 +291,24 @@ def passport(rng, F):
             ("Date of birth", f["dob"]), ("Sex", f["sex"] or "X"), ("Date of expiry", f["expiry"]), ("Passport No.", f["passportNo"])]
     sz = rng.randint(24, 30)
     half = (len(rows) + 1) // 2
-    fields(d, F, rng, pw + 80, 80, 0, rows[:half], False, sz, 4)
-    fields(d, F, rng, pw + 80 + int(w * 0.3), 80, 0, rows[half:], False, sz, 4)
+    boxes = []
+    fields(d, F, rng, pw + 80, 80, 0, rows[:half], False, sz, 4, boxes)
+    fields(d, F, rng, pw + 80 + int(w * 0.3), 80, 0, rows[half:], False, sz, 4, boxes)
     zone = int(h * 0.24)
     d.rectangle((0, h - zone, w, h), fill=pastel(rng, (225, 250)))
     mf = F.get("mrz", int(w / 44 * 1.55), rng)
+    if fit:
+        size = int(w / 44 * 1.55)
+        while size > 10 and max(text_box(d, (36, 0), l, mf)[2] for l in (l1, l2)) > w - 72:
+            size -= 1
+            mf = F.get("mrz", size, rng)
     put(d, (36, h - zone + 20), l1, mf, (20, 20, 20))
     put(d, (36, h - zone + 20 + int(zone * 0.42)), l2, mf, (20, 20, 20))
+    boxes += [("mrz1", l1, text_box(d, (36, h - zone + 20), l1, mf)),
+              ("mrz2", l2, text_box(d, (36, h - zone + 20 + int(zone * 0.42)), l2, mf))]
+    face = (40, 80, pw, ph)
     if rng.random() < 0.35:
-        return im.convert("RGBA"), (0, 0, w, h)
+        return Drawn(im.convert("RGBA"), (0, 0, w, h), boxes, (l1, l2), face)
     hu = int(h * rng.uniform(0.6, 1.0))   # the other page, part of it in the photo
     top = security_print(rng, w, hu, pastel(rng, (220, 248)))
     td = ImageDraw.Draw(top)
@@ -268,7 +324,7 @@ def passport(rng, F):
     for k in range(10):                   # the gutter's fold
         c = 150 + k * 9
         bd.line((0, hu - 5 + k, w, hu - 5 + k), fill=(c, c, c))
-    return book.convert("RGBA"), (0, hu, w, hu + h)
+    return Drawn(book.convert("RGBA"), (0, hu, w, hu + h), _moved(boxes, hu), (l1, l2), (face[0], face[1] + hu, face[2], face[3]))
 
 
 def paper(rng, w, h):
@@ -279,7 +335,7 @@ def paper(rng, w, h):
     return im
 
 
-def sefach(rng, F):
+def sefach(rng, F, held=False):
     """The ספח: a printed form on paper, folded; the part photographed varies in shape."""
     w = int(rng.uniform(140, 210) * PX)
     h = int(w / rng.uniform(0.65, 1.6))
@@ -287,9 +343,10 @@ def sefach(rng, F):
     d = ImageDraw.Draw(im)
     sz = rng.randint(22, 30)
     put(d, (w - 40, 30), rng.choice(("ספח לתעודת זהות", "ספח", "פרטים אישיים")), F.get("hebrew", sz + 8, rng), (30, 30, 60), True)
-    y = fields(d, F, rng, 40, 90, w - 80, [("שם משפחה", he_value(rng, "surname")), ("שם פרטי", he_value(rng, "given")),
-                                         ("מספר זהות", synth.israeli_id(rng)), ("כתובת", f"{he_value(rng, 'street')} {he_value(rng, 'city')}")],
-               True, sz, 8)
+    boxes = []
+    y = fields(d, F, rng, 40, 90, w - 80, [("שם משפחה", he_value(rng, "surname", held)), ("שם פרטי", he_value(rng, "given", held)),
+                                         ("מספר זהות", synth.israeli_id(rng)), ("כתובת", f"{he_value(rng, 'street', held)} {he_value(rng, 'city', held)}")],
+               True, sz, 8, boxes)
     rows = rng.randint(2, 6)              # a table: children / spouse
     cols = (0.3, 0.55, 0.8, 1.0)
     for r in range(rows + 1):
@@ -297,18 +354,28 @@ def sefach(rng, F):
         if yy > h - 40:
             break
         d.line((40, yy, w - 40, yy), fill=(80, 80, 90), width=2)
-        if r:
-            put(d, (w - 50, yy - sz - 12), he_value(rng, "given"), F.get("hebrew", sz, rng), (20, 20, 30), True)
-            put(d, (int(w * 0.5), yy - sz - 12), synth.israeli_id(rng), F.get("latin", sz, rng), (20, 20, 30))
-            put(d, (60, yy - sz - 12), date(rng, 1995, 2024), F.get("latin", sz, rng), (20, 20, 30))
+        if r:   # the same draws in the same order as always: the value, then its font
+            t = he_value(rng, "given", held)
+            f = F.get("hebrew", sz, rng)
+            put(d, (w - 50, yy - sz - 12), t, f, (20, 20, 30), True)
+            boxes.append(("childGiven", t, text_box(d, (w - 50, yy - sz - 12), t, f, True)))
+            t = synth.israeli_id(rng)
+            f = F.get("latin", sz, rng)
+            put(d, (int(w * 0.5), yy - sz - 12), t, f, (20, 20, 30))
+            boxes.append(("childId", t, text_box(d, (int(w * 0.5), yy - sz - 12), t, f)))
+            t = date(rng, 1995, 2024)
+            f = F.get("latin", sz, rng)
+            put(d, (60, yy - sz - 12), t, f, (20, 20, 30))
+            boxes.append(("childDob", t, text_box(d, (60, yy - sz - 12), t, f)))
     for c in cols:
         x = 40 + int((w - 80) * c)
         d.line((x, y, x, min(h - 40, y + rows * (sz + 18))), fill=(80, 80, 90), width=2)
     put(d, (60, h - 60), "SPECIMEN", F.get("latin", 30, rng), (150, 80, 80))
-    return folded(rng, im).convert("RGBA"), (0, 0, w, h)
+    bow = {}
+    return Drawn(folded(rng, im, bow).convert("RGBA"), (0, 0, w, h), bowed(boxes, bow))
 
 
-def insert(rng, F):
+def insert(rng, F, held=False):
     """A loose sheet put into a passport (a form, a residence notice): a passport page's size or a
     little bigger, printed, sometimes a stamp."""
     w = int(rng.uniform(120, 150) * PX)
@@ -317,26 +384,30 @@ def insert(rng, F):
     d = ImageDraw.Draw(im)
     rtl = rng.random() < 0.6
     sz = rng.randint(22, 30)
-    y = 40
+    y, boxes = 40, []
     for _ in range(rng.randint(5, 14)):
         if y > h - 60:
             break
         n = rng.randint(2, 7)
         if rtl:
-            s = " ".join(he_value(rng, rng.choice(("given", "surname", "city", "street"))) for _ in range(n // 2 + 1))
+            s = " ".join(he_value(rng, rng.choice(("given", "surname", "city", "street")), held) for _ in range(n // 2 + 1))
         else:
             s = " ".join(rng.choice(synth.SURNAMES + synth.GIVEN) for _ in range(n))
-        put(d, (w - 40 if rtl else 40, y), s, F.get("hebrew" if rtl else "latin", sz, rng), (25, 25, 35), rtl)
+        f = F.get("hebrew" if rtl else "latin", sz, rng)
+        put(d, (w - 40 if rtl else 40, y), s, f, (25, 25, 35), rtl)
+        boxes.append(("text", s, text_box(d, (w - 40 if rtl else 40, y), s, f, rtl)))
         y += sz + rng.randint(10, 26)
     if rng.random() < 0.6:
         cx, cy, r = rng.randint(120, w - 120), rng.randint(120, h - 120), rng.randint(60, 110)
         d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(60, 70, 150), width=5)
     put(d, (40, h - 50), "SPECIMEN", F.get("latin", 26, rng), (150, 80, 80))
-    return folded(rng, im).convert("RGBA"), (0, 0, w, h)
+    bow = {}
+    return Drawn(folded(rng, im, bow).convert("RGBA"), (0, 0, w, h), bowed(boxes, bow))
 
 
-def folded(rng, im):
-    """Paper as photographed: its fold lines and a gentle bow (the corners stay where they are)."""
+def folded(rng, im, bow=None):
+    """Paper as photographed: its fold lines and a gentle bow (the corners stay where they are); bow (a dict) gets
+    the bow's amplitude and the picture's size when there is one (unbow: where a point of the flat page went)."""
     a = np.asarray(im).astype(np.float32)
     h, w = a.shape[:2]
     for _ in range(rng.randint(0, 2)):
@@ -354,7 +425,34 @@ def folded(rng, im):
         dy = amp * h * np.sin(np.pi * xs / w) * np.sin(np.pi * ys / h)   # zero on the sides: the corners stay
         dx = amp * w * 0.5 * np.sin(np.pi * ys / h) * np.sin(2 * np.pi * xs / w)
         a = cv2.remap(a, xs + dx, ys + dy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        if bow is not None:
+            bow.update(amp=float(amp), w=w, h=h)
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+
+
+def unbow(bow, pts):
+    """Where points of the flat page (x, y in pixel edges) lie after folded()'s bow: remap shows at q what lay at
+    q + d(q) (q pixel centres), so a point p lands where q + d(q) = p (a few fixed-point steps; the bow is gentle)."""
+    if not bow:
+        return [[float(x), float(y)] for x, y in pts]
+    amp, w, h = bow["amp"], bow["w"], bow["h"]
+    out = []
+    for x, y in pts:
+        px, py = x - 0.5, y - 0.5          # pixel edges → the centres remap works in
+        qx, qy = px, py
+        for _ in range(12):
+            dy = amp * h * np.sin(np.pi * qx / w) * np.sin(np.pi * qy / h)
+            dx = amp * w * 0.5 * np.sin(np.pi * qy / h) * np.sin(2 * np.pi * qx / w)
+            qx, qy = px - dx, py - dy
+        out.append([float(qx + 0.5), float(qy + 0.5)])
+    return out
+
+
+def bowed(boxes, bow):
+    """Field boxes after folded()'s bow: a box the bow moved becomes its four corners (its top-left first, clockwise)."""
+    if not bow:
+        return boxes
+    return [(r, t, unbow(bow, [(x, y), (x + bw, y), (x + bw, y + bh), (x, y + bh)])) for r, t, (x, y, bw, bh) in boxes]
 
 
 def templates_in(folder):
@@ -437,8 +535,26 @@ def background(rng, W, H, photos, meta=None):
             img = cv2.resize(img, (int(w * s) + 1, int(h * s) + 1), interpolation=cv2.INTER_AREA)
             y, x = rng.randint(0, img.shape[0] - H), rng.randint(0, img.shape[1] - W)
             return img[y:y + H, x:x + W].copy()
+    img = surface(rng, W, H, meta)
+    for _ in range(rng.randint(0, 3)):    # things lying about: a sheet, a phone, a pen
+        c = tuple(rng.randint(0, 255) for _ in range(3))
+        x, y = rng.randint(-W // 4, W), rng.randint(-H // 4, H)
+        if rng.random() < 0.3:
+            cv2.line(img, (x, y), (x + rng.randint(-300, 300), y + rng.randint(-300, 300)), c, rng.randint(4, 12))
+        else:
+            box = cv2.boxPoints(((x, y), (rng.randint(60, W // 3), rng.randint(60, H // 3)), rng.uniform(0, 90)))
+            cv2.fillPoly(img, [box.astype(np.int32)], c)
+    return img
+
+
+SURFACES = ("plain", "wood", "cloth", "check", "dark", "sheet")
+
+
+def surface(rng, W, H, meta=None):
+    """A procedural surface W × H (BGR): plain, wood, cloth, check, dark or a sheet; meta gets "bgKind"."""
+    meta = {} if meta is None else meta
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
-    kind = rng.choice(("plain", "wood", "cloth", "check", "dark", "sheet"))
+    kind = rng.choice(SURFACES)
     meta["bgKind"] = kind
     col = np.array([rng.randint(30, 230) for _ in range(3)], np.float32)
     noise = cv2.resize(np.random.default_rng(rng.randint(0, 1 << 30)).random((H // 16 + 1, W // 16 + 1)).astype(np.float32), (W, H))
@@ -461,16 +577,7 @@ def background(rng, W, H, photos, meta=None):
     else:
         img = np.ones((H, W, 3), np.float32) * col
     img = img * (0.85 + 0.3 * noise[..., None])
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    for _ in range(rng.randint(0, 3)):    # things lying about: a sheet, a phone, a pen
-        c = tuple(rng.randint(0, 255) for _ in range(3))
-        x, y = rng.randint(-W // 4, W), rng.randint(-H // 4, H)
-        if rng.random() < 0.3:
-            cv2.line(img, (x, y), (x + rng.randint(-300, 300), y + rng.randint(-300, 300)), c, rng.randint(4, 12))
-        else:
-            box = cv2.boxPoints(((x, y), (rng.randint(60, W // 3), rng.randint(60, H // 3)), rng.uniform(0, 90)))
-            cv2.fillPoly(img, [box.astype(np.int32)], c)
-    return img
+    return np.clip(img, 0, 255).astype(np.uint8)
 
 
 def lay(rng, img, doc, rect, quad, card):

@@ -3,7 +3,10 @@ verify, QA").
 
   python -m gen sources            # every source by kind and side
   python -m gen sources --check    # and fail (exit 1) when the exam is not kept apart
-  python -m gen build --model edges|doctype|he --count N --seed S --jobs J --out DIR   # a made-up set + its manifest
+  python -m gen build --model edges --count N --seed S --jobs J --out DIR   # scenes: one camera for table and documents
+  python -m gen build --model doctype|he --count N --seed S --jobs J --out DIR   # today's generators + their manifest
+  python -m gen bg add DIR --category auto|<name> [--owner] | bg check | bg split | bg pull | bg push   # the background bank
+  python -m gen occluders add DIR --category cup --size-mm 80   # cut-outs laid over documents
   python -m gen verify --run DIR --sample 50    # draw a sample again byte for byte; fail on what the exam keeps
   python -m gen qa --run DIR                    # the QA sheet (DIR/qa/index.html) and purity.json
   python -m gen profile --frames DIR            # the resampling probe's fixed frames (PNG) and frames.json
@@ -23,8 +26,8 @@ def main(argv=None):
         pre = argparse.ArgumentParser(prog="python -m gen build", add_help=False)
         pre.add_argument("--model", required=True, choices=("edges", "doctype", "he"))
         known, rest = pre.parse_known_args(argv[1:])
-        from .build import cli
-        cli(known.model, rest, prog=f"python -m gen build --model {known.model}")
+        from .build import SCENES, cli
+        cli(known.model, rest, prog=f"python -m gen build --model {known.model}", generator=SCENES.get(known.model))
         return 0
     ap = argparse.ArgumentParser(prog="python -m gen")
     sub = ap.add_subparsers(dest="command", required=True)
@@ -32,7 +35,24 @@ def main(argv=None):
     s.add_argument("--check", action="store_true", help="fail when an exam or golden key is on the training side, a held-out "
                    "page is in training, a site page has no side, or heldout.json changed after the exam sets were made")
     s.add_argument("--work", help="the work folder (default SCAN_TRAIN_HOME, else ~/.scan-train)")
-    sub.add_parser("build", help="a made-up set through the manifest: --model edges|doctype|he and the generator's options")
+    sub.add_parser("build", help="a made-up set through the manifest: --model edges (scenes) | doctype | he and the generator's options")
+    b = sub.add_parser("bg", help="the background bank (gen/backgrounds.py): add, check, split, pull, push")
+    b.add_argument("action", choices=("add", "check", "split", "pull", "push"))
+    b.add_argument("dir", nargs="?", help="add: the folder of photos (copied into <home>/backgrounds unless there)")
+    b.add_argument("--category", default="auto", help="add: the photos' category, or auto (from a download's sources.json)")
+    b.add_argument("--series", help="add: one surface shot again (its photos stay on one side)")
+    b.add_argument("--licence", help="add: cc0, pdm, owner… (default: the sources.json one; --owner: owner)")
+    b.add_argument("--url")
+    b.add_argument("--owner", action="store_true", help="add: the owner's own shots (into <home>/backgrounds-own)")
+    b.add_argument("--min-side", type=int, default=None, help="check: the long side at least (default 1600)")
+    b.add_argument("--version", help="check: the edges models' version (default the lab's)")
+    b.add_argument("--share", type=float, default=None, help="split: the exam's share of the surfaces (default 0.2)")
+    o = sub.add_parser("occluders", help="cut-outs laid over documents (PNG with alpha)")
+    o.add_argument("action", choices=("add",))
+    o.add_argument("dir")
+    o.add_argument("--category", required=True)
+    o.add_argument("--size-mm", type=float, required=True, help="the cut-out's long side on the table, mm")
+    o.add_argument("--licence", default="owner")
     v = sub.add_parser("verify", help="draw a sample of a made-up set again byte for byte; fail on what the exam keeps")
     v.add_argument("--run", required=True, help="the set's folder (with run.json), or its name under ~/.scan-train/synth/")
     v.add_argument("--sample", type=int, default=50)
@@ -72,9 +92,50 @@ def main(argv=None):
         return 0 if qa(find_run(a.run), a.sample, a.jobs)["passed"] else 1
     elif a.command == "profile":
         return profile(a)
+    elif a.command == "bg":
+        return bg(a)
+    elif a.command == "occluders":
+        from .backgrounds import occluders_add
+        added, skipped = occluders_add(a.dir, a.category, a.size_mm, licence=a.licence)
+        print(f"occluders: {added} added, {skipped} skipped (no alpha channel: cut them out first)")
     elif a.command == "exam-phone":
         from .exam_phone import main as exam_phone
         exam_phone(a.model, a.count, a.version, a.out)
+    return 0
+
+
+def bg(a):
+    import json
+    from . import backgrounds as gb
+    name = "backgrounds-own" if a.owner else "backgrounds"
+    if a.action == "add":
+        if not a.dir:
+            print("give the folder: python -m gen bg add DIR --category auto")
+            return 2
+        added, updated = gb.add(a.dir, a.category, series=a.series, licence=a.licence, url=a.url, owner=a.owner, name=name)
+        print(f"{name}: {added} photos added, {updated} updated — next: python -m gen bg check")
+        return 0
+    if a.action in ("pull", "push"):
+        (gb.pull if a.action == "pull" else gb.push)()
+        return 0
+    out = {}
+    for n in ("backgrounds", "backgrounds-own"):
+        if not gb.load(name=n)["files"]:
+            continue
+        if a.action == "check":
+            det = gb.edges_detector(version=a.version)
+            out[n] = gb.check(detector=det, min_side=a.min_side or gb.MIN_SIDE, name=n)
+            out[n]["edgesVersion"] = det.version
+        else:
+            out[n] = gb.split(share=gb.EXAM_SHARE if a.share is None else a.share, name=n)
+    if not out:
+        print("no catalogued photo: python -m gen bg add DIR --category auto")
+        return 2
+    for n, rep in out.items():
+        print(f"{n}: {rep['photos']} photos — used by category {json.dumps(rep['used'])}; surfaces {json.dumps(rep['surfaces'])}")
+        print(f"  rejected {json.dumps(rep['rejected'])}; no confirmed licence {rep['unlicensed']}; "
+              f"hard negatives (text, no document) {rep['hardNegatives']}")
+        print(f"  split {json.dumps(rep['splits'])}" + (f"; edges models {rep['edgesVersion']}" if rep.get("edgesVersion") else ""))
     return 0
 
 

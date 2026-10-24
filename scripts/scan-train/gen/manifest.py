@@ -28,7 +28,7 @@ from . import common as gc
 MANIFEST, RUN = "manifest.jsonl", "run.json"
 DRAWN, PROCEDURAL = "drawn", "procedural"
 LIBRARIES = {"numpy": "numpy", "opencv": "opencv-python-headless", "pillow": "pillow", "albumentations": "albumentations",
-             "albucore": "albucore", "python-bidi": "python-bidi"}
+             "albucore": "albucore", "python-bidi": "python-bidi", "pymupdf": "pymupdf"}
 
 
 # ---------- small helpers ----------
@@ -90,7 +90,7 @@ def background_fields(sha=None, category=None, kind=None):
 def row(model, split, seed, index, ident, meta, outputs, rng="legacy"):
     """A manifest row: meta from the generator (templates, background, fonts, vocabulary, scene, camera, class,
     source, labels, open), outputs [(path relative to the set's folder, sha256)]."""
-    r = {"id": ident, "model": model, "split": split, "seed": seed, "index": index, "rng": rng}
+    r = {"id": ident, "model": model, "split": split, "seed": seed, "index": index, "rng": meta.get("rng", rng)}
     r.update(template_fields(meta.get("templates") or []))
     r.update(background_fields(meta.get("bgSha1"), meta.get("bgCategory"), meta.get("bgKind")))
     r.update({"fonts": sorted(meta.get("fonts") or []), "vocabulary": meta.get("vocabulary", "train"),
@@ -100,6 +100,8 @@ def row(model, split, seed, index, ident, meta, outputs, rng="legacy"):
               "outputs": [[p, h] for p, h in outputs]})
     if meta.get("open"):
         r["open"] = meta["open"]
+    if meta.get("recipe"):
+        r["recipe"] = meta["recipe"]   # a scene's recipe (gen/scene.py): the QA sheet's strata
     return r
 
 
@@ -163,9 +165,19 @@ def counts(rows):
             v = str(r.get(k))
             c[v] = c.get(v, 0) + 1
         return dict(sorted(c.items()))
-    return {"examples": len(rows), "outputs": sum(len(r.get("outputs") or []) for r in rows), "byClass": by("class"),
-            "bySource": by("source"), "byBackground": by("bgCategory"), "byTemplate": {"drawn": sum(r["templateId"] == DRAWN for r in rows),
-                                                                                         "real": sum(r["templateId"] != DRAWN for r in rows)}}
+    out = {"examples": len(rows), "outputs": sum(len(r.get("outputs") or []) for r in rows), "byClass": by("class"),
+           "bySource": by("source"), "byBackground": by("bgCategory"), "byTemplate": {"drawn": sum(r["templateId"] == DRAWN for r in rows),
+                                                                                        "real": sum(r["templateId"] != DRAWN for r in rows)}}
+    if any(r.get("recipe") for r in rows):   # scenes (gen/scene.py): by recipe, every page laid by its source, PDFs skipped
+        out["byRecipe"] = by("recipe")
+        laid = {}
+        for r in rows:
+            for p in (r.get("scene") or {}).get("pages") or []:
+                laid[str(p.get("source"))] = laid.get(str(p.get("source")), 0) + 1
+        out["pagesBySource"] = dict(sorted(laid.items()))
+        out["backgroundSeries"] = len({(r.get("scene") or {}).get("bgSeries") for r in rows} - {None})
+        out["pdfSkipped"] = sum(int((r.get("scene") or {}).get("pdfSkipped") or 0) for r in rows)
+    return out
 
 
 def write_run(folder, model, split, params, rows, manifest_sha):

@@ -81,6 +81,72 @@ def contract(rng, F):
     return im
 
 
+SHEETS_HE = ("payslip", "bank", "medical", "notice")   # he_sheet's kinds: Hebrew A4 that is not a contract
+
+
+def he_sheet(rng, F, held=False):
+    """A Hebrew A4 page that is not a contract (training audit: "Hebrew A4" must not mean "contract" to the type model):
+    a payslip (a table of amounts), a bank letter (a letterhead, an account line, a short letter), a medical form (boxes
+    with labels to fill) or a notice — every value made up. → synth_docs.Drawn (RGBA, rect, the values' boxes)."""
+    w, h = 1050, 1485
+    im = sd.paper(rng, w, h)
+    d = ImageDraw.Draw(im)
+    kind = rng.choice(SHEETS_HE)
+    boxes = []
+
+    def text(xy, s, size, fill=(25, 25, 35), rtl=True, role=None):
+        f = F.get("hebrew", size, rng)
+        sd.put(d, xy, s, f, fill, rtl)
+        if role:
+            boxes.append((role, s, sd.text_box(d, xy, s, f, rtl)))
+
+    head = {"payslip": ("תלוש שכר", "תלוש משכורת לחודש"), "bank": ("בנק", "הודעה ללקוח"),
+            "medical": ("טופס רפואי", "שאלון הצהרת בריאות"), "notice": ("הודעה לתושב", "עירייה - הודעה")}[kind]
+    band = sd.pastel(rng, (60, 170))
+    if rng.random() < 0.6:   # a letterhead's band
+        d.rectangle((0, 0, w, rng.randint(70, 120)), fill=band)
+    text((w - 60, 40), rng.choice(head), rng.randint(34, 44), (20, 20, 40))
+    text((w - 60, 110), sd.he_value(rng, "given", held) + " " + sd.he_value(rng, "surname", held), 24, role="name")
+    text((w - 60, 145), sd.he_value(rng, "street", held) + " " + str(rng.randint(1, 120)) + ", " + sd.he_value(rng, "city", held),
+         20, role="address")
+    y = 210
+    if kind == "payslip":
+        rows = rng.randint(8, 16)
+        labels = ("שכר יסוד", "שעות נוספות", "נסיעות", "הבראה", "מס הכנסה", "ביטוח לאומי", "מס בריאות", "פנסיה",
+                  "קרן השתלמות", "ניכויים", "ברוטו", "נטו לתשלום")
+        for r in range(rows + 1):
+            yy = y + r * 40
+            d.line((60, yy, w - 60, yy), fill=(90, 90, 100), width=1)
+            if r:
+                text((w - 80, yy - 32), rng.choice(labels), 20)
+                text((90, yy - 32), f"{rng.randint(10, 9999)}.{rng.randint(0, 99):02d}", 20, rtl=False, role="amount")
+        for x in (60, w // 2, w - 60):
+            d.line((x, y, x, y + rows * 40), fill=(90, 90, 100), width=1)
+        y += rows * 40 + 40
+    elif kind == "medical":
+        labels = ("שם המטופל", "מספר זהות", "תאריך לידה", "קופת חולים", "רופא מטפל", "אבחנה", "תרופות", "רגישויות")
+        for lab in rng.sample(labels, rng.randint(5, len(labels))):
+            text((w - 70, y), lab, 20, (70, 70, 80))
+            d.rectangle((70, y + 30, w - 70, y + 70), outline=(110, 110, 120), width=2)
+            if rng.random() < 0.6:
+                text((w - 90, y + 38), sd.he_value(rng, rng.choice(("given", "city", "street")), held), 22, role="value")
+            y += 95
+            if y > h - 300:
+                break
+    words = HE_WORDS[18:] + ("לקוח", "יקר", "חשבון", "יתרה", "תשלום", "בברכה", "הודעה", "בקשה", "מסמך", "טופס", "תאריך")
+    while y < h - 220:   # the letter's lines: no numbered clauses (a contract's look)
+        line = " ".join(rng.choice(words) for _ in range(rng.randint(5, 11)))
+        text((w - 70, y), line, rng.randint(18, 22), role="text")
+        y += rng.randint(30, 40)
+        if rng.random() < 0.15:
+            y += 30
+    if rng.random() < 0.6:   # a stamp
+        cx, cy, r = rng.randint(150, 400), rng.randint(h - 260, h - 140), rng.randint(50, 90)
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=rng.choice(((60, 70, 150), (150, 40, 50))), width=4)
+    sd.put(d, (60, h - 60), "SPECIMEN", F.get("latin", 26, rng), (150, 80, 80))
+    return sd.Drawn(im.convert("RGBA"), (0, 0, w, h), boxes)
+
+
 def drawn(rng, F, kind):
     """A drawn page of a kind: upright RGB."""
     if kind == "contract":
