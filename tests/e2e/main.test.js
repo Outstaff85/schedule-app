@@ -819,30 +819,33 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(wayFails.n === 8 && wayFails.kinds === 'GPU,memory,hang,error' && wayFails.last === 'hang' && wayFails.shown,
     'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the Errors block, apart from the loading log ' + JSON.stringify(wayFails));
-  // A kept page's document type: the model's answer chosen under the page; the type left there goes for training
-  // (source "page", with its copy) — the model's confirmed with keep, another picked as a change
+  // A kept page's document type: the model's answer chosen under the page with a ✓; only the user's action is a
+  // label — a type picked (sent later, once) or the ✓ (keep); nothing in the site's frame, nothing with no model
   const kinds = await p.evaluate(async () => {
     const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, sent = [];
-    const was = fw.eval('doctypeSess'), post = fw.trainPost;
+    const was = fw.eval('doctypeSess'), post = fw.trainPost, here = fw.kindsHere;
     fw.eval(`doctypeSess = { inputNames: ['img'], run: async () => ({ doctype: { data: [0.05, 0, 0.9, 0.05, 0, 0] }, turn: { data: [1, 0, 0, 0] } }) }`);
     fw.trainPost = async body => { sent.push(body); return { ok: true }; };
     const c = fw.document.createElement('canvas'); c.width = 60; c.height = 40;
     const page = () => { const w = fw.document.createElement('div'), im = new fw.Image(); im.src = c.toDataURL('image/jpeg'); w.append(im); fw.document.body.append(w); return { w, im }; };
-    const a = page(), b = page();
-    await fw.addKind(a.w, a.im); await fw.addKind(b.w, b.im);
+    const site = page(); await fw.addKind(site.w, site.im);
+    const inFrame = !site.w.querySelector('select.kind');
+    fw.kindsHere = () => true;
+    const a = page(), b = page(), quiet = page();
+    await fw.addKind(a.w, a.im); await fw.addKind(b.w, b.im); await fw.addKind(quiet.w, quiet.im);
     const sa = a.w.querySelector('select.kind'), sb = b.w.querySelector('select.kind');
-    sb.value = 'id_front'; sb.onchange();
-    fw.sendKind(sa); fw.sendKind(sb); fw.sendKind(sa);  // once each
-    fw.eval('doctypeSess = null'); fw.trainPost = post;
+    a.w.querySelector('button.kind-ok').click(); a.w.querySelector('button.kind-ok').click();  // once
+    sb.value = 'id_front'; sb.onchange(); fw.sendKind(sb);
+    fw.eval('doctypeSess = null');
     const none = page(); await fw.addKind(none.w, none.im);
-    a.w.remove(); b.w.remove(); none.w.remove();
-    fw.__ds = was; fw.eval('doctypeSess = window.__ds');
+    fw.trainPost = post; fw.kindsHere = here; fw.__ds = was; fw.eval('doctypeSess = window.__ds');
+    for (const x of [site, a, b, quiet, none]) x.w.remove();
     const ex = sent.map(x => x.examples[0]);
-    return { chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage].join(),
+    return { inFrame, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage].join(),
       second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined].join(), noModel: !none.w.querySelector('select.kind') };
   });
-  ok(kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel,
-    'scanner lab: a kept page shows the model\'s document type, and the type left there is sent once for training — confirmed with keep, changed as a change; no model, no choice ' + JSON.stringify(kinds));
+  ok(kinds.inFrame && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel,
+    'scanner lab: a kept page shows the model\'s document type; only the user\'s ✓ or pick is sent, once — never an untouched answer, never in the site\'s frame, no choice with no model ' + JSON.stringify(kinds));
   // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
   // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
   // a kept page deleted later is told by its folder; with no network they wait on the phone, 5 at most
