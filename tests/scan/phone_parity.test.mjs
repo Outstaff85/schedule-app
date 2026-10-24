@@ -11,6 +11,8 @@
 // and scan-core.js faceScore / faceTurn, run on the face finder's outputs written by hand (a stub session, a stub
 // canvas), give phone.face_score_of / face_turn's answers: the surest face, ties to the first, the clip, 0 under 0.5,
 // the eyes-to-mouth sine, the first turn on a tie and -1 when none.
+// And index.html smallRGBA clears the shared canvas before it draws: a cut running past the photo (warpRGBA's
+// transparent part) reads back black, as gen/phone.py warp_rgba(...)[..., :3] trains findInside's input.
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import vm from 'node:vm';
@@ -78,6 +80,24 @@ function canvasOf(grey, w, h) {
         return { data };
       },
     }),
+  };
+}
+
+// a shared S x S canvas that keeps what was drawn on it, as the lab's `small` does: drawImage scales by the nearest pixel
+// and lays the source over what is there (source-over: a transparent pixel leaves it as it was), clearRect empties it
+function sharedCanvas(S) {
+  const buf = new Uint8ClampedArray(S * S * 4);
+  return {
+    clearRect() { buf.fill(0); },
+    drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh) {
+      for (let y = 0; y < dh; y++) for (let x = 0; x < dw; x++) {
+        const X = sx + Math.min(sw - 1, Math.floor((x + 0.5) * sw / dw)), Y = sy + Math.min(sh - 1, Math.floor((y + 0.5) * sh / dh));
+        const s = (Y * src.width + X) * 4, d = ((dy + y) * S + dx + x) * 4, a = src.data[s + 3] / 255;
+        for (let c = 0; c < 3; c++) buf[d + c] = src.data[s + c] * a + buf[d + c] * (1 - a);
+        buf[d + 3] = 255 * a + buf[d + 3] * (1 - a);
+      }
+    },
+    getImageData: () => ({ data: buf.slice() }),
   };
 }
 
@@ -192,7 +212,28 @@ for (const dir of ['scan-lab', 'scan']) {
     assert.equal(await faceCtx.faceTurn(sess, facePage), c.k, `${dir}: faceTurn = phone.face_turn, ${c.name}`);
     assert.deepEqual(dims, Array(4).fill([1, 3, 320, 320]), `${dir}: faceTurn runs the four turns on the 320 letterbox, ${c.name}`);
   }
+  // findInside's input: a cut running past the photo (warpRGBA leaves that part transparent) goes through smallRGBA
+  // onto the shared canvas — cleared first, so it reads back black there as gen/phone.py warp_rgba(...)[..., :3] trains
+  // it, never what was drawn before (the last live frame or findNext's painted photo)
+  {
+    const page = readFileSync(new URL(`../../${dir}/index.html`, import.meta.url), 'utf8');
+    const Sm = 64, sm = { S: Sm, sctx: sharedCanvas(Sm) };
+    vm.runInNewContext(grabLine(page, 'function smallRGBA') + ';this.smallRGBA = smallRGBA;', sm);
+    const W = 40, H = 30, photo = new Uint8ClampedArray(W * H * 4);
+    for (let i = 0; i < W * H; i++) photo.set([90, 160, 30, 255], i * 4);
+    const cut = ctx.warpRGBA(photo, W, H, [[0.5, 0.1], [1.4, 0.1], [1.4, 0.9], [0.5, 0.9]]);   // past the right edge
+    sm.smallRGBA({ width: 8, height: 8, data: new Uint8ClampedArray(256).fill(255) }, 8, 8);   // what ran before: white
+    const got = sm.smallRGBA(cut, cut.width, cut.height);
+    let outside = 0, inside = 0;
+    for (let y = 0; y < Sm; y++) for (let x = 0; x < Sm; x++) {
+      const X = Math.min(cut.width - 1, Math.floor((x + 0.5) * cut.width / Sm)), Y = Math.min(cut.height - 1, Math.floor((y + 0.5) * cut.height / Sm));
+      const a = cut.data[(Y * cut.width + X) * 4 + 3], rgb = Array.from(got.slice((y * Sm + x) * 4, (y * Sm + x) * 4 + 3));
+      if (a === 0) { outside++; assert.deepEqual(rgb, [0, 0, 0], `${dir}: smallRGBA reads a transparent cut pixel as black, at ${x},${y}`); }
+      else if (a === 255) { inside++; assert.deepEqual(rgb, [90, 160, 30], `${dir}: smallRGBA keeps the cut's pixel, at ${x},${y}`); }
+    }
+    assert.ok(outside > 100 && inside > 100, `${dir}: the cut runs past the photo (${outside} outside, ${inside} inside)`);
+  }
   console.log(`PASS ${dir}: corners (${fx.heatmaps.length} maps) exactly, warpRGBA (${fx.warps.length}) within 1, mrzFind (${fx.zones.length}) as phone.py; ` +
     `findNext (${m.nexts.length}) and findInside (${m.insides.length}) as docfind, quadIoU / docShape / goodQuad as phone.py, ` +
-    `findNext's paint (${fx.paints.length}) as phone.lab_paint, faceScore (${F.scores.length}) and faceTurn (${F.turns.length}) as phone.py`);
+    `findNext's paint (${fx.paints.length}) as phone.lab_paint, faceScore (${F.scores.length}) and faceTurn (${F.turns.length}) as phone.py; smallRGBA clears before it draws (a cut past the photo reads black)`);
 }

@@ -80,14 +80,15 @@ def test_the_real_share_is_capped_at_30_percent_of_an_epoch():
 
 def test_mix_end_to_end_shows_a_real_share_of_20_to_30_percent(tmp_path, heldout, no_qa, capsys):
     rows = [_row(i) for i in range(8)] + [_row(100 + i, label="self", weight=0.3) for i in range(2)]
-    rows += [_row(200, split="select"), _row(201, split="exam", key="g:exam"), _row(202, split="golden", key="g:gold")]
+    rows += [_row(200, split="select"), _row(201, split="exam", key="g:exam"), _row(202, split="golden", key="g:gold"),
+             _row(203, split="select", label="self", weight=0.3)]                        # a self label never picks the epoch
     folder = _index(tmp_path, rows)
     run = _synth_run(tmp_path, 400, weights={0: 0.0})                                         # a partial scene: weight 0, left out
     meta = mix.main("edges", folder, run, real_repeat=30, seed=5, out=tmp_path / "mix-edges", work=tmp_path)
     assert meta["counts"] == {"real": 10, "synth": 399} and meta["select"] == 1 and meta["seed"] == 5
     assert 0.20 <= meta["realShare"] <= 0.30 and meta["realRepeat"] == 17                     # capped: 30 asked
     assert "real share of an epoch" in capsys.readouterr().out
-    got, sel, back = mix.load(tmp_path / "mix-edges", "edges")
+    got, sel, back = mix.load(tmp_path / "mix-edges", "edges", work=tmp_path)
     assert not [r for r in got + sel if r.get("split") in gc.EXAM_SIDE or r.get("key") in ("g:exam", "g:gold")]
     assert [r["id"] for r in sel] == ["att-200-0"]                                            # the select set: split select only
     assert all(r["weight"] <= gc.SELF_WEIGHT for r in got if r.get("self")) and sum(bool(r.get("self")) for r in got) == 2
@@ -122,7 +123,7 @@ def test_the_mix_refuses_an_exam_key_in_training(tmp_path, heldout, no_qa):
 def test_resume_refuses_once_heldout_json_changes(tmp_path, heldout, no_qa, monkeypatch):
     folder = _index(tmp_path, [_row(i) for i in range(4)])
     mix.main("edges", folder, _synth_run(tmp_path, 40), seed=2, out=tmp_path / "mix", work=tmp_path)
-    rows, _, meta = mix.load(tmp_path / "mix", "edges")
+    rows, _, meta = mix.load(tmp_path / "mix", "edges", work=tmp_path)
     info = {"model": "edges.onnx", "base": "v5", "data": mix.fingerprint(rows, meta, resize="area"), "seed": 9}
     monkeypatch.setattr(checkpoint, "load", lambda name: {"info": info, "net": {}, "epoch": 1, "epochs": 4})
     monkeypatch.setattr(checkpoint, "exam_ids", lambda work=None: set())
@@ -130,7 +131,7 @@ def test_resume_refuses_once_heldout_json_changes(tmp_path, heldout, no_qa, monk
     assert checkpoint.begin("edges.onnx", args, info) is not None                             # the same data: resumed
     heldout("another salt")                                                                    # what is held out changed
     with pytest.raises(SystemExit, match="heldout.json changed since the mix"):
-        mix.load(tmp_path / "mix", "edges")
+        mix.load(tmp_path / "mix", "edges", work=tmp_path)
     now = {**info, "data": mix.fingerprint(rows, meta, resize="area")}
     assert now["data"]["heldout"] != info["data"]["heldout"]
     with pytest.raises(SystemExit, match="cannot be resumed: the data changed"):
@@ -179,3 +180,42 @@ def test_the_weighted_losses_count_each_sample_by_its_weight():
                             {"id": "s", "split": "train", "labelBy": "self", "doctype": "passport"},
                             {"id": "p", "synthPage": True, "doctype": "passport"}], 30)
     assert {r["id"]: r.get("repeat", 1) for r in rows} == {"p": 1, "r": 1} and meta["counts"] == {"real": 1, "synth": 1}
+
+
+# ---------- review fixes ----------
+def test_the_select_set_holds_no_self_label():
+    rows = [real.finish(r) for r in (_row(1, split="select"), _row(2, split="select", label="self", weight=0.3),
+                                     _row(3, label="self", weight=0.3))]
+    train, select = mix.real_rows(rows, "edges")
+    assert [r["id"] for r in select] == ["att-1-0"] and [r["id"] for r in train] == ["att-3-0"]
+    assert not [r for r in select if r["self"]]
+
+
+def test_a_stale_mix_is_refused_once_the_real_index_changes(tmp_path, heldout, no_qa):
+    folder = _index(tmp_path, [_row(1, key="g:K"), _row(2, key="g:L")])
+    mix.main("edges", folder, None, seed=3, out=tmp_path / "mix", work=tmp_path)
+    rows, _, _ = mix.load(tmp_path / "mix", "edges", work=tmp_path)
+    # gen real again: g:K is now the exam's (a session linked to a worker kept as the exam)
+    _index(tmp_path, [_row(1, key="g:K", split="exam"), _row(2, key="g:L")])
+    with pytest.raises(SystemExit, match="real index changed since the mix"):
+        mix.load(tmp_path / "mix", "edges", work=tmp_path)
+    # and the training's own check sees the index too, so a stale list fails closed even without mix.load
+    from gen import sources
+    with pytest.raises(SystemExit, match="split key is the exam's"):
+        sources.assert_clean(rows, "the mix", work=tmp_path)
+    # a key left out of both ("none": a self label on the exam side, a used attempt) is held as well
+    _index(tmp_path, [_row(1, key="g:K", split="none"), _row(2, key="g:L")])
+    assert "g:K" in sources.Held(tmp_path).keys and "g:L" not in sources.Held(tmp_path).keys
+
+
+def test_a_mix_row_on_the_exam_side_today_is_refused_by_its_id(tmp_path, heldout, no_qa, monkeypatch):
+    from gen import manifest
+    rows = [_row(1), {**_row(2), "id": "copy-r7", "source": "copy", "key": "s:7"}]
+    folder = _index(tmp_path, rows)
+    mix.main("edges", folder, None, seed=4, out=tmp_path / "mix", work=tmp_path)
+    assert mix.ids_of("copy-r7") == {"copy-r7", "r7"} and mix.ids_of("att-1-0") == {"att-1-0"}
+    # pull_doctypes.py's doctypes.json now names the copy "r7" on the exam side (its key moved to w:)
+    (tmp_path / "doctypes.json").write_text(json.dumps([{"id": "r7", "key": "w:9", "split": "exam", "exam": True}]), encoding="utf-8")
+    assert manifest.short_id("r7") in manifest.exam_ids(tmp_path)
+    with pytest.raises(SystemExit, match="1 rows of the mix are on the exam side today"):
+        mix.load(tmp_path / "mix", "edges", work=tmp_path)

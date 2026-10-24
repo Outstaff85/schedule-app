@@ -21,8 +21,10 @@ self: Haiku's type on a scan never saved — weight 0.3, never the exam: on the 
 sampleWeight (keepEvery: one right page in five). The full documents' pages (documents/**/record.json, every page whose
 type is one of DOCTYPES; labelBy human-saved, their turn not known) are added too, shrunk to 256 × 256 as the site's
 pageCopy draws its copies (doctypes/doc-<id>-<n>.jpg), split by their worker's key; a page copy and a document page of one
-scan that are the same page (same key and type, pHash close: gen.real.dedupe) are one entry. The counts per source are
-printed."""
+scan that are the same page (same key and type, pHash close: gen.real.dedupe) are one entry, on the stricter split of
+the two. A document page that is the same page as a model-own copy (downloaded only for this match) is dropped too, and
+one that does not say who gave its type and has no twin copy is left off the exam side (it may be the model's own
+answer). The counts per source are printed."""
 from collections import Counter
 
 from common import DOCTYPES, WORK, data_file, write_json
@@ -97,34 +99,42 @@ def document_entries(docs, links=None, exam_keys=frozenset(), fetch=None, folder
     out = []
     for row in real.document_rows(docs, links, exam_keys, write):
         dt = row["targets"]["doctype"]
-        out.append({"id": row["id"], "file": row["file"], "doctype": dt["doctype"], "given": None, "by": "user",
+        out.append({"id": row["id"], "file": row["file"], "doctype": dt["doctype"], "given": dt.get("given"),
+                    "by": dt.get("by", "user"), "byKnown": bool(dt.get("byKnown")),
                     "exam": row["split"] == "exam", "key": row["key"], "split": row["split"],
-                    **({"legacy": True} if row.get("legacy") else {}), "source": "document", "labelBy": "human-saved",
+                    **({"legacy": True} if row.get("legacy") else {}), "source": "document", "labelBy": dt.get("labelBy"),
                     "weight": 1.0, "sampleWeight": 1, "upright": False, "turnBy": None, "turnModel": None, "turnFixed": None,
                     "origin": "site"})
     return out
 
 
-def deduped(entries):
-    """One entry per page of a scan (gen.real.dedupe on the pictures' pHashes) → (entries kept, duplicates by source)."""
+def deduped(entries, own=()):
+    """One entry per page of a scan (gen.real.dedupe on the pictures' pHashes; own: the model-own copies dropped,
+    [{id, file, doctype, key}], matched only) → (entries kept, each on the split dedupe gave it; the counts)."""
     import cv2
     from gen.backgrounds import phash
-    rows, ph = [], {}
-    for e in entries:
+    rows, ph, others = [], {}, []
+    for group, e in [(rows, e) for e in entries] + [(others, o) for o in own]:
         pic = cv2.imread(e["file"])
         if pic is not None:
             ph[e["id"]] = phash(pic)
-        targets = {"doctype": {"doctype": e["doctype"], "labelBy": e.get("labelBy")}}
+        targets = {"doctype": {"doctype": e["doctype"], "labelBy": e.get("labelBy"), "byKnown": bool(e.get("byKnown"))}}
         if e.get("turnBy") in real.KNOWN_TURN or e.get("turnFixed") is not None:
             targets["turn"] = {}
-        rows.append({"id": e["id"], "source": e.get("source", "copy"), "key": e.get("key"), "targets": targets})
-    kept, dupes = real.dedupe(rows, ph)
-    ids = {r["id"] for r in kept}
-    return [e for e in entries if e["id"] in ids], dupes
+        group.append({"id": e["id"], "source": e.get("source", "copy"), "key": e.get("key"), "split": e.get("split"),
+                      "targets": targets})
+    kept, dupes = real.dedupe(rows, ph, others)
+    split = {r["id"]: r["split"] for r in kept}
+    out = []
+    for e in entries:
+        if e["id"] in split:
+            s = split[e["id"]]
+            out.append({**e, "split": s, "exam": s == "exam"} if s != e.get("split") else e)
+    return out, dupes
 
 
 def main():
-    out, dropped = [], 0
+    out, own, dropped = [], [], 0
     (WORK / "doctypes").mkdir(parents=True, exist_ok=True)
     recs = records()
     docs = document_records(with_paths=True)
@@ -133,10 +143,15 @@ def main():
     for rid, r, fetch in recs:
         if not r.get("pageImage") or r.get("doctypeFixed") not in DOCTYPES:
             continue
-        if real.doctype_target(r, links=links) is None:
-            dropped += 1   # the model's own type left as it was: no truth
-            continue
         path = WORK / "doctypes" / f"{rid}.jpg"
+        if real.doctype_target(r, links=links) is None:
+            dropped += 1   # the model's own type left as it was: no truth — kept only to find its document page twin
+            if path.exists() or fetch(r["pageImage"], path):
+                k = quarter(r.get("turnFixed"))
+                f = turned_copy(path, k) if k else path
+                if f is not None:
+                    own.append({"id": rid, "file": str(f), "doctype": r["doctypeFixed"], "key": side(r, links, rid)[0]})
+            continue
         if not path.exists() and not fetch(r["pageImage"], path):
             continue
         e, k = entry(rid, r, path, links, exam_keys)
@@ -147,7 +162,7 @@ def main():
             e["file"] = str(t)
         out.append(e)
     out += document_entries(docs, links, exam_keys)
-    out, dupes = deduped(out)
+    out, dupes = deduped(out, own)
     write_json(WORK / "doctypes.json", out)
     n_exam = sum(e["exam"] for e in out)
     n_none = sum(e["split"] == "none" for e in out)
@@ -157,7 +172,8 @@ def main():
           f"(their key is the exam's and the rule before trained them, or a type no one saw on the exam side); "
           f"{sum(not e['upright'] for e in out)} with no sure turn (the type only)")
     print("  by source/side: " + ", ".join(f"{k} {n}" for k, n in sorted(src.items()))
-          + f"; the model's own type left as it was (dropped) {dropped}; copy / document duplicates dropped {dict(dupes)}")
+          + f"; the model's own type left as it was (dropped) {dropped}; copy / document duplicates dropped, document pages"
+          f" of the model's own type dropped and of an unknown type giver left out of the exam {dict(dupes)}")
     print("  by labelBy: " + ", ".join(f"{k} {n}" for k, n in sorted(Counter(str(e.get("labelBy")) for e in out).items())))
     print("  to train on, by document type: " + ", ".join(f"{k} {per.get(k, 0)}" for k in DOCTYPES))
 

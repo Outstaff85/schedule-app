@@ -245,7 +245,7 @@ def gather(a, seed):
     the old flags' — pull.py's examples.json (the training side, each with its weight) and a.synth / a.midv /
     a.smartdoc made-up and open examples drawn at random (by seed) — built into the same list (gen.mix.build)."""
     if a.from_mix:
-        rows, select, meta = gmix.load(a.from_mix, "edges")
+        rows, select, meta = gmix.load(a.from_mix, "edges", work=WORK)
         if meta.get("synthRun"):
             require_qa(meta["synthRun"], "the mix's made-up photos", work=WORK)   # drawn through gen build: its QA passed
         return rows, select, meta, pathlib.Path(meta.get("realDir") or WORK / "real") / "index.jsonl"

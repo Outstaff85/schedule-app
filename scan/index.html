@@ -365,7 +365,9 @@ async function startSession() {
   $('sLoad').textContent = ((performance.now() - t0) / 1000).toFixed(1);
 }
 
-function smallRGBA(src, w, h) { sctx.drawImage(src, 0, 0, w, h, 0, 0, S, S); return sctx.getImageData(0, 0, S, S).data; }
+// cleared first: a cut running past the photo (warpRGBA leaves it transparent) reads back black, as gen/phone.py
+// warp_rgba(...)[..., :3] trains it, never the picture drawn before
+function smallRGBA(src, w, h) { sctx.clearRect(0, 0, S, S); sctx.drawImage(src, 0, 0, w, h, 0, 0, S, S); return sctx.getImageData(0, 0, S, S).data; }
 // The camera frame scaled to S×S on the GPU (createImageBitmap) and handed to
 // the background thread as is: no full-size copy into the page's memory.
 let bitmapOk = typeof createImageBitmap === 'function';

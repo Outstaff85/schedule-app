@@ -12,11 +12,15 @@ Writes <out>/train.jsonl (default <home>/models/<model>/), <out>/select.jsonl an
   leaving self rows out for now;
 - each real row repeated K times (its "repeat"): K is --real-repeat, capped so the real rows are at most REAL_CAP (30 %)
   of an epoch; the summary prints the real share (REAL_SHARE: 20–30 % is the aim) and the counts per source;
-- select.jsonl: the real rows of split "select" (the epoch is picked on them — never on the exam);
+- select.jsonl: the real rows of split "select" with a label a person gave (the epoch is picked on them — never on the
+  exam, and never on a self label: the base model's own answer would pick the epoch that stays closest to it);
 - mix.json: the counts, K asked and used, the real share, the seed the made-up sample was drawn with (fresh unless
   --seed), the made-up set's fingerprint, the real index's sha256, heldout.json's sha256 and the data fingerprint
-  (gen.manifest.data_fingerprint). train.py / train_doctypes.py --from-mix read it: they recompute the fingerprint (so
-  --resume / --more refuse what checkpoint.py refuses) and refuse a mix made under another heldout.json.
+  (gen.manifest.data_fingerprint). train.py / train_doctypes.py --from-mix read it (load): they recompute the fingerprint
+  (so --resume / --more refuse what checkpoint.py refuses) and refuse a mix made under another heldout.json or another
+  real index (gen real ran again: a key may have moved to the exam side), then run the checks below again against
+  today's index and refuse a row that is on the exam side today (gen.manifest.exam_ids: examples.json, doctypes.json and
+  the real index, a page copy's "copy-<id>" matched as "<id>" too).
 Before writing it refuses a list that holds an exam or golden row, or a row whose split key is on the exam side of the
 real index (the exam, golden, or left out of both), and runs gen.sources.assert_clean."""
 import datetime
@@ -43,7 +47,8 @@ def exam_keys_of(index_rows):
 
 def real_rows(index_rows, model):
     """The real index's rows for one model → (training rows, select rows) in the training scripts' format; a hard row
-    (no target) and a row on neither training side are left out; the document type leaves self rows out for now."""
+    (no target) and a row on neither training side are left out; the document type leaves self rows out for now, and
+    the select set holds no self row (the epoch is never picked by agreement with the old model)."""
     train, select = [], []
     for r in index_rows:
         t = (r.get("targets") or {}).get(model)
@@ -60,7 +65,7 @@ def real_rows(index_rows, model):
                 continue   # the document type learns no self label for now
             turn = (r.get("targets") or {}).get("turn") or {}
             row = {**base, "doctype": t.get("doctype"), "turnBy": turn.get("turnBy"), "turnFixed": turn.get("turnFixed")}
-        if row["weight"] <= 0:
+        if row["weight"] <= 0 or (row["self"] and r["split"] == "select"):
             continue
         (select if r["split"] == "select" else train).append(row)
     return train, select
@@ -222,9 +227,19 @@ def write(out, rows, select, meta):
     return meta
 
 
-def load(folder, model=None):
-    """A mix's (rows, select rows, meta); SystemExit when it is missing, of another model, or made under another
-    heldout.json (mix again)."""
+def ids_of(row_id):
+    """The ids a mix row may have elsewhere: its own, and a page copy's "copy-<id>" as doctypes.json names it ("<id>")."""
+    i = str(row_id)
+    return {i, i[len("copy-"):]} if i.startswith("copy-") else {i}
+
+
+def load(folder, model=None, work=None):
+    """A mix's (rows, select rows, meta); SystemExit when it is missing, of another model, made under another
+    heldout.json or another real index (mix again), or when a row is on the exam side today (check against today's
+    index, and gen.manifest.exam_ids)."""
+    import home
+    from . import real as greal
+    work = pathlib.Path(work or home.WORK)
     folder = pathlib.Path(folder)
     try:
         meta = json.loads((folder / META).read_text(encoding="utf-8"))
@@ -235,10 +250,22 @@ def load(folder, model=None):
     if meta.get("heldoutSha256") != gc.heldout_sha256():
         raise SystemExit(f"{folder}: heldout.json changed since the mix — python -m gen mix again")
 
+    real_dir = pathlib.Path(meta.get("realDir") or work / "real")
+    now = (greal.read_summary(real_dir) or {}).get("indexSha256")
+    if meta.get("realIndex") != now and (meta.get("realIndex") or now):
+        raise SystemExit(f"{folder}: real index changed since the mix — python -m gen mix again")
+
     def rows_of(name):
         p = folder / name
         return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.exists() else []
-    return rows_of(TRAIN), rows_of(SELECT), meta
+    rows, select = rows_of(TRAIN), rows_of(SELECT)
+    check(rows, select, greal.read_index(real_dir), work)
+    exam = manifest.exam_ids(work)
+    late = [r["id"] for r in rows + select if r.get("source") == "real" and any(manifest.short_id(i) in exam for i in ids_of(r["id"]))]
+    if late:
+        raise SystemExit(f"{folder}: {len(late)} rows of the mix are on the exam side today — python -m gen mix again "
+                         "(docs/scan-training.md → Kept apart)")
+    return rows, select, meta
 
 
 def summary_line(meta):

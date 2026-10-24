@@ -236,3 +236,107 @@ def test_the_moved_threshold_is_the_servers():
     fb = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fb)
     assert gc.MOVED_MIN == fb.MOVED_MIN    # the server keeps a page as corrected from the same shift gen real calls human-moved
+
+
+# ---------- review fixes ----------
+def test_pictures_are_written_anew_when_the_outcomes_or_the_owners_turn_change(tmp_path, monkeypatch):
+    """A page deleted after the first run changes what the next page's picture is (the pages painted over), and an owner's
+    turn set later changes the page copy's: gen real writes both anew from the raw download every run."""
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+    import pull
+    photo = np.full((400, 600, 3), 128, np.uint8)
+    photo[60:200, 360:540] = (0, 0, 255)                         # page 1 (B) red; the border grey
+    src = tmp_path / "photo.png"
+    cv2.imwrite(str(src), photo)
+    copy = np.zeros((40, 80, 3), np.uint8)
+    copy[:, :40] = 255                                            # the page copy: white on its left
+    csrc = tmp_path / "copy.png"
+    cv2.imwrite(str(csrc), copy)
+    P0 = [[0.05, 0.05], [0.4, 0.05], [0.4, 0.45], [0.05, 0.45]]
+    P1 = [[0.6, 0.15], [0.9, 0.15], [0.9, 0.5], [0.6, 0.5]]
+    P2 = [[0.2, 0.6], [0.8, 0.6], [0.8, 0.95], [0.2, 0.95]]
+    ans = {"id": "a1", "group": "a1", "outcome": "kept", "edgesModel": P0, "edgesMore": [P1, P2]}
+    outs, rec = [], {"pageImage": "p", "doctypeFixed": "passport", "doctypeModel": "id_front", "workerId": "W"}
+    put = lambda s, dest: bool(pathlib.Path(dest).write_bytes(pathlib.Path(s).read_bytes()))
+    monkeypatch.setattr(pull, "attempt_folders", lambda prefix="attempts/new/": [
+        (f"{prefix}lab/2026-10-24/a1", ans, list(outs), lambda dest: put(src, dest))] if prefix == "attempts/new/" else [])
+    monkeypatch.setattr(pull, "records", lambda: [("r1", rec, lambda url, dest: put(csrc, dest))])
+    monkeypatch.setattr(pull, "document_records", lambda with_paths=False: [])
+    out = tmp_path / "real"
+    real.build(out)
+    red = lambda: cv2.imread(str(out / "img" / "att-a1-2.jpg"))[100:150, 400:500].mean(0).mean(0)
+    assert red()[2] < 160                                         # page 1 painted over on page 2's picture
+    outs.append({"outcome": "deleted", "page": 1})                # page 1 deleted later
+    rec["turnFixed"] = 1                                          # the owner turned the copy a quarter clockwise
+    real.build(out)
+    assert red()[2] > 200 and red()[1] < 60                       # no longer painted: the picture follows today's outcomes
+    rows = {r["id"]: r for r in real.read_index(out)}
+    assert rows["att-a1-2"]["targets"]["edges"]["fixed"] == P2    # identity corners
+    turned = cv2.imread(str(out / "img" / "copy-r1.jpg"))
+    assert turned.shape[:2] == (80, 40) and turned[:20].mean() > 200 and turned[60:].mean() < 60   # turned clockwise
+    assert rows["copy-r1"]["targets"]["turn"]["turnFixed"] == 1
+    assert (out / "copies" / "r1.jpg").exists()                   # the raw copy kept
+
+
+def test_a_document_page_carrying_who_gave_its_type_is_judged_like_a_copy():
+    t = real.doctype_target
+    assert t({"doctype": "passport", "doctypeBy": "model", "doctypeModel": "passport"}, saved=True) is None
+    got = t({"doctype": "passport", "doctypeBy": "haiku", "doctypeModel": "passport"}, saved=True)
+    assert got["byKnown"] and got["labelBy"] == "human-saved" and got["by"] == "haiku"
+    assert t({"doctype": "passport", "doctypeBy": "model", "doctypeModel": "id_front"}, saved=True)["labelBy"] == "human-confirmed"
+    assert t({"doctype": "passport"}, saved=True)["byKnown"] is False
+
+
+def test_a_document_page_twin_of_a_model_own_copy_is_dropped_and_an_unproven_one_leaves_the_exam():
+    key = gc.split_key({"workerId": "W"})
+    doc = lambda i, split="exam", **dt: {"id": f"doc-D-{i}", "source": "document", "key": key, "split": split,
+                                         "targets": {"doctype": {"doctype": "id_front", "labelBy": "human-saved", **dt}}}
+    own = [{"id": "copy-c9", "source": "copy", "key": key, "targets": {"doctype": {"doctype": "id_front", "labelBy": None}}}]
+    ph = {"copy-c9": "ffff0000ffff0000", "doc-D-0": "ffff0000ffff0001", "doc-D-1": "0000ffff0000ffff", "doc-D-2": "0000ffff0000fff0"}
+    kept, counts = real.dedupe([doc(0), doc(1), doc(2, byKnown=True)], ph, own)
+    by = {r["id"]: r for r in kept}
+    assert "doc-D-0" not in by and counts["documentModelOwn"] == 1             # the model's own type, as its twin copy shows
+    assert by["doc-D-1"]["split"] == "none" and by["doc-D-1"]["unprovenLeftOut"] and counts["documentUnproven"] == 1
+    assert by["doc-D-2"]["split"] == "exam"                                     # it says who gave its type
+    # a document page with a twin copy (not the model's own) stays on the exam side
+    copy = {"id": "copy-c1", "source": "copy", "key": key, "split": "exam",
+            "targets": {"doctype": {"doctype": "id_front", "labelBy": "human-saved"}}}
+    kept, counts = real.dedupe([copy, doc(1)], {"copy-c1": "0000ffff0000ffff", "doc-D-1": "0000ffff0000ffff"})
+    assert [(r["id"], r["split"]) for r in kept] == [("doc-D-1", "exam")] and "documentUnproven" not in counts
+
+
+def test_twins_keep_the_stricter_split():
+    key = gc.split_key({"workerId": "W"})
+    copy = {"id": "copy-c1", "source": "copy", "key": key, "split": "none",          # learned by a published version
+            "targets": {"doctype": {"doctype": "id_front", "labelBy": "human-saved"}}}
+    doc = {"id": "doc-D-0", "source": "document", "key": key, "split": "exam",
+           "targets": {"doctype": {"doctype": "id_front", "labelBy": "human-saved"}}}
+    kept, _ = real.dedupe([copy, doc], {"copy-c1": "ffff0000ffff0000", "doc-D-0": "ffff0000ffff0000"})
+    assert [(r["id"], r["split"], r.get("twinSplit")) for r in kept] == [("doc-D-0", "none", True)]
+    changed = {**copy, "split": "exam", "targets": {"doctype": {"doctype": "id_front", "labelBy": "human-confirmed"}}}
+    kept, _ = real.dedupe([changed, {**doc, "split": "none"}], {"copy-c1": "ffff0000ffff0000", "doc-D-0": "ffff0000ffff0000"})
+    assert [(r["id"], r["split"]) for r in kept] == [("copy-c1", "none")]
+
+
+def test_pull_doctypes_carries_the_dedupe_split_back(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("pull_doctypes_split", HERE / "pull_doctypes.py")
+    pd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pd)
+    a, b = tmp_path / "a.jpg", tmp_path / "b.jpg"
+    pic = np.zeros((256, 256, 3), np.uint8)
+    pic[:128] = 255
+    cv2.imwrite(str(a), pic)
+    cv2.imwrite(str(b), pic)
+    copy = {"id": "c1", "file": str(a), "doctype": "id_front", "key": "w:1", "split": "none", "exam": False, "source": "copy",
+            "labelBy": "human-saved"}
+    doc = {"id": "doc-D-0", "file": str(b), "doctype": "id_front", "key": "w:1", "split": "exam", "exam": True, "source": "document",
+           "labelBy": "human-saved", "byKnown": False}
+    kept, _ = pd.deduped([copy, doc])
+    assert [(e["id"], e["split"], e["exam"]) for e in kept] == [("doc-D-0", "none", False)]
+    # a model-own copy of the same page drops the document page
+    kept, counts = pd.deduped([{**doc}], own=[{"id": "c9", "file": str(a), "doctype": "id_front", "key": "w:1"}])
+    assert kept == [] and counts == {"documentModelOwn": 1}

@@ -1,8 +1,8 @@
 """Every source the scanner's training draws from, with its side of the split (docs/scan-training.md → "Kept
 apart"): the owner's and the site's real pages (templates/), the drawn kinds, the PDFs (Form 101, contracts),
 the background photos, the occluders, the fonts, the Hebrew vocabulary, the open sets (MIDV, SmartDoc), and the
-real examples pull.py and pull_doctypes.py wrote (records, attempts, page copies). pool(split) is the only way to
-them.
+real examples pull.py and pull_doctypes.py wrote (records, attempts, page copies) and gen real's index
+(real/index.jsonl: kind "real", its rows' own split). pool(split) is the only way to them.
 
   python -m gen sources            # the counts by kind and side
   python -m gen sources --check    # and fail when an exam or golden key is on the training side, a held-out
@@ -26,7 +26,7 @@ FONTS = (".ttf", ".otf")
 @dataclass(frozen=True)
 class Source:
     id: str
-    kind: str          # template-own, template-site, drawn, pdf, background, occluder, font, word, midv, smartdoc, record, attempt, page-copy
+    kind: str          # template-own, template-site, drawn, pdf, background, occluder, font, word, midv, smartdoc, record, attempt, page-copy, real
     split_key: object  # str or None
     split: str         # train, select, exam, golden; "none" (left out of both), "unknown" (a site page with no side)
     sha1: object       # str or None
@@ -205,6 +205,21 @@ def _real(work):
     for e in _read(work / "doctypes.json", []):
         out.append(Source(f"page-copy:{e.get('id')}", "page-copy", e.get("key"), _real_split(e), None, None,
                           {"legacy": bool(e.get("legacy")), "doctype": e.get("doctype")}))
+    # gen real's index: each row with its own split ("none": a key the exam keeps — a self label, a used attempt, a
+    # record the rule before trained, a document page whose type giver is not known — so Held keeps its key too)
+    try:
+        lines = (work / "real" / "index.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(e, dict) and e.get("id") is not None:
+            split = e.get("split") if e.get("split") in gc.SPLITS + ("none",) else "unknown"
+            out.append(Source(f"real:{e['id']}", "real", e.get("key"), split, None, None,
+                              {"legacy": bool(e.get("legacy")), "hard": bool(e.get("hard")), "source": e.get("source")}))
     return out
 
 
@@ -234,7 +249,8 @@ class Held:
         bgs = set(gc.heldout().get("examBackgrounds") or [])
         self.backgrounds = bgs | {s.sha1 for s in exam if s.kind == "background"} | {s.sha1[:12] for s in exam if s.kind == "background"}
         self.occluders = {s.sha1 for s in exam if s.kind == "occluder"} | {s.sha1[:12] for s in exam if s.kind == "occluder"}
-        self.keys = {s.split_key for s in exam if s.split_key}
+        self.keys = {s.split_key for s in exam if s.split_key} | {
+            s.split_key for s in every if s.kind == "real" and s.split == "none" and s.split_key}
 
 
 NO_META = object()   # problems(): no Hebrew set to check (None: a set with no sources.json)

@@ -71,6 +71,45 @@ def test_a_document_lying_on_another_is_not_painted_over_with_it():
     assert kinds(ex) == [("edges", 0)]
 
 
+
+def test_a_page_found_inside_another_is_decided_as_the_phone_found_it():
+    sefach = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    card = [[0.3, 0.55], [0.7, 0.55], [0.7, 0.8], [0.3, 0.8]]
+    # the user dragged a corner of the card just past the sefach's edge: still found on its cut, nothing painted
+    past = [[0.3, 0.55], [0.7, 0.55], [0.7, 0.8], [0.05, 0.95]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesMore": [card], "edgesMoreFixed": [past]})
+    assert ex[1]["on"] == 0 and ex[1]["paint"] == [] and ex[1]["target"] == past and ex[1]["cut"] == sefach
+    # the sefach's corners moved: the card is cut at the right corners of the page it lies on
+    sef2 = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesFixed": sef2, "edgesMore": [card]})
+    assert ex[1]["on"] == 0 and ex[1]["cut"] == sef2
+    # the user shrank the outer page off the card (its corners moved to its upper half): the card stays on the phone's
+    # own cut, the outer page's model quad, which holds it (the right corners' cut would not show it at all)
+    upper = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.45], [0.1, 0.45]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesFixed": upper, "edgesMore": [card]})
+    assert ex[1]["on"] == 0 and ex[1]["cut"] == sefach and ex[1]["paint"] == []
+    # a page findNext found beside the first, its corners dragged onto the first one, is still taught on the photo
+    # (the user's corners never decide it; its model quad lies outside the first one's)
+    first = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    beside = [[0.92, 0.1], [0.99, 0.1], [0.99, 0.3], [0.92, 0.3]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": first, "edgesMore": [beside],
+                               "edgesMoreFixed": [[[0.5, 0.2], [0.6, 0.2], [0.6, 0.3], [0.5, 0.3]]]})
+    assert ex[1]["on"] is None and ex[1]["cut"] is None and ex[1]["paint"] == [first]
+
+
+def test_a_deleted_outer_page_keeps_its_kept_inner_page_on_the_phones_cut():
+    other = [[0.02, 0.02], [0.08, 0.02], [0.08, 0.08], [0.02, 0.08]]
+    sefach = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    card = [[0.3, 0.55], [0.7, 0.55], [0.7, 0.8], [0.3, 0.8]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": other, "edgesMore": [sefach, card], "deletedPages": [1]})
+    # the sefach was deleted but the card found inside it kept: no "nothing here" for the sefach (the photo still shows
+    # the card there), and the card on the phone's own cut — the sefach's model quad
+    assert kinds(ex) == [("edges", 0), ("edges", 2)]
+    assert ex[1]["on"] == 1 and ex[1]["cut"] == sefach and ex[1]["paint"] == []
+    # both deleted: the sefach's "nothing here" stands (nothing kept lies in it), the card teaches nothing
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": other, "edgesMore": [sefach, card], "deletedPages": [1, 2]})
+    assert kinds(ex) == [("edges", 0), ("none", 1)]
+
 def _pull():
     import sys
     here = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "scan-train"

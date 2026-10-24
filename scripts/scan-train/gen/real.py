@@ -20,7 +20,10 @@ weight:
 - doctype (page copies, documents' pages): "human-confirmed" for a type the user changed or ticked (✓), "human-saved"
   for a document page saved with the worker and for a copy of a scan saved with a worker (its type was seen when
   saving), "self" for Haiku's type left as it was on a scan never saved; a type the document type model gave
-  and the user left as it was (doctypeBy model, fixed == model) is dropped: it is the model's own answer as truth.
+  and the user left as it was (doctypeBy model, fixed == model) is dropped: it is the model's own answer as truth —
+  for a page copy by its own fields; for a document page by its doctypeBy / doctypeModel when it carries them, else by
+  its twin page copy (dedupe: the same page as a model-own copy is dropped too), and a document page that carries
+  neither and has no twin copy is left off the exam side ("unprovenLeftOut": who gave its type is not known).
   sampleWeight carries how the page was sampled (keepEvery: one right page in five → 5, a changed page → 1) for the
   exam's weighting;
 - turn: known only when the face finder (labelBy "face") or the owner ("human-confirmed": turnBy owner, or turned by
@@ -31,8 +34,11 @@ A "self" target weighs SELF_WEIGHT (0.3) and is never the exam's or golden's: a 
 neither set on the exam side. The first shot of a retake group that ended in a fix (a later shot of the group had its
 corners moved) is a hard example ("hardExample"; it has no target of its own). A page copy and a document page of one
 scan that are the same page (the same key and type, pHash within PHASH_SAME bits) are one row: the copy when the user
-changed or ticked its type or its turn is known, else the document page. A page lying inside another on an attempt is
-written as that one's flat cut (pull.picture_of). Nothing in the index or the printout names a person: keys are hashes,
+changed or ticked its type or its turn is known, else the document page — on the stricter split of the two ("none"
+over the exam side over the training side: a page a published version learned as one of them stays out of the exam as
+the other). A page lying inside another on an attempt is written as that one's flat cut (pull.picture_of). Every
+derived picture is written anew on each run from the raw download (attempts/<id>.jpg, copies/<id>.jpg): what it is
+depends on the outcomes and the owner's turn, which can change between runs. Nothing in the index or the printout names a person: keys are hashes,
 the saved fields' values are not copied."""
 import collections
 import datetime
@@ -77,17 +83,22 @@ def doctype_target(r, saved=False, links=None):
     """A page copy's (or, saved, a document page's) doctype target → dict, or None when it teaches no type: not one of
     DOCTYPES, or the model's own answer left as it was (doctypeBy model and doctypeFixed == doctypeModel). A copy whose
     type the user changed or ticked is "human-confirmed"; Haiku's type left as it was is "human-saved" when the scan was
-    saved with a worker (saved_with_worker: the user saw it), else "self"."""
+    saved with a worker (saved_with_worker: the user saw it), else "self". A document page is "human-saved" (changed or
+    ticked: "human-confirmed"); byKnown: it carries who gave its type (doctypeBy), else dedupe decides by its twin copy."""
     fixed = r.get("doctypeFixed") if not saved else r.get("doctype")
     if fixed not in gc.DOCTYPES:
         return None
-    if saved:
-        return {"doctype": fixed, "given": None, "by": "user", "labelBy": "human-saved", "weight": 1.0, "sampleWeight": 1}
-    given, by = r.get("doctypeModel"), r.get("doctypeBy") or "haiku"
+    given, by = r.get("doctypeModel"), r.get("doctypeBy")
     confirmed = r.get("confirmed") is True or r.get("doctypeConfirmed") is True
     changed = given is not None and given != fixed
     if by == "model" and not changed and not confirmed:
         return None
+    if saved:
+        known = by in ("haiku", "model")
+        return {"doctype": fixed, "given": given if known else None, "by": by if known else "user", "byKnown": known,
+                "labelBy": "human-confirmed" if known and (changed or confirmed) else "human-saved", "weight": 1.0,
+                "sampleWeight": 1}
+    by = by or "haiku"
     lb, w = (("human-confirmed", 1.0) if changed or confirmed else ("human-saved", 1.0) if saved_with_worker(r, links)
              else ("self", gc.SELF_WEIGHT))
     keep = r.get("keepEvery")
@@ -208,9 +219,11 @@ def mark_retakes(rows):
     return rows
 
 
-def record_rows(recs, links=None, exam_keys=frozenset(), write=None):
-    """[(id, record, fetch)] → rows: a record's corner copy (edges) and its page copy (doctype, turn) — two pictures,
-    two rows (id and "copy-<id>"). write(kind, id, record, fetch) → the picture's file or None ("image" / "page")."""
+def record_rows(recs, links=None, exam_keys=frozenset(), write=None, own=None):
+    """[(id, record, fetch)] → (rows, the model-own types dropped): a record's corner copy (edges) and its page copy
+    (doctype, turn) — two pictures, two rows (id and "copy-<id>"). write(kind, id, record, fetch) → the picture's file or
+    None ("image" / "page"). own: a list the dropped model-own page copies are added to ({id, source, key, file,
+    targets}, their picture written too) — dedupe drops a document page that is the same page as one of them."""
     rows, dropped = [], 0
     for rid, r, fetch in recs:
         key, split, legacy = gc.side(r, links, rid, exam_keys=exam_keys)
@@ -228,7 +241,13 @@ def record_rows(recs, links=None, exam_keys=frozenset(), write=None):
         if r.get("pageImage"):
             dt = doctype_target(r, links=links)
             if dt is None:
-                dropped += r.get("doctypeFixed") in gc.DOCTYPES   # the model's own type left as it was
+                if r.get("doctypeFixed") in gc.DOCTYPES:   # the model's own type left as it was
+                    dropped += 1
+                    if own is not None:
+                        f = write("page", rid, r, fetch) if write else f"img/copy-{rid}.jpg"
+                        if f:
+                            own.append({"id": f"copy-{rid}", "source": "copy", "key": key, "file": f,
+                                        "targets": {"doctype": {"doctype": r["doctypeFixed"], "labelBy": None}}})
                 continue
             file = write("page", rid, r, fetch) if write else f"img/copy-{rid}.jpg"
             if not file:
@@ -276,25 +295,54 @@ def _hamming(a, b):
     return bin(int(a, 16) ^ int(b, 16)).count("1")
 
 
-def dedupe(rows, phash=None):
+SPLIT_RANK = {"train": 0, "select": 1, "exam": 2, "golden": 3, "none": 4}   # of two twins, the stricter split wins
+
+
+def dedupe(rows, phash=None, own=()):
     """One row per page of a scan: a page copy and a document page with the same key and type whose pHashes are within
-    PHASH_SAME bits are the same page — the copy is kept when the user changed or ticked its type or its turn is known,
-    else the document page. phash: {row id: hex} (the rows' own "phash" when None). → (rows kept, the duplicates
-    dropped by source)."""
-    ph = phash if phash is not None else {r["id"]: r.get("phash") for r in rows}
+    PHASH_SAME bits are the same page.
+    1. A document page that is the same page as a model-own page copy (own: record_rows' dropped ones) is dropped too:
+       its type is the model's own answer no one changed ("documentModelOwn").
+    2. Of a page copy and its document page twin, the copy is kept when the user changed or ticked its type or its turn
+       is known, else the document page — on the stricter split of the two (SPLIT_RANK: "none" over the exam side over
+       the training side; gen.common.side decides each by its own id, so one can be "none" while its twin is the
+       exam's; "twinSplit" marks it).
+    3. A document page that does not carry who gave its type (byKnown) and had no twin copy is left off the exam side
+       (split "none", "unprovenLeftOut"): it may be the model's own answer.
+    phash: {row id: hex} (the rows' own "phash" when None). → (rows kept, the counts: duplicates dropped by source,
+    documentModelOwn, documentUnproven)."""
+    own = list(own)
+    ph = dict(phash) if phash is not None else {r["id"]: r.get("phash") for r in list(rows) + own}
+
+    def same(c, d):
+        return bool(d["key"] and d["key"] == c["key"] and ph.get(c["id"]) and ph.get(d["id"])
+                    and d["targets"]["doctype"]["doctype"] == c["targets"]["doctype"]["doctype"]
+                    and _hamming(ph[c["id"]], ph[d["id"]]) <= PHASH_SAME)
     docs = [r for r in rows if r["source"] == "document" and ph.get(r["id"])]
-    gone, by = set(), collections.Counter()
+    gone, by, twinned = set(), collections.Counter(), set()
+    for d in docs:
+        if any(same(o, d) for o in own):
+            gone.add(d["id"])
+            by["documentModelOwn"] += 1
     for c in [r for r in rows if r["source"] == "copy" and ph.get(r["id"])]:
-        dt = c["targets"]["doctype"]["doctype"]
-        twin = next((d for d in docs if d["id"] not in gone and d["key"] == c["key"] and d["key"]
-                     and d["targets"]["doctype"]["doctype"] == dt and _hamming(ph[c["id"]], ph[d["id"]]) <= PHASH_SAME), None)
+        twin = next((d for d in docs if d["id"] not in gone and same(c, d)), None)
         if twin is None:
             continue
         copy_wins = c["targets"]["doctype"]["labelBy"] == "human-confirmed" or "turn" in c["targets"]
-        loser = twin if copy_wins else c
+        keep, loser = (c, twin) if copy_wins else (twin, c)
         gone.add(loser["id"])
+        twinned.add(keep["id"])
         by[loser["source"]] += 1
-    return [r for r in rows if r["id"] not in gone], dict(by)
+        if SPLIT_RANK.get(loser.get("split"), 0) > SPLIT_RANK.get(keep.get("split"), 0):
+            keep["split"], keep["twinSplit"] = loser["split"], True
+    out = [r for r in rows if r["id"] not in gone]
+    for r in out:
+        dt = (r.get("targets") or {}).get("doctype") or {}
+        if (r["source"] == "document" and r["id"] not in twinned and not dt.get("byKnown")
+                and r.get("split") in gc.EXAM_SIDE):
+            r["split"], r["unprovenLeftOut"] = "none", True
+            by["documentUnproven"] += 1
+    return out, dict(by)
 
 
 def summary(rows, dropped=0, dupes=None):
@@ -306,7 +354,8 @@ def summary(rows, dropped=0, dupes=None):
     return {"rows": len(rows), "byLabelBy": dict(sorted(by_label.items())), "bySource": dict(sorted(by_source.items())),
             "byTarget": dict(sorted(per_model.items())), "modelOwnDropped": int(dropped), "duplicates": dupes or {},
             "hardExamples": sum(bool(r.get("hardExample")) for r in rows), "hard": sum(bool(r.get("hard")) for r in rows),
-            "selfLeftOut": sum(bool(r.get("selfLeftOut")) for r in rows)}
+            "selfLeftOut": sum(bool(r.get("selfLeftOut")) for r in rows),
+            "unprovenLeftOut": sum(bool(r.get("unprovenLeftOut")) for r in rows)}
 
 
 def write_index(out, rows, info):
@@ -379,24 +428,46 @@ def shrink_like_page_copy(img):
     return phone.resample(img, (COPY_SIDE, COPY_SIDE), phone.browser_kernel("chromium", "capture") or "bilinear")
 
 
+def copy_picture(f, src, r, fetch, phash=None, pid=None):
+    """A page copy's picture: the raw copy as downloaded (src, kept; fetch(url, dest) → bool, None: no download) turned
+    by today's turnFixed (turn_target reads the same one) and written anew to f on every run. → "img/<name>" or None."""
+    import cv2
+    import numpy as np
+    from .backgrounds import phash as phash_of
+    src, f = pathlib.Path(src), pathlib.Path(f)
+    if not src.exists() and not (fetch and fetch(r["pageImage"], src)):
+        return None
+    pic = cv2.imread(str(src))
+    if pic is None:
+        return None
+    k = quarter(r.get("turnFixed")) or 0
+    if k:
+        pic = np.ascontiguousarray(np.rot90(pic, -k))   # clockwise, as pull_doctypes.turned_copy
+    cv2.imwrite(str(f), pic, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if phash is not None:
+        phash[pid or f.stem] = phash_of(cv2.imread(str(f)))
+    return f"img/{f.name}"
+
+
 def build(out, download=True):
     """List every real source (read-only), download its pictures into out/img and write the index. → the summary."""
     import cv2
     import pull
-    import pull_doctypes
     from common import data_file
     from .backgrounds import phash as phash_of
     out = pathlib.Path(out)
     img = out / "img"
     raw = out / "attempts"
-    img.mkdir(parents=True, exist_ok=True)
-    raw.mkdir(parents=True, exist_ok=True)
+    copies = out / "copies"
+    for d in (img, raw, copies):
+        d.mkdir(parents=True, exist_ok=True)
 
     folders = []
     for area, prefix in AREAS.items():
         folders += [(area, d, ans, outs, fetch) for d, ans, outs, fetch in pull.attempt_folders(prefix)]
-    keys = pull.attempt_keys([(d, a, o, f) for _, d, a, o, f in folders])
-    exam_keys = frozenset(keys[d] for area, d, _, _, _ in folders if area in ("exam", "golden") and keys.get(d))
+    of = lambda area: [(d, a, o, f) for ar, d, a, o, f in folders if ar == area]
+    # the one rule pull.py / pull_doctypes.py share: keys over every area, the exam's and golden's groups the exam keys
+    keys, exam_keys = pull.kept_exam_keys(of("new"), of("exam"), of("used"), of("golden"))
 
     def write_attempt(area, d, ans, fetch, x, targets):
         aid = ans.get("id") or d.rsplit("/", 1)[1]
@@ -404,10 +475,7 @@ def build(out, download=True):
         if not pic.exists() and not (download and fetch(pic)):
             return None, None
         f = img / f"att-{aid}-{x['page']}.jpg"
-        if f.exists():   # written on a run before: only the corner map
-            outer = targets.get(x["on"]) if x.get("on") is not None else None
-            return f"img/{f.name}", (lambda q: pull.into_cut(outer, q)) if outer else (lambda q: q)
-        ok, to = pull.picture_of(pic, f, x, targets)
+        ok, to = pull.picture_of(pic, f, x, targets)   # always anew: the page's "on" and paint follow today's outcomes
         return (f"img/{f.name}" if ok else None), to
 
     rows = attempt_rows(folders, keys, exam_keys, write_attempt)
@@ -423,28 +491,11 @@ def build(out, download=True):
             if not f.exists() and not (download and fetch(r["image"], f)):
                 return None
             return f"img/{f.name}"
-        f = img / f"copy-{rid}.jpg"
-        if not f.exists():
-            tmp = img / f"copy-{rid}.raw.jpg"
-            if not (download and fetch(r["pageImage"], tmp)):
-                return None
-            k = quarter(r.get("turnFixed")) or 0
-            src = pull_doctypes.turned_copy(tmp, k) if k else tmp
-            if src is None:
-                tmp.unlink(missing_ok=True)
-                return None
-            pic = cv2.imread(str(src))
-            if pic is None:
-                return None
-            cv2.imwrite(str(f), pic, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            for t in {tmp, src}:
-                pathlib.Path(t).unlink(missing_ok=True)
-        pic = cv2.imread(str(f))
-        if pic is not None:
-            phash[f"copy-{rid}"] = phash_of(pic)
-        return f"img/{f.name}"
+        return copy_picture(img / f"copy-{rid}.jpg", copies / f"{rid}.jpg", r, fetch if download else None, phash,
+                            f"copy-{rid}")
 
-    more, dropped = record_rows(recs, links, exam_keys, write_record)
+    own = []
+    more, dropped = record_rows(recs, links, exam_keys, write_record, own)
 
     def write_page(doc, n, pg):
         did = doc.get("id")
@@ -464,7 +515,7 @@ def build(out, download=True):
         return f"img/{f.name}"
 
     docs_rows = document_rows(docs, links, exam_keys, write_page)
-    rows, dupes = dedupe(rows + more + docs_rows, phash)
+    rows, dupes = dedupe(rows + more + docs_rows, phash, own)
     info = summary(rows, dropped, dupes)
     info["areas"] = dict(collections.Counter(a for a, *_ in folders))
     return write_index(out, rows, info)
@@ -480,5 +531,6 @@ def main(out=None, download=True):
     print("  targets: " + ", ".join(f"{k} {n}" for k, n in info["byTarget"].items()))
     print(f"  the model's own type left as it was (dropped): {info['modelOwnDropped']}; page copy / document duplicates "
           f"dropped {json.dumps(info['duplicates'])}; hard examples (first shot of a group that ended in a fix) "
-          f"{info['hardExamples']}; self labels left out on the exam side {info['selfLeftOut']}")
+          f"{info['hardExamples']}; self labels left out on the exam side {info['selfLeftOut']}; document pages whose type "
+          f"giver is not known left out of the exam {info.get('unprovenLeftOut', 0)}")
     return info

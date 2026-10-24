@@ -6,8 +6,9 @@ chosen by gen.common.split_key (docs/scan-training.md → "Kept apart"): the wor
 retake group's — never a record's id, so one worker's or one shot's pages are all on one side; a record kept
 before those ids were has none and is split by its id as before (legacy). The attempts kept as the exam before
 (attempts/exam/, moved there by publish.py) are pulled on every run, always as the exam, and every example with
-their keys goes with them — their retake groups' new attempts, their worker's records (kept_exam_keys; pull_doctypes.py
-and pull_templates.py apply the same keys to the page copies and the documents' pages). A record the rule before (its
+their keys goes with them, as with the golden attempts' (attempts/golden/) — their retake groups' new attempts, their
+worker's records (kept_exam_keys, keyed over every area, attempts/used/ too: the one rule pull_doctypes.py,
+pull_templates.py and gen/real.py apply to the page copies and the documents' pages, so their exam sides agree). A record the rule before (its
 id) put on the training side, kept before gen.common.KEY_RULE_FROM, is in neither set when its key says exam: the
 version fine-tuned from learned it. A retaken page with no fix whose group is on the training side is in neither the exam nor
 training (counted: attempts.json "hardLeftOut"), so no exam page has a sibling in training. A kept page whose corners no
@@ -155,10 +156,12 @@ def flat_cut(src, dest, outer):
 
 
 def picture_of(pic, f, x, targets):
-    """Write one example's picture (pull.py and gen/real.py): the photo with the pages before painted over, or — a page
-    lying on another (x["on"]) — that page's flat cut. → (written, the corner map: the identity, or into_cut)."""
+    """Write one example's picture (pull.py and gen/real.py), always anew from the raw photo (what it is depends on the
+    attempt's outcomes, which can change between pulls): the photo with the pages before painted over, or — a page
+    lying on another (x["on"]) — that page's flat cut at x["cut"] (attempts.examples_of: its right corners when kept,
+    else the phone's own cut). → (written, the corner map: the identity, or into_cut)."""
     if x.get("on") is not None:
-        outer = targets[x["on"]]
+        outer = x.get("cut") or targets[x["on"]]
         return flat_cut(pic, f, outer), (lambda q, outer=outer: into_cut(outer, q))
     return painted(pic, f, x["paint"]), (lambda q: q)
 
@@ -177,14 +180,20 @@ def attempt_keys(folders):
     return {d: split_key({"workerId": workers.get(group_of(d, ans)), "group": group_of(d, ans)}) for d, ans, _, _ in folders}
 
 
-def kept_exam_keys(new=None, kept=None):
-    """The split keys of the attempts kept as the exam before (attempts/exam/), each by its retake group across the new
-    and the kept attempts (attempt_keys) → (keys {folder: key} of new + kept, the exam keys). Every pull applies the exam
-    keys (gen.common.side exam_keys): that group's new retakes, its worker's records, page copies and documents."""
+def kept_exam_keys(new=None, kept=None, used=None, golden=None):
+    """The split keys of the attempts kept as the exam before (attempts/exam/) and of the golden ones (attempts/golden/),
+    each by its retake group across every area — new, exam, used (trained on by a published version), golden
+    (attempt_keys) → (keys {folder: key} of them all, the exam keys). The one rule pull.py, pull_doctypes.py,
+    pull_templates.py and gen/real.py share, so their exam sides agree. Every pull applies the exam keys
+    (gen.common.side exam_keys): that group's new retakes, its worker's records, page copies and documents. used and
+    golden are listed when new is (None), else taken as given (none by default)."""
+    listing = new is None
     new = list(attempt_folders() if new is None else new)
     kept = list(attempt_folders("attempts/exam/") if kept is None else kept)
-    keys = attempt_keys(new + kept)
-    return keys, frozenset(keys[d] for d, _, _, _ in kept if keys.get(d))
+    used = list((attempt_folders("attempts/used/") if listing else []) if used is None else used)
+    golden = list((attempt_folders("attempts/golden/") if listing else []) if golden is None else golden)
+    keys = attempt_keys(new + kept + used + golden)
+    return keys, frozenset(keys[d] for d, _, _, _ in kept + golden if keys.get(d))
 
 
 def attempt_examples(out, folders=None, kept_exam=False, exam_keys=frozenset(), keys=None):
@@ -257,7 +266,8 @@ def main():
     recs = records()
     links = session_links([r for _, r, _ in recs] + document_records())
     new, kept = list(attempt_folders()), list(attempt_folders("attempts/exam/"))
-    keys, exam_keys = kept_exam_keys(new, kept)   # one retake group, one key; a group kept as the exam keeps its worker there
+    keys, exam_keys = kept_exam_keys(new, kept, attempt_folders("attempts/used/"), attempt_folders("attempts/golden/"))
+    # one retake group, one key; a group kept as the exam (or golden) keeps its worker there
     out = record_examples(recs, links, exam_keys)
     pulled = attempt_examples(out, new, exam_keys=exam_keys, keys=keys)
     before = len(out)

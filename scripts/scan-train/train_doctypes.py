@@ -311,7 +311,7 @@ def main():
     random.seed(seed); torch.manual_seed(seed)
     print(f"seed {seed} (python train_doctypes.py ... --seed {seed} repeats this run)")
     if a.from_mix:
-        ex, select, meta = gmix.load(a.from_mix, "doctype")
+        ex, select, meta = gmix.load(a.from_mix, "doctype", work=WORK)
         if meta.get("synthRun"):
             require_qa(meta["synthRun"], "the mix's made-up pages", work=WORK)   # drawn through gen build: its QA passed
         pulled = pathlib.Path(meta.get("realDir") or WORK / "real") / "index.jsonl"

@@ -11,13 +11,16 @@ What each page teaches:
   most 0.3 in training and never in the exam; docs/scan-training.md → "Real data and its weight") — on the photo
   with the documents found before it painted over (as the next document search sees it). A page lying inside an
   earlier one (an ID card on its ספח — the lab's findInside finds it on that one's flat cut, not on the photo) is
-  marked "on": the earlier page's index; pull.py and gen/real.py write it as that page's flat cut (gen/phone.py
-  warp_rgba, not turned) with its corners mapped into the cut, so the photo itself never carries two answers
-  (the sheet's and the card's) at once;
+  marked "on": the earlier page's index, decided as the phone found it — its model quad inside the model quad of an
+  earlier page, kept or deleted (findNext paints the pages found over, so only findInside's pages pass), never from
+  the corners the user moved; "cut": the quad that page is cut at — its right corners when kept and the page lies
+  within them, else its model quad (the phone's own cut, which always holds what the phone found there). pull.py and gen/real.py write it as that cut (gen/phone.py warp_rgba, not turned) with its
+  corners mapped into it, so the photo itself never carries two answers (the sheet's and the card's) at once;
 - a deleted page — the user did not want it (deletedPages, or a later outcome naming the page;
   an outcome with no page deletes them all): "nothing here" on the photo with the pages found
   before it painted over. A deleted first page of a photo with other documents teaches nothing
-  (it is not known which document was meant), nor does a deleted page lying on another;
+  (it is not known which document was meant), nor does a deleted page lying on another, nor a deleted page
+  with a kept page found inside it (the photo still shows that one there);
 - a retaken attempt with no corners moved: no right answer is known, so it is never trained on;
   its first page goes to the exam as a hard page (the new model should answer differently)."""
 
@@ -60,10 +63,11 @@ def _inside(q, outer):
 
 def examples_of(answer, outcomes=()):
     """The examples one attempt gives: [{"kind": "edges" | "none" | "hard", "page", "target",
-    "rejected", "paint", "self", "on"}] — target: the right corners (edges), rejected: the corners the user
+    "rejected", "paint", "self", "on", "cut"}] — target: the right corners (edges), rejected: the corners the user
     rejected (hard), paint: the frames to paint over first, self: True when no corner of a kept page was moved
-    (target is the model's own quad), on: the index of the earlier page it lies inside (its flat cut is the picture;
-    paint then []), else None."""
+    (target is the model's own quad), on: the index of the earlier page it lies inside (as the phone found it: model
+    quad in model quad) and cut: the quad its picture is cut at (that page's right corners when kept and it lies within
+    them, else that page's model quad; paint then []), else None."""
     quads = [answer.get("edgesModel")] + list(answer.get("edgesMore") or [])
     fixed_more = list(answer.get("edgesMoreFixed") or [])
     fixed = [answer.get("edgesFixed")] + [fixed_more[i] if i < len(fixed_more) else None for i in range(len(quads) - 1)]
@@ -72,23 +76,35 @@ def examples_of(answer, outcomes=()):
     if answer.get("outcome") == "retaken":
         if not any(fixed):
             return [{"kind": "hard", "page": 0, "target": None, "rejected": quads[0], "paint": [], "self": False,
-                     "on": None}] if quads[0] else []
+                     "on": None, "cut": None}] if quads[0] else []
+    gone = lambda i: i in deleted or answer.get("outcome") == "deleted"
+    # the page each one lies inside, as the phone found it (one level: the lab looks inside the pages findNext found)
+    under = {}
+    for i, q in enumerate(quads):
+        if q is not None:
+            under[i] = next((j for j in range(i) if quads[j] is not None and under.get(j) is None and _inside(q, quads[j])), None)
+    holds_kept = {j for i, j in under.items() if j is not None and not gone(i)}
     out, before = [], []   # before: (page index, its right corners) of the pages kept so far
     for i, q in enumerate(quads):
         if q is None:
             continue  # taken whole: no frame was found, nothing to teach the frame finder
         right = fixed[i] or q
-        if i in deleted or answer.get("outcome") == "deleted":
+        on = under[i]
+        if gone(i):
             # (a deleted page lying on another teaches nothing: "nothing here" would be said of the photo
-            # with the one under it still on it)
-            if (i > 0 or len(quads) == 1) and not any(_inside(q, p) for _, p in before):
+            # with the one under it still on it; nor one with a kept page found inside it)
+            if (i > 0 or len(quads) == 1) and on is None and i not in holds_kept:
                 out.append({"kind": "none", "page": i, "target": None, "rejected": q, "paint": [p for _, p in before],
-                            "self": False, "on": None})
+                            "self": False, "on": None, "cut": None})
             continue
-        on = next((j for j, p in before if _inside(right, p)), None)
+        outer = None if on is None else fixed[on] or quads[on]
+        # cut at the outer page's right corners when it was kept and the page lies within them; else at the phone's own
+        # cut (its model quad — the user may have shrunk the outer page off this one: then only that cut holds it)
+        cut = None if on is None else outer if not gone(on) and _inside(right, outer) else quads[on]
         # a page lying on another is taught on that one's flat cut (nothing painted); the rest on the photo with the
         # pages found before painted over
         out.append({"kind": "edges", "page": i, "target": right, "rejected": None,
-                    "paint": [] if on is not None else [p for _, p in before], "self": fixed[i] is None, "on": on})
+                    "paint": [] if on is not None else [p for _, p in before], "self": fixed[i] is None, "on": on,
+                    "cut": cut})
         before.append((i, right))
     return out

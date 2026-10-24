@@ -6,7 +6,8 @@
 // `python -m gen profile --from probe.json` measures every phone.py kernel against them, and each path must reach
 // PSNR >= 40 dB with the kernel gen/phone_profile.json records for Chromium. The cut too: the lab's warpRGBA (scan-core.js)
 // cuts a fixed quad out of each of the first 10 frames, and gen/phone.py warp_rgba — the cutter gen/phone_run.py cuts
-// every page with — must reach PSNR >= 35 dB on each. Safari is not measured (no WebKit run): run.json says so. Needs
+// every page with — must reach PSNR >= 35 dB on each. And smallRGBA clears the shared canvas before it draws: a cut running past the
+// photo (warpRGBA's transparent part) reads back black, whatever was drawn before (findInside's input). Safari is not measured (no WebKit run): run.json says so. Needs
 // PYTHON with numpy and opencv (CI: the functions' venv).
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -92,6 +93,28 @@ function grabLine(src, start) {
     }, { url, heBoxes, quad });
     probe.frames.push({ name, paths });
   }
+  // findInside's input in a real browser: a cut running past the photo (the lab's warpRGBA leaves that part
+  // transparent) drawn by smallRGBA onto the shared canvas after a white picture must read back black there and equal
+  // the same cut on a fresh canvas — as gen/phone.py warp_rgba(...)[..., :3] trains it
+  const inside = await page.evaluate(() => {
+    const W = 120, H = 90, pix = new Uint8ClampedArray(W * H * 4);
+    for (let i = 0; i < W * H; i++) pix.set([90, 160, 30, 255], i * 4);
+    const c = warpRGBA(pix, W, H, [[0.5, 0.1], [1.4, 0.1], [1.4, 0.9], [0.5, 0.9]]);
+    const flat = document.createElement('canvas'); flat.width = c.width; flat.height = c.height;
+    flat.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(c.data), c.width, c.height), 0, 0);
+    const white = document.createElement('canvas'); white.width = white.height = 32;
+    const g = white.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 32, 32);
+    smallRGBA(white, 32, 32);
+    const after = smallRGBA(flat, c.width, c.height).slice();
+    sctx.clearRect(0, 0, S, S);
+    const fresh = smallRGBA(flat, c.width, c.height).slice();
+    let diff = 0, right = 0;
+    for (let i = 0; i < after.length; i++) diff = Math.max(diff, Math.abs(after[i] - fresh[i]));
+    for (let y = 0; y < S; y++) for (let x = Math.ceil(S * 0.8); x < S; x++) { const k = (y * S + x) * 4; right = Math.max(right, after[k], after[k + 1], after[k + 2]); }
+    return { diff, right };
+  });
+  assert.equal(inside.diff, 0, 'smallRGBA depends on what was drawn before it (it must clear the shared canvas)');
+  assert.equal(inside.right, 0, 'a cut past the photo does not read back black through smallRGBA');
   await browser.close();
   const probeFile = path.join(OUT, 'probe.json'), fitFile = path.join(OUT, 'fit.json');
   fs.writeFileSync(probeFile, JSON.stringify(probe));
