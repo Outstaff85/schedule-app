@@ -144,8 +144,14 @@ export async function gsLoad(): Promise<Rec | null> {
   } catch (e: any) { lastLoadError = 'Firestore: ' + ((e && e.message) || e); reportError('loadSchedule failed: ' + lastLoadError, 'gsLoad', ''); return null; }
 }
 
+// A punch the server refused is told to the user (it stays in this device's log only).
 export async function gsSavePunch(entry: Rec): Promise<void> {
-  try { await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); } catch (e) { console.warn('Firestore punch save failed:', e); }
+  try { await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); }
+  catch (e: any) {
+    console.warn('Firestore punch save failed:', e);
+    reportError('savePunch failed: ' + ((e && e.message) || e), 'gsSavePunch', '');
+    notify(tr('The punch was not saved on the server — {0}', {0: (e && e.message) || String(e)}), 6000);
+  }
 }
 export async function gsDeletePunch(id: unknown): Promise<void> {
   try { await (await loadFirestoreBackend()).deletePunch(fsTenantId(), id); } catch (e) { console.warn('Firestore delete failed:', e); }

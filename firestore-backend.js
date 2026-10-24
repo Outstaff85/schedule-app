@@ -95,6 +95,11 @@
 		return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 	}
 	var itemHash = (item) => sigHash(sig(plain(item)));
+	var CLIENT_PAY = [
+		"defaultHourlyRate",
+		"defaultOtRate",
+		"defaultShabbatRate"
+	];
 	function scheduleBaseOf(data) {
 		const out = {};
 		for (const kind of [
@@ -325,6 +330,14 @@
 					if (!next[kind].has(id)) ops.push(["delete", F.doc(db, "tenants", t, kind, id)]);
 				});
 			}
+			const c = await myClaims();
+			if (c.role !== "tenant_admin" && c.role !== "superadmin" && !(Array.isArray(c.rt) && c.rt.includes("editPay"))) for (const op of ops) {
+				if (op[0] !== "set" || op[1].parent.id !== "clients") continue;
+				const cur = await F.getDoc(op[1]);
+				const stored = cur.exists() ? cur.data() : {};
+				for (const k of CLIENT_PAY) if (stored[k] !== void 0) op[2][k] = stored[k];
+				else delete op[2][k];
+			}
 			if (first) {
 				const linked = new Set((first.ids || []).map(String));
 				const isLinked = (op) => op[1].parent.id === "workers" && linked.has(op[1].id);
@@ -473,7 +486,16 @@
 			return (await F.getDocs(F.query(col(t, "punches"), ...hrWhere(await hrOnly()), F.where(F.documentId(), ">=", pre), F.where(F.documentId(), "<", pre + "")))).docs.map(punchFromDoc);
 		}
 		async function savePunch(t, entry) {
-			await F.setDoc(F.doc(db, "tenants", t, "punches", String(entry.id)), punchDoc(entry));
+			const c = await myClaims();
+			let hr;
+			if (c.role !== "tenant_admin" && c.role !== "superadmin" && entry.workerId != null) try {
+				const w = await F.getDoc(F.doc(db, "tenants", t, "workers", String(entry.workerId)));
+				if (w.exists()) {
+					hr = w.data().hrId || null;
+					workerHr.set(String(entry.workerId), hr);
+				}
+			} catch {}
+			await F.setDoc(F.doc(db, "tenants", t, "punches", String(entry.id)), punchDoc(entry, hr));
 			return {
 				ok: true,
 				id: entry.id

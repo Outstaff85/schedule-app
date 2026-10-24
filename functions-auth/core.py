@@ -161,19 +161,24 @@ def _secret_shape(secret):
             f"hashHex={all(c in '0123456789abcdefABCDEF' for c in h)} saltLen={len(salt)}")
 
 
-def _count_failure(db, secret_ref, now):
-    """One more wrong password, in a transaction: concurrent wrong guesses each
-    see the others' count, so the lock comes after LOCK_AFTER_FAILS of them.
-    The counter restarts once the lock window has passed. Returns the count."""
+def _reserve_attempt(db, secret_ref, now):
+    """Reserve one password attempt before the password is checked, in a
+    transaction: refused while the account is locked, else counted as a wrong
+    password (the right one resets the counter). Concurrent guesses each see
+    the others' reservations, so at most LOCK_AFTER_FAILS reach the password
+    check in a lock window. The counter restarts once the window has passed.
+    Returns (count, seconds the lock still lasts or 0)."""
     @firestore.transactional
-    def bump(tx):
+    def reserve(tx):
         snap = secret_ref.get(transaction=tx)
         cur = snap.to_dict() or {}
         last = float(cur.get("lastFailAt") or 0)
-        n = int(cur.get("failCount") or 0) + 1 if now - last < LOCK_SECONDS else 1
-        tx.update(secret_ref, {"failCount": n, "lastFailAt": now})
-        return n
-    return bump(db.transaction())
+        fails = int(cur.get("failCount") or 0) if now - last < LOCK_SECONDS else 0
+        if fails >= LOCK_AFTER_FAILS:
+            return fails, LOCK_SECONDS - (now - last)
+        tx.update(secret_ref, {"failCount": fails + 1, "lastFailAt": now})
+        return fails + 1, 0
+    return reserve(db.transaction())
 
 
 def login(db, username, password, mint_token, now=None, on_refused=None):
@@ -208,25 +213,23 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
     user = user_snap.to_dict()
     secret = secret_snap.to_dict()
 
-    fails = int(secret.get("failCount") or 0)
-    last_fail = float(secret.get("lastFailAt") or 0)
-    if fails >= LOCK_AFTER_FAILS and now - last_fail < LOCK_SECONDS:
-        wait_min = max(1, int((LOCK_SECONDS - (now - last_fail) + 59) // 60))
+    fails, wait = _reserve_attempt(db, secret_ref, now)
+    if wait > 0:
+        wait_min = max(1, int((wait + 59) // 60))
         return refused("locked after wrong passwords", f"Too many wrong attempts — wait {wait_min} min.")
 
     if not verify_password(password, secret):
-        fails = _count_failure(db, secret_ref, now)
         return refused(f"password mismatch ({_secret_shape(secret)}, failCount={fails})")
+
+    # The right password: the reserved attempt and the earlier misses are cleared.
+    update = {"failCount": 0, "lastFailAt": 0}
+    if secret.get("algo") != "scrypt" and user.get("active") is not False:
+        update.update(hash_password(password))  # upgrade the legacy hash
+    secret_ref.update(update)
 
     # Only a caller who knows the password learns the account is disabled.
     if user.get("active") is False:
         return refused("account inactive", "Account disabled")
-
-    update = {"failCount": 0, "lastFailAt": 0}
-    if secret.get("algo") != "scrypt":
-        update.update(hash_password(password))  # upgrade the legacy hash
-    if fails or update.get("algo"):
-        secret_ref.update(update)
 
     claims = claims_for(user)
     tenant_id = user.get("tenantId") or None

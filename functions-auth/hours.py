@@ -459,7 +459,12 @@ def _resolve(db, t_ref, caller, body):
         in_ts = _at(day, entry["inT"])
         out_ts = _at(day, entry["outT"])
         if out_ts <= in_ts:
-            out_ts += timedelta(days=1)  # a night shift ends the next day
+            # A night shift: with its IN on the day it ends the next day; a
+            # shift with no IN keeps its real OUT on the day, the IN the evening before.
+            if p_in is None and p_out is not None:
+                in_ts -= timedelta(days=1)
+            else:
+                out_ts += timedelta(days=1)
         stamp = {"editedBy": "approval", "editedAt": _now()}
         # day (YYYY-MM-DD) and date (DD/MM/YYYY, what the punch log shows)
         # follow the new time: an out moved past midnight is on the next day.

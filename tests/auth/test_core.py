@@ -145,21 +145,33 @@ def test_inactive_user_is_refused():
     assert core.login(DB, "staff1", "wrong-pass", mint)["error"] == core.E_BAD_LOGIN
 
 
-def test_wrong_passwords_are_counted_atomically():
-    """Concurrent wrong guesses each count (a transaction), so the lock comes
-    after LOCK_AFTER_FAILS of them, never later."""
+def test_concurrent_guesses_never_pass_the_lock(monkeypatch):
+    """Each attempt is reserved in a transaction before the password check, so
+    of many concurrent wrong guesses at most LOCK_AFTER_FAILS reach it."""
+    import threading
     from concurrent.futures import ThreadPoolExecutor
     t = 2_000_000.0
+    checked, lock = [0], threading.Lock()
+    real = core.verify_password
+
+    def counting(password, secret):
+        with lock:
+            checked[0] += 1
+        return real(password, secret)
+    monkeypatch.setattr(core, "verify_password", counting)
+
     def guess(_):
         try:
-            return core.login(DB, "staff1", "wrong-pass", mint, now=t)["error"] == core.E_BAD_LOGIN
-        except Exception:  # a transaction that gave up after its retries counts nothing
-            return False
-    with ThreadPoolExecutor(core.LOCK_AFTER_FAILS) as ex:
-        counted = sum(ex.map(guess, range(core.LOCK_AFTER_FAILS)))
+            return core.login(DB, "staff1", "wrong-pass", mint, now=t)["error"]
+        except Exception:  # a transaction that gave up after its retries checks nothing
+            return None
+    n = core.LOCK_AFTER_FAILS * 3
+    with ThreadPoolExecutor(n) as ex:
+        errors = list(ex.map(guess, range(n)))
     sec = DB.collection("authSecrets").document("u-staff1").get().to_dict()
-    assert counted and sec["failCount"] == counted  # no guess lost
-    if counted == core.LOCK_AFTER_FAILS:
+    assert checked[0] <= core.LOCK_AFTER_FAILS
+    assert checked[0] == errors.count(core.E_BAD_LOGIN) == sec["failCount"]  # each check counted, none lost
+    if checked[0] == core.LOCK_AFTER_FAILS:
         assert "Too many" in core.login(DB, "staff1", "staff-pass-1", mint, now=t + 1)["error"]
 
 

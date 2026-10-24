@@ -132,6 +132,8 @@ export type ScheduleBase = Record<string, Record<string, string>>;
 // save base existed, a base dropped by a full localStorage): see mergeOnBase.
 export type SaveBase = ScheduleBase | 'unknown';
 const itemHash = (item: unknown): string => sigHash(sig(plain(item)));
+// A client's worker pay: written only with Edit pay (saveSchedule).
+const CLIENT_PAY = ['defaultHourlyRate', 'defaultOtRate', 'defaultShabbatRate'];
 // The save base of data the app holds (after a load or a save).
 export function scheduleBaseOf(data: Rec): ScheduleBase {
   const out: ScheduleBase = {};
@@ -341,6 +343,19 @@ export async function initFirestoreBackend() {
       });
       known[kind].forEach((_, id) => { if (!next[kind].has(id)) ops.push(['delete', F.doc(db,'tenants',t,kind,id)]); });
     }
+    // A client's worker pay (the three default rates) changes only with Edit
+    // pay (firestore.rules); without it a client is written with the pay the
+    // server holds, never this device's copy (it may be stale: clients are
+    // not listened to live), so a refused write never blocks every later save.
+    const c = await myClaims();
+    if (c.role !== 'tenant_admin' && c.role !== 'superadmin' && !(Array.isArray(c.rt) && c.rt.includes('editPay'))) {
+      for (const op of ops) {
+        if (op[0] !== 'set' || op[1].parent.id !== 'clients') continue;
+        const cur = await F.getDoc(op[1]);
+        const stored: Rec = cur.exists() ? cur.data() : {};
+        for (const k of CLIENT_PAY) { if (stored[k] !== undefined) op[2][k] = stored[k]; else delete op[2][k]; }
+      }
+    }
     if (first) {
       const linked = new Set((first.ids || []).map(String));
       const isLinked = (op: Op) => op[1].parent.id === 'workers' && linked.has(op[1].id);
@@ -475,8 +490,19 @@ export async function initFirestoreBackend() {
       F.where(F.documentId(),'>=',pre), F.where(F.documentId(),'<',pre + '')));
     return snap.docs.map(punchFromDoc);
   }
+  // A login other than the owner or a superadmin must stamp the worker's
+  // hrId as the server holds it (firestore.rules): it is read fresh, so a
+  // change of the worker's HR made on another device never refuses the punch.
   async function savePunch(t: string, entry: Rec): Promise<Reply> {
-    await F.setDoc(F.doc(db,'tenants',t,'punches',String(entry.id)), punchDoc(entry));
+    const c = await myClaims();
+    let hr: string | null | undefined;
+    if (c.role !== 'tenant_admin' && c.role !== 'superadmin' && entry.workerId != null) {
+      try {
+        const w = await F.getDoc(F.doc(db,'tenants',t,'workers',String(entry.workerId)));
+        if (w.exists()) { hr = (w.data().hrId as string) || null; workerHr.set(String(entry.workerId), hr); }
+      } catch { /* not readable here: the last load's copy */ }
+    }
+    await F.setDoc(F.doc(db,'tenants',t,'punches',String(entry.id)), punchDoc(entry, hr));
     return {ok: true, id: entry.id};
   }
   async function updatePunch(t: string, data: Rec): Promise<Reply> {

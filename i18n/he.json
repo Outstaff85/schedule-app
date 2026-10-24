@@ -1230,6 +1230,7 @@
   "Send the link to the worker. They keep it as a bookmark.": "שלחו את הקישור לעובד. הוא ישמור אותו כסימניה.",
   "New token": "טוקן חדש",
   "The name is empty — the changes were not saved": "השם ריק — השינויים לא נשמרו",
+  "The punch was not saved on the server — {0}": "הדיווח לא נשמר בשרת — {0}",
   "Building the PDF, please do not close…": "בונה PDF, נא לא לסגור…",
   "{0}'s document was updated": "המסמך של {0} עודכן",
   "Updating {0}'s document failed": "עדכון המסמך של {0} נכשל",

@@ -170,6 +170,22 @@ def test_a_fix_of_a_shift_with_no_out_or_no_in_adds_the_missing_punch():
     assert hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-07", "accept": True})["error"] == "Nothing to resolve"
 
 
+def test_a_fix_of_a_night_shift_with_no_in_puts_the_in_the_evening_before():
+    # Avi's IN on the evening of the 9th was missed; his OUT is 06:00 on the 10th.
+    P("n1").set({"id": "n1", "workerId": "w1", "type": "out", "time": "06:00", "clientId": "c1", "hrId": "u-hr",
+                 "ts": at("2026-10-10T03:00:00"), "day": "2026-10-10"})
+    assert hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": "2026-10-10",
+                                       "line": "w1|2026-10-10||06:00", "inT": "22:00", "outT": "06:00"})["ok"]
+    r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-10", "accept": True})
+    assert r["ok"]
+    out = P("n1").get().to_dict()
+    assert out["day"] == "2026-10-10" and out["ts"] == at("2026-10-10T03:00:00")
+    ps = [p.to_dict() for p in DB.collection("tenants").document(T1).collection("punches").stream()]
+    new_in = next(d for d in ps if d["type"] == "in" and d.get("editedBy") == "approval")
+    assert new_in["time"] == "22:00" and new_in["day"] == "2026-10-09" and new_in["date"] == "09/10/2026"
+    assert new_in["ts"] == at("2026-10-09T19:00:00")
+
+
 def test_concurrent_reviews_of_one_document_lose_nothing():
     from concurrent.futures import ThreadPoolExecutor
     P("e1").set({"id": "e1", "workerId": "w1", "type": "in", "time": "08:00", "clientId": "c1", "ts": at("2026-10-09T05:00:00"), "day": "2026-10-09"})
