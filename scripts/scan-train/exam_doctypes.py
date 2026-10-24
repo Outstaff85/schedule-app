@@ -14,7 +14,9 @@ the one exam before the site has collected page copies: the type, by type and by
 keyed by the short sha1 the drawing records for each real page, never its name), and the turn — each page
 cut upright by the document's own top-left corner the drawing records ("upright"), then shown at its 4
 quarter turns as above. A photo drawn before that was recorded is cut at an unknown turn and its turn is
-not scored (null when no page has it: draw the exam photos again with --templates --exam).
+not scored (null when no page has it: draw the exam photos again with --templates --exam). Each page is read as the
+phone reads it: cut as the phone cuts (gen/phone.py warp_rgba) and drawn onto the 256 square at the default smoothing
+(phone.doctype_input, the profile's exam kernel).
 The model is worth publishing when the site's way is at least as right as Haiku alone and its sure
 turns are right (≥ 98 %); else the next size up is suggested. Writes ~/.scan-train/report_doctypes.json
 — with the sha256 of the model examined ("model_sha256"; publish.py refuses a report written for another
@@ -24,6 +26,7 @@ import numpy as np
 import onnxruntime as ort
 
 from common import DOCTYPE_MODELS, DOCTYPE_SIZES, DOCTYPES, WORK, model_hashes, read_json, write_json
+from gen import phone
 
 EXAM_PHOTOS = WORK / "synth" / "docs-exam" / "examples.json"
 
@@ -31,8 +34,8 @@ SURE, S = 0.9, 256
 
 
 def read(sess, img):
-    x = cv2.cvtColor(cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB).astype(np.float32) / 255
-    k, t = sess.run(None, {"img": x.transpose(2, 0, 1)[None]})
+    """The model's answer on a page (BGR) drawn onto its 256 square as the phone draws it (phone.doctype_input)."""
+    k, t = sess.run(None, {"img": phone.doctype_input(img, bgr=True)[None]})
     return k.reshape(-1), t.reshape(-1)
 
 
@@ -93,13 +96,13 @@ def your_documents():
         h, w = img.shape[:2]
         k = e.get("upright")
         up = isinstance(k, int) and 0 <= k < 4
-        q = np.float32([[x * w, y * h] for x, y in e["fixed"]])
+        q = np.float64(e["fixed"])
         if up:
             q = np.roll(q, -k, axis=0)   # the document's own top-left first
-        W = int(max(np.linalg.norm(q[1] - q[0]), np.linalg.norm(q[2] - q[3])))
-        H = int(max(np.linalg.norm(q[3] - q[0]), np.linalg.norm(q[2] - q[1])))
-        M = cv2.getPerspectiveTransform(q, np.float32([[0, 0], [W, 0], [W, H], [0, H]]))
-        out.append({"img": cv2.warpPerspective(img, M, (W, H)), "doctype": kind, "doc": e.get("template"), "upright": up})
+        page = phone.warp_rgba(img, q.tolist())[..., :3]   # cut as the phone cuts (scan-core.js warpRGBA)
+        if page.shape[0] < 2 or page.shape[1] < 2:
+            continue
+        out.append({"img": page, "doctype": kind, "doc": e.get("template"), "upright": up})
     return out
 
 

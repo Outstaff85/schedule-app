@@ -11,7 +11,10 @@ holding a held-out template's photo, an exam background, an exam split key or an
 (docs/scan-training.md → "Kept apart"); a made-up set drawn through gen build must have passed its QA (gen.qa.require_qa:
 python -m gen qa --run DIR). The checkpoint records the data fingerprint (checkpoint.py); --more builds the network from
 the graph the saved weights belong to (their info.base — v4's weights are of v3's graph) and records where it went on
-from (info.from: that base, its epochs and the version publish.py stamped on it). Writes ~/.scan-train/new/<model>.onnx."""
+from (info.from: that base, its epochs and the version publish.py stamped on it). Each photo's 256 input is made as the
+phone makes it (gen/phone.py frame_to_S: half as the camera frame's live input, half as the capture's, the kernel drawn
+from the phone profile's mix; --resize area: INTER_AREA as before), and the fingerprint records the profile. Writes
+~/.scan-train/new/<model>.onnx."""
 import argparse
 import pathlib
 import random
@@ -24,6 +27,7 @@ import onnxruntime as ort
 import torch
 
 import checkpoint
+from gen import phone
 from gen.common import trains
 from gen.manifest import data_fingerprint, run_fingerprint
 from gen.qa import require_qa
@@ -52,16 +56,32 @@ def heatmaps(corners):
     return out
 
 
-def load(examples):
+PHONE_LIVE = 0.5   # the share of examples made as the camera frame's live input (the rest as the capture's)
+
+
+def model_input(img, resize, rng):
+    """One example's 256 input (BGR in, RGB out): resize "phone" — as the phone makes it (gen/phone.py frame_to_S):
+    the live frame's createImageBitmap or the capture's smallRGBA, PHONE_LIVE of each, the kernel drawn from the phone
+    profile's mix for that op —, or "area" (cv2.INTER_AREA, as before)."""
+    if resize == "area":
+        small = cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA)
+    else:
+        small = phone.frame_to_S(img, "live" if rng.random() < PHONE_LIVE else "capture", rng=rng)
+    return cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+
+
+def load(examples, resize="phone"):
+    """→ (inputs, corners). Each example's input is made once, here (a whole photo per example would not fit in
+    memory): by model_input, its draws from a stream of their own (the same every run, apart from the training's)."""
     X, Y = [], []
+    rng = random.Random("train.py:resize")
     for e in examples:
         if e.get("hard"):
             continue  # a retaken page with no right answer: only the exam's
         img = cv2.imread(e["file"])
         if img is None:
             continue
-        img = cv2.cvtColor(cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)
-        X.append(img)
+        X.append(model_input(img, resize, rng))
         Y.append(e["fixed"])
     return X, Y
 
@@ -190,6 +210,8 @@ def main():
     ap.add_argument("--base", default="", help="the version whose models are trained further (default: the lab's, scripts/scan-lab/models-version; "
                     "with --more / --resume the saved weights' own)")
     ap.add_argument("--synth-run", default=str(WORK / "synth" / "docs"), help="the made-up set --synth draws from (default ~/.scan-train/synth/docs)")
+    ap.add_argument("--resize", choices=("phone", "area"), default="phone",
+                    help="how a photo is shrunk to the 256 input: as the phone does (gen/phone.py, live or capture; the default) or INTER_AREA")
     checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
@@ -211,8 +233,9 @@ def main():
         require_qa(synth_run, "the made-up photos (synth_docs.py)", work=WORK)   # drawn through gen build: its QA sheet passed
     assert_clean(ex, "the document edges' training examples", work=WORK)   # no held-out page, exam key or exam document
     data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(synth_run) if a.synth else None,
-                            counts={"synth": a.synth, "midv": a.midv, "smartdoc": a.smartdoc})
-    X, Y = load(ex)
+                            counts={"synth": a.synth, "midv": a.midv, "smartdoc": a.smartdoc},
+                            resize=phone.profile_id() if a.resize == "phone" else "area")
+    X, Y = load(ex, a.resize)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     base = a.base or version_of("scan-lab")
     print(f"{len(X)} examples, base models {base}, on {dev}")

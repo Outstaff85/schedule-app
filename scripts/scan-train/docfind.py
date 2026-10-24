@@ -11,17 +11,26 @@ with the accurate model in full precision:
   the sides are then pulled onto the strongest edge nearby (`refine_edges`);
 - more documents on the same photo (a passport and its ספח, a card…; up to 4):
   the found ones painted over, then a 10 % margin around the photo, then the
-  strips beside the first (`find_next`);
+  strips beside the first (`find_next`); a document lying on a found one, on
+  its flat cut (`find_inside`, the lab's findInside);
 - every page is cut flat (`warp`) and turned upright by the face on it (YuNet).
+
+The corner picking is the phone's own (gen/phone.py corners, re-exported here).
+The model's 256 input is shrunk by INTER_AREA unless `resize` names a phone path
+("live", "capture", "high": gen/phone.py frame_to_S — the edges exam on the
+phone's path, python -m gen exam-phone).
 
 Pure numpy / OpenCV / ONNX Runtime: the sessions are passed in, so the tests run
 it with the real models or with stand-ins.
 """
-import itertools
 from functools import cmp_to_key
 
 import numpy as np
 import cv2
+
+# The corner picking is the phone's, ported exactly (gen/phone.py corners, from scan-lab/scan-core.js corners): one
+# copy, re-exported here under its old names.
+from gen.phone import PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE, corners, _spots, _frame_score  # noqa: F401
 
 S, HM = 256, 128      # the document edges model's input and heatmap sides
 FN = 640              # the face finder's input side (yunet640.onnx)
@@ -39,90 +48,38 @@ def quad_error(pts, right):
     return float(min(np.hypot(*(np.roll(p, k, 0) - r).T).max() for k in range(4)))
 
 
-def detect(sess, img):
+RESIZES = ("area", "live", "capture", "high")
+
+
+def model_input(img, resize=None):
+    """The edges model's 256 input from a BGR image: resize "area" (None; cv2.INTER_AREA, as the exam always did) or a
+    phone path — "live", "capture" or "high", optionally ":<kernel>" (gen/phone.py frame_to_S; with no kernel named the
+    profile's exam kernel: the measured one, else the mix's heaviest) — as float32 RGB 0..1, H × W × 3."""
+    if resize in (None, "area"):
+        small = cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA)
+    else:
+        from gen import phone
+        op, _, kernel = str(resize).partition(":")
+        small = phone.frame_to_S(img, op, kernel=kernel or phone.kernel_for(op))
+    return cv2.cvtColor(small, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+
+
+def detect(sess, img, resize=None):
     """The document edges model on a BGR image: (pts 4×2 in 0..1 or None, conf). sess may be a
-    list of models (the accurate one, then the light one): the first that is sure wins."""
+    list of models (the accurate one, then the light one): the first that is sure wins. resize: how the
+    picture is shrunk to the model's 256 input (model_input: INTER_AREA by default, or the phone's path)."""
     if isinstance(sess, (list, tuple)):
         best = (None, 0.0)
         for one in sess:
-            pts, conf = detect(one, img)
+            pts, conf = detect(one, img, resize)
             if good_quad(pts, conf):
                 return pts, conf
             if best[0] is None:
                 best = (pts, conf)
         return best
-    x = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), (S, S), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+    x = model_input(img, resize)
     hm = sess.run(None, {sess.get_inputs()[0].name: x.transpose(2, 0, 1)[None]})[0][0]
     return corners(hm)
-
-
-PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE = 3, 6, 10, 1.6, 4, np.radians(5)
-
-
-def _spots(m):
-    """Up to PEAKS spots of one heatmap (>= 0.3 and at least half its highest): (centre of the blob
-    around it, within BLOB_R, in 0..1; its value)."""
-    out, left, top = [], m.copy(), float(m.max())
-    n, lab = cv2.connectedComponents((m >= 0.3).astype(np.uint8), connectivity=4)
-    ys, xs = np.mgrid[0:m.shape[0], 0:m.shape[1]]
-    for _ in range(PEAKS):
-        i = int(np.argmax(left))
-        py, px = np.unravel_index(i, m.shape)
-        v = float(left[py, px])
-        if v < 0.3 or v < top * 0.5:
-            break
-        near = (np.abs(xs - px) <= BLOB_R) & (np.abs(ys - py) <= BLOB_R)
-        w = m * (lab == lab[py, px]) * near
-        sw = float(w.sum())
-        out.append(([(float((xs * w).sum()) / sw + 0.5) / m.shape[1], (float((ys * w).sum()) / sw + 0.5) / m.shape[0]], v))
-        left[max(0, py - PEAK_R):py + PEAK_R + 1, max(0, px - PEAK_R):px + PEAK_R + 1] = 0
-    return out, top
-
-
-def _frame_score(c):
-    q = [p for p, _ in c]
-    sg = 0
-    for i in range(4):
-        a, b, d = q[i], q[(i + 1) % 4], q[(i + 2) % 4]
-        z = (b[0] - a[0]) * (d[1] - b[1]) - (b[1] - a[1]) * (d[0] - b[0])
-        if not z or (sg and np.sign(z) != sg):
-            return -1.0
-        sg = np.sign(z)
-    side = [float(np.hypot(q[(i + 1) % 4][0] - q[i][0], q[(i + 1) % 4][1] - q[i][1])) for i in range(4)]
-
-    def even(a, b):
-        r = max(a, b) / max(1e-6, min(a, b))
-        return (SIDES / r) ** 2 if r > SIDES else 1.0
-    def ang(i):
-        return np.arctan2(q[(i + 1) % 4][1] - q[i][1], q[(i + 1) % 4][0] - q[i][0])
-
-    def off(a, b):   # how far opposite sides are from parallel (they run opposite ways)
-        d = abs(ang(a) - ang(b) - np.pi) % (2 * np.pi)
-        return min(d, 2 * np.pi - d)
-    # a page in perspective keeps one pair of sides near parallel; a frame with both pairs off is
-    # counted down by cos^PAR of the smaller one beyond FREE
-    par = max(0.0, float(np.cos(max(0.0, min(off(0, 2), off(1, 3)) - FREE)))) ** PAR
-    return sum(v for _, v in c) * even(side[0], side[2]) * even(side[1], side[3]) * par
-
-
-def corners(hm):
-    """The 4 corners picked together from up to PEAKS spots of each heatmap: with two documents on a
-    picture every heatmap has a spot on each, and the highest spots alone can put one corner on one
-    document and three on the other (an ID card below its ספח, 2026-10-22). The convex frame with the
-    highest spots wins, a frame whose opposite sides differ more than SIDES× counted down, and one with both
-    pairs of sides more than FREE from parallel (a frame mixed of two documents) by cos^PAR of the rest. One spot on
-    each heatmap: that frame, as before. The phone does the same (scan-lab/scan-core.js corners)."""
-    found = [_spots(hm[k]) for k in range(4)]
-    conf0 = min(top for _, top in found)
-    if any(not s for s, _ in found):
-        return None, conf0
-    best = [s[0] for s, _ in found]
-    best_score = _frame_score(best)
-    for c in itertools.product(*(s for s, _ in found)):
-        sc = _frame_score(c)
-        if sc > best_score:
-            best, best_score = list(c), sc
-    return np.array([p for p, _ in best], np.float64), min(v for _, v in best)
 
 
 def quad_area(q):
@@ -227,31 +184,31 @@ def border_colour(img):
     return [int(v) for v in np.median(ring, axis=0)]
 
 
-def detect_padded(sess, img, col=None):
+def detect_padded(sess, img, col=None, resize=None):
     """detect() on the image inside a 10 % margin of its background's colour: a document
     cut off by the photo's edge (or cut to its edges already) then lies whole inside,
     its corners on the edge. The corners are given in the image's own 0..1."""
     h, w = img.shape[:2]
     pad = round(0.1 * max(w, h))
     padded = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=col or border_colour(img))
-    pts, conf = detect(sess, padded)
+    pts, conf = detect(sess, padded, resize)
     if pts is None:
         return None, conf
     return np.clip((pts * [w + 2 * pad, h + 2 * pad] - pad) / [w, h], 0, 1), conf
 
 
-def find_next(models, img, found):
+def find_next(models, img, found, resize=None):
     """The next document's corners (0..1) on the photo, or None: the found ones painted
     over in the background's colour, then a 10 % margin of that colour around the photo
     (a document cut off by the photo's edge then lies whole inside) — each with the
     accurate model, then the light one, as the scanner lab does —, then the widest strips
     left beside the first (the accurate model only). A frame overlapping a found one by
-    over 30 % is that one again. models: a session, or a list (accurate, light)."""
+    over 30 % is that one again. models: a session, or a list (accurate, light); resize: as detect's."""
     models = list(models) if isinstance(models, (list, tuple)) else [models]
     h, w = img.shape[:2]
 
     def try_on(src, back, sess):
-        pts, conf = detect(sess, src)
+        pts, conf = detect(sess, src, resize)
         q = back(pts) if good_quad(pts, conf) else None
         if q is None or not good_quad(q, conf, img.shape):
             return None
@@ -268,7 +225,7 @@ def find_next(models, img, found):
         if q is not None:
             return q
     for sess in models:
-        pts, conf = detect_padded(sess, painted, col)
+        pts, conf = detect_padded(sess, painted, col, resize)
         q = pts if good_quad(pts, conf, img.shape) and all(quad_iou(pts, f) <= 0.3 for f in found) else None
         if q is not None:
             return q
@@ -285,6 +242,32 @@ def find_next(models, img, found):
         if q is not None:
             return q
     return None
+
+
+INSIDE_MIN, INSIDE_MAX = 0.03, 0.6   # index.html findInside: a document on another covers 3–60 % of it
+
+
+def find_inside(sess, img, q, found, resize="capture"):
+    """A document lying on the found one q (an ID card on its ספח; index.html findInside), or None: q cut flat from
+    the photo as the phone cuts it (gen/phone.py warp_rgba: not turned, no exact proportion, what falls outside the
+    photo black), the model on the cut, and a sure frame of a document's shape (phone.doc_shape) covering 3–60 % of
+    the cut taken back onto the photo through the cut's homography — unless it is a document found already (q itself
+    left out). sess: one model (the lab uses its capture model, the light one when it has none); img: BGR; resize: as
+    detect's ("capture": the lab's smallRGBA)."""
+    from gen import phone
+    q = np.asarray(q, np.float64)
+    flat = phone.warp_rgba(img, q.tolist())[..., :3]
+    H, W = flat.shape[:2]
+    if W < 2 or H < 2:
+        return None
+    pts, conf = detect(sess, flat, resize)
+    if not good_quad(pts, conf) or not phone.doc_shape(pts, W, H):
+        return None
+    a = quad_area(pts)
+    if a < INSIDE_MIN or a > INSIDE_MAX:
+        return None
+    c = np.array(phone.unwarp(q.tolist(), pts.tolist()), np.float64)
+    return c if all(np.array_equal(np.asarray(f), q) or quad_iou(c, np.asarray(f)) <= 0.3 for f in found) else None
 
 
 # ---------- photos on a white page ----------

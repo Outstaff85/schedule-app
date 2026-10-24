@@ -1,7 +1,9 @@
 """The passport zone reader (docs/hf-plan.md → H8b): a small CRNN that reads one MRZ line, and how
 a passport page's two MRZ lines are found — shared by train_mrz.py and exam_mrz.py; the phone
-does the same (src/scan-process/mrz-reader.ts: the same line finding, the same input, the same
-decoding — a change here is mirrored there).
+does the same (mrzFind / mrzRead in scan-lab/index.html, copied to scan/index.html: the same line finding, the same
+input, the same decoding — a change here is mirrored there; gen/phone.py mrz_find is the exact port of mrzFind, and
+tests/scan/phone_parity.test.mjs checks the lab's boxes within 1 px of find_boxes). The phone draws a line into the
+32 × 512 input at imageSmoothingQuality 'high' (phone.line_input); line_input here still shrinks by INTER_AREA.
 
 The model's contract (mrz.onnx): input "img" [1, 1, 32, 512] — the line in grey 0..1, its height
 scaled to 32, left-aligned, the rest of the width filled with white; output "logits" [1, 128, 38]
@@ -55,7 +57,13 @@ def dark_marks(gray, r=15, c=15):
 
 def find_lines(gray):
     """A passport page, upright (uint8 grey) → the two MRZ lines' pictures [line 1, line 2], or [] when
-    none is found. The zone is the page's lowest two text lines that run across most of its width: in
+    none is found (find_boxes: where they are)."""
+    return [gray[y0:y1, x0:x1] for x0, y0, x1, y1 in find_boxes(gray)]
+
+
+def find_boxes(gray):
+    """A passport page, upright (uint8 grey) → the two MRZ lines' boxes [(x0, y0, x1, y1)] in pixels (x1, y1
+    exclusive), line 1 then line 2, or [] when none is found. The zone is the page's lowest two text lines that run across most of its width: in
     the lower 45 % of the page, the dark marks of each pixel row (an adaptive threshold) are counted,
     rows whose dark marks (dark_marks, then joined along the row) fill at least 35 % of the width are text (a zone line's letters, joined, fill most of it; scattered specks do not), and the last two bands of such rows are
     the lines, each cut with a little margin; a last band less than half as tall as the one above it is the page's
@@ -87,8 +95,8 @@ def find_lines(gray):
         y0, y1 = max(0, top + s - m), min(h, top + e + m)
         row = bw[max(0, s - m):min(bw.shape[0], e + m)]
         xs = np.flatnonzero(row.any(0))
-        x0, x1 = (max(0, xs[0] - m), min(w, xs[-1] + m)) if xs.size else (0, w)
-        out.append(gray[y0:y1, x0:x1])
+        x0, x1 = (max(0, int(xs[0]) - m), min(w, int(xs[-1]) + m)) if xs.size else (0, w)
+        out.append((x0, y0, x1, y1))
     return out
 
 

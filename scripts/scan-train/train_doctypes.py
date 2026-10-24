@@ -13,6 +13,8 @@ made-up set drawn through gen build whose QA sheet did not pass (gen.qa.require_
 Each epoch's progress is saved (checkpoint.py: --resume goes on with a run that stopped, --more trains
 further from the last run's weights); the checkpoint records the data fingerprint (the class table, heldout.json, the
 page ids trained on, the made-up set's run fingerprint), so --resume and --more refuse what they must.
+Each page is drawn onto its 256 square as the phone draws it (gen/phone.py doctype_input, the kernel drawn from the
+phone profile's capture mix; --resize area: INTER_AREA as before), and the fingerprint records the profile.
 Writes ~/.scan-train/new/doctype-lite.onnx (and deletes report_doctypes.json: exam_doctypes.py runs again).
 A larger model for a server (common.DOCTYPE_SERVER, doctype.onnx) is trained only with --only server; no
 code runs it and publish.py never publishes it.
@@ -36,6 +38,7 @@ from torch import nn
 
 import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SERVER, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
+from gen import phone
 from gen.common import trains
 from gen.manifest import data_fingerprint, run_fingerprint
 from gen.qa import require_qa
@@ -67,14 +70,27 @@ class DoctypeNet(nn.Module):
         return torch.softmax(k, 1), torch.softmax(t, 1)
 
 
-def load(examples):
-    """→ (pictures, types, upright): upright False for a copy whose turn is not known (no turn answer)."""
+def square(img, resize, rng):
+    """A page (BGR) on its 256 square (RGB): resize "phone" — drawn as the phone draws it (gen/phone.py
+    doctype_input: the aspect not kept, the kernel drawn from the phone profile's capture mix; the site's 256 copies
+    stay as they are) —, or "area" (cv2.INTER_AREA, as before)."""
+    if resize == "area":
+        small = cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA)
+    else:
+        small = phone.resample(img, (S, S), phone.kernel_for("capture", rng))
+    return cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+
+
+def load(examples, resize="phone"):
+    """→ (pictures, types, upright): upright False for a copy whose turn is not known (no turn answer). Each
+    picture's square is made once, here (square), its kernel draws from a stream of their own."""
     X, Y, U = [], [], []
+    rng = random.Random("train_doctypes.py:resize")
     for e in examples:
         img = cv2.imread(e["file"])
         if img is None:
             continue
-        X.append(cv2.cvtColor(cv2.resize(img, (S, S), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB))
+        X.append(square(img, resize, rng))
         Y.append(DOCTYPES.index(e["doctype"]))
         U.append(e.get("upright") is not False)   # the made-up pages are drawn upright
     return X, Y, U
@@ -181,12 +197,15 @@ def main():
     ap.add_argument("--scratch", action="store_true", help="random weights, no download — only to test the steps, never for a model to publish")
     ap.add_argument("--synth", type=int, default=0, help="made-up pages (synth_pages.py) added, at random")
     ap.add_argument("--synth-run", default=str(WORK / "synth" / "pages"), help="the made-up set --synth draws from (default ~/.scan-train/synth/pages)")
+    ap.add_argument("--resize", choices=("phone", "area"), default="phone",
+                    help="how a page is shrunk to 256: as the phone draws it (gen/phone.py, the default) or INTER_AREA")
     checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
     ex = gather(a)
-    data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(a.synth_run) if a.synth else None, synthCount=a.synth)
-    X, Y, U = load(ex)
+    data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(a.synth_run) if a.synth else None, synthCount=a.synth,
+                            resize=phone.profile_id() if a.resize == "phone" else "area")
+    X, Y, U = load(ex, a.resize)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} page copies ({len(U) - sum(U)} with no sure turn: the type only), on {dev}")
     jobs = {"doctype-lite.onnx": a.phone} if a.only == "phone" else {"doctype.onnx": a.server}
