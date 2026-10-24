@@ -13,17 +13,20 @@ exam (synth.held_out: heldout.json) and with the check vocabulary (synth.field_v
 other pages and the training vocabulary — the reader is measured on cards and words it never saw.
 
 Writes <n>.png (grey), labels.tsv (file, text as written, kind, the page's sha1 prefix) and sources.json (the
-split, the vocabulary, the pages' sha1s — train_he.py refuses a training set holding a held-out page)."""
-import argparse
+split, the vocabulary, the pages' sha1s — train_he.py refuses a training set holding a held-out page). A thin wrapper
+over `python -m gen build --model he` (gen/build.py): the folder also gets manifest.jsonl and run.json, one row per page
+(docs/scan-training.md → "Made-up sets: build, verify, QA")."""
+import hashlib
 import json
 import pathlib
-import random
 
 import cv2
 import numpy as np
 
+from gen import rng as grng
 from gen.common import file_sha1, heldout_sha256, record_exam_set
-from home import WORK, gentle
+from gen.manifest import FontLog
+from home import WORK
 from synth_docs import TEMPLATES, templates_in
 from synth_lines import hebrew_fonts
 
@@ -58,26 +61,6 @@ def crop(rng, g, box):
     return g[y0:y1, x0:x1]
 
 
-def _batch(job):
-    import template_vary
-    seed, start, n, folder, pages, fonts, held = job
-    labels = []
-    for i in range(start, start + n):
-        rng = random.Random(seed * 1_000_003 + i)
-        path, _ = rng.choice(pages)
-        page, fields = template_vary.vary(rng, fonts, path, template_vary.spec_for(path), held=held)
-        tag = (file_sha1(path) or "")[:10]
-        g = phone(rng, page)
-        for k, (kind, text, box) in enumerate(fields):
-            part = crop(rng, g, box)
-            if part.size == 0:
-                continue
-            name = f"{i}-{k}.png"
-            cv2.imwrite(str(pathlib.Path(folder) / name), part)
-            labels.append(f"{name}\t{text}\t{kind}\t{tag}")
-    return labels
-
-
 def split_pages(pages, check):
     """The marked pages a run draws: the held-out ones for the check, the others for training — a clear stop when
     either list is empty (no check without a held-out page, no training on held-out pages alone)."""
@@ -92,47 +75,89 @@ def split_pages(pages, check):
     return held if check else rest
 
 
-def draw(count, out, seed, jobs, pages, fonts, held=False):
-    out = pathlib.Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    work = [(seed, s, min(50, count - s), str(out), pages, fonts, held) for s in range(0, count, 50)]
-    if jobs > 1:
-        from multiprocessing import Pool
-        with Pool(jobs) as pool:
-            done = pool.map(_batch, work)
-    else:
-        done = [_batch(w) for w in work]
-    labels = [l for b in done for l in b]
-    (out / "labels.tsv").write_text("\n".join(labels) + "\n", encoding="utf-8")
-    used = sorted({file_sha1(p) for p, _ in pages} - {None})
-    (out / "sources.json").write_text(json.dumps({"split": "check" if held else "train", "vocabulary": "check" if held else "train",
-                                                  "templates": used, "heldout_sha256": heldout_sha256()}, indent=1), encoding="utf-8")
-    return len(labels)
+# ---------- gen build (gen/build.py): the set through the manifest ----------
+MODEL, CHUNK = "he", 50
 
 
-def main():
+def _batch(job):
     import template_vary
-    ap = argparse.ArgumentParser()
+    seed, indices, folder, pages, fonts, held = job
+    fonts = FontLog(fonts)
+    out = []
+    for i in indices:
+        rng = grng.legacy(seed, i)   # random.Random(seed * 1_000_003 + i), as always
+        path, kind_page = rng.choice(pages)
+        page, fields = template_vary.vary(rng, fonts, path, template_vary.spec_for(path), held=held)
+        sha = file_sha1(path) or ""
+        tag = sha[:10]
+        g = phone(rng, page)
+        labels, files, kept = [], [], []
+        for k, (kind, text, box) in enumerate(fields):
+            part = crop(rng, g, box)
+            if part.size == 0:
+                continue
+            name = f"{i}-{k}.png"
+            cv2.imwrite(str(pathlib.Path(folder) / name), part)
+            labels.append(f"{name}\t{text}\t{kind}\t{tag}")
+            files.append(name)
+            kept.append({"file": name, "kind": kind, "text": hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]})   # the text as a hash only
+        out.append({"index": i, "id": f"he-{seed}-{i}", "entry": labels, "files": files, "meta": {
+            "templates": [sha], "fonts": fonts.take(), "vocabulary": "check" if held else "train", "class": kind_page,
+            "source": "template", "scene": {"fields": len(fields), "kept": len(kept)}, "labels": {"fields": kept}}})
+    return out
+
+
+def gen_args(ap):
+    """synth_fields.py's options (and python -m gen build --model he)."""
     ap.add_argument("--count", type=int, default=3000, help="pages (each gives all its fields)")
     ap.add_argument("--check", action="store_true", help="the check set: the held-out pages and words, another seed")
     ap.add_argument("--out", help="the folder (default ~/.scan-train/synth/he-fields/train or …/check)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--templates", default=str(TEMPLATES), help="the real pages (pull_templates.py)")
-    ap.add_argument("--jobs", type=int, default=gentle())
+    ap.add_argument("--jobs", type=int, default=None, help="processes (default: all cores but two, gently)")
     ap.add_argument("--fonts", nargs="*", help="Hebrew fonts (default: the PC's)")
-    a = ap.parse_args()
+
+
+def gen_params(a):
+    import template_vary
     pages = [(p, k) for p, k in templates_in(a.templates) if (template_vary.spec_for(p) or {}).get("fields")]
     if not pages:
         raise SystemExit(f"no marked real page in {a.templates} — run pull_templates.py (template_fields.json names the marked ones)")
     pages = split_pages(pages, a.check)
-    fonts = a.fonts or hebrew_fonts()
-    seed = a.seed or (2 if a.check else 1)
     out = pathlib.Path(a.out) if a.out else OUT / ("check" if a.check else "train")
-    n = draw(a.count, out, seed, a.jobs, pages, fonts, held=a.check)
-    if a.check:
+    return {"model": MODEL, "split": "exam" if a.check else "train", "count": a.count, "seed": a.seed or (2 if a.check else 1),
+            "out": str(out), "held": bool(a.check), "pages": [{"path": p, "sha1": file_sha1(p), "kind": k} for p, k in pages],
+            "fonts": list(a.fonts or hebrew_fonts())}
+
+
+def gen_prepare(folder, params):
+    pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
+
+
+def gen_jobs(params, indices, folder):
+    pages = [(e["path"], e["kind"]) for e in params["pages"]]
+    return [(params["seed"], chunk, folder, pages, params["fonts"], params["held"])
+            for chunk in (indices[k:k + CHUNK] for k in range(0, len(indices), CHUNK))]
+
+
+def gen_write(folder, params, items):
+    out = pathlib.Path(folder)
+    labels = [l for it in items for l in it["entry"]]
+    (out / "labels.tsv").write_text("\n".join(labels) + "\n", encoding="utf-8")
+    held = params["held"]
+    used = sorted({e["sha1"] for e in params["pages"]} - {None})
+    (out / "sources.json").write_text(json.dumps({"split": "check" if held else "train", "vocabulary": "check" if held else "train",
+                                                  "templates": used, "heldout_sha256": heldout_sha256()}, indent=1), encoding="utf-8")
+    if held:
         record_exam_set("he-fields/check", out / "labels.tsv")
-    print(f"{n} fields from {a.count} made-up pages ({len(pages)} real {'held-out' if a.check else 'training'} pages: "
-          + ", ".join(sorted((file_sha1(p) or "?")[:8] for p, _ in pages)) + f") in {out}")
+    print(f"{len(labels)} fields from {params['count']} made-up pages ({len(used)} real {'held-out' if held else 'training'} pages: "
+          + ", ".join(sorted(s[:8] for s in used)) + f") in {out}")
+
+
+def main(argv=None):
+    """The old CLI: python -m gen build --model he with today's defaults."""
+    from gen.build import cli
+    cli(MODEL, argv, prog="synth_fields.py")
 
 
 if __name__ == "__main__":

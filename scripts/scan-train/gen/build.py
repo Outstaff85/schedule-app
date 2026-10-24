@@ -1,0 +1,128 @@
+"""gen build — today's generators through the manifest (docs/scan-training.md → "Made-up sets: build, verify, QA").
+
+  python -m gen build --model edges   --count 20000 --seed 1 --jobs 6 --out ~/.scan-train/synth/docs   # synth_docs.py
+  python -m gen build --model doctype --count 6000  --seed 1 --jobs 6 --out ~/.scan-train/synth/pages  # synth_pages.py
+  python -m gen build --model he      --count 3000  --seed 1 --jobs 6 --out ~/.scan-train/synth/he-fields/train  # synth_fields.py
+
+Each generator draws exactly as it always did (one stream per example, gen.rng.legacy: an example depends only on
+the seed and its index) and writes what it always wrote (examples.json, pages.json, labels.tsv), and the set's
+folder also gets manifest.jsonl and run.json (gen/manifest.py). The old CLIs (synth_docs.py, synth_pages.py,
+synth_fields.py) are thin wrappers over this with their own defaults (20000 / 6000 / 3000).
+
+A generator module gives: MODEL, CHUNK, gen_args(ap) (its CLI), gen_params(args) (everything needed to draw any
+example again, JSON), gen_prepare(folder, params), gen_jobs(params, indices, folder) and its _batch(job) → items
+{"index", "id", "entry", "files", "meta"}, gen_write(folder, params, items). regenerate() draws chosen indices again
+into another folder (gen verify)."""
+import argparse
+import importlib
+import pathlib
+
+from . import manifest
+
+GENERATORS = {"edges": "synth_docs", "doctype": "synth_pages", "he": "synth_fields"}
+
+
+def module(model):
+    if model not in GENERATORS:
+        raise SystemExit(f"no generator for {model!r} (one of {', '.join(GENERATORS)})")
+    return importlib.import_module(GENERATORS[model])
+
+
+def parser(model, prog=None):
+    ap = argparse.ArgumentParser(prog=prog)
+    module(model).gen_args(ap)
+    return ap
+
+
+def cli(model, argv=None, prog=None):
+    """The old CLI of a generator (its options and defaults) → build()."""
+    from home import gentle
+    a = parser(model, prog).parse_args(argv)
+    jobs = gentle()   # below-normal priority, the first core left free (the default number of processes)
+    mod = module(model)
+    return build(model, mod.gen_params(a), a.jobs or jobs)
+
+
+def draw(mod, params, indices, folder, jobs):
+    """The items of the indices, sorted by index — the same whatever the number of processes."""
+    work = mod.gen_jobs(params, list(indices), str(folder))
+    if jobs > 1 and len(work) > 1:
+        from multiprocessing import Pool
+        with Pool(min(jobs, len(work))) as pool:
+            done = pool.map(mod._batch, work)
+    else:
+        done = [mod._batch(w) for w in work]
+    return sorted((it for b in done for it in b), key=lambda it: it["index"])
+
+
+def rows_of(model, params, items, folder):
+    folder = pathlib.Path(folder)
+    return [manifest.row(model, params["split"], params["seed"], it["index"], it["id"], it["meta"],
+                         [(f, manifest.sha256_file(folder / f)) for f in it["files"]]) for it in items]
+
+
+def build(model, params, jobs):
+    """Draw the set into params["out"]: the generator's own files, manifest.jsonl and run.json. → (folder, rows, run)."""
+    mod = module(model)
+    folder = pathlib.Path(params["out"])
+    folder.mkdir(parents=True, exist_ok=True)
+    for stale in (folder / "verify.json", folder / "qa" / "purity.json"):   # of a set drawn here before
+        stale.unlink(missing_ok=True)
+    mod.gen_prepare(folder, params)
+    items = draw(mod, params, range(params["count"]), folder, jobs)
+    mod.gen_write(folder, params, items)
+    rows = rows_of(model, params, items, folder)
+    sha = manifest.write_manifest(folder, rows)
+    info = manifest.write_run(folder, model, params["split"], params, rows, sha)
+    print(f"manifest.jsonl: {len(rows)} examples, fingerprint {sha[:12]} — next: python -m gen qa --run {folder}")
+    return folder, rows, info
+
+
+# ---------- drawing chosen examples again (gen verify) ----------
+def _found(entry, roots):
+    """A recorded input file on this PC: at its path when its sha1 is still the same, else under one of roots by
+    its last two path parts (kind folder / name) with the same sha1; None when not here."""
+    from . import common as gc
+    p = pathlib.Path(entry["path"])
+    if gc.file_sha1(p) == entry.get("sha1"):
+        return str(p)
+    for root in roots:
+        q = pathlib.Path(root).joinpath(*p.parts[-2:])
+        if gc.file_sha1(q) == entry.get("sha1"):
+            return str(q)
+        q = pathlib.Path(root) / p.name
+        if gc.file_sha1(q) == entry.get("sha1"):
+            return str(q)
+    return None
+
+
+def resolve(params, work=None):
+    """The run's parameters with every input file found on this PC (SystemExit naming the missing one by a sha1
+    prefix: the example cannot be drawn again without it)."""
+    import home
+    work = pathlib.Path(work or home.WORK)
+    out = dict(params)
+    for key, roots in (("pages", [work / "templates"]), ("photos", [work / "backgrounds"])):
+        fixed = []
+        for e in params.get(key) or []:
+            got = _found(e, roots)
+            if got is None:
+                raise SystemExit(f"a {'page' if key == 'pages' else 'background'} the run used ({(e.get('sha1') or '?')[:8]}) is not on "
+                                 "this PC with the same content — the run cannot be drawn again")
+            fixed.append({**e, "path": got})
+        out[key] = fixed
+    for key in ("latin", "hebrew", "fonts"):
+        missing = [f for f in params.get(key) or [] if not pathlib.Path(f).exists()]
+        if missing:
+            raise SystemExit(f"fonts the run used are not on this PC: {', '.join(pathlib.Path(f).name for f in missing)}")
+    return out
+
+
+def regenerate(run, indices, folder, jobs=1, work=None):
+    """Draw the chosen indices of a run (its run.json) again into folder → their manifest rows."""
+    model, params = run["model"], resolve(run["params"], work)
+    params = {**params, "out": str(folder), "show": False}
+    mod = module(model)
+    mod.gen_prepare(pathlib.Path(folder), params)
+    items = draw(mod, params, sorted(indices), folder, jobs)
+    return rows_of(model, params, items, folder)

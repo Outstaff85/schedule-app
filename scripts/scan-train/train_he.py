@@ -9,9 +9,11 @@ It is checked on the held-out real pages only (synth_fields.py --check: …/he-f
 heldout.json keeps and the check vocabulary — names, cities and streets training never draws) — every field read
 right, by kind, and the ID numbers whose check digit agrees. Before training, the training sets' sources.json are
 checked (gen.sources.assert_clean): a set holding a held-out page or drawn with the check vocabulary is refused; and
-the check set's (clean_check): one not drawn as the check, with another heldout.json or from other pages is refused. Labels are taught in the visual order
+the check set's (clean_check): one not drawn as the check, with another heldout.json or from other pages is refused; a
+training set drawn through gen build must have passed its QA (gen.qa.require_qa). Labels are taught in the visual order
 (hemodel.visual). Exported to ONNX (input "img" [1,1,32,512], output "logits" [1,128,len(CHARS)+1]) and
-checked. Each epoch's progress is saved (checkpoint.py: --resume, --more). Writes
+checked. Each epoch's progress is saved (checkpoint.py: --resume, --more); the checkpoint records the data fingerprint
+(the labels.tsv sha1s, the sizes, the batch and the steps per epoch: data_info), so --resume refuses other data. Writes
 ~/.scan-train/new/he.onnx, he-layouts.json (the card layouts the phone reads, hemodel.layouts) and
 report_he.json; publish.py puts both files into the version when the check says YES (--force-he else). The real ID cards the site collects (H8a, each
 with its fields' boxes and the values the user kept) are its exam once there are enough.
@@ -34,6 +36,9 @@ from home import HE_FILES, WORK, drop_report, gentle, model_hashes
 from mrzmodel import decode, line_input
 from synth import valid_israeli_id
 import checkpoint
+from gen.common import file_sha1
+from gen.manifest import data_fingerprint
+from gen.qa import require_qa
 from gen.sources import assert_check_set, assert_clean, read_meta
 from train_mrz import Lines, MrzNet, collate, export, fit
 
@@ -72,6 +77,15 @@ def clean_check(work=None):
     assert_check_set(pathlib.Path(work or WORK) / "synth" / "he-fields" / "check", "synth/he-fields/check")
 
 
+def data_info(work, items, checks, batch, steps):
+    """The checkpoint's info: the reader and the data fingerprint of its sets (each labels.tsv's sha1), the sizes, the
+    batch and the steps per epoch (a resumed schedule is made for them)."""
+    work = pathlib.Path(work)
+    labels = {k: file_sha1(work / "synth" / f / "labels.tsv") for k, f in (("train", "he-fields/train"), ("check", "he-fields/check"), ("lines", "he"))}
+    return {"model": "he", "data": data_fingerprint((), labels=labels, sizes={"items": len(items), "checks": len(checks)},
+                                                       batch=batch, steps=steps)}
+
+
 def check(net, rows, dev):
     """Every check field read: the share right, by kind, and the ID numbers read whose check digit agrees."""
     net.eval()
@@ -107,6 +121,8 @@ def main():
         raise SystemExit("too few made-up fields — run synth_fields.py --count 3000 and synth_fields.py --count 300 --check first")
     clean_inputs(fields, lines)
     clean_check()
+    if fields:
+        require_qa(WORK / "synth" / "he-fields" / "train", "synth/he-fields/train (synth_fields.py)")   # drawn through gen build: its QA passed
     items = [(p, t) for p, t, _ in fields + lines]
     random.Random(0).shuffle(items)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -118,7 +134,7 @@ def main():
                                      num_workers=a.workers, collate_fn=collate, drop_last=True)
     vl = torch.utils.data.DataLoader(Lines([(p, t) for p, t, _ in checks][:2000], False, real=frozenset(p for p, _, _ in checks), chars=hemodel.CHARS), 128,
                                      num_workers=a.workers, collate_fn=collate)
-    net = fit("he", {"model": "he"}, net, tl, vl, dev, a.epochs, a, hemodel.CHARS, "check fields right")
+    net = fit("he", data_info(WORK, items, checks, a.batch, len(tl)), net, tl, vl, dev, a.epochs, a, hemodel.CHARS, "check fields right")
     drop_report("report_he.json")   # the reader's check below writes it again, for these files
     report = check(net.to(dev), checks, dev)
     report["onnxDiff"] = export(net, WORK / "new" / "he.onnx")

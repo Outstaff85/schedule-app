@@ -30,8 +30,10 @@ attemptsSince is lowered by the folders really moved. After a publish only what 
 with --keep-copies: the exam report of each model published (report.json and report.html with the edges,
 report_doctypes.json, report_mrz.json, report_he.json) and attempts.json with the edges — the reports of
 models not named and the training figures (report_mrz_train.json) stay; the other copies on this PC go too
-unless --keep-copies (for a training still to come). --dry-run prints the files of the version (new or carried
-over), the counters it would set and the folders it would move, and stops before any write to Hugging
+unless --keep-copies (for a training still to come). The training progress of each published model
+(~/.scan-train/checkpoints/<model>.pt, kept) is stamped with the version ("published": {version, at}), so a later
+train.py --more says what it goes on from. --dry-run prints the files of the version (new or carried
+over), the counters it would set, the folders it would move and the checkpoint stamps, and stops before any write to Hugging
 Face, Firestore or Storage. Needs the owner's HF token on the PC (`hf auth login`)."""
 import argparse
 import datetime
@@ -48,6 +50,15 @@ REPORTS = {
     "he": ("report_he.json", "the Hebrew field reader", "train_he.py", HE_FILES),
 }
 ATTEMPT_DIRS = {"train": "attempts/used/{v}/", "exam": "attempts/exam/"}   # where a run's attempts go from attempts/new/
+# flag → the checkpoints (checkpoint.py) of its models, stamped with the version they were published as (train.py --more
+# names it in info.from); the passport zone reader keeps its own weights (mrz-ckpt/) and is not stamped
+CHECKPOINTS = {"edges": tuple(f"{n}.pt" for n in MODELS), "doctypes": tuple(f"{n}.pt" for n in DOCTYPE_MODELS), "mrz": (), "he": ("he.pt",)}
+
+
+def checkpoint_stamps(on, v, now):
+    """[(checkpoint file, the stamp)] of the published models whose training progress is on this PC."""
+    stamp = {"version": v, "at": now.isoformat(timespec="seconds")}
+    return [(WORK / "checkpoints" / f, stamp) for k in on for f in CHECKPOINTS[k] if (WORK / "checkpoints" / f).exists()]
 
 
 def moved_path(path, to):
@@ -270,6 +281,8 @@ def main():
             print(f"  move {d}/ → {moved_path(d + '/', to)}")
         if not plan:
             print("  no scan attempts moved" + ("" if "edges" in on else " (only with the edges in the version)"))
+        for f, st in checkpoint_stamps(on, v, now):
+            print(f"  checkpoints/{f.name}: stamped published {st}")
         used = ", ".join([REPORTS[k][0] for k in on] + (["report.html", "attempts.json"] if "edges" in on else []))
         print(f"  then: scripts/scan-lab/models-version → {v}; deleted: {used}" + ("" if a.keep_copies else "; the copies on this PC deleted"))
         return
@@ -283,6 +296,12 @@ def main():
     moved = move_attempts(v, plan) if plan else 0
     db().collection("scanTrainingStats").document("current").set(stats_update(on, v, now, moved), merge=True)
     (ROOT / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
+    for f, st in checkpoint_stamps(on, v, now):   # the runs the published models came from: --more names the version
+        try:
+            import checkpoint
+            checkpoint.stamp(f, st)
+        except Exception as e:   # the version is out; only the stamp is missing
+            print(f"warning: checkpoints/{f.name} not stamped ({e})")
     drop_reports(on)
     if not a.keep_copies:
         clear_work()

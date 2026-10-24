@@ -214,8 +214,31 @@ def heldout(path=None):
     return got
 
 
+HELD_KEYS = ("templates", "examBackgrounds", "examFonts", "vocabulary", "open")   # what heldout.json keeps from training
+
+
 def heldout_sha256(path=None):
-    return _cached(path or HELDOUT, _sha256_file)
+    """The identity of what heldout.json keeps (its HELD_KEYS, canonical JSON) — not its notes or its "versions" list,
+    so marking a published version moves nothing: the exam sets, the made-up sets' QA and the checkpoints' data
+    fingerprints change only when what is held out changes."""
+    h = heldout(path)
+    return hashlib.sha256(json.dumps({k: h.get(k) for k in HELD_KEYS}, sort_keys=True, ensure_ascii=False,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def dirty_versions(model, path=None):
+    """The published versions whose `model` may have seen what the exam keeps (heldout.json "versions": heldout_clean
+    false) — a versions entry with no "models" covers every model."""
+    v = heldout(path).get("versions") or {}
+    return frozenset(name for name, e in v.items() if isinstance(e, dict) and e.get("heldout_clean") is False
+                     and (not e.get("models") or model in e["models"]))
+
+
+def contaminated(chain, model, path=None):
+    """The versions of a model's base chain (the lab's version, the one it was trained from…) that are not held-out
+    clean: the exam's templates set is "contaminated" for it (exam.py; never a gate alone)."""
+    dirty = dirty_versions(model, path)
+    return sorted({c for c in chain if c} & dirty)
 
 
 def held_sha1s(path=None):

@@ -8,7 +8,10 @@ run that stopped, --more trains further from the last run's weights. With --synt
 photos (midv.py), and with --smartdoc N, N SmartDoc frames (smartdoc.py) are added to the users' examples (never to the exam;
 nor MIDV's and SmartDoc's exam documents, midv.open_exam). Before training, gen.sources.assert_clean refuses a set
 holding a held-out template's photo, an exam background, an exam split key or an open set's exam document
-(docs/scan-training.md → "Kept apart"). Writes ~/.scan-train/new/<model>.onnx."""
+(docs/scan-training.md → "Kept apart"); a made-up set drawn through gen build must have passed its QA (gen.qa.require_qa:
+python -m gen qa --run DIR). The checkpoint records the data fingerprint (checkpoint.py); --more builds the network from
+the graph the saved weights belong to (their info.base — v4's weights are of v3's graph) and records where it went on
+from (info.from: that base, its epochs and the version publish.py stamped on it). Writes ~/.scan-train/new/<model>.onnx."""
 import argparse
 import pathlib
 import random
@@ -22,6 +25,8 @@ import torch
 
 import checkpoint
 from gen.common import trains
+from gen.manifest import data_fingerprint, run_fingerprint
+from gen.qa import require_qa
 from gen.sources import assert_clean
 from midv import open_exam
 from common import MODELS, WORK, model_path, read_json, version_of
@@ -75,7 +80,32 @@ def batch(X, Y, idx, augment):
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(np.stack(ys))
 
 
-def train_one(name, base, X, Y, epochs, dev, args):
+def graph_of(name, base, args):
+    """The version whose graph the network is built from, and the info's "from": with --more / --resume the saved
+    weights' own base (an explicit --base that differs is refused: those weights do not load into another graph)."""
+    if not (args.more or args.resume):
+        return base, None
+    prev = checkpoint.load(name)
+    if prev is None:
+        return base, None   # checkpoint.begin says there is nothing to go on from
+    saved = (prev.get("info") or {}).get("base") or base
+    if saved != base:
+        if getattr(args, "base", ""):
+            raise SystemExit(f"--base {base}, but the saved weights of {name} are of base {saved}'s graph — give --base {saved} or leave --base out")
+        print(f"  {name}: the saved weights are of base {saved}'s graph — the network is built from it")
+    if args.resume:
+        return saved, (prev.get("info") or {}).get("from")
+    published = (prev.get("published") or {}).get("version")
+    lab = version_of("scan-lab")
+    if not published:
+        print(f"  note: the saved run of {name} was never published (it may be a run the owner turned down)")
+    elif published != lab:
+        print(f"  note: the saved run of {name} was published as {published}; the lab is on {lab}")
+    return saved, {"base": saved, "epochs": prev.get("epoch"), "published": published}
+
+
+def train_one(name, base, X, Y, epochs, dev, args, data=None):
+    base, came = graph_of(name, base, args)
     src = model_path(base, name)
     proto = onnx.load(str(src))
     free_batch(proto)  # trained in batches of 16: a version exported with its batch baked in as 1 (v3) is set free
@@ -87,7 +117,9 @@ def train_one(name, base, X, Y, epochs, dev, args):
         got = net.eval()(torch.from_numpy(probe)).numpy()
     assert np.abs(got - ref).max() < 1e-3, "the PyTorch copy does not answer like the model"
     net = net.to(dev)
-    info = {"model": name, "base": base}
+    info = {"model": name, "base": base, "data": data}
+    if came:
+        info["from"] = came
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
     opt = torch.optim.Adam(net.parameters(), LR[name])
@@ -155,30 +187,37 @@ def main():
     ap.add_argument("--synth", type=int, default=0, help="made-up photos (synth_docs.py) added, at random")
     ap.add_argument("--midv", type=int, default=0, help="MIDV photos (midv.py) added, at random")
     ap.add_argument("--smartdoc", type=int, default=0, help="SmartDoc frames (smartdoc.py) added, at random")
-    ap.add_argument("--base", default="", help="the version whose models are trained further (default: the lab's, scripts/scan-lab/models-version)")
+    ap.add_argument("--base", default="", help="the version whose models are trained further (default: the lab's, scripts/scan-lab/models-version; "
+                    "with --more / --resume the saved weights' own)")
+    ap.add_argument("--synth-run", default=str(WORK / "synth" / "docs"), help="the made-up set --synth draws from (default ~/.scan-train/synth/docs)")
     checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
     ex = [e for e in read_json(WORK / "examples.json") if trains(e)] if (WORK / "examples.json").exists() else []   # not the exam's, none left out of both
-    for n, folder, how in ((a.synth, "synth/docs", "synth_docs.py"), (a.midv, "midv", "midv.py"),
-                            (a.smartdoc, "smartdoc", "smartdoc.py")):
+    synth_run = pathlib.Path(a.synth_run)
+    for n, folder, how in ((a.synth, synth_run, "synth_docs.py"), (a.midv, WORK / "midv", "midv.py"),
+                            (a.smartdoc, WORK / "smartdoc", "smartdoc.py")):
         if not n:
             continue
-        more = WORK / folder / "examples.json"
+        more = folder / "examples.json"
         if not more.exists():
-            raise SystemExit(f"no {folder} examples — run {how} first")
-        more = [{**e, "file": str(WORK / folder / "img" / pathlib.Path(e["file"]).name)} for e in read_json(more)  # wherever the set was made (another PC, datasets_hf.py)
+            raise SystemExit(f"no {folder.name} examples — run {how} first")
+        more = [{**e, "file": str(folder / "img" / pathlib.Path(e["file"]).name)} for e in read_json(more)  # wherever the set was made (another PC, datasets_hf.py)
                 if not open_exam(e)]  # the exam's documents are never trained on
         ex += random.sample(more, min(n, len(more)))
     if not ex:
         raise SystemExit("no examples to train on — run pull.py first")
+    if a.synth:
+        require_qa(synth_run, "the made-up photos (synth_docs.py)")   # drawn through gen build: its QA sheet passed
     assert_clean(ex, "the document edges' training examples", work=WORK)   # no held-out page, exam key or exam document
+    data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(synth_run) if a.synth else None,
+                            counts={"synth": a.synth, "midv": a.midv, "smartdoc": a.smartdoc})
     X, Y = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     base = a.base or version_of("scan-lab")
     print(f"{len(X)} examples, base models {base}, on {dev}")
     for name in a.models:
-        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a)
+        train_one(name, base, X, Y, a.epochs or EPOCHS[name], dev, a, data)
 
 
 if __name__ == "__main__":

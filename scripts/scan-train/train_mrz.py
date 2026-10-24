@@ -155,11 +155,13 @@ def edit_distance(a, b):
 
 def fit(name, info, net, tl, vl, dev, epochs, args, alphabet=CHARS, what="lines right"):
     """CTC training of a line reader (the zone reader, the Hebrew field reader), each epoch's progress saved
-    (checkpoint.py: --resume, --more); → the net with its best weights on the check lines."""
+    (checkpoint.py: --resume, --more; info carries the data fingerprint, and a resumed schedule must have been made for
+    this run's steps); → the net with its best weights on the check lines."""
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
     opt = torch.optim.AdamW(net.parameters(), 1e-3, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 2e-3, total_steps=epochs * len(tl))
+    checkpoint.check_steps(ck, args, epochs * len(tl))   # a resumed schedule made for another number of steps: stop now
     first, best = checkpoint.restore(ck, args, net, opt, sched)
     best = best or {"score": -1.0, "net": None}
     ctc = nn.CTCLoss(blank=0, zero_infinity=True)
@@ -268,6 +270,9 @@ def main():
     ctc = nn.CTCLoss(blank=0, zero_infinity=True)
     best, first = ((-1.0, 0.0), None), 0
     if last is not None:
+        saved_steps = (last.get("sched") or {}).get("total_steps")
+        if saved_steps is not None and saved_steps != a.epochs * len(tl):   # the lines were drawn again since: the schedule would run out
+            raise SystemExit(f"last.pt's schedule was made for {saved_steps} steps, this run has {a.epochs * len(tl)} (the lines changed) — start without --resume")
         net.load_state_dict(last["weights"])
         opt.load_state_dict(last["opt"])
         sched.load_state_dict(last["sched"])

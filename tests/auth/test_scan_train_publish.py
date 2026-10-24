@@ -395,3 +395,19 @@ def test_your_documents_report_has_no_turn_and_counts_by_document(exam_doctypes,
 def test_only_the_phones_document_type_model_is_trained_by_default():
     common = sys.modules.get("common") or _load("common")
     assert list(common.DOCTYPE_MODELS) == ["doctype-lite.onnx"] and list(common.DOCTYPE_SERVER) == ["doctype.onnx"]
+
+
+def test_a_publish_stamps_the_checkpoint_of_each_model_published_and_the_dry_run_only_shows_it(env, monkeypatch, capsys):
+    doctypes_ready(env.work)
+    ck = write(env.work, "checkpoints/doctype-lite.onnx.pt", b"CK")
+    write(env.work, "checkpoints/edges.onnx.pt", b"EK")           # the edges are not published: not stamped
+    stamped = []
+    fake = types.ModuleType("checkpoint")
+    fake.stamp = lambda f, st: stamped.append((pathlib.Path(f).name, st["version"]))
+    monkeypatch.setitem(sys.modules, "checkpoint", fake)
+    run(monkeypatch, "--doctypes", "--dry-run")
+    out = capsys.readouterr().out
+    assert "checkpoints/doctype-lite.onnx.pt: stamped published {'version': 'v6'" in out and "edges.onnx.pt" not in out
+    assert stamped == [] and ck.read_bytes() == b"CK"
+    run(monkeypatch, "--doctypes")
+    assert stamped == [("doctype-lite.onnx.pt", "v6")]

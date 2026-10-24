@@ -8,9 +8,11 @@ it takes the page as RGB 0..1 like the document edges models. Exported to ONNX (
 [1,3,256,256]; outputs "doctype", "turn" — probabilities) and checked to answer like the
 trained model. With --synth N, N made-up upright pages (synth_pages.py) are added to the site's page
 copies — or train alone while the site has collected none yet; the exam stays the site's pages. A set holding a
-held-out real page, an exam split key or an open set's exam document is refused before training (gather).
+held-out real page, an exam split key or an open set's exam document is refused before training (gather), and so is a
+made-up set drawn through gen build whose QA sheet did not pass (gen.qa.require_qa: python -m gen qa --run DIR).
 Each epoch's progress is saved (checkpoint.py: --resume goes on with a run that stopped, --more trains
-further from the last run's weights).
+further from the last run's weights); the checkpoint records the data fingerprint (the class table, heldout.json, the
+page ids trained on, the made-up set's run fingerprint), so --resume and --more refuse what they must.
 Writes ~/.scan-train/new/doctype-lite.onnx (and deletes report_doctypes.json: exam_doctypes.py runs again).
 A larger model for a server (common.DOCTYPE_SERVER, doctype.onnx) is trained only with --only server; no
 code runs it and publish.py never publishes it.
@@ -21,6 +23,7 @@ code runs it and publish.py never publishes it.
   python train_doctypes.py --synth 6000                        # + the made-up pages (synth_pages.py)
 """
 import argparse
+import pathlib
 import random
 from collections import Counter
 
@@ -34,6 +37,8 @@ from torch import nn
 import checkpoint
 from common import DOCTYPE_MODELS, DOCTYPE_SERVER, DOCTYPE_SIZES, DOCTYPES, WORK, read_json, write_json
 from gen.common import trains
+from gen.manifest import data_fingerprint, run_fingerprint
+from gen.qa import require_qa
 from gen.sources import assert_clean
 from home import drop_report, gentle
 
@@ -102,8 +107,8 @@ def batch(X, Y, idx, augment, U=None):
     return torch.tensor(np.stack(xs), dtype=torch.float32), torch.tensor(ks), torch.tensor(ts)
 
 
-def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None):
-    info = {"model": name, "arch": arch}
+def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None, data=None):
+    info = {"model": name, "arch": arch, "data": data}
     ck = checkpoint.begin(name, args, info)
     epochs = checkpoint.epochs_of(ck, args, epochs)
     net = DoctypeNet(arch, pretrained and ck is None).to(dev)   # saved weights need no ImageNet download
@@ -113,6 +118,7 @@ def train_one(name, arch, X, Y, epochs, dev, pretrained=True, args=None, U=None)
     opt = torch.optim.AdamW(net.parameters(), 3e-4, weight_decay=1e-4)
     steps = epochs * ((len(X) + 31) // 32)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 3e-4, total_steps=max(1, steps), pct_start=0.15)
+    checkpoint.check_steps(ck, args, max(1, steps))
     first, _ = checkpoint.restore(ck, args, net, opt, sched)
     order = list(range(len(X)))
     for ep in range(first, epochs):
@@ -152,9 +158,10 @@ def gather(a):
     document (docs/scan-training.md → "Kept apart")."""
     ex = [e for e in read_json(WORK / "doctypes.json") if trains(e)] if (WORK / "doctypes.json").exists() else []   # not the exam's, none left out of both
     if a.synth:
-        made = WORK / "synth" / "pages" / "pages.json"
+        made = pathlib.Path(getattr(a, "synth_run", None) or WORK / "synth" / "pages") / "pages.json"
         if not made.exists():
             raise SystemExit("no made-up pages — run synth_pages.py first")
+        require_qa(made.parent, "the made-up pages (synth_pages.py)")   # drawn through gen build: its QA sheet passed
         pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1])} for e in read_json(made)]
         assert_clean(pages, "the made-up pages (synth_pages.py)", work=WORK)   # the whole set, not only the sample drawn
         ex += random.sample(pages, min(a.synth, len(pages)))
@@ -173,15 +180,18 @@ def main():
     ap.add_argument("--epochs", type=int, default=0, help="0: the default per model")
     ap.add_argument("--scratch", action="store_true", help="random weights, no download — only to test the steps, never for a model to publish")
     ap.add_argument("--synth", type=int, default=0, help="made-up pages (synth_pages.py) added, at random")
+    ap.add_argument("--synth-run", default=str(WORK / "synth" / "pages"), help="the made-up set --synth draws from (default ~/.scan-train/synth/pages)")
     checkpoint.add_args(ap)
     a = ap.parse_args()
     random.seed(7); torch.manual_seed(7)
-    X, Y, U = load(gather(a))
+    ex = gather(a)
+    data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(a.synth_run) if a.synth else None, synthCount=a.synth)
+    X, Y, U = load(ex)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"{len(X)} page copies ({len(U) - sum(U)} with no sure turn: the type only), on {dev}")
     jobs = {"doctype-lite.onnx": a.phone} if a.only == "phone" else {"doctype.onnx": a.server}
     for name, arch in jobs.items():
-        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U)
+        train_one(name, arch, X, Y, a.epochs or EPOCHS[name], dev, not a.scratch, a, U, data)
     prev = read_json(WORK / "new" / "doctypes-arch.json") if (WORK / "new" / "doctypes-arch.json").exists() else {}
     write_json(WORK / "new" / "doctypes-arch.json", {**prev, **jobs})
 

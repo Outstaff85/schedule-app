@@ -1,0 +1,209 @@
+"""gen qa — the sheet to look at before a made-up set is trained on (docs/scan-training.md → "Made-up sets: build,
+verify, QA").
+
+  python -m gen qa --run ~/.scan-train/synth/pages          # → <run>/qa/index.html and <run>/qa/purity.json
+
+The sheet (local only — the pictures come from the owner's real pages; it is never uploaded):
+- contact sheets per stratum (the source × the class): the pictures with their corners drawn (the first corner red,
+  the document's own top-left blue: its turn), the class and the turn written on them, a field's text only as a sha1
+  prefix — no file name, no name or number off a document anywhere on the sheet;
+- the table source × class: every cell has its count and its sheet, or n=0;
+- histograms by class, by source and by background category;
+- the line "intersection with held-out = N" (gen.manifest.held_refs over every row) and the verify result (gen
+  verify on a sample, run here when the set has none for its fingerprint).
+purity.json records it: passed when the intersection is 0 and verify passed. Every train*.py calls require_qa on a
+made-up set drawn through gen build: no qa/purity.json, one not passed, or one of another drawing (fingerprint) or
+another heldout.json → it refuses to train."""
+import datetime
+import html
+import json
+import pathlib
+import re
+
+from . import common as gc
+from . import manifest
+
+THUMB, PER_SHEET, COLS = 180, 12, 6
+
+
+def _slug(s):
+    return re.sub(r"[^a-z0-9_]+", "-", str(s).lower()).strip("-") or "x"
+
+
+def stratum(r):
+    return (str(r.get("source")), str(r.get("class")))
+
+
+def _thumb(folder, r):
+    """One example's picture for the sheet (BGR), its labels drawn on it."""
+    import cv2
+    import numpy as np
+    outs = r.get("outputs") or []
+    labels = r.get("labels") or {}
+    if r.get("model") == "he":
+        crops = []
+        for (f, _), fl in zip(outs[:4], labels.get("fields") or []):
+            g = cv2.imread(str(folder / f))
+            if g is None:
+                continue
+            g = cv2.resize(g, (THUMB, max(12, min(40, round(g.shape[0] * THUMB / max(1, g.shape[1]))))))
+            band = np.full((14, THUMB, 3), 255, np.uint8)
+            cv2.putText(band, f"{fl.get('kind')} #{fl.get('text')}", (2, 11), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
+            crops += [g, band]
+        img = np.vstack(crops) if crops else np.full((40, THUMB, 3), 200, np.uint8)
+    else:
+        img = cv2.imread(str(folder / outs[0][0])) if outs else None
+        if img is None:
+            img = np.full((THUMB, THUMB, 3), 200, np.uint8)
+        h, w = img.shape[:2]
+        k = THUMB / max(h, w)
+        img = cv2.resize(img, (max(1, round(w * k)), max(1, round(h * k))))
+        h, w = img.shape[:2]
+        fixed, doc = labels.get("fixed"), labels.get("doc")
+        if fixed:
+            P = np.array([[x * w, y * h] for x, y in fixed], np.int32)
+            cv2.polylines(img, [P], True, (60, 220, 60), 2)
+            cv2.circle(img, tuple(int(c) for c in P[0]), 5, (0, 0, 255), -1)      # the first corner: red
+        if doc:
+            cv2.circle(img, (int(doc[0][0] * w), int(doc[0][1] * h)), 3, (255, 120, 0), -1)   # the document's own top-left: blue
+        turn = labels.get("turn", labels.get("upright"))
+        cv2.rectangle(img, (0, 0), (w, 14), (255, 255, 255), -1)
+        cv2.putText(img, f"{r.get('class')} turn {turn}", (2, 11), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
+    pad = np.full((img.shape[0] + 4, THUMB + 4, 3), 255, np.uint8)
+    pad[2:2 + img.shape[0], 2:2 + min(THUMB, img.shape[1])] = img[:, :THUMB]
+    return pad
+
+
+def contact_sheet(folder, rows, dest):
+    """Up to PER_SHEET examples of a stratum in one picture."""
+    import cv2
+    import numpy as np
+    thumbs = [_thumb(folder, r) for r in rows[:PER_SHEET]]
+    lines = []
+    for k in range(0, len(thumbs), COLS):
+        part = thumbs[k:k + COLS]
+        hh = max(t.shape[0] for t in part)
+        part = [np.vstack([t, np.full((hh - t.shape[0], t.shape[1], 3), 255, np.uint8)]) for t in part]
+        part += [np.full((hh, THUMB + 4, 3), 255, np.uint8)] * (COLS - len(part))
+        lines.append(np.hstack(part))
+    cv2.imwrite(str(dest), np.vstack(lines), [cv2.IMWRITE_JPEG_QUALITY, 85])
+
+
+def _bars(title, counts):
+    total = max(1, sum(counts.values()))
+    rows = "".join(f'<tr><td>{html.escape(k)}</td><td class="n">{n}</td><td><div class="bar" style="width:{100 * n / total:.1f}%"></div></td></tr>'
+                   for k, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+    return f"<h3>{html.escape(title)}</h3><table class=\"hist\">{rows}</table>"
+
+
+def _count(rows, key):
+    c = {}
+    for r in rows:
+        v = str(key(r))
+        c[v] = c.get(v, 0) + 1
+    return c
+
+
+def classes_of(model, rows):
+    base = list(gc.DOCTYPES) + (["none"] if model == "edges" else [])
+    return base + sorted({str(r.get("class")) for r in rows} - set(base))
+
+
+SOURCES = {"edges": ("drawn", "template", "none"), "doctype": ("drawn", "template", "midv", "smartdoc"), "he": ("template",)}
+
+
+def page(run, rows, sheets, refs, ver):
+    model = run.get("model")
+    classes = classes_of(model, rows)
+    sources = list(SOURCES.get(model, ())) + sorted({str(r.get("source")) for r in rows} - set(SOURCES.get(model, ())))
+    table = _count(rows, stratum)
+    head = "".join(f"<th>{html.escape(c)}</th>" for c in classes)
+    body = ""
+    for s in sources:
+        cells = ""
+        for c in classes:
+            n = table.get(str((s, c)), 0)
+            cells += f'<td class="n"><a href="#{_slug(s)}-{_slug(c)}">{n}</a></td>' if n else '<td class="zero">n=0</td>'
+        body += f"<tr><th>{html.escape(s)}</th>{cells}</tr>"
+    blocks = "".join(f'<section id="{_slug(s)}-{_slug(c)}"><h3>{html.escape(s)} · {html.escape(c)} — {n} examples</h3>'
+                     f'<img src="{html.escape(f)}" alt="{html.escape(s)} {html.escape(c)}"></section>'
+                     for (s, c), (f, n) in sorted(sheets.items()))
+    verdict = "PASSED" if ver.get("passed") else "FAILED"
+    lines = [f"intersection with held-out = {len(refs)}",
+             f"verify: {ver.get('matched', 0)} of {ver.get('sample', 0)} examples drawn again byte for byte — {verdict}"]
+    lines += [f"warning: {w}" for w in ver.get("libraryWarnings") or []]
+    counts = run.get("counts") or {}
+    return f"""<!doctype html><meta charset="utf-8"><title>Made-up set QA</title>
+<style>body{{font:14px system-ui;margin:20px;max-width:1200px}}table{{border-collapse:collapse;margin:8px 0}}td,th{{border:1px solid #ccc;padding:3px 7px}}
+.n{{text-align:right}}.zero{{color:#999;text-align:center}}.hist td{{border:none}}.bar{{background:#4a7bd0;height:10px}}.hist td:last-child{{width:420px}}
+.ok{{color:#1a7f37}}.bad{{color:#c62828}}img{{max-width:100%;border:1px solid #ddd}}</style>
+<h1>Made-up set QA — {html.escape(str(model))} ({html.escape(str(run.get('split')))})</h1>
+<p>{counts.get('examples', len(rows))} examples, {counts.get('outputs', 0)} files; seed {html.escape(str((run.get('params') or {}).get('seed')))};
+fingerprint {html.escape(str(run.get('fingerprint'))[:12])}; heldout.json {html.escape(str(run.get('heldoutSha256'))[:12])}.</p>
+<ul>{''.join(f'<li class="{"ok" if (i == 0 and not refs) or (i == 1 and ver.get("passed")) else "bad" if i < 2 else ""}">{html.escape(t)}</li>' for i, t in enumerate(lines))}</ul>
+<h2>Source × class</h2><table><tr><th></th>{head}</tr>{body}</table>
+<h2>Histograms</h2>{_bars("by class", _count(rows, lambda r: r.get("class")))}{_bars("by source", _count(rows, lambda r: r.get("source")))}
+{_bars("by background category", _count(rows, lambda r: r.get("bgCategory")))}
+<h2>Contact sheets</h2><p>First corner red, the document's own top-left blue; a field's text only as a sha1 prefix.</p>{blocks}"""
+
+
+def qa(folder, sample=20, jobs=1, work=None):
+    """Write <run>/qa/index.html, its pictures and purity.json → the purity dict."""
+    from . import verify as gv
+    folder = pathlib.Path(folder)
+    run, rows = manifest.read_run(folder), manifest.read_manifest(folder)
+    if not run or not rows:
+        raise SystemExit(f"{folder}: no run.json / manifest.jsonl (drawn before gen build? draw it again)")
+    try:
+        ver = json.loads((folder / "verify.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        ver = None
+    if not ver or ver.get("fingerprint") != run.get("fingerprint"):
+        ver = gv.verify(folder, sample, jobs, work)
+    refs = manifest.held_refs(rows, work=work)
+    out = folder / "qa"
+    out.mkdir(exist_ok=True)
+    for old in out.glob("sheet-*.jpg"):
+        old.unlink()
+    groups = {}
+    for r in rows:
+        groups.setdefault(stratum(r), []).append(r)
+    sheets = {}
+    for (s, c), rs in groups.items():
+        name = f"sheet-{_slug(s)}-{_slug(c)}.jpg"
+        contact_sheet(folder, rs, out / name)
+        sheets[(s, c)] = (name, len(rs))
+    (out / "index.html").write_text(page(run, rows, sheets, refs, ver), encoding="utf-8")
+    purity = {"passed": bool(not refs and ver.get("passed")), "heldoutIntersection": len(refs),
+              "verify": {k: ver.get(k) for k in ("sample", "matched", "passed")}, "fingerprint": run.get("fingerprint"),
+              "heldoutSha256": gc.heldout_sha256(), "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+    (out / "purity.json").write_text(json.dumps(purity, indent=1), encoding="utf-8")
+    print(f"QA sheet: {out / 'index.html'} — intersection with held-out = {len(refs)}; verify "
+          + ("passed" if ver.get("passed") else "FAILED") + ("" if purity["passed"] else " — NOT PASSED: no training on this set"))
+    return purity
+
+
+def require_qa(folder, what):
+    """A training's check on a made-up set: one drawn through gen build (run.json) must have a passed qa/purity.json
+    of this very drawing and today's heldout.json (SystemExit naming why); a set drawn before gen build only warns."""
+    folder = pathlib.Path(folder)
+    run = manifest.read_run(folder)
+    if run is None:
+        print(f"warning: {what} was drawn before gen build (no run.json, no manifest, no QA sheet) — draw it again")
+        return None
+    try:
+        p = json.loads((folder / "qa" / "purity.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        p = None
+    why = None
+    if p is None:
+        why = "it has no QA sheet (qa/purity.json)"
+    elif not p.get("passed"):
+        why = f"its QA did not pass (intersection with held-out = {p.get('heldoutIntersection')}, verify {'passed' if (p.get('verify') or {}).get('passed') else 'failed'})"
+    elif p.get("fingerprint") != run.get("fingerprint"):
+        why = "its QA sheet is of another drawing (the set was drawn again since)"
+    elif p.get("heldoutSha256") != gc.heldout_sha256():
+        why = "heldout.json changed since its QA"
+    if why:
+        raise SystemExit(f"{what}: {why} — run python -m gen qa --run {folder} and look at the sheet before training")
+    return p

@@ -10,7 +10,10 @@ part), the share within 2 % and the share not found; from the scan attempts (S8)
 the extra pages found where the user deleted one ("nothing here" — lower is better) and,
 on retaken pages, how often the model answers other than the frame the user rejected.
 A model is better when it is no worse on any set with pages ("publish" in the report; with no
-pages in any set there is nothing to measure: NO). Writes ~/.scan-train/report.json — with the sha256 of
+pages in any set there is nothing to measure: NO). The templates set is "contaminated" for a model whose base chain
+(the lab's version, the version its checkpoint was trained from) holds a version heldout.json's "versions" marks
+heldout_clean false (v3, v4 and the edges carried in v5 may have seen those pages): the report says so
+("contaminated") and it is never the gate alone — with no other set with pages the answer is NO. Writes ~/.scan-train/report.json — with the sha256 of
 each new file examined ("model_sha256"; publish.py refuses a report written for another file) —, prints
 "before → after", and writes report.html — the
 pages where the two models differ most, each with the old corners (red), the new (blue) and
@@ -27,6 +30,7 @@ import onnxruntime as ort
 
 from midv import open_exam
 from common import MODELS, WORK, model_hashes, model_path, read_json, version_of, write_json
+from gen.common import contaminated
 
 import docfind  # the corner reading (once the server's, kept here for the exam)
 
@@ -86,7 +90,9 @@ def report_page(report, shown):
             f"corner error {err(b, e['fixed']):.3f} → {err(a, e['fixed']):.3f}"
         rows.append(f'<figure><img src="{picture(e, b, a)}"><figcaption>{name} · {e["id"]} · {what}</figcaption></figure>')
     figures = "".join(f"<li><b>{n}</b>, {SETS[s]} ({r['before']['n']}): mean corner error {r['before']['mean']:.3f} → {r['after']['mean']:.3f}; within 2 %: "
-                      f"{r['before']['within2']:.0%} → {r['after']['within2']:.0%}; not found: {r['before']['missed']:.0%} → {r['after']['missed']:.0%}</li>"
+                      f"{r['before']['within2']:.0%} → {r['after']['within2']:.0%}; not found: {r['before']['missed']:.0%} → {r['after']['missed']:.0%}"
+                      + (f" — <b>contaminated</b> ({', '.join(r['contaminated'])} may have seen these pages; never the gate alone)" if r.get("contaminated") else "")
+                      + "</li>"
                       for n, sets in report["models"].items() for s, r in sets.items())
     return f"""<!doctype html><meta charset="utf-8"><title>Scanner exam</title>
 <style>body{{font:15px system-ui;margin:20px;max-width:1100px}}figure{{margin:0 0 18px}}img{{max-width:100%;border-radius:8px}}
@@ -112,6 +118,27 @@ def open_set(folder):
     return random.Random(0).sample(ex, min(OPEN_N, len(ex)))
 
 
+def chain_of(name, base):
+    """The versions a model's exam rests on: the lab's (the "before") and the ones its checkpoint was trained from (its
+    info.base and info.from.base — read when torch is here, else left out)."""
+    chain = [base]
+    try:
+        import checkpoint
+        info = (checkpoint.load(name) or {}).get("info") or {}
+        chain += [info.get("base"), (info.get("from") or {}).get("base")]
+    except Exception:
+        pass
+    return [c for c in chain if c]
+
+
+def gate(report):
+    """publish: no worse on every model and set — and at least one set with pages that is not contaminated."""
+    models = report["models"]
+    clean = [s for m, sets in models.items() for s, r in sets.items() if not r.get("contaminated") and r["before"]["n"]]
+    return bool(report["sets"] and models and clean) and all(
+        r["after"]["mean"] <= r["before"]["mean"] for m in models.values() for r in m.values())
+
+
 def main():
     ex = read_json(WORK / "examples.json") if (WORK / "examples.json").exists() else []
     sets = {"users": [e for e in ex if e["exam"]], "templates": templates_set(), "midv": open_set("midv"), "smartdoc": open_set("smartdoc")}
@@ -124,15 +151,18 @@ def main():
         if not new.exists():
             continue
         report["models"][name] = {}
+        dirty = contaminated(chain_of(name, base), name)
         for s, exam in sets.items():
             before, after = read_all(model_path(base, name), exam), read_all(new, exam)
             report["models"][name][s] = {"before": score(before, exam), "after": score(after, exam)}
+            if s == "templates" and dirty:
+                report["models"][name][s]["contaminated"] = dirty   # its base chain may have seen these pages
+                report.setdefault("contaminated", {})[name] = dirty
             for e, b, a in zip(exam, before, after):
                 right = e.get("fixed") or e.get("rejected")
                 gap = abs(err(b, right) - err(a, right)) if right else float((b is None) != (a is None))
                 diffs.append((gap, name, e, b, a))
-    report["publish"] = bool(sets and report["models"]) and all(
-        r["after"]["mean"] <= r["before"]["mean"] for m in report["models"].values() for r in m.values())
+    report["publish"] = gate(report)
     report["model_sha256"] = model_hashes(report["models"], WORK / "new")   # the exact files examined
     write_json(WORK / "report.json", report)
     print(f"Exam: {report['exam']} pages never trained on — "
@@ -143,6 +173,8 @@ def main():
         for s, r in m.items():
             b, a = r["before"], r["after"]
             print(f"  {name}, {SETS[s]}: mean corner error {b['mean']:.3f} → {a['mean']:.3f}; within 2 %: {b['within2']:.0%} → {a['within2']:.0%}; not found: {b['missed']:.0%} → {a['missed']:.0%}")
+            if r.get("contaminated"):
+                print(f"    contaminated: the base chain ({', '.join(r['contaminated'])}) may have seen these pages — never the gate alone")
             if b["extra"]["n"]:
                 print(f"    extra pages found where the user deleted one: {b['extra']['found']:.0%} → {a['extra']['found']:.0%} (of {b['extra']['n']})")
             if b["retaken"]["n"]:

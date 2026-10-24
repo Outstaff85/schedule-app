@@ -3,12 +3,17 @@
 # TRDG itself goes in without its pinned old dependencies (they do not install on a new Python):
 #   pip install --no-deps trdg==1.8.0
 #   pip install -r requirements-synth.txt
-pillow
-arabic-reshaper
-python-bidi
-opencv-python-headless
+# What the pictures' bytes depend on is pinned (docs/scan-training.md → "Made-up sets: build, verify, QA"): another
+# JPEG, OpenCV, Pillow or Albumentations draws other bytes, so gen verify would not match the manifest (it warns
+# when the versions differ from the run's run.json). Change a pin only together with drawing the sets again.
+pillow==13.0.0
+arabic-reshaper==3.0.1
+python-bidi==0.6.12
+opencv-python-headless==5.0.0.93
+numpy==2.5.4
 wikipedia
 tqdm
 requests
 # the photos' colours and quality (synth_docs.py): 2.0.8 is the last MIT release (AlbumentationsX after it is AGPL)
 albumentations==2.0.8
+albucore==0.0.24

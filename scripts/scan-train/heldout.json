@@ -1,5 +1,5 @@
 {
- "about": "What the scanner's training never sees (docs/scan-training.md -> Kept apart). Hashes only, no file names. templates: the owner's real pages kept for the exam, by content sha1, with their document group (a page alone: own:<sha1 prefix>; give pages of one person's documents the same group to keep them together). Seeded on 2026-10-24 with exactly the 6 pages the crc32 file-name rule held, so the old figures stay comparable. Changing this file makes the exam sets stale (gen sources --check) until synth_docs.py --templates --exam and synth_fields.py --check are run again.",
+ "about": "What the scanner's training never sees (docs/scan-training.md -> Kept apart). Hashes only, no file names. templates: the owner's real pages kept for the exam, by content sha1, with their document group (a page alone: own:<sha1 prefix>; give pages of one person's documents the same group to keep them together). Seeded on 2026-10-24 with exactly the 6 pages the crc32 file-name rule held, so the old figures stay comparable. Changing what it keeps (templates, examBackgrounds, examFonts, vocabulary, open; not these notes or versions) makes the exam sets stale (gen sources --check), the made-up sets need their QA again and --more refuses, until synth_docs.py --templates --exam and synth_fields.py --check are run again.",
  "templates": [
   {"sha1": "772cdd2d9f011d7db4c3e67b057ed7a2646e7bae", "group": "own:772cdd2d9f01", "kind": "id_front"},
   {"sha1": "e413bc5afb88c76f1eb73a1003a0fdf39f05e1f3", "group": "own:e413bc5afb88", "kind": "id_front"},
@@ -11,5 +11,11 @@
  "examBackgrounds": [],
  "examFonts": [],
  "vocabulary": {"salt": "", "every": 5},
- "open": {"midv2020From": 80, "smartdocPage": "005"}
+ "open": {"midv2020From": 80, "smartdocPage": "005"},
+ "versions": {
+  "about": "Published versions whose models may have seen what the exam keeps (heldout_clean false): exam.py marks the templates set 'contaminated' for a model whose base chain holds one, and never gates on that set alone.",
+  "v3": {"heldout_clean": false, "models": ["edges.onnx", "edges-lite.onnx"], "why": "trained on 2026-10-22 from a made-up set that records no template laid; it may have been drawn before the held-out pages were kept apart"},
+  "v4": {"heldout_clean": false, "models": ["edges.onnx", "edges-lite.onnx"], "why": "v3's edges trained further (--base v3)"},
+  "v5": {"heldout_clean": false, "models": ["edges.onnx", "edges-lite.onnx"], "why": "the edges carried over from v4"}
+ }
 }

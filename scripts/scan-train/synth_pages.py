@@ -15,11 +15,12 @@ apart"): no held-out real page and no open set's exam document is drawn; each en
 
   python synth_pages.py --count 6000          # → ~/.scan-train/synth/pages/ (img/, pages.json)
   python train_doctypes.py --synth 6000       # the made-up pages beside the site's (or alone, at first)
+
+A thin wrapper over `python -m gen build --model doctype` (gen/build.py): the folder also gets manifest.jsonl and
+run.json (docs/scan-training.md → "Made-up sets: build, verify, QA").
 """
-import argparse
 import json
 import pathlib
-import random
 
 import cv2
 import numpy as np
@@ -27,8 +28,10 @@ from PIL import ImageDraw
 
 import synth
 import synth_docs as sd
+from gen import rng as grng
 from gen.common import file_sha1, label
-from home import WORK, gentle
+from gen.manifest import sha256_file
+from home import WORK
 from midv import open_exam
 
 OUT = WORK / "synth" / "pages"
@@ -181,15 +184,28 @@ def sets():
     return out
 
 
+OPEN_SETS = ("midv", "smartdoc")
+
+
+def open_sets():
+    """The open sets' examples.json the pages are cut from, by their sha256 (None: not made here) — a run is drawn
+    again (gen verify) only from the same ones."""
+    return {f: (sha256_file(WORK / f / "examples.json") if (WORK / f / "examples.json").exists() else None) for f in OPEN_SETS}
+
+
+# ---------- gen build (gen/build.py): the set through the manifest ----------
+MODEL, CHUNK = "doctype", 200
+
+
 def _batch(job):
-    seed, start, n, folder, latin, hebrew, pages, real = job
+    seed, indices, folder, latin, hebrew, pages, real = job
     F = sd.Fonts(latin, hebrew)
     by_kind = {}
     for path, k in pages:
         by_kind.setdefault(label("template", k), []).append(path)   # a loose sheet or a licence: "other" (the class table)
     out = []
-    for i in range(start, start + n):
-        rng = random.Random(seed * 1_000_003 + i)
+    for i in indices:
+        rng = grng.legacy(seed, i)   # random.Random(seed * 1_000_003 + i), as always
         kind = rng.choices(list(SHARE), list(SHARE.values()))[0]
         pick = rng.random()
         used, ref = [], None
@@ -202,6 +218,7 @@ def _batch(job):
             f, doc, _, ref = rng.choice([r for r in real if r[2] == kind])
             pic = cv2.imread(f)
             if pic is None:
+                F.used()
                 continue
             img, source = cut(pic, doc), "midv" if "midv" in f else "smartdoc"
         else:
@@ -213,19 +230,25 @@ def _batch(job):
         img = changed(rng, cv2.resize(img, (max(8, round(img.shape[1] * s)), max(8, round(img.shape[0] * s))), interpolation=cv2.INTER_AREA))
         f = pathlib.Path(folder) / "img" / f"{i}.jpg"
         cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 92])
-        out.append({"id": f"page-{seed}-{i}", "file": str(f), "doctype": kind, "exam": False, "synth": True, "source": source,
-                    **({"templateSha1": used[0], "templates": sorted(set(used))} if used else {}), **({"open": ref} if ref else {})})
+        entry = {"id": f"page-{seed}-{i}", "file": str(f), "doctype": kind, "exam": False, "synth": True, "source": source,
+                 **({"templateSha1": used[0], "templates": sorted(set(used))} if used else {}), **({"open": ref} if ref else {})}
+        out.append({"index": i, "id": entry["id"], "entry": entry, "files": [f"img/{i}.jpg"], "meta": {
+            "templates": used, "fonts": F.used(), "vocabulary": "train", "class": kind, "source": source,
+            "scene": {"kind": kind, "size": [int(img.shape[1]), int(img.shape[0])]},
+            "labels": {"doctype": kind, "turn": 0}, **({"open": ref} if ref else {})}})
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def gen_args(ap):
+    """synth_pages.py's options (and python -m gen build --model doctype)."""
     ap.add_argument("--count", type=int, default=6000)
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--jobs", type=int, default=gentle())
+    ap.add_argument("--out", default=str(OUT), help="default ~/.scan-train/synth/pages")
+    ap.add_argument("--jobs", type=int, default=None, help="processes (default: all cores but two, gently)")
     ap.add_argument("--templates", default=str(sd.TEMPLATES), help="the owner's real pages (pull_templates.py)")
-    a = ap.parse_args()
-    (OUT / "img").mkdir(parents=True, exist_ok=True)
+
+
+def gen_params(a):
     pages = sd.templates_in(a.templates)
     # the owner's real pages kept apart for the exam (synth.held_out) are never made into a training page:
     # exam_doctypes.py reads them, cut from synth_docs.py --templates --exam's photos
@@ -233,20 +256,36 @@ def main():
     pages = [pg for pg in pages if not synth.held_out(pg[0])]
     if kept:
         print(f"{len(kept)} real pages kept apart for the exam, {len(pages)} used here")
+    return {"model": MODEL, "split": "train", "count": a.count, "seed": a.seed, "out": str(a.out),
+            "pages": [{"path": p, "sha1": file_sha1(p), "kind": k} for p, k in pages],
+            "latin": list(sd.latin_fonts()), "hebrew": list(sd.hebrew_fonts()), "openSets": open_sets()}
+
+
+def gen_prepare(folder, params):
+    (pathlib.Path(folder) / "img").mkdir(parents=True, exist_ok=True)
+
+
+def gen_jobs(params, indices, folder):
+    if open_sets() != params.get("openSets", open_sets()):
+        raise SystemExit("the MIDV / SmartDoc sets on this PC are not the ones the run cut its pages from (their examples.json changed)")
     real = sets()
-    latin, hebrew = sd.latin_fonts(), sd.hebrew_fonts()
-    work = [(a.seed, s, min(200, a.count - s), str(OUT), latin, hebrew, pages, real) for s in range(0, a.count, 200)]
-    if a.jobs > 1:
-        from multiprocessing import Pool
-        with Pool(a.jobs) as pool:
-            done = pool.map(_batch, work)
-    else:
-        done = [_batch(w) for w in work]
-    ex = [e for b in done for e in b]
-    (OUT / "pages.json").write_text(json.dumps(ex), encoding="utf-8")
+    pages = [(e["path"], e["kind"]) for e in params["pages"]]
+    return [(params["seed"], chunk, folder, params["latin"], params["hebrew"], pages, real)
+            for chunk in (indices[k:k + CHUNK] for k in range(0, len(indices), CHUNK))]
+
+
+def gen_write(folder, params, items):
+    ex = [it["entry"] for it in items]
+    (pathlib.Path(folder) / "pages.json").write_text(json.dumps(ex), encoding="utf-8")
     from collections import Counter
-    print(f"{len(ex)} pages in {OUT}: " + ", ".join(f"{k} {n}" for k, n in sorted(Counter(e['doctype'] for e in ex).items()))
+    print(f"{len(ex)} pages in {folder}: " + ", ".join(f"{k} {n}" for k, n in sorted(Counter(e['doctype'] for e in ex).items()))
           + " — from " + ", ".join(f"{k} {n}" for k, n in sorted(Counter(e['source'] for e in ex).items())))
+
+
+def main(argv=None):
+    """The old CLI: python -m gen build --model doctype with today's defaults."""
+    from gen.build import cli
+    cli(MODEL, argv, prog="synth_pages.py")
 
 
 if __name__ == "__main__":

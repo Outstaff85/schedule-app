@@ -30,21 +30,24 @@ photos again, so only this script is kept.
 
 Writes <out>/img/<n>.jpg (the long side 640) and <out>/examples.json in pull.py's form (fixed:
 the corners 0..1, top-left first clockwise as the model gives them; null: nothing here; a real page
-answered also names it, "template": a short sha1 of its kind folder and file name, page_id; "upright": the
-index in fixed of the document's own top-left, so exam_doctypes.py cuts the page upright).
+answered also names it, "template": a short sha1 of its kind folder and file name, page_id, "templateSha1" its
+content sha1, "templatePath" its kind folder / file name on this PC; "upright": the index in fixed of the document's
+own top-left, and "doc": the same corners in the document's own order — its top-left first — so exam_doctypes.py
+cuts the page upright). This script is a thin wrapper over `python -m gen build --model edges` (gen/build.py): the
+set's folder also gets manifest.jsonl and run.json (docs/scan-training.md → "Made-up sets: build, verify, QA").
 Needs: pip install -r requirements-synth.txt."""
-import argparse
 import hashlib
 import json
 import pathlib
-import random
 
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 import synth
-from gen.common import file_sha1, record_exam_set
+from gen import rng as grng
+from gen.common import file_sha1, label, record_exam_set
+from gen.manifest import FontLog
 from home import WORK, gentle
 from synth_lines import hebrew_fonts
 
@@ -80,7 +83,12 @@ def latin_fonts():
 
 class Fonts:
     def __init__(self, latin, hebrew):
-        self.latin, self.hebrew, self.cache = latin, hebrew, {}
+        # FontLog: the fonts picked are remembered for the manifest (gen/manifest.py), not one draw changed
+        self.latin, self.hebrew, self.cache = FontLog(latin), FontLog(hebrew), {}
+
+    def used(self):
+        """The fonts picked since the last call (one example's)."""
+        return sorted(set(self.latin.take()) | set(self.hebrew.take()))
 
     def get(self, which, size, rng):
         path = rng.choice(self.latin if which == "latin" else self.hebrew) if which != "mrz" else str(OCRB)
@@ -414,10 +422,15 @@ DRAW = {"id_front": id_front, "id_back": id_back, "passport": passport, "sefach"
 
 # ---------- the photo ----------
 
-def background(rng, W, H, photos):
+def background(rng, W, H, photos, meta=None):
+    """The photo's ground: one of the background photos (cut at random) or a procedural surface; meta (a dict)
+    gets which ("bg": the photo's path, or "bgKind": the surface)."""
+    meta = {} if meta is None else meta
     if photos and rng.random() < 0.6:
-        img = cv2.imread(rng.choice(photos))
+        path = rng.choice(photos)
+        img = cv2.imread(path)
         if img is not None:
+            meta["bg"] = path
             h, w = img.shape[:2]
             s = max(W / w, H / h) * rng.uniform(1.0, 1.6)
             img = cv2.resize(img, (int(w * s) + 1, int(h * s) + 1), interpolation=cv2.INTER_AREA)
@@ -425,6 +438,7 @@ def background(rng, W, H, photos):
             return img[y:y + H, x:x + W].copy()
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
     kind = rng.choice(("plain", "wood", "cloth", "check", "dark", "sheet"))
+    meta["bgKind"] = kind
     col = np.array([rng.randint(30, 230) for _ in range(3)], np.float32)
     noise = cv2.resize(np.random.default_rng(rng.randint(0, 1 << 30)).random((H // 16 + 1, W // 16 + 1)).astype(np.float32), (W, H))
     if kind == "wood":
@@ -531,6 +545,7 @@ def border_colour(img):
 
 
 TEMPLATE_SHA1 = {}   # a real page's id → its content sha1 (the examples' templateSha1: train*.py checks it against heldout.json)
+TEMPLATE_PATH = {}   # a real page's id → its path (the examples' templatePath: kind folder / name, on this PC only)
 
 
 def page_id(path, kind):
@@ -549,7 +564,7 @@ def document(rng, F, tpl, kinds=None):
         path, kind = rng.choice(pages)
         doc, rect = template(rng, F, path, kind, sharp)
         pid = page_id(path, kind)
-        TEMPLATE_SHA1[pid] = file_sha1(path)
+        TEMPLATE_SHA1[pid], TEMPLATE_PATH[pid] = file_sha1(path), path
         return doc, rect, "template:" + kind, kind in CARDS, pid
     names = [k for k in KINDS if not kinds or k in kinds]
     kind = rng.choices(names, [KINDS[k] for k in names])[0]
@@ -561,22 +576,28 @@ def _area(q):
     return abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))) / 2
 
 
-def photo(rng, F, photos, tpl=((), 0, False)):
+def photo(rng, F, photos, tpl=((), 0, False), meta=None):
     """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind, the real page's id or None,
-    the index in the corners of the document's own top-left or None)."""
+    the index in the corners of the document's own top-left or None). meta (a dict) gets what the manifest
+    records: the background, every real page laid ("laid": their ids), the scene and the camera's seed, and "doc" —
+    the answer's corners in the document's own order (its top-left first: the turn, exam_doctypes.py)."""
+    meta = {} if meta is None else meta
+    laid = meta.setdefault("laid", [])
     W, H = rng.choice(SIZES)
-    img = background(rng, W, H, photos)
+    img = background(rng, W, H, photos, meta)
     none = rng.random() < NONE_SHARE
     two = not none and rng.random() < PAINTED_SHARE   # another document found first, painted over
     pair = not none and not two and rng.random() < PAIR_SHARE   # a card on the sheet or beside it, both in sight
     quad = painted = src = None
     if not none:
         doc, rect, kind, card, src = document(rng, F, tpl, SHEETS if pair else None)
+        laid.append(src)
         quad = synth.scene_quad(rng, (rect[2] - rect[0]) / (rect[3] - rect[1]), W, H,
                                 fill=(0.15, 0.45) if two else (0.3, 0.7) if pair else (0.18, 0.8))
         none = quad is None
     if two and quad:
-        d2, r2, _, card2, _ = document(rng, F, tpl)
+        d2, r2, _, card2, s1 = document(rng, F, tpl)
+        laid.append(s1)
         for _ in range(10):
             q2 = synth.scene_quad(rng, (r2[2] - r2[0]) / (r2[3] - r2[1]), W, H, fill=(0.1, 0.3))
             if q2 and not _overlaps(quad, q2, W, H):
@@ -589,6 +610,7 @@ def photo(rng, F, photos, tpl=((), 0, False)):
             finger(rng, img, quad)
     if pair and quad:
         d2, r2, k2, card2, s2 = document(rng, F, tpl, CARDS)
+        laid.append(s2)
         a1, a2 = (rect[2] - rect[0]) / (rect[3] - rect[1]), (r2[2] - r2[0]) / (r2[3] - r2[1])
         q2 = None
         if rng.random() < PAIR_ON:
@@ -609,11 +631,15 @@ def photo(rng, F, photos, tpl=((), 0, False)):
         for q in painted:
             cv2.fillPoly(img, [np.array(q, np.int32)], col)
     light(rng, img)
-    img = camera(rng.randint(0, 1 << 30))(image=img)["image"]
+    cam = rng.randint(0, 1 << 30)
+    img = camera(cam)(image=img)["image"]
     s = LONG / max(W, H)
     img = cv2.resize(img, (round(W * s), round(H * s)), interpolation=cv2.INTER_AREA)
+    meta["scene"] = {"size": [W, H], "none": bool(none), "painted": bool(painted), "pair": bool(pair)}
+    meta["camera"] = {"seed": cam}
     if none:
         return img, None, "none", None, None
+    meta["doc"] = [[x / W, y / H] for x, y in quad]   # the document's own order: its top-left first
     fixed = synth.order_corners([[x / W, y / H] for x, y in quad])
     return img, fixed, kind, src, upright_index(fixed, (quad[0][0] / W, quad[0][1] / H))
 
@@ -630,13 +656,31 @@ def _overlaps(a, b, W, H):
     return (m1 & m2).sum() > 0.02 * m1.sum()
 
 
+def rel_path(path):
+    """A real page's path as the examples name it: its kind folder / file name (on this PC only)."""
+    return "/".join(pathlib.Path(path).parts[-2:])
+
+
+def doc_class(kind):
+    """The page kind (gen.common.DOCTYPES) of a photo's answer, for the manifest and the QA sheet; "none" for no document."""
+    if kind == "none":
+        return "none"
+    k = kind.split("+")[0]
+    return label("template", k.split(":", 1)[1]) if k.startswith("template:") else label("drawn", k)
+
+
+# ---------- gen build (gen/build.py): the set through the manifest ----------
+MODEL, CHUNK = "edges", 200
+
+
 def _batch(job):
-    seed, start, n, folder, latin, hebrew, photos, show, tpl = job
+    seed, indices, folder, latin, hebrew, photos, show, tpl, bgs = job
     F = Fonts(latin, hebrew)
     out = []
-    for i in range(start, start + n):
-        rng = random.Random(seed * 1_000_003 + i)
-        img, corners, kind, src, up = photo(rng, F, photos, tpl)
+    for i in indices:
+        rng = grng.legacy(seed, i)   # random.Random(seed * 1_000_003 + i), as always
+        meta = {}
+        img, corners, kind, src, up = photo(rng, F, photos, tpl, meta)
         f = pathlib.Path(folder) / "img" / f"{i}.jpg"
         cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         if show:
@@ -647,70 +691,75 @@ def _batch(job):
                 cv2.circle(v, tuple(int(c) for c in P[0]), 7, (0, 0, 255), -1)   # the first corner
             cv2.putText(v, kind, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.imwrite(str(pathlib.Path(folder) / "show" / f"{i}.jpg"), v)
-        out.append({"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
-                    "exam": False, "synth": True, "kind": kind, "none": corners is None,
-                    **({"template": src, "templateSha1": TEMPLATE_SHA1.get(src)} if src else {}),
-                    **({"upright": up} if corners else {})})
+        entry = {"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
+                 "exam": False, "synth": True, "kind": kind, "none": corners is None,
+                 **({"template": src, "templateSha1": TEMPLATE_SHA1.get(src), "templatePath": rel_path(TEMPLATE_PATH[src])} if src else {}),
+                 **({"upright": up, "doc": meta["doc"]} if corners else {})}
+        bg = bgs.get(meta.get("bg")) or {}
+        laid = [TEMPLATE_SHA1.get(p) for p in [src] + [p for p in meta["laid"] if p and p != src] if p]
+        out.append({"index": i, "id": entry["id"], "entry": entry, "files": [f"img/{i}.jpg"], "meta": {
+            "templates": laid, "bgSha1": bg.get("sha1"), "bgCategory": bg.get("category"), "bgKind": meta.get("bgKind"),
+            "fonts": F.used(), "vocabulary": "train", "class": doc_class(kind),
+            "source": "template" if src else "none" if kind == "none" else "drawn",
+            "scene": {**meta["scene"], "kind": kind}, "camera": meta["camera"],
+            "labels": {"fixed": corners, "doc": meta.get("doc"), "upright": up, "none": corners is None}}})
     return out
 
 
-def draw(count, out, seed=1, jobs=1, photos=(), show=False, latin=None, hebrew=None, tpl=((), 0, False)):
-    folder = pathlib.Path(out)
-    (folder / "img").mkdir(parents=True, exist_ok=True)
-    if show:
-        (folder / "show").mkdir(exist_ok=True)
-    latin, hebrew = latin or latin_fonts(), hebrew or hebrew_fonts()
-    if not latin or not hebrew:
-        raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
-    work = [(seed, s, min(200, count - s), str(folder), latin, hebrew, list(photos), show, tpl) for s in range(0, count, 200)]
-    if jobs > 1:
-        from multiprocessing import Pool
-        with Pool(jobs) as pool:
-            done = pool.map(_batch, work)
-    else:
-        done = [_batch(w) for w in work]
-    ex = [e for b in done for e in b]
-    (folder / "examples.json").write_text(json.dumps(ex, ensure_ascii=False), encoding="utf-8")
-    return folder, ex
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--count", type=int, default=20000)
-    ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--out", default=str(OUT))
-    ap.add_argument("--jobs", type=int, default=gentle())
+def gen_args(ap):
+    """synth_docs.py's options (and python -m gen build --model edges)."""
+    ap.add_argument("--count", type=int, default=None, help="photos (default 20000; with --exam 300)")
+    ap.add_argument("--seed", type=int, default=None, help="default 1 (with --exam 7)")
+    ap.add_argument("--out", default=None, help="default ~/.scan-train/synth/docs (with --exam …/docs-exam)")
+    ap.add_argument("--jobs", type=int, default=None, help="processes (default: all cores but two, gently)")
     ap.add_argument("--backgrounds", help="a folder of background photos (tables, floors, cloths — no documents in them); default ~/.scan-train/backgrounds when there")
     ap.add_argument("--show", action="store_true", help="also show/<n>.jpg with the corners drawn (green; red: the first)")
     ap.add_argument("--templates", nargs="?", const=str(TEMPLATES), help="real pages laid like the drawn ones "
                     "(a folder with id_front/, id_back/, passport/, sefach/, insert/; default ~/.scan-train/templates)")
     ap.add_argument("--template-share", type=float, default=0.4, help="the share of photos with a real page")
     ap.add_argument("--sharp", action="store_true", help="keep the real pages' face and text as they are (not washed out)")
-    ap.add_argument("--exam", action="store_true", help="the exam photos: only the real pages kept apart (synth.held_out), "
+    ap.add_argument("--exam", action="store_true", help="the exam photos: only the real pages kept apart (heldout.json), "
                     "every photo with one; default out ~/.scan-train/synth/docs-exam, 300 photos, its own seed")
     ap.add_argument("--latin", nargs="*")
     ap.add_argument("--hebrew", nargs="*")
-    a = ap.parse_args()
-    photos = []
-    # the background photos: the given folder, else the set kept in the bucket (datasets_hf.py pull backgrounds)
+
+
+def background_photos(folder):
+    """[{"path", "sha1", "category"}] of a backgrounds folder (the category: catalog.json's when there, else the
+    sub-folder's name, else "uncategorised")."""
+    if not folder:
+        return []
+    folder = pathlib.Path(folder)
+    try:
+        catalog = json.loads((folder / "catalog.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        catalog = {}
+    files = catalog.get("files", catalog) if isinstance(catalog, dict) else {}
+    out = []
+    for p in folder.rglob("*"):   # in the folder's own order, as always (the order is recorded: gen verify)
+        if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            info = files.get(p.name) if isinstance(files.get(p.name), dict) else {}
+            cat = info.get("category") or (p.parent.name if p.parent != folder else "uncategorised")
+            out.append({"path": str(p), "sha1": file_sha1(p), "category": cat})
+    return out
+
+
+def gen_params(a):
+    """Everything needed to draw any photo of the set again (run.json "params")."""
     folder = a.backgrounds or (str(WORK / "backgrounds") if (WORK / "backgrounds").is_dir() else None)
+    photos = background_photos(folder)
     if folder:
-        photos = [str(p) for p in pathlib.Path(folder).rglob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
         print(f"{len(photos)} background photos from {folder}")
     pages = templates_in(a.templates) if a.templates else []
     if a.templates and not pages:
         raise SystemExit(f"no pages in {a.templates} — run pull_templates.py or put photos into its id_front/, sefach/… folders")
     kept = [pg for pg in pages if synth.exam_page(pg[0])]   # the exam's pages (a site page with no side: in neither)
+    count, seed, out, share = a.count or 20000, a.seed or 1, a.out or str(OUT), a.template_share
     if a.exam:
         if not kept:
             raise SystemExit("no real page is kept apart for the exam — put more pages into the templates folder")
-        if a.out == str(OUT):
-            a.out = str(EXAM_OUT)
-        if a.count == 20000:
-            a.count = 300
-        if a.seed == 1:
-            a.seed = 7
-        pages, a.template_share = kept, 1.0
+        count, seed, out = a.count or 300, a.seed or 7, a.out or str(EXAM_OUT)
+        pages, share = kept, 1.0
         print(f"exam photos from {len(kept)} real pages kept apart: " + ", ".join(sorted((file_sha1(p) or "?")[:8] for p, _ in kept)))
     else:
         laid = [pg for pg in pages if not synth.held_out(pg[0])]
@@ -718,13 +767,43 @@ def main():
             print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), "
                   f"{len(pages) - len(laid) - len(kept)} with no known side (in neither), {len(laid)} laid here")
         pages = laid
-    folder, ex = draw(a.count, a.out, a.seed, a.jobs, photos, a.show, a.latin, a.hebrew, (pages, a.template_share, a.sharp))
-    if a.exam:
+    latin, hebrew = a.latin or latin_fonts(), a.hebrew or hebrew_fonts()
+    if not latin or not hebrew:
+        raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
+    return {"model": MODEL, "split": "exam" if a.exam else "train", "count": count, "seed": seed, "out": str(out),
+            "pages": [{"path": p, "sha1": file_sha1(p), "kind": k} for p, k in pages], "share": share, "sharp": a.sharp,
+            "photos": photos, "show": a.show, "latin": list(latin), "hebrew": list(hebrew)}
+
+
+def gen_prepare(folder, params):
+    (pathlib.Path(folder) / "img").mkdir(parents=True, exist_ok=True)
+    if params.get("show"):
+        (pathlib.Path(folder) / "show").mkdir(exist_ok=True)
+
+
+def gen_jobs(params, indices, folder):
+    tpl = ([(e["path"], e["kind"]) for e in params["pages"]], params["share"], params["sharp"])
+    photos = [e["path"] for e in params["photos"]]
+    bgs = {e["path"]: {"sha1": e["sha1"], "category": e.get("category")} for e in params["photos"]}
+    return [(params["seed"], chunk, folder, params["latin"], params["hebrew"], photos, params.get("show", False), tpl, bgs)
+            for chunk in (indices[k:k + CHUNK] for k in range(0, len(indices), CHUNK))]
+
+
+def gen_write(folder, params, items):
+    ex = [it["entry"] for it in items]
+    (pathlib.Path(folder) / "examples.json").write_text(json.dumps(ex, ensure_ascii=False), encoding="utf-8")
+    if params["split"] == "exam":
         record_exam_set("synth/docs-exam", pathlib.Path(folder) / "examples.json")   # gen sources --check: made with today's heldout.json
     by = {}
     for e in ex:
         by[e["kind"]] = by.get(e["kind"], 0) + 1
     print(f"{len(ex)} photos in {folder}: " + ", ".join(f"{k} {n}" for k, n in sorted(by.items())))
+
+
+def main(argv=None):
+    """The old CLI: python -m gen build --model edges with today's defaults."""
+    from gen.build import cli
+    cli(MODEL, argv, prog="synth_docs.py")
 
 
 if __name__ == "__main__":
