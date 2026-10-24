@@ -14,7 +14,8 @@ refused ("report_X.json is for a different model; run the exam again"). A model 
 publishing is left out unless forced (--force-edges, --force-doctypes, --force-mrz, --force-he; the owner's
 explicit call); a model is also refused when its new .onnx file is the very file of the lab's version
 (nothing new — the old edges left on the PC, a model already published; its --force-<model> overrides),
-and --force-doctypes is refused while the only exam is "your documents" with document types not measured. Every model not named is carried over from the lab's version
+and --force-doctypes is refused while the only exam is "your documents" with a document type or the turn
+not measured (or its sure turns right on less than 98 %). Every model not named is carried over from the lab's version
 (the passport zone reader and the Hebrew field reader only when that version has them), the face finder
 too; only the phone's document type model (doctype-lite.onnx) is published — a server's doctype.onnx is
 never carried forward.
@@ -25,9 +26,11 @@ pointed at the new version (scripts/scan-lab/models-version — committed and de
 site follows only after the owner tried it in the lab). With the edges published, the scan attempts of
 this run (S8, pull.py's attempts.json) leave attempts/new/: the train folders to attempts/used/v<N>/, the
 exam ones to attempts/exam/ (pulled as the exam on every later run); attempts/golden/ is never moved;
-attemptsSince is lowered by the folders really moved. attempts.json and the reports (report*.json,
-report.html) are deleted after a publish, even with --keep-copies; the other copies on this PC too unless
---keep-copies (for a training still to come). --dry-run prints the files of the version (new or carried
+attemptsSince is lowered by the folders really moved. After a publish only what it used up is deleted, even
+with --keep-copies: the exam report of each model published (report.json and report.html with the edges,
+report_doctypes.json, report_mrz.json, report_he.json) and attempts.json with the edges — the reports of
+models not named and the training figures (report_mrz_train.json) stay; the other copies on this PC go too
+unless --keep-copies (for a training still to come). --dry-run prints the files of the version (new or carried
 over), the counters it would set and the folders it would move, and stops before any write to Hugging
 Face, Firestore or Storage. Needs the owner's HF token on the PC (`hf auth login`)."""
 import argparse
@@ -121,11 +124,13 @@ def base_hash(base, name):
 
 
 def doctypes_measured(report):
-    """--force-doctypes needs more than "your documents" with document types not measured."""
+    """--force-doctypes needs more than "your documents" with a document type or the turn not measured: on the
+    phone the turn head decides a page's rotation, so its sure turns must be right on ≥ 98 % there too."""
     if report.get("models"):
         return True
     yours = report.get("yoursModels") or {}
-    return bool(yours) and all(v is not None for r in yours.values() for v in (r.get("byDoctype") or {}).values())
+    return bool(yours) and all(v is not None for r in yours.values() for v in (r.get("byDoctype") or {}).values()) and all(
+        r.get("sureTurnRight") is not None and r["sureTurnRight"] >= 0.98 for r in yours.values())
 
 
 def load(a):
@@ -148,8 +153,9 @@ def load(a):
                 print(f"{what[0].upper() + what[1:]}: left out — the exam said not worth publishing (--force-{k} to publish anyway)")
                 continue
             if k == "doctypes" and not doctypes_measured(report):
-                raise SystemExit("--force-doctypes refused: the only exam is \"your documents\" and some document types were not measured "
-                                 "(no page copies from the site kept apart) — collect them, or draw an exam of every type, and examine again")
+                raise SystemExit("--force-doctypes refused: the only exam is \"your documents\" and some document types or the turn were not "
+                                 "measured, or its sure turns are right on less than 98 % (no page copies from the site kept apart) — collect "
+                                 "them, or draw the exam photos again (synth_docs.py --templates --exam) and examine again")
         out[k] = report
     base = version_of("scan-lab")
     for k in out:
@@ -217,9 +223,14 @@ def described(stats):
     return out
 
 
-def drop_reports():
-    """The run's reports and attempts.json: a report kept is what would arm the next publish."""
-    for p in list(WORK.glob("report*.json")) + [WORK / "report.html", WORK / "attempts.json"]:
+def drop_reports(on):
+    """What this publish used up: the exam report of each model published (a report kept would arm the next
+    publish) and, with the edges, report.html and attempts.json (the attempts they were trained on). The
+    reports of models not named and the training figures (report_mrz_train.json, read by exam_mrz.py) stay."""
+    used = [WORK / REPORTS[k][0] for k in on]
+    if "edges" in on:
+        used += [WORK / "report.html", WORK / "attempts.json"]
+    for p in used:
         p.unlink(missing_ok=True)
 
 
@@ -228,7 +239,7 @@ def main():
     for k, (file, what, exam, _) in REPORTS.items():
         ap.add_argument("--" + k, action="store_true", help=f"publish {what} ({file}, from {exam})")
         ap.add_argument("--force-" + k, action="store_true", help=f"publish {what} though its exam said not worth it (the owner's explicit call)")
-    ap.add_argument("--keep-copies", action="store_true", help="keep the copies on this PC (the examples, templates and made-up photos for a training still to come); the reports and attempts.json go anyway")
+    ap.add_argument("--keep-copies", action="store_true", help="keep the copies on this PC (the examples, templates and made-up photos for a training still to come); the published models' reports (and attempts.json with the edges) go anyway")
     ap.add_argument("--dry-run", action="store_true", help="print the version's files, the counters and the folders to move; write nothing")
     a = ap.parse_args()
     on = load(a)
@@ -240,22 +251,27 @@ def main():
     try:
         have = set(api.list_repo_files(REPO)) - {".gitattributes", "README.md"}
     except Exception:
-        have = set()
-    gone = sorted(have - set(files))
+        if not a.dry_run:
+            raise   # a version must hold exactly its files: without the listing the old ones would be carried forward
+        have = None
+    gone = sorted((have or set()) - set(files))
     plan = attempt_plan(v) if "edges" in on else []   # the attempts are the edges' examples: moved only once the edges are trained on them
     now = datetime.datetime.now(datetime.timezone.utc)
     if a.dry_run:
         print(f"Dry run — the plan for {v} (the lab is on {base}); nothing is written:")
         for n, (p, how) in sorted(files.items()):
             print(f"  {n}: {how}" + (f" (sha256 {sha256_of(p)[:12]})" if p.exists() else ""))
-        if gone:
+        if have is None:
+            print("  left out of the version: unknown (the repo's files could not be listed)")
+        elif gone:
             print("  left out of the version (in the repo now): " + ", ".join(gone))
         print("  scanTrainingStats/current: " + "; ".join(described(stats_update(on, v, now, len(plan)))))
         for d, to in plan:
             print(f"  move {d}/ → {moved_path(d + '/', to)}")
         if not plan:
             print("  no scan attempts moved" + ("" if "edges" in on else " (only with the edges in the version)"))
-        print(f"  then: scripts/scan-lab/models-version → {v}; the reports and attempts.json deleted" + ("" if a.keep_copies else "; the copies on this PC deleted"))
+        used = ", ".join([REPORTS[k][0] for k in on] + (["report.html", "attempts.json"] if "edges" in on else []))
+        print(f"  then: scripts/scan-lab/models-version → {v}; deleted: {used}" + ("" if a.keep_copies else "; the copies on this PC deleted"))
         return
     from huggingface_hub import CommitOperationAdd, CommitOperationDelete
     api.create_repo(REPO, repo_type="model", private=False, exist_ok=True)
@@ -267,7 +283,7 @@ def main():
     moved = move_attempts(v, plan) if plan else 0
     db().collection("scanTrainingStats").document("current").set(stats_update(on, v, now, moved), merge=True)
     (ROOT / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
-    drop_reports()
+    drop_reports(on)
     if not a.keep_copies:
         clear_work()
     what = " and ".join(REPORTS[k][1] for k in on)

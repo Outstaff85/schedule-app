@@ -3,7 +3,9 @@ named by its flag and only its report is read; a report is bound to the exact fi
 (model_sha256); edges identical to the lab's version are refused; a doctype-only publish leaves the edges,
 their counter and the scan attempts alone; only the folders really moved lower attemptsSince; the exam
 and golden attempts never go to attempts/used/; --dry-run writes nothing. And the document type exam
-(exam_doctypes.py) writes null for what it did not measure. Hugging Face, the bucket, Firestore and
+(exam_doctypes.py) writes null for what it did not measure, takes Haiku's answer unless the model is sure of
+both the type and the turn (the scan window's rule), and scores the turn on "your documents" cut upright by the
+document's own top-left; a publish deletes only the reports it used up; a failed repo listing stops a real publish. Hugging Face, the bucket, Firestore and
 Storage are all mocks here."""
 import hashlib
 import importlib.util
@@ -133,8 +135,33 @@ def test_a_doctype_publish_leaves_the_edges_their_counter_and_the_attempts_alone
     env.api.batch_bucket_files.assert_not_called()
     env.bucket.rename_blob.assert_not_called()
     assert (env.root / "scripts" / "scan-lab" / "models-version").read_text() == "v6\n"
-    assert not (env.work / "attempts.json").exists() and not list(env.work.glob("report*.json"))
+    assert not (env.work / "report_doctypes.json").exists()
+    assert (env.work / "attempts.json").exists() and (env.work / "report.json").exists()   # the edges' own, not used up here
     env.clear.assert_called_once()
+
+
+def test_a_publish_deletes_only_what_it_used_up_even_with_keep_copies(env, monkeypatch):
+    doctypes_ready(env.work)
+    stale_edges(env.work)
+    write(env.work, "report_mrz.json", {"publish": True})
+    write(env.work, "report_mrz_train.json", {"line2": 0.99})   # train_mrz.py's figures: exam_mrz.py reads them
+    run(monkeypatch, "--doctypes", "--keep-copies")
+    assert not (env.work / "report_doctypes.json").exists()
+    for kept in ("report.json", "report_mrz.json", "report_mrz_train.json", "attempts.json"):
+        assert (env.work / kept).exists(), kept
+    env.clear.assert_not_called()
+
+
+def test_a_failed_listing_stops_a_real_publish_but_not_the_dry_run(env, monkeypatch, capsys):
+    doctypes_ready(env.work)
+    env.api.list_repo_files.side_effect = OSError("network down")
+    run(monkeypatch, "--doctypes", "--dry-run")
+    assert "left out of the version: unknown" in capsys.readouterr().out
+    with pytest.raises(OSError):
+        run(monkeypatch, "--doctypes")   # else the old version's files (doctype.onnx) would stay in the new one
+    env.api.create_commit.assert_not_called()
+    env.db_fn.assert_not_called()
+    assert (env.work / "report_doctypes.json").exists()
 
 
 def test_a_report_for_another_file_is_refused(env, monkeypatch):
@@ -195,6 +222,19 @@ def test_force_doctypes_is_refused_on_your_documents_alone_with_types_not_measur
         run(monkeypatch, "--doctypes", "--force-doctypes", "--dry-run")
 
 
+@pytest.mark.parametrize("turn,ok", [(None, False), (0.9, False), (0.99, True)])
+def test_force_doctypes_needs_the_turn_measured_on_your_documents(env, monkeypatch, turn, ok):
+    write(env.work, "new/doctype-lite.onnx", b"D6")
+    write(env.work, "report_doctypes.json", {"publish": None, "models": {}, "model_sha256": {"doctype-lite.onnx": sha(b"D6")},
+                                            "yoursModels": {"doctype-lite.onnx": {"byDoctype": {"id_front": 1.0, "id_back": 0.9},
+                                                                                  "turn": turn, "sureTurnRight": turn}}})
+    if ok:
+        run(monkeypatch, "--doctypes", "--force-doctypes", "--dry-run")
+    else:
+        with pytest.raises(SystemExit, match="--force-doctypes refused"):
+            run(monkeypatch, "--doctypes", "--force-doctypes", "--dry-run")
+
+
 def test_move_attempts_counts_only_the_folders_really_moved(env):
     plan = [("attempts/new/site/2026-10-20/a1", "attempts/used/v6/")]
     assert publish.move_attempts("v6", plan) == 0   # nothing listed in the bucket or in Storage
@@ -234,7 +274,8 @@ def test_an_edges_publish_lowers_attempts_since_by_the_folders_moved_and_drops_t
     stats = env.fs.collection.return_value.document.return_value.set.call_args[0][0]
     assert stats["edgesSince"] == 0 and stats["attemptsSince"].value == -1
     assert committed(env.api)["edges.onnx"][2] == str(env.work / "new" / "edges.onnx")
-    assert not (env.work / "attempts.json").exists() and not list(env.work.glob("report*.json"))
+    assert not (env.work / "attempts.json").exists() and not (env.work / "report.json").exists()
+    assert (env.work / "report_mrz.json").exists()   # the passport zone reader was not published: its report stays
     assert (env.work / "new" / "edges.onnx").exists()   # the copies kept
     env.clear.assert_not_called()
 
@@ -290,6 +331,43 @@ def test_haiku_and_the_site_are_not_measured_without_haikus_own_answer(exam_doct
     assert r["haikuPages"] == 1 and r["haiku"] == 0.0 and r["site"] == 1.0
 
 
+class TurnUnsure(FakeSession):
+    """Sure of the type (id_front), not of the turn."""
+    def run(self, _, feeds):
+        return [np.array([[0.95, 0.01, 0.01, 0.01, 0.01, 0.01]], np.float32), np.array([[0.5, 0.2, 0.2, 0.1]], np.float32)]
+
+
+def test_the_sites_way_takes_haiku_unless_sure_of_both_type_and_turn(exam_doctypes, monkeypatch):
+    monkeypatch.setattr(exam_doctypes.ort, "InferenceSession", TurnUnsure)
+    r = exam_doctypes.score("m.onnx", [{"img": page(), "doctype": "id_front", "given": "passport"}])
+    assert r["haiku"] == 0.0 and r["site"] == 0.0   # Haiku's (wrong) answer, as the scan window would use it
+
+
+def test_your_documents_are_cut_upright_by_the_recorded_top_left(exam_doctypes, tmp_path, monkeypatch):
+    import cv2
+    img = np.full((200, 300, 3), 180, np.uint8)
+    img[150:175, 225:265] = 0   # a dark mark at the document's own top-left, which lies bottom-right in the photo
+    f = tmp_path / "0.jpg"
+    cv2.imwrite(str(f), img)
+    fixed = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    ex = [{"file": str(f), "kind": "template:id_front", "template": "aa11", "none": False, "fixed": fixed, "upright": 2},
+          {"file": str(f), "kind": "template:id_front", "template": "aa11", "none": False, "fixed": fixed}]
+    (tmp_path / "examples.json").write_text(json.dumps(ex))
+    monkeypatch.setattr(exam_doctypes, "EXAM_PHOTOS", tmp_path / "examples.json")
+    up, old = exam_doctypes.your_documents()
+    assert up["upright"] is True and old["upright"] is False
+    h, w = up["img"].shape[:2]
+    assert up["img"][: h // 3, : w // 3].mean() < up["img"][2 * h // 3:, 2 * w // 3:].mean()   # the mark now top-left
+    r = exam_doctypes.score("m.onnx", [up, old])
+    assert r["turnPages"] == 1 and r["turn"] == 0.25   # only the upright page is turned; the fake answers "upright" every time
+
+
+def test_synth_docs_records_the_documents_own_top_left():
+    sd = _load("synth_docs")
+    fixed = [[0.2, 0.1], [0.9, 0.2], [0.8, 0.9], [0.1, 0.8]]
+    assert sd.upright_index(fixed, (0.8, 0.9)) == 2 and sd.upright_index(fixed, (0.2, 0.1)) == 0
+
+
 def test_your_documents_report_has_no_turn_and_counts_by_document(exam_doctypes, tmp_path, monkeypatch):
     import cv2
     work = tmp_path / "work"
@@ -307,7 +385,8 @@ def test_your_documents_report_has_no_turn_and_counts_by_document(exam_doctypes,
     exam_doctypes.main()
     rep = json.loads((work / "report_doctypes.json").read_text())
     y = rep["yoursModels"]["doctype-lite.onnx"]
-    assert y["turn"] is None and y["sureTurnRight"] is None and y["site"] is None and y["haiku"] is None
+    assert y["turn"] is None and y["sureTurnRight"] is None and y["turnPages"] is None   # drawn before "upright" was recorded
+    assert y["site"] is None and y["haiku"] is None
     assert y["byDocument"] == {"aa11": {"doctype": "id_front", "n": 2, "right": 1.0}, "bb22": {"doctype": "sefach", "n": 1, "right": 0.0}}
     assert rep["publish"] is None and rep["model_sha256"] == {"doctype-lite.onnx": sha(b"D6")}
     assert list(rep["yoursModels"]) == ["doctype-lite.onnx"]

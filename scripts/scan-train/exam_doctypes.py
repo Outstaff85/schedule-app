@@ -4,14 +4,17 @@ apart (never trained on) are read by the new phone's document type model (doctyp
 (the type it gave, kept in each record):
   - type: right answers; how many it is sure of (≥ 0.9) and how right those are;
   - turn: every exam page shown at its 4 quarter turns, the turn back read right;
-  - the site's way: the model's type where it is sure, Haiku's elsewhere — against Haiku alone. A page
+  - the site's way: the model's type where it is sure of both the type and the turn (≥ 0.9 each, as the
+    scan window's Mixed mode, src/scan/Scanner.tsx), Haiku's elsewhere — against Haiku alone. A page
     counts as Haiku's only when its record keeps Haiku's own answer ("given", by Haiku); with none,
     site / haiku / haikuPages are null (not measured), never 0.
 With the owner's real pages kept apart for the exam (synth.held_out; synth_docs.py --templates --exam's
 photos, each document cut by its known corners) the model is read on them too ("your documents") —
-the one exam before the site has collected page copies: the type only, by type and by document
-("byDocument", keyed by the short sha1 the drawing records for each real page, never its name). The turn
-there is null: the known corners start at any corner of the document, so a cut page lies at any turn.
+the one exam before the site has collected page copies: the type, by type and by document ("byDocument",
+keyed by the short sha1 the drawing records for each real page, never its name), and the turn — each page
+cut upright by the document's own top-left corner the drawing records ("upright"), then shown at its 4
+quarter turns as above. A photo drawn before that was recorded is cut at an unknown turn and its turn is
+not scored (null when no page has it: draw the exam photos again with --templates --exam).
 The model is worth publishing when the site's way is at least as right as Haiku alone and its sure
 turns are right (≥ 98 %); else the next size up is suggested. Writes ~/.scan-train/report_doctypes.json
 — with the sha256 of the model examined ("model_sha256"; publish.py refuses a report written for another
@@ -34,8 +37,9 @@ def read(sess, img):
 
 
 def score(path, exam, turn=True):
-    """The model's figures on exam pages ([{"img" or "file", "doctype", optional "given" / "by" / "doc"}]);
-    turn=False: the turn is not scored (null). What was not measured is None, never 0."""
+    """The model's figures on exam pages ([{"img" or "file", "doctype", optional "given" / "by" / "doc" /
+    "upright"}]); the turn is scored on the pages that lie upright (all but "upright": False), never with
+    turn=False. What was not measured is None, never 0."""
     sess = ort.InferenceSession(str(path))
     right = sure = sure_right = site = haiku = n_h = turns = turn_right = sure_turns = sure_turn_right = 0
     per = {k: [0, 0] for k in DOCTYPES}
@@ -44,7 +48,7 @@ def score(path, exam, turn=True):
         img = e["img"] if "img" in e else cv2.imread(e["file"])
         if img is None:
             continue
-        kp, _ = read(sess, img)
+        kp, tp0 = read(sess, img)
         k = DOCTYPES[int(kp.argmax())]
         ok = k == e["doctype"]
         right += ok; per[e["doctype"]][0] += ok; per[e["doctype"]][1] += 1
@@ -56,8 +60,8 @@ def score(path, exam, turn=True):
         if e.get("by", "haiku") == "haiku" and "given" in e:  # Haiku's own answer on this page (not an earlier model's)
             h_ok = e.get("given") == e["doctype"]
             n_h += 1; haiku += h_ok
-            site += ok if kp.max() >= SURE else h_ok
-        if not turn:
+            site += ok if kp.max() >= SURE and tp0.max() >= SURE else h_ok   # the site asks Haiku unless sure of both
+        if not turn or e.get("upright") is False:
             continue
         for q in range(4):
             _, tp = read(sess, np.ascontiguousarray(np.rot90(img, -q)) if q else img)
@@ -69,14 +73,15 @@ def score(path, exam, turn=True):
     pct = lambda a, b: round(a / b, 3) if b else None
     return {"n": n, "doctype": pct(right, n), "sure": pct(sure, n), "sureRight": pct(sure_right, sure),
             "site": pct(site, n_h), "haiku": pct(haiku, n_h), "haikuPages": n_h or None,
-            "turn": pct(turn_right, turns) if turn else None, "sureTurnRight": pct(sure_turn_right, sure_turns) if turn else None,
+            "turn": pct(turn_right, turns), "sureTurnRight": pct(sure_turn_right, sure_turns), "turnPages": turns // 4 or None,
             "byDoctype": {k: pct(v[0], v[1]) for k, v in per.items()},
             "byDocument": {d: {"doctype": v["doctype"], "n": v["n"], "right": pct(v["right"], v["n"])} for d, v in sorted(docs.items())}}
 
 
 def your_documents():
-    """The owner's real pages kept apart, cut flat from their exam photos by the known corners:
-    [{"img", "doctype"}] (a photo with no document is left out)."""
+    """The owner's real pages kept apart, cut flat from their exam photos by the known corners — from the
+    document's own top-left when the drawing recorded it ("upright": its index in "fixed"), so the page lies
+    upright: [{"img", "doctype", "doc", "upright": bool}] (a photo with no document is left out)."""
     if not EXAM_PHOTOS.exists():
         return []
     out = []
@@ -86,11 +91,15 @@ def your_documents():
         if e.get("none") or not e.get("fixed") or kind not in DOCTYPES or img is None:
             continue
         h, w = img.shape[:2]
+        k = e.get("upright")
+        up = isinstance(k, int) and 0 <= k < 4
         q = np.float32([[x * w, y * h] for x, y in e["fixed"]])
+        if up:
+            q = np.roll(q, -k, axis=0)   # the document's own top-left first
         W = int(max(np.linalg.norm(q[1] - q[0]), np.linalg.norm(q[2] - q[3])))
         H = int(max(np.linalg.norm(q[3] - q[0]), np.linalg.norm(q[2] - q[1])))
         M = cv2.getPerspectiveTransform(q, np.float32([[0, 0], [W, 0], [W, H], [0, H]]))
-        out.append({"img": cv2.warpPerspective(img, M, (W, H)), "doctype": kind, "doc": e.get("template")})
+        out.append({"img": cv2.warpPerspective(img, M, (W, H)), "doctype": kind, "doc": e.get("template"), "upright": up})
     return out
 
 
@@ -108,7 +117,7 @@ def main():
             if exam:
                 report["models"][name] = {"arch": archs.get(name, DOCTYPE_MODELS[name]), **score(p, exam)}
             if yours:
-                report["yoursModels"][name] = {"arch": archs.get(name, DOCTYPE_MODELS[name]), **score(p, yours, turn=False)}
+                report["yoursModels"][name] = {"arch": archs.get(name, DOCTYPE_MODELS[name]), **score(p, yours)}
     if not report["models"] and not report["yoursModels"]:
         raise SystemExit("no document type model trained — run train_doctypes.py first")
     report["model_sha256"] = model_hashes(DOCTYPE_MODELS, WORK / "new")   # the exact file examined
@@ -116,8 +125,9 @@ def main():
     if yours:
         print(f"Your documents: {len(yours)} pages cut from the exam photos of the real pages kept apart (never made into a training page)")
         for name, r in report["yoursModels"].items():
-            # the turn is not scored here: the known corners start at any corner of the document, so a cut page lies at any turn
-            print(f"  {name} ({r['arch']}): type right {pc(r['doctype'])}; sure of {pc(r['sure'])}, right on those {pc(r['sureRight'])}; the turn: not measured here")
+            turn = (f"turn right {pc(r['turn'])} (sure ones {pc(r['sureTurnRight'])}) on {r['turnPages']} pages" if r["turnPages"] else
+                    "the turn: not measured (the exam photos were drawn before synth_docs.py recorded each document's top-left: draw them again with --templates --exam)")
+            print(f"  {name} ({r['arch']}): type right {pc(r['doctype'])}; sure of {pc(r['sure'])}, right on those {pc(r['sureRight'])}; {turn}")
             print("    by type: " + ", ".join(f"{k} {pc(v)}" for k, v in r["byDoctype"].items()))
             if r["byDocument"]:
                 print(f"    by document ({len(r['byDocument'])}): " + ", ".join(f"{d} {v['doctype']} {pc(v['right'])} of {v['n']}" for d, v in r["byDocument"].items()))

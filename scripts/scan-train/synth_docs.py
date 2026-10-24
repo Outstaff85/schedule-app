@@ -30,7 +30,8 @@ photos again, so only this script is kept.
 
 Writes <out>/img/<n>.jpg (the long side 640) and <out>/examples.json in pull.py's form (fixed:
 the corners 0..1, top-left first clockwise as the model gives them; null: nothing here; a real page
-answered also names it, "template": a short sha1 of its kind folder and file name, page_id).
+answered also names it, "template": a short sha1 of its kind folder and file name, page_id; "upright": the
+index in fixed of the document's own top-left, so exam_doctypes.py cuts the page upright).
 Needs: pip install -r requirements-synth.txt."""
 import argparse
 import hashlib
@@ -555,7 +556,8 @@ def _area(q):
 
 
 def photo(rng, F, photos, tpl=((), 0, False)):
-    """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind, the real page's id or None)."""
+    """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind, the real page's id or None,
+    the index in the corners of the document's own top-left or None)."""
     W, H = rng.choice(SIZES)
     img = background(rng, W, H, photos)
     none = rng.random() < NONE_SHARE
@@ -605,8 +607,14 @@ def photo(rng, F, photos, tpl=((), 0, False)):
     s = LONG / max(W, H)
     img = cv2.resize(img, (round(W * s), round(H * s)), interpolation=cv2.INTER_AREA)
     if none:
-        return img, None, "none", None
-    return img, synth.order_corners([[x / W, y / H] for x, y in quad]), kind, src
+        return img, None, "none", None, None
+    fixed = synth.order_corners([[x / W, y / H] for x, y in quad])
+    return img, fixed, kind, src, upright_index(fixed, (quad[0][0] / W, quad[0][1] / H))
+
+
+def upright_index(fixed, top_left):
+    """Which of the ordered corners is the document's own top-left (the exam cuts the page upright by it)."""
+    return min(range(4), key=lambda i: (fixed[i][0] - top_left[0]) ** 2 + (fixed[i][1] - top_left[1]) ** 2)
 
 
 def _overlaps(a, b, W, H):
@@ -622,7 +630,7 @@ def _batch(job):
     out = []
     for i in range(start, start + n):
         rng = random.Random(seed * 1_000_003 + i)
-        img, corners, kind, src = photo(rng, F, photos, tpl)
+        img, corners, kind, src, up = photo(rng, F, photos, tpl)
         f = pathlib.Path(folder) / "img" / f"{i}.jpg"
         cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         if show:
@@ -634,7 +642,8 @@ def _batch(job):
             cv2.putText(v, kind, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.imwrite(str(pathlib.Path(folder) / "show" / f"{i}.jpg"), v)
         out.append({"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
-                    "exam": False, "synth": True, "kind": kind, "none": corners is None, **({"template": src} if src else {})})
+                    "exam": False, "synth": True, "kind": kind, "none": corners is None, **({"template": src} if src else {}),
+                    **({"upright": up} if corners else {})})
     return out
 
 
