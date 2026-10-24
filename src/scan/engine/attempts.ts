@@ -9,8 +9,12 @@
 // On the site a kept attempt waits for Done (holdForDone: a window closed without Done sends nothing); the lab
 // has no Done and sends it at once, and shows the new attempts since the last training (stats).
 //
-// Unlike the lab, nothing is decided for the user (owner, 2026-10-24): a new shot or pick does not mark the
-// pages before it as looked at — they stay undecided until Looks good, Retake, Done or a delete.
+// Unlike the old lab, nothing is decided for the user (owner, 2026-10-24): a new shot or pick does not mark the
+// pages before it as looked at — they stay undecided until Looks good, Retake, Done or a delete (the lab, with
+// no Done: until the page is left, or beyond UNDECIDED_MAX undecided ones, the oldest sent as kept). Every
+// attempt not sent yet keeps its photo for the corner editor: the newest FRAMES_KEPT at full size, the older
+// ones as their training picture (at most PICTURE_MAX px; the corners are shares of the photo, so the editor
+// and the recut take either), dropped once it is sent, discarded or done.
 import { SCAN_FEEDBACK_FN_URL } from '@/manager/logic/functions';
 import { mkCanvas } from './upright';
 import type { ScanSurface } from './surface';
@@ -18,7 +22,7 @@ import type { Pt, Quad } from './types';
 
 /** scan_feedback: one copy of its URL (src/manager/logic/functions.ts), so a move of the function reaches the attempts too. */
 export const TRAIN_URL = SCAN_FEEDBACK_FN_URL;
-export const QUEUE_MAX = 5, QUEUE_MS = 3600e3, PICTURE_MAX = 1600, FRAMES_KEPT = 6;
+export const QUEUE_MAX = 5, QUEUE_MS = 3600e3, PICTURE_MAX = 1600, FRAMES_KEPT = 6, UNDECIDED_MAX = 24;
 const DB = 'scanAttempts', STORE = 'queue';
 
 export type AttemptInput = 'camera' | 'photo' | 'pdf';
@@ -49,6 +53,8 @@ export interface EdgeSource { edgesModel: Quad | null; edgesMore: Quad[]; pages:
 
 /** A photo kept for the corner editor. */
 export interface KeptFrame { frame: OffscreenCanvas; w: number; h: number }
+/** An unsent attempt's photos: the full-size one (the newest FRAMES_KEPT only) and its training picture. */
+interface Frames { full: KeptFrame | null; small: KeptFrame }
 
 interface Live { a: Omit<AttemptData, 'picture'>; picture: Promise<string>; src: EdgeSource | null }
 interface Queued { a: AttemptData; at: number }
@@ -114,7 +120,7 @@ export class Attempts {
   /** Kept, waiting for Done (the site). */
   heldForDone: Live[] = [];
   private retakeGroup: string | null = null;
-  private frames = new Map<string, KeptFrame>();
+  private frames = new Map<string, Frames>();
   /** Decided, its photo being encoded: a page deleted now goes with it. */
   private readonly queuing = new Map<string, Live>();
   /** The writes to the queue on the phone still running (settle waits for them). */
@@ -150,8 +156,9 @@ export class Attempts {
   }
 
   /** A new attempt for a photo (frame, w×h): its picture at most PICTURE_MAX px, the next one after a Retake
-   *  sharing its group; src gives the model's corners when it is sent. The last FRAMES_KEPT photos are kept
-   *  for the corner editor. */
+   *  sharing its group; src gives the model's corners when it is sent. Its photo is kept for the corner editor
+   *  until it is sent: at full size while it is among the newest FRAMES_KEPT, then as its training picture.
+   *  The lab (no Done) sends its oldest undecided attempt as kept beyond UNDECIDED_MAX (memory). */
   newAttempt(frame: OffscreenCanvas, w: number, h: number, input: AttemptInput, meta: { id?: string; way?: string; model?: string; src?: EdgeSource | null } = {}): AttemptData['id'] {
     const k = Math.min(1, PICTURE_MAX / Math.max(w, h)), c = mkCanvas(Math.round(w * k), Math.round(h * k));
     (c.getContext('2d') as OffscreenCanvasRenderingContext2D).drawImage(frame, 0, 0, c.width, c.height);
@@ -161,13 +168,15 @@ export class Attempts {
     const picture = this.env.encode(c).catch(e => { this.log.err('Training photo: ' + errText(e)); return ''; });
     this.retakeGroup = null;
     this.onScreen.push({ a, picture, src: meta.src || null });
-    this.frames.set(id, { frame, w, h });
-    for (const key of [...this.frames.keys()].slice(0, -FRAMES_KEPT)) this.frames.delete(key);  // the last few photos only (memory)
+    this.frames.set(id, { full: { frame, w, h }, small: { frame: c, w: c.width, h: c.height } });
+    for (const key of [...this.frames.keys()].slice(0, -FRAMES_KEPT)) (this.frames.get(key) as Frames).full = null;  // full size: the newest few only (memory)
+    if (!this.holdForDone && this.onScreen.length > UNDECIDED_MAX) this.decide('kept', this.onScreen.slice(0, this.onScreen.length - UNDECIDED_MAX).map(x => x.a.id));
     return id;
   }
 
-  /** The photo kept for the corner editor, or undefined when it is gone (the page is deleted and taken again). */
-  frameOf(id: string): KeptFrame | undefined { return this.frames.get(id); }
+  /** The photo kept for the corner editor — full size when still kept, else its training picture —, or
+   *  undefined when it is gone (sent, retaken, discarded or done). */
+  frameOf(id: string): KeptFrame | undefined { const f = this.frames.get(id); return f ? f.full || f.small : undefined; }
 
   /** Not sent yet (on the screen or waiting for Done): its corners can still be fixed, its pages deleted with it. */
   private unsent(id: string): Live | undefined { return this.onScreen.find(x => x.a.id === id) || this.heldForDone.find(x => x.a.id === id); }
@@ -175,8 +184,8 @@ export class Attempts {
   canFix(id: string): boolean { return !!this.unsent(id); }
   /** Undecided: on the screen, not looked at yet. */
   undecided(id: string): boolean { return this.onScreen.some(x => x.a.id === id); }
-  /** The attempts not decided yet, oldest first (the lab sends them as kept with its next shot or pick, and when
-   *  the page is left: it has no Done). */
+  /** The attempts not decided yet, oldest first (the lab sends them as kept when the page is left: it has no
+   *  Done). */
   undecidedIds(): string[] { return this.onScreen.map(x => x.a.id); }
   /** How it went, once decided (null while undecided or unknown). */
   outcomeOf(id: string): Outcome | null { const l = this.unsent(id); return (l && l.a.outcome) || null; }
@@ -208,7 +217,8 @@ export class Attempts {
     if (outcome === 'retaken' && list.length) this.retakeGroup = list[0].a.group;
     for (const l of list) {
       l.a.outcome = outcome;
-      if (outcome === 'kept' && this.holdForDone) this.heldForDone.push(l); else void this.queue(l);
+      if (outcome === 'kept' && this.holdForDone) this.heldForDone.push(l);
+      else { this.frames.delete(l.a.id); void this.queue(l); }  // sent: it can no longer be fixed
     }
   }
 

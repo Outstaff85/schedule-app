@@ -19,7 +19,10 @@
 //  - the attempts: a retake and the next shot share a group; a kept attempt is held until done() on the site and
 //    sent at once in the lab; the queue keeps 5 at most offline and empties when back online; a page deleted
 //    after sending goes as attemptOutcome, one deleted while the queue's write is pending goes with it; the
-//    photo is at most 1600 px; the undecided attempts listed (the lab sends them with its next shot or pick);
+//    photo is at most 1600 px; the undecided attempts listed (the lab sends them when the page is left, and
+//    beyond UNDECIDED_MAX the oldest — never with a new shot or pick); every unsent attempt keeps its photo
+//    (the newest FRAMES_KEPT at full size, the older as the training picture), dropped once sent; a pick of
+//    more pictures than FRAMES_KEPT leaves its first page fixable;
 //  - session.remove of the last page of an undecided camera shot is a Retake (the next shot shares its group),
 //    also once a shot still looking for more settles with none shown; keepCanvases (the lab) keeps the newest
 //    pages' pixels only; switchWay while the models load starts them again on the new settings, the newest
@@ -600,11 +603,69 @@ await run('workPictures: no more pictures opened ahead of the list than there ar
   assert.equal(r.count, 5); assert.deepEqual(shown, [1, 2, 3, 4, 5]);
 });
 
-await run('attempts: the undecided ones listed, oldest first (the lab sends them with its next camera shot)', async () => {
-  const { at } = attemptsOn('lab');
+await run('attempts: the undecided ones listed, oldest first (the lab sends them when the page is left); a new attempt decides none of them', async () => {
+  const { at, server } = attemptsOn('lab');
   const a = at.newAttempt(frame(100, 80), 100, 80, 'camera'), b = at.newAttempt(frame(100, 80), 100, 80, 'photo'), c = at.newAttempt(frame(100, 80), 100, 80, 'camera');
   at.decide('kept', [b]);
   assert.deepEqual(at.undecidedIds(), [a, c]);
+  const d = at.newAttempt(frame(100, 80), 100, 80, 'camera'); await settle();
+  assert.deepEqual(at.undecidedIds(), [a, c, d], 'a new shot leaves the ones before it undecided');
+  assert.ok(at.canFix(a) && at.frameOf(a), 'and fixable');
+  assert.deepEqual(sentAttempts(server).map(x => x.id), [b], 'only the one looked at is sent');
+});
+
+await run('attempts: the lab sends its oldest undecided attempt as kept beyond UNDECIDED_MAX (memory); the site never', async () => {
+  const lab = attemptsOn('lab'), ids = [];
+  for (let i = 0; i < A.UNDECIDED_MAX + 2; i++) ids.push(lab.at.newAttempt(frame(60, 40), 60, 40, 'camera'));
+  await settle();
+  assert.deepEqual(lab.at.undecidedIds(), ids.slice(2), 'the newest UNDECIDED_MAX stay undecided');
+  assert.deepEqual(sentAttempts(lab.server).map(x => x.id + ':' + x.outcome).sort(), [ids[0] + ':kept', ids[1] + ':kept'].sort());
+  assert.equal(lab.at.frameOf(ids[0]), undefined, 'sent: its photo let go');
+  const site = attemptsOn('site'), sids = [];
+  for (let i = 0; i < A.UNDECIDED_MAX + 2; i++) sids.push(site.at.newAttempt(frame(60, 40), 60, 40, 'photo'));
+  await settle();
+  assert.equal(site.at.undecidedIds().length, sids.length, 'the site keeps them all for Done');
+  assert.equal(site.server.bodies.length, 0);
+  return 'UNDECIDED_MAX ' + A.UNDECIDED_MAX;
+});
+
+await run('attempts: every unsent attempt keeps its photo — the newest FRAMES_KEPT at full size, the older as the training picture —, let go once sent', async () => {
+  const site = attemptsOn('site'), ids = [];
+  for (let i = 0; i < A.FRAMES_KEPT + 3; i++) ids.push(site.at.newAttempt(frame(2000, 1000), 2000, 1000, 'photo'));
+  const sizes = ids.map(id => { const f = site.at.frameOf(id); return f ? f.w + 'x' + f.h + (f.frame.width === f.w && f.frame.height === f.h ? '' : '!') : 'gone'; });
+  assert.deepEqual(sizes, [...Array(3).fill('1600x800'), ...Array(A.FRAMES_KEPT).fill('2000x1000')], sizes.join(' '));
+  assert.ok(ids.every(id => site.at.canFix(id)), 'all fixable');
+  site.at.decide('kept', [ids[0]]);
+  assert.ok(site.at.frameOf(ids[0]) && site.at.canFix(ids[0]), 'the site: held for Done, still fixable');
+  site.at.decide('retaken', [ids[1]]);
+  assert.equal(site.at.frameOf(ids[1]), undefined, 'retaken: sent, its photo let go');
+  site.at.done();
+  assert.ok(ids.every(id => !site.at.frameOf(id)), 'done: none kept');
+  const lab = attemptsOn('lab');
+  const x = lab.at.newAttempt(frame(100, 80), 100, 80, 'camera');
+  lab.at.decide('kept', [x]);
+  assert.equal(lab.at.frameOf(x), undefined, 'the lab: sent at once, its photo let go');
+  return sizes.join(' ');
+});
+
+await run('session.pick: a pick of more pictures than FRAMES_KEPT leaves its first page fixable (the lab and the site)', async () => {
+  for (const source of ['lab', 'site']) {
+    const main = fakeEngine('main', 1);
+    const { s, file1, server } = pickSession({ main, file: null, source });
+    const n = A.FRAMES_KEPT + 4, files = [];
+    for (let i = 0; i < n; i++) files.push(file1('p' + i + '.jpg', 40 + i, 30, i + 1));
+    assert.equal(await s.pick(files), n);
+    const pages = [...s.pages.values()], first = pages[0];
+    assert.equal(pages.length, n);
+    const fx = s.fixable(first.id);
+    assert.ok(fx && fx.w === 40 && fx.h === 30, source + ': the first page photo still kept ' + JSON.stringify(fx && {w: fx.w, h: fx.h}));
+    const pts = [[0.1, 0.1], [0.8, 0.12], [0.85, 0.9], [0.12, 0.88]];
+    assert.ok(await s.fix(first.id, pts), source + ': fixed');
+    assert.equal(join(s.pages.get(first.id).quad), join(pts));
+    assert.ok(pages.every(p => s.fixable(p.id)), source + ': every page fixable');
+    assert.equal(join(s.attempts.cornersOf(first.record.attempt, 0)), join(pts), source + ': the right answer goes with its attempt');
+    assert.equal(server.bodies.filter(x => x.action === 'attempt').length, 0, source + ': nothing sent before it is looked at');
+  }
 });
 
 // ── the lab's document type collection ──

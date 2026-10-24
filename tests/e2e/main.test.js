@@ -1138,15 +1138,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     ScanLab.session.keep(next.ids[0]);
     return {one: one.attempt, next: next.attempt};
   }, JPG).catch(e => ({error: e.message}));
-  // picked photos: the attempts still undecided go as kept with the next pick (as with the next camera shot),
-  // and when the page is left — then the types still waiting go too
+  // picked photos: a new pick or camera shot decides nothing — the pages before it stay undecided and fixable
+  // (owner, 2026-10-24) —; with no Done, the attempts still undecided go as kept when the page is left — then
+  // the types still waiting go too
   const labPicks = await labPage.evaluate(async jpg => {
     const p1 = await ScanLab.inject({pics: [{b64: jpg}], camera: false}), p2 = await ScanLab.inject({pics: [{b64: jpg}], camera: false});
     await ScanLab.view.pick([]);
+    const shot = await ScanLab.inject({pics: [{b64: jpg}], camera: true});
     const p3 = await ScanLab.inject({pics: [{b64: jpg}], camera: false});
-    const undecidedBefore = ScanLab.session.attempts.undecided(p3.attempt);
+    const A = ScanLab.session.attempts;
+    const undecidedAfter = [p1, p2, shot].every(x => A.undecided(x.attempt));
+    const fixableAfter = [p1, p2].every(x => !!ScanLab.view.fixable(x.ids[0]));
+    const undecidedBefore = A.undecided(p3.attempt);
     window.dispatchEvent(new Event('pagehide'));
-    return {p1: p1.attempt, p2: p2.attempt, p3: p3.attempt, undecidedBefore};
+    return {p1: p1.attempt, p2: p2.attempt, shot: shot.attempt, p3: p3.attempt, undecidedAfter, fixableAfter, undecidedBefore};
   }, JPG).catch(e => ({error: e.message}));
   const attSent = () => labCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []);
   for (let i = 0; i < 60 && !attSent().some(a => a.id === labPicks.p3); i++) await sleep(150);
@@ -1165,10 +1170,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const r1 = byId(labRetake.one), r2 = byId(labRetake.next);
   ok(r1.outcome === 'retaken' && (r1.deletedPages || []).length === 0 && r2.outcome === 'kept' && r2.group === labRetake.one && r1.source === 'lab',
     'scanner lab (/scan-lab/): every page of an undecided camera shot deleted is its Retake — sent retaken, the next shot sharing its group ' + JSON.stringify({labRetake, one: {o: r1.outcome, d: r1.deletedPages}, next: {o: r2.outcome, g: r2.group}}));
-  const pk1 = byId(labPicks.p1), pk2 = byId(labPicks.p2), pk3 = byId(labPicks.p3);
-  ok([pk1, pk2, pk3].every(a => a.outcome === 'kept' && a.source === 'lab' && a.input === 'photo') && labPicks.undecidedBefore
+  const pk1 = byId(labPicks.p1), pk2 = byId(labPicks.p2), pk3 = byId(labPicks.p3), pkShot = byId(labPicks.shot);
+  ok([pk1, pk2, pk3].every(a => a.outcome === 'kept' && a.source === 'lab' && a.input === 'photo') && pkShot.outcome === 'kept' && pkShot.input === 'camera'
+    && labPicks.undecidedAfter && labPicks.fixableAfter && labPicks.undecidedBefore
     && ['a', 'b', 'none'].every(k => byId((labKinds.ids || {})[k]).outcome === 'kept'),
-    'scanner lab (/scan-lab/): with no Done, the attempts still undecided go as kept with the next pick and when the page is left (source "lab") ' + JSON.stringify({labPicks, sent: [pk1, pk2, pk3].map(a => a.outcome + ':' + a.source + ':' + a.input)}));
+    'scanner lab (/scan-lab/): a new pick or camera shot leaves the pages before it undecided and fixable; with no Done, the attempts still undecided go as kept when the page is left (source "lab") ' + JSON.stringify({labPicks, sent: [pk1, pk2, pkShot, pk3].map(a => a.outcome + ':' + a.source + ':' + a.input)}));
   const labSite = labReqs.filter(u => /\/scan\/(models\.json|ort(130)?\/|[\w-]+\.onnx)/.test(u)), labOwn = labReqs.filter(u => /\/scan-lab\//.test(u));
   ok(!labSite.length && labOwn.length > 0,
     'scanner lab (/scan-lab/): it loads only the lab\'s own files (/scan-lab/) — no request to the site\'s scanner (/scan/) ' + JSON.stringify({site: labSite.slice(0, 5), lab: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));

@@ -52,7 +52,7 @@ export interface Readouts {
 
 /** One shot: the corners each page was cut by — the model's, for training: the first document's and the
  *  others' — and the way the model ran on. Its photo is not held here (every page holds its record): it goes to
- *  its training attempt, which keeps the last few for the corner editor (attempts.ts frameOf). */
+ *  its training attempt, which keeps it for the corner editor until it is sent (attempts.ts frameOf). */
 export interface ShotRecord {
   /** The shot's number in this session, its batch (a camera shot is a batch of its own; the pictures of one pick
    *  share theirs) and its training attempt's id. */

@@ -6,9 +6,11 @@
 //  - the attempts (src/scan/engine/attempts.ts): no holdForDone in the lab — an attempt is sent at once on Looks
 //    good (every page of it looked at); a camera shot whose every page is deleted while undecided is sent
 //    retaken (the screen's Delete stands for the old lab's Retake: the next shot shares its group; session.ts
-//    remove); and — the lab has no Done — with the next camera shot or pick, and when the page is left (or
-//    reloaded for the CPU engine, after the queue on the phone is written), the attempts still undecided are
-//    sent as kept (as the site's Done keeps the ones left alone; their pages are not marked looked at); a page
+//    remove); a new shot or pick decides nothing (owner, 2026-10-24: every page stays fixable and deletable until
+//    it is looked at); and — the lab has no Done — when the page is left (or reloaded for the CPU engine, after
+//    the queue on the phone is written), the attempts still undecided are sent as kept (as the site's Done keeps
+//    the ones left alone; their pages are not marked looked at), and beyond 24 undecided ones the oldest is
+//    (attempts.ts UNDECIDED_MAX, memory); a page
 //    deleted otherwise goes to its attempt (pageDeleted: with it, or as attemptOutcome); the corners fixed by
 //    hand go with it (edgesFixed); "In queue" and "New for training" in the drawer;
 //  - the document types picked or ticked (kinds.ts), never an untouched answer.
@@ -144,8 +146,8 @@ function keepUndecided(l: Lab): void {
 }
 
 /** The session as the lab's screen drives it: the camera after the accurate model and any pick in work, picks
- *  counted (each sends the attempts still undecided before it, as a camera shot does), a deleted page's type
- *  never sent. */
+ *  counted (the attempts before a pick stay undecided, as on the site: fixable and deletable until Looks good,
+ *  Delete or the page is left), a deleted page's type never sent. */
 function labView(l: Lab): ScanSessionLike {
   const s = l.session;
   let camGen = 0;
@@ -167,7 +169,6 @@ function labView(l: Lab): ScanSessionLike {
     hold: () => s.hold(),
     resume: () => s.resume(),
     pick: files => {
-      keepUndecided(l);
       l.picking++;
       const p = s.pick(files), settled = () => { l.picking--; };
       p.then(settled, settled);
@@ -180,14 +181,6 @@ function labView(l: Lab): ScanSessionLike {
     done: () => s.done(),
     discard: () => s.discard(),
   };
-}
-
-/** The lab has no Done: a new camera shot sends the attempts still undecided before it, as kept. */
-function sendEarlier(l: Lab): void {
-  let newest: ShotPage | null = null;
-  for (const p of l.session.pages.values()) if (p.record.shot > 0 && (!newest || p.record.shot > newest.record.shot)) newest = p;
-  const ids = l.session.attempts.undecidedIds().filter(id => !newest || id !== newest.record.attempt);
-  if (ids.length) l.session.attempts.decide('kept', ids);
 }
 
 // The browser tests' hooks (docs/tests.md): the lab's session, its log and records, its types, and pages given
@@ -218,10 +211,7 @@ export function LabApp() {
         setPages(ps => ({ order: ps.order.includes(p.id) ? ps.order : [...ps.order, p.id], byId: { ...ps.byId, [p.id]: p } }));
         if (p.readouts) l.kinds.offer(p.id, p.readouts.doctype);
       }),
-      l.session.on('status', st => {
-        if (!seen) { seen = true; setEngineText(undefined); }
-        if (st.key === 'captured') sendEarlier(l);
-      }),
+      l.session.on('status', () => { if (!seen) { seen = true; setEngineText(undefined); } }),
       // while the models load, the status line says what the engine does (the lab's words: ways, models, layouts)
       l.log.on('status', st => { if (!seen) setEngineText(engineStatusText(st, true)); }),
       l.session.attempts.on(setTrain),
