@@ -14,7 +14,7 @@ The whole training of the scanner in one place: where the examples come from, wh
 
 - **The site's scanner** is the only source of examples: real scans by the firms' users. The lab collects nothing (no login, no data).
 - **The models' home is Hugging Face** (docs/hf-plan.md): the public repo `OutStaff/scanner-models`, one tag per version (`base-v1`, `v2`…), every file of the version in its commit, named by what it does (`edges.onnx`, `edges-lite.onnx`, `face.onnx`, `doctype.onnx`, `doctype-lite.onnx`, the exam reports). The examples are in Firebase (Storage `training/scan/`, Firestore `scanTraining`). A version not moved yet (`move_to_hf.py`) is still read from Storage `models/scan/<version>/` under its old names (`sa24.onnx`, `lite.onnx`, `yunet640.onnx`).
-- **The lab and the site never share code or a model file** (CLAUDE.md → Scanner: the lab and the site are apart); each names the model version it uses.
+- **The lab and the site run one scanner code (`src/scan/`) but never share a model file** (CLAUDE.md → Scanner: one code, the models per surface): each surface has its own models, ONNX Runtime and browser cache, and names the model version it uses.
 
 ## 1. What is collected (on the site)
 
