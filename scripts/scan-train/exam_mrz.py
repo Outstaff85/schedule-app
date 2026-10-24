@@ -16,7 +16,9 @@ already in the lab (the lab's version's mrz.onnx, when it has one), both on the 
   scenes went photo → the lab's edges → cut → the face's turn → the zone found (gen/outputs/mrz.py), then each reader
   reads it — the stage that failed is reported (edges: the lab missed the page or cut it badly; turn: not upright; find:
   the zone's two lines not found on their true lines; read: the fields read differ from the true ones), the earlier
-  stages the same for both readers.
+  stages the same for both readers. Each line's stored strip is fed as the phone draws it (gen/phone.py strip_input:
+  mrzRead's 'high' smoothing into the white 32 × 512), not mrzmodel.line_input's INTER_AREA. The run must be drawn
+  under today's heldout.json (exam_sets.require_fresh).
 On the made-up lines the check figures come from train_mrz.py (report_mrz_train.json).
 
 "publish" when the made-up lines are read well enough (SYNTH_AT), MIDV's exam passports have every check-digit field right
@@ -39,6 +41,7 @@ import cv2
 
 from common import DATA, MRZ_MODEL, WORK, model_hashes, write_json
 from gen import exam_sets as es
+from gen.phone import strip_input
 from mrzmodel import check, decode, fields, find_lines, line_input
 
 SYNTH_AT = 0.93       # the share of made-up lines read right that a model must reach
@@ -221,7 +224,7 @@ def phone_scores(sess, pages):
             texts = []
             for c in p["crops"][:2]:
                 g = cv2.imread(str(c), cv2.IMREAD_GRAYSCALE)
-                texts.append(decode(sess.run(None, {"img": line_input(g)[None]})[0][0]) if g is not None else "")
+                texts.append(decode(sess.run(None, {"img": strip_input(g)[None]})[0][0]) if g is not None else "")
             want = fields(p["lines"][1])
             stage = None if len(texts) == 2 and want and fields(texts[1]) == want else "read"
         if stage:

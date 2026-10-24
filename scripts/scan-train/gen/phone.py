@@ -344,6 +344,18 @@ def line_input(img, box, kernel=None, rng=None, profile=None):
     return _line(img, (int(b["x"]), int(b["y"]), int(b["w"]), int(b["h"])), _kernel("high", kernel, rng, profile))
 
 
+def strip_input(gray, kernel=None, rng=None, profile=None):
+    """A stored grey strip — a zone line's box (gen/outputs/mrz.py) or heLine's rectangle (gen/outputs/he.py), cut at
+    the page's own resolution — as the reader's input the phone draws from it: line_input over the whole strip ('high'
+    smoothing into the white 32 × 512), grey float32 [1, 32, 512] 0..1. The exams' phone-path reads go through it, never
+    mrzmodel.line_input's INTER_AREA."""
+    g = np.asarray(gray)
+    if g.ndim == 3:
+        g = g[..., 0]
+    h, w = g.shape[:2]
+    return line_input(np.repeat(g[..., None], 3, 2), {"x": 0, "y": 0, "w": w, "h": h}, kernel, rng, profile)
+
+
 # heLine's margins around a field's layout box: a share of the box's width on each side and of its height above and
 # below. One number on every side of the copy: hemodel.MARGIN_X / MARGIN_Y (synth_fields.crop cuts the training fields
 # by them) and HE_MX / HE_MY in scan-lab/index.html (copied to scan/) — tests/auth/test_scan_train_he.py holds them

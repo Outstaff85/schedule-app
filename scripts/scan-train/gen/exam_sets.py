@@ -2,12 +2,18 @@
 
 - exam_sets.json (in the work folder) pins each exam set by the sha256 of its manifest — the run's manifest.jsonl when the
   set was drawn through gen build, else the sha256 of its rows' identity (id, file name, the truth: identity()) — with the
-  sha256 of heldout.json it was pinned under (gen.common.heldout_sha256). `refresh` re-pins a set whose manifest changed
-  and says so ("changed"); a drawn set made under another heldout.json is refused until it is drawn again
-  (`require_fresh`: the rebuild command is printed) — gen sources --check fails on it too (gen.common.stale_exam_sets).
+  sha256 of heldout.json it was pinned under (gen.common.heldout_sha256). These pins carry "pin": true: the next exam
+  pins them again by itself, so a pin made under another heldout.json is only reported, never "stale". `refresh` re-pins
+  a set whose manifest changed and says so ("changed"); a drawn set made under another heldout.json is refused until it is
+  drawn again (`require_fresh`: the rebuild command is printed) — `gen exam-sets` and gen sources --check fail on those
+  (gen.common.stale_exam_sets: the drawn sets only, recorded by record_exam_set — synth/docs-exam, he-fields/check,
+  gen/<exam run>).
 - The answers of a model that does not change (the parent version, the lab's) are kept in <work>/exams/<model sha256
-  prefix>/<set>.json with the set's sha256 and heldout.json's: a set drawn again, or a heldout.json changed, is a miss
-  (`cached` → None), so the parent is examined again on the new set — never scored on an answer to another set.
+  prefix>/<set>.json with the set's sha256, heldout.json's and the reader's fingerprint (`reader_sha`: the sha256 of
+  the code and the phone profile that turn a picture into the model's answer — docfind.py, gen/phone.py, the profile's
+  file, and whatever else a set's reading rests on): a set drawn again, a heldout.json changed or another reader is a
+  miss (`cached` → None), so the parent is examined again under the same pipeline as new/ — never scored on an answer
+  to another set or read another way.
 - exam_rows.jsonl (in the work folder): one row per example, model and version examined — {exam, model, which (parent,
   lab, new), modelSha256, set, id, manifest (the gen run's manifest id, or null), error, ok}, null for whatever that
   exam did not measure. Each exam replaces its own rows (`write_rows`); gen mine reads them with the manifests'
@@ -82,10 +88,11 @@ def pins(work=None):
 
 
 def pin(name, sha, of="rows", work=None, n=None):
-    """Pin a set: its sha256 and heldout.json's now (the other entries kept)."""
+    """Pin a set: its sha256 and heldout.json's now (the other entries kept). "pin": true — an exam's own pin, made again
+    by the next exam (gen.common.stale_exam_sets leaves it out: only a drawn set is drawn again)."""
     got = _read(work)
     sets = got.get("sets") if isinstance(got.get("sets"), dict) else {}
-    sets[name] = {"heldout_sha256": gc.heldout_sha256(), "sha256": sha, "of": of, "n": n,
+    sets[name] = {"heldout_sha256": gc.heldout_sha256(), "sha256": sha, "of": of, "n": n, "pin": True,
                   "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
     p = gc.exam_sets_path(work)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -150,37 +157,56 @@ def latest_run(prefix, work=None):
 
 
 # ---------- the answers of a model that does not change ----------
+HERE = pathlib.Path(__file__).resolve().parent.parent   # scripts/scan-train
+
+
+def reader_sha(files=(), extra=()):
+    """The reader's fingerprint: one sha256 over the files' contents (paths relative to scripts/scan-train or absolute;
+    a missing one counts as missing) and the extra strings (a model's sha256, the phone profile's) — what turns a picture
+    into an answer besides the model file and the set. A kept answer under another fingerprint is examined again."""
+    h = hashlib.sha256()
+    for f in files:
+        p = pathlib.Path(f)
+        p = p if p.is_absolute() else HERE / p
+        h.update(p.as_posix().rsplit("/scan-train/", 1)[-1].encode("utf-8") + b"\0")
+        h.update((gc._sha256_file(p) if p.exists() else "missing").encode("utf-8") + b"\0")
+    for x in extra:
+        h.update(str(x).encode("utf-8") + b"\0")
+    return h.hexdigest()
+
+
 def _cache_file(model_sha, name, work=None):
     return _work(work) / "exams" / str(model_sha)[:16] / (name.replace("/", "_") + ".json")
 
 
-def cached(model_sha, name, sha, work=None):
-    """A model's answers on a set when they were given on this very set (its sha256) under today's heldout.json, else
-    None (then it is examined again)."""
+def cached(model_sha, name, sha, work=None, reader=None):
+    """A model's answers on a set when they were given on this very set (its sha256), under today's heldout.json and by
+    the same reader (reader_sha), else None (then it is examined again)."""
     try:
         got = json.loads(_cache_file(model_sha, name, work).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if got.get("set_sha256") != sha or got.get("heldout_sha256") != gc.heldout_sha256():
+    if got.get("set_sha256") != sha or got.get("heldout_sha256") != gc.heldout_sha256() or got.get("reader") != reader:
         return None
     return got.get("answers")
 
 
-def store(model_sha, name, sha, answers, work=None):
+def store(model_sha, name, sha, answers, work=None, reader=None):
     p = _cache_file(model_sha, name, work)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"set_sha256": sha, "heldout_sha256": gc.heldout_sha256(), "answers": answers}), encoding="utf-8")
+    p.write_text(json.dumps({"set_sha256": sha, "heldout_sha256": gc.heldout_sha256(), "reader": reader, "answers": answers}),
+                 encoding="utf-8")
 
 
-def answers_of(model_sha, name, sha, read, work=None, keep=True):
-    """(answers, examined): the kept answers when they are for this set, else read() — kept for the next exam when keep
-    (a parent's or the lab's file; never new/'s, which the next training replaces)."""
-    got = cached(model_sha, name, sha, work) if keep else None
+def answers_of(model_sha, name, sha, read, work=None, keep=True, reader=None):
+    """(answers, examined): the kept answers when they are for this set and this reader, else read() — kept for the next
+    exam when keep (a parent's or the lab's file; never new/'s, which the next training replaces)."""
+    got = cached(model_sha, name, sha, work, reader) if keep else None
     if got is not None:
         return got, False
     got = read()
     if keep:
-        store(model_sha, name, sha, got, work)
+        store(model_sha, name, sha, got, work, reader)
     return got, True
 
 
@@ -222,7 +248,8 @@ def report(work=None):
     for name, p in sorted(pins(work).items()):
         if not isinstance(p, dict):
             continue
-        st = "ok" if p.get("heldout_sha256") == now else "made under another heldout.json — draw it again"
+        st = "ok" if p.get("heldout_sha256") == now else             ("pinned under another heldout.json — the next exam pins it again" if p.get("pin") or "of" in p
+             else "made under another heldout.json — draw it again")
         lines.append(f"  {name}: {str(p.get('sha256'))[:12]} ({p.get('of') or 'file'}, n {p.get('n')}) pinned {p.get('at')} — {st}")
     rows = read_rows(work)
     by = {}

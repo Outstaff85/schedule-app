@@ -1,7 +1,9 @@
 """The exams' gates (docs/scan-training.md → "Exam sets and exam rows", step 3): exam.py's edges gate on fixture reports
 (an unchanged model refused, a saturated open set only a no-regression check, a strict improvement on a set that is not
-saturated required, against the parent and the lab's version), exam_sets.json pinned under heldout.json and the parent
-examined again when it changes, the exam rows with null for what was not measured, exam_mrz.py's honest counts (a
+saturated required, against the parent and the lab's version; on a contaminated set — E2, E4, golden and templates —
+only its clean part), exam_sets.json pinned under heldout.json and the parent examined again when it or the reader (the
+phone profile) changes, an exam's own pins never stale, E4's inputs drawn once from the native frame, the exam rows with
+null for what was not measured, the phone-path strips fed as the phone draws them, exam_mrz.py's honest counts (a
 missing field counts wrong, a bucket error stops the exam, a missing MIDV exam stops it unless --no-midv, the lab's
 reader compared), the docSex rule shared with src/scan-process/mrz.ts, exam_doctypes.py's turn exam on known turns only
 and its phone-cut and editor-cut figures, and publish.py's gate lines. ONNX Runtime, Hugging Face and the models are
@@ -75,8 +77,8 @@ def test_an_unchanged_model_is_refused():
 def test_a_model_better_only_on_the_saturated_open_sets_is_refused():
     r = report({"midv": MIDV_SAT, "smartdoc": MIDV_SAT, "e2": {"before": S(mean=0.05), "after": S(mean=0.05)}})
     ok, fails = exam.gate(r)
-    assert not ok and fails == ["edges-lite.onnx vs the parent: no set that is not saturated (within 2 % under 99%), not "
-                                "contaminated and not MIDV / SmartDoc got better by more than 10%"]
+    assert not ok and fails == ["edges-lite.onnx vs the parent: no set that is not saturated (within 2 % under 99%) and not "
+                                "MIDV / SmartDoc got better by more than 10% (on a contaminated set: its clean part only)"]
     # an open set not saturated still never counts as the improvement: it is only a no-regression check
     r = report({"midv": {"before": S(mean=0.05, within2=0.8), "after": S(mean=0.01, within2=0.95)}})
     assert not exam.gate(r)[0]
@@ -200,6 +202,9 @@ def edges_env(tmp_path, heldout, monkeypatch):
     monkeypatch.setattr(exam, "version_of", lambda copy: "v5")
     monkeypatch.setattr(exam, "parent_of", lambda name, lab: "v5")
     monkeypatch.setattr(exam, "chain_of", lambda name, base: [base])
+    monkeypatch.setattr(exam, "phone_set", lambda run, e2, work=None: (
+        [{**e, "phone": {"live": e["file"], "capture": e["file"]}, "from": "native"} for e in e2], "k" * 64))
+    monkeypatch.setattr(exam, "_profile_sha", lambda: "profile-a")
     return types.SimpleNamespace(work=work, models=models, run=run, calls=calls)
 
 
@@ -228,6 +233,108 @@ def test_exam_main_refuses_an_unchanged_model_and_examines_the_parent_again_afte
     r = exam.main(["--e2", str(edges_env.run), "--no-browser", "--no-open"])
     assert edges_env.calls.count("v5") >= 2 and any(x.startswith("parent edges-lite.onnx on e2") for x in r["examinedAgain"])
     assert r["examSets"]["e2"]["status"] == "heldout"
+
+
+def test_a_reader_change_examines_the_parent_again(tmp_path, heldout, edges_env, monkeypatch):
+    calls = []
+    read = lambda: calls.append(1) or [None]
+    es.answers_of("parentsha", "e2", "setsha", read, tmp_path, reader="r1")
+    es.answers_of("parentsha", "e2", "setsha", read, tmp_path, reader="r1")
+    es.answers_of("parentsha", "e2", "setsha", read, tmp_path, reader="r2")
+    assert len(calls) == 2   # another reader: a miss
+    a = es.reader_sha(("docfind.py",), ("x",))
+    assert a == es.reader_sha(("docfind.py",), ("x",)) and a != es.reader_sha(("docfind.py",), ("y",)) \
+        and a != es.reader_sha(("gen/phone.py",), ("x",))
+    # exam.py: a refitted phone profile (or a docfind / gen/phone.py change) — the parent read again on every set
+    (edges_env.work / "new" / "edges-lite.onnx").write_bytes(b"L6")
+    args = ["--e2", str(edges_env.run), "--no-browser", "--no-open"]
+    exam.main(args)
+    edges_env.calls.clear()
+    assert exam.main(args)["examinedAgain"] == [] and edges_env.calls.count("v5") == 0
+    monkeypatch.setattr(exam, "_profile_sha", lambda: "profile-b")
+    r = exam.main(args)
+    assert edges_env.calls.count("v5") == 2 and {x.split(" on ")[1] for x in r["examinedAgain"]} == {"e2", "phone"}
+
+
+def _held_e2(work):
+    """E2's examples: the first two lay a real page kept apart ("templates"), the other two only drawn pages."""
+    run, q = _e2_run(work)
+    ex = json.loads((run / "examples.json").read_text())
+    for e in ex[:2]:
+        e["templates"] = ["a" * 40]
+    (run / "examples.json").write_text(json.dumps(ex))
+    return run, q
+
+
+def test_a_contaminated_set_counts_as_the_improvement_only_on_its_clean_part():
+    better = {"before": S(mean=0.05), "after": S(mean=0.03, within2=0.7)}
+    same = {"before": S(mean=0.05), "after": S(mean=0.05)}
+    for s in ("e2", "phone", "golden", "templates"):   # every set holding held-out real pages, not only templates
+        sets = {s: {**better, "contaminated": ["v5"]}}
+        assert not exam.gate(report(sets))[0], s
+        assert not exam.gate(report({s: {**better, "contaminated": ["v5"], "clean": same}}))[0], s
+        assert exam.gate(report({s: {**same, "contaminated": ["v5"], "clean": better}})) == (True, []), s
+
+
+def test_e2_and_e4_are_contaminated_by_their_held_out_pages_under_a_dirty_chain(edges_env, monkeypatch):
+    import shutil
+    shutil.rmtree(edges_env.run)
+    run, _ = _held_e2(edges_env.work)
+    monkeypatch.setattr(exam, "chain_of", lambda name, base: ["v3", base])
+    monkeypatch.setattr(exam, "contaminated", lambda chain, name: ["v3"] if "v3" in chain else [])
+    (edges_env.work / "new" / "edges-lite.onnx").write_bytes(b"L6")
+    r = exam.main(["--e2", str(run), "--no-browser", "--no-open"])
+    m = r["models"]["edges-lite.onnx"]
+    for s in ("e2", "phone"):
+        assert m[s]["contaminated"] == ["v3"] and m[s]["clean"]["before"]["n"] == 2, s
+    assert r["publish"]   # better on the drawn pages too (the fake new model is right everywhere)
+    monkeypatch.setattr(exam, "read_all", lambda path, examples, resize=None: [
+        [[x + (0.0 if pathlib.Path(path).parent.name == "new" and e.get("templates") else 0.03), y] for x, y in e["fixed"]]
+        for e in examples])   # better only on the held-out pages
+    r = exam.main(["--e2", str(run), "--no-browser", "--no-open"])
+    assert not r["publish"] and any("clean part only" in f for f in r["failed"])
+
+
+def test_e4_draws_the_phone_inputs_from_the_native_frame_once(tmp_path, heldout, monkeypatch):
+    from gen import phone
+    from gen.outputs import edges as ge
+    work = tmp_path / "work"
+    run, q = _e2_run(work, n=2)
+    (run / "run.json").write_text(json.dumps({"heldoutSha256": gc.heldout_sha256(), "split": "exam",
+                                              "params": {"seed": 7, "photos": [], "split": "exam"}}))
+    e2 = exam.e2_set(run)
+    drawn = []
+    native = np.random.default_rng(0).integers(0, 255, (1080, 1920, 3), dtype=np.uint8)
+    monkeypatch.setattr(ge, "tools", lambda params: ("tools",))
+    monkeypatch.setattr(ge, "native_pictures", lambda params, i, t: drawn.append(i) or {f"{i}.jpg": native})
+    monkeypatch.setattr(exam, "_profile_sha", lambda: "profile-a")
+    got, key = exam.phone_set(run, e2, work)
+    assert drawn == [0, 1] and [e["from"] for e in got] == ["native", "native"]
+    import cv2
+    live = cv2.imread(got[0]["phone"]["live"])
+    assert live.shape == (256, 256, 3) and np.array_equal(live, phone.frame_to_S(native, "live"))   # PNG: no JPEG loss
+    assert exam.phone_set(run, e2, work)[1] == key and drawn == [0, 1]   # kept: not drawn again
+    monkeypatch.setattr(exam, "_profile_sha", lambda: "profile-b")
+    assert exam.phone_set(run, e2, work)[1] != key and drawn == [0, 1, 0, 1]   # another profile: drawn again
+    (run / "run.json").write_text(json.dumps({"heldoutSha256": gc.heldout_sha256(), "split": "exam"}))
+    assert exam.phone_set(run, e2, work) == ([], None)   # cannot be drawn again: never the stored photos
+
+
+def test_an_exams_own_pins_never_make_gen_exam_sets_fail(tmp_path, heldout, monkeypatch, capsys):
+    from gen import __main__ as gm
+    work = tmp_path / "work"
+    es.pin("users", "u" * 64, work=work)
+    es.pin("midv", "m" * 64, work=work)
+    folder = work / "synth" / "docs-exam"
+    folder.mkdir(parents=True)
+    (folder / "examples.json").write_text("[]")
+    gc.record_exam_set("synth/docs-exam", folder / "examples.json", work=work)
+    heldout("moved")
+    assert gc.stale_exam_sets(work) == ["synth/docs-exam"]   # the drawn set only
+    assert gm.main(["exam-sets", "--work", str(work)]) == 1
+    gc.record_exam_set("synth/docs-exam", folder / "examples.json", work=work)   # drawn again
+    assert gc.stale_exam_sets(work) == [] and gm.main(["exam-sets", "--work", str(work)]) == 0
+    assert "the next exam pins it again" in capsys.readouterr().out
 
 
 # ── exam_mrz.py ──
@@ -340,13 +447,28 @@ def test_the_phone_path_names_the_stage_that_failed(tmp_path, exam_mrz, monkeypa
     assert [p["stage"] for p in got] == ["edges", "turn", "find", None]   # p4 has no true zone: left out
     texts = iter(["P<UTO", good])   # the reader on p3's two lines
     monkeypatch.setattr(exam_mrz, "decode", lambda logits, chars=None: next(texts))
-    monkeypatch.setattr(exam_mrz, "line_input", lambda g: np.zeros((1, 32, 512), np.float32))
-    s, rows = exam_mrz.phone_scores(types.SimpleNamespace(run=lambda *a: [[None]]), got)
+    fed = []
+    sess = types.SimpleNamespace(run=lambda _, feeds: fed.append(feeds["img"]) or [[None]])
+    s, rows = exam_mrz.phone_scores(sess, got)
     assert s == {"pages": 4, "ok": 1, "failed": {"edges": 1, "turn": 1, "find": 1, "read": 0}}
     assert rows == [("p0", False), ("p1", False), ("p2", False), ("p3", True)]
+    from gen import phone
+    strip = np.zeros((8, 40), np.uint8)
+    want = phone.line_input(np.repeat(strip[..., None], 3, 2), {"x": 0, "y": 0, "w": 40, "h": 8})
+    assert len(fed) == 2 and all(np.array_equal(f[0], want) for f in fed)   # the phone's 'high' strip, not INTER_AREA
     texts = iter(["P<UTO", bad])    # line 2 read without its sex: the read failed
     s, _ = exam_mrz.phone_scores(types.SimpleNamespace(run=lambda *a: [[None]]), got)
     assert s["failed"]["read"] == 1 and s["ok"] == 0
+
+
+def test_the_exams_strip_is_the_phones_line_input():
+    from gen import phone
+    rng = np.random.default_rng(3)
+    for h, w in ((20, 300), (48, 700), (9, 60)):   # shorter than 32 (upscaled), wider than 512 at 32 high, small
+        g = rng.integers(0, 255, (h, w), dtype=np.uint8)
+        got = phone.strip_input(g)
+        assert got.shape == (1, 32, 512) and got.dtype == np.float32
+        assert np.array_equal(got, phone.line_input(np.repeat(g[..., None], 3, 2), {"x": 0, "y": 0, "w": w, "h": h}))
 
 
 # ── exam_doctypes.py ──
@@ -427,6 +549,35 @@ def test_your_documents_have_editor_cut_and_phone_cut_figures_and_no_haiku(exam_
     assert rep["publish"] is None and rep["models"] == {} and rep["lab"] == {}
     assert rep["turnExam"]["pages"] == 5 and p["turnPages"] == 2
     assert {r["set"] for r in es.read_rows(work)} == {"yours", "phoneCut"}
+
+
+def test_the_phone_cut_comes_from_a_cut_exam_runs_native_cuts(exam_doctypes, tmp_path, monkeypatch, heldout):
+    import cv2
+    import common
+    work = tmp_path / "work"
+    (work / "new").mkdir(parents=True)
+    (work / "new" / "doctype-lite.onnx").write_bytes(b"D6")
+    run = work / "gen" / "runs" / "cuts-s7-n3-exam"
+    (run / "doctype" / "img").mkdir(parents=True)
+    pages = []
+    for i, (tpl, by) in enumerate([("ab" * 20, "phone"), ("cd" * 20, "editor"), (None, "phone"), ("ab" * 20, "phone")]):
+        cv2.imwrite(str(run / "doctype" / "img" / f"{i}-0.png"), np.full((256, 256, 3), 190, np.uint8))
+        pages.append({"id": f"cut-7-{i}-d0", "file": f"doctype/img/{i}-0.png", "doctype": "id_front", "turn_k": i % 2,
+                      "cut_by": by, "iou": 0.9, **({"templateSha1": tpl} if tpl else {})})
+    (run / "doctype" / "pages.json").write_text(json.dumps(pages))
+    (run / "run.json").write_text(json.dumps({"heldoutSha256": gc.heldout_sha256(), "split": "exam"}))
+    monkeypatch.setattr(exam_doctypes, "WORK", work)
+    monkeypatch.setattr(exam_doctypes, "EXAM_PHOTOS", work / "synth" / "docs-exam" / "examples.json")
+    monkeypatch.setattr(common, "version_of", lambda copy: "v5")
+    monkeypatch.setattr(common, "model_path", lambda v, n: (_ for _ in ()).throw(SystemExit("none")))
+    monkeypatch.setattr(exam_doctypes, "lab_cuts", lambda *a, **k: pytest.fail("the stored photos are not cut when a run is there"))
+    monkeypatch.setattr(exam_doctypes, "real_exam", lambda ex: [{"img": page(), "doctype": "id_front", "id": "r"}])
+    rep = exam_doctypes.main([])
+    assert rep["phoneCutFrom"] == "native" and rep["phoneCut"] == 2 and rep["phoneMissed"] == 1   # drawn pages left out
+    assert rep["phoneCutModels"]["doctype-lite.onnx"]["turnPages"] == 2
+    heldout("moved")
+    with pytest.raises(SystemExit, match="draw them again"):
+        exam_doctypes.main([])
 
 
 def test_the_doctype_gate_names_each_rule(exam_doctypes):

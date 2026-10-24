@@ -313,3 +313,25 @@ def test_the_he_gate_is_the_five_roles_the_phone_reads_on_unseen_id_card_fronts(
     ok, fails = th.gate({"phone": th.phone_figures(rows2, [g for r, g in zip(rows, ids) if r[3]["role"] != "expiry"])})
     assert not ok and any(f.startswith("idNo: 0.0%") for f in fails) and any("ID numbers with a right check digit 0.0%" in f for f in fails)
     assert any(f.startswith("expiry: not examined") for f in fails)
+
+
+def test_the_phone_exam_takes_a_fresh_cut_run_and_only_unseen_values(tmp_path, monkeypatch):
+    import pytest
+    from gen import common as gc
+    th = _load("train_he")
+    held = tmp_path / "heldout.json"
+    held.write_text(json.dumps({"templates": [], "vocabulary": {"salt": "a", "every": 5}, "versions": []}), encoding="utf-8")
+    monkeypatch.setattr(gc, "HELDOUT", held)
+    run = tmp_path / "work" / "gen" / "runs" / "cuts-s7-n2-exam"
+    (run / "he" / "img").mkdir(parents=True)
+    (run / "he" / "img" / "0-0-surname.png").write_bytes(b"png")
+    row = lambda name, text, seen: "\t".join([name, text, "name", "ab12", "id_front", "surname", "new", seen, "train", "cut-7-0-d0"])
+    (run / "he" / "labels.tsv").write_text(row("0-0-surname.png", "כהן", "False") + "\n" + row("1-0-surname.png", "לוי", "True") + "\n",
+                                           encoding="utf-8")
+    (run / "run.json").write_text(json.dumps({"heldoutSha256": gc.heldout_sha256(), "split": "exam"}))
+    rows = th.phone_exam_rows(run, tmp_path / "work")
+    assert [r[0].name for r in rows] == ["0-0-surname.png"] and rows[0][3]["seen"] is False   # a training value left out
+    assert rows[0][0] == run / "he" / "img" / "0-0-surname.png"   # the run's writer keeps the pictures under img/
+    (run / "run.json").write_text(json.dumps({"heldoutSha256": "an older heldout.json", "split": "exam"}))
+    with pytest.raises(SystemExit, match="draw them again"):
+        th.phone_exam_rows(run, tmp_path / "work")

@@ -139,14 +139,18 @@ class _Occluders:
         return o.sample(rng)
 
 
-def entries_of(sc, frame, labels, roles, folder, i, seed, split, meta_common):
-    """The pictures of one scene and their examples.json entries → (entries, files written)."""
+def entries_of(sc, frame, labels, roles, folder, i, seed, split, meta_common, store=None):
+    """The pictures of one scene and their examples.json entries → (entries, files written). store(name, picture) →
+    the path an entry names takes each picture instead of writing it as the phone keeps it (exam.py's E4: the same
+    pictures from the frame at its native size, never stored as JPEG)."""
     import synth
     from .. import phone, scene as gs
     folder = pathlib.Path(folder)
     out, files = [], []
 
     def write(name, img):
+        if store is not None:
+            return store(name, img)
         data, _ = phone.store_attempt(img)
         (folder / "img" / name).write_bytes(data)
         files.append(f"img/{name}")
@@ -211,6 +215,30 @@ def scene_of(params, i, F, pool, bank, occ):
         if sc is not None:
             return r, sc
     return r, None
+
+
+def native_pictures(params, i, tools_):
+    """Scene i's pictures — {file name its examples.json entry names: picture (BGR)} — drawn again from the frame at the
+    camera's native size (gen/phone_run.py native_scene: the 1920 × 1080 video or the photo at its natural size, as the
+    lab takes it), never stored as JPEG: the frame, its painted next pictures and the inside cuts, made from that frame
+    as entries_of makes them. tools_: tools(params). {} when no pose fits."""
+    from .. import phone_run as pr
+    from .. import scene as gs
+    F, pool, bank, occ = tools_
+    r, sc = scene_of(params, i, F, pool, bank, occ)
+    if sc is None:
+        return {}
+    sc = pr.native_scene(sc)
+    frame = gs.render(sc, r["camera"])
+    labels = gs.doc_labels(sc)
+    roles = gs.roles(sc, labels)
+    pics = {}
+
+    def keep(name, img):
+        pics[name] = img
+        return name
+    entries_of(sc, frame, labels, roles, ".", i, params["seed"], params["split"], {}, store=keep)
+    return pics
 
 
 def scene_meta(params, sc, labels, roles, F, skipped0):

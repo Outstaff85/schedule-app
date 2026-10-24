@@ -13,7 +13,8 @@ in two that share no page (check_split, by the page each field was cut from): "s
 the gate — the score that decides publish is never the one the epoch was picked on; report_he.json has both.
 The gate is what the phone reads ("phone": phone_figures): on the ID card fronts of the exam part (and, with --phone-exam
 <run>, the fields cut where the phone reads them on the lab's own cut of the held-out cards: a cut exam run, python -m gen
-build --model doctype,mrz,he,face --exam), each of the 5 roles the phone reads (hemodel.ROLES: surname, given, idNo,
+build --model doctype,mrz,he,face --exam — drawn under today's heldout.json, only its check-vocabulary values, each strip
+fed as the phone draws it: gen/phone.py strip_input), each of the 5 roles the phone reads (hemodel.ROLES: surname, given, idNo,
 dob, expiry) read right on at least PHONE_AT (0.9) of its fields, and the ID numbers read with a right check digit on at
 least ID_OK_AT (0.95) — every value unseen (the check vocabulary). Every field read right and by kind ("fieldsRight",
 "byKind") stay in the report for information only, with the page types not examined named ("notExamined": an ID
@@ -59,9 +60,11 @@ PAGE_TYPES = ("id_front", "id_back", "sefach", "licence")   # the page types a H
 
 def load(folder, visual=True):
     """[(picture, label in the visual order, kind, info)] of a folder's labels.tsv (file, text as written[, kind,
-    the page's sha1 prefix, page type, role, …]): info {"pageType", "role", "page"} — the page a field was cut from
+    the page's sha1 prefix, page type, role, …]): info {"pageType", "role", "page", "seen" (the phone's own cuts' 8th
+    column: a training vocabulary value; None when the set has no such column)} — the page a field was cut from
     is its file name's part before the first "-" (synth_fields.py: <page>-<field>.png) or, for the phone's own cuts
-    (gen/outputs/he.py), its 10th column."""
+    (gen/outputs/he.py), its 10th column. A picture is beside labels.tsv (synth_fields.py, synth_lines.py) or under its
+    img/ (a gen run's he/: labels.tsv names the file only)."""
     rows = []
     tsv = folder / "labels.tsv"
     if not tsv.exists():
@@ -72,8 +75,12 @@ def load(folder, visual=True):
             continue
         kind = parts[2] if len(parts) > 2 else "line"
         info = {"pageType": parts[4] if len(parts) > 4 else None, "role": parts[5] if len(parts) > 5 else kind,
-                "page": parts[9] if len(parts) > 9 else parts[0].split("-", 1)[0]}
-        rows.append((folder / parts[0], hemodel.visual(parts[1]) if visual else parts[1], kind, info))
+                "page": parts[9] if len(parts) > 9 else parts[0].split("-", 1)[0],
+                "seen": parts[7] == "True" if len(parts) > 7 else None}
+        pic = folder / parts[0]
+        if not pic.exists() and (folder / "img" / parts[0]).exists():
+            pic = folder / "img" / parts[0]   # a gen run's writer (gen/outputs/he.py) keeps its pictures under img/
+        rows.append((pic, hemodel.visual(parts[1]) if visual else parts[1], kind, info))
     return rows
 
 
@@ -126,15 +133,19 @@ def data_info(work, items, checks, batch, steps, phone_run=None):
                                                        batch=batch, steps=steps)}
 
 
-def reads(net, rows, dev):
-    """The reader's text on each row's picture (in the visual order, as the labels)."""
+def reads(net, rows, dev, phone_input=False):
+    """The reader's text on each row's picture (in the visual order, as the labels). phone_input: the strip fed as the
+    phone draws it (gen/phone.py strip_input: heLine's 'high' smoothing — the phone's own cuts of the held-out cards),
+    else as training feeds it (mrzmodel.line_input)."""
     import torch
+    from gen.phone import strip_input
     net.eval()
     out = []
     with torch.no_grad():
         for p, _, _, _ in rows:
             g = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
-            out.append(decode(net(torch.from_numpy(line_input(g)[None]).to(dev)).cpu().numpy()[0], hemodel.CHARS))
+            x = strip_input(g) if phone_input else line_input(g)
+            out.append(decode(net(torch.from_numpy(x[None]).to(dev)).cpu().numpy()[0], hemodel.CHARS))
     return out
 
 
@@ -205,12 +216,16 @@ def gate(report):
     return not fails, fails
 
 
-def phone_exam_rows(run):
-    """The held-out cards' fields cut where the phone reads them (a cut exam run's he/labels.tsv): rows as load()."""
+def phone_exam_rows(run, work=None):
+    """The held-out cards' fields cut where the phone reads them (a cut exam run's he/labels.tsv): rows as load() — the
+    run drawn under today's heldout.json (gen.exam_sets.require_fresh: a page it held out may since be a training one),
+    and only the check vocabulary's values (a row whose value is "seen" — the training vocabulary — is left out)."""
+    from gen import exam_sets as es
     run = pathlib.Path(run)
     if (manifest.read_run(run) or {}).get("split") != "exam":
         raise SystemExit(f"{run}: not an exam run (python -m gen build --model doctype,mrz,he,face --exam)")
-    return load(run / "he")
+    es.require_fresh({"phoneExam": run}, work or WORK)
+    return [r for r in load(run / "he") if r[3].get("seen") is not True]
 
 
 def check(net, rows, dev, phone_rows=()):
@@ -218,7 +233,7 @@ def check(net, rows, dev, phone_rows=()):
     gate) — over the exam part's rows and the phone's own cuts of the held-out cards (phone_rows)."""
     got = reads(net, rows, dev)
     out = figures(rows, got)
-    pg = reads(net, list(phone_rows), dev) if phone_rows else []
+    pg = reads(net, list(phone_rows), dev, phone_input=True) if phone_rows else []
     out["phone"] = phone_figures(list(rows) + list(phone_rows), got + pg)
     if phone_rows:
         out["phoneCut"] = phone_figures(list(phone_rows), pg)

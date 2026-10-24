@@ -395,8 +395,9 @@ def record_own_exam_set(name, file, work=None):
 
 
 def stale_exam_sets(work=None):
-    """The exam sets made with another heldout.json, or on disk with no exam_sets.json entry (made before it was
-    recorded): [name]."""
+    """The drawn exam sets made with another heldout.json, or on disk with no exam_sets.json entry (made before it was
+    recorded): [name]. An exam's own pin (gen/exam_sets.py pin: "pin": true, or an "of" — users, templates, e2, phone,
+    golden, doctypes/…, mrz/phone) is left out: the next exam pins it again, there is nothing to draw."""
     import home
     base = pathlib.Path(work or home.WORK)
     try:
@@ -405,6 +406,7 @@ def stale_exam_sets(work=None):
         got = {}
     sets = got.get("sets") if isinstance(got, dict) and isinstance(got.get("sets"), dict) else {}
     now = heldout_sha256()
-    out = {n for n, s in sets.items() if not isinstance(s, dict) or s.get("heldout_sha256") != now}
+    out = {n for n, s in sets.items() if not isinstance(s, dict)
+           or (not (s.get("pin") or "of" in s) and s.get("heldout_sha256") != now)}
     out |= {n for n, (folder, mark) in EXAM_SET_FOLDERS.items() if n not in sets and (base / folder / mark).exists()}
     return sorted(out)

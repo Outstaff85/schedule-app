@@ -9,11 +9,16 @@ The sets:
   - yours: the owner's real pages kept apart (heldout.json; synth_docs.py --templates --exam's photos), each cut by its
     true corners as the editor cuts ("editor cut"), by type and by document ("byDocument", the short sha1 the drawing
     records for each real page);
-  - phoneCut: the same photos cut as the phone cuts them — the lab's own shot (gen/exam_phone.py shot on the phone path,
-    the lab's edges models), the found page matched to the true one, cut at the PREDICTED corners (gen/phone.py
-    warp_rgba) and turned by the face finder (gen/phone_run.py cut_scene); a page the lab missed (or cut so badly a
-    person would fix it) is counted ("phoneMissed") and left out. Its turn is known from the geometry (turn_k). The
-    lab's cuts are kept per set in <home>/exams/ (gen/exam_sets.py).
+  - phoneCut: the owner's held-out pages cut as the phone cuts them, from the camera's native frame — the doctype pages
+    of a cut exam run (--phone-run, default the newest gen/runs/cuts-*-exam with doctype/pages.json; python -m gen build
+    --model doctype,mrz,he,face --exam: each scene drawn at native size, the lab's own shot, the found page cut at the
+    PREDICTED corners and turned by the face finder, drawn onto the 256 square as the phone draws it), only the pages
+    that lay a real page kept apart ("phoneCutFrom": "native"). The run must be drawn under today's heldout.json. With no
+    such run, the docs-exam photos (640 px JPEGs) are cut by the lab's shot here (gen/phone_run.py cut_scene) and the
+    set is labelled "phoneCutFrom": "stored640" — the stored photo, not the phone's frame. A page the lab missed (or cut
+    so badly a person would fix it) is counted ("phoneMissed") and left out. Its turn is known from the geometry
+    (turn_k). The lab's cuts of the stored photos are kept in <home>/exams/ (gen/exam_sets.py), tied to the lab's edges
+    and face models, gen/phone_run.py, gen/exam_phone.py, docfind.py, gen/phone.py and the phone profile (cut_reader).
 For each set: the type right, how many it is sure of (≥ 0.9) and how right those are, by type, the confusion of
 contract and other (and the whole confusion table), and the turn: every page whose turn is known shown at its 4 quarter
 turns, the turn back read right, and how right the sure ones are (sureTurnRight). A turn is known for a made-up page and
@@ -257,6 +262,36 @@ def phone_cut_pages(yours, cuts):
     return pages, missed
 
 
+def cut_reader(paths, edges):
+    """The fingerprint the lab's kept cuts are tied to (gen/exam_sets.py reader_sha): the edges models (edges), the face
+    model, the code that shoots, cuts and turns (gen/phone_run.py, gen/exam_phone.py, docfind.py, gen/phone.py) and the
+    phone profile."""
+    from gen import phone
+    from gen.phone_run import FACE_FILE
+    face = paths.get(FACE_FILE)
+    return es.reader_sha(("gen/phone_run.py", "gen/exam_phone.py", "docfind.py", "gen/phone.py", *([face] if face else [])),
+                         (edges, phone.load_profile().get("_sha256")))
+
+
+def run_cut_pages(run):
+    """(the phone-cut pages of a cut exam run, how many the lab missed or cut so badly a person would fix them): the
+    doctype pages (<run>/doctype/pages.json, cut from the native frame) of the real pages kept apart (templateSha1),
+    each the 256 square the phone draws."""
+    import json
+    import pathlib
+    run = pathlib.Path(run)
+    pages, missed = [], 0
+    for e in json.loads((run / "doctype" / "pages.json").read_text(encoding="utf-8")):
+        if not e.get("templateSha1") or e.get("doctype") not in DOCTYPES:
+            continue
+        if e.get("cut_by") != "phone":
+            missed += 1
+            continue
+        pages.append({"file": str(run / e["file"]), "doctype": e["doctype"], "doc": str(e["templateSha1"])[:10],
+                      "turn_k": e.get("turn_k"), "id": e.get("id"), "manifest": e.get("id"), "iou": e.get("iou")})
+    return pages, missed
+
+
 def suggest(r):
     i = DOCTYPE_SIZES.index(r["arch"]) if r["arch"] in DOCTYPE_SIZES else -1
     nxt = DOCTYPE_SIZES[i + 1] if 0 <= i < len(DOCTYPE_SIZES) - 1 else None
@@ -288,7 +323,9 @@ def decide(report):
 def print_report(report):
     pc = lambda v: "—" if v is None else f"{v:.0%}"
     titles = {"real": "Real pages kept apart (the site's page copies, by split key)", "yours": "Your documents, editor cut (the true corners)",
-              "phoneCut": "Your documents, phone cut (the lab's own shot)"}
+              "phoneCut": "Your documents, phone cut (the lab's own shot, " + (
+                  "from the native frame" if report.get("phoneCutFrom") == "native"
+                  else "from the stored 640-px photos — not the phone's frame") + ")"}
     for s, title in titles.items():
         for name, r in (report.get(SET_KEYS[s]) or {}).items():
             lab = (report.get("lab") or {}).get(s)
@@ -330,7 +367,9 @@ def print_report(report):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-phone-cut", action="store_true", help="leave out the phone-cut figures (no lab shot)")
+    ap.add_argument("--phone-run", help="the cut exam run (default: the newest gen/runs/cuts-*-exam with doctype/pages.json)")
     a = ap.parse_args(argv)
+    import pathlib
     from common import model_path, sha256_of, version_of
     ex = read_json(WORK / "doctypes.json") if (WORK / "doctypes.json").exists() else []
     exam = real_exam(ex)
@@ -347,21 +386,32 @@ def main(argv=None):
         lab_path = model_path(version, PHONE)
     except SystemExit:
         lab_path = None   # a lab version with no document type model: nothing to set it against
-    cuts, missed, pcut = [], None, []
+    cuts, missed, pcut, cut_from, cut_run = [], None, [], None, None
     if yours:
         es.require_fresh({"yours": "synth/docs-exam"}, WORK)
-    if yours and not a.no_phone_cut:
+    if not a.no_phone_cut:
+        cut_run = pathlib.Path(a.phone_run) if a.phone_run else es.latest_run("cuts-", WORK)
+        if cut_run and not (cut_run / "doctype" / "pages.json").exists():
+            cut_run = None
+    if cut_run:   # cut from the native frame by the lab's shot (gen build … --exam)
+        es.require_fresh({"phoneCut": cut_run}, WORK)
+        pcut, missed = run_cut_pages(cut_run)
+        cut_from = "native"
+    elif yours and not a.no_phone_cut:   # no cut exam run: the stored 640-px photos, labelled so
         from gen.phone_run import edges_sha, lab_paths
         _, paths = lab_paths(version)
-        cuts, _ = es.answers_of(edges_sha(paths), "doctypes-phone-cut", es.identity(yours, ("fixed", "doctype", "docQuad")),
-                                lambda: lab_cuts(yours, version), WORK)
+        e_sha = edges_sha(paths)
+        cuts, _ = es.answers_of(e_sha, "doctypes-phone-cut", es.identity(yours, ("fixed", "doctype", "docQuad")),
+                                lambda: lab_cuts(yours, version), WORK, reader=cut_reader(paths, e_sha))
         pcut, missed = phone_cut_pages(yours, cuts)
+        cut_from = "stored640"
     sets = {s: v for s, v in (("real", exam), ("yours", yours), ("phoneCut", pcut)) if v}
     pinned = es.refresh({f"doctypes/{s}": ([{k: v for k, v in e.items() if k != "img"} for e in v], None) for s, v in sets.items()}, WORK)
     new_sess = ort.InferenceSession(str(p))
     lab_sess = ort.InferenceSession(str(lab_path)) if lab_path else None
     n_sha, l_sha = sha256_of(p), (sha256_of(lab_path) if lab_path else None)
     report = {"examples": len(ex), "exam": len(exam), "yours": len(yours), "phoneCut": len(pcut), "phoneMissed": missed,
+              "phoneCutFrom": cut_from if pcut else None, "phoneCutRun": str(cut_run) if cut_run else None,
               "labVersion": version, "labSha256": l_sha, "examSets": pinned, "models": {}, "yoursModels": {}, "phoneCutModels": {},
               "lab": {}}
     rows, parts = [], []
