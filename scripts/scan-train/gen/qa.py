@@ -13,7 +13,8 @@ The sheet (local only — the pictures come from the owner's real pages; it is n
   verify on a sample, run here when the set has none for its fingerprint).
 purity.json records it: passed when the intersection is 0 and verify passed. Every train*.py calls require_qa on a
 made-up set drawn through gen build: no qa/purity.json, one not passed, or one of another drawing (fingerprint) or
-another heldout.json → it refuses to train."""
+another heldout.json, or a manifest that references what the exam keeps today (held_refs run again at training
+time) → it refuses to train."""
 import datetime
 import html
 import json
@@ -183,9 +184,11 @@ def qa(folder, sample=20, jobs=1, work=None):
     return purity
 
 
-def require_qa(folder, what):
+def require_qa(folder, what, work=None):
     """A training's check on a made-up set: one drawn through gen build (run.json) must have a passed qa/purity.json
-    of this very drawing and today's heldout.json (SystemExit naming why); a set drawn before gen build only warns."""
+    of this very drawing and today's heldout.json, and its manifest must still reference nothing the exam keeps today
+    (gen.manifest.held_refs run again now: a site page's side comes from templates/index.json, which can move to the
+    exam after the sheet was drawn — SystemExit naming why); a set drawn before gen build only warns."""
     folder = pathlib.Path(folder)
     run = manifest.read_run(folder)
     if run is None:
@@ -204,6 +207,14 @@ def require_qa(folder, what):
         why = "its QA sheet is of another drawing (the set was drawn again since)"
     elif p.get("heldoutSha256") != gc.heldout_sha256():
         why = "heldout.json changed since its QA"
+    else:
+        refs = manifest.held_refs(manifest.read_manifest(folder), work=work)
+        if refs:
+            by = {}
+            for _, w in refs:
+                by[w] = by.get(w, 0) + 1
+            why = ("it now references what the exam keeps (a page moved to the exam side since its QA): "
+                   + ", ".join(f"{w} {n}" for w, n in sorted(by.items())) + " — draw it again")
     if why:
         raise SystemExit(f"{what}: {why} — run python -m gen qa --run {folder} and look at the sheet before training")
     return p

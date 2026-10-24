@@ -208,7 +208,7 @@ def main():
     if not ex:
         raise SystemExit("no examples to train on — run pull.py first")
     if a.synth:
-        require_qa(synth_run, "the made-up photos (synth_docs.py)")   # drawn through gen build: its QA sheet passed
+        require_qa(synth_run, "the made-up photos (synth_docs.py)", work=WORK)   # drawn through gen build: its QA sheet passed
     assert_clean(ex, "the document edges' training examples", work=WORK)   # no held-out page, exam key or exam document
     data = data_fingerprint([e["id"] for e in ex], n=len(ex), synth=run_fingerprint(synth_run) if a.synth else None,
                             counts={"synth": a.synth, "midv": a.midv, "smartdoc": a.smartdoc})

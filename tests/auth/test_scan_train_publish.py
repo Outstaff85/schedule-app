@@ -77,6 +77,11 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(publish, "bucket", m.bucket_fn)
     monkeypatch.setattr(publish, "db", m.db_fn)
     monkeypatch.setattr(publish, "clear_work", m.clear)
+    from gen import common as gc   # heldout.json: a copy (a publish marks a version descended from a contaminated one)
+    held = tmp_path / "heldout.json"
+    held.write_bytes(gc.HELDOUT.read_bytes())
+    monkeypatch.setattr(gc, "HELDOUT", held)
+    m.heldout = held
     return m
 
 
@@ -411,3 +416,40 @@ def test_a_publish_stamps_the_checkpoint_of_each_model_published_and_the_dry_run
     assert stamped == [] and ck.read_bytes() == b"CK"
     run(monkeypatch, "--doctypes")
     assert stamped == [("doctype-lite.onnx.pt", "v6")]
+
+
+def test_a_version_descended_from_a_contaminated_one_is_marked_in_heldout_json(env, monkeypatch, capsys):
+    """v5's edges may have seen the held-out pages: a v6 that carries them over (or trains from them) is added to
+    heldout.json "versions" (heldout_clean false), so exam.py keeps marking the templates set contaminated after v6.
+    The dry run only says so; what heldout.json holds out (its sha256) does not move."""
+    from gen import common as gc
+    real = (HERE / "heldout.json").read_bytes()
+    before, held = gc.heldout_sha256(), env.heldout.read_bytes()
+    doctypes_ready(env.work)
+    run(monkeypatch, "--doctypes", "--dry-run")
+    assert "heldout.json versions: v6 marked not held-out clean for edges-lite.onnx, edges.onnx" in capsys.readouterr().out
+    assert env.heldout.read_bytes() == held
+    run(monkeypatch, "--doctypes")
+    v6 = json.loads(env.heldout.read_text(encoding="utf-8"))["versions"]["v6"]
+    assert v6["heldout_clean"] is False and v6["models"] == ["edges-lite.onnx", "edges.onnx"] and "carried over from v5" in v6["why"]
+    assert "v6" in gc.dirty_versions("edges.onnx") and "v6" not in gc.dirty_versions("doctype-lite.onnx")
+    assert gc.contaminated(["v6"], "edges.onnx") == ["v6"]                                     # a fresh run from v6: still dirty
+    assert gc.heldout_sha256() == before and (HERE / "heldout.json").read_bytes() == real      # the repo's copy untouched here
+    # new edges trained from v5's weights, or ones whose exam said "contaminated": marked too
+    write(env.work, "new/edges.onnx", b"E6")
+    write(env.work, "new/edges-lite.onnx", b"L6")
+    files = publish.version_files({"edges": {}}, "v5")
+    assert publish.inherited_dirt(files, "v5", {"edges": {}}) == {"edges-lite.onnx": "edges-lite.onnx trained from v5",
+                                                                  "edges.onnx": "edges.onnx trained from v5"}
+    clean = publish.version_files({"edges": {}}, "base-v1")
+    assert publish.inherited_dirt(clean, "base-v1", {"edges": {}}) == {}
+    assert publish.inherited_dirt(clean, "base-v1", {"edges": {"contaminated": {"edges.onnx": ["v4"]}}}) == {
+        "edges.onnx": "edges.onnx trained from v4"}
+
+
+def test_a_version_over_a_clean_base_is_not_marked(env, monkeypatch, capsys):
+    monkeypatch.setattr(publish, "version_of", lambda copy: "base-v1")
+    held = env.heldout.read_bytes()
+    doctypes_ready(env.work)
+    run(monkeypatch, "--doctypes")
+    assert "marked" not in capsys.readouterr().out and env.heldout.read_bytes() == held

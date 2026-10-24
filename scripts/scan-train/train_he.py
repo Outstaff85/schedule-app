@@ -122,7 +122,7 @@ def main():
     clean_inputs(fields, lines)
     clean_check()
     if fields:
-        require_qa(WORK / "synth" / "he-fields" / "train", "synth/he-fields/train (synth_fields.py)")   # drawn through gen build: its QA passed
+        require_qa(WORK / "synth" / "he-fields" / "train", "synth/he-fields/train (synth_fields.py)", work=WORK)   # drawn through gen build: its QA passed
     items = [(p, t) for p, t, _ in fields + lines]
     random.Random(0).shuffle(items)
     dev = "cuda" if torch.cuda.is_available() else "cpu"

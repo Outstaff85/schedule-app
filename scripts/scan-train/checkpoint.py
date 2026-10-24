@@ -9,18 +9,21 @@ cut-off power while writing leaves the last one whole). clean.py and publish.py 
   --more         a new run (fresh schedule, the epochs given) from the last run's weights — its best ones when
                  it kept them: to train a model further, on more or new examples. Refused when the class table
                  (DOCTYPES) or heldout.json changed since (the old weights learned other labels or saw what is now
-                 the exam), or when the checkpoint records no data fingerprint (made before Training 4); a loud
-                 warning when only the training examples changed
+                 the exam), when any example it trained on is on the exam side today (a record's split moved from
+                 train to exam: its split key changed, or pull.py kept more exam keys — gen.manifest.exam_ids against
+                 the checkpoint's trainIds), or when the checkpoint records no data fingerprint or no training ids;
+                 a loud warning when only the training examples changed
   --more-anyway  --more even then (the owner's explicit call)
 
 The data fingerprint (gen.manifest.data_fingerprint, info["data"]) is what a training records of its data: the class
-table's and heldout.json's sha256, the training examples, a made-up set's run fingerprint, the sizes. publish.py
+table's and heldout.json's sha256, the training examples (each one's short id too), a made-up set's run fingerprint,
+the sizes. publish.py
 stamps the checkpoint of each model it publishes with the version ("published"), so --more says what it goes on from.
 What a run loses at most is the epoch it was in. torch is imported only where the weights are read or written."""
 import os
 import random
 
-from gen.manifest import compare_data
+from gen.manifest import MOVED, NO_IDS, compare_data, exam_ids
 from home import WORK
 
 DIR = WORK / "checkpoints"
@@ -97,10 +100,15 @@ def begin(name, args, info):
     if not all(old.get(k) == v for k, v in plain.items()):
         raise SystemExit(f"the saved progress of {name} is of {{{', '.join(f'{k}: {old.get(k)!r}' for k in plain)}}}, not "
                          f"{plain} — start without --resume / --more")
-    verdict, diff = compare_data(old.get("data"), info.get("data") or {})
+    verdict, diff = compare_data(old.get("data"), info.get("data") or {}, exam=exam_ids(WORK))
     if verdict == "labels":
-        what = ("it records no data fingerprint (made before Training 4): what it learned cannot be checked" if diff == ["no data fingerprint"]
-                else "the class table (DOCTYPES) or heldout.json changed since (" + ", ".join(diff) + ")")
+        if diff == ["no data fingerprint"]:
+            what = "it records no data fingerprint (made before Training 4): what it learned cannot be checked"
+        elif any(MOVED in d or d == NO_IDS for d in diff):
+            what = ("examples it trained on are on the exam side today, or it records no training ids (" + ", ".join(diff)
+                    + "): the users' exam would measure pages the weights have seen")
+        else:
+            what = "the class table (DOCTYPES) or heldout.json changed since (" + ", ".join(diff) + ")"
         if not getattr(args, "more_anyway", False):
             raise SystemExit(f"--more refused for {name}: {what} — train fresh (without --more), or --more-anyway on the owner's explicit call")
         print(f"!!! WARNING: --more-anyway for {name}: {what}. The old weights carry it forward; the exam may not show it. !!!")

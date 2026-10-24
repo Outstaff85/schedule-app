@@ -161,7 +161,7 @@ def gather(a):
         made = pathlib.Path(getattr(a, "synth_run", None) or WORK / "synth" / "pages") / "pages.json"
         if not made.exists():
             raise SystemExit("no made-up pages — run synth_pages.py first")
-        require_qa(made.parent, "the made-up pages (synth_pages.py)")   # drawn through gen build: its QA sheet passed
+        require_qa(made.parent, "the made-up pages (synth_pages.py)", work=WORK)   # drawn through gen build: its QA sheet passed
         pages = [{**e, "file": str(made.parent / "img" / e["file"].replace("\\", "/").rsplit("/", 1)[-1])} for e in read_json(made)]
         assert_clean(pages, "the made-up pages (synth_pages.py)", work=WORK)   # the whole set, not only the sample drawn
         ex += random.sample(pages, min(a.synth, len(pages)))

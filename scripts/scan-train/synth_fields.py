@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 from gen import rng as grng
-from gen.common import file_sha1, heldout_sha256, record_exam_set
+from gen.common import file_sha1, heldout_sha256, record_own_exam_set
 from gen.manifest import FontLog
 from home import WORK
 from synth_docs import TEMPLATES, templates_in
@@ -149,7 +149,7 @@ def gen_write(folder, params, items):
     (out / "sources.json").write_text(json.dumps({"split": "check" if held else "train", "vocabulary": "check" if held else "train",
                                                   "templates": used, "heldout_sha256": heldout_sha256()}, indent=1), encoding="utf-8")
     if held:
-        record_exam_set("he-fields/check", out / "labels.tsv")
+        record_own_exam_set("he-fields/check", out / "labels.tsv")   # the work folder's own check set only
     print(f"{len(labels)} fields from {params['count']} made-up pages ({len(used)} real {'held-out' if held else 'training'} pages: "
           + ", ".join(sorted(s[:8] for s in used)) + f") in {out}")
 

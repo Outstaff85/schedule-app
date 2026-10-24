@@ -1,7 +1,7 @@
 """A training's checkpoint tied to its data (scripts/scan-train/checkpoint.py, gen/manifest.py; docs/scan-training.md →
 "Stopped and picked up again"): --resume only with the very same data fingerprint; --more refused when the class table
-(DOCTYPES) or heldout.json changed or the checkpoint records no fingerprint, unless --more-anyway; a loud warning when
-only the training examples changed; a resumed schedule must be made for this run's steps; train.py --more builds the
+(DOCTYPES) or heldout.json changed, a trained example is on the exam side today, or the checkpoint records no fingerprint
+or no training ids, unless --more-anyway; a loud warning when only the training examples changed; a resumed schedule must be made for this run's steps; train.py --more builds the
 network from the saved weights' own base and records where it went on from; weights of another graph stop with what
 to do. The checkpoints are plain dicts here (checkpoint.load mocked); torch only where a test needs it."""
 import importlib.util
@@ -17,6 +17,12 @@ sys.path.insert(0, str(HERE))
 import checkpoint  # noqa: E402 — imports no torch
 from gen import common as gc  # noqa: E402
 from gen import manifest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_exam(monkeypatch):
+    """The exam side today (gen.manifest.exam_ids): empty unless a test says (the owner's work folder is never read)."""
+    monkeypatch.setattr(checkpoint, "exam_ids", lambda work=None: set())
 
 
 def args(**kw):
@@ -80,10 +86,10 @@ def test_more_with_only_new_examples_warns_loudly_and_goes_on(monkeypatch, capsy
     old = {"model": "edges.onnx", "base": "v3", "data": fp(("a", "b"), n=2)}
     ck = saved(monkeypatch, old)
     new = {"model": "edges.onnx", "base": "v3", "data": fp(("a", "b", "c"), n=3)}
-    assert manifest.compare_data(old["data"], new["data"]) == ("data", ["n", "train"])
+    assert manifest.compare_data(old["data"], new["data"]) == ("data", ["n", "train", "trainIds"])
     assert checkpoint.begin("edges.onnx", args(more=True), new) is ck
     out = capsys.readouterr().out
-    assert "WARNING: --more for edges.onnx on other data" in out and "n, train" in out
+    assert "WARNING: --more for edges.onnx on other data" in out and "n, train, trainIds" in out
     assert checkpoint.begin("edges.onnx", args(more=True), {**new, "data": dict(old["data"])}) is ck   # the same data: quiet
     assert "WARNING" not in capsys.readouterr().out
 
@@ -161,3 +167,33 @@ def test_train_he_records_the_data_not_only_its_name(tmp_path):
     assert info["data"]["labels"]["train"] == gc.file_sha1(tmp_path / "synth" / "he-fields" / "train" / "labels.tsv")
     assert info["data"]["sizes"] == {"items": 3, "checks": 1} and info["data"]["doctypes"] == manifest.doctypes_sha256()
     assert the.data_info(tmp_path, [1, 2], [1], 64, 10)["data"]["sha"] != info["data"]["sha"]
+
+
+def test_more_refuses_weights_trained_on_examples_now_on_the_exam_side(monkeypatch, capsys):
+    """A record's split moved from train to exam (its split key changed: a session linked to a worker) with heldout.json
+    unchanged: the checkpoint keeps each training id's short hash, so --more sees it and refuses."""
+    old = {"model": "edges.onnx", "base": "v5", "data": fp(("rec-1", "rec-2", "syn-1-0"))}
+    ck = saved(monkeypatch, old)
+    new = {"model": "edges.onnx", "base": "v5", "data": fp(("rec-1", "syn-1-0"))}             # rec-2 left training …
+    moved = {manifest.short_id("rec-2")}                                                         # … for the exam
+    assert manifest.compare_data(old["data"], new["data"], exam=moved) == (
+        "labels", ["train", "trainIds", "1 trained examples now on the exam side"])
+    assert manifest.compare_data(old["data"], new["data"], exam={manifest.short_id("rec-9")})[0] == "data"
+    monkeypatch.setattr(checkpoint, "exam_ids", lambda work=None: moved)
+    with pytest.raises(SystemExit, match="--more refused .*on the exam side today"):
+        checkpoint.begin("edges.onnx", args(more=True), new)
+    assert checkpoint.begin("edges.onnx", args(more=True, more_anyway=True), new) is ck
+    assert "WARNING: --more-anyway" in capsys.readouterr().out
+    no_ids = {k: v for k, v in old["data"].items() if k != "trainIds"}                           # a checkpoint with no ids
+    saved(monkeypatch, {**old, "data": no_ids})
+    with pytest.raises(SystemExit, match="no training ids recorded"):
+        checkpoint.begin("edges.onnx", args(more=True), new)
+
+
+def test_exam_ids_are_the_records_and_page_copies_on_the_exam_side(tmp_path):
+    import json
+    (tmp_path / "examples.json").write_text(json.dumps([{"id": "a", "exam": True}, {"id": "b", "split": "train"},
+                                                        {"id": "c", "golden": True}]))
+    (tmp_path / "doctypes.json").write_text(json.dumps([{"id": "d", "split": "exam", "exam": True}, {"id": "e"}]))
+    assert manifest.exam_ids(tmp_path) == {manifest.short_id(i) for i in ("a", "c", "d")}
+    assert manifest.exam_ids(tmp_path / "none") == set()

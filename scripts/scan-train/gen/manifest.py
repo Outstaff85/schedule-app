@@ -11,7 +11,9 @@ sets: build, verify, QA").
   inputs give the same fingerprint, whatever --jobs), and the parameters to draw any example again (gen verify) —
   those name the local files laid, so run.json stays on this PC like the set.
 - data_fingerprint / compare_data: what a training's checkpoint records of its data (checkpoint.py) and how two are
-  told apart: the class table or heldout.json changed ("labels": --more refuses), or only the examples ("data").
+  told apart: the class table or heldout.json changed, or trained examples are now on the exam side (exam_ids: a
+  record's split moved from train to exam without heldout.json changing) — "labels": --more refuses —, or only the
+  examples ("data").
 - held_refs(rows): the rows that reference what the exam keeps (gen verify and gen qa).
 Pure: no torch, no Google package."""
 import datetime
@@ -208,28 +210,65 @@ def ids_sha256(ids):
     return sha256_text("\n".join(sorted(str(i) for i in ids)))
 
 
+def short_id(i):
+    """An example's id as the checkpoint keeps it: sha1(id)[:12] (the ids themselves are not stored)."""
+    return hashlib.sha1(str(i).encode("utf-8")).hexdigest()[:12]
+
+
 def data_fingerprint(train=(), **parts):
     """What a checkpoint records of the data it was trained on: the class table's and heldout.json's sha256, the
-    training examples' ids (sorted, hashed) and any other part given (a made-up set's run fingerprint, the sizes, the
-    batch) — "sha" over all of it."""
-    d = {"doctypes": doctypes_sha256(), "heldout": gc.heldout_sha256(), "train": ids_sha256(train), **parts}
+    training examples' ids (sorted and hashed as a whole — "train" — and each one's short_id — "trainIds", so --more
+    can tell which of them are on the exam side today) and any other part given (a made-up set's run fingerprint, the
+    sizes, the batch) — "sha" over all of it."""
+    d = {"doctypes": doctypes_sha256(), "heldout": gc.heldout_sha256(), "train": ids_sha256(train),
+         "trainIds": sorted({short_id(i) for i in train}), **parts}
     d["sha"] = sha256_text(canonical({k: v for k, v in d.items() if k != "sha"}))
     return d
 
 
+def exam_ids(work=None):
+    """The short_ids of the real examples on the exam side today (examples.json and doctypes.json entries whose split
+    is exam or golden, by gen.sources' rule): a record moves there when its split key changes (a session linked to a
+    worker) or pull.py keeps more exam keys — with heldout.json unchanged."""
+    from . import sources
+    import home
+    work = pathlib.Path(work or home.WORK)
+    out = set()
+    for f in ("examples.json", "doctypes.json"):
+        try:
+            got = json.loads((work / f).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for e in got if isinstance(got, list) else []:
+            if isinstance(e, dict) and e.get("id") is not None and sources._real_split(e) in gc.EXAM_SIDE:
+                out.add(short_id(e["id"]))
+    return out
+
+
 LABEL_KEYS = ("doctypes", "heldout")
+MOVED = "trained examples now on the exam side"
+NO_IDS = "no training ids recorded"
 
 
-def compare_data(old, new):
-    """→ ("same" | "labels" | "data", [the parts that differ]): "labels" when the class table or heldout.json changed
-    (or the old checkpoint records no fingerprint: made before Training 4), "data" when only the examples did."""
+def compare_data(old, new, exam=None):
+    """→ ("same" | "labels" | "data", [the parts that differ]): "labels" when the class table or heldout.json changed,
+    when the old checkpoint records no fingerprint (made before Training 4), or — exam given (exam_ids) — when any of
+    its training examples is on the exam side today ("N trained examples now on the exam side"; a checkpoint with no
+    trainIds cannot be checked: "no training ids recorded", "labels" too); "data" when only the examples did."""
     if not isinstance(old, dict) or "sha" not in old:
         return "labels", ["no data fingerprint"]
     keys = sorted((set(old) | set(new)) - {"sha"})
     diff = [k for k in keys if old.get(k) != new.get(k)]
-    if not diff:
+    moved = []
+    if exam is not None:
+        if not isinstance(old.get("trainIds"), list):
+            moved = [NO_IDS]
+        else:
+            n = len(set(old["trainIds"]) & set(exam))
+            moved = [f"{n} {MOVED}"] if n else []
+    if not diff and not moved:
         return "same", []
-    return ("labels" if any(k in LABEL_KEYS for k in diff) else "data"), diff
+    return ("labels" if moved or any(k in LABEL_KEYS for k in diff) else "data"), diff + moved
 
 
 def run_fingerprint(folder):

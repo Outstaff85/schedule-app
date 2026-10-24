@@ -288,3 +288,68 @@ def test_v3_v4_and_v5s_edges_are_not_held_out_clean_and_exam_never_gates_on_them
     assert exam.gate(with_clean) is True
     with_clean["models"]["edges.onnx"]["templates"]["after"] = s(0.06)                          # still counted: worse there is NO
     assert exam.gate(with_clean) is False
+
+
+def test_an_edges_entry_names_every_real_page_laid_and_training_refuses_a_held_second_card(tmp_path, monkeypatch, heldout):
+    """A pair's second card (and a painted-over document) is in the photo too: the examples.json entry names every page
+    laid ("templates"), so train.py's assert_clean checks them all, not only the answer's."""
+    import synth_docs as sd
+    from gen import sources
+    answer, card = hashlib.sha1(b"answer page").hexdigest(), hashlib.sha1(b"second card").hexdigest()
+    monkeypatch.setitem(sd.TEMPLATE_SHA1, "p-answer", answer)
+    monkeypatch.setitem(sd.TEMPLATE_SHA1, "p-card", card)
+    monkeypatch.setitem(sd.TEMPLATE_PATH, "p-answer", str(tmp_path / "templates" / "sefach" / "a.png"))
+    corners = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+
+    def photo(rng, F, photos, tpl, meta):
+        meta.update({"laid": ["p-answer", "p-card"], "scene": {}, "camera": {}, "doc": corners})
+        return np.zeros((40, 40, 3), np.uint8), corners, "sefach", "p-answer", 0
+    monkeypatch.setattr(sd, "photo", photo)
+    (tmp_path / "img").mkdir()
+    (item,) = sd._batch((1, [0], str(tmp_path), [], [], [], False, ((), 0, False), {}))
+    e = item["entry"]
+    assert e["templateSha1"] == answer and e["templates"] == sorted([answer, card])
+    assert item["meta"]["templates"] == [answer, card]
+    heldout([])
+    sources.assert_clean([e], work=tmp_path)                                                    # nothing held: clean
+    heldout([card])                                                                              # the second card is the exam's
+    with pytest.raises(SystemExit, match="held-out template"):
+        sources.assert_clean([e], work=tmp_path)
+
+
+def test_require_qa_runs_the_held_out_check_again_at_training_time(pages_set, tmp_path, monkeypatch):
+    """A site page's side comes from templates/index.json, which can move to the exam after the QA was drawn (heldout.json
+    unchanged): require_qa runs held_refs over the manifest again and refuses."""
+    from gen import qa
+    build_pages(pages_set, tmp_path / "a")
+    qa.qa(tmp_path / "a", 5, 1, pages_set.work)
+    assert qa.require_qa(tmp_path / "a", "the set", work=pages_set.work)["passed"]
+    before = gc.heldout_sha256()
+    monkeypatch.setattr(gc, "held_sha1s", lambda path=None: frozenset({pages_set.sha}))       # on the exam side now
+    assert gc.heldout_sha256() == before
+    with pytest.raises(SystemExit, match="now references what the exam keeps.*a held-out template"):
+        qa.require_qa(tmp_path / "a", "the set", work=pages_set.work)
+
+
+def test_an_exam_set_drawn_outside_the_work_folder_leaves_exam_sets_json_alone(tmp_path, monkeypatch, heldout):
+    """--out elsewhere (a smoke run, a test) must not overwrite the owner's exam_sets.json record."""
+    import home
+    import synth_docs as sd
+    import synth_fields as sf
+    heldout([])
+    work = tmp_path / "work"
+    monkeypatch.setattr(home, "WORK", work)
+    record = work / "exam_sets.json"
+    smoke = tmp_path / "smoke"
+    smoke.mkdir()
+    entry = {"id": "syn-7-0", "kind": "sefach"}
+    sd.gen_write(smoke, {"split": "exam"}, [{"entry": entry}])
+    sf.gen_write(smoke, {"held": True, "pages": [], "count": 1}, [{"entry": ["0-0.png\tא\tgiven"]}])
+    assert (smoke / "examples.json").exists() and (smoke / "labels.tsv").exists() and not record.exists()
+    own_docs, own_he = work / "synth" / "docs-exam", work / "synth" / "he-fields" / "check"
+    own_docs.mkdir(parents=True)
+    own_he.mkdir(parents=True)
+    sd.gen_write(own_docs, {"split": "exam"}, [{"entry": entry}])
+    sf.gen_write(own_he, {"held": True, "pages": [], "count": 1}, [{"entry": ["0-0.png\tא\tgiven"]}])
+    got = json.loads(record.read_text(encoding="utf-8"))["sets"]
+    assert sorted(got) == ["he-fields/check", "synth/docs-exam"] and gc.stale_exam_sets(work) == []

@@ -32,8 +32,12 @@ report_doctypes.json, report_mrz.json, report_he.json) and attempts.json with th
 models not named and the training figures (report_mrz_train.json) stay; the other copies on this PC go too
 unless --keep-copies (for a training still to come). The training progress of each published model
 (~/.scan-train/checkpoints/<model>.pt, kept) is stamped with the version ("published": {version, at}), so a later
-train.py --more says what it goes on from. --dry-run prints the files of the version (new or carried
-over), the counters it would set, the folders it would move and the checkpoint stamps, and stops before any write to Hugging
+train.py --more says what it goes on from. A version whose models may have seen what the exam keeps is added to
+heldout.json "versions" (heldout_clean false, those models, why — gen.common.mark_version): a model carried over from
+a version marked so for it, or a new one whose base chain (the lab's version it was trained from, its checkpoint's
+info.base / info.from.base) holds one or whose exam report says "contaminated" — so a version descended from v3/v4/v5
+is never reported clean (the skill commits heldout.json with models-version). --dry-run prints the files of the version (new or carried
+over), the counters it would set, the folders it would move, the checkpoint stamps and the heldout.json mark, and stops before any write to Hugging
 Face, Firestore or Storage. Needs the owner's HF token on the PC (`hf auth login`)."""
 import argparse
 import datetime
@@ -59,6 +63,49 @@ def checkpoint_stamps(on, v, now):
     """[(checkpoint file, the stamp)] of the published models whose training progress is on this PC."""
     stamp = {"version": v, "at": now.isoformat(timespec="seconds")}
     return [(WORK / "checkpoints" / f, stamp) for k in on for f in CHECKPOINTS[k] if (WORK / "checkpoints" / f).exists()]
+
+
+def base_chain(name, base):
+    """The versions a new model rests on: the lab's (train.py fine-tunes from its weights) and the ones its checkpoint
+    records (info.base, info.from.base) — as exam.chain_of; the checkpoint left out when it cannot be read."""
+    chain = [base]
+    f = WORK / "checkpoints" / f"{name}.pt"   # where checkpoint.py keeps it (checkpoint_stamps reads the same)
+    if f.exists():
+        try:
+            import torch
+            info = (torch.load(f, map_location="cpu", weights_only=False) or {}).get("info") or {}
+            chain += [info.get("base"), (info.get("from") or {}).get("base")]
+        except Exception:
+            pass
+    return [c for c in chain if c]
+
+
+def inherited_dirt(files, base, reports):
+    """{model: why} of the version's models that may have seen what the exam keeps: one carried over from a version
+    heldout.json marks for it, a new one whose base chain holds such a version, or whose exam report names it
+    "contaminated" (exam.py)."""
+    from gen.common import dirty_versions
+    out = {}
+    for name, (_, how) in sorted(files.items()):
+        if not name.endswith(".onnx"):
+            continue
+        dirty = dirty_versions(name)
+        if how != "new":
+            if base in dirty:
+                out[name] = f"{name} carried over from {base}"
+            continue
+        parents = sorted(set(base_chain(name, base)) & dirty)
+        said = sorted({v for r in reports.values() for v in ((r.get("contaminated") or {}).get(name) or [])})
+        if parents or said:
+            out[name] = f"{name} trained from {', '.join(sorted(set(parents) | set(said)))}"
+    return out
+
+
+def dirt_note(dirt):
+    """heldout.json's mark of the new version: (models, why) or None."""
+    if not dirt:
+        return None
+    return sorted(dirt), "may have seen what the exam keeps: " + "; ".join(dirt[n] for n in sorted(dirt))
 
 
 def moved_path(path, to):
@@ -268,6 +315,7 @@ def main():
     gone = sorted((have or set()) - set(files))
     plan = attempt_plan(v) if "edges" in on else []   # the attempts are the edges' examples: moved only once the edges are trained on them
     now = datetime.datetime.now(datetime.timezone.utc)
+    mark = dirt_note(inherited_dirt(files, base, on))   # a version descended from a contaminated one is marked too
     if a.dry_run:
         print(f"Dry run — the plan for {v} (the lab is on {base}); nothing is written:")
         for n, (p, how) in sorted(files.items()):
@@ -283,6 +331,8 @@ def main():
             print("  no scan attempts moved" + ("" if "edges" in on else " (only with the edges in the version)"))
         for f, st in checkpoint_stamps(on, v, now):
             print(f"  checkpoints/{f.name}: stamped published {st}")
+        print(f"  heldout.json versions: {v} marked not held-out clean for {', '.join(mark[0])} ({mark[1]})" if mark
+              else f"  heldout.json versions: {v} not marked (no model of it rests on a contaminated version)")
         used = ", ".join([REPORTS[k][0] for k in on] + (["report.html", "attempts.json"] if "edges" in on else []))
         print(f"  then: scripts/scan-lab/models-version → {v}; deleted: {used}" + ("" if a.keep_copies else "; the copies on this PC deleted"))
         return
@@ -296,6 +346,10 @@ def main():
     moved = move_attempts(v, plan) if plan else 0
     db().collection("scanTrainingStats").document("current").set(stats_update(on, v, now, moved), merge=True)
     (ROOT / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
+    if mark:   # committed with models-version: exam.py then marks the templates set contaminated for its descendants too
+        from gen.common import mark_version
+        mark_version(v, *mark)
+        print(f"heldout.json: {v} marked not held-out clean for {', '.join(mark[0])}")
     for f, st in checkpoint_stamps(on, v, now):   # the runs the published models came from: --more names the version
         try:
             import checkpoint

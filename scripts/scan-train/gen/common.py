@@ -234,6 +234,34 @@ def dirty_versions(model, path=None):
                      and (not e.get("models") or model in e["models"]))
 
 
+def _dump_heldout(h):
+    """heldout.json in its own layout: one key per line, a list's items and the versions one per line (compact)."""
+    def one(x):
+        return json.dumps(x, ensure_ascii=False)
+    parts = []
+    for k, v in h.items():
+        if isinstance(v, list) and v:
+            body = "[\n" + ",\n".join("  " + one(x) for x in v) + "\n ]"
+        elif k == "versions" and isinstance(v, dict) and v:
+            body = "{\n" + ",\n".join(f"  {one(n)}: {one(e)}" for n, e in v.items()) + "\n }"
+        else:
+            body = one(v)
+        parts.append(f" {one(k)}: {body}")
+    return "{\n" + ",\n".join(parts) + "\n}\n"
+
+
+def mark_version(version, models, why, path=None):
+    """publish.py: a new version whose models may have seen what the exam keeps (one carried over from a version
+    marked so, or trained from one) is added to heldout.json "versions" (heldout_clean false, those models, why) —
+    so a version descended from v3/v4/v5 is never reported clean. heldout_sha256 ignores "versions": nothing goes
+    stale. The file is committed with the scripts (the skill commits it with models-version)."""
+    p = pathlib.Path(path or HELDOUT)
+    h = json.loads(p.read_text(encoding="utf-8"))
+    v = h.setdefault("versions", {})
+    v[version] = {"heldout_clean": False, "models": sorted(models), "why": why}
+    p.write_text(_dump_heldout(h), encoding="utf-8", newline="\n")
+
+
 def contaminated(chain, model, path=None):
     """The versions of a model's base chain (the lab's version, the one it was trained from…) that are not held-out
     clean: the exam's templates set is "contaminated" for it (exam.py; never a gate alone)."""
@@ -336,6 +364,24 @@ def record_exam_set(name, file, work=None):
 
 # the exam sets on disk (their folder under the work folder, the file that marks one made) by their exam_sets.json name
 EXAM_SET_FOLDERS = {"he-fields/check": ("synth/he-fields/check", "labels.tsv"), "synth/docs-exam": ("synth/docs-exam", "examples.json")}
+
+
+def record_own_exam_set(name, file, work=None):
+    """record_exam_set only for the work folder's own exam set (EXAM_SET_FOLDERS: synth/docs-exam/examples.json,
+    synth/he-fields/check/labels.tsv): a set drawn elsewhere (--out under _smoke, a test's tmp folder) leaves
+    exam_sets.json alone — it is not the set exam.py and train_he.py read. → whether it was recorded."""
+    import home
+    base = pathlib.Path(work or home.WORK)
+    folder, mark = EXAM_SET_FOLDERS[name]
+    try:
+        own = pathlib.Path(file).resolve() == (base / folder / mark).resolve()
+    except OSError:
+        own = False
+    if not own:
+        print(f"  {name}: drawn outside {base / folder} — exam_sets.json not touched (only the work folder's own exam set is recorded)")
+        return False
+    record_exam_set(name, file, work=work)
+    return True
 
 
 def stale_exam_sets(work=None):

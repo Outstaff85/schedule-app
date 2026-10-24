@@ -31,7 +31,8 @@ photos again, so only this script is kept.
 Writes <out>/img/<n>.jpg (the long side 640) and <out>/examples.json in pull.py's form (fixed:
 the corners 0..1, top-left first clockwise as the model gives them; null: nothing here; a real page
 answered also names it, "template": a short sha1 of its kind folder and file name, page_id, "templateSha1" its
-content sha1, "templatePath" its kind folder / file name on this PC; "upright": the index in fixed of the document's
+content sha1, "templatePath" its kind folder / file name on this PC, "templates" the content sha1s of every real
+page laid on the photo (the answer's, a pair's second card, a painted-over document: train.py checks them all); "upright": the index in fixed of the document's
 own top-left, and "doc": the same corners in the document's own order — its top-left first — so exam_doctypes.py
 cuts the page upright). This script is a thin wrapper over `python -m gen build --model edges` (gen/build.py): the
 set's folder also gets manifest.jsonl and run.json (docs/scan-training.md → "Made-up sets: build, verify, QA").
@@ -46,7 +47,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 import synth
 from gen import rng as grng
-from gen.common import file_sha1, label, record_exam_set
+from gen.common import file_sha1, label, record_own_exam_set
 from gen.manifest import FontLog
 from home import WORK, gentle
 from synth_lines import hebrew_fonts
@@ -691,12 +692,15 @@ def _batch(job):
                 cv2.circle(v, tuple(int(c) for c in P[0]), 7, (0, 0, 255), -1)   # the first corner
             cv2.putText(v, kind, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.imwrite(str(pathlib.Path(folder) / "show" / f"{i}.jpg"), v)
+        laid = [TEMPLATE_SHA1.get(p) for p in [src] + [p for p in meta["laid"] if p and p != src] if p]
         entry = {"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
                  "exam": False, "synth": True, "kind": kind, "none": corners is None,
                  **({"template": src, "templateSha1": TEMPLATE_SHA1.get(src), "templatePath": rel_path(TEMPLATE_PATH[src])} if src else {}),
+                 # every real page laid on the photo (the answer, a pair's second card, a painted-over document):
+                 # train.py's assert_clean checks each against what the exam keeps, not only the answer's
+                 **({"templates": sorted({s for s in laid if s})} if any(laid) else {}),
                  **({"upright": up, "doc": meta["doc"]} if corners else {})}
         bg = bgs.get(meta.get("bg")) or {}
-        laid = [TEMPLATE_SHA1.get(p) for p in [src] + [p for p in meta["laid"] if p and p != src] if p]
         out.append({"index": i, "id": entry["id"], "entry": entry, "files": [f"img/{i}.jpg"], "meta": {
             "templates": laid, "bgSha1": bg.get("sha1"), "bgCategory": bg.get("category"), "bgKind": meta.get("bgKind"),
             "fonts": F.used(), "vocabulary": "train", "class": doc_class(kind),
@@ -793,7 +797,7 @@ def gen_write(folder, params, items):
     ex = [it["entry"] for it in items]
     (pathlib.Path(folder) / "examples.json").write_text(json.dumps(ex, ensure_ascii=False), encoding="utf-8")
     if params["split"] == "exam":
-        record_exam_set("synth/docs-exam", pathlib.Path(folder) / "examples.json")   # gen sources --check: made with today's heldout.json
+        record_own_exam_set("synth/docs-exam", pathlib.Path(folder) / "examples.json")   # gen sources --check: made with today's heldout.json (the work folder's own set only)
     by = {}
     for e in ex:
         by[e["kind"]] = by.get(e["kind"], 0) + 1
