@@ -4,7 +4,7 @@
 // then built by two calls at once; afterwards the page keeps them to read and download.
 import { getState, set, wpToken, type SignReq } from './core';
 
-export const SIGN_FN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/sign_documents';
+export const SIGN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/sign_documents';
 
 export async function signFn<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
   const resp = await fetch(SIGN_FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, token: wpToken() }) });

@@ -1,6 +1,8 @@
 // The manager app's punches (React migration stage 8b; from schedule-manager.html).
-// The punch cache (localStorage punchLog — the same key the punch page's
-// getPunchLog / savePunchLog use, src/punch/core.ts) and its sync with Firestore.
+// The punch cache (localStorage 'punchLog:' + the firm's id — per firm, so a
+// super-admin switching firms never sees the last firm's punches; the punch
+// page keeps its own 'punchLog', src/punch/core.ts) and its sync with Firestore.
+// A full localStorage never loses punches: the list then stays in memory.
 // Only recent punches are kept: the live listener covers this month plus the
 // week before it (punchWindowStart() — enough for "This week" and for a shift
 // that started before the 1st). Older months are read once, when something
@@ -16,11 +18,23 @@ import { emit, notify, tr } from './events';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Rec = Record<string, any>;
 
+export const PUNCH_KEY_PREFIX = 'punchLog:';
+const punchKey = (): string => PUNCH_KEY_PREFIX + (fsTenantId() || '_anon');
+// The list when localStorage could not hold it (and the firm it is of).
+let mem: {key: string; log: Rec[]} | null = null;
 export function getPunchLog(): Rec[] {
-  try { return JSON.parse(localStorage.getItem('punchLog') || '[]'); } catch { return []; }
+  const key = punchKey();
+  if (mem && mem.key === key) return mem.log;
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
 }
 export function savePunchLog(log: Rec[]): void {
-  localStorage.setItem('punchLog', JSON.stringify(log));
+  const key = punchKey();
+  try { localStorage.setItem(key, JSON.stringify(log)); mem = null; }
+  catch (e) {
+    console.warn('Punch cache write failed', e);
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+    mem = {key, log};
+  }
 }
 
 export function punchWindowStart(): Date {
@@ -39,8 +53,11 @@ export function ensurePunchesSince(from: Date | null): Promise<boolean> {
     notify(want <= ALL_PUNCHES_FROM ? tr('Loading the whole punch history…') : tr('Loading earlier punches…'), 1500);
     try {
       const older = await (await loadFirestoreBackend()).punchesBetween(fsTenantId(), want, have);
+      // loadedFrom moves first (mergeRemotePunches keeps rows from it on),
+      // and back if the merge fails.
+      const prev = loadedFrom;
       loadedFrom = want;
-      mergeRemotePunches(older);
+      try { mergeRemotePunches(older); } catch (e) { loadedFrom = prev; throw e; }
       return true;
     } catch (e: any) {
       notify(tr('Could not load earlier punches: {0}', {0: ((e && e.message) || e)}));

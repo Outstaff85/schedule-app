@@ -1,9 +1,10 @@
 """The passport zone reader (docs/hf-plan.md → H8b): a small CRNN that reads one MRZ line, and how
 a passport page's two MRZ lines are found — shared by train_mrz.py and exam_mrz.py; the phone
-does the same (mrzFind / mrzRead in scan-lab/index.html, copied to scan/index.html: the same line finding, the same
-input, the same decoding — a change here is mirrored there; gen/phone.py mrz_find is the exact port of mrzFind, and
-tests/scan/phone_parity.test.mjs checks the lab's boxes within 1 px of find_boxes). The phone draws a line into the
-32 × 512 input at imageSmoothingQuality 'high' (phone.line_input); line_input here still shrinks by INTER_AREA.
+does the same (src/scan/engine/readers.ts mrzFind / lineInput / ctcDecode and the Readers' mrzRead: the same line
+finding, the same input, the same decoding — a change here is mirrored there; gen/phone.py mrz_find is the exact port
+of mrzFind, and tests/scan/phone_parity.test.mjs checks the scanner's boxes within 1 px of find_boxes). The phone draws
+a line into the 32 × 512 input at imageSmoothingQuality 'high' (phone.line_input); line_input here still shrinks by
+INTER_AREA.
 
 The model's contract (mrz.onnx): input "img" [1, 1, 32, 512] — the line in grey 0..1, its height
 scaled to 32, left-aligned, the rest of the width filled with white; output "logits" [1, 128, 38]

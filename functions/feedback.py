@@ -297,7 +297,7 @@ def mrz_counts(doc):
 
 # ---------- the Hebrew field reader in shadow (docs/hf-plan.md → H8c) ----------
 # The phone's own small model reads an Israeli ID card's fields beside the AI (the card layouts of the version,
-# scan-lab/index.html heRead); its answer on the primary page is kept with the full document, never used for
+# src/scan/engine/readers.ts heRead); its answer on the primary page is kept with the full document, never used for
 # the worker. HE_COMPARED: the fields it is judged on.
 HE_COMPARED = ("docSurname", "docGiven", "docId", "docDob", "docExpiry")
 

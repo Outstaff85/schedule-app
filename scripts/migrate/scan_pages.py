@@ -12,11 +12,29 @@ The app still reads a sidecar that was not split yet; this script splits them.
   python scripts/migrate/scan_pages.py cleanup [--tenant T]   deletes the sidecars already split
 
 `apply` writes the pages under tenants/<t>/workers/<w>/pages/ and the
-signature under …/signature/, then updates only the worker's own fields
-(`scanPages`, `sigFileId`, `sigSavedAt`, `assetsMigratedFrom` = the
-sidecar's path, `assetsFileId` removed) — a field update, so an edit made at
-the same time is not lost. The sidecar file stays until `cleanup`, so a
-worker can be put back by hand. Run by the workflow migrate-scan-pages.yml
+signature under …/signature/, then a record of the split outside the worker
+(tenants/<t>/migrations/scanPages_<w>: the sidecar, the new fields, the
+stamp), then updates only the worker's own fields (`scanPages`, `sigFileId`,
+`sigSavedAt`, `assetsMigratedFrom` = the sidecar's path, `assetsFileId`
+removed) — a field update, so an edit made at the same time is not lost.
+
+The app saves a worker as a whole document, so a manager device that still
+holds a copy from before `apply` (an unsaved edit) can put the old fields
+back: `assetsFileId` again, no `scanPages`. `apply` run again finds such a
+worker by its record (its `assetsFileId` is the recorded sidecar, it has no
+pages) and puts the recorded fields back — the same files, none written
+again, even when `cleanup` has already deleted the sidecar. `cleanup`
+deletes a sidecar only when the worker still carries the recorded split (no
+`assetsFileId`, `assetsMigratedFrom` = the recorded sidecar) — its pages or
+signature may have been changed in the app since, and then the record is
+refreshed to them first (so does `apply`) — and keeps the record, so a stale
+save that comes later is still repaired by `apply`.
+Every manager device reloads (or signs out) after `apply`, and `cleanup`
+runs only after that. A worker split before the records existed gets one
+from its current fields on the next `apply`.
+
+The sidecar file stays until `cleanup`, so a worker can be put back by hand.
+Run by the workflow migrate-scan-pages.yml
 (workflow_dispatch, the deploy's service account) — only with the owner's yes
 for `apply` and `cleanup` (real workers' data).
 """
@@ -120,6 +138,44 @@ def plan(workers):
     return [w for w in workers if w.get("assetsFileId") and not w.get("scanPages")]
 
 
+REC = "scanPages_"
+SIG_KEYS = ("sigFileId", "sigSavedAt")
+
+
+def record_of(sidecar, fields, stamp):
+    """What the migrations record keeps of one worker's split."""
+    rec = {"sidecar": sidecar, "scanPages": fields.get("scanPages") or [], "stamp": stamp}
+    for k in SIG_KEYS:
+        if fields.get(k):
+            rec[k] = fields[k]
+    return rec
+
+
+def matches_record(w, rec):
+    """The worker carries the recorded split: no sidecar back, migrated from the recorded sidecar.
+
+    Its pages and signature may have changed since (a rescan, a page added, a new
+    signature in the app): the sidecar is still no longer pointed at. A stale save
+    from before `apply` brings `assetsFileId` back and drops `assetsMigratedFrom`,
+    so it never matches."""
+    return not w.get("assetsFileId") and bool(rec.get("sidecar")) and w.get("assetsMigratedFrom") == rec.get("sidecar")
+
+
+def record_is_current(w, rec):
+    """The record holds the worker's own pages and signature now."""
+    return ((w.get("scanPages") or []) == (rec.get("scanPages") or [])
+            and all(w.get(k) == rec.get(k) for k in SIG_KEYS))
+
+
+def restore_fields(rec, delete_field):
+    """A worker put back by a stale save -> the recorded split's fields again."""
+    fields = {"scanPages": rec.get("scanPages") or [], "assetsMigratedFrom": rec["sidecar"], "assetsFileId": delete_field}
+    for k in SIG_KEYS:
+        if rec.get(k):
+            fields[k] = rec[k]
+    return fields
+
+
 def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=print):
     """db: a Firestore client; bucket: a Storage bucket. → the report {tenant: {...}}."""
     import time
@@ -129,27 +185,75 @@ def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=
     for t in tids:
         wcol = db.collection("tenants").document(t).collection("workers")
         workers = [dict(d.to_dict() or {}, id=d.id) for d in wcol.stream()]
-        r = {"workers": 0, "pages": 0, "signatures": 0, "sidecarBytes": 0, "pageBytes": 0, "failed": [], "cleaned": 0}
+        mcol = db.collection("tenants").document(t).collection("migrations")
+        records = {d.id[len(REC):]: (d.to_dict() or {}) for d in mcol.stream() if d.id.startswith(REC)}
+        r = {"workers": 0, "pages": 0, "signatures": 0, "sidecarBytes": 0, "pageBytes": 0, "failed": [],
+             "cleaned": 0, "restored": 0, "recorded": 0, "refreshed": 0, "skipped": []}
         if mode == "cleanup":
             for w in workers:
                 old = w.get("assetsMigratedFrom")
                 if not old or not w.get("scanPages") and not w.get("sigFileId"):
                     continue
+                rec = records.get(w["id"])
+                if not rec:
+                    r["skipped"].append({"worker": w["id"], "reason": "no record of the split: run apply first"})
+                    continue
+                if not matches_record(w, rec):
+                    r["skipped"].append({"worker": w["id"], "reason": "the worker's fields are not the split's: check by hand"})
+                    continue
+                if not record_is_current(w, rec):
+                    # pages or signature changed in the app since apply: a later stale save
+                    # is repaired with the worker's newest pages, not the first split's
+                    mcol.document(REC + w["id"]).set(record_of(old, w, rec.get("stamp")))
+                    r["refreshed"] += 1
                 blob = bucket.blob(old)
                 if blob.exists():
                     blob.delete()
+                # the record stays: a stale save that comes later is still repaired by apply
                 wcol.document(w["id"]).update({"assetsMigratedFrom": delete_field})
                 r["cleaned"] += 1
             report[t] = r
             log(t, json.dumps(r))
             continue
+        todo = []
         for w in plan(workers):
+            rec = records.get(w["id"])
+            if rec and rec.get("sidecar") == w["assetsFileId"]:
+                # put back by a stale whole-document save: the recorded split again, no new files
+                gone = [p for p in [x.get("fileId") for x in rec.get("scanPages") or []] + [rec.get("sigFileId")]
+                        if p and not bucket.blob(p).exists()]
+                if gone:
+                    r["failed"].append({"worker": w["id"], "reason": f"the recorded split's files are gone: {gone[0]}"})
+                    continue
+                r["restored"] += 1
+                if mode == "apply":
+                    wcol.document(w["id"]).update(restore_fields(rec, delete_field))
+                continue
+            todo.append(w)
+        for w in workers:
+            old = w.get("assetsMigratedFrom")
+            if not old or w.get("assetsFileId") or not (w.get("scanPages") or w.get("sigFileId")):
+                continue
+            rec = records.get(w["id"])
+            if rec is None:
+                # split before the records existed: record it from its current fields
+                r["recorded"] += 1
+                if mode == "apply":
+                    mcol.document(REC + w["id"]).set(record_of(old, w, None))
+            elif matches_record(w, rec) and not record_is_current(w, rec):
+                # pages or signature changed in the app since the split: the record follows
+                r["refreshed"] += 1
+                if mode == "apply":
+                    mcol.document(REC + w["id"]).set(record_of(old, w, rec.get("stamp")))
+        for w in todo:
             path = w["assetsFileId"]
             if not path.startswith(f"tenants/{t}/workers/{w['id']}/assets/"):
                 r["failed"].append({"worker": w["id"], "reason": "the sidecar is not in the worker's folder"})
                 continue
-            blob = bucket.blob(path)
-            if not blob.exists():
+            # get_blob loads the file's own metadata (bucket.blob() does not: its
+            # .metadata stays None until a reload) — None when the file is gone
+            blob = bucket.get_blob(path)
+            if blob is None:
                 r["failed"].append({"worker": w["id"], "reason": "the sidecar is gone"})
                 continue
             raw = blob.download_as_bytes()
@@ -166,14 +270,18 @@ def migrate(db, bucket, mode, tenants=None, now_ms=None, delete_field=None, log=
             r["pageBytes"] += sum(len(f[1]) for f in files)
             if mode != "apply":
                 continue
+            # the HR stamp an own-workers HR reads by (storage.rules): the worker's
+            # own hrId, else the sidecar's stamp
             meta = {"workerId": w["id"]}
-            old_meta = getattr(blob, "metadata", None) or {}
-            if old_meta.get("hrId"):
-                meta["hrId"] = old_meta["hrId"]
+            hr = w.get("hrId") or (getattr(blob, "metadata", None) or {}).get("hrId")
+            if hr:
+                meta["hrId"] = hr
             for fpath, data_bytes, ctype, kind in files:
                 nb = bucket.blob(fpath)
                 nb.metadata = dict(meta, kind=kind)
                 nb.upload_from_string(data_bytes, content_type=ctype)
+            # the record first, outside the worker: a stale save can't wipe it
+            mcol.document(REC + w["id"]).set(record_of(path, fields, stamp))
             wcol.document(w["id"]).update(dict(fields, assetsMigratedFrom=path, assetsFileId=delete_field))
         report[t] = r
         log(t, json.dumps(r))
@@ -202,8 +310,10 @@ def main(argv):
         print("no Storage bucket reachable", file=sys.stderr)
         return 2
     report = migrate(firestore.client(), bucket, mode, tenants, delete_field=firestore.DELETE_FIELD)
-    total = {k: sum(r[k] for r in report.values()) for k in ("workers", "pages", "signatures", "sidecarBytes", "pageBytes", "cleaned")}
+    total = {k: sum(r[k] for r in report.values())
+             for k in ("workers", "pages", "signatures", "sidecarBytes", "pageBytes", "cleaned", "restored", "recorded")}
     total["failed"] = sum(len(r["failed"]) for r in report.values())
+    total["skipped"] = sum(len(r["skipped"]) for r in report.values())
     print("TOTAL", mode, json.dumps(total))
     return 1 if total["failed"] else 0
 

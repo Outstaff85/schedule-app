@@ -25,12 +25,13 @@ def readable(text):
     return bool(text) and all(c in CHARS for c in text)
 
 
-# ---------- the phone's side (scan-lab/index.html heRead, mirrored there) ----------
+# ---------- the phone's side (src/scan/engine/readers.ts heRead, HE_CHARS / heLineBox / heLogical: CHARS,
+# line_input and logical_simple are mirrored there) ----------
 # The fields the phone reads on a cut ID card and compares with what the user saved (docs/scan.md):
 # each layout is a reference page of template_fields.json, its fields by role.
 LAYOUT_PAGES = {"new": "id_front/new_type.jpg", "old": "id_front/old_type.jpg"}
 ROLES = ("surname", "given", "idNo", "dob", "expiry")
-# heLine's margins around a layout box (scan-lab/index.html HE_MX / HE_MY, copied to scan/; gen/phone.py HE_MARGIN_X /
+# heLine's margins around a layout box (src/scan/engine/readers.ts HE_MX / HE_MY; gen/phone.py HE_MARGIN_X /
 # HE_MARGIN_Y): a share of the box's width on each side and of its height above and below. synth_fields.crop cuts the
 # training fields by them too, so the reader learns the strip the phone gives it. Wide enough for the 99th percentile
 # of a field running past its layout box on the phone's own cut (layout_overflow.json, gen/outputs/he.py).

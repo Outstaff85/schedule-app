@@ -1,4 +1,4 @@
-// /next — the component gallery of the new stack (react-migration-plan.md →
+// /next — the component gallery of the new stack (archive/docs/react-migration-plan.md →
 // stage 1): every shared component and every shadcn/ui component in its
 // states, inside the Shell, in the chosen language. Not linked from the app.
 // Names and figures here are examples, not data.
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import {
   IconAlertTriangle, IconBell, IconBuilding, IconCalendarEvent, IconChartBar, IconCheck, IconCircleCheck, IconCoins,
   IconDownload, IconFileText, IconInfoCircle, IconLayoutGrid, IconListDetails, IconPlus, IconUser, IconUsers, IconX,
-  IconCalendar, IconCash, IconHome, IconLayoutSidebar, IconLock, IconTruckDelivery, IconUsersGroup,
+  IconCalendar, IconCash, IconHome, IconLayoutSidebar, IconLock, IconScan, IconTruckDelivery, IconUsersGroup,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -65,6 +65,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { DataTable, type DataColumn } from '@/components/ui/data-table';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, Recharts, type ChartConfig } from '@/components/ui/chart';
 import { NewBadge } from '@/components/shared/new-badge';
+import { ScannerDemo } from './scanner-demo';
 import { FieldRow, Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormSection } from '@/components/ui/form';
 
 /** One gallery block: the component's name, then its states. */
@@ -659,7 +660,7 @@ function Frame({ onBack }: { onBack: () => void }) {
   );
 }
 
-const PAGES: Record<string, () => React.ReactElement> = { controls: Controls, lists: Lists, windows: Windows, feedback: Feedback, data: Data, layout: Layout };
+const PAGES: Record<string, () => React.ReactElement> = { controls: Controls, lists: Lists, windows: Windows, feedback: Feedback, data: Data, layout: Layout, scanner: ScannerDemo };
 
 export function App() {
   const [page, setPage] = React.useState(() => {
@@ -674,6 +675,7 @@ export function App() {
     { key: 'feedback', label: tr('Feedback'), icon: <IconBell />, color: '#f7c062', count: 2 },
     { key: 'data', label: tr('Data'), icon: <IconChartBar />, color: '#4f8ef7' },
     { key: 'layout', label: tr('Layout'), icon: <IconCalendarEvent />, color: '#a78bfa' },
+    { key: 'scanner', label: tr('Scanner'), icon: <IconScan />, color: '#67e8f9' },
     { key: 'frame', label: tr('Frame (V7)'), icon: <IconLayoutSidebar />, color: '#f472b6' },
   ];
   if (page === 'frame') return <Frame onBack={() => setPage('controls')} />;

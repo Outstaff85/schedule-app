@@ -1,5 +1,5 @@
 """The 4 corners picked together from the heatmaps (scripts/scan-train/docfind.py corners; the phone's copy is
-scan-lab/scan-core.js corners, checked on the same maps by tests/scan/corners.test.mjs): with two documents
+src/scan/engine/geometry.ts corners, checked on the same maps by tests/scan/corners.test.mjs): with two documents
 on a picture the highest spot of one heatmap may lie on the other document — the frame is then taken from
 the spots that make one document (the owner's ID card below its ספח, 2026-10-22); one spot each, as before."""
 import importlib.util

@@ -83,6 +83,38 @@
 		if (v && typeof v === "object") return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + sig(v[k])).join(",") + "}";
 		return JSON.stringify(v);
 	}
+	function sigHash(str) {
+		let h1 = 3735928559, h2 = 1103547991;
+		for (let i = 0; i < str.length; i++) {
+			const ch = str.charCodeAt(i);
+			h1 = Math.imul(h1 ^ ch, 2654435761);
+			h2 = Math.imul(h2 ^ ch, 1597334677);
+		}
+		h1 = Math.imul(h1 ^ h1 >>> 16, 2246822507) ^ Math.imul(h2 ^ h2 >>> 13, 3266489909);
+		h2 = Math.imul(h2 ^ h2 >>> 16, 2246822507) ^ Math.imul(h1 ^ h1 >>> 13, 3266489909);
+		return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+	}
+	var itemHash = (item) => sigHash(sig(plain(item)));
+	var CLIENT_PAY = [
+		"defaultHourlyRate",
+		"defaultOtRate",
+		"defaultShabbatRate"
+	];
+	function scheduleBaseOf(data) {
+		const out = {};
+		for (const kind of [
+			"workers",
+			"clients",
+			"suppliers"
+		]) {
+			const m = {};
+			(data[kind] || []).forEach((item) => {
+				if (item && item.id != null) m[String(item.id)] = itemHash(item);
+			});
+			out[kind] = m;
+		}
+		return out;
+	}
 	function ddmmyyyyToDay(s) {
 		const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || ""));
 		return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : null;
@@ -209,8 +241,61 @@
 			}
 			return out;
 		}
-		async function saveSchedule(t, data, first) {
-			if (knownTenant !== t) await loadSchedule(t);
+		async function mergeOnBase(local, server, base) {
+			const out = Object.assign({}, local);
+			let dropped = 0;
+			for (const kind of [
+				"workers",
+				"clients",
+				"suppliers"
+			]) {
+				const srv = server[kind] || [];
+				if (!await mayWrite(kind)) {
+					out[kind] = srv;
+					continue;
+				}
+				const list = [], seen = /* @__PURE__ */ new Set();
+				const byId = new Map(srv.map((x) => [String(x.id), x]));
+				let b;
+				if (base === "unknown") {
+					b = {};
+					(local[kind] || []).forEach((item) => {
+						if (!item || item.id == null) return;
+						const s = byId.get(String(item.id));
+						if (!s) return;
+						b[String(item.id)] = itemHash(item);
+						if (itemHash(s) !== b[String(item.id)]) dropped++;
+					});
+				} else b = base[kind] || {};
+				(local[kind] || []).forEach((item) => {
+					if (!item || item.id == null) return;
+					const id = String(item.id);
+					seen.add(id);
+					if (!(id in b) || itemHash(item) !== b[id]) {
+						list.push(item);
+						return;
+					}
+					const s = byId.get(id);
+					if (s) list.push(s);
+				});
+				srv.forEach((s) => {
+					const id = String(s.id);
+					if (!seen.has(id) && !(id in b)) list.push(s);
+				});
+				out[kind] = list;
+			}
+			return {
+				data: out,
+				dropped
+			};
+		}
+		async function saveSchedule(t, data, first, base) {
+			let merged = null, dropped = 0;
+			if (base) {
+				const m = await mergeOnBase(data, await loadSchedule(t), base);
+				merged = data = m.data;
+				dropped = m.dropped;
+			} else if (knownTenant !== t) await loadSchedule(t);
 			const hrScoped = !!await hrOnly();
 			const ops = [];
 			const next = {};
@@ -245,6 +330,14 @@
 					if (!next[kind].has(id)) ops.push(["delete", F.doc(db, "tenants", t, kind, id)]);
 				});
 			}
+			const c = await myClaims();
+			if (c.role !== "tenant_admin" && c.role !== "superadmin" && !(Array.isArray(c.rt) && c.rt.includes("editPay"))) for (const op of ops) {
+				if (op[0] !== "set" || op[1].parent.id !== "clients") continue;
+				const cur = await F.getDoc(op[1]);
+				const stored = cur.exists() ? cur.data() : {};
+				for (const k of CLIENT_PAY) if (stored[k] !== void 0) op[2][k] = stored[k];
+				else delete op[2][k];
+			}
 			if (first) {
 				const linked = new Set((first.ids || []).map(String));
 				const isLinked = (op) => op[1].parent.id === "workers" && linked.has(op[1].id);
@@ -260,7 +353,12 @@
 			(data.workers || []).forEach((x) => {
 				if (x && x.id != null) workerHr.set(String(x.id), x.hrId || null);
 			});
-			return {
+			return merged ? {
+				ok: true,
+				written: ops.length,
+				data: merged,
+				dropped
+			} : {
 				ok: true,
 				written: ops.length
 			};
@@ -388,7 +486,16 @@
 			return (await F.getDocs(F.query(col(t, "punches"), ...hrWhere(await hrOnly()), F.where(F.documentId(), ">=", pre), F.where(F.documentId(), "<", pre + "")))).docs.map(punchFromDoc);
 		}
 		async function savePunch(t, entry) {
-			await F.setDoc(F.doc(db, "tenants", t, "punches", String(entry.id)), punchDoc(entry));
+			const c = await myClaims();
+			let hr;
+			if (c.role !== "tenant_admin" && c.role !== "superadmin" && entry.workerId != null) try {
+				const w = await F.getDoc(F.doc(db, "tenants", t, "workers", String(entry.workerId)));
+				if (w.exists()) {
+					hr = w.data().hrId || null;
+					workerHr.set(String(entry.workerId), hr);
+				}
+			} catch {}
+			await F.setDoc(F.doc(db, "tenants", t, "punches", String(entry.id)), punchDoc(entry, hr));
 			return {
 				ok: true,
 				id: entry.id
@@ -408,6 +515,11 @@
 			if (data.ts) {
 				const when = new Date(data.ts);
 				if (!isNaN(when.getTime())) upd.ts = F.Timestamp.fromDate(when);
+			}
+			const day = ddmmyyyyToDay(data.date);
+			if (day) {
+				upd.date = data.date;
+				upd.day = day;
 			}
 			await F.updateDoc(F.doc(db, "tenants", t, "punches", String(data.id)), upd);
 			return { ok: true };
@@ -513,6 +625,9 @@
 			if (ctx.role === "supplier") return { error: "Not available for the supplier role" };
 			const entries = Array.isArray(params.entries) ? params.entries : [];
 			if (!entries.length) return { error: "No recognized shifts to upload" };
+			if (entries.some((e) => !/^\d{2}\/\d{2}\/\d{4}$/.test(String(e.date || "")))) return { error: "A shift has a date that is not dd/MM/yyyy" };
+			const hhmm = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v));
+			if (entries.some((e) => e.inTime && !hhmm(e.inTime) || e.outTime && !hhmm(e.outTime) || e.outTime && !e.inTime)) return { error: "A shift has a time that is not HH:MM" };
 			const ref = F.doc(col(t, "pendingHours"));
 			const rows = entries.map((e) => ({
 				rowId: crypto.randomUUID(),
@@ -577,17 +692,22 @@
 			const note = "Imported" + (b.fileName ? " from " + b.fileName : "");
 			const tsFor = (date, time) => {
 				const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date || "");
-				if (!m || !time) return (/* @__PURE__ */ new Date()).toISOString();
-				const [h, mi] = String(time).split(":").map(Number);
-				return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), h || 0, mi || 0).toISOString();
+				const tm = /^(\d{1,2}):(\d{2})/.exec(String(time || "").trim());
+				if (!m || !tm) return null;
+				const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(tm[1]), Number(tm[2]));
+				return isNaN(+d) || d.getDate() !== Number(m[1]) ? null : d.toISOString();
 			};
 			const ddmmyyyy = (d) => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
-			const batch = F.writeBatch(db);
+			const writes = [];
+			let created = 0;
 			(b.rows || []).forEach((r, i) => {
 				const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
+				if (!inTs) return;
+				created++;
 				[["in", r.inTime], ["out", r.outTime]].forEach(([type, time]) => {
 					if (!time) return;
 					let ts = tsFor(r.date, time), date = r.date;
+					if (!ts) return;
 					if (type === "out" && inTs && ts <= inTs) {
 						const next = new Date(ts);
 						next.setDate(next.getDate() + 1);
@@ -595,7 +715,7 @@
 						date = ddmmyyyy(next);
 					}
 					const id = "imp-" + batchId + "-" + i + "-" + type;
-					batch.set(F.doc(db, "tenants", t, "punches", id), punchDoc({
+					writes.push([F.doc(db, "tenants", t, "punches", id), punchDoc({
 						id,
 						workerId: r.workerId,
 						workerName: names[r.workerId] || "",
@@ -606,17 +726,21 @@
 						clientId: r.clientId || "",
 						notes: note,
 						gpsWarnings: []
-					}, hrs[r.workerId] || null));
+					}, hrs[r.workerId] || null)]);
 				});
 			});
-			batch.update(ref, {
+			for (let i = 0; i < writes.length; i += BATCH_LIMIT) {
+				const batch = F.writeBatch(db);
+				writes.slice(i, i + BATCH_LIMIT).forEach(([r, d]) => batch.set(r, d));
+				await batch.commit();
+			}
+			await F.updateDoc(ref, {
 				status: "approved",
 				decidedAt: (/* @__PURE__ */ new Date()).toISOString()
 			});
-			await batch.commit();
 			return {
 				ok: true,
-				created: (b.rows || []).length
+				created
 			};
 		}
 		async function rejectPendingHours(t, ctx, batchId) {
@@ -628,6 +752,12 @@
 				ok: true,
 				rejected: 0
 			};
+			const left = await punchesOfBatch(t, String(batchId));
+			for (let i = 0; i < left.length; i += BATCH_LIMIT) {
+				const batch = F.writeBatch(db);
+				left.slice(i, i + BATCH_LIMIT).forEach((p) => batch.delete(F.doc(db, "tenants", t, "punches", String(p.id))));
+				await batch.commit();
+			}
 			await F.updateDoc(ref, {
 				status: "rejected",
 				decidedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -850,6 +980,7 @@
 			login,
 			loadSchedule,
 			saveSchedule,
+			scheduleBaseOf,
 			listenWorkers,
 			listenPendingHours,
 			listenPunches,

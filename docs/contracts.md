@@ -1,6 +1,6 @@
 # Signed documents
 
-What is kept under a worker for Form 101 and the contract, and how it is signed. The plan, stage by stage, is [contracts-plan.md](contracts-plan.md); this file describes what is built.
+What is kept under a worker for Form 101 and the contract, and how it is signed. The plan it was built from, stage by stage (D0–D7, done), is archived as [archive/docs/contracts-plan.md](../archive/docs/contracts-plan.md); this file describes what is built.
 
 ## Scanned pages (D1)
 
@@ -24,8 +24,10 @@ Every scanned page of a worker is its own JPEG in Storage, and the signature a s
 Once, by the workflow **Split the old scan sidecars into pages** (`.github/workflows/migrate-scan-pages.yml`, started by hand, the deploy's service account), for every firm or one (`tenant`):
 
 - `dry-run` — reads every sidecar of a worker that has no `scanPages` yet, splits it in memory and reports per firm the workers, pages, signatures, the sidecars' and the pages' bytes and the failures (a sidecar gone, not in the worker's folder, or broken). Writes nothing.
-- `apply` — writes the pages (a page over 2000 px or not a JPEG is turned into one, Pillow; the others byte for byte) and the signature, with the sidecar's HR stamp (`hrId`), then updates only the worker's own fields (`scanPages`, `sigFileId`, `sigSavedAt` — the sidecar's time —, `assetsMigratedFrom` = the sidecar's path, `assetsFileId` removed). The sidecar file stays. Run again, it finds nothing more.
-- `cleanup` — deletes the sidecars already split (`assetsMigratedFrom`) and that field.
+- `apply` — writes the pages (a page over 2000 px or not a JPEG is turned into one, Pillow; the others byte for byte) and the signature, with the HR stamp (`hrId` in the file's metadata — the worker's own `hrId`, else the sidecar's stamp, read with `bucket.get_blob`, since a blob from `bucket.blob()` has no metadata loaded), then a record of the split outside the worker (`tenants/<t>/migrations/scanPages_<worker>`: the sidecar, the new fields, the stamp; no rule lets the app reach it), then updates only the worker's own fields (`scanPages`, `sigFileId`, `sigSavedAt` — the sidecar's time —, `assetsMigratedFrom` = the sidecar's path, `assetsFileId` removed). The sidecar file stays. Run again, it splits nothing more, and it **repairs a stale save**: the app saves a worker as a whole document, so a manager device that still holds a copy from before `apply` (an unsaved edit, kept across reloads) puts back `assetsFileId` with no `scanPages`; a worker whose `assetsFileId` is its recorded sidecar and has no pages gets the recorded fields back with a field update — the same files, none written again, even after `cleanup` deleted the sidecar (`restored` in the report; a recorded file gone is a failure). A worker split before the records existed gets one from its current fields (`recorded`); a worker whose pages or signature were changed in the app since the split (a rescan, a page added, a new signature — the whole-document save keeps `assetsMigratedFrom`) gets its record refreshed to them (`refreshed`), so a later stale save is repaired with the newest pages.
+- `cleanup` — deletes the sidecars already split (`assetsMigratedFrom`) and that field, only for a worker that still carries its recorded split (no `assetsFileId`, `assetsMigratedFrom` = the recorded sidecar; otherwise `skipped`, with the reason — a stale save from before `apply` never matches, since it brings `assetsFileId` back and has no `assetsMigratedFrom`). Pages or a signature changed in the app since `apply` don't stop it: the record is first refreshed to them (`refreshed`). The record stays, so a stale save that comes later is still repaired by running `apply` again.
+
+**Every manager device reloads (or signs out) after `apply`, and `cleanup` runs only after that** — a device's unsaved copy from before `apply` is what a stale save writes back.
 
 `apply` and `cleanup` change real workers' data: they are run only with the owner's yes, after a `dry-run`. Tests: `tests/auth/test_migrate_pages.py`.
 
@@ -35,7 +37,56 @@ Once, by the workflow **Split the old scan sidecars into pages** (`.github/workf
 
 ## Contract templates (D2)
 
-A firm's contract is a PDF with **marks** typed in its text: `{{given}}`, `{{id}}`, `{{signature}}`… — Latin letters in double braces, no spaces (the full list: `MARKS` in `functions/contracts.py` and `src/manager/contracts.ts`, as docs/contracts-plan.md → D2 → The marks). In Word the marks are typed as plain text and the file saved with File → Save as → PDF; blanks after a mark (spaces up to the next letter) are the room a long value may take.
+A firm's contract is a PDF with **marks** typed in its text: `{{given}}`, `{{id}}`, `{{signature}}`… — Latin letters in double braces, no spaces (the full list: `MARKS` in `functions/contracts.py` and `src/manager/contracts.ts`, as the table under The marks below). In Word the marks are typed as plain text and the file saved with File → Save as → PDF; blanks after a mark (spaces up to the next letter) are the room a long value may take.
+
+### The marks
+
+They are written in Latin letters, in double braces, with no spaces. A Hebrew mark could come out of the PDF's text with its letters reversed, so Latin is the safe form. Each value is printed in Hebrew, as on Form 101, except a foreign passport's names, which are printed in Latin.
+
+| Mark | Filled with |
+|---|---|
+| **Worker** | |
+| `{{given}}` | given name |
+| `{{surname}}` | surname |
+| `{{full_name}}` | given name and surname |
+| `{{id}}` | ID or passport number |
+| `{{id_type}}` | ת.ז. or דרכון |
+| `{{id_expiry}}` | the ID's or passport's expiry date |
+| `{{dob}}` | date of birth |
+| `{{sex}}` | זכר / נקבה |
+| `{{marital}}` | marital status |
+| `{{phone}}` | phone |
+| `{{address}}` | street and house number |
+| `{{city}}` | city |
+| `{{full_address}}` | street, house number, city |
+| `{{health_fund}}` | health fund |
+| **Work** | |
+| `{{start_date}}` | start date |
+| `{{end_date}}` | contract end (start date + the contract's months), when set |
+| `{{contract_months}}` | the contract's length in months, when set |
+| `{{site}}` | the client or site (several: joined by commas) |
+| `{{supplier}}` | the supplier, when there is one |
+| `{{schedule}}` | the weekly hours (days and times) |
+| **Pay** — filled only when the login sending it may see pay (the owner or super-admin, a staff login with Accounting or Edit pay, an HR with See workers' pay — `may_see_pay` / `canSeePay`); otherwise the send is refused, as for the date | |
+| `{{rate}}` | the worker's rate (₪ per hour, or per day for daily pay) |
+| `{{pay_mode}}` | שעתי / יומי |
+| `{{ot_rate}}` | overtime rate |
+| `{{shabbat_rate}}` | Shabbat rate |
+| `{{travel}}` | travel allowance (per day, or per month) |
+| `{{bank}}` | bank, branch and account number |
+| **Firm** | |
+| `{{company}}` | the firm's name |
+| `{{company_address}}` | the firm's address |
+| `{{company_phone}}` | the firm's phone |
+| `{{deductions_file}}` | the deductions file number |
+| **The worker's own terms** | |
+| `{{terms_1}}` … `{{terms_5}}` | the worker's own text fields (above) |
+| **Signing** | |
+| `{{signature}}` | the worker's signature (a picture, fitted to the mark's place) |
+| `{{sign_date}}` | the signing date (D3) |
+| `{{today}}` | the date the document is built |
+
+An unknown mark (a typo) is listed on upload and placed by hand or fixed in the file. A mark whose value is empty for a worker (no supplier, say) is printed empty.
 
 ### The server (`functions/contracts.py`, the `contract_templates` function)
 
@@ -61,7 +112,7 @@ A firm's contract is a PDF with **marks** typed in its text: `{{given}}`, `{{id}
 
 - A `Plate` per firm template (`PagedList`): the name (and its version from 2 on), the category and **Default** chips, the size, the date added, how many signed it (`signedCount`, counted from D3), unknown marks in amber. A tap opens its sample (`file` with `sample`, in a new tab); a double click / ✎ renames it; ⋮: Edit (the name), Category, Make default (when it is not), Replace file, Delete (the Undo snack, then `delete`).
 - **New template** (`.og-new`) picks a PDF → the upload window (`UploadWindow`): "Making the file light…", then both sizes ("Made light: 2.4 MB → 180 KB"), the name and the category (the firm's categories offered), the marks found as chips, the unknown ones, the picture pages, **Open the sample**, and Save. **Place a mark by hand** shows the pages (the picture pages always): pick a mark and its width, tap where it goes; each placed mark is a chip (✕ removes it) and a box on the page, and the sample is made again.
-- Sends waiting for a signature on a deleted template (D3) are not there yet.
+- Deleting a template withdraws the sends still waiting for a signature on it (Signing → `send` below).
 
 ## The worker's contract (D2)
 
@@ -78,7 +129,7 @@ Form 101 and the worker's contract are signed **once**, with the same signature 
 ### The manager's side
 
 - **Documents to sign** on the worker card (`card-sign`, a login that edits workers) opens the sign window (`src/manager/SignWindow.tsx`). It reads `ManagerBridge.signContext(id)` — the saved worker, Form 101's values (`form101Payload`), the contract's mark values (`contractValues`, `src/manager/logic/contract-values.ts`: Hebrew as Form 101, a passport's names Latin; the pay marks only for a login that sees pay, `canSeePay`), the punch link and its WhatsApp link — and the templates (`list` with the worker): the worker's own pick, else its category's default, is chosen first.
-- **The signing date:** the day of signing by default; a login with the right **Set the signing date** (`canSetSignDate`: the owner, the super-admin, or the template's `setSignDate` tick — docs/permissions-plan.md) picks it in the window. The worker never changes it.
+- **The signing date:** the day of signing by default; a login with the right **Set the signing date** (`canSetSignDate`: the owner, the super-admin, or the template's `setSignDate` tick — archive/docs/permissions-plan.md) picks it in the window. The worker never changes it.
 - **Send to sign** (`send`, way `remote`): the request waits in the worker's own page; the window shows the link with **Send on WhatsApp** and Copy. **Sign here** (way `person`): both documents filled, in the window (`SignDocuments`), one signature → `sign`, the window closes at once and the two PDFs are built in the background (`buildSigned`: `build` form101 and contract at once), then taken onto the worker.
 - **On the worker** (`src/manager/logic/signing.ts`): the firm's requests are read when the Workers tab is drawn (at most once a minute; `loadSignRequests`) and after a signing; the card shows **Sent to sign**, **Signed <date>** or **Needs sending again** (the template was deleted before the signature). A signed request not taken yet is put on the worker once (`adoptSigned`): Form 101 as `docUrl` / `docFileId`, the contract as a `docs` entry with `signed: true`, `signedAt`, `signDate`, `signedRequestId`, the signature (`sigFileId`); the replaced signed Form 101 and contract are deleted; then `applied`.
 - **Never built again:** a worker with `signedAt` keeps its signed Form 101 — no rebuild after an edit or a firm change, a rescan stores only its pages (docs/form101.md → When it is built). A later change to a template never touches signed contracts.
@@ -98,7 +149,7 @@ Form 101 and the worker's contract are signed **once**, with the same signature 
 
 ## A new signature after a change (D4)
 
-- **At the send** the sign window keeps what the documents print about the worker: `printHash(form101, values, marks, withPay)` (`src/manager/logic/contract-values.ts`) — Form 101's values without the firm's block and the date, and the contract's marks the template prints (`printMarks`), without the firm's marks; the pay marks count only when the sender saw pay (`printPay`, which the server keeps true only for a login that sees pay). The server stores them with the request; taking the signed documents onto the worker copies them (`signedPrint`, `signedPrintPay`, `signedPrintMarks`).
+- **At the send** the sign window keeps what the documents print about the worker: `printHash(form101, values, marks, withPay)` (`src/manager/logic/contract-values.ts`) — Form 101's values without the firm's block, the date and `street` / `houseNumber` (they repeat `address`), and the contract's marks the template prints (`printMarks`), without the firm's marks; the pay marks count only when the sender saw pay (`printPay`, which the server keeps true only for a login that sees pay). The server stores them with the request; taking the signed documents onto the worker copies them (`signedPrint`, `signedPrintPay`, `signedPrintMarks`).
 - **A change** to any of those values (the worker window, a scan, the card) gives the worker the amber notice **Documents changed — needs a new signature** (`signedChanged`, `workerNotices` in `src/manager/page/workers.ts`) on the plate and the card, with **Sign** as its action: the worker card opens with the sign window (`askSign` / `takeSign`, `SignWindow.tsx`). A change to the firm's own details (name, address, phone, deductions file) asks no worker to sign again; the new details go into the next signing.
 - **Until the worker signs**, the old signed documents stay. **When the worker signs**, the new Form 101 and contract replace them and the old ones are deleted — no archive (owner, 2026-10-20; `adoptSigned`, Signing above).
 
@@ -121,8 +172,8 @@ Tests: `tests/auth/test_signing.py` (the order, never pay, who may) and the brow
 
 A copy, with the worker's signed consent (`functions/transfer.py`, through `sign_documents`):
 
-1. **The new firm asks:** its admin (or a super-admin inside it) taps **From another firm** in the Workers tab (`TransferAskWindow`, `src/manager/TransferAsk.tsx`) and types the worker's ID or passport number → `transferAsk`. The server looks in the other firms (the collection-group index on `workers.docKeys`) and opens a request for each worker found who is not Inactive; the answer is always **Request sent**, found or not — the new firm learns nothing until the worker approves, and the old firm sees nothing of it. A request not answered ends after 14 days (`expiresAt`, marked `expired` when next read).
-2. **The worker approves in their own page** (the old firm's punch link): a card **[new firm] asks to take your details** (`TransferCard`, `src/punch/Documents.tsx`) opens a sheet with the new firm's Form 101 and contract filled with the worker's data and the new firm's details (`view` with `transfer: true`: Form 101's values and the contract's marks built on the server — `form101_payload`, `contract_values`; the work and pay marks stay empty; the contract is the new firm's default template, the one without a category first), one signature with the day's date (`sign` — the consent and the signing in one), then the two PDFs built at once (`build`); or **Decline** (nothing is copied).
+1. **The new firm asks:** its admin (or a super-admin inside it) taps **From another firm** in the Workers tab (`TransferAskWindow`, `src/manager/TransferAsk.tsx`) and types the worker's ID or passport number → `transferAsk`. The server looks in the other firms (the collection-group index on `workers.docKeys`; an Israeli ID matches with or without its leading 0 — `doc_key_forms`, as `checkWorkerDoc` — so "12345678" finds a worker stored as "012345678" and the other way round) and opens a request for each worker found who is not Inactive; the answer is always **Request sent**, found or not — the new firm learns nothing until the worker approves, and the old firm sees nothing of it. A request not answered ends after 14 days (`expiresAt`, marked `expired` when next read).
+2. **The worker approves in their own page** (the old firm's punch link): a card **[new firm] asks to take your details** (`TransferCard`, `src/punch/Documents.tsx`) opens a sheet with the new firm's Form 101 and contract filled with the worker's data and the new firm's details (`view` with `transfer: true`: Form 101's values and the contract's marks built on the server — `form101_payload` (the street and the house number apart, as `form101Payload` sends them, so "12א" prints whole), `contract_values`; the work and pay marks stay empty; the contract is the new firm's default template, the one without a category first), one signature with the day's date (`sign` — the consent and the signing in one), then the two PDFs built at once (`build`); or **Decline** (nothing is copied).
 3. **The copy** (`_copy`, only after both signed PDFs are built): a new worker record in the new firm with the personal and family fields only (`PERSONAL`: names, ID / passport, its expiry, birth date, sex, marital status, health fund, phone, address, income types, children, spouse), the scanned pages and the signature (copied in Storage), the signed Form 101 (`docUrl`) and contract (`docs`, `signed`), a new punch-link token, the start date = the day of signing, `movedFromOtherFirm`. Nothing else: no hours, pay, rates, clients, supplier, HR, token or notes.
 4. **The old firm** keeps the worker as they were — the record, the documents, the hours — set Inactive (`status: fired`) with `movedToOtherFirm` (the card's chip **Moved to another firm**), without the new firm's name.
 

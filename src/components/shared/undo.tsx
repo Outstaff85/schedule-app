@@ -22,6 +22,13 @@ function finish(run: 'commit' | 'restore') {
   p[run]();
 }
 
+/** The snack ended now (the old pages' finishUndo): its delete made (`commit`, default) or taken back
+ *  (`restore`), and the snack closed — for a screen that goes away before the timer runs out (the scanner's
+ *  Done), so no Undo is offered for a page that is already gone. Nothing when no snack is shown. */
+export function finishUndo(run: 'commit' | 'restore' = 'commit') {
+  finish(run);
+}
+
 /** Shows "<text> · Undo" for 5 s; `commit` runs after, `restore` on Undo. */
 export function undoDelete(text: string, commit: () => void, restore: () => void, ms = 5000) {
   if (pending) finish('commit');

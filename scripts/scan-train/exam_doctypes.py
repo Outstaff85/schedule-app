@@ -207,7 +207,7 @@ def your_documents():
         q = np.float64(e["fixed"])
         if up:
             q = np.roll(q, -k, axis=0)   # the document's own top-left first
-        page = phone.warp_rgba(img, q.tolist())[..., :3]   # cut as the phone cuts (scan-core.js warpRGBA)
+        page = phone.warp_rgba(img, q.tolist())[..., :3]   # cut as the phone cuts (geometry.ts warpRGBA)
         if page.shape[0] < 2 or page.shape[1] < 2:
             continue
         out.append({"img": page, "doctype": kind, "doc": e.get("template"), "upright": up, "id": e.get("id"),

@@ -14,6 +14,7 @@ import { getPunchLog } from '../data/punches';
 import { getWorkerMonthShifts } from '../logic/exports';
 import { render } from './render';
 import { showToast } from '../toast';
+import { mayWriteWorkers } from '../logic/access';
 import { island } from '../bridge';
 Object.defineProperties(window, {
   "openAddClient": {get: () => openAddClient, configurable: true},
@@ -65,13 +66,26 @@ export function punchFromClientModal(){
   if(!byId('clientOverlay').classList.contains('open')) openManualPunch(cid);
 }
 // A client's Undo time is up: removed, taken off every worker and the site filter; saved.
+// A login that may not write the workers the delete changes (their client
+// list; a per-client rate needs Edit pay too) is refused here: the refused
+// worker writes would stay in every later save of this device (mayWriteWorkers).
 export function deleteClientsNow(ids?: any){
+  const blocked=ids.filter((cid?: any)=>{
+    const hit=workers.filter((w?: any)=>(w.clientIds||[]).includes(cid)||(w.clientRates&&w.clientRates[cid]));
+    return hit.length>0 && !mayWriteWorkers(hit.some((w?: any)=>w.clientRates&&w.clientRates[cid]));
+  });
+  if(blocked.length){
+    const c=clients.find((x?: any)=>x.id===blocked[0]);
+    showToast(tr('{0} was not deleted — it would change workers this login may not edit',{0:(c&&c.name)||tr('Client')}));
+    ids=ids.filter((cid?: any)=>!blocked.includes(cid));
+    if(!ids.length){ renderClientsPage(); render(); return; }
+  }
   const one=ids.length===1?clients.find((c?: any)=>c.id===ids[0]):null;
   ids.forEach((cid?: any)=>{
     clients=clients.filter((x?: any)=>x.id!==cid);
     workers.forEach((w?: any)=>{ if(w.clientIds) w.clientIds=w.clientIds.filter((id?: any)=>id!==cid); if(w.clientRates&&w.clientRates[cid]) delete w.clientRates[cid]; });
     if(selectedClientId===cid) selectedClientId=null; });
-  render(); autoSave(); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
+  render(); autoSave({allowEmpty:true}); showToast(one?tr('{0} removed',{0:one.name}):tr('{0} clients',{0:ids.length}));
 }
 // ── The map picker (React since stage 8e-3: src/manager/MapPicker.tsx, Google
 // Maps in src/manager/maps.ts). The client window's small map opens it

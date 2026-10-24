@@ -29,7 +29,7 @@ def build101(p):
     page = doc.new_page()
     page.insert_text((50, 80), "F101 " + str(p.get("given")) + " " + str(p.get("signDate")) + (" SIGNED" if p.get("signaturePngBase64") else "")
                      + " pages=" + str(len(p.get("extraPages") or [])), fontsize=12)
-    return doc.tobytes(), "f101 " + str(p.get("given")) + ".pdf", []
+    return doc.tobytes(), "f101 " + str(p.get("given")) + ".pdf"
 
 
 def _setup():

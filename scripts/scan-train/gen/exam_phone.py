@@ -8,7 +8,7 @@ phone profile gives the exams (the mix's heaviest while no phone is measured; it
 
 For each model and set: mean corner error, the share within 2 % and the share not found (exam.score), by INTER_AREA,
 by "live" and by "capture" — "phone" names the light model's live and the accurate one's capture. Then the lab's
-whole shot (index.html takeShot), on each path: the light model's live corners (no four corners: no shot), the
+whole shot (shot.ts takeShot), on each path: the light model's live corners (no four corners: no shot), the
 accurate model's confirming them (sure: they are the first document's), up to three more documents by the lab's
 findNext (docfind.find_next with lab=True: its goodQuad, docShape and quadIoU, its paint colour) and one lying on each
 found by find_inside (at most 5), the same rules on both paths — counted: shots, confirmed, moved, documents found, the photos
@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 
-from .phone import LAB_MAX_DOCS as MAX_DOCS   # index.html MAX_DOCS
+from .phone import LAB_MAX_DOCS as MAX_DOCS   # geometry.ts MAX_DOCS
 
 SETS = {"templates": "your documents (made-up photos of the real pages kept apart)",
         "midv": "MIDV-2020 exam documents", "smartdoc": "SmartDoc exam pages"}
@@ -56,7 +56,7 @@ def exam_sets(work, count):
 
 
 def shot(models, img, path):
-    """The lab's shot on one photo (index.html takeShot, findNext, findInside — their rules on both paths): path
+    """The lab's shot on one photo (shot.ts takeShot, findNext, findInside — their rules on both paths): path
     "phone" (the live frame by createImageBitmap, smallRGBA after) or "area" (INTER_AREA everywhere). Besides the counts,
     "quads": every document found (0..1, the model's order) and "how": where each came from (live, cap, next, inside)
     — gen/phone_run.py cuts the pages by them."""

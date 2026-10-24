@@ -58,12 +58,14 @@ const _urlHasGeo = !!(params.get('lat') && params.get('lng'));
 const _rawLat = (_siteEff?.lat as string | undefined) ?? params.get('lat');
 const _rawLng = (_siteEff?.lng as string | undefined) ?? params.get('lng');
 const num = (v: unknown) => (v != null && v !== '' && !isNaN(parseFloat(String(v))) ? parseFloat(String(v)) : null);
+/** A site's radius in metres: 100 when unset, never under 10 (as the client window saves it). */
+function siteRadius(v: unknown): number { return Math.max(10, parseInt(String(v ?? ''), 10) || 100); }
 export const SITE: { name: string; object: string; lat: number | null; lng: number | null; radius: number; clientId: string | null } = {
   name: (_siteEff?.clientName as string) || params.get('site') || 'Work Site',
   object: '',
   lat: num(_rawLat),
   lng: num(_rawLng),
-  radius: parseInt(String(_siteEff?.radius || params.get('r'))) || 100,
+  radius: siteRadius(_siteEff?.radius || params.get('r')),
   clientId: (_siteEff?.clientId as string) || null,
 };
 
@@ -142,6 +144,52 @@ export function showToast(msg: string) {
 // ── The device's punch log ──
 export function getPunchLog(): PunchEntry[] { try { return JSON.parse(localStorage.getItem('punchLog') || '[]'); } catch { return []; } }
 function savePunchLog(log: PunchEntry[]) { localStorage.setItem('punchLog', JSON.stringify(log)); }
+/** A punch the server answered refused never reached it: it leaves this device's
+ *  history too, so it no longer decides the next IN / OUT. */
+function dropFromLog(e: PunchEntry) {
+  const log = getPunchLog(), left = log.filter(x => !(x.id === e.id && x.workerId === e.workerId));
+  if (left.length !== log.length) savePunchLog(left);
+}
+// The worker's punches the server holds (myMonth: this month, with a day of
+// margin, so last night's IN is there too): another phone's punches, or one a
+// manager added, count for the next IN / OUT as well as this device's history.
+const _serverPunches = new Map<string, { workerId: string; type: string; ts: string; time?: string }>();
+/** The span a myMonth reply for `month` ('YYYY-MM') surely covers, in ms: the server
+ *  reads [1st − 1 day, next 1st + 1 day) in its own time zone; 14 hours off each end
+ *  keeps the span inside that window whatever the zone. */
+export function serverMonthSpan(month: string): [number, number] | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!m) return null;
+  const y = +m[1], mo = +m[2] - 1, day = 864e5, slack = 14 * 36e5;
+  return [Date.UTC(y, mo, 1) - day + slack, Date.UTC(y, mo + 1, 1) + day - slack];
+}
+/** Keeps the server's punches of a myMonth reply (figures.ts); redraws when the latest one changed.
+ *  The reply is the server's full list for its month: this worker's punches kept from an
+ *  earlier reply in that span and missing now (a manager deleted them) are dropped. */
+export function noteServerPunches(list: Record<string, unknown>[] | undefined, month?: string) {
+  const wid = st.worker?.id, before = lastPunch(wid), span = month ? serverMonthSpan(month) : null;
+  if (span) {
+    _serverPunches.forEach((p, k) => {
+      const t = new Date(p.ts).getTime();
+      if (p.workerId === wid && t >= span[0] && t < span[1]) _serverPunches.delete(k);
+    });
+  }
+  (list || []).forEach(p => {
+    if (!p || !p.ts || (p.type !== 'in' && p.type !== 'out')) return;
+    _serverPunches.set(String(p.workerId) + '|' + String(p.id ?? p.ts), { workerId: String(p.workerId), type: String(p.type), ts: String(p.ts), time: p.time as string | undefined });
+  });
+  const after = lastPunch(wid);
+  if (before?.ts !== after?.ts || before?.type !== after?.type) set({ rev: st.rev + 1 });
+}
+/** The worker's latest punch, by ts: this device's history and the server's punches together. */
+export function lastPunch(wid?: string): { type: string; ts: string; time?: string } | null {
+  const local = getLastEntry(getPunchLog(), wid);
+  let best: { type: string; ts: string; time?: string } | null = local;
+  _serverPunches.forEach(p => {
+    if (p.workerId === wid && (!best || new Date(p.ts).getTime() > new Date(best.ts).getTime())) best = p;
+  });
+  return best;
+}
 export function getLastEntry(log: PunchEntry[], wid?: string): PunchEntry | null {
   const es = log.filter(e => e.workerId === wid);
   if (!es.length) return null;
@@ -151,15 +199,6 @@ export function haversine(a: number, b: number, c: number, d: number) {
   const R = 6371000, dL = (c - a) * Math.PI / 180, dl = (d - b) * Math.PI / 180;
   const x = Math.sin(dL / 2) ** 2 + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.sin(dl / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
-// A leftover bridge to the manager app on the same device: an OUT writes today's shift into its cache.
-function updateScheduleManager(wid: string, s: string, e: string) {
-  try {
-    const k = 'schedMgr_v1', r = localStorage.getItem(k) || localStorage.getItem('scheduleManagerData');
-    if (!r) return;
-    const d = JSON.parse(r), w = d.workers?.find((x: { id: string }) => x.id === wid);
-    if (w) { w.schedule[new Date().getDay()] = { type: 'work', start: s, end: e }; localStorage.setItem(k, JSON.stringify(d)); }
-  } catch { /* no cache */ }
 }
 
 // ── Offline queue ──
@@ -173,7 +212,11 @@ export function wpToken(): string | null { return (st.worker && st.worker.token)
 // 'retry': no network, a server failure (5xx) or an unreadable reply — the
 // punch is queued. 'refused': the function answered with json.error (a link
 // that no longer works, a punch that isn't this worker's) — a retry can never
-// succeed, so it isn't queued forever; the punch stays in the local history.
+// succeed, so it isn't queued, and the punch is taken out of this device's
+// history (dropFromLog) so it no longer decides the next IN / OUT. A punch sent
+// late (an offline queue held for days) is kept by the server with a warning
+// for the manager; only one more than 30 days late is refused (a clock set
+// back, never a queue — functions-auth/portal.py, MAX_LATE / MAX_KEEP).
 async function sendPunch(e: PunchEntry): Promise<'ok' | 'retry' | { refused: string }> {
   try {
     const res = await postPunch(e);
@@ -183,12 +226,13 @@ async function sendPunch(e: PunchEntry): Promise<'ok' | 'retry' | { refused: str
     return res.ok && json?.error ? { refused: json.error } : 'retry';
   } catch { return 'retry'; }
 }
-function showRefused(msg: string) { showToast(tr('Punch not recorded: {0}', { 0: msg })); }
+/** A refusal is always an error toast (its text matches none of toastKind's words). */
+function showRefused(msg: string) { toast.error(tr('Punch not recorded: {0}', { 0: msg })); }
 async function gsSavePunch(entry: PunchEntry) {
   if (!navigator.onLine) { queueEntry(entry); return; }
   const r = await sendPunch(entry);
   if (r === 'retry') queueEntry(entry);
-  else if (r !== 'ok') showRefused(r.refused);
+  else if (r !== 'ok') { dropFromLog(entry); showRefused(r.refused); }
 }
 function queueEntry(entry: PunchEntry) {
   entry.workerToken = entry.workerToken || wpToken();
@@ -196,26 +240,28 @@ function queueEntry(entry: PunchEntry) {
   set({ queued: q.length });
 }
 let _flushingQueue = false;
-/** Sends the queued punches one at a time ('online' and on load); the failed ones stay. */
+/** Sends the queued punches one at a time ('online' and on load); the failed ones stay.
+ *  "Synced N" counts only the punches the server stored, never the refused ones. */
 export async function flushQueue() {
   if (_flushingQueue) return; // two overlapping runs would both read the same queue and double-post
   const q = getQueue();
   if (!q.length || !navigator.onLine) return;
   _flushingQueue = true;
   const failed: PunchEntry[] = [];
-  let left = failed;
+  let left = failed, sent = 0;
   try {
     for (const e of q) {
       const r = await sendPunch(e);
       if (r === 'retry') failed.push(e);
-      else if (r !== 'ok') showRefused(r.refused);
+      else if (r === 'ok') sent++;
+      else { dropFromLog(e); showRefused(r.refused); }
     }
     // Keep what was queued while this loop was waiting on the network.
     left = failed.concat(getQueue().slice(q.length));
     saveQueue(left);
   } finally { _flushingQueue = false; }
   set({ queued: left.length });
-  if (!left.length && q.length) showToast(q.length > 1 ? tr('Synced {0} offline punches', { 0: q.length }) : tr('Synced 1 offline punch'));
+  if (!left.length && sent) showToast(sent > 1 ? tr('Synced {0} offline punches', { 0: sent }) : tr('Synced 1 offline punch'));
 }
 /** At startup: a queue left from before shows its badge and is sent. */
 export function startQueue() {
@@ -236,11 +282,14 @@ const forSite = (list: Record<string, unknown>[]) => {
   const f = list.filter(w => ((w.clientIds as string[]) || []).includes(SITE.clientId!));
   return f.length ? f : list;
 };
+// This page's own copy of its last load (the manager app's sign-out leaves it; the manager no
+// longer writes the unscoped 'schedMgr_v1' this page used to share, still read once as a fallback).
+const WORKERS_KEY = 'punchWorkers_v1';
 function loadWorkers() {
-  // 1: data passed from the manager app (same device); 2: its cache; 3: the server (init).
+  // 1: data passed from the manager app (same device); 2: this page's cache; 3: the server (init).
   if (_site?.workers?.length) { workers = _site.workers; return; }
   try {
-    const raw = localStorage.getItem('schedMgr_v1') || localStorage.getItem('scheduleManagerData');
+    const raw = localStorage.getItem(WORKERS_KEY) || localStorage.getItem('schedMgr_v1') || localStorage.getItem('scheduleManagerData');
     if (raw) {
       const d = JSON.parse(raw);
       allClients = d.clients || [];
@@ -260,7 +309,7 @@ export async function loadWorkersFromGS(): Promise<boolean> {
     if (data.workers && data.workers.length) {
       allClients = data.clients || [];
       workers = slim(forSite(data.workers));
-      localStorage.setItem('schedMgr_v1', JSON.stringify(data)); // the next open works offline from it
+      try { localStorage.setItem(WORKERS_KEY, JSON.stringify(data)); } catch { /* full: no offline copy */ } // the next open works offline from it
       return true;
     }
   } catch (e) { console.warn('Worker load failed:', (e as Error).message); }
@@ -326,7 +375,7 @@ function resolveSiteFromWorker(w: PWorker) {
   const geo = cs.find(hasGeo);
   if (geo) {
     SITE.name = geo.name || SITE.name; SITE.object = geo.object || '';
-    SITE.lat = Number(geo.lat); SITE.lng = Number(geo.lng); SITE.radius = Number(geo.radius) || 100; SITE.clientId = geo.id;
+    SITE.lat = Number(geo.lat); SITE.lng = Number(geo.lng); SITE.radius = siteRadius(geo.radius); SITE.clientId = geo.id;
   } else if (cs[0]) {
     SITE.name = cs[0].name || ''; SITE.object = cs[0].object || ''; SITE.clientId = cs[0].id;
   }
@@ -353,7 +402,7 @@ export function pickObject(clientId: string) {
   const c = allClients.find(x => x.id === clientId);
   if (c) {
     SITE.name = c.name || SITE.name; SITE.object = c.object || ''; SITE.clientId = c.id;
-    if (hasGeo(c)) { SITE.lat = Number(c.lat); SITE.lng = Number(c.lng); SITE.radius = Number(c.radius) || 100; }
+    if (hasGeo(c)) { SITE.lat = Number(c.lat); SITE.lng = Number(c.lng); SITE.radius = siteRadius(c.radius); }
     else { SITE.lat = null; SITE.lng = null; }
   }
   _geoLocked = true;
@@ -452,8 +501,10 @@ export const openGpsHelp = () => set({ gpsHelp: true });
 export const closeGpsHelp = () => set({ gpsHelp: false });
 
 // ── A punch ──
-/** IN or OUT: the opposite of the worker's last punch across all days (an overnight shift closes correctly). */
-export function nextType(): 'in' | 'out' { return getLastEntry(getPunchLog(), st.worker?.id)?.type === 'in' ? 'out' : 'in'; }
+/** IN or OUT: the opposite of the worker's last punch across all days (an overnight shift closes correctly),
+ *  on this device or on the server (a new phone, a punch a manager added). */
+export function nextType(): 'in' | 'out' { return lastPunch(st.worker?.id)?.type === 'in' ? 'out' : 'in'; }
+const IL_TIME = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 export function doPunch() {
   const w = st.worker;
   if (!st.locOk || !w) return;
@@ -462,8 +513,9 @@ export function doPunch() {
   // The site check must be fresh: re-read the GPS instead of punching on an old reading.
   if (geoEnforced && (!lastGps || Date.now() - lastGps.at > GPS_FRESH_MS)) { showToast(tr('Checking your location again — punch in a moment')); getLocation(); return; }
   _lastPunchAt = Date.now();
-  const now = new Date(), hh = String(now.getHours()).padStart(2, '0'), mm = String(now.getMinutes()).padStart(2, '0');
-  const log = getPunchLog(), last = getLastEntry(log, w.id), type = last?.type === 'in' ? 'out' : 'in';
+  // The time in Israel, as the punch function stores it (from ts), whatever this phone's time zone.
+  const now = new Date(), [hh, mm] = IL_TIME.format(now).split(':');
+  const log = getPunchLog(), last = lastPunch(w.id), type = last?.type === 'in' ? 'out' : 'in';
   const gps = lastGps || ({} as Partial<NonNullable<typeof lastGps>>);
   const entry: PunchEntry = {
     id: Date.now(), workerId: w.id, workerName: w.name,
@@ -477,7 +529,6 @@ export function doPunch() {
   };
   log.push(entry); savePunchLog(log);
   void gsSavePunch(entry);
-  if (type === 'out' && last) updateScheduleManager(w.id, last.time, hh + ':' + mm);
   // The page stays: the face flashes its colour, a check draws, the phone vibrates, the line says so.
   try { navigator.vibrate?.([30, 40, 60]); } catch { /* not allowed */ }
   let text: string;
@@ -559,7 +610,7 @@ export function reportError(message: unknown, source?: string, stack?: string) {
     if (_errSent[key] && nowT - _errSent[key] < 60000) return;
     _errSent[key] = nowT; _errCount++;
     punchFn({
-      action: 'logError', page: (location.pathname.split('/').pop() || location.href), role: 'worker',
+      action: 'logError', token: wpToken(), page: (location.pathname.split('/').pop() || location.href), role: 'worker',
       worker: (st.worker && st.worker.name) || (URL_TOKEN ? 'token:' + String(URL_TOKEN).slice(0, 4) : ''),
       message: String(message || '').slice(0, 500), source: String(source || '').slice(0, 300), stack: String(stack || '').slice(0, 1200),
     }).catch(() => {});

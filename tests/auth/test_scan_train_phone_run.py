@@ -418,7 +418,7 @@ def test_the_doctype_square_is_drawn_from_the_full_cut_as_the_phone_draws_it(tmp
         e = ents[0]
         img = cv2.imread(str(tmp_path / e["file"]))
         assert e["file"].endswith(".png") and img.shape == (256, 256, 3) and e["cut_size"] == [1730, 1090] and e["cut_from"] == "native"
-        want = phone.doctype_input(crop, bgr=True, kernel=e["kernel"])     # index.html doctypeAnswer on the full cut
+        want = phone.doctype_input(crop, bgr=True, kernel=e["kernel"])     # readers.ts doctypeAnswer on the full cut
         assert np.array_equal(np.ascontiguousarray(img[..., ::-1].transpose(2, 0, 1)).astype(np.float32) / 255.0, want)
         assert e["kernel"] == phone.kernel_for("capture", doctype.kernel_rng(ctx, 0))   # its own stream: the same every drawing
         kernels.add(e["kernel"])

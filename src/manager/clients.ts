@@ -74,11 +74,17 @@ export function clientFormOf(c: ClientRecord): ClientForm {
 export function clientRecordOf(f: ClientForm, b: Bill, color: string): ClientRecord {
   return {
     name: f.name.trim(), object: f.object.trim(), address: f.address.trim(), companyNumber: f.companyNumber.trim(), color,
-    lat: parseFloat(f.lat) || null, lng: parseFloat(f.lng) || null, radius: parseInt(f.radius, 10) || 100, mapsUrl: f.mapsUrl.trim(),
+    lat: parseFloat(f.lat) || null, lng: parseFloat(f.lng) || null, radius: clientRadius(f.radius), mapsUrl: f.mapsUrl.trim(),
     defaultHourlyRate: rateNum(f.defRate), defaultOtRate: null, defaultShabbatRate: null,
     rateMode: b.rateMode, fixedBillRate: b.fixedBillRate, billRate: b.billRate, billOtRate: b.billOtRate, billShabbatRate: b.billShabbatRate,
     dailyBillRate: b.dailyBillRate,
   };
+}
+
+/** A site's punch radius in metres: 100 when empty, never under 10 (a
+ *  negative or tiny radius would put every punch outside the site). */
+export function clientRadius(v: unknown): number {
+  return Math.max(10, parseInt(String(v ?? ''), 10) || 100);
 }
 
 /** A pasted Google Maps link (or plain "lat, lng"): its point, or null. */

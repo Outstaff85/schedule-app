@@ -63,7 +63,7 @@ def crop(rng, g, box, role=None):
     and a corner a little off moves the card under that box — so the box is moved by up to SHIFT of the card's width
     and height and each axis of the card is scaled by up to ±SCALE about its centre (in shares of the card, not of the
     box: a field far from the centre moves more), then grown by heLine's margins (hemodel.MARGIN_X / MARGIN_Y, the
-    phone's scan-lab/index.html heLine — mirrored)."""
+    phone's src/scan/engine/readers.ts heLineBox — mirrored)."""
     from hemodel import MARGIN_X, MARGIN_Y, widened
     H, W = g.shape[:2]
     x, y, w, h = box

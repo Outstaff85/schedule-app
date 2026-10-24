@@ -180,7 +180,7 @@ def _pdf(req, which, worker, bucket, build101, signature=None, date=None):
     p = dict(req.get("form101") or {}, signDate=date, extraPages=_stored_pages(bucket, worker))
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
-    data, name, _missing = build101(p)
+    data, name = build101(p)
     return data, name
 
 

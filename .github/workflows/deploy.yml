@@ -19,8 +19,11 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           node tests/build/check.js
-      # The scanner lab's models and ONNX Runtime (docs/scan-plan.md → Scanner lab),
-      # kept in the Actions cache between deploys.
+      # Each scanner surface gets its own models, models.json, he-layouts.json and ONNX Runtime (both builds, the
+      # .mjs the engine imports) after the build (docs/build.md → The scanner's entries): the lab's next to its built
+      # page in /scan-lab/ at scripts/scan-lab/models-version, the site's in /scan/ at scripts/scan/models-version.
+      # Each is kept in the Actions cache by its own version file; each script stops the deploy when a file its
+      # page loads is missing. The site never loads from /scan-lab/ (tests/build/check.js → the surface guard).
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -28,21 +31,24 @@ jobs:
         with:
           path: /tmp/models
           key: scan-lab-models-v3-${{ hashFiles('scripts/scan-lab/models-version') }}
-      - name: The scanner lab's models
+      - name: The scanner lab's models (/scan-lab/)
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
           scripts/scan-lab/fetch-models.sh dist/scan-lab
           rm -f "$RUNNER_TEMP/gcp-sa.json"
-      # The site scanner's own models and ONNX Runtime under /scan/ (docs/scan.md → The scan window).
+      # The site scanner's own models and ONNX Runtime under /scan/ (docs/scan.md → The scan window): what the
+      # manager page's scanner (src/scan/engine/surface.ts → siteSurface) loads.
       - uses: actions/cache@v4
         with:
           path: /tmp/scan-models
           key: scan-models-v1-${{ hashFiles('scripts/scan/models-version') }}
-      - name: The site scanner's models
+      - name: The site scanner's models (/scan/)
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
           scripts/scan/fetch-models.sh dist/scan

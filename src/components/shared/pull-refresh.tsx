@@ -1,4 +1,4 @@
-// PullRefresh: pull down to refresh on a phone (react-migration-plan.md →
+// PullRefresh: pull down to refresh on a phone (archive/docs/react-migration-plan.md →
 // Look). When the page (or the nearest scrolling box) is at its top, a finger
 // pulled down far enough (the arrow turns) and let go runs `onRefresh`; a spinner shows
 // under the header while it runs. Touch only; a computer reloads with the page's

@@ -28,7 +28,7 @@ import { deleteLater } from './Clients';
 import { hoursShort } from './today';
 import { canChange } from './logic/access';
 import {
-  billMain, billOf, clientFormOf, clientRecordOf, margin, moneyShort, parseMapsUrl, rateNum, setBillMain, setPayUnit, setRateMode,
+  billMain, billOf, clientFormOf, clientRadius, clientRecordOf, margin, moneyShort, parseMapsUrl, rateNum, setBillMain, setPayUnit, setRateMode,
   type Bill, type ClientForm,
 } from './clients';
 
@@ -116,7 +116,11 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
       setTimeout(() => nameRef.current?.focus(), 0);
       return;
     }
-    api.commitClient(editId, clientRecordOf(form, b, c.color || ''));
+    const rec = clientRecordOf(form, b, c.color || '');
+    // Without Edit pay the worker pay stays as it was, older OT / Shabbat rates
+    // too (firestore.rules → clients refuses any change to them).
+    if (!info.canPay) Object.assign(rec, { defaultHourlyRate: c.defaultHourlyRate ?? null, defaultOtRate: c.defaultOtRate ?? null, defaultShabbatRate: c.defaultShabbatRate ?? null });
+    api.commitClient(editId, rec);
   };
   React.useEffect(() => {
     clientWindow.current = { seq: props.seq, save };
@@ -129,7 +133,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
   const reg = Number(bill.billRate) || 0;
   const lawPh = (mult: number) => (reg ? tr('{0} by law', { 0: Math.round(reg * mult * 100) / 100 }) : tr('by law'));
   const lat = parseFloat(f.lat), lng = parseFloat(f.lng), placeSet = !!f.lat && !isNaN(lat) && !isNaN(lng);
-  const radius = parseInt(f.radius, 10) || 100;
+  const radius = clientRadius(f.radius);
   const pick = () => api.pickPlace({ lat: placeSet ? lat : null, lng: placeSet ? lng : null, addr: f.address.trim() || f.name.trim(), radius },
     p => { setBadLink(false); setF(cur => ({ ...cur, lat: String(p.lat), lng: String(p.lng), radius: String(p.radius), mapsUrl: p.mapsUrl })); });
   const onLink = (v: string) => {
@@ -179,7 +183,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
                 <Input id="cObject" value={f.object} placeholder={tr('Site or branch name')} onChange={e => set('object', e.target.value)} />
               </Field>
               <Field label={tr('Radius (m)')} htmlFor="cRadius">
-                <Input id="cRadius" type="number" value={f.radius} placeholder="100" onChange={e => set('radius', e.target.value)} />
+                <Input id="cRadius" type="number" min={10} value={f.radius} placeholder="100" onChange={e => set('radius', e.target.value)} />
               </Field>
             </FieldRow>
             <button type="button" id="cMapMini" data-testid="client-map" data-set={placeSet ? '1' : ''} onClick={pick}
@@ -218,7 +222,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
             )}
             <FieldRow>
               <Field label={tr('Worker pay')} htmlFor="cDefRate">
-                <RateInput id="cDefRate" unit={tr('₪/hour')} step={0.5} placeholder="—" value={f.defRate} onChange={e => set('defRate', e.target.value)} />
+                <RateInput id="cDefRate" unit={tr('₪/hour')} step={0.5} placeholder="—" value={f.defRate} disabled={!info.canPay} readOnly={!info.canPay} onChange={e => set('defRate', e.target.value)} />
               </Field>
               {!daily && (
                 <Field label={tr('Client pays')} htmlFor="cBillMain">

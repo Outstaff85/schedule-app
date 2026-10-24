@@ -384,8 +384,8 @@ def test_the_bell_and_the_pc_need_the_same_number_of_real_documents():
     assert _feedback().REAL_NEEDED == real.REAL_NEEDED   # duplicated on purpose (CLAUDE.md)
 
 
-def test_the_lab_page_and_its_copy_send_the_tick():
-    for page in ("scan-lab/index.html", "scan/index.html"):
-        text = (HERE.parents[1] / page).read_text(encoding="utf-8")
-        body = text[text.index("function sendKind("):text.index("function dropKind(")]
-        assert "doctypeConfirmed: true" in body, page
+def test_the_labs_tick_is_sent_as_a_persons_answer():
+    # the lab's document type collection (src/scan/lab/kinds.ts): every example sent is a type picked or ticked
+    text = (HERE.parents[1] / "src" / "scan" / "lab" / "kinds.ts").read_text(encoding="utf-8")
+    body = text[text.index("private send("):]
+    assert "doctypeConfirmed: true" in body and "origin: 'lab'" in body

@@ -31,10 +31,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (process.env.E2E_NOW) await ctx.clock.install({time: new Date(process.env.E2E_NOW)});
     await ctx.route('**/*', async r => {
       const u = r.request().url();
-      // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose
-      // models never start, so the lab page's own script runs (its file reading is tested)
-      if (/\/scan\/ort(130)?\/ort\.all\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript',
-        body:"window.ort={env:{wasm:{},webgpu:{}},Tensor:function(){},InferenceSession:{create:async()=>{throw new Error('no models in the tests')}}};"});
+      // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose models never
+      // start — the ES module each surface's scanner imports (<base>ort(130)/ort.all.min.mjs, src/scan/engine/ort.ts)
+      if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.mjs$/.test(u)) return r.fulfill({status:200, contentType:'text/javascript',
+        body:"export const env={wasm:{},webgpu:{}};export function Tensor(){};export const InferenceSession={create:async()=>{throw new Error('no models in the tests')}};"});
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
@@ -87,8 +87,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     });
     return ctx;
   }
-  // the scan window's frame (/scan/, the lab's page) runs without its engine here: CI fetches no models
-  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => { if (!/\/scan\//.test(e.stack || '')) p.errs.push(e.message); }); p.on('dialog', d => d.accept()); return p; };
+  // a way to run the scanner's models that fails on the ONNX Runtime stand-in (no models here) is the engine's own
+  // business (its log), not a page error — as in scanner.test.js
+  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => { if (!/ort\.all\.min\.mjs/.test(e.stack || '')) p.errs.push(e.message); }); p.on('dialog', d => d.accept()); return p; };
   const waitFor = async (p, fn, ms=10000) => { const end = Date.now()+ms; while (Date.now() < end) { try { if (await p.evaluate(fn)) return true; } catch (e) {} await sleep(150); } return false; };
   const login = async (p, url, u, pw) => {
     await p.goto(url);
@@ -276,6 +277,32 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(tf.figs === 'On shift,Late,No punch,Notices' && tf.tiles && /notices/.test(tf.all) && /log/.test(tf.all) && tf.noticeN >= 1 && tf.only && tf.back && tf.folded && tf.open && tf.emptyFrame && tf.sheet && tf.hidden && tf.shown && tf.closed,
     'today (React): figures as glass tiles, a figure filters to its section and Show all brings the rest back, the arrow folds a section (kept), the empty log in a dashed frame, a chip opens the notices; salary search opens from its icon ' + JSON.stringify(tf));
+  // Today's hours and who is on shift: a shift open since 4 hours ago shows 4h (not twice that), and a
+  // forgotten IN 20 hours ago (yesterday's or a double tap today) adds nothing — only the last shift runs;
+  // a night shift opened yesterday at 23:00 is still on shift after midnight (its IN only in the last 24 hours)
+  // while it is under 16 hours old, with its hours up to now.
+  const tn = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    const base = getPunchLog().slice(), now = new Date(), y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 0);
+    r.danaH = (now - y) / 36e5; r.danaOn = r.danaH <= 16;
+    const p = (id, wid, name, ts) => ({id, workerId: wid, workerName: name, type: 'in', ts: ts.toISOString(), time: String(ts.getHours()).padStart(2, '0') + ':' + String(ts.getMinutes()).padStart(2, '0'), site: '', clientId: 'c1'});
+    try { savePunchLog(base.concat([p('t-avi0', 'w1', 'Avi Cohen', new Date(now.getTime() - 20 * 36e5)), p('t-avi', 'w1', 'Avi Cohen', new Date(now.getTime() - 4 * 36e5)), p('t-dana', 'w2', 'Dana Levi', y)])); } catch (e) {}
+    const snap = ManagerBridge.today();
+    r.recent = snap.recent.some(e => e.id === 't-dana') && !snap.log.some(e => e.id === 't-dana');
+    switchTab('dashboard'); render(); await wait(400);
+    // the plate's hours (its right side: the figure in .text-fig)
+    const plate = name => { const x = [...document.querySelectorAll('#todayRoot section[data-sec=onsite] [data-slot=plate]')].find(el => el.textContent.includes(name));
+      return x ? ((x.querySelector('.text-fig') || {}).textContent || '') : ''; };
+    r.avi = plate('Avi Cohen'); r.dana = plate('Dana Levi');
+    r.onsite = (document.querySelector('#todayRoot section[data-sec=onsite]') || {}).textContent || '';
+    try { savePunchLog(base); } catch (e) {}
+    render(); await wait(200);
+    return r;
+  });
+  const hoursOf = t => Number(((t || '').match(/(\d+(?:\.\d+)?)h/) || [])[1]);
+  ok(tn.recent && /Avi Cohen/.test(tn.onsite) && hoursOf(tn.avi) >= 4 && hoursOf(tn.avi) < 4.2
+    && (tn.danaOn ? /Dana Levi/.test(tn.onsite) && Math.abs(hoursOf(tn.dana) - tn.danaH) < 0.2 : !/Dana Levi/.test(tn.onsite)),
+    'today: a shift open 4h shows 4h (a forgotten IN before it adds nothing), a night shift from before midnight is on shift with its hours while under 16h ' + JSON.stringify(tn));
   // Template 3 on a phone: Today (figures, colored lines), Workers, Accounting — screenshots for review.
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
@@ -589,6 +616,105 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {atStart, rows: rows.map(r => r.date + ' ' + r.inTime + ' ' + r.outTime)};
   });
   ok(xl.atStart && xl.rows.length === 1 && xl.rows[0] === '01/10/2026 08:00 12:00', 'excel: the library is not loaded with the page; an hours file still reads after loading it ' + JSON.stringify(xl));
+  // The hours import's dates (docs/workers.md → Hours import / export): day-first and year-first dates become
+  // dd/MM/yyyy, a CSV is read as text (5/10 is the 5th of October), a date that is not one stays red and nothing is sent.
+  const hd = await p.evaluate(async () => {
+    const r = {};
+    const ws = XLSX.utils.aoa_to_sheet([['Date','In','Out'],['1/10/2026','08:00','12:00'],['2026-10-02','09:00','13:00']]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S');
+    r.xlsx = (await parseHoursExcelFile(new File([XLSX.write(wb, {type:'array', bookType:'xlsx'})], 'h.xlsx'))).map(x => x.date).join();
+    const csv = 'Date,In,Out\n5/10/2026,08:00,12:00\n31/02/2026,08:00,12:00\n';
+    r.csv = (await parseHoursExcelFile(new File([csv], 'h.csv'))).map(x => x.date).join();
+    const pend = async () => ((await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'loadPendingHours'})})).json()).batches||[]).length;
+    const before = await pend();
+    openHoursImportModal('w1'); await T.tick(50);
+    const inp = document.getElementById('hoursImportFile'), dt = new DataTransfer();
+    dt.items.add(new File([csv], 'bad.csv', {type: 'text/csv'}));
+    inp.files = dt.files; inp.dispatchEvent(new Event('change', {bubbles: true}));
+    r.red = await T.until(() => document.querySelector('#hoursImportPreview [data-testid="hours-bad-rows"]'), 5000)
+      && document.querySelectorAll('#hoursImportPreview [data-bad]').length === 1;
+    document.getElementById('hoursImportSubmitBtn').click();
+    await T.tick(600);
+    r.notSent = (await pend()) === before;
+    closeModal('hoursImportOverlay');
+    // times in other forms become HH:MM; a day with no times is dropped; a time that is not one is red and nothing is sent
+    const tcsv = 'Date,In,Out\n01/10/2026,8.30,1700\n02/10/2026,8,16:30:00\n03/10/2026,,\n04/10/2026,abc,12:00\n';
+    r.times = (await parseHoursExcelFile(new File([tcsv], 't.csv'))).map(x => x.inTime + '-' + x.outTime).join();
+    openHoursImportModal('w1'); await T.tick(50);
+    const inp2 = document.getElementById('hoursImportFile'), dt2 = new DataTransfer();
+    dt2.items.add(new File([tcsv], 'badtime.csv', {type: 'text/csv'}));
+    inp2.files = dt2.files; inp2.dispatchEvent(new Event('change', {bubbles: true}));
+    r.redTime = await T.until(() => document.querySelector('#hoursImportPreview [data-testid="hours-bad-rows"]'), 5000)
+      && document.querySelectorAll('#hoursImportPreview [data-bad]').length === 1;
+    document.getElementById('hoursImportSubmitBtn').click();
+    await T.tick(600);
+    r.timeNotSent = (await pend()) === before;
+    closeModal('hoursImportOverlay');
+    // the server refuses a time that is not HH:MM, and an OUT with no IN
+    const st1 = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'01/10/2026', inTime:'8.30', outTime:'12:00'}]})})).json();
+    const st2 = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'01/10/2026', inTime:'', outTime:'12:00'}]})})).json();
+    r.serverRefusesTime = !!st1.error && !!st2.error && (await pend()) === before;
+    // the server side refuses a date that is not dd/MM/yyyy (it would never become a punch on its day)
+    const sv = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'1/10/2026', inTime:'08:00', outTime:'12:00'}]})})).json();
+    r.serverRefuses = !!sv.error && (await pend()) === before;
+    return r;
+  });
+  ok(hd.xlsx === '01/10/2026,02/10/2026' && hd.csv === '05/10/2026,31/02/2026' && hd.red && hd.notSent && hd.serverRefuses,
+    'upload hours: dates in other forms become dd/MM/yyyy, a CSV is read day first, a date that is not one is red and nothing is sent ' + JSON.stringify(hd));
+  ok(hd.times === '08:30-17:00,08:00-16:30,abc-12:00' && hd.redTime && hd.timeNotSent && hd.serverRefusesTime,
+    'upload hours: times in other forms become HH:MM, a day with no times is dropped, a time that is not one is red and nothing is sent ' + JSON.stringify(hd));
+  // The worker window's save (docs/workers.md → Saving): closed with nothing changed it writes nothing; an edited
+  // number that another worker has is refused for every login; a rescan that finds a passport builds Form 101 as one.
+  const ws4 = await p.evaluate(async () => {
+    const r = {}, B = ManagerBridge, keep = {commit: B.commitEdit, regen: B.regenerateDoc, alert: window.alert, upload: window.autoUploadWithRetry};
+    let commits = 0, regens = 0; const alerts = [], uploads = [];
+    B.commitEdit = (...a) => { commits++; return keep.commit.apply(B, a); };
+    B.regenerateDoc = () => { regens++; return Promise.resolve(true); };
+    window.alert = m => alerts.push(String(m));
+    window.autoUploadWithRetry = async (isId, id) => { uploads.push([isId, id]); return true; };
+    const off = () => [0, 1, 2, 3, 4, 5, 6].map(() => ({type: 'off', start: null, end: null}));
+    workers.push({id: 'wa4n', name: 'Noop Four', docGiven: 'Noop', docSurname: 'Four', clientIds: [], schedule: off()},
+      {id: 'wa4a', name: 'Dup A', docGiven: 'Dup', docSurname: 'A', docId: '111111118', docType: 'israeli_id', clientIds: [], schedule: off()},
+      {id: 'wa4b', name: 'Dup B', docGiven: 'Dup', docSurname: 'B', docId: '022222222', docType: 'israeli_id', clientIds: [], schedule: off()},
+      {id: 'wa4p', name: 'Hand Added', docGiven: 'Hand', docSurname: 'Added', docId: '1234567', docType: 'israeli_id', clientIds: [], schedule: off()},
+      {id: 'wa4s', name: 'Eight Digits', docGiven: 'Eight', docSurname: 'Digits', docId: '33333334', docType: 'israeli_id', clientIds: [], schedule: off()});
+    const idx = id => workers.findIndex(w => w.id === id), rec = id => workers[idx(id)];
+    try {
+      // 1. opened and closed: no save, no start date of today, no Form 101 rebuild
+      openEditWorker(idx('wa4n')); await T.tick(50);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.noop = commits === 0 && regens === 0 && !rec('wa4n').startDate && !document.getElementById('workerOverlay').classList.contains('open');
+      // 2. an edited number (typed without its leading 0) that worker B has: refused, the record keeps its number
+      openEditWorker(idx('wa4a')); await T.tick(50);
+      T.fill('wDocId', '22222222'); await T.tick(20);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.dup = alerts.length === 1 && rec('wa4a').docId === '111111118' && commits === 0;
+      closeModal('workerOverlay');
+      // 2b. an older 8-digit number, another field edited: the number is written as stored (the signed print's hash stays)
+      openEditWorker(idx('wa4s')); await T.tick(50);
+      T.fill('wPhone', '0501234567'); await T.tick(20);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.keepId = commits === 1 && rec('wa4s').docId === '33333334' && rec('wa4s').phone === '0501234567';
+      closeModal('workerOverlay');
+      // 3. a worker added by hand (Israeli ID), rescanned: the passport found builds a passport Form 101 and the type is kept
+      window.__aiRescanWorkerId = 'wa4p';
+      openWorkerModalFromScan({type: 'passport', given: 'HAND', surname: 'ADDED', passportNo: 'AB1234567'});
+      await T.tick(100);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.passport = uploads.length === 1 && uploads[0][0] === false && uploads[0][1] === 'wa4p' && rec('wa4p').docType === 'passport';
+    } finally {
+      B.commitEdit = keep.commit; B.regenerateDoc = keep.regen; window.alert = keep.alert; window.autoUploadWithRetry = keep.upload;
+      window.__aiRescannedWorkerId = null; window.__aiRescanWorkerId = null;
+      document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+      for (const id of ['wa4n', 'wa4a', 'wa4b', 'wa4p', 'wa4s']) { const i = idx(id); if (i >= 0) workers.splice(i, 1); }
+      await gsSave(getDataObj());
+    }
+    r.alerts = alerts; r.uploads = uploads;
+    return r;
+  });
+  ok(ws4.noop, 'worker window: opened and closed with nothing changed — nothing saved, no start date set, no Form 101 rebuild ' + JSON.stringify(ws4));
+  ok(ws4.dup, 'worker window: an edited document number that another worker has is refused (the number matched without its leading 0) ' + JSON.stringify(ws4));
+  ok(ws4.keepId, 'worker window: an older 8-digit ID is kept as stored when another field is edited (no new signature asked) ' + JSON.stringify(ws4));
+  ok(ws4.passport, 'worker window: a hand-added worker rescanned with a passport builds Form 101 as a passport and keeps the type ' + JSON.stringify(ws4));
   // Scan again from the worker modal: typed values stay, empty ones take the scan's
   const rs = await p.evaluate(async () => {
     openEditWorker(0);
@@ -610,17 +736,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(rs.scanOpen && rs.given === 'Typed' && rs.city === 'Haifa' && rs.phone === 'P-123' && rs.rescanned && rs.draft === null && rs.card, 'scan again from the worker modal keeps typed values, fills empty ones; card has the button');
-  // The scan window (src/scan/Scanner.tsx): the scanner lab's own page, copied as it is (scan/,
-  // /scan/?embed=1), inside the window; its pages come back by postMessage (scan/embed.js) into the
-  // strip — a shot again (its corners refined) replaces that shot's pages; each gets Haiku's kind;
-  // Done reads them in the window (src/scan-process/) and opens the worker window with what was read.
+  // The scan window (src/scan/Scanner.tsx, docs/scan.md → The scan window): the full-screen scanner (src/scan/ui/,
+  // mode 'site') in a full Window, on a scan session of the site's own surface (/scan/). CI has no camera and no
+  // models, so the pages are given to the session as a shot or a pick would give them (ManagerScan.hooks().inject,
+  // src/scan/hooks.ts) — first as cut, then with what the readers read; each gets its kind (the model's when Mixed
+  // is sure of it, else Haiku's); Done reads them in the window (src/scan-process/) and opens the worker window.
   const JPG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDpKKKKAP/Z';
   const feedbackCalls = [];
   let attemptsOffline = false;
   const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
-  // Haiku's page kinds (aiDetectAlign): the first page an ID card, the second a ספח; the ID card's read (aiReadDoc)
+  // Haiku's page kinds (aiDetectAlign): the page it is asked about is the ספח (the ID card is the model's, in Mixed); the ID card's read (aiReadDoc)
   let kindCalls = 0;
   const readCalls = [];
+  let haikuTurn = 90;   // Haiku's turn for the ספח in the first scan below (none after it)
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
     const body = JSON.parse(r.request().postData() || '{}');
@@ -631,8 +759,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
-    // the ספח is said to need a quarter turn: the face finder set it upright already (its turn, posted below), so it is not turned
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: body.image === JPG ? 'id_front' : 'sefach', rotate: body.image === JPG ? 0 : 90}})});
+    // the ספח is said to need a quarter turn (haikuTurn, this scan only): the face finder set it upright already (its
+    // turn 0, given below), so it is not turned
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: haikuTurn}})});
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
@@ -644,44 +773,71 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // Admin → Scanner set to Mixed: a page the document type model is sure of needs no Haiku
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'mode' ? {ok: true, doctypeMode: 'mixed'} : {ok: true})});
   });
+  // every request while the scan window is used: none may go to the lab's folder (the site loads only /scan/)
+  const scanUrls = [];
+  const onScanReq = r => scanUrls.push(r.url());
+  ctx.on('request', onScanReq);
   await p.evaluate(() => { localStorage.removeItem('scanFeedbackQueue'); window.__scanGoing = startNewScan(); });
-  await p.waitForSelector('[data-testid="scanner"]');
-  const lab = await p.evaluate(async () => {
-    const f = document.querySelector('[data-testid="scan-lab-frame"]');
-    const page = await (await fetch('/scan/?embed=1')).text();
-    return {src: f && f.getAttribute('src'), camera: f && f.getAttribute('allow'), copy: /Scanner lab/.test(page) && /\/scan\/embed\.js/.test(page) && /\/scan\/scan-core\.js/.test(page) && !/\/scan-lab\//.test(page)};
+  await p.waitForSelector('[data-testid="scanner"] [data-testid="scan-status"]');
+  const look = await p.evaluate(async () => {
+    const w = document.querySelector('[data-testid="window"][data-kind="full"]'), r = w ? w.getBoundingClientRect() : {}, de = document.documentElement;
+    const H = await ManagerScan.hooks(), s = H.session();
+    return {full: !!w && r.left === 0 && r.top === 0 && r.width >= de.clientWidth - 1 && r.height >= de.clientHeight - 1, site: !!(w && w.querySelector('[data-testid="scanner"][data-mode="site"]')),
+      parts: ['scan-status', 'scan-bar', 'scan-shutter', 'scan-pick', 'scan-auto', 'scan-done'].filter(t => w && w.querySelector('[data-testid="' + t + '"]')).join(),
+      noFrame: !document.querySelector('iframe'), base: s && s.surface.base, source: s && s.surface.source};
   });
-  // the lab page's shot: first one page, then (its corners refined, a second document found) two
-  // the second page another picture (the ספח), so Haiku's mocked kind follows the page, not the call's order
+  // the shot: first one page (the document type model sure of the ID card), then — its corners refined, a second
+  // document found on it — two (the ספח, which the model does not know: Haiku types it)
   const JPG2 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD2yiiiv2Q/kM//2Q==';
-  // the document type model's answers (embed.js): sure of the ID card, none on the ספח (Haiku types it)
-  const answers = [{doctype: 'id_front', conf: 0.97, turn: 0, turnConf: 0.99}, null];
-  // the passport zone reader's lines on the first page (embed.js; docs/hf-plan.md → H8b), read with an O for a 0
+  // the document type model's answer on the ID card (sure: 0.97 of the type, 0.99 of the turn)
+  const sure = {doctype: 'id_front', conf: 0.97, turn: 0, turnConf: 0.99};
+  // the passport zone reader's lines on the first page (docs/hf-plan.md → H8b), read with an O for a 0
   // in the number and in the birth date — the parser mends them by position and by the check digit
-  const zones = [['P<UKRBONDARENKO<<ANDREI<NATALIIA<<<<<<<<<<<<', 'NW259O50<6UKR84O3124M29051983631000292908728'], null];
-  // the Hebrew field reader's fields on the first page (embed.js; docs/hf-plan.md → H8c), as the card prints them
-  const hes = [{layout: 'new', surname: 'כהן', given: 'דוד', idNo: '1 2345678 2', dob: '1.2.1990', idOk: true}, null];
-  // the face finder's turn on each page (embed.js): none on the ID card, the ספח set upright by its face
-  const turns = [{att: '', pg: 0, turn: -1}, {att: '', pg: 1, turn: 0}];
-  const post = (key, n) => p.evaluate(([pics, key, n, answers, zones, hes, turns]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x), answers: answers.slice(0, n), mrz: zones.slice(0, n), he: hes.slice(0, n), attempts: turns.slice(0, n)}, location.origin), [[JPG, JPG2], key, n, answers, zones, hes, turns]);
-  await post('s1', 1);
-  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 1, null, {timeout: 15000}).catch(() => {});
-  await post('s1', 2);
-  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 2, null, {timeout: 15000}).catch(() => {});
-  // Each page shows Haiku's kind; one set to Other is not saved; set to Contract it is again.
-  const kinds0 = await p.evaluate(() => [...document.querySelectorAll('[data-testid="scan-page"]')].map(e => e.dataset.kind).join(','));
-  const pickKind = async kd => {
-    await p.click('[data-testid="scan-kind"] >> nth=1'); await p.click('[data-testid="scan-kind-' + kd + '"]');
-    await p.waitForSelector('[data-testid="scan-kind-' + kd + '"]', {state: 'detached'}); await p.waitForTimeout(300);
-  };
-  await pickKind('other');
-  const otherDone = await p.textContent('[data-testid="scan-done"]');
-  await pickKind('contract');
+  const zones = ['P<UKRBONDARENKO<<ANDREI<NATALIIA<<<<<<<<<<<<', 'NW259O50<6UKR84O3124M29051983631000292908728'];
+  // the Hebrew field reader's fields on the first page (docs/hf-plan.md → H8c), as the card prints them
+  const hes = {layout: 'new', surname: 'כהן', given: 'דוד', idNo: '1 2345678 2', dob: '1.2.1990', idOk: true};
+  const shot = await p.evaluate(async ([a, b, sure, zones, hes]) => {
+    const H = await ManagerScan.hooks(), r = {};
+    const first = {b64: a, doctype: sure, mrz: zones, he: hes};
+    const s = await H.inject({pics: [first]});
+    r.one = await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 1, 15000);
+    // the ספח set upright by its face (the face finder's turn 0): Haiku's quarter turn is not applied to it
+    const two = await H.inject({attempt: s.attempt, pics: [first, {b64: b, turn: 0}]});
+    const c2 = H.session().pages.get(two.ids[1]).canvas;
+    r.two = await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 2, 15000);
+    await T.tick(300);
+    r.unturned = !!H.session().pages.get(two.ids[1]) && H.session().pages.get(two.ids[1]).canvas === c2;
+    r.kinds0 = [...document.querySelectorAll('[data-testid="scan-thumb"]')].map(e => e.dataset.kind).join(',');
+    r.attempt = s.attempt;
+    return r;
+  }, [JPG, JPG2, sure, zones, hes]);
+  // A thumbnail opens the page large: one set to Other is not saved (Done counts one); set to Contract it is again.
+  // Looks good on both pages keeps the shot's attempt — held until Done (owner, 2026-10-21).
+  const view = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks(), r = {};
+    const open = async i => { document.querySelectorAll('[data-testid="scan-thumb"]')[i].click(); return T.until(() => document.querySelector('[data-testid="page-view"]'), 3000); };
+    r.opened = await open(1);
+    document.querySelector('[data-testid="kind-chip"][data-kind="other"]').click(); await T.tick(200);
+    document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);  // a tap on the dimmed ground: back to the camera
+    r.back = !document.querySelector('[data-testid="page-view"]');
+    r.otherDone = document.querySelector('[data-testid="scan-done"]').textContent;
+    r.notSaved = !!document.querySelector('[data-testid="scan-not-saved"]');
+    await open(1);
+    document.querySelector('[data-testid="kind-chip"][data-kind="contract"]').click(); await T.tick(200);
+    document.querySelector('[data-testid="page-keep"]').click(); await T.tick(200);
+    await open(0);
+    document.querySelector('[data-testid="page-keep"]').click(); await T.tick(200);
+    r.looked = document.querySelectorAll('[data-testid="scan-thumb"][data-looked]').length;
+    await T.tick(1500);
+    r.held = H.attempts().heldForDone.length;
+    return r;
+  });
+  const sentBeforeDone = feedbackCalls.some(c => c.action === 'attempt' && (c.attempts || []).some(x => x.id === shot.attempt));
   const scw = await p.evaluate(async () => {
-    const r = {pages: document.querySelectorAll('[data-testid="scan-page"]').length, done: document.querySelector('[data-testid="scan-done"]').textContent};
+    const r = {done: document.querySelector('[data-testid="scan-done"]').textContent};
     document.querySelector('[data-testid="scan-done"]').click();
     await window.__scanGoing;
-    r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]') && !document.querySelector('[data-testid="scan-reading"]'), 4000);
+    r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000);
     r.worker = document.getElementById('workerOverlay').classList.contains('open');
     r.given = T.val('wGiven'); r.docId = T.val('wDocId'); r.city = T.val('wCity');
     r.front = !!window.__aiScanImage;
@@ -692,71 +848,59 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     return r;
   });
-  await p.waitForTimeout(500);
-  // The lab page stays loaded (lab.ts): closed, it is hidden and kept; opened again within 3 minutes it is
-  // the same page (not loaded again), laid over the window's slot
-  const kindAtDone = kindCalls; // the Haiku calls of this scan, before the next checks post their own pages
-  const kept = await p.evaluate(async () => {
-    const f = document.querySelector('[data-testid="scan-lab-frame"]');
-    const r = {hidden: !!f && f.style.visibility === 'hidden' && document.body.contains(f)};
-    f.contentWindow.__mark = 1;
-    const going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    await new Promise(res => setTimeout(res, 600));
-    const g = document.querySelector('[data-testid="scan-lab-frame"]');
-    r.same = g === f && g.contentWindow.__mark === 1;
-    r.shown = g.style.visibility === 'visible';
-    const sl = document.querySelector('[data-testid="scan-lab-slot"]').getBoundingClientRect(), fr = g.getBoundingClientRect();
-    r.over = Math.abs(sl.top - fr.top) < 2 && Math.abs(sl.left - fr.left) < 2 && Math.abs(sl.width - fr.width) < 2;
-    // a tap there reaches the lab page: above the window, with its own pointer events
-    r.tap = document.elementFromPoint(sl.left + sl.width / 2, sl.top + Math.min(sl.height / 2, 100)) === g;
-    T.esc(); await going;
-    r.closed = await T.until(() => g.style.visibility === 'hidden', 3000);
-    return r;
-  });
-  // Batches (owner, 2026-10-20): the last batch under New pages; a new one folds it into a line; Looks good
-  // folds it too; a tap unfolds a line; closed and opened again, the batches come back from this phone
+  await p.waitForTimeout(800);
+  const kindAtDone = kindCalls; // the Haiku calls of this scan, before the next checks give their own pages
+  haikuTurn = 0;
+  const sentAtDone = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []).find(x => x.id === shot.attempt) || {};
+  ok(look.full && look.site && look.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done' && look.noFrame && look.base === '/scan/' && look.source === 'site'
+    && shot.one && shot.two && shot.kinds0 === 'id_front,sefach' && view.back && /· 1/.test(view.otherDone) && view.notSaved && /· 2/.test(scw.done)
+    && scw.closed && scw.worker && scw.front && scw.given === 'Scanned' && scw.docId === '123456782' && scw.city === 'Haifa' && scw.kinds === 'front,contract:contract' && readCalls.length === 1,
+    'scan window: the full-screen scanner (status line, bar, Done) on the site\'s own session (/scan/, no frame); a shot\'s pages (a refined shot gives them again under their ids), each with its kind; Other is not saved, Contract is the contract; Done reads them in the window (one full read of the ID card) and opens the worker window with what was read ' + JSON.stringify({look, shot, view, scw, readCalls, kindCalls: kindAtDone}));
+  ok(view.looked === 2 && view.held === 1 && !sentBeforeDone && sentAtDone.outcome === 'kept' && sentAtDone.source === 'site',
+    'scan window: Looks good on every page of a shot keeps its attempt, held on the phone until Done, then sent ' + JSON.stringify({looked: view.looked, held: view.held, sentBeforeDone, outcome: sentAtDone.outcome}));
+  // The session stays (keep.ts): closed, its camera is stopped and it is kept; opened again within 3 minutes it is
+  // the same session (the models not started again). Batches (owner, 2026-10-20): the pages are kept on this phone
+  // until Done has read them — closed and opened again, they come back first in the strip; Auto reaches the session.
   const batches = await p.evaluate(async ([a, b]) => {
-    const post = (key, pic) => window.postMessage({type: 'scan-pages', key, pages: ['data:image/jpeg;base64,' + pic]}, location.origin);
-    const n = sel => document.querySelectorAll(sel).length;
-    // the window's two tabs (variant C): Camera (the lab, its bar, New pages) and Pages (the folded batches, counted on the tab)
-    const tab = name => { const t = document.querySelector('[data-testid="scan-tab-' + name + '"]'); t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); t.focus(); };
-    const onPages = () => (document.querySelector('[data-testid="scan-tab-pages"]').textContent.match(/\d+/) || ['0'])[0];
-    const r = {};
+    const H = await ManagerScan.hooks(), r = {};
+    const s0 = H.session();
+    r.keptAfterDone = !!s0 && !s0.camera.on;
+    const thumbs = sel => document.querySelectorAll('[data-testid="scan-thumb"]' + (sel || '')).length;
     let going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    post('s91', a);
-    r.preview = await T.until(() => n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
-    post('f91.1', b);
-    r.foldedByNew = await T.until(() => onPages() === '1' && n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
-    document.querySelector('[data-testid="scan-keep"]').click();
-    r.foldedByKeep = await T.until(() => onPages() === '2' && !document.querySelector('[data-testid="scan-preview"]'), 4000);
-    // the bar: Auto is handed to the lab page's own Auto capture
-    const frameAuto = () => document.querySelector('[data-testid="scan-lab-frame"]').contentWindow.document.getElementById('auto').checked;
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    r.same = H.session() === s0 && thumbs() === 0;
+    await H.inject({pics: [{b64: a}]});                 // a camera shot (s<n>)
+    await H.inject({pics: [{b64: b}], camera: false});  // a picked picture (f<n>)
+    r.typed = await T.until(() => thumbs('[data-kind]') === 2, 15000);
+    // a type picked by hand is kept on the phone with its page (Haiku said ספח: set to Passport)
+    document.querySelectorAll('[data-testid="scan-thumb"]')[0].click();
+    await T.until(() => document.querySelector('[data-testid="page-view"]'), 3000);
+    document.querySelector('[data-testid="kind-chip"][data-kind="passport"]').click(); await T.tick(200);
+    document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);
+    r.picked = [...document.querySelectorAll('[data-testid="scan-thumb"]')].map(e => e.dataset.kind).join();
     document.querySelector('[data-testid="scan-auto"]').click();
-    r.autoOff = await T.until(() => !frameAuto(), 3000);
+    r.autoOff = await T.until(() => H.session().auto === false, 3000);
     document.querySelector('[data-testid="scan-auto"]').click();
-    r.autoOn = await T.until(() => frameAuto(), 3000);
-    tab('pages');
-    r.pagesTab = await T.until(() => n('[data-testid="scan-batch"]') === 2 && !document.querySelector('[data-testid="scan-lab-slot"]'), 4000);
-    r.camHidden = await T.until(() => document.querySelector('[data-testid="scan-lab-frame"]').style.visibility === 'hidden', 3000);
-    T.tap('[data-testid="scan-batch"]');
-    r.unfolds = await T.until(() => { const d = document.querySelector('[data-testid="scan-batch"] [data-no-tap]'); return !!d && d.offsetHeight > 0 && getComputedStyle(d).opacity === '1'; }, 4000);
+    r.autoOn = await T.until(() => H.session().auto === true, 3000);
     r.done = document.querySelector('[data-testid="scan-done"]').textContent;
-    await new Promise(res => setTimeout(res, 700)); // kept on the phone a moment after a change
-    T.esc(); await going;
-    await new Promise(res => setTimeout(res, 500)); // the window gone, as a person opens it again
+    await T.tick(700); // kept on the phone a moment after a change
+    T.esc(); await going; r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000);
+    r.camOff = !H.session().camera.on;
+    await T.tick(500); // the window gone, as a person opens it again
     going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    tab('pages');
-    r.restored = await T.until(() => n('[data-testid="scan-batch"]') === 2, 4000);
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    r.restored = await T.until(() => thumbs('[data-kept]') === 2, 4000);
+    r.keptKinds = [...document.querySelectorAll('[data-testid="scan-thumb"][data-kept]')].map(e => e.dataset.kind).sort().join();
+    r.same2 = H.session() === s0;
     T.esc(); await going;
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
     return r;
   }, [JPG, JPG2]);
-  ok(batches.preview && batches.foldedByNew && batches.foldedByKeep && batches.autoOff && batches.autoOn && batches.pagesTab && batches.camHidden && batches.unfolds && /2/.test(batches.done) && batches.restored,
-    'scan window, batches: the last one under New pages, folded by the next one and by Looks good (counted on the Pages tab), Auto reaches the lab, the Pages tab lists them (the camera hidden), a line unfolds on a tap, kept on the phone after the window closes ' + JSON.stringify(batches));
-  // The lab's Photo or PDF…: several files at once, a PDF split into its pages (pdf.js), in the files' order
+  ok(batches.keptAfterDone && batches.same && batches.typed && batches.autoOff && batches.autoOn && /· 2/.test(batches.done) && batches.closed && batches.camOff && batches.restored && batches.same2
+    && batches.picked === 'passport,sefach' && batches.keptKinds === 'passport,sefach',
+    'scan window: the session is kept after the window closes (its camera stopped) and is the same when it opens again; the batches are kept on the phone and come back first in the strip, with the type picked by hand on a page; Auto reaches the session ' + JSON.stringify(batches));
+  // Photos/PDF: several files at once, a PDF split into its pages (pdf.js), in the files' order (the engine's
+  // pickedPictures); the window's one file input has no type (the phone's chooser: photos and PDFs side by side)
   const PDF2 = (() => {
     const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
       '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 280] >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 280] >>'];
@@ -767,167 +911,284 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       + 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + x + '\n%%EOF';
   })();
   const picked = await p.evaluate(async ([jpg, pdf]) => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, input = fw.document.getElementById('file');
+    const H = await ManagerScan.hooks();
     const files = [new File([Uint8Array.from(atob(jpg), c => c.charCodeAt(0))], 'a.jpg', {type: 'image/jpeg'}), new File([pdf], 'b.pdf', {type: 'application/pdf'})];
     const out = [];
-    try { for await (const [url, tag] of fw.pickedPictures(files)) out.push(tag + ' ' + url.slice(0, 10)); } catch (e) { out.push('error ' + e.message); }
+    try { for await (const pic of H.engine.pickedPictures(files, H.engine.filesEnv(), () => {})) out.push(pic.tag + ' ' + pic.url.slice(0, 10)); } catch (e) { out.push('error ' + e.message); }
     // the other documents on a photo must have a document's shape: this frame (two corners on one point,
     // from a real scan) was cut into a smeared third page; a skewed card is still one
-    const shape = [fw.docShape([[0.255, 0.162], [0.997, 0], [0.248, 0.425], [0.255, 0.163]], 1002, 1045),
-      fw.docShape([[0.687, 0.461], [0.936, 0.462], [0.938, 0.795], [0.537, 0.803]], 1600, 1200)];
-    return {out, shape, accept: input.accept, multiple: input.multiple, one: !fw.document.getElementById('file2'), button: input.parentElement.textContent.trim()};
+    const shape = [H.engine.docShape([[0.255, 0.162], [0.997, 0], [0.248, 0.425], [0.255, 0.163]], 1002, 1045),
+      H.engine.docShape([[0.687, 0.461], [0.936, 0.462], [0.938, 0.795], [0.537, 0.803]], 1600, 1200)];
+    // the window: its one Photos/PDF input; a pick and a shot in it (no models here: they fail, and say so)
+    const going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const input = document.querySelector('[data-testid="scan-files"]');
+    const r = {out, shape, multiple: input.multiple, accept: input.accept, inputs: document.querySelectorAll('[data-testid="scanner"] input[type=file]').length, button: document.querySelector('[data-testid="scan-pick"]').textContent};
+    const dt = new DataTransfer(); files.forEach(f => dt.items.add(f)); input.files = dt.files; input.dispatchEvent(new Event('change', {bubbles: true}));
+    r.pickSaid = await T.until(() => /could not|from your files/.test(document.querySelector('[data-testid="scan-status"]').textContent), 30000);
+    await T.until(() => !document.querySelector('[data-testid="scan-shutter"]').disabled, 10000);
+    document.querySelector('[data-testid="scan-shutter"]').click();
+    await T.tick(1000);
+    T.esc(); await going;
+    return r;
   }, [JPG, PDF2]);
-  ok(picked.multiple && picked.accept === '' && picked.one && picked.button === 'Photos or PDF…'
+  ctx.off('request', onScanReq);
+  const labUrls = scanUrls.filter(u => u.includes('/scan-lab/')), siteUrls = scanUrls.filter(u => /\/scan\/(models\.json|ort(130)?\/|[\w-]+\.onnx)/.test(u));
+  ok(picked.multiple && picked.accept === '' && picked.inputs === 1 && picked.button === 'Photos/PDF' && picked.pickSaid
     && picked.out.join('|') === 'file 1 of 2 blob:http:|file 2 of 2, page 1 of 2 data:image|file 2 of 2, page 2 of 2 data:image',
-    'scan window: the lab\'s one Photos or PDF… (no file type: the phone\'s file chooser, photos and PDFs side by side) takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+    'scan window: one Photos/PDF (no file type: the phone\'s file chooser, photos and PDFs side by side) takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+  ok(!labUrls.length && siteUrls.length > 0,
+    'scan window: picking files and shooting load only the site\'s scanner (/scan/) — no request to /scan-lab/ ' + JSON.stringify({lab: labUrls.slice(0, 5), site: [...new Set(siteUrls.map(u => u.replace(/^.*\/scan\//, '/scan/')))]}));
+  ok(picked.shape.join() === 'false,true', 'scan window: another document found on a photo needs a document\'s shape (no triangle, no sliver) ' + JSON.stringify(picked.shape));
   // Picked files are worked on by several threads at once (analyzePicture on any engine, no screen): a stand-in
   // engine finds one document and no more; a picture with no frame found is the page as it is
   const apic = await p.evaluate(async jpg => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    const calls = [];
-    const stub = (pts) => ({ hasCap: () => false, detect: async (which, input) => { calls.push(which + ':' + input.rgba.length); return { res: calls.length === 1 ? { pts, conf: 0.9 } : { pts: [null, null, null, null], conf: 0 }, ms: 1 }; },
-      warp: async (rgba, w, h, q) => ({ width: 4, height: 3, data: new Uint8ClampedArray(48).buffer, turn: 0 }) });
-    const url = 'data:image/jpeg;base64,' + jpg;
-    const one = await fw.analyzePicture(url, false, stub([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]));
+    const H = await ManagerScan.hooks(), calls = [];
+    const stub = pts => ({hasCap: () => false, stop() {}, detect: async which => { calls.push(which); return {res: calls.length === 1 ? {pts, conf: 0.9} : {pts: [null, null, null, null], conf: 0}, ms: 1}; },
+      warp: async () => ({width: 4, height: 3, data: new Uint8ClampedArray(48), turn: 0})});
+    const url = 'data:image/jpeg;base64,' + jpg, env = {decode: H.engine.filesEnv().decode, log: () => {}, now: () => performance.now()};
+    const one = await H.engine.analyzePicture(url, false, stub([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]), () => {}, env);
     calls.length = 0;
-    const none = await fw.analyzePicture(url, false, stub([null, null, null, null]));
+    const none = await H.engine.analyzePicture(url, false, stub([null, null, null, null]), () => {}, env);
     // a document lying on the one found: looked for on that one's cut, its corners taken back onto the photo
     const outer = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
-    const inner = {hasCap: () => false, detect: async () => ({res: {pts: [[0.25, 0.5], [0.75, 0.5], [0.75, 0.8], [0.25, 0.8]], conf: 0.9}, ms: 1}),
-      warp: async () => ({width: 800, height: 500, data: new Uint8ClampedArray(800 * 500 * 4).buffer, turn: 0})};
-    const c = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, inner, [outer]);
-    const big = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, {...inner, detect: async () => ({res: {pts: [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]], conf: 0.9}, ms: 1})}, [outer]);
-    return {parts: one.length, docs: one[0].docs.length, first: one[0].docs[0].pts[2].join(), whole: none[0].docs[0].pts.map(q => q.join()).join(';'), size: [one[0].w, one[0].h].join('x'), threads: typeof fw.growFiles,
-      inside: c && c.map(q => q.map(v => Math.round(v * 100)).join()).join(';'), big};
+    const inner = {hasCap: () => false, stop() {}, detect: async () => ({res: {pts: [[0.25, 0.5], [0.75, 0.5], [0.75, 0.8], [0.25, 0.8]], conf: 0.9}, ms: 1}),
+      warp: async () => ({width: 800, height: 500, data: new Uint8ClampedArray(800 * 500 * 4), turn: 0})};
+    const c = await H.engine.findInside(new Uint8ClampedArray(16), 2, 2, outer, inner, [outer]);
+    const big = await H.engine.findInside(new Uint8ClampedArray(16), 2, 2, outer, {...inner, detect: async () => ({res: {pts: [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]], conf: 0.9}, ms: 1})}, [outer]);
+    return {parts: one.parts.length, docs: one.parts[0].docs.length, first: one.parts[0].docs[0].pts[2].join(), whole: none.parts[0].docs[0].pts.map(q => q.join()).join(';'),
+      inside: c && c.map(q => q.map(v => Math.round(v * 100)).join()).join(';'), big,
+      kinds: [H.engine.failKind('WebGPU device was lost'), H.engine.failKind('RangeError: Array buffer allocation failed'), H.engine.failKind('no answer for 25 s'), H.engine.failKind('model download failed: HTTP 404')].join()};
   }, JPG);
-  ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.threads === 'function'
-    && apic.inside === '30,50;70,50;70,74;30,74' && apic.big === null,
-    'scanner lab, picked files: a picture is worked on any engine with no screen (its threads run several at once) — the document found, else the picture as it is; a document lying on another is found on its cut and taken back onto the photo, one covering it all is not ' + JSON.stringify(apic));
-  // Why a way to run the models failed is kept on the phone (the last 8) and shown when the lab opens — in the
-  // Errors block, with each new failure and its time, apart from the loading log;
-  // the way that worked is remembered for a day only
-  const wayFails = await p.evaluate(() => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, ls = fw.localStorage;
-    ls.removeItem('scanWayFails');
-    fw.noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
-    fw.noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
-    for (let i = 0; i < 9; i++) fw.noteFail('CPU ×1 · bg', 'no answer for 25 s');
-    const list = JSON.parse(ls.getItem('scanWayFails'));
-    fw.document.getElementById('errs').textContent = ''; fw.document.getElementById('log').textContent = '';
-    fw.noteFail('CPU ×1 · bg', 'no answer for 25 s');
-    fw.showFails();
-    const logText = fw.document.getElementById('errs').textContent, loading = fw.document.getElementById('log').textContent;
-    return {n: list.length, kinds: [fw.failKind('WebGPU device was lost'), fw.failKind('RangeError: Array buffer allocation failed'), fw.failKind('no answer for 25 s'), fw.failKind('model download failed: HTTP 404')].join(),
-      last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)
-        && /^\d\d:\d\d:\d\d Failed — CPU ×1/m.test(logText) && !/Fail/.test(loading)};
-  });
-  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,memory,hang,error' && wayFails.last === 'hang' && wayFails.shown,
-    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the Errors block, apart from the loading log ' + JSON.stringify(wayFails));
-  // A kept page's document type: the model's answer chosen under the page with a ✓; only the user's action is a
-  // label — a type picked (sent later, once) or the ✓ (keep); nothing in the site's frame, nothing with no model
-  const kinds = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, sent = [];
-    const was = fw.eval('doctypeSess'), post = fw.trainPost, here = fw.kindsHere;
-    fw.eval(`doctypeSess = { inputNames: ['img'], run: async () => ({ doctype: { data: [0.05, 0, 0.9, 0.05, 0, 0] }, turn: { data: [1, 0, 0, 0] } }) }`);
-    fw.trainPost = async body => { sent.push(body); return { ok: true }; };
-    const c = fw.document.createElement('canvas'); c.width = 60; c.height = 40;
-    const page = () => { const w = fw.document.createElement('div'), im = new fw.Image(); im.src = c.toDataURL('image/jpeg'); w.append(im); fw.document.body.append(w); return { w, im }; };
-    const site = page(); await fw.addKind(site.w, site.im);
-    const inFrame = !site.w.querySelector('select.kind');
-    fw.kindsHere = () => true;
-    const a = page(), b = page(), quiet = page();
-    await fw.addKind(a.w, a.im); await fw.addKind(b.w, b.im); await fw.addKind(quiet.w, quiet.im);
-    const sa = a.w.querySelector('select.kind'), sb = b.w.querySelector('select.kind');
-    a.w.querySelector('button.kind-ok').click(); a.w.querySelector('button.kind-ok').click();  // once
-    sb.value = 'id_front'; sb.onchange(); fw.sendKind(sb);
-    fw.eval('doctypeSess = null');
-    const none = page(); await fw.addKind(none.w, none.im);
-    fw.trainPost = post; fw.kindsHere = here; fw.__ds = was; fw.eval('doctypeSess = window.__ds');
-    for (const x of [site, a, b, quiet, none]) x.w.remove();
-    const ex = sent.map(x => x.examples[0]);
-    return { inFrame, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage, ex[0].doctypeConfirmed].join(),
-      // a lab example names its origin and the copy's turn: the model's answer, and no face finder turn on these pages
-      turn: ex[0] && [ex[0].origin, ex[0].turnModel, ex[0].turnBy].join(),
-      second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined, ex[1].doctypeConfirmed].join(), noModel: !none.w.querySelector('select.kind') };
-  });
-  ok(kinds.inFrame && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true,true' && kinds.second === 'sefach,id_front,true,true' && kinds.noModel
-    && kinds.turn === 'lab,0,model',
-    'scanner lab: a kept page shows the model\'s document type; only the user\'s ✓ or pick is sent, once — never an untouched answer, never in the site\'s frame, no choice with no model ' + JSON.stringify(kinds));
-  // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
-  // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
-  // a kept page deleted later is told by its folder; with no network they wait on the phone, 5 at most
+  ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.inside === '30,50;70,50;70,74;30,74' && apic.big === null && apic.kinds === 'GPU,memory,hang,error',
+    'scanner engine, picked files: a picture is worked on any engine with no screen — the document found, else the picture as it is; a document lying on another is found on its cut and taken back onto the photo, one covering it all is not; a way failure\'s kind ' + JSON.stringify(apic));
+  // Every scan attempt goes for training (docs/scan-plan.md → S8): a retake shares its group with the next shot, the
+  // photo at most 1600 px, source "site"; a kept one waits for Done; a kept page deleted later is told by its folder
   const att = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    const shot = () => { const c = fw.document.createElement('canvas'); c.width = 3200; c.height = 2400; const g = c.getContext('2d'); g.fillStyle = '#ddd'; g.fillRect(0, 0, 3200, 2400); return fw.newAttempt(c, 3200, 2400, 'camera'); };
-    const a = shot(); a.edgesModel = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
-    fw.decideAttempts('retaken');
-    const b = shot(); b.edgesMore = [[[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]]; b.pages = 2;
-    fw.decideAttempts('kept');
-    await new Promise(res => setTimeout(res, 2500));
-    await fw.flushAttempts();
-    return {held: fw.heldForDone.length, a: a.id, b: b.id, group: b.group === a.group, size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b.picture), ch => ch.charCodeAt(0))))};
-  });
-  // a kept attempt waits for the window's Done (owner, 2026-10-21); then it goes
-  att.held = att.held === 1 && !feedbackCalls.some(c => c.action === 'attempt' && (c.attempts || []).some(x => x.id === att.b));
-  await p.evaluate(async id => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    fw.doneAttempts(); await fw.flushAttempts();
-    await fw.attemptPageDeleted(id, 1);
-  }, att.b);
-  const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
-  const atA = sent.find(x => x.id === att.a) || {}, atB = sent.find(x => x.id === att.b) || {};
-  const outc = feedbackCalls.find(c => c.action === 'attemptOutcome') || {};
-  ok(att.held && att.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
-    && att.size === '{"h":1200,"w":1600}' && outc.dir === 'attempts/new/site/2026-10-20/' + att.b && outc.outcome === 'deleted' && outc.page === 1,
-    'scan attempts: a retake sent at once, a kept one only on Done (a retake and the next shot one group, the photo at most 1600 px), a page deleted later told by its folder '
-    + JSON.stringify({att, a: {o: atA.outcome, g: atA.group}, b: {o: atB.outcome, g: atB.group, p: atB.pages}, outc}));
-  attemptsOffline = true;
-  const queue = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    for (let i = 0; i < 7; i++) { const c = fw.document.createElement('canvas'); c.width = 40; c.height = 30; fw.newAttempt(c, 40, 30, 'photo'); fw.doneAttempts(); await fw.flushAttempts(); }
-    await fw.flushAttempts();
-    const r = {waiting: (await fw.queued()).length, shown: fw.document.getElementById('train').textContent};
-    return r;
-  });
-  attemptsOffline = false;
-  const online = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    await fw.flushAttempts();
-    return {waiting: (await fw.queued()).length, shown: fw.document.getElementById('train').textContent};
-  });
-  ok(queue.waiting === 5 && queue.shown === 'In queue: 5 / 5' && online.waiting === 0 && online.shown === '',
-    'scan attempts: with no network they wait on the phone, 5 at most ("In queue: 5 / 5"), and go when it is back ' + JSON.stringify({queue, online}));
-  // The corner editor (S8-3): the window's Fix corners on a new page opens the lab's editor on its photo; a corner
-  // dragged and Apply make the moved corners the attempt's answer, sent with it when it is kept
-  const fixed = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks();
     const going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, fd = fw.document;
-    const c = fd.createElement('canvas'); c.width = 800; c.height = 600; c.getContext('2d').fillRect(0, 0, 800, 600);
-    const a = fw.newAttempt(c, 800, 600, 'camera'); a.edgesModel = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
-    const img = fd.getElementById('shotImg'); img.src = c.toDataURL('image/jpeg'); img.dataset.att = a.id; img.dataset.pg = '0'; fd.getElementById('shot').hidden = false;
-    window.postMessage({type: 'scan-pages', key: 's77', pages: [img.src], attempts: [{att: a.id, pg: 0}]}, location.origin);
-    const r = {button: await T.until(() => document.querySelector('[data-testid="scan-preview"] [data-testid="scan-fix"]'), 4000)};
-    document.querySelector('[data-testid="scan-preview"] [data-testid="scan-fix"]').click();
-    r.editor = await T.until(() => fd.getElementById('cornerEditor'), 4000);
-    const cv = fd.querySelector('#cornerEditor canvas'), b = cv.getBoundingClientRect();
-    const k = Math.min(b.width / 800, b.height / 600), ox = (b.width - 800 * k) / 2, oy = (b.height - 600 * k) / 2;
-    const ev = (type, x, y) => cv.dispatchEvent(new fw.PointerEvent(type, {clientX: b.left + ox + x * 800 * k, clientY: b.top + oy + y * 600 * k, pointerId: 1, bubbles: true}));
-    ev('pointerdown', 0.1, 0.1); ev('pointermove', 0.2, 0.15); ev('pointerup', 0.2, 0.15);
-    [...fd.querySelectorAll('#cornerEditor button')].find(x => x.textContent === 'Apply').click();
-    r.closed = await T.until(() => !fd.getElementById('cornerEditor'), 2000);
-    r.fixed = a.edgesFixed && a.edgesFixed[0].map(v => Math.round(v * 100)).join();
-    r.id = a.id;
-    fw.doneAttempts(); await fw.flushAttempts();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const A = H.attempts();
+    const shot = src => { const c = new OffscreenCanvas(3200, 2400), g = c.getContext('2d'); g.fillStyle = '#ddd'; g.fillRect(0, 0, 3200, 2400); return A.newAttempt(c, 3200, 2400, 'camera', {src}); };
+    const a = shot({edgesModel: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]], edgesMore: [], pages: 1});
+    A.decide('retaken', [a]);
+    const b = shot({edgesModel: null, edgesMore: [[[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]], pages: 2});
+    A.decide('kept', [b]);
+    await T.tick(2500);
+    const r = {a, b, held: A.heldForDone.length};
+    A.done();
+    r.sent = await T.until(() => A.attemptDirs.has(b), 8000);
+    await A.pageDeleted(b, 1);
     T.esc(); await going;
     return r;
   });
+  const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
+  const atA = sent.find(x => x.id === att.a) || {}, atB = sent.find(x => x.id === att.b) || {};
+  const outc = feedbackCalls.find(c => c.action === 'attemptOutcome' && c.outcome !== 'saved') || {};
+  const sizeB = atB.picture ? await p.evaluate(b64 => JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)))), atB.picture) : '';
+  ok(att.held === 1 && att.sent && atA.group === atB.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
+    && sizeB === '{"h":1200,"w":1600}' && outc.dir === 'attempts/new/site/2026-10-20/' + att.b && outc.outcome === 'deleted' && outc.page === 1,
+    'scan attempts: a retake sent at once, a kept one only on Done (a retake and the next shot one group, the photo at most 1600 px), a page deleted later told by its folder '
+    + JSON.stringify({att, a: {o: atA.outcome, g: atA.group}, b: {o: atB.outcome, g: atB.group, p: atB.pages}, sizeB, outc}));
+  // With no network the attempts wait on the phone, 5 at most — the window says so — and go when it is back
+  attemptsOffline = true;
+  const queue = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks();
+    window.__queueGoing = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const A = H.attempts();
+    for (let i = 0; i < 7; i++) { A.newAttempt(new OffscreenCanvas(40, 30), 40, 30, 'photo'); A.done(); }
+    const shown = await T.until(() => (document.querySelector('[data-testid="scan-queue"]') || {}).textContent === 'In queue: 5 / 5', 10000);
+    return {shown, text: (document.querySelector('[data-testid="scan-queue"]') || {}).textContent || '', waiting: (await A.queued()).length};
+  });
+  attemptsOffline = false;
+  const online = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks(), A = H.attempts();
+    await A.flush();
+    const r = {gone: await T.until(() => !document.querySelector('[data-testid="scan-queue"]'), 8000), waiting: (await A.queued()).length};
+    T.esc(); await window.__queueGoing;
+    return r;
+  });
+  ok(queue.shown && queue.waiting === 5 && online.gone && online.waiting === 0,
+    'scan attempts: with no network they wait on the phone, 5 at most ("In queue: 5 / 5" in the window), and go when it is back ' + JSON.stringify({queue, online}));
+  // The corner editor (S8-3): Fix corners on a page opens the editor on its photo; a corner dragged and Apply make
+  // the moved corners the attempt's answer (edgesFixed), sent with it
+  const fixed = await p.evaluate(async jpg => {
+    const H = await ManagerScan.hooks();
+    const going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const a = await H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
+    // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
+    await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length === 1, 15000);
+    document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
+    const r = {button: await T.until(() => document.querySelector('[data-testid="page-fix"]'), 4000)};
+    document.querySelector('[data-testid="page-fix"]').click();
+    r.editor = await T.until(() => document.querySelector('[data-testid="corner-canvas"][data-fit]'), 4000);
+    const c = document.querySelector('[data-testid="corner-canvas"]'), b = c.getBoundingClientRect(), [ox, oy, iw, ih] = c.dataset.fit.split(',').map(Number);
+    const ev = (type, x, y) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: b.left + ox + x * iw, clientY: b.top + oy + y * ih}));
+    ev('pointerdown', 0.1, 0.1); ev('pointermove', 0.15, 0.12); ev('pointermove', 0.2, 0.15); ev('pointerup', 0.2, 0.15);
+    document.querySelector('[data-testid="corner-apply"]').click();
+    r.closed = await T.until(() => !document.querySelector('[data-testid="corner-editor"]'), 3000);
+    r.fixed = (H.attempts().cornersOf(a.attempt, 0) || [[]])[0].map(v => Math.round(v * 100)).join();
+    r.id = a.attempt;
+    H.attempts().done();
+    r.sent = await T.until(() => H.attempts().attemptDirs.has(a.attempt), 8000);
+    T.esc(); await going;
+    return r;
+  }, JPG);
   const sentFix = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts).find(x => x.id === fixed.id) || {};
-  ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20,
-    'scan corner editor: the window\'s Fix corners opens the lab\'s editor on the photo; a dragged corner is the attempt\'s answer, sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
-  ok(picked.shape.join() === 'false,true', 'scan window: another document found on a photo needs a document\'s shape (no triangle, no sliver) ' + JSON.stringify(picked.shape));
-  ok(kept.hidden && kept.same && kept.shown && kept.over && kept.tap && kept.closed,
-    'scan window: the lab page is kept loaded after the window closes and shown again over the window\'s slot (no new load), a tap there reaching it ' + JSON.stringify(kept));
+  ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && fixed.sent && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20 && Math.round(sentFix.edgesFixed[0][1] * 100) === 15,
+    'scan corner editor: Fix corners opens the editor on the page\'s photo; a dragged corner is the attempt\'s answer (edgesFixed), sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
+  // The scanner lab (/scan-lab/, src/scan/lab/; docs/scan-plan.md → S9): the same
+  // full-screen scanner in lab mode, on the lab's own surface (/scan-lab/ and its models — never the site's /scan/),
+  // with the Lab tools drawer — the figures, the Errors block (why a way to run the models failed, kept on the
+  // phone: the last 8) apart from the loading log — and the lab's training collection: a page's document type is
+  // the model's answer, sent only when the user ticks it (keep) or picks another (once, later or when the page is
+  // left), never untouched and never with no model; Looks good sends the attempt at once (no Done in the lab).
+  const labPage = await page(ctx);
+  await labPage.setViewportSize({width: 390, height: 844});
+  const labCalls = [], labReqs = [];
+  labPage.on('request', r => labReqs.push(r.url()));
+  await labPage.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
+    const body = JSON.parse(r.request().postData() || '{}');
+    labCalls.push(body);
+    if (body.action === 'attempt') return r.fulfill({status:200, contentType:'application/json', headers:CORS,
+      body: JSON.stringify({ok: true, dirs: Object.fromEntries((body.attempts || []).map(a => [a.id, 'attempts/new/' + a.source + '/2026-10-20/' + a.id]))})});
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'stats' ? {ok: true, attemptsSince: 3, attemptsAt: 15} : {ok: true})});
+  });
+  await labPage.goto(BASE + 'scan-lab/');
+  await labPage.waitForFunction(() => window.ScanLab && document.querySelector('[data-testid="scanner"][data-mode="lab"] [data-testid="scan-status"]'), null, {timeout: 20000}).catch(() => {});
+  const labLook = await labPage.evaluate(async () => {
+    const s = document.querySelector('[data-testid="scanner"][data-mode="lab"]'), b = s ? s.getBoundingClientRect() : {}, S = window.ScanLab && ScanLab.session;
+    const r = {full: !!s && b.left === 0 && b.top === 0 && b.width === 390 && b.height === 844, noScroll: document.documentElement.scrollWidth <= 390,
+      parts: ['scan-status', 'scan-bar', 'scan-shutter', 'scan-pick', 'scan-auto', 'scan-done', 'lab-tools'].filter(t => s && s.querySelector('[data-testid="' + t + '"]')).join(),
+      show: ((s && s.querySelector('[data-testid="scan-done"]')) || {}).textContent, surface: S && [S.surface.base, S.surface.cache, S.surface.source].join()};
+    // the models start (and fail here: no models in the tests) before the way failures are looked at
+    await T.until(() => ['failed', 'ready'].includes(ScanLab.session.engines.state.phase), 20000);
+    document.querySelector('[data-testid="lab-tools"]').click();
+    r.open = await T.until(() => document.querySelector('[data-testid="lab-drawer"]'), 4000);
+    r.blocks = ['lab-figures', 'lab-errors', 'lab-log', 'lab-settings', 'lab-readouts'].filter(t => document.querySelector('[data-testid="' + t + '"]')).join();
+    r.tiles = document.querySelectorAll('[data-testid="lab-figures"] [data-slot="figures"] > button').length;
+    r.logged = await T.until(() => /GPU \(WebGPU\) in this browser/.test((document.querySelector('[data-testid="lab-log"]') || {}).textContent || ''), 4000);
+    return r;
+  }).catch(e => ({error: e.message}));
+  ok(labLook.full && labLook.noScroll && labLook.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done,lab-tools' && labLook.show === 'Show what the models read'
+    && labLook.surface === '/scan-lab/,scan-lab-models,lab' && labLook.open && labLook.blocks === 'lab-figures,lab-errors,lab-log,lab-settings,lab-readouts' && labLook.tiles === 10 && labLook.logged,
+    'scanner lab (/scan-lab/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (10 tiles), Errors, the loading log, Settings and the readouts ' + JSON.stringify(labLook));
+  const wayFails = await labPage.evaluate(async () => {
+    const L = ScanLab, ls = localStorage;
+    ls.removeItem('scanWayFails');
+    for (let i = 0; i < 9; i++) L.log.noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    L.log.noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
+    L.log.noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
+    const list = JSON.parse(ls.getItem('scanWayFails'));
+    L.clearLogs();
+    L.log.noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    L.log.showFails();
+    await T.tick(300);
+    const errs = document.querySelector('[data-testid="lab-errors"]').textContent, loading = document.querySelector('[data-testid="lab-log"]').textContent;
+    ls.removeItem('scanWayFails');
+    const lines = errs.split('\n'), head = lines.findIndex(x => /^Earlier failures on this device \(last 8, newest on top\):/.test(x));
+    return {n: list.length, kinds: [...new Set(list.map(f => f.kind))].sort().join(), last: list[7].kind, head,
+      listed: lines.slice(head + 1, head + 9).filter(x => /^ {2}\d{4}-\d\d-\d\d \d\d:\d\d — /.test(x)).length,
+      gpu: /GPU live \+ CPU capture · bg: GPU \(/.test(errs), memory: /bg threads \+ 1: memory \(/.test(errs), hang: /CPU ×1 · bg: hang \(/.test(errs),
+      now: /^\d\d:\d\d:\d\d Failed — CPU ×1 · bg: hang/m.test(errs), apart: !/Fail/.test(loading)};
+  }).catch(e => ({error: e.message}));
+  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,hang,memory' && wayFails.last === 'memory' && wayFails.head >= 0 && wayFails.listed === 8 && wayFails.gpu && wayFails.memory && wayFails.hang && wayFails.now && wayFails.apart,
+    'scanner lab (/scan-lab/): a way that failed is kept with its reason (GPU, memory, hang), the last 8, and shown in the drawer\'s Errors block — "Earlier failures on this device (last 8" and each failure with its time —, apart from the loading log ' + JSON.stringify(wayFails));
+  // the types: the model's answer on each page; only the user's tick (keep) or pick is sent, once — never an
+  // untouched answer, no tick with no model; then Show what the models read, and Looks good sending the attempt
+  const labKinds = await labPage.evaluate(async jpg => {
+    T.esc();
+    await T.until(() => !document.querySelector('[data-testid="lab-drawer"]'), 3000);
+    const sure = {doctype: 'sefach', conf: 0.9, turn: 0, turnConf: 1};
+    const a = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), b = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]});
+    const quiet = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), none = await ScanLab.inject({pics: [{b64: jpg}]});
+    const r = {thumbs: await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind="sefach"]').length === 3 && document.querySelectorAll('[data-testid="scan-thumb"]').length === 4, 8000)};
+    const open = id => { document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"]').click(); return T.until(() => document.querySelector('[data-testid="page-view"][data-id="' + id + '"]'), 3000); };
+    const close = async () => { const v = document.querySelector('[data-testid="page-view"]'); if (v) v.click(); await T.until(() => !document.querySelector('[data-testid="page-view"]'), 3000); };
+    await open(a.ids[0]);
+    r.chosen = (document.querySelector('[data-testid="kind-chip"][data-state="on"]') || {dataset: {}}).dataset.kind;
+    r.pct = (document.querySelector('[data-testid="kind-model"]') || {}).textContent;
+    const tick = document.querySelector('[data-testid="kind-tick"]');
+    r.tick = !!tick;
+    if (tick) { tick.click(); await T.tick(50); tick.click(); }  // once
+    r.sentShown = await T.until(() => document.querySelector('[data-testid="kind-tick"][data-sent]'), 3000);
+    await close();
+    await open(b.ids[0]);
+    document.querySelector('[data-testid="kind-chip"][data-kind="id_front"]').click();
+    await close();
+    await open(none.ids[0]);
+    r.noTick = !document.querySelector('[data-testid="kind-tick"]');
+    document.querySelector('[data-testid="kind-chip"][data-kind="passport"]').click();
+    await close();
+    await open(quiet.ids[0]); await close();  // looked at, untouched
+    // Show what the models read: a sheet with each page's readouts
+    document.querySelector('[data-testid="scan-done"]').click();
+    r.show = await T.until(() => document.querySelectorAll('[data-testid="lab-show-page"]').length === 4, 4000);
+    r.showType = [...document.querySelectorAll('[data-testid="lab-show"] [data-testid="lab-readout-type"]')].map(x => x.textContent).join('|');
+    T.esc();
+    await T.until(() => !document.querySelector('[data-testid="lab-show"]'), 3000);
+    // Looks good on the untouched page: its attempt is sent at once (the lab has no Done)
+    await open(quiet.ids[0]);
+    document.querySelector('[data-testid="page-keep"]').click();
+    r.ids = {a: a.attempt, b: b.attempt, quiet: quiet.attempt, none: none.attempt};
+    return r;
+  }, JPG).catch(e => ({error: e.message}));
+  for (let i = 0; i < 60 && !labCalls.some(c => c.action === 'attempt'); i++) await sleep(150);
+  await sleep(500);
+  const labAtt = labCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []);
+  // the lab has no Retake button: deleting every page of a camera shot still undecided is its Retake (sent
+  // retaken, a hard example with no label; the next shot shares its group) — never kept with its pages deleted
+  const labRetake = await labPage.evaluate(async jpg => {
+    const one = await ScanLab.inject({pics: [{b64: jpg}], camera: true});
+    ScanLab.session.remove(one.ids[0]);
+    const next = await ScanLab.inject({pics: [{b64: jpg}], camera: true});
+    ScanLab.session.keep(next.ids[0]);
+    return {one: one.attempt, next: next.attempt};
+  }, JPG).catch(e => ({error: e.message}));
+  // picked photos: a new pick or camera shot decides nothing — the pages before it stay undecided and fixable
+  // (owner, 2026-10-24) —; with no Done, the attempts still undecided go as kept when the page is left — then
+  // the types still waiting go too
+  const labPicks = await labPage.evaluate(async jpg => {
+    const p1 = await ScanLab.inject({pics: [{b64: jpg}], camera: false}), p2 = await ScanLab.inject({pics: [{b64: jpg}], camera: false});
+    await ScanLab.view.pick([]);
+    const shot = await ScanLab.inject({pics: [{b64: jpg}], camera: true});
+    const p3 = await ScanLab.inject({pics: [{b64: jpg}], camera: false});
+    const A = ScanLab.session.attempts;
+    const undecidedAfter = [p1, p2, shot].every(x => A.undecided(x.attempt));
+    const fixableAfter = [p1, p2].every(x => !!ScanLab.view.fixable(x.ids[0]));
+    const undecidedBefore = A.undecided(p3.attempt);
+    window.dispatchEvent(new Event('pagehide'));
+    return {p1: p1.attempt, p2: p2.attempt, shot: shot.attempt, p3: p3.attempt, undecidedAfter, fixableAfter, undecidedBefore};
+  }, JPG).catch(e => ({error: e.message}));
+  const attSent = () => labCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []);
+  for (let i = 0; i < 60 && !attSent().some(a => a.id === labPicks.p3); i++) await sleep(150);
+  await sleep(300);
+  const labAdds = labCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
+  const allAtt = attSent(), byId = id => allAtt.find(a => a.id === id) || {};
+  const ex0 = labAdds[0] || {}, ex1 = labAdds[1] || {};
+  ok(labKinds.thumbs && labKinds.chosen === 'sefach' && labKinds.pct === '90%' && labKinds.tick && labKinds.sentShown && labKinds.noTick && labAdds.length === 2
+    && [ex0.source, ex0.doctypeModel, ex0.doctypeFixed, ex0.keep, !!ex0.pageImage, ex0.doctypeBy].join() === 'page,sefach,sefach,true,true,model'
+    && [ex1.doctypeModel, ex1.doctypeFixed, ex1.keep === undefined, !!ex1.pageImage].join() === 'sefach,id_front,true,true'
+    && labKinds.show && (labKinds.showType.match(/Appendix \(ספח\) 90%/g) || []).length === 3,
+    'scanner lab (/scan-lab/): a page\'s type chips start on the model\'s answer; only the user\'s tick (keep) or pick is sent, once — never an untouched answer, no tick with no model; Show what the models read lists each page\'s readouts '
+    + JSON.stringify({labKinds, adds: labAdds.map(e => ({m: e.doctypeModel, f: e.doctypeFixed, keep: e.keep, by: e.doctypeBy, copy: !!e.pageImage}))}));
+  ok(labAtt.length === 1 && labAtt[0].id === (labKinds.ids || {}).quiet && labAtt[0].source === 'lab' && labAtt[0].outcome === 'kept',
+    'scanner lab (/scan-lab/): Looks good sends the page\'s attempt at once with source "lab" (no Done in the lab); the pages left alone are not sent ' + JSON.stringify(labAtt.map(x => ({id: x.id, source: x.source, outcome: x.outcome}))));
+  const r1 = byId(labRetake.one), r2 = byId(labRetake.next);
+  ok(r1.outcome === 'retaken' && (r1.deletedPages || []).length === 0 && r2.outcome === 'kept' && r2.group === labRetake.one && r1.source === 'lab',
+    'scanner lab (/scan-lab/): every page of an undecided camera shot deleted is its Retake — sent retaken, the next shot sharing its group ' + JSON.stringify({labRetake, one: {o: r1.outcome, d: r1.deletedPages}, next: {o: r2.outcome, g: r2.group}}));
+  const pk1 = byId(labPicks.p1), pk2 = byId(labPicks.p2), pk3 = byId(labPicks.p3), pkShot = byId(labPicks.shot);
+  ok([pk1, pk2, pk3].every(a => a.outcome === 'kept' && a.source === 'lab' && a.input === 'photo') && pkShot.outcome === 'kept' && pkShot.input === 'camera'
+    && labPicks.undecidedAfter && labPicks.fixableAfter && labPicks.undecidedBefore
+    && ['a', 'b', 'none'].every(k => byId((labKinds.ids || {})[k]).outcome === 'kept'),
+    'scanner lab (/scan-lab/): a new pick or camera shot leaves the pages before it undecided and fixable; with no Done, the attempts still undecided go as kept when the page is left (source "lab") ' + JSON.stringify({labPicks, sent: [pk1, pk2, pkShot, pk3].map(a => a.outcome + ':' + a.source + ':' + a.input)}));
+  const labSite = labReqs.filter(u => /\/scan\/(models\.json|ort(130)?\/|[\w-]+\.onnx)/.test(u)), labOwn = labReqs.filter(u => /\/scan-lab\//.test(u));
+  ok(!labSite.length && labOwn.length > 0,
+    'scanner lab (/scan-lab/): it loads only the lab\'s own files (/scan-lab/) — no request to the site\'s scanner (/scan/) ' + JSON.stringify({site: labSite.slice(0, 5), lab: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));
+  await labPage.close();
   // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
   // by Haiku and changed to Contract — with a copy of the page
   const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
@@ -936,25 +1197,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && ex[1].doctypeBy === 'haiku' && ex[1].doctypeModel === 'sefach' && ex[1].doctypeFixed === 'contract' && !!ex[1].pageImage
     // each carries its scan's session and who set its turn (the training audit, 2026-10-24)
     && typeof ex[0].sessionId === 'string' && !!ex[0].sessionId && ex[1].sessionId === ex[0].sessionId && ex[0].turnBy === 'model'
-    // the ספח set upright by the face finder: turnBy "face", and Haiku's quarter turn not applied (the page as posted)
-    && ex[1].turnBy === 'face' && (scw.otherTail || [])[0] === JPG2.slice(-24);
+    // the ספח set upright by the face finder: turnBy "face", and Haiku's quarter turn not applied (the page as cut)
+    && ex[1].turnBy === 'face' && shot.unturned;
   ok(exOk && kindAtDone === 1 && feedbackCalls.some(c => c.action === 'mode'),
-    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep, session: !!e.sessionId, turnBy: e.turnBy})), unturned: (scw.otherTail || [])[0] === JPG2.slice(-24)}));
+    'scan window, Mixed: the page the document type model is sure of needs no Haiku (one Haiku call, for the other page); Done sends each page\'s document type example ' + JSON.stringify({kindCalls: kindAtDone, ex: ex.map(e => ({by: e.doctypeBy, m: e.doctypeModel, f: e.doctypeFixed, copy: !!e.pageImage, keep: !!e.keep, session: !!e.sessionId, turnBy: e.turnBy})), unturned: shot.unturned}));
   const docCall = feedbackCalls.find(c => c.action === 'document') || {};
   const zs = docCall.mrzShadow || {};
   ok((zs.lines || []).length === 2 && zs.docId === 'NW259050' && zs.docDob === '12/03/1984' && zs.docExpiry === '19/05/2029' && zs.docSex === 'M'
     && zs.docSurname === 'BONDARENKO' && zs.docGiven === 'ANDREI NATALIIA' && zs.nationality === 'UKR' && zs.allChecks === true,
-    'scan, the passport zone reader in shadow (H8b): the lab\'s lines on the primary page go with the document, mended (O → 0) and taken where the check digits agree ' + JSON.stringify(zs));
+    'scan, the passport zone reader in shadow (H8b): its lines on the primary page go with the document, mended (O → 0) and taken where the check digits agree ' + JSON.stringify(zs));
   const hs = docCall.heShadow || {};
   ok(hs.layout === 'new' && hs.idOk === true && hs.docSurname === 'כהן' && hs.docGiven === 'דוד' && hs.docId === '123456782' && hs.docDob === '01/02/1990' && !('docExpiry' in hs),
-    'scan, the Hebrew field reader in shadow (H8c): the lab\'s fields on the primary page go with the document in the worker fields\' forms ' + JSON.stringify(hs));
+    'scan, the Hebrew field reader in shadow (H8c): its fields on the primary page go with the document in the worker fields\' forms ' + JSON.stringify(hs));
   ok(docCall.workerId === 'w-test' && (docCall.pages || []).length === 1 && docCall.pages[0].primary && docCall.pages[0].doctype === 'id_front' && docCall.pages[0].b64
     && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',
     'scan, the save after it: the document goes to scan_feedback (H8a) — its own pages (not the contract), the AI\'s read, the fields the scan filled and the ones saved '
     + JSON.stringify({workerId: docCall.workerId, pages: (docCall.pages || []).map(x => x.doctype + (x.primary ? '*' : '')), scanned: docCall.scanned, saved: docCall.saved}));
-  ok(lab.src === '/scan/?embed=1' && lab.camera === 'camera' && lab.copy && kinds0 === 'id_front,sefach' && /\(1\)/.test(otherDone) && scw.pages === 2 && /2/.test(scw.done)
-    && scw.closed && scw.worker && scw.front && scw.given === 'Scanned' && scw.docId === '123456782' && scw.city === 'Haifa' && scw.kinds === 'front,contract:contract' && readCalls.length === 1,
-    'scan window: the scanner lab\'s page copied as it is (/scan/, embed.js) inside the window; its shot\'s pages come back (a refined shot replaces them), each with Haiku\'s kind; Other is not saved, Contract is the contract; Done reads them in the window (one full read of the ID card) and opens the worker window with what was read ' + JSON.stringify({lab, kinds0, otherDone, scw, readCalls, kindCalls}));
+  // the scan's attempts told "saved" with the worker's id once the worker window saved (src/scan/server.ts), so the
+  // deletion of a worker's data on request finds them (delete_data.py --worker); each scan has its own session id
+  const savedOut = feedbackCalls.filter(c => c.action === 'attemptOutcome' && c.outcome === 'saved');
+  ok(savedOut.some(c => c.workerId === 'w-test' && c.dir === 'attempts/new/site/2026-10-20/' + shot.attempt) && typeof docCall.sessionId === 'string' && docCall.sessionId === (ex[0] || {}).sessionId,
+    "scan, the save after it: the scan's attempts are told 'saved' with the worker's id, and the document carries the scan's session id " + JSON.stringify({savedOut, attempt: shot.attempt, session: docCall.sessionId}));
   await p.unroute(/cloudfunctions\.net\/scan_feedback$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
   // The contract pages of a scan become one PDF, a page per photo (src/scan/pdf.ts).
   const cpdf = await p.evaluate(async jpg => {
@@ -1124,6 +1387,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sp = await p.evaluate(async ([jpg, jpg2]) => {
     const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     const load = async ids => (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerPages', fileIds: ids})})).json();
+    // saveScanPages deletes the replaced files (and the old sidecar) without awaiting it: poll up to ~5 s
+    const settle = async f => { for (let i = 0; i < 25; i++) { if (await f()) return true; await new Promise(res => setTimeout(res, 200)); } return !!(await f()); };
     const id = 'wpages' + Date.now();
     workers.push({id, name:'Pages Test', docType:'israeli_id', docGiven:'Pages', docSurname:'Test', clientIds:[], schedule:[]});
     const w = () => workers.find(x => x.id === id);
@@ -1144,8 +1409,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const ok2 = await autoUploadWithRetry(true, id);
     const now = w().scanPages;
     r.rescan = ok2 && now.length === 2 && now[0].fileId !== first[0].fileId && now[1].fileId === first[1].fileId && w().sigFileId === firstSig && w().docHasSignature === true;
-    const gone = await load([first[0].fileId]);
-    r.oldFrontGone = gone.ok && gone.missing.length === 1;
+    r.oldFrontGone = await settle(async () => { const gone = await load([first[0].fileId]); return gone.ok && gone.missing.length === 1; });
     // 3. a worker still on the old sidecar is split into pages on its rebuild; the sidecar goes
     window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:id, scanB64:jpg, scanMediaType:'image/jpeg', sigPng:'data:image/png;base64,' + PNG, extraPages:[{b64:jpg2, mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
@@ -1154,8 +1418,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // the card's field search reads the old sidecar too
     r.legacyRead = !!(await ManagerBridge.findScanFields(id, ['city'], 'israeli_id'));
     const ok3 = await regenerateWorkerDoc(id);
-    const side = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerAssets', fileId:a.id})})).json();
-    r.split = ok3 && !w().assetsFileId && (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(',') === 'id_front*,other' && !!w().sigFileId && side.error === 'File not found';
+    const sidecarGone = await settle(async () => (await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'loadWorkerAssets', fileId:a.id})})).json()).error === 'File not found');
+    r.split = ok3 && !w().assetsFileId && (w().scanPages || []).map(x => x.kind + (x.primary ? '*' : '')).join(',') === 'id_front*,other' && !!w().sigFileId && sidecarGone;
     // the split pages are readable; a rebuild of a split worker reads them and stores nothing new
     const keep = w().scanPages.map(x => x.fileId).join();
     const ok4 = await regenerateWorkerDoc(id);
@@ -1171,6 +1435,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }, [JPG, JPG2]);
   await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  // A background rebuild while a merged save replaces every worker object (applyData): the new PDF's link
+  // lands on the worker the list holds now, not on the replaced object (which the save would drop).
+  await p.route(/cloudfunctions\.net\/fill_form_101$/, async r => { await sleep(1500); await r.fulfill({status: 200, contentType: 'application/json',
+    body: JSON.stringify({pdfBase64: btoa('%PDF-1.4 test'), fileName: 'f101.pdf', firmMissing: []})}); });
+  const rpl = await p.evaluate(async () => {
+    const id = 'wrepl' + Date.now();
+    workers.push({id, name: 'Replaced Test', docType: 'israeli_id', docGiven: 'Replaced', docSurname: 'Test', clientIds: [], schedule: [], docFileId: 'old-file', docUrl: 'https://old.example/f.pdf'});
+    const run = regenerateWorkerDoc(id);
+    await T.tick(400);
+    applyData(JSON.parse(JSON.stringify(getDataObj())));
+    const done = await run;
+    const w = workers.find(x => x.id === id);
+    const r = {done, file: !!w.docFileId && w.docFileId !== 'old-file', url: !!w.docUrl && w.docUrl !== 'https://old.example/f.pdf', at: !!w.docSavedAt, type: w.docType};
+    ManagerBridge.deleteWorkers([id]);
+    await T.until(() => !workers.some(x => x.id === id), 5000);
+    return r;
+  });
+  await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  ok(rpl.done && rpl.file && rpl.url && rpl.at && rpl.type === 'israeli_id', 'form 101: a rebuild finishing after a merged save replaced the worker objects writes the new PDF onto the live worker ' + JSON.stringify(rpl));
   ok(sp.ok1 && sp.kinds === 'id_front*,sefach' && sp.sig && sp.noSidecar && sp.paths && sp.sigPath && sp.hasSig === true && sp.extra === 1 && sp.back,
     'scan pages: a new worker from a scan stores each page as its own JPEG (with its kind, the ID card first) and the signature as a PNG, read back in one call ' + JSON.stringify(sp));
   ok(sp.rescan && sp.oldFrontGone, 'scan pages: a rescan of the front keeps the stored ספח and signature, the replaced front is deleted ' + JSON.stringify(sp));
@@ -1527,6 +1810,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   pw.closed = await p.evaluate(() => !document.querySelector('[data-testid="punch-window"]'));
   await p.evaluate(id => { const log = getPunchLog(); const e = log.find(x => String(x.id) === id); e.notes = ''; savePunchLog(log); render(); }, pid);
   ok(pw.title && pw.saved && pw.closed, 'punch log: a tap opens the punch window; Save writes the notes and editedAt ' + JSON.stringify(pw));
+  // The punch window's time edit keeps the shift whole: an OUT punched the next morning (IN Mon 08:00, OUT Tue
+  // 07:55) corrected to 17:00 lands on Monday (a 9h shift, its date moved too), an OUT after a 22:00 IN corrected
+  // to 23:30 stays that evening, and a lone punch keeps its own day.
+  const pe = await p.evaluate(() => {
+    const base = getPunchLog().slice(), at = (d, h, m) => new Date(2026, 9, d, h, m);
+    const mk = (id, type, d, h, m) => { const t = at(d, h, m); return {id, workerId: 'pe-w', workerName: 'Edit Test', type, ts: t.toISOString(), time: String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'), date: String(d).padStart(2, '0') + '/10/2026', site: '', clientId: 'c1'}; };
+    const r = {};
+    const edit = (id, time) => { ManagerBridge.savePunch(id, {type: getPunchLog().find(e => e.id === id).type, time, site: 'c1', notes: ''}); return getPunchLog().find(e => e.id === id); };
+    const lenH = (a, b) => (new Date(b.ts) - new Date(a.ts)) / 36e5;
+    try {
+      savePunchLog(base.concat([mk('pe-i1', 'in', 5, 8, 0), mk('pe-o1', 'out', 6, 7, 55)]));
+      const o1 = edit('pe-o1', '17:00'); r.mon = lenH(getPunchLog().find(e => e.id === 'pe-i1'), o1); r.monDate = o1.date;
+      savePunchLog(base.concat([mk('pe-i2', 'in', 12, 22, 0), mk('pe-o2', 'out', 13, 5, 0)]));
+      const o2 = edit('pe-o2', '23:30'); r.eve = lenH(getPunchLog().find(e => e.id === 'pe-i2'), o2);
+      savePunchLog(base.concat([mk('pe-x', 'out', 20, 7, 0)]));
+      const x = edit('pe-x', '23:00'); r.lone = new Date(x.ts).getDate() + ' ' + x.date;
+    } finally { savePunchLog(base); render(); }
+    return r;
+  });
+  ok(pe.mon === 9 && pe.monDate === '05/10/2026' && pe.eve === 1.5 && pe.lone === '20 20/10/2026',
+    'punch window: an edited time lands on the day that keeps the shift whole (9h, not 33h; 1.5h, not 25.5h), a lone punch keeps its day ' + JSON.stringify(pe));
   // By Client: a section per client with its workers.
   await p.click(PL + ' [data-testid="punchlog-view"] [data-v="clients"]'); await sleep(250);
   const bc = await p.evaluate(sel => ({secs: document.querySelectorAll(sel + ' [data-testid="punch-client"]').length, n: clients.length,
@@ -1552,7 +1856,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(c1rows === '0 records', 'client filter: Avi\'s current client has no punches (' + c1rows + ')');
   await pickFilter('client', 'All clients');
   // CSV columns
-  const csv = await p.evaluate(async () => { let txt=''; const orig=URL.createObjectURL; URL.createObjectURL = b => { b.text().then(t=>txt=t); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function(){}; await exportPunchCSV(); await new Promise(r=>setTimeout(r,300)); URL.createObjectURL=orig; return txt; });
+  const [csv, csvBom] = await p.evaluate(async () => { let txt='', bom=''; const orig=URL.createObjectURL; URL.createObjectURL = b => { b.text().then(t=>txt=t); b.arrayBuffer().then(a=>bom=[...new Uint8Array(a).slice(0,3)].join()); return 'blob:x'; }; HTMLAnchorElement.prototype.click = function(){}; await exportPunchCSV(); await new Promise(r=>setTimeout(r,300)); URL.createObjectURL=orig; return [txt, bom]; });
+  ok(csvBom === '239,187,191', 'CSV: starts with a UTF-8 BOM, so Excel shows Hebrew names ' + csvBom);
   const lines = csv.split('\n').map(l => l.split('","').length);
   ok(lines.length === 5 && lines.every(n => n === lines[0]) && lines[0] === 10, 'CSV: every row has the 10 header columns');
   ok(/"8","n-p\d"/.test(csv), 'CSV: GPS Accuracy is filled (8) and Notes follow it');
@@ -2486,6 +2791,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {dialogGone: !document.querySelector('[data-testid="reset-logs"]'), timings: (t.rows || []).length, errors: (e.rows || []).length, shown: ((ManagerBridge.admin().logs || {}).rows || []).length, empty: !!document.querySelector('#adminRoot [data-testid="timings-empty"]')};
   });
   ok(rst.dialogGone && rst.timings === 0 && rst.errors === 0 && rst.shown === 0 && rst.empty, 'timings: Reset deletes every error and measurement ' + JSON.stringify(rst));
+  // The punch cache is per firm: opening Firm Two after Firm One shows none of Firm One's punches.
+  ok(await waitFor(p, () => getPunchLog().some(e => e.workerId === 'w1' || e.workerId === 'w2')), 'boss: Firm One\'s punches are in its cache');
+  await p.evaluate(() => ManagerBridge.openFirm('tenant-two'));
+  await p.waitForNavigation().catch(()=>{});
+  ok(await waitFor(p, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w9') && getPunchLog().length >= 2, 15000), 'boss: viewing Firm Two');
+  const pf = await p.evaluate(() => ({ids: getPunchLog().map(e => e.workerId), own: !!localStorage.getItem('punchLog:tenant-two'), shared: localStorage.getItem('punchLog')}));
+  ok(pf.ids.every(id => id !== 'w1' && id !== 'w2') && pf.ids.includes('w9') && pf.own && !pf.shared, 'punch cache: per firm (punchLog:<firm>), no punch of the firm opened before ' + JSON.stringify(pf));
+  // Deleting every client and then every worker of a firm is saved (allowEmpty), not skipped as an empty glitch.
+  const le = await p.evaluate(async () => {
+    const server = async () => (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+    const until = async fn => { for (let i = 0; i < 40; i++) { await T.tick(250); if (fn(await server())) return true; } return false; };
+    ManagerBridge.deleteClients(clients.map(c => c.id));
+    const c = await until(d => !d.clients.length);
+    ManagerBridge.deleteWorkers(workers.map(w => w.id));
+    const w = await until(d => !d.workers.length);
+    return {c, w, local: workers.length};
+  });
+  ok(le.c && le.w && le.local === 0, 'delete: the last client and the last worker of a firm are deleted on the server ' + JSON.stringify(le));
   ok(p.errs.length === 0, 'boss: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
@@ -2680,7 +3003,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(p.errs.length === 0, 'supplier: no page errors ' + p.errs.join(' | '));
   await ctx.close();
 
-  // ── Client portal (client1 → client c2: Avi's shift yesterday) — a React page (src/client/, stage 3) with the hours review (src/hours-review/) ──
+  // ── Client portal (client1 → client c2: Avi's shift yesterday) — its Hours tab inside the manager app (/client sends there) with the hours review (src/hours-review/) ──
   ctx = await newCtx(); p = await page(ctx);
   const hoursReplies = [];
   p.on('response', async r => { if (/cloudfunctions\.net\/hours$/.test(r.url()) && r.request().method() === 'POST') { try { hoursReplies.push(await r.text()); } catch (e) {} } });
@@ -2915,8 +3238,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // ── Worker punch link ──
   ctx = await newCtx(); p = await page(ctx);
   const punchReplies = [];
-  // The punch function's replies; `punchTweak` (when set) rewrites a `load` reply on its way to the page.
-  let punchTweak = null;
+  // The punch function's replies; `punchTweak` / `monthTweak` (when set) rewrite a `load` / `myMonth` reply on its way to the page.
+  let punchTweak = null, monthTweak = null;
   await p.route(/cloudfunctions\.net\/punch$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fallback();
     const body = r.request().postData() || '{}', action = JSON.parse(body).action;
@@ -2924,6 +3247,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     let text = await res.text();
     punchReplies.push({action, text});
     if (punchTweak && action === 'load') { const j = JSON.parse(text); punchTweak(j); text = JSON.stringify(j); }
+    if (monthTweak && action === 'myMonth') { const j = JSON.parse(text); monthTweak(j); text = JSON.stringify(j); }
     return r.fulfill({status: res.status, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'}, body: text});
   });
   const punchReady = () => { const s = document.getElementById('screenPunch'), b = document.getElementById('bigPunchBtn'); return !!s && !s.classList.contains('hidden') && !!b && (b.dataset.state === 'in' || b.dataset.state === 'out'); };
@@ -2953,6 +3277,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const after = await srv('/punches');
   ok(after.n === before + 1, 'punch: saved through the punch function (' + before + ' → ' + after.n + ')');
   ok(!after.days.includes(null), 'punch: the new punch has a day');
+  // A new phone (no local history) with an IN on the server: the button offers Punch out (myMonth's punches count too).
+  const keptLog = await p.evaluate(() => { const l = localStorage.getItem('punchLog'); localStorage.removeItem('punchLog'); return l; });
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  ok(await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'out' && !localStorage.getItem('punchLog'), 8000),
+    'punch: an empty local history and an IN on the server give Punch out');
+  // A manager deletes that IN: the next myMonth reply (My Hours opened) no longer has it, so the button goes back to Punch in.
+  monthTweak = j => { j.punches = []; };
+  await p.click('[data-testid="tile-hours"]');
+  const gone = await waitFor(p, () => document.getElementById('bigPunchBtn').dataset.state === 'in', 8000);
+  monthTweak = null;
+  await p.keyboard.press('Escape'); await sleep(400);
+  ok(gone, 'punch: a server punch missing from a newer myMonth reply no longer decides the button (Punch in)');
+  await p.evaluate(l => { if (l) localStorage.setItem('punchLog', l); }, keptLog);
   const load0 = JSON.parse((punchReplies.find(x => x.action === 'load') || {text: '{}'}).text);
   await p.click('[data-testid="tile-schedule"]');
   await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
@@ -3031,6 +3368,28 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   on.toast = await waitFor(p, () => /Synced 1 offline punch/.test(document.body.innerText), 5000);
   on.sent = (await srv('/punches')).n === n0 + 1;
   ok(on.flushed && on.toast && on.sent, 'punch: when the connection returns the queued punch is sent and the badge goes ' + JSON.stringify(on));
+  // A queue held for days (an OUT punched offline 5 days ago, within MAX_KEEP) is stored, not refused or taken off the phone;
+  // a refused punch (not this link's worker) is an error toast, leaves the history, and "Synced" counts only the stored one.
+  const n1 = (await srv('/punches')).n;
+  const lq = await p.evaluate(() => {
+    const log = JSON.parse(localStorage.getItem('punchLog') || '[]'), base = log[log.length - 1];
+    const t = new Date(Date.now() - 5 * 864e5), hm = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+    const late = {...base, id: 'late-' + Date.now(), type: 'out', ts: t.toISOString(), time: hm};
+    const bad = {...base, id: 'bad-' + Date.now(), workerId: 'w-not-this-link', ts: new Date().toISOString()};
+    localStorage.setItem('punchLog', JSON.stringify(log.concat([late, bad])));
+    localStorage.setItem('punchQueue', JSON.stringify([late, bad]));
+    return {late: late.id, bad: bad.id};
+  });
+  await p.reload(); await waitFor(p, punchReady, 15000);
+  const lt = {flushed: await waitFor(p, () => JSON.parse(localStorage.getItem('punchQueue') || '[]').length === 0, 15000)};
+  lt.err = await waitFor(p, () => [...document.querySelectorAll('[data-sonner-toast][data-type="error"]')].some(x => /Punch not recorded/.test(x.textContent)), 5000);
+  lt.synced1 = await waitFor(p, () => /Synced 1 offline punch\b/.test(document.body.innerText), 5000);
+  lt.noSynced2 = !/Synced 2 offline punches/.test(await p.evaluate(() => document.body.innerText));
+  const srvAfter = await srv('/punches');
+  lt.stored = srvAfter.n === n1 + 1 && srvAfter.ids.includes(lq.late) && !srvAfter.ids.includes(lq.bad);
+  lt.log = await p.evaluate(ids => { const l = JSON.parse(localStorage.getItem('punchLog') || '[]').map(e => String(e.id)); return {late: l.includes(ids.late), bad: l.includes(ids.bad)}; }, lq);
+  ok(lt.flushed && lt.err && lt.synced1 && lt.noSynced2 && lt.stored && lt.log.late && !lt.log.bad,
+    'punch: a punch sent 5 days late is stored and stays on the phone; a refused one is an error toast and leaves the history; Synced counts only the stored ' + JSON.stringify(lt));
   await srv('/revoke');
   await p.goto(BASE + 'worker-punch.html?t=tok-avi');
   ok(await waitFor(p, () => /Invalid Link/.test(document.body.innerText)), 'punch: a regenerated link is revoked even from the cache');
@@ -3201,6 +3560,202 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(slip.tot && slip.tot === payTot && /Pay estimate/.test(slip.title) && slip.note, 'punch: the month\'s pay estimate has the same total as My Hours and says it is before deductions ' + JSON.stringify({payTot, slip}));
   await pop.close().catch(() => {});
   ok(p.errs.length === 0, 'punch: no page errors ' + p.errs.join(' | '));
+  // ── Two devices of one firm (store.ts → merged save): changes kept on A while its save failed are saved
+  // against the base they were edited from, so a worker B added meanwhile, and B's edit of another worker, stay ──
+  {
+    const ca = await newCtx(); let pa = await page(ca);
+    await login(pa, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+    await pa.waitForNavigation().catch(()=>{});
+    ok(await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w1') && !!localStorage.getItem(STORAGE_KEY() + '_base'), 15000), 'two devices: A loads and keeps a save base next to its cache');
+    const a1 = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend(), keep = b.saveSchedule;
+      b.saveSchedule = async () => { throw new Error('offline'); };   // A's save fails (offline)
+      workers.find(w => w.id === 'w1').e2eNote = 'from A';
+      autoSave();
+      await T.tick(2000);
+      b.saveSchedule = keep;
+      return {unsaved: hasUnsavedLocal(), cached: /from A/.test(localStorage.getItem(STORAGE_KEY()) || '')};
+    });
+    await pa.close();
+    const cb = await newCtx(); const pb = await page(cb);
+    await login(pb, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+    await pb.waitForNavigation().catch(()=>{});
+    ok(await waitFor(pb, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w2'), 15000), 'two devices: B loads');
+    const b1 = await pb.evaluate(async () => {
+      workers.push({id: 'wB', name: 'Added On B', clientIds: [], token: 'tok-wb', status: 'active', schedule: []});
+      workers.find(w => w.id === 'w2').e2eNote = 'from B';
+      return gsSave(getDataObj());
+    });
+    await cb.close();
+    // A opens again: its kept changes are saved, merged with what B did.
+    pa = await page(ca);
+    await pa.goto(BASE + 'schedule-manager.html');
+    const merged = await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'wB') && !hasUnsavedLocal(), 20000);
+    const a2 = await pa.evaluate(async () => {
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      const w = id => d.workers.find(x => x.id === id) || {};
+      return {wB: !!d.workers.find(x => x.id === 'wB'), w1: w('w1').e2eNote, w2: w('w2').e2eNote, local2: (workers.find(x => x.id === 'w2') || {}).e2eNote};
+    });
+    ok(a1.unsaved && a1.cached && b1 && merged && a2.wB && a2.w1 === 'from A' && a2.w2 === 'from B' && a2.local2 === 'from B',
+      'two devices: A\'s unsaved change is saved without deleting the worker B added or undoing B\'s edit ' + JSON.stringify({a1, b1, merged, a2}));
+    // A full localStorage: the cache writes fail, the save still reaches Firestore and the punches stay (in memory).
+    const qt = await pa.evaluate(async () => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (/^schedMgr_v1|^punchLog/.test(k)) throw new DOMException('full', 'QuotaExceededError'); return set.call(this, k, v); };
+      try {
+        clients.find(c => c.id === 'c2').e2eNote = 'quota';
+        autoSave();
+        let saved = false;
+        for (let i = 0; i < 40 && !saved; i++) {
+          await T.tick(250);
+          const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+          saved = (d.clients.find(c => c.id === 'c2') || {}).e2eNote === 'quota';
+        }
+        const n = getPunchLog().length;
+        savePunchLog(getPunchLog().concat([{id: 'quota-p', workerId: 'w1', workerName: 'Avi Cohen', type: 'in', ts: new Date().toISOString(), time: '08:00'}]));
+        return {saved, punches: getPunchLog().length === n + 1 && getPunchLog().some(e => e.id === 'quota-p')};
+      } finally {
+        Storage.prototype.setItem = set;
+        savePunchLog(getPunchLog().filter(e => e.id !== 'quota-p'));
+      }
+    });
+    ok(qt.saved && qt.punches, 'quota: with localStorage full the save still reaches Firestore and a punch is kept in memory ' + JSON.stringify(qt));
+    // Approving a long hours sheet: more rows than one Firestore batch (500 writes) takes.
+    const big = await pa.evaluate(async () => {
+      const entries = [], d0 = new Date(2025, 0, 1);
+      for (let i = 0; i < 300; i++) {
+        const d = new Date(d0); d.setDate(d.getDate() + i);
+        entries.push({workerId: 'w2', date: String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(), inTime: '08:00', outTime: '12:00'});
+      }
+      const s = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'savePendingHoursBatch', fileName: 'big', entries})})).json();
+      const a = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'approvePendingHours', batchId: s.batchId})})).json();
+      const punches = await (await loadFirestoreBackend()).punchesOfBatch(fsTenantId(), s.batchId);
+      const q = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'loadPendingHours'})})).json();
+      return {saved: s.count, approved: a.ok ? a.created : a.error, punches: punches.length, status: ((q.batches || []).find(b => b.batchId === s.batchId) || {}).status};
+    });
+    ok(big.saved === 300 && big.approved === 300 && big.punches === 600 && big.status === 'approved', 'hours: a 300-row batch is approved (punches in batch writes of 450) ' + JSON.stringify(big));
+    // An approve that failed part way left some punches: rejecting the batch deletes them.
+    const rj = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const entries = [{workerId: 'w2', date: '05/02/2025', inTime: '08:00', outTime: '12:00'}, {workerId: 'w2', date: '06/02/2025', inTime: '08:00', outTime: '12:00'}];
+      const s = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'savePendingHoursBatch', fileName: 'partial', entries})})).json();
+      await b.savePunch(fsTenantId(), {id: 'imp-' + s.batchId + '-0-in', workerId: 'w2', workerName: 'x', type: 'in', time: '08:00', date: '05/02/2025', ts: new Date(2025, 1, 5, 8).toISOString(), clientId: '', notes: '', gpsWarnings: []});
+      const before = (await b.punchesOfBatch(fsTenantId(), s.batchId)).length;
+      const r = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'rejectPendingHours', batchId: s.batchId})})).json();
+      const after = (await b.punchesOfBatch(fsTenantId(), s.batchId)).length;
+      const q = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'loadPendingHours'})})).json();
+      return {before, ok: !!r.ok, after, status: ((q.batches || []).find(x => x.batchId === s.batchId) || {}).status};
+    });
+    ok(rj.before === 1 && rj.ok && rj.after === 0 && rj.status === 'rejected', 'hours: rejecting a batch after a partial approve deletes its imported punches ' + JSON.stringify(rj));
+    // A cache from before the save base (_unsaved, no _base) while another device edited a worker: the server's copy of
+    // every worker it has is kept (nothing overwritten or deleted), a worker only on this device is saved.
+    await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const d = await b.loadSchedule(fsTenantId(), false);
+      d.workers.find(w => w.id === 'w2').e2eNote = 'other device';
+      await b.saveSchedule(fsTenantId(), d);
+      const c = JSON.parse(localStorage.getItem(STORAGE_KEY()));
+      c.workers.find(w => w.id === 'w1').e2eNote = 'legacy cache';
+      c.workers.push({id: 'wLegacy', name: 'Added Offline', clientIds: [], token: 'tok-wl', status: 'active', schedule: []});
+      localStorage.setItem(STORAGE_KEY(), JSON.stringify(c));
+      localStorage.setItem(UNSAVED_KEY(), String(Date.now()));
+      localStorage.removeItem(STORAGE_KEY() + '_base');
+    });
+    await pa.goto(BASE + 'schedule-manager.html');
+    const lg = await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w2' && w.e2eNote === 'other device') && !hasUnsavedLocal(), 20000);
+    const lc = await pa.evaluate(async () => {
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      const w = id => d.workers.find(x => x.id === id) || {};
+      return {w1: w('w1').e2eNote, w2: w('w2').e2eNote, wL: !!d.workers.find(x => x.id === 'wLegacy'), wB: !!d.workers.find(x => x.id === 'wB'), base: !!localStorage.getItem(STORAGE_KEY() + '_base')};
+    });
+    ok(lg && lc.w1 === 'from A' && lc.w2 === 'other device' && lc.wL && lc.wB && lc.base,
+      'legacy cache: a save with no base keeps the server copies and saves the worker added offline ' + JSON.stringify({lg, lc}));
+    // Sign-out with a change that could not be saved: the user is asked, and on Cancel nothing is removed.
+    const so = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend(), keep = b.saveSchedule;
+      b.saveSchedule = async () => { throw new Error('offline'); };
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        workers.find(w => w.id === 'w1').e2eNote = 'not saved yet';
+        autoSave();
+        await ManagerBridge.signOut();
+        await T.tick(3000);
+        return {asked: !!asked, cache: /not saved yet/.test(localStorage.getItem(STORAGE_KEY()) || ''), unsaved: hasUnsavedLocal()};
+      } finally { window.confirm = conf; b.saveSchedule = keep; }
+    });
+    ok(so.asked && so.cache && so.unsaved, 'sign-out: an unsaved change is not removed without asking ' + JSON.stringify(so));
+    // Saved once the server is back, then sign-out goes through without asking.
+    const so2 = await pa.evaluate(async () => {
+      autoSave();
+      for (let i = 0; i < 40 && hasUnsavedLocal(); i++) await T.tick(250);
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      return {saved: (d.workers.find(w => w.id === 'w1') || {}).e2eNote === 'not saved yet', unsaved: hasUnsavedLocal()};
+    });
+    ok(so2.saved && !so2.unsaved, 'sign-out: the kept change is saved when the server answers again ' + JSON.stringify(so2));
+    // A server load landing while an edit's 800 ms save has not run yet (the retry after a failed load): the
+    // edit is kept and saved, merged with that server copy, not replaced by it.
+    const asl = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const gd = await b.loadSchedule(fsTenantId(), false);
+      workers.find(w => w.id === 'w1').e2eNote = 'edited before the reload';
+      autoSave();
+      const applied = applyServerLoad(gd);
+      const local = (workers.find(w => w.id === 'w1') || {}).e2eNote;
+      let server = '';
+      for (let i = 0; i < 40 && server !== 'edited before the reload'; i++) {
+        await T.tick(250);
+        server = ((await b.loadSchedule(fsTenantId(), false)).workers.find(w => w.id === 'w1') || {}).e2eNote;
+      }
+      for (let i = 0; i < 20 && hasUnsavedLocal(); i++) await T.tick(250);
+      return {applied, local, server, unsaved: hasUnsavedLocal()};
+    });
+    ok(!asl.applied && asl.local === 'edited before the reload' && asl.server === 'edited before the reload' && !asl.unsaved,
+      'reload: a server load arriving before a pending save keeps the edit and saves it ' + JSON.stringify(asl));
+    // Another firm opened on this device still has changes kept after a failed save: sign-out removes every
+    // firm's data, so it asks first, and on Cancel nothing is removed.
+    const of = await pa.evaluate(async () => {
+      localStorage.setItem('schedMgr_v1_tenant-zz', JSON.stringify({workers: [{id: 'wz', name: 'Other firm worker', clientIds: []}], clients: [], suppliers: []}));
+      localStorage.setItem('schedMgr_v1_tenant-zz_unsaved', String(Date.now()));
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        await Promise.race([ManagerBridge.signOut(), T.tick(15000)]);
+        return {asked: !!asked, kept: !!localStorage.getItem('schedMgr_v1_tenant-zz') && !!localStorage.getItem('schedMgr_v1_tenant-zz_unsaved'), session: !!localStorage.getItem('schedMgr_session')};
+      } finally {
+        window.confirm = conf;
+        localStorage.removeItem('schedMgr_v1_tenant-zz'); localStorage.removeItem('schedMgr_v1_tenant-zz_unsaved');
+      }
+    });
+    ok(of.asked && of.kept && of.session, 'sign-out: another firm\'s unsaved changes on this device are not removed without asking ' + JSON.stringify(of));
+    // Really offline (the network off, not a stubbed save): the Firestore commit never settles, yet Sign out
+    // asks within seconds; Cancel keeps the change, and it is saved once the network is back.
+    await ca.setOffline(true);
+    const so3 = await pa.evaluate(async () => {
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        workers.find(w => w.id === 'w1').e2eNote = 'offline edit';
+        autoSave();
+        await T.tick(1200);
+        const t0 = Date.now();
+        await Promise.race([ManagerBridge.signOut(), T.tick(15000)]);
+        return {asked: !!asked, ms: Date.now() - t0, cache: /offline edit/.test(localStorage.getItem(STORAGE_KEY()) || ''), unsaved: hasUnsavedLocal(), session: !!localStorage.getItem('schedMgr_session')};
+      } finally { window.confirm = conf; }
+    });
+    await ca.setOffline(false);
+    // The pending commit lands by itself once Firestore reconnects; a save the SDK refused offline is sent again.
+    let back = await waitFor(pa, () => !hasUnsavedLocal(), 30000);
+    if (!back) { await pa.evaluate(() => autoSave()); back = await waitFor(pa, () => !hasUnsavedLocal(), 30000); }
+    const so4 = await pa.evaluate(async () => ((await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false)).workers.find(w => w.id === 'w1') || {}).e2eNote);
+    ok(so3.asked && so3.ms < 7000 && so3.cache && so3.unsaved && so3.session && back && so4 === 'offline edit',
+      'sign-out offline: asked within seconds (no hang on the pending commit), Cancel keeps the change, saved once back online ' + JSON.stringify({so3, back, so4}));
+    ok(pa.errs.length === 0, 'two devices: no page errors ' + pa.errs.join(' | '));
+    await ca.close();
+  }
   ok(external.filter(u=>/script\.google\.com/.test(u)).length === 0, 'still no request to script.google.com');
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');

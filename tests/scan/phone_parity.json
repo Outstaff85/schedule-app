@@ -1,5 +1,5 @@
 {
- "about": "Written once from scripts/scan-train/gen/phone.py by tests/auth/test_scan_train_phone.py --write; checked by that test and by tests/scan/phone_parity.test.mjs (the lab's scan-core.js and mrzFind).",
+ "about": "Written once from scripts/scan-train/gen/phone.py by tests/auth/test_scan_train_phone.py --write; checked by that test and by tests/scan/phone_parity.test.mjs (the scanner engine's corners, warpRGBA and mrzFind, src/scan/engine/).",
  "heatmaps": [
   {
    "name": "two documents",

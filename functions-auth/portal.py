@@ -9,7 +9,9 @@ punch_action(db, body)            worker-punch.html; body.token is the link toke
   load                  this worker (id, name, colorIdx, token, clientIds) and
                         the sites assigned to them (id, name, object, lat, lng,
                         radius) — never the rest of the firm
-  savePunch             a punch for THIS worker only
+  savePunch             a new punch for THIS worker only — create-only (a punch
+                        already stored is never rewritten), its time checked
+                        against the server's clock (_save_punch)
   myMonth               the worker's own punches for one month ('YYYY-MM') plus
                         what the pay functions need to estimate the pay: their
                         own rates (WORKER_PAY_FIELDS) and their sites' worker-pay
@@ -24,8 +26,7 @@ punch_action(db, body)            worker-punch.html; body.token is the link toke
                         nothing changes in the schedule until a manager
                         confirms it (Schedule tab, firestore-backend.js)
   cancelRequest         withdraw an offer still pending
-  savePushSubscription  stored for later (push reminders are off)
-  logError              the page's error telemetry
+  logError              the page's error telemetry — only from a working link
 
 supplier_action(db, caller, body)  supplier-portal.html; caller from the ID token
   loadSchedule / loadPunchLog      only the supplier's own workers, stripped
@@ -37,19 +38,37 @@ punch for its workers), never a link to their stored files. It may edit only
 SUPPLIER_EDITABLE.
 """
 
-import hashlib
+import secrets
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from google.api_core.exceptions import Conflict
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from core import doc_keys
 
 PUNCH_MONTHS = 13
-PUNCH_FIELDS = ("workerName", "type", "time", "date", "site", "dist", "gpsAccuracy",
+# Taken from the page; `time` and `day` are always rebuilt from the checked ts.
+PUNCH_FIELDS = ("workerName", "type", "site", "dist", "gpsAccuracy",
                 "gpsSuspicious", "gpsWarnings", "notes", "clientId")
+# How far the page's punch time may be from the server's clock before it is
+# marked: later than this is the phone's clock ahead (the server's time is
+# used), earlier is a punch sent late (an offline punch, or a clock set back).
+CLOCK_SLACK = timedelta(minutes=5)
+# A punch sent later than this after its time is still stored (a phone left
+# offline over a weekend and a holiday: refusing it would lose the worked
+# shift and turn the next tap into the wrong IN / OUT), but its warning names
+# the days and asks to check its month, whose hours may already be approved or
+# signed (an approved day whose shifts change shows as changed in the review).
+MAX_LATE = timedelta(days=3)
+# A punch sent later than this after its time is refused: far longer than any
+# offline queue plausibly holds one (a holiday week included), so it is a phone
+# whose clock is set back (a reset date, a wrong year) or a link used to fill
+# in old months — the worker sees the refusal, and a manager adds an old shift
+# by hand.
+MAX_KEEP = timedelta(days=30)
 SITE_FIELDS = ("id", "name", "object", "lat", "lng", "radius")
 
 E_LINK = "Unknown worker link"
@@ -58,14 +77,6 @@ TZ = ZoneInfo("Asia/Jerusalem")
 
 def _clip(v, n):
     return str("" if v is None else v)[:n]
-
-
-def _day(date_str):
-    parts = str(date_str or "").split("/")
-    if len(parts) == 3 and all(p.isdigit() for p in parts):
-        d, m, y = parts
-        return f"{y.zfill(4)}-{m.zfill(2)}-{d.zfill(2)}"
-    return None
 
 
 def _to_dt(v):
@@ -139,6 +150,14 @@ def _load(db, tid, w):
 
 
 def _save_punch(db, tid, w, data):
+    """A new punch of this link's worker. Create-only: a punch already stored
+    (the offline queue sending it again, or one a manager or an accepted fix
+    has changed since) is answered ok and left as it is. The time is checked
+    against the server's clock: a time ahead of it is replaced by the server's
+    time, a time behind it (sent late) is kept; both are marked suspicious with
+    a warning the punch log shows. A time more than MAX_LATE behind is kept
+    too, its warning in days; one more than MAX_KEEP behind is refused. `day` and `time` come from that ts in Israel
+    time, whatever the page's clock or time zone said."""
     if not isinstance(data, dict):
         return {"error": "No punch data"}
     if str(data.get("workerId") or "") != w.id:
@@ -148,10 +167,17 @@ def _save_punch(db, tid, w, data):
     pid = str(data.get("id") or int(time.time() * 1000))
     if "/" in pid or len(pid) > 100:
         return {"error": "Bad punch id"}
+    out_id = data.get("id") if data.get("id") is not None else pid
     ref = db.collection("tenants").document(tid).collection("punches").document(pid)
+
+    def stored(snap):
+        if (snap.to_dict() or {}).get("workerId") != w.id:
+            return {"error": "Bad punch id"}  # never touch someone else's punch
+        return {"ok": True, "id": out_id}  # already stored: never rewritten
+
     old = ref.get()
-    if old.exists and (old.to_dict() or {}).get("workerId") != w.id:
-        return {"error": "Bad punch id"}  # never overwrite someone else's punch
+    if old.exists:
+        return stored(old)
     doc = {k: data.get(k) for k in PUNCH_FIELDS if data.get(k) is not None}
     # A punch is filed only under one of the worker's own clients — never
     # another client of the firm (its hours review, signed month, billing).
@@ -159,21 +185,48 @@ def _save_punch(db, tid, w, data):
         doc.pop("clientId", None)
         doc.pop("site", None)
     doc["type"] = str(data.get("type")).lower()
-    doc["gpsWarnings"] = [_clip(x, 200) for x in (data.get("gpsWarnings") or [])][:20]
-    ts = _to_dt(data.get("ts")) or datetime.now(timezone.utc)
+    # The name the Punch Log lists and exports is the worker record's, never
+    # the page's; the free text is clipped (the log and its CSV).
+    name = (w.to_dict() or {}).get("name")
+    if name:
+        doc["workerName"] = _clip(name, 120)
+    else:
+        doc.pop("workerName", None)
+    for k, n in (("site", 200), ("notes", 500)):
+        if k in doc:
+            doc[k] = _clip(doc[k], n)
+    warnings = [_clip(x, 200) for x in (data.get("gpsWarnings") or [])][:20]
+    now = datetime.now(timezone.utc)
+    ts = _to_dt(data.get("ts")) or now
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
-    # The page sends no date: the day is the punch time's date in Israel.
-    doc.update(id=data.get("id") if data.get("id") is not None else pid, workerId=w.id,
-               day=_day(data.get("date")) or ts.astimezone(TZ).strftime("%Y-%m-%d"), archived=False)
-    doc["ts"] = ts
+    if ts > now + CLOCK_SLACK:
+        warnings.append(f"clock ahead {round((ts - now).total_seconds() / 60)} min (server time used)")
+        ts = now
+        doc["gpsSuspicious"] = True
+    elif ts < now - MAX_KEEP:
+        return {"error": "Punch time too old"}
+    elif ts < now - CLOCK_SLACK:
+        late = now - ts
+        if late > MAX_LATE:
+            warnings.append(f"sent {late.days} days after the punch time (check its month's approved hours)")
+        else:
+            warnings.append(f"sent {round(late.total_seconds() / 60)} min after the punch time")
+        doc["gpsSuspicious"] = True
+    local = ts.astimezone(TZ)
+    doc["gpsWarnings"] = warnings
+    doc.update(id=out_id, workerId=w.id, day=local.strftime("%Y-%m-%d"), time=local.strftime("%H:%M"),
+               archived=False, ts=ts, receivedAt=now)
     # The worker's HR (if any): an own-workers hr login reads punches by it
     # (firestore.rules). Taken from the worker, never from the page.
     hr = (w.to_dict() or {}).get("hrId")
     if hr:
         doc["hrId"] = str(hr)
-    ref.set(doc)  # idempotent: a queued punch sent twice is the same document
-    return {"ok": True, "id": doc["id"]}
+    try:
+        ref.create(doc)
+    except Conflict:  # the same punch arrived twice at once: the first one stands
+        return stored(ref.get())
+    return {"ok": True, "id": out_id}
 
 
 MY_PUNCH_FIELDS = ("id", "type", "time", "date", "clientId", "dist")  # dist: metres from the site, shown in My Hours
@@ -336,15 +389,18 @@ def _cancel_request(db, tid, w, rid):
 
 def punch_action(db, body):
     action = str(body.get("action") or "")
-    if action == "logError":
-        db.collection("errors").add({
-            "when": datetime.now(timezone.utc).isoformat(), "page": _clip(body.get("page"), 200),
-            "role": "worker", "worker": _clip(body.get("worker"), 80), "message": _clip(body.get("message"), 500),
-            "source": _clip(body.get("source"), 300), "stack": _clip(body.get("stack"), 1200)})
-        return {"ok": True}
     tid, w = find_worker(db, body.get("token"))
     if not w:
         return {"error": E_LINK}
+    if action == "logError":
+        # Only from a working link (no one can fill the errors collection
+        # without one); the firm and the worker come from the link.
+        db.collection("errors").add({
+            "when": datetime.now(timezone.utc).isoformat(), "page": _clip(body.get("page"), 200),
+            "role": "worker", "tenantId": tid, "worker": _clip((w.to_dict() or {}).get("name") or w.id, 80),
+            "message": _clip(body.get("message"), 500),
+            "source": _clip(body.get("source"), 300), "stack": _clip(body.get("stack"), 1200)})
+        return {"ok": True}
     if action == "load":
         return _load(db, tid, w)
     if action == "savePunch":
@@ -359,15 +415,6 @@ def punch_action(db, body):
         return _offer_shift(db, tid, w, body)
     if action == "cancelRequest":
         return _cancel_request(db, tid, w, body.get("id"))
-    if action == "savePushSubscription":
-        sub = body.get("subscription") or {}
-        endpoint = str(sub.get("endpoint") or "")
-        if not endpoint:
-            return {"error": "No subscription"}
-        db.collection("pushSubscriptions").document(hashlib.sha256(endpoint.encode()).hexdigest()).set({
-            "tenantId": tid, "workerId": w.id, "role": "worker", "subscription": sub,
-            "savedAt": datetime.now(timezone.utc).isoformat()})
-        return {"ok": True}
     return {"error": "Unknown action"}
 
 
@@ -400,6 +447,11 @@ def strip_worker(d, supplier_id, pay=False):
     # A worker paid by the day: the supplier's commission is a fixed ₪ per day
     # (dayRate) when one is set; never the worker's own pay inputs.
     o["supplierDayRate"] = sr.get("dayRate") if d.get("payMode") == "daily" else None
+    # That commission counts the days set by hand when there are some (as the
+    # manager's Salary table does): the day counts go with it even without
+    # "See workers' pay" — a commission input, never a wage.
+    if o["supplierDayRate"] is not None and isinstance(d.get("dayOverrides"), dict):
+        o["dayOverrides"] = d["dayOverrides"]
     return o
 
 
@@ -449,12 +501,12 @@ def supplier_action(db, caller, body):
         since = datetime.now(timezone.utc) - timedelta(days=31 * PUNCH_MONTHS)
         entries = []
         for i in range(0, len(ids), 30):  # 'in' takes up to 30 values
-            q = t_ref.collection("punches").where(filter=FieldFilter("workerId", "in", ids[i:i + 30]))
+            # Bounded by ts (the (workerId, ts) index): only the 13 months are read.
+            q = (t_ref.collection("punches").where(filter=FieldFilter("workerId", "in", ids[i:i + 30]))
+                 .where(filter=FieldFilter("ts", ">=", since)))
             for p in q.stream():
                 d = p.to_dict()
                 ts = d.get("ts")
-                if ts is not None and hasattr(ts, "isoformat") and ts < since:
-                    continue
                 e = {k: d.get(k) for k in SUPPLIER_PUNCH_FIELDS if k in d}
                 e["ts"] = ts.isoformat().replace("+00:00", "Z") if hasattr(ts, "isoformat") else d.get("tsRaw")
                 entries.append(e)
@@ -474,6 +526,9 @@ def supplier_action(db, caller, body):
         w.update({k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None})
         w["name"] = f"{w.get('docGiven') or ''} {w.get('docSurname') or ''}".strip()
         w["docKeys"] = doc_keys(w)
+        # Its punch link from the start (the app's genToken makes the same
+        # kind); strip_worker never hands it to the supplier.
+        w["token"] = secrets.token_urlsafe(16)
         t_ref.collection("workers").document(wid).set(w)
         return {"ok": True, "worker": strip_worker(w, sid, pay)}
 

@@ -1,7 +1,7 @@
 """Shared by the scanner's training scripts (docs/scan-plan.md → S6, docs/hf-plan.md): the
 project's Storage bucket and Firestore, under the owner's own Google account (Application
 Default Credentials: `gcloud auth application-default login`, once); the models' home, the
-public Hugging Face repo REPO (one tag per version; publishing uses the owner's HF token on
+private Hugging Face repo REPO (one tag per version; publishing uses the owner's HF token on
 the PC, `hf auth login`); the model versions, and the work folder on the PC (deleted after the run)."""
 import json
 import pathlib

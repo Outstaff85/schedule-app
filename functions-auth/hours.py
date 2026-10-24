@@ -47,7 +47,9 @@ import base64
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore_v1.field_path import FieldPath
 
 from core import HOUR_OF, HOUR_PERMS  # noqa: F401 — the ticks this module checks
 
@@ -172,12 +174,6 @@ def _doc_ref(t_ref, kind, owner, month):
 def _days_of(ref):
     s = ref.get()
     return ((s.to_dict() or {}).get("days") or {}) if s.exists else {}
-
-
-def _write_days(ref, kind, owner, owner_name, month, days):
-    # The listed fields are replaced whole (days too); a month's signature stays.
-    ref.set({"kind": kind, "ownerId": owner, "ownerName": owner_name, "month": month, "days": days},
-            merge=["kind", "ownerId", "ownerName", "month", "days"])
 
 
 def _jpeg_size(b):
@@ -346,19 +342,21 @@ def hours_action(db, caller, body, bucket=None):
     name = name[0] if isinstance(name, tuple) else name
     if action == "sign":
         return _sign(t_ref, str(tid), owner, month, ref, by, name, body, bucket)
-    days = _days_of(ref)
 
+    # Each action checks its input first, then changes the days map in a
+    # transaction (two reviews of the same document at once never lose one).
     if action == "approve":
         lines = body.get("lines")
         if not isinstance(lines, list) or len(lines) > MAX_LINES:
             return {"error": "Bad lines"}
-        for line in lines:
-            parts = _clip(line, 160).split("|")
-            if len(parts) != 4 or not parts[1].startswith(month) or (allowed is not None and parts[0] not in allowed):
-                continue
-            days[f"{parts[0]}|{parts[1]}"] = {"status": "approved", "line": "|".join(parts), "byName": by, "at": _now()}
-        _write_days(ref, kind, owner, name, month, days)
-        return {"ok": True, "days": days}
+
+        def mutate(days):
+            for line in lines:
+                parts = _clip(line, 160).split("|")
+                if len(parts) != 4 or not parts[1].startswith(month) or (allowed is not None and parts[0] not in allowed):
+                    continue
+                days[f"{parts[0]}|{parts[1]}"] = {"status": "approved", "line": "|".join(parts), "byName": by, "at": _now()}
+        return {"ok": True, "days": _update_days(db, ref, kind, owner, name, month, mutate)}
 
     wid, day = str(body.get("workerId") or ""), str(body.get("day") or "")
     if not wid or "/" in wid or len(wid) > 100 or len(day) != 10 or not day.startswith(month) or (allowed is not None and wid not in allowed):
@@ -366,10 +364,11 @@ def hours_action(db, caller, body, bucket=None):
     key = f"{wid}|{day}"
     comment = _clip(body.get("comment"), 500).strip()
     if action == "dispute":
-        if comment:
-            days[key] = {"status": "disputed", "line": _clip(body.get("line"), 160), "comment": comment, "byName": by, "at": _now()}
-        elif days.get(key, {}).get("status") == "disputed":
-            days.pop(key)
+        def mutate(days):
+            if comment:
+                days[key] = {"status": "disputed", "line": _clip(body.get("line"), 160), "comment": comment, "byName": by, "at": _now()}
+            elif days.get(key, {}).get("status") == "disputed":
+                days.pop(key)
     else:
         in_t, out_t = _hhmm(body.get("inT")), _hhmm(body.get("outT"))
         if not in_t or not out_t:
@@ -383,17 +382,64 @@ def hours_action(db, caller, body, bucket=None):
             shift = 0
         if shift < 0 or shift >= len(ins):
             return {"error": "Bad shift"}
-        days[key] = {"status": "fix", "line": line, "shift": shift, "oldIn": ins[shift],
-                     "oldOut": outs[shift] if shift < len(outs) else "", "inT": in_t, "outT": out_t,
-                     "comment": comment, "byName": by, "at": _now()}
-    _write_days(ref, kind, owner, name, month, days)
-    return {"ok": True, "days": days}
+        fix = {"status": "fix", "line": line, "shift": shift, "oldIn": ins[shift],
+               "oldOut": outs[shift] if shift < len(outs) else "", "inT": in_t, "outT": out_t,
+               "comment": comment, "byName": by, "at": _now()}
+
+        def mutate(days):
+            days[key] = fix
+    return {"ok": True, "days": _update_days(db, ref, kind, owner, name, month, mutate)}
+
+
+def _update_days(db, ref, kind, owner, owner_name, month, mutate):
+    """Reads the document's days, lets mutate(days) change them and writes them
+    back, in one transaction; returns the days written."""
+    @firestore.transactional
+    def run(tx):
+        snap = ref.get(transaction=tx)
+        days = ((snap.to_dict() or {}).get("days") or {}) if snap.exists else {}
+        mutate(days)
+        # The listed fields are replaced whole (days too); a month's signature stays.
+        tx.set(ref, {"kind": kind, "ownerId": owner, "ownerName": owner_name, "month": month, "days": days},
+               merge=["kind", "ownerId", "ownerName", "month", "days"])
+        return days
+    return run(db.transaction())
 
 
 def _at(day, hhmm):
     """A punch time on a day (Israel time) as a UTC datetime."""
     d = datetime.strptime(day + " " + hhmm, "%Y-%m-%d %H:%M").replace(tzinfo=TZ)
     return d.astimezone(timezone.utc)
+
+
+def _day_lines(wid, punches, days):
+    """The review rows' lines of the given days (YYYY-MM-DD), built as the
+    review builds them (src/hours-review/hours.ts monthDays over payroll's
+    groupPunchesIntoShifts): the punches in time order, an IN opens a shift
+    (closing an open one), an OUT closes it (or is a shift of its own); a
+    shift is on the day of its first punch, a row lists its shifts' IN and
+    OUT times."""
+    shifts, cur = [], None
+    for d in sorted(punches, key=lambda d: d.get("ts")):
+        if d.get("type") == "in":
+            if cur:
+                shifts.append(cur)
+            cur = [d, None]
+        else:
+            shifts.append([cur[0] if cur else None, d])
+            cur = None
+    if cur:
+        shifts.append(cur)
+    rows = {}
+    for i, o in shifts:
+        on = (i or o)["ts"].astimezone(TZ).strftime("%Y-%m-%d")
+        if on in days:
+            rows.setdefault(on, []).append(((i or {}).get("time") or "", (o or {}).get("time") or ""))
+    return {on: f"{wid}|{on}|{','.join(s[0] for s in sh)}|{','.join(s[1] for s in sh)}" for on, sh in rows.items()}
+
+
+# The fields a punch made by an accepted fix copies from its shift's other punch.
+_PUNCH_COPY = ("workerId", "workerName", "hrId", "clientId", "site")
 
 
 def _resolve(db, t_ref, caller, body):
@@ -409,7 +455,10 @@ def _resolve(db, t_ref, caller, body):
     entry = days.get(key)
     if not entry or entry.get("status") != "fix":
         return {"error": "Nothing to resolve"}
+    seen = dict(entry)  # the proposal as read: the transaction applies it only while it is still this one
     by = _caller_name(db, caller["uid"])
+    writes = []  # (reference, fields, create?)
+    moved = day_line = None  # where a shift with no IN fixed into a night one moved: (approval doc, key, month)
     if body.get("accept"):
         wid, day = key.split("|", 1)
         old = str(entry.get("line") or "").split("|")
@@ -418,44 +467,134 @@ def _resolve(db, t_ref, caller, body):
         else:
             old_in, old_out = (old[2], old[3]) if len(old) == 4 else ("", "")
         start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=TZ)
+        # From two days before (the day before's row is paired as the review
+        # pairs it, its first shift's IN possibly the evening before that) to
+        # the end of the next day.
         q = (t_ref.collection("punches").where(filter=FieldFilter("workerId", "==", wid))
-             .where(filter=FieldFilter("ts", ">=", start - timedelta(hours=6)))
+             .where(filter=FieldFilter("ts", ">=", start - timedelta(days=2)))
              .where(filter=FieldFilter("ts", "<", start + timedelta(days=2))))
-        ps = sorted(((p, p.to_dict() or {}) for p in q.stream()), key=lambda x: x[1].get("ts"))
-        p_in = next((p for p, d in ps if d.get("type") == "in" and d.get("time") == old_in
-                     and d.get("ts").astimezone(TZ).strftime("%Y-%m-%d") == day), None)
-        p_out = None
-        if p_in is not None:
-            after = [x for x in ps if x[1].get("ts") > p_in.to_dict().get("ts")]
-            p_out = next((p for p, d in after if d.get("type") == "out" and d.get("time") == old_out), None)
-        if p_in is None or p_out is None:
+        ps = sorted(((p, d) for p, d in ((p, p.to_dict() or {}) for p in q.stream()) if hasattr(d.get("ts"), "astimezone")),
+                    key=lambda x: x[1].get("ts"))
+        on_day = lambda d: d.get("ts").astimezone(TZ).strftime("%Y-%m-%d") == day
+        p_in = p_out = None
+        if old_in:
+            p_in = next(((p, d) for p, d in ps if d.get("type") == "in" and d.get("time") == old_in and on_day(d)), None)
+            if p_in is not None and old_out:
+                after = [x for x in ps if x[1].get("ts") > p_in[1].get("ts")]
+                p_out = next(((p, d) for p, d in after if d.get("type") == "out" and d.get("time") == old_out), None)
+        elif old_out:  # a shift with no IN: its OUT on that day
+            p_out = next(((p, d) for p, d in ps if d.get("type") == "out" and d.get("time") == old_out and on_day(d)), None)
+        # A shift with no OUT (or no IN) gets the missing punch; the ones it had must be found.
+        if (old_in and p_in is None) or (old_out and p_out is None) or (p_in is None and p_out is None):
             return {"error": "The shift's punches were not found — edit them in the punch log"}
         in_ts = _at(day, entry["inT"])
         out_ts = _at(day, entry["outT"])
+        moved_day = None  # the day the shift moves to (a shift with no IN fixed into a night one)
         if out_ts <= in_ts:
-            out_ts += timedelta(days=1)  # a night shift ends the next day
+            if p_in is None:
+                # A shift with no IN: its OUT is the worker's real punch, which
+                # stays on its day; the new IN goes on the evening before, and
+                # the shift (dated by its IN) with it — its row is written there.
+                in_ts -= timedelta(days=1)
+                moved_day = in_ts.astimezone(TZ).strftime("%Y-%m-%d")
+            else:
+                out_ts += timedelta(days=1)  # a night shift ends the next day
+        # The fixed shift may not take in another punch of the worker, bounds
+        # included (a punch at the same minute pairs either way), nor sit inside
+        # another shift (an IN before it whose OUT comes after it): those are
+        # put right in the punch log.
+        moving = {x[0].id for x in (p_in, p_out) if x is not None}
+        others = [d for p, d in ps if p.id not in moving]
+        before = [d for d in others if d.get("ts") < in_ts]
+        later = [d for d in others if d.get("ts") > out_ts]
+        if (any(in_ts <= d.get("ts") <= out_ts for d in others)
+                or (before and later and before[-1].get("type") == "in" and later[0].get("type") == "out")):
+            return {"error": "The fixed shift overlaps other punches — edit them in the punch log"}
         stamp = {"editedBy": "approval", "editedAt": _now()}
         # day (YYYY-MM-DD) and date (DD/MM/YYYY, what the punch log shows)
         # follow the new time: an out moved past midnight is on the next day.
-        out_local = out_ts.astimezone(TZ)
-        p_in.reference.update(dict(stamp, time=entry["inT"], ts=in_ts))
-        p_out.reference.update(dict(stamp, time=entry["outT"], ts=out_ts,
-                                    day=out_local.strftime("%Y-%m-%d"), date=out_local.strftime("%d/%m/%Y")))
-        # The day's line with that shift's times replaced (the review compares lines).
-        if len(old) == 4:
+        in_local, out_local = in_ts.astimezone(TZ), out_ts.astimezone(TZ)
+        in_f = dict(stamp, time=entry["inT"], ts=in_ts, day=in_local.strftime("%Y-%m-%d"), date=in_local.strftime("%d/%m/%Y"))
+        out_f = dict(stamp, time=entry["outT"], ts=out_ts, day=out_local.strftime("%Y-%m-%d"), date=out_local.strftime("%d/%m/%Y"))
+        base = (p_in or p_out)[1]
+        after_fix = {p.id: d for p, d in ps}
+        for found, fields, typ in ((p_in, in_f, "in"), (p_out, out_f, "out")):
+            if found is not None:
+                # A punch the fix leaves at its time is not written (a real punch stays unedited).
+                if found[1].get("ts") != fields["ts"] or found[1].get("time") != fields["time"]:
+                    writes.append((found[0].reference, fields, False))
+                after_fix[found[0].id] = dict(found[1], **fields)
+            else:
+                new_ref = t_ref.collection("punches").document()
+                doc = {k: base[k] for k in _PUNCH_COPY if base.get(k) is not None}
+                doc.update(fields, id=new_ref.id, type=typ, archived=False)
+                writes.append((new_ref, doc, True))
+                after_fix[new_ref.id] = doc
+        if moved_day:
+            # The shift is now the day before's: that row's entry is the fix
+            # (its line paired from the punches as the review pairs them, so it
+            # shows Fixed — in the month before when the day is the 1st), and
+            # the reviewed day keeps the fix with its remaining shifts' line,
+            # or no entry when it has none left.
+            scoped = [d for d in after_fix.values()
+                      if data.get("kind") != "client" or d.get("clientId") == data.get("ownerId")]
+            lines = _day_lines(wid, scoped, {moved_day, day})
+            new_line = lines.get(moved_day) or f"{wid}|{moved_day}|{entry['inT']}|{entry['outT']}"
+            moved = (_doc_ref(t_ref, data.get("kind"), data.get("ownerId"), moved_day[:7]), f"{wid}|{moved_day}", moved_day[:7])
+            day_line = lines.get(day)
+        # The day's line with that shift's times replaced (the review compares
+        # lines), its shifts in the order they open — by the IN, or by the OUT
+        # of a shift with no IN, as the review lists them.
+        elif len(old) == 4:
             ins, outs = old[2].split(","), old[3].split(",")
+            outs += [""] * (len(ins) - len(outs))
             i = int(entry.get("shift") or 0)
             if i < len(ins):
-                ins[i] = entry["inT"]
-            if i < len(outs):
-                outs[i] = entry["outT"]
-            new_line = f"{wid}|{day}|{','.join(ins)}|{','.join(outs)}"
+                ins[i], outs[i] = entry["inT"], entry["outT"]
+            shifts = sorted(zip(ins, outs), key=lambda s: s[0] or s[1])
+            new_line = f"{wid}|{day}|{','.join(s[0] for s in shifts)}|{','.join(s[1] for s in shifts)}"
         else:
             new_line = f"{wid}|{day}|{entry['inT']}|{entry['outT']}"
-        entry.update(status="fixed", line=new_line)
+        entry = dict(entry, status="fixed", line=new_line)
     else:
-        entry.update(status="rejected")
+        entry = dict(entry, status="rejected")
     entry.update(resolvedBy=by, resolvedAt=_now())
-    days[key] = entry
-    ref.update({"days": days})
+    # What the approval documents get: the entry under its key — under the
+    # day before's when the shift moved there (another month's document when
+    # the day is the 1st), the reviewed day then keeping the fix with its
+    # remaining shifts' line, or nothing.
+    here = {FieldPath("days", key).to_api_repr(): entry}
+    there = None  # (reference, month, key, entry) in another month's document
+    if moved:
+        m_ref, m_key, m_month = moved
+        here[FieldPath("days", key).to_api_repr()] = (
+            dict(entry, line=day_line) if day_line else firestore.DELETE_FIELD)
+        if m_ref.id == ref.id:
+            here[FieldPath("days", m_key).to_api_repr()] = entry
+        else:
+            there = (m_ref, m_month, m_key, entry)
+
+    # The proposal re-read, the punches and the entries written, in one
+    # transaction: two accepts at once never both move the punches.
+    @firestore.transactional
+    def apply(tx):
+        cur = ref.get(transaction=tx)
+        if ((cur.to_dict() or {}).get("days") or {}).get(key) != seen:
+            return False
+        for r, fields, create in writes:
+            if create:
+                tx.create(r, fields)
+            else:
+                tx.update(r, fields)
+        tx.update(ref, here)
+        if there:
+            m_ref, m_month, m_key, m_entry = there
+            tx.set(m_ref, {"kind": data.get("kind"), "ownerId": data.get("ownerId"), "ownerName": data.get("ownerName"),
+                           "month": m_month, "days": {m_key: m_entry}},
+                   merge=["kind", "ownerId", "ownerName", "month", FieldPath("days", m_key).to_api_repr()])
+        return True
+    if not apply(db.transaction()):
+        return {"error": "Nothing to resolve"}
+    if moved:
+        return {"ok": True, "entry": entry, "key": moved[1]}
     return {"ok": True, "entry": entry}

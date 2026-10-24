@@ -32,10 +32,18 @@ var Payroll = (function(exports) {
 		const n = /* @__PURE__ */ new Date();
 		return String(n.getHours()).padStart(2, "0") + ":" + String(n.getMinutes()).padStart(2, "0");
 	};
+	var PAIR_STAMPS_FROM = Date.parse("2026-11-01T00:00:00+02:00");
+	function pairMins(a, b, mins, bTime) {
+		const ta = tsOf(a), tb = b ? tsOf(b) : Date.now();
+		if (isFinite(ta) && isFinite(tb) && tb >= ta && ta >= PAIR_STAMPS_FROM) return Math.floor(tb / 6e4) - Math.floor(ta / 6e4);
+		let dur = mins(bTime) - mins(a.time);
+		if (dur < 0) dur += 1440;
+		return dur;
+	}
 	function analyzeDayPunches(entries, date, opts) {
 		const chrono = [...entries].sort((a, b) => tsOf(a) - tsOf(b));
 		let hours = 0, openIn = null;
-		const warnings = [];
+		const warnings = [], codes = [];
 		const tr = opts && opts.tr;
 		if (!tr) {
 			chrono.forEach((e) => {
@@ -46,42 +54,48 @@ var Payroll = (function(exports) {
 						openIn = null;
 						return;
 					}
-					let dur = minsShort(e.time) - minsShort(openIn.time);
-					if (dur < 0) dur += 1440;
+					const dur = pairMins(openIn, e, minsShort, e.time);
 					hours += dur / 60;
 					openIn = null;
 				}
 			});
 			return {
 				hours,
-				warnings
+				warnings,
+				codes
 			};
 		}
 		chrono.forEach((e) => {
 			if (e.type === "in") {
-				if (openIn) warnings.push(tr("double IN (no OUT after {0})", { 0: openIn.time }));
+				if (openIn) {
+					warnings.push(tr("double IN (no OUT after {0})", { 0: openIn.time }));
+					codes.push("double-in");
+				}
 				openIn = e;
 			} else if (e.type === "out") {
 				if (!openIn) {
 					warnings.push(tr("OUT without IN ({0})", { 0: e.time }));
+					codes.push("out-no-in");
 					return;
 				}
 				if (!openIn.time || !e.time) {
 					openIn = null;
 					return;
 				}
-				let dur = minsFull(e.time) - minsFull(openIn.time);
-				if (dur < 0) dur += 1440;
-				dur = roundMins(dur);
-				const hh = dur / 60;
-				if (hh <= 0) warnings.push(tr("0-minute shift ({0}→{1})", {
-					0: openIn.time,
-					1: e.time
-				}));
-				else if (hh > 12) warnings.push(tr("shift >12h ({0}→{1})", {
-					0: openIn.time,
-					1: e.time
-				}));
+				const hh = roundMins(pairMins(openIn, e, minsFull, e.time)) / 60;
+				if (hh <= 0) {
+					warnings.push(tr("0-minute shift ({0}→{1})", {
+						0: openIn.time,
+						1: e.time
+					}));
+					codes.push("zero");
+				} else if (hh > 12) {
+					warnings.push(tr("shift >12h ({0}→{1})", {
+						0: openIn.time,
+						1: e.time
+					}));
+					codes.push("gt12");
+				}
 				hours += hh;
 				openIn = null;
 			}
@@ -90,16 +104,13 @@ var Payroll = (function(exports) {
 		if (open) {
 			const isToday = (/* @__PURE__ */ new Date()).toDateString() === new Date(date).toDateString();
 			warnings.push(tr(isToday ? "open shift from {0} (still at work)" : "open shift from {0} — no OUT", { 0: open.time }));
-			if (isToday && open.time) {
-				let dur = minsFull(nowHHMM()) - minsFull(open.time);
-				if (dur < 0) dur += 1440;
-				dur = roundMins(dur);
-				hours += dur / 60;
-			}
+			codes.push(isToday ? "open-today" : "open");
+			if (isToday && open.time) hours += roundMins(pairMins(open, null, minsFull, nowHHMM())) / 60;
 		}
 		return {
 			hours,
-			warnings
+			warnings,
+			codes
 		};
 	}
 	function groupPunchesIntoShifts(entries) {
@@ -227,6 +238,7 @@ var Payroll = (function(exports) {
 		return v == null || v === "" ? null : Number(v);
 	}
 	//#endregion
+	exports.PAIR_STAMPS_FROM = PAIR_STAMPS_FROM;
 	exports.PAY_RULES = PAY_RULES;
 	exports.analyzeDayPunches = analyzeDayPunches;
 	exports.dailyRate = dailyRate;

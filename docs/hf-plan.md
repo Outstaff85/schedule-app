@@ -7,7 +7,7 @@ Status: **started** (owner, 2026-10-19: "start, and merge the whole plan once al
 ## Decisions (owner, 2026-10-19)
 
 - **One place for everything about models, AI and training: Hugging Face** (account `OutStaff`).
-- **Models → `OutStaff/scanner-models`, a public model repository.** Every version is a tag (`base-v1`, `v2`, …) with its exam report. Public: no key is needed to download, and the models hold no personal data.
+- **Models → `OutStaff/scanner-models`, a private model repository** (public until 2026-10-24, then made private by the owner). Every version is a tag (`base-v1`, `v2`, …) with its exam report. The deploys read it with the GitHub Actions secret `HF_TOKEN` (a read token for that repo alone).
 - **Training data → `OutStaff/scanner-data`, a private Storage Bucket** (HF's object storage, no Git history — files are written and deleted one by one, a deletion is real). Private storage is free up to 100 GB per account; the estimate is ~15 GB after years. **Never public.**
 - **Server: a mirror.** The server keeps loading its models from Firebase Storage as now; at deploy the site's version is copied there from HF, and only that version is kept in Firebase (the others are deleted — HF keeps them for a rollback). At run time the server never calls HF, so an HF outage does not stop scanning. The server **warms up**: the models load when an instance starts, before its first scan.
 - **Kept without a time limit**, with a script that deletes every example of one worker or one firm on request (replaces the 12-month deletion).
@@ -33,11 +33,11 @@ The bell's notices become "Time to retrain the document edges model" and "Enough
 
 ```
  PHONE (site, scanner)                       SERVER (Cloud Functions)
- edges (light) · type of document  ──pages──▶ preprocess_scan: edges, cut, type ◀── models from the
- worker window                     ──read───▶ ai_read: Sonnet / Haiku               Firebase mirror
- Done / Save                       ──examples▶ scan_feedback ──write only──┐       (site's version only)
+ edges, cut, type of document      (on the phone: the server runs no scanner model since 2026-10-19)
+ worker window                     ──read───▶ ai_read: Sonnet / Haiku
+ Done / Save                       ──examples▶ scan_feedback ──write only──┐
         ▲ models at deploy                                                  ▼
- HF OutStaff/scanner-models (PUBLIC)  ◀── publish ── OWNER'S PC: /scan-train ◀── HF OutStaff/scanner-data
+ HF OutStaff/scanner-models (PRIVATE) ◀── publish ── OWNER'S PC: /scan-train ◀── HF OutStaff/scanner-data
  tags base-v1, v2, … + exam reports                  download, train, exam, yes    (PRIVATE bucket)
  Firestore: workers, punches, the bell's counters — unchanged
 ```
@@ -79,7 +79,7 @@ A script copies every version from Firebase Storage `models/scan/<version>/` to 
 `scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh` (`model_store.py`): download the tag named in `models-version` from HF; the authors' links stay only for `base-v1`.
 
 ### H4 — the server's mirror and warm-up (removed 2026-10-19 with `preprocess_scan`: the site's scanner is the lab's page)
-The functions' deploy copies the site's version (`functions/scan_models_version.txt`) from HF to Firebase `models/scan/<version>/` when it is not there yet, and deletes the other versions there. `functions/main.py` loads them from Firebase as now (`_scan_models`, `_kind_model`), now when the instance starts (warm-up).
+Nothing of it is left: the server runs no scanner model (the site's scanner and the lab are one scanner, `src/scan/`, run on the phone). `functions/scan_models_version.txt` stays only as the version written into each training example (`MODEL_PREFIX` in `functions/main.py`, `tests/auth/test_scan_feedback.py`; docs/scan-training.md → model versions).
 
 ### H5 — `/scan-train` on HF
 `publish.py` uploads a new version to `scanner-models` in one commit with the tag `v<N>` (the next number from the tags; nothing is copied — a tag holds every file); the exam reports beside it; the pulls read from the bucket; training uses HF's pretrained weights on the PC's GPU.
@@ -96,7 +96,7 @@ On Save of the worker window after a scan: every cut, straightened page as the A
 ### H8b — passports and check digits without AI (shadow first)
 The passport's machine-readable zone (MRZ) read with its check digits — the number and dates without AI; the zoomed re-read of an ID number skipped when its check digit is right. **The reader is the firm's own small model** (owner, 2026-10-21 — not Tesseract: its stock English model reads the zone's `<` as `L` and needs a dictionary of no clear licence for OCR-B; FastMRZ is AGPL): a CRNN of 0.6 M weights (`mrz.onnx`, ~2.5 MB), learned only from made-up zone lines drawn with TRDG in the OCR-B font — every country's passport has the same zone, the made-up ones are mostly Thai, Indian, Ukrainian, Russian, Belarusian, Moldovan and Sri Lankan (owner, 2026-10-21) — and examined on the real passports H8a collects. In two steps:
 - **H8b-1 — the training on the PC** (built 2026-10-21): `synth_lines.py mrz` → `train_mrz.py` → `exam_mrz.py` → `publish.py` puts `mrz.onnx` into the next version (docs/scan-training.md → The passport zone reader). Checked in the cloud (CPU): the lines drawn, one short training, the ONNX export checked — the real training is the PC's (`/scan-train`). `exam_mrz.py` sets the new reader against the lab's on the same pages and says what it examined (`realExamined`, `midvSkipped`): while `scripts/scan/models-version` is base-v1 (no `mrz.onnx`) the site runs no shadow, so until then the only real check beside the exam is the owner trying the reader in the lab.
-- **H8b-2 — the shadow** (built 2026-10-21; it reads once a version holds `mrz.onnx`): the lab's page reads each page's zone with it (`mrzFind` / `mrzRead`: the same line finding, input and decoding as `mrzmodel.py`, ONNX Runtime Web as the other models) and shows line 2 with its check digits on every shot; the site's scan window carries the lines to the scan process, which parses them (`src/scan-process/mrz.ts`) beside the AI; the full document (H8a) keeps the answer (`mrzShadow`), and Admin → Scanner → Passport zone reader shows how often it got the number, the dates and the sex the user kept, against the AI (docs/scan.md → The scan window). Never used for the worker yet: replacing the AI's zone reading is H8d, by the owner's decision from these figures.
+- **H8b-2 — the shadow** (built 2026-10-21; it reads once a version holds `mrz.onnx`): the scanner reads each page's zone with it (`src/scan/engine/readers.ts` `mrzFind` / `mrzRead`: the same line finding, input and decoding as `mrzmodel.py`, ONNX Runtime Web as the other models) and shows line 2 with its check digits on every shot; the site's scan window carries the lines to the scan process, which parses them (`src/scan-process/mrz.ts`) beside the AI; the full document (H8a) keeps the answer (`mrzShadow`), and Admin → Scanner → Passport zone reader shows how often it got the number, the dates and the sex the user kept, against the AI (docs/scan.md → The scan window). Never used for the worker yet: replacing the AI's zone reading is H8d, by the owner's decision from these figures.
 
 ### H8c — the field reader model for Hebrew (shadow first)
 An open text-recognition model with Hebrew, fine-tuned on H8a's examples (an estimated 1–3 thousand ID cards), on the PC's GPU — or an agent: recognise → check digits → re-read when unsure → ask Sonnet when still unsure. The same data serves both. First trained on made-up lines (owner, 2026-10-21: `synth_lines.py he` — Hebrew names, ID numbers with a right check digit, dates, streets, cities in the PC's Hebrew fonts), so fewer real ID cards are needed; after H8b has shown the way on the passport zone. **Built** (2026-10-21): the PC's side (`template_vary.py`, `synth_fields.py`, `train_he.py`) and the phone's — the reader runs in the lab and on the site at the card layouts' boxes (`he-layouts.json`), its answer kept with the full document (`heShadow`) and counted against the AI (`feedback.he_counts`, Admin → Scanner).

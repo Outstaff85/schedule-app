@@ -1,20 +1,20 @@
 """The phone's input path in Python (docs/scan-training.md → "The phone mirror"): exact ports of what the scanner lab
-does to a picture before a model sees it (scan-lab/scan-core.js and scan-lab/index.html, copied to scan/), so training
+does to a picture before a model sees it (src/scan/engine/, the one copy the site's scanner and the lab run), so training
 and the exams see what the phone sees. A change on either side is mirrored on the other (CLAUDE.md → "Duplicated on
 purpose"); tests/scan/phone_parity.test.mjs runs the lab's own code on the fixtures tests/auth/test_scan_train_phone.py
 writes from this file, and tests/e2e/phone-parity.test.js runs the lab's resamplers in Chromium.
 
 Exact ports (pure numpy, no randomness):
-- corners(hm): the 4 corners picked together from the edges model's heatmaps (scan-core.js corners; docfind.py
+- corners(hm): the 4 corners picked together from the edges model's heatmaps (geometry.ts corners; docfind.py
   re-exports it);
-- homography / warp_rgba: the cut (scan-core.js warpRGBA) — bilinear, no antialiasing, the sides by Math.round, no
+- homography / warp_rgba: the cut (geometry.ts warpRGBA) — bilinear, no antialiasing, the sides by Math.round, no
   exact proportion, what falls outside the photo left 0 (alpha too);
-- mrz_find: the passport zone's two line boxes (index.html mrzFind), and line_input (mrzRead's 32 × 512 input);
-- he_line(page, box): the Hebrew field reader's input (index.html heLine: margins HE_MARGIN_X / HE_MARGIN_Y of the
+- mrz_find: the passport zone's two line boxes (readers.ts mrzFind), and line_input (mrzRead's 32 × 512 input);
+- he_line(page, box): the Hebrew field reader's input (readers.ts heLineBox: margins HE_MARGIN_X / HE_MARGIN_Y of the
   box — hemodel.MARGIN_X / MARGIN_Y, which synth_fields.crop cuts by too);
-- face_turn(sess, page): the quarter turns that set a cut page upright by its face (scan-core.js faceTurn / faceScore);
+- face_turn(sess, page): the quarter turns that set a cut page upright by its face (upright.ts faceTurn / faceScore);
 - doc_shape, lab_good_quad, in_quad / lab_quad_iou, lab_border_colour, unwarp, INSIDE_MIN / INSIDE_MAX: the rules by
-  which the lab takes more documents on one photo (index.html docShape, goodQuad, inQuad / quadIoU, findNext's paint
+  which the lab takes more documents on one photo (geometry.ts docShape, goodQuad, inQuad / quadIoU, findNext's paint
   colour, findInside) — docfind.find_next(lab=True) and docfind.find_inside run the lab's steps with them.
 
 The resampling (the one thing a browser decides for itself): frame_to_S(img, op) — "live" (the camera frame by
@@ -258,12 +258,12 @@ def frame_to_S(img, op="capture", kernel=None, rng=None, profile=None):
 
 
 def turned(img, k):
-    """img turned k clockwise quarter turns (scan-core.js turned: whole pixels, no resampling)."""
+    """img turned k clockwise quarter turns (upright.ts turned: whole pixels, no resampling)."""
     return np.ascontiguousarray(np.rot90(img, -k)) if k % 4 else img
 
 
 def face_input(img, k=0, bgr=False, kernel=None, rng=None, profile=None):
-    """The face finder's input (scan-core.js faceScore): the page turned k quarter turns, shrunk into a black 320 × 320
+    """The face finder's input (upright.ts faceScore): the page turned k quarter turns, shrunk into a black 320 × 320
     square at its top-left (Math.round sides), as float32 [3, 320, 320] BGR 0..255."""
     src = turned(img[..., :3], k)
     h, w = src.shape[:2]
@@ -277,7 +277,7 @@ def face_input(img, k=0, bgr=False, kernel=None, rng=None, profile=None):
 
 
 def doctype_input(page, bgr=False, kernel=None, rng=None, profile=None):
-    """The document type model's input (index.html doctypeAnswer): the page drawn onto a 256 × 256 square (the aspect
+    """The document type model's input (readers.ts doctypeAnswer): the page drawn onto a 256 × 256 square (the aspect
     not kept) at the default smoothing, as float32 [3, 256, 256] RGB 0..1."""
     sq = resample(page[..., :3], (S, S), _kernel("capture", kernel, rng, profile))
     if bgr:
@@ -310,7 +310,7 @@ def face_score_of(outs):
 
 
 def face_turn(sess, page, bgr=False, kernel=None):
-    """scan-core.js faceTurn: the clockwise quarter turns (0..3) that put a cut page upright by the face on it — the
+    """upright.ts faceTurn: the clockwise quarter turns (0..3) that put a cut page upright by the face on it — the
     page turned k = 0..3, each on the face finder's 320 letterbox (face_input), the surest upright face wins; -1 when
     no face is found. sess: the face finder's ONNX session (face.onnx)."""
     name = sess.get_inputs()[0].name
@@ -358,7 +358,7 @@ def strip_input(gray, kernel=None, rng=None, profile=None):
 
 # heLine's margins around a field's layout box: a share of the box's width on each side and of its height above and
 # below. One number on every side of the copy: hemodel.MARGIN_X / MARGIN_Y (synth_fields.crop cuts the training fields
-# by them) and HE_MX / HE_MY in scan-lab/index.html (copied to scan/) — tests/auth/test_scan_train_he.py holds them
+# by them) and HE_MX / HE_MY in src/scan/engine/readers.ts heLineBox — tests/auth/test_scan_train_he.py holds them
 # equal. Wide enough for the 99th percentile of a field running past its layout box on the phone's own cut
 # (gen/outputs/he.py writes layout_overflow.json) and for a corner a little off.
 HE_MARGIN_X, HE_MARGIN_Y = 0.22, 0.7
@@ -388,7 +388,7 @@ def he_line(page, box, kernel=None, rng=None, profile=None):
 
 
 def store_attempt(img, bgr=True, kernel=None, rng=None, profile=None):
-    """The photo an attempt keeps (index.html newAttempt): at most PICTURE_MAX px on its long side (drawImage at the
+    """The photo an attempt keeps (attempts.ts newAttempt): at most PICTURE_MAX px on its long side (drawImage at the
     default smoothing; Math.round sides), as JPEG at quality 0.85 → (jpeg bytes, the shrunk picture)."""
     import cv2
     h, w = img.shape[:2]
@@ -398,7 +398,7 @@ def store_attempt(img, bgr=True, kernel=None, rng=None, profile=None):
     return buf.tobytes(), small
 
 
-# ---------- corners (scan-core.js corners) ----------
+# ---------- corners (geometry.ts corners) ----------
 
 PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE = 3, 6, 10, 1.6, 4, 5 * math.pi / 180
 
@@ -406,7 +406,7 @@ PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE = 3, 6, 10, 1.6, 4, 5 * math.pi / 180
 def _spots(m):
     """Up to PEAKS spots of one heatmap (>= 0.3 and at least half its highest): the weighted centre of the blob around
     each peak — the pixels >= 0.3 joined to it (4-neighbours) without leaving the BLOB_R window — in 0..1, and the
-    peak's value. Then the PEAK_R square around the peak is taken out (scan-core.js spotsOf)."""
+    peak's value. Then the PEAK_R square around the peak is taken out (geometry.ts spotsOf)."""
     hm = np.asarray(m, np.float64)
     n = hm.shape[0]
     top = float(hm.max())
@@ -486,7 +486,7 @@ def corners(hm):
     three on the other (an ID card below its ספח, 2026-10-22). The convex frame with the highest spots wins, a frame
     whose opposite sides differ more than SIDES× counted down, and one with both pairs of sides more than FREE from
     parallel (a frame mixed of two documents) by cos^PAR of the rest. One spot on each heatmap: that frame. →
-    (pts 4 × 2 in 0..1, or None when a heatmap has no spot; conf). scan-core.js corners, exactly."""
+    (pts 4 × 2 in 0..1, or None when a heatmap has no spot; conf). geometry.ts corners, exactly."""
     found = [_spots(hm[k]) for k in range(4)]
     conf0 = min(top for _, top in found)
     if any(not s for s, _ in found):
@@ -504,7 +504,7 @@ def corners(hm):
     return np.array([p for p, _ in best], np.float64), min(v for _, v in best)
 
 
-# ---------- the cut (scan-core.js homography, warpRGBA) ----------
+# ---------- the cut (geometry.ts homography, warpRGBA) ----------
 
 def homography(frm, to):
     """The 8 numbers of the plane map taking the 4 points frm onto to (Gaussian elimination with partial pivoting,
@@ -545,7 +545,7 @@ def warp_size(w, h, pts):
 
 
 def warp_rgba(rgba, pts):
-    """The quad pts (0..1, from the top-left clockwise) of an H × W × 4 picture cut flat (scan-core.js warpRGBA):
+    """The quad pts (0..1, from the top-left clockwise) of an H × W × 4 picture cut flat (geometry.ts warpRGBA):
     width the longer of the top and bottom sides and height the longer of the left and right ones (Math.round),
     one bilinear sample per pixel with no antialiasing (a source pixel whose right or lower neighbour falls outside
     the picture gives nothing), each value rounded as a Uint8ClampedArray does (half to even); what falls outside
@@ -578,12 +578,12 @@ def warp_rgba(rgba, pts):
 
 
 def unwarp(q, pts):
-    """Points (0..1) found on the flat cut of the quad q, back on the photo (index.html findInside)."""
+    """Points (0..1) found on the flat cut of the quad q, back on the photo (shot.ts findInside)."""
     Hm = homography([[0, 0], [1, 0], [1, 1], [0, 1]], q)
     return [list(apply_h(Hm, u, v)) for u, v in pts]
 
 
-# ---------- the passport zone (index.html mrzFind) ----------
+# ---------- the passport zone (readers.ts mrzFind) ----------
 
 def mrz_find(img):
     """The passport zone's two lines on an upright page (H × W × 3 or 4, RGB; a grey picture is taken as R = G = B):
@@ -668,10 +668,10 @@ def unpack(d):
     return np.frombuffer(raw, np.dtype(d["dtype"])).reshape(d["shape"])
 
 
-# ---------- a document's shape (index.html docShape) ----------
+# ---------- a document's shape (geometry.ts docShape) ----------
 
 def doc_shape(q, w, h):
-    """A document's shape in the photo's pixels (index.html docShape): every side at least 15 % of the longest and
+    """A document's shape in the photo's pixels (geometry.ts docShape): every side at least 15 % of the longest and
     every corner between 35° and 145°."""
     P = [(float(x) * w, float(y) * h) for x, y in q]
     sides = [math.hypot(P[(i + 1) % 4][0] - P[i][0], P[(i + 1) % 4][1] - P[i][1]) for i in range(4)]
@@ -692,7 +692,7 @@ def doc_shape(q, w, h):
 # ---------- more documents on one photo: findNext's and findInside's rules (index.html) ----------
 
 INSIDE_MIN, INSIDE_MAX = 0.03, 0.6   # findInside: a document lying on another covers 3–60 % of its flat cut
-LAB_MAX_DOCS = 5                     # index.html MAX_DOCS: the documents of one shot, those lying on others included
+LAB_MAX_DOCS = 5                     # geometry.ts MAX_DOCS: the documents of one shot, those lying on others included
 
 
 def _quad_area(q):
@@ -713,7 +713,7 @@ def _quad_convex(q):
 
 
 def lab_good_quad(pts, conf):
-    """index.html goodQuad: four corners, sure (conf ≥ 0.5), convex and over 3 % of the picture — no aspect rule (the
+    """geometry.ts goodQuad: four corners, sure (conf ≥ 0.5), convex and over 3 % of the picture — no aspect rule (the
     lab's shape rule is doc_shape, in the photo's pixels)."""
     if pts is None or len(pts) != 4 or any(p is None for p in pts) or conf < 0.5:
         return False
@@ -722,7 +722,7 @@ def lab_good_quad(pts, conf):
 
 
 def in_quad(q, x, y):
-    """index.html inQuad: the crossing test of the points (x, y) — numbers or numpy arrays — against the quad q."""
+    """geometry.ts inQuad: the crossing test of the points (x, y) — numbers or numpy arrays — against the quad q."""
     x, y = np.asarray(x, np.float64), np.asarray(y, np.float64)
     inside = np.zeros(np.broadcast(x, y).shape, bool)
     j = 3
@@ -739,7 +739,7 @@ _GRID = (np.arange(64) + 0.5) / 64
 
 
 def lab_quad_iou(a, b):
-    """index.html quadIoU: the overlap of two quads (0..1) counted at the centres of a 64 × 64 grid."""
+    """geometry.ts quadIoU: the overlap of two quads (0..1) counted at the centres of a 64 × 64 grid."""
     gx, gy = np.meshgrid(_GRID, _GRID)
     p, q = in_quad(a, gx, gy), in_quad(b, gx, gy)
     both, any_ = int((p & q).sum()), int((p | q).sum())

@@ -19,7 +19,7 @@ export type TodayModel = {
   log: BridgePunch[];
   /** a headcount per supplier that has workers */
   suppliers: { id: string; name: string; color?: string; count: number }[];
-  /** today's hours of a worker: the day's paired shifts plus a shift still open up to now */
+  /** today's hours of a worker: its shifts with a punch today, and a shift still open (also one opened before midnight) up to now */
   hours: (w: BridgeWorker) => number;
 };
 
@@ -29,6 +29,9 @@ export function toMins(t?: string | null): number {
   return h * 60 + m;
 }
 
+/** A lone IN older than this many hours (and not today's) is a forgotten OUT, not a running shift. */
+export const MAX_OPEN_H = 16;
+
 const tsOf = (e: { ts: unknown }) => new Date(e.ts as string).getTime();
 /** The true latest punch by its time stamp (robust to the array's order). */
 export function latestOf<P extends { ts: unknown }>(entries: P[]): P | null {
@@ -36,12 +39,22 @@ export function latestOf<P extends { ts: unknown }>(entries: P[]): P | null {
 }
 
 export function todayModel(s: TodaySnapshot, now = new Date()): TodayModel {
-  const byWorker = new Map<string, BridgePunch[]>();
-  s.log.forEach(e => { const l = byWorker.get(e.workerId); if (l) l.push(e); else byWorker.set(e.workerId, [e]); });
+  const index = (list: BridgePunch[]) => {
+    const m = new Map<string, BridgePunch[]>();
+    list.forEach(e => { const l = m.get(e.workerId); if (l) l.push(e); else m.set(e.workerId, [e]); });
+    return m;
+  };
+  const byWorker = index(s.log), byWorkerRecent = index(s.recent || s.log);
   const of = (w: BridgeWorker) => byWorker.get(w.id) || [];
+  // The last day's punches: a night shift opened before midnight is still on shift, and its OUT pairs with its IN.
+  const recentOf = (w: BridgeWorker) => byWorkerRecent.get(w.id) || [];
   const nowMins = now.getHours() * 60 + now.getMinutes();
+  const today = now.toDateString(), isToday = (e: { ts: unknown }) => new Date(e.ts as string).toDateString() === today;
 
-  const onSite = s.workers.filter(w => latestOf(of(w))?.type === 'in');
+  // A shift opened before midnight runs on only while it is a plausible shift
+  // (opened within the last MAX_OPEN_H hours); an older lone IN is a forgotten OUT.
+  const running = (e: BridgePunch | null) => !!e && e.type === 'in' && (isToday(e) || now.getTime() - tsOf(e) <= MAX_OPEN_H * 36e5);
+  const onSite = s.workers.filter(w => running(latestOf(recentOf(w))));
 
   const missing = s.workers.filter(w => w.active).flatMap(w => {
     const sh = w.shift;
@@ -69,12 +82,23 @@ export function todayModel(s: TodaySnapshot, now = new Date()): TodayModel {
   s.workers.forEach(w => { if (w.supplierId) counts.set(w.supplierId, (counts.get(w.supplierId) || 0) + 1); });
   const suppliers = s.suppliers.filter(x => counts.get(x.id)).map(x => ({ ...x, count: counts.get(x.id)! }));
 
+  // Only the worker's last shift may still be running: an earlier lone IN (a
+  // forgotten OUT, a double tap) adds nothing. analyzeDayPunches counts a
+  // shift opened today up to now; one still open since before midnight is
+  // counted here up to now, the same whole minutes, while it is plausible.
+  const withTr = { tr: (t: string, p?: Record<string, unknown>) => tr(t, p as Record<string, string | number>) };
   const hours = (w: BridgeWorker) => {
     let h = 0;
-    groupPunchesIntoShifts(of(w)).forEach(b => {
-      h += analyzeDayPunches(b.entries, b.date, { tr: (t, p) => tr(t, p as Record<string, string | number>) }).hours;
-      const last = b.entries[b.entries.length - 1];
-      if (last && last.type === 'in') h += Math.max(0, (now.getTime() - tsOf(last)) / 36e5);
+    const bs = groupPunchesIntoShifts(recentOf(w));
+    bs.forEach((b, i) => {
+      const last = b.entries[b.entries.length - 1], open = !!last && last.type === 'in';
+      if (open) {
+        if (i !== bs.length - 1 || !running(last)) return;
+        if (isToday(last)) h += analyzeDayPunches(b.entries, b.date, withTr).hours;
+        else h += Math.max(0, Math.floor(now.getTime() / 6e4) - Math.floor(tsOf(last) / 6e4)) / 60;
+        return;
+      }
+      if (b.entries.some(isToday)) h += analyzeDayPunches(b.entries, b.date, withTr).hours;
     });
     return h;
   };

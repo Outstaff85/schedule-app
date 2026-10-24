@@ -1,4 +1,4 @@
-// My Hours (docs/supplier-portal.md): a month (this one and the 11 before it);
+// My Hours (docs/portals.md): a month (this one and the 11 before it);
 // with "sees pay" the month's pay per own worker (a Data Table; plates on a
 // phone); the Detail and Summary exports (Excel or a print page); sending
 // shifts for the firm owner's approval (typed rows or a timesheet file) and

@@ -1,6 +1,6 @@
 // A passport's machine-readable zone (ICAO 9303 TD3: two lines of 44) from what a text
-// reader saw (docs/hf-plan.md → H8b; the reader: mrzFind / mrzRead in scan-lab/index.html, copied to
-// scan/index.html). Pure — no reader, no AI.
+// reader saw (docs/hf-plan.md → H8b; the reader: mrzFind / mrzRead in
+// src/scan/engine/readers.ts). Pure — no reader, no AI.
 // The usual misreads are mended by position (a letter where a digit must be: O → 0, I → 1…;
 // a run of K / C among the fillers → <), the passport number by its check digit (one
 // look-alike swapped until it agrees); a value is given only when its check digit is right.

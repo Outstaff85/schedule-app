@@ -236,22 +236,23 @@ def test_train_he_refuses_fields_cut_before_the_names_were_widened(tmp_path):
 def test_heLines_margins_are_one_number_on_every_side_of_the_copy():
     from gen import phone
     assert (hemodel.MARGIN_X, hemodel.MARGIN_Y) == (phone.HE_MARGIN_X, phone.HE_MARGIN_Y)
-    for copy in ("scan-lab", "scan"):
-        src = (ROOT / copy / "index.html").read_text(encoding="utf-8")
-        m = re.search(r"const HE_MX = ([0-9.]+), HE_MY = ([0-9.]+);", src)
-        assert m, f"{copy}/index.html has no HE_MX / HE_MY"
-        assert (float(m.group(1)), float(m.group(2))) == (hemodel.MARGIN_X, hemodel.MARGIN_Y), copy
-        assert "HE_MX * bw" in src and "HE_MY * bh" in src and "(1 + HE_MX)" in src and "(1 + HE_MY)" in src
+    # the phone's copy: src/scan/engine/readers.ts heLineBox, the one engine the site's scanner and the lab run
+    src = (ROOT / "src" / "scan" / "engine" / "readers.ts").read_text(encoding="utf-8")
+    m = re.search(r"export const HE_MX = ([0-9.]+), HE_MY = ([0-9.]+);", src)
+    assert m, "src/scan/engine/readers.ts has no HE_MX / HE_MY"
+    assert (float(m.group(1)), float(m.group(2))) == (hemodel.MARGIN_X, hemodel.MARGIN_Y)
+    assert "HE_MX * bw" in src and "HE_MY * bh" in src and "(1 + HE_MX)" in src and "(1 + HE_MY)" in src
 
 
-def test_the_sites_scanner_page_is_the_labs_but_its_two_paths():
-    lab = (ROOT / "scan-lab" / "index.html").read_text(encoding="utf-8").replace("\r\n", "\n")
-    site = (ROOT / "scan" / "index.html").read_text(encoding="utf-8").replace("\r\n", "\n")
-    site = site.replace('<script src="/scan/embed.js"></script>\n', "").split("\n")
-    lab = lab.split("\n")
-    assert len(site) == len(lab)
-    differ = [(a, b) for a, b in zip(lab, site) if a != b]
-    assert differ and all(b.replace("/scan/", "/scan-lab/") == a for a, b in differ), [b for a, b in differ][:3]
+def test_the_sites_scanner_and_the_lab_run_one_engine_on_their_own_paths():
+    # no copy of the lab's page any more (src/scan/engine/ is the one engine): only the surface — its models'
+    # folder and cache — tells the site's scanner from the lab
+    assert not (ROOT / "scan").exists()
+    site = (ROOT / "src" / "scan" / "engine" / "surface.ts").read_text(encoding="utf-8")
+    lab = (ROOT / "src" / "scan" / "lab" / "surface.ts").read_text(encoding="utf-8")
+    assert "base: '/scan/', cache: 'scan-models', source: 'site'" in site
+    assert "base: '/scan-lab/', cache: 'scan-lab-models', source: 'lab'" in lab
+    assert "/src/scan/lab/main.tsx" in (ROOT / "scan-lab" / "index.html").read_text(encoding="utf-8")
 
 
 def test_the_name_boxes_open_toward_the_left_and_labels_carry_page_type_and_role(tmp_path):

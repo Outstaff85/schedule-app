@@ -7,7 +7,7 @@
 // the tabs from tabAllowed()).
 import { getSession } from '../data/session';
 
-// The page's section names → the flat rights (docs/permissions-plan.md):
+// The page's section names → the flat rights (docs/admin.md → Permission templates):
 // an HR's Accounting is its Commission tab.
 const SECTION_RIGHT: Record<string, string> = { exports: 'export', payEdit: 'editPay' };
 /** The flat rights of a staff / HR / supplier / client session (the login reply's rights); [] when it has none. */
@@ -41,6 +41,32 @@ export function canChange(k: 'editSchedule' | 'editWorkers' | 'editPunches'): bo
 export function staffPayEdit(): boolean {
   const s = getSession();
   return !!s && s.role === 'staff' && rights().includes('editPay');
+}
+/**
+ * Edit pay in the rules' sense (firestore.rules can('editPay')): the owner and the
+ * super-admin, or a staff / HR login with the right. Gates a client's worker pay
+ * (defaultHourlyRate) and the per-client rates of the workers.
+ */
+export function hasEditPay(): boolean {
+  const s = getSession();
+  if (!s) return false;
+  if (s.role === 'superadmin' || s.role === 'tenant_admin') return true;
+  return (s.role === 'staff' || s.role === 'hr') && rights().includes('editPay');
+}
+/**
+ * May this login write worker records (firestore.rules → workers): the owner and
+ * the super-admin; a staff / HR login with the Workers or Schedule tab and Edit
+ * workers — and Edit pay when a pay field (a per-client rate) changes. A client's
+ * or supplier's delete that would change workers this login may not write is
+ * refused before it is saved (a refused write would block every later save).
+ */
+export function mayWriteWorkers(pay: boolean): boolean {
+  const s = getSession();
+  if (!s) return false;
+  if (s.role === 'superadmin' || s.role === 'tenant_admin') return true;
+  if (s.role !== 'staff' && s.role !== 'hr') return false;
+  const r = rights();
+  return (r.includes('workers') || r.includes('schedule')) && r.includes('editWorkers') && (!pay || r.includes('editPay'));
 }
 export function isHrSession(): boolean { const s = getSession(); return !!s && s.role === 'hr'; }
 export function isFirmAdminSession(): boolean { const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }

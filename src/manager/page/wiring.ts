@@ -8,8 +8,8 @@
 // other parts and the browser tests use them).
 import { byId } from './dom';
 import { tr } from '../logic/i18n';
-import { pendingHoursCount } from '../data/store';
-import { clearSession, getSession, saveSession } from '../data/session';
+import { flushSave, pendingHoursCount } from '../data/store';
+import { adoptLogin, clearSession, getSession, purgeDeviceData, saveSession, unsavedFirms } from '../data/session';
 import { FIRMS_CACHE_KEY, clearAdminCaches } from '../logic/admin';
 import { loadFirestoreBackend } from '../data/api';
 import { render } from './render';
@@ -19,6 +19,7 @@ import { setFrame } from '../frame';
 import { island } from '../bridge';
 import { isAccTab } from '../logic/access';
 import { clearPortalSessions } from './gate';
+import { showContractNotice } from './language';
 Object.defineProperties(window, {
   "backToFirmsList": {get: () => backToFirmsList, configurable: true},
 });
@@ -50,7 +51,8 @@ ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); 
 ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(island()) island()!.refreshWindows(); if(isAccTab(currentTab)) renderAccounting(); });
 ManagerData.on('save', (s?: any)=>setSaveStatus(s));
 ManagerData.on('notice', ({msg, ms}: any)=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
-ManagerData.on('loaded', ()=>maybeRegenAfterFirmEdit());
+// The contract notice is counted again on the server's data (the cache may be empty or stale).
+ManagerData.on('loaded', ()=>{ maybeRegenAfterFirmEdit(); showContractNotice(); });
 ManagerData.on('requests', ()=>{ if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(island()) island()!.refreshWindows(); });
 export function setSaveStatus(s?: any){ setFrame({save:s==='saving'?'saving':'saved'}); }
 // The count of hours batches waiting for a decision, on the Accounting tab.
@@ -58,10 +60,17 @@ function updateHoursBadge(){ setFrame({counts:{accounting:pendingHoursCount()}})
 
 export const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 
-// Sign out: this page's session (and a supplier's or client's portal session, gate.ts) and the Firebase sign-in end.
+// Sign out: this page's session (and a supplier's or client's portal session, gate.ts) and the Firebase sign-in end,
+// and the firms' data kept on this device goes (purgeDeviceData). A change not saved yet is saved first
+// (flushSave: at most 5 s, not at all offline); when it still could not reach the server — or another firm
+// opened on this device still has changes kept after a failed save (unsavedFirms) — the user is asked first.
 export async function logout(){
+  let saved = false;
+  try{ saved = await flushSave(); }catch(e: any){}
+  if(saved && unsavedFirms().length) saved = false;
+  if(!saved && !confirm(tr('Changes on this device have not reached the server yet and will be lost. Sign out anyway?'))) return;
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e: any){}
-  clearAdminCaches(); clearSession(); clearPortalSessions();
+  clearAdminCaches(); clearSession(); clearPortalSessions(); purgeDeviceData();
   try{ await (await loadFirestoreBackend()).signOut(); }catch(e: any){}
   location.reload();
 }
@@ -88,6 +97,7 @@ export async function signIn(username?: any, password?: any): Promise<string | n
   if(fb.theme) setTheme(fb.theme, {save:false});
   // A supplier login belongs in the supplier portal: hand the session over
   // (same origin, same Firebase sign-in) and go there.
+  adoptLogin(fb.uid); // another login than the last one here: no cache of its firm data
   try{ sessionStorage.setItem('pendingLoginTiming', JSON.stringify({t0, loginMs:Date.now()-t0, pingMs:window.__pingMs==null?null:window.__pingMs, pingDone:window.__pingMs!=null})); }catch(e: any){}
   saveSession({
     uid: fb.uid, role: fb.role, tenantId: fb.tenantId, username: fb.username, tenantProfile: fb.tenantProfile,

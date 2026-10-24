@@ -8,11 +8,13 @@
 // functions through `window.ManagerAcc` (its one-line wrappers keep the old
 // names). tests/accounting/compare.test.mjs runs this file and the old page
 // code (tests/accounting/legacy.mjs) on the same months and requires
-// identical figures — a change here is a payroll change.
+// identical figures (its months leave out the shifts across a period's bound,
+// which the old code lost — docs/history.md) — a change here is a payroll change.
 import {
   analyzeDayPunches, dailyRate, dayOverride, effectiveRates, groupPunchesIntoShifts, isDailyPay, israeliDayPay, localYMD,
-  PAY_RULES, salaryPeriodKey, shiftPayFor, travelPay, wOwnRate, type Punch, type PayWorker, type Translate,
+  PAY_RULES, salaryPeriodKey, shiftPayFor, travelPay, wOwnRate, type Punch, type PayWorker, type Translate, type WarnCode,
 } from '@/lib/payroll';
+import { csvText } from '@/lib/utils';
 import { workerDocId } from './worker';
 
 // ── Data shapes (the fields the figures read) ──
@@ -40,7 +42,9 @@ export type AccData = { log: AccPunch[]; workers: AccWorker[]; clients: AccClien
 /** One worker's Salary row for a period. */
 export type SalaryEntry = {
   worker: string; workerId: string; hours: number; days: number; regH: number; otH: number; shabH: number;
-  total: number; travel: number; warns: string[]; clientHours: Record<string, number>;
+  total: number; travel: number; warns: string[];
+  /** what each of `warns` is (payroll's WarnCode), in step with it — the alerts sort by it, never by the translated text */
+  warnCodes: WarnCode[]; clientHours: Record<string, number>;
   seen: Set<string>; dayKeys: Set<string>; supCom?: number; supDays?: Set<string>;
   countedDays: number; daysUsed: number;
 };
@@ -114,23 +118,47 @@ export function supplierCommission(wc: AccWorker, e: SalaryEntry, sid: string): 
 }
 
 // ── The period ──
+/** The bounds of a period: This Week (from Sunday), This Month, a month `m:YYYY-MM` ([from, to)); null = all. */
+export function periodRange(period: string, now = new Date()): { from: Date; to: Date | null } | null {
+  if (period === 'week') { const ws = new Date(now); ws.setDate(ws.getDate() - ws.getDay()); ws.setHours(0, 0, 0, 0); return { from: ws, to: null }; }
+  if (period === 'month') return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: null };
+  if (/^m:\d{4}-\d{2}$/.test(period)) { const [y, m] = period.slice(2).split('-').map(Number); return { from: new Date(y, m - 1, 1), to: new Date(y, m, 1) }; }
+  return null;
+}
+/** A moment falls in the period (`periodRange`; null = all). */
+export function inPeriod(t: Date, range: { from: Date; to: Date | null } | null): boolean {
+  return !range || (t >= range.from && (!range.to || t < range.to));
+}
 /** The punches of a period: This Week (from Sunday), This Month, a month `m:YYYY-MM`, or all. */
 export function periodPunches<P extends { ts: Punch['ts'] }>(log: P[], period: string): P[] {
-  const now = new Date();
-  if (period === 'week') {
-    const ws = new Date(now); ws.setDate(ws.getDate() - ws.getDay()); ws.setHours(0, 0, 0, 0);
-    return log.filter(e => new Date(e.ts) >= ws);
-  }
-  if (period === 'month') {
-    const ms = new Date(now.getFullYear(), now.getMonth(), 1);
-    return log.filter(e => new Date(e.ts) >= ms);
-  }
-  if (/^m:\d{4}-\d{2}$/.test(period)) {
-    const [y, m] = period.slice(2).split('-').map(Number);
-    const from = new Date(y, m - 1, 1), to = new Date(y, m, 1);
-    return log.filter(e => { const d = new Date(e.ts); return d >= from && d < to; });
-  }
-  return log;
+  const r = periodRange(period);
+  return r ? log.filter(e => inPeriod(new Date(e.ts), r)) : log;
+}
+export type PeriodShift = { worker: string; workerId: string; date: Date; entries: AccPunch[] };
+/**
+ * The period's shifts: each worker's punches paired over the whole log (an
+ * overnight shift stays whole — at a month's or a week's end too), a shift
+ * kept in the period of its opening punch. Workers come in the order of their
+ * first such punch in the log, each one's shifts by time; `worker` is the name
+ * on that punch.
+ */
+export function periodShifts(log: AccPunch[], period: string): PeriodShift[] {
+  const r = periodRange(period), byW: Record<string, AccPunch[]> = {};
+  log.forEach(e => { (byW[e.workerId] = byW[e.workerId] || []).push(e); });
+  const kept = new Map<AccPunch, string>(), shifts: Record<string, { date: Date; entries: AccPunch[] }[]> = {};
+  Object.entries(byW).forEach(([wid, list]) => groupPunchesIntoShifts(list).forEach(b => {
+    if (!inPeriod(b.date, r)) return;
+    (shifts[wid] = shifts[wid] || []).push(b);
+    b.entries.forEach(e => kept.set(e, wid));
+  }));
+  const out: PeriodShift[] = [], seen = new Set<string>();
+  log.forEach(e => {
+    const wid = kept.get(e);
+    if (wid == null || seen.has(wid)) return;
+    seen.add(wid);
+    shifts[wid].forEach(b => out.push({ worker: e.workerName as string, workerId: wid, date: b.date, entries: b.entries }));
+  });
+  return out;
 }
 /** The month of a period (This Month or `m:YYYY-MM`), else null. */
 export function salaryMonthOf(period: string | null | undefined): string | null {
@@ -163,25 +191,16 @@ export function periodLabel(period: string, tr: AccTr, locale: string): string {
  */
 export function salaryEntriesFor(d: AccData, period: string): { byWorker: Record<string, SalaryEntry>; byClient: Record<string, ClientBill>; byDay: Record<string, number> } {
   const { workers, clients, suppliers, tr } = d;
-  const filtered = periodPunches(d.log, period);
-  // Pair IN/OUT per worker into shifts (by workerId; an overnight shift stays one).
-  const byWorkerPunches: Record<string, AccPunch[]> = {};
-  filtered.forEach(e => { (byWorkerPunches[e.workerId] = byWorkerPunches[e.workerId] || []).push(e); });
-  const byWorkerDay: Record<string, { worker: string; workerId: string; date: Date; entries: AccPunch[] }> = {};
-  Object.entries(byWorkerPunches).forEach(([wid, list]) => {
-    groupPunchesIntoShifts(list).forEach((bucket, i) => {
-      byWorkerDay[wid + '|' + i] = { worker: list[0].workerName as string, workerId: wid, date: bucket.date, entries: bucket.entries };
-    });
-  });
   const byWorker: Record<string, SalaryEntry> = {};
   const byClient: Record<string, ClientBill> = {};
   const byDay: Record<string, number> = {};
-  Object.values(byWorkerDay).forEach(({ worker, workerId, date, entries }) => {
-    if (!byWorker[workerId]) byWorker[workerId] = { worker, workerId, hours: 0, days: 0, regH: 0, otH: 0, shabH: 0, total: 0, travel: 0, warns: [], clientHours: {}, seen: new Set(), dayKeys: new Set(), countedDays: 0, daysUsed: 0 };
+  // IN/OUT paired per worker into shifts (by workerId; an overnight shift stays one, in the period it opened).
+  periodShifts(d.log, period).forEach(({ worker, workerId, date, entries }) => {
+    if (!byWorker[workerId]) byWorker[workerId] = { worker, workerId, hours: 0, days: 0, regH: 0, otH: 0, shabH: 0, total: 0, travel: 0, warns: [], warnCodes: [], clientHours: {}, seen: new Set(), dayKeys: new Set(), countedDays: 0, daysUsed: 0 };
     const bw = byWorker[workerId];
     const res = analyzeDayPunches(entries, date, { tr: tr as Translate });
     const dstr = date.toLocaleDateString('en-GB');
-    res.warnings.forEach(wn => bw.warns.push(dstr + ': ' + wn));
+    res.warnings.forEach((wn, i) => { bw.warns.push(dstr + ': ' + wn); bw.warnCodes.push(res.codes[i]); });
     const h = res.hours;
     if (h > 0) {
       const isSat = date.getDay() === 6, RM = PAY_RULES.regularMax;
@@ -271,10 +290,12 @@ export function accAlerts(d: AccData, entries: SalaryEntry[], byClient: Record<s
   const { tr } = d, out: AccAlert[] = [], money = (n: unknown) => '₪' + Math.round(Number(n) || 0);
   entries.forEach(e => {
     const wc = byId(d.workers, e.workerId); if (!wc) return;
-    (e.warns || []).forEach(wn => {
-      if (/still at work/.test(wn)) return;
+    // By the warning's code, never its (translated) text: a shift still running today is no alert; an open shift or one over 12h amber, the rest red.
+    (e.warns || []).forEach((wn, i) => {
+      const code = (e.warnCodes || [])[i];
+      if (code === 'open-today') return;
       const m = String(wn).match(/^([^:]+):\s*(.*)$/), date = m ? m[1] : '', text = m ? m[2] : wn;
-      out.push({ sec: 'punch', lvl: /open shift|>12h/.test(text) ? 'amber' : 'red', icon: 'clock-exclamation', title: text, sub: [e.worker, date].filter(Boolean).join(' · '), go: ['worker', wc.id] });
+      out.push({ sec: 'punch', lvl: code === 'open' || code === 'gt12' ? 'amber' : 'red', icon: 'clock-exclamation', title: text, sub: [e.worker, date].filter(Boolean).join(' · '), go: ['worker', wc.id] });
     });
     const mainCid = mainClientOf(e, wc);
     const own = wOwnRate(wc);
@@ -379,17 +400,9 @@ export function buildSalaryExportRows(d: AccData, period: string, onlyIds?: stri
   const { tr } = d;
   const only = onlyIds && onlyIds.length ? new Set(onlyIds.map(String)) : null;
   const log = d.log.filter(e => !only || only.has(String(e.workerId))); const now = new Date();
-  const filtered = periodPunches(log, period);
-  const byWorkerPunches: Record<string, AccPunch[]> = {};
-  filtered.forEach(e => { (byWorkerPunches[e.workerId] = byWorkerPunches[e.workerId] || []).push(e); });
-  const byWD: Record<string, { worker: string; wid: string; date: Date; entries: AccPunch[] }> = {};
-  Object.entries(byWorkerPunches).forEach(([wid, list]) => {
-    groupPunchesIntoShifts(list).forEach((bucket, i) => {
-      byWD[wid + '|' + i] = { worker: list[0].workerName as string, wid, date: bucket.date, entries: bucket.entries };
-    });
-  });
+  const byWD = periodShifts(log, period).map(x => ({ worker: x.worker, wid: x.workerId, date: x.date, entries: x.entries }));
   const rows: ExportRow[] = [], seenBy: Record<string, Set<string>> = {};
-  Object.values(byWD).sort((a, b) => a.worker < b.worker ? -1 : a.worker > b.worker ? 1 : (a.date.getTime() - b.date.getTime())).forEach(x => {
+  byWD.sort((a, b) => a.worker < b.worker ? -1 : a.worker > b.worker ? 1 : (a.date.getTime() - b.date.getTime())).forEach(x => {
     const res = analyzeDayPunches(x.entries, x.date, { tr: tr as Translate });
     const ins = x.entries.filter(p => p.type === 'in').map(p => p.time as string).sort();
     const outs = x.entries.filter(p => p.type === 'out').map(p => p.time as string).sort();
@@ -420,6 +433,11 @@ export function salaryExportAoa(d: AccData, period: string, onlyIds?: string[] |
   const totalHours = rows.reduce((s, r) => s + r.hours, 0), totalPay = rows.reduce((s, r) => s + r.pay, 0);
   return [header, ...rows.map(r => [r.worker, r.client, r.supplier, r.date, r.firstIn, r.lastOut, r.hours.toFixed(2), r.rate, r.pay.toFixed(2), r.notes]),
     ['', '', '', '', '', tr('Total'), totalHours.toFixed(2), '', totalPay.toFixed(2), '']];
+}
+
+/** The salary export as a CSV file's text: the table without its total row (csvText: a BOM for Excel, no formulas). */
+export function salaryCsv(d: AccData, period: string, onlyIds?: string[] | null): string {
+  return csvText(salaryExportAoa(d, period, onlyIds).slice(0, -1));
 }
 
 // ── Hours approvals (the hours function's documents) ──

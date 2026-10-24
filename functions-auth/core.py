@@ -117,7 +117,7 @@ def claims_for(user):
     role = _norm_role(user.get("role"))
     claims = {"role": role}
     if role in ROLES_SUB:
-        # rt: the flat rights (docs/permissions-plan.md) — the one thing the
+        # rt: the flat rights (docs/admin.md → Permission templates) — the one thing the
         # rules and the functions check.
         claims["rt"] = _user_rights(role, user)
     if role == "hr":
@@ -161,6 +161,26 @@ def _secret_shape(secret):
             f"hashHex={all(c in '0123456789abcdefABCDEF' for c in h)} saltLen={len(salt)}")
 
 
+def _reserve_attempt(db, secret_ref, now):
+    """Reserve one password attempt before the password is checked, in a
+    transaction: refused while the account is locked, else counted as a wrong
+    password (the right one resets the counter). Concurrent guesses each see
+    the others' reservations, so at most LOCK_AFTER_FAILS reach the password
+    check in a lock window. The counter restarts once the window has passed.
+    Returns (count, seconds the lock still lasts or 0)."""
+    @firestore.transactional
+    def reserve(tx):
+        snap = secret_ref.get(transaction=tx)
+        cur = snap.to_dict() or {}
+        last = float(cur.get("lastFailAt") or 0)
+        fails = int(cur.get("failCount") or 0) if now - last < LOCK_SECONDS else 0
+        if fails >= LOCK_AFTER_FAILS:
+            return fails, LOCK_SECONDS - (now - last)
+        tx.update(secret_ref, {"failCount": fails + 1, "lastFailAt": now})
+        return fails + 1, 0
+    return reserve(db.transaction())
+
+
 def login(db, username, password, mint_token, now=None, on_refused=None):
     """mint_token(uid, claims) -> str (firebase_admin.auth.create_custom_token
     in production). `token` in the reply is a Firebase custom token for
@@ -193,26 +213,23 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
     user = user_snap.to_dict()
     secret = secret_snap.to_dict()
 
-    if user.get("active") is False:
-        return refused("account inactive", "Account disabled")
-
-    fails = int(secret.get("failCount") or 0)
-    last_fail = float(secret.get("lastFailAt") or 0)
-    if fails >= LOCK_AFTER_FAILS and now - last_fail < LOCK_SECONDS:
-        wait_min = max(1, int((LOCK_SECONDS - (now - last_fail) + 59) // 60))
+    fails, wait = _reserve_attempt(db, secret_ref, now)
+    if wait > 0:
+        wait_min = max(1, int((wait + 59) // 60))
         return refused("locked after wrong passwords", f"Too many wrong attempts — wait {wait_min} min.")
 
     if not verify_password(password, secret):
-        # The counter restarts once the lock window has passed.
-        fails = fails + 1 if now - last_fail < LOCK_SECONDS else 1
-        secret_ref.update({"failCount": fails, "lastFailAt": now})
         return refused(f"password mismatch ({_secret_shape(secret)}, failCount={fails})")
 
+    # The right password: the reserved attempt and the earlier misses are cleared.
     update = {"failCount": 0, "lastFailAt": 0}
-    if secret.get("algo") != "scrypt":
+    if secret.get("algo") != "scrypt" and user.get("active") is not False:
         update.update(hash_password(password))  # upgrade the legacy hash
-    if fails or update.get("algo"):
-        secret_ref.update(update)
+    secret_ref.update(update)
+
+    # Only a caller who knows the password learns the account is disabled.
+    if user.get("active") is False:
+        return refused("account inactive", "Account disabled")
 
     claims = claims_for(user)
     tenant_id = user.get("tenantId") or None
@@ -230,7 +247,7 @@ def login(db, username, password, mint_token, now=None, on_refused=None):
         "tenantId": tenant_id,
         "supplierId": user.get("supplierId") or None,
         "clientId": claims.get("clientId"),
-        # the flat rights (docs/permissions-plan.md); None: an owner or a superadmin
+        # the flat rights (docs/admin.md → Permission templates); None: an owner or a superadmin
         "rights": claims.get("rt"),
         "ownOnly": claims.get("own", False),
         "commissionRate": claims.get("hrc", 0),
@@ -563,7 +580,7 @@ TEMPLATE_RIGHTS = ("rights", "ownOnly")
 E_PICK_TEMPLATE = "Pick a template"
 E_TEMPLATE_NOT_FOUND = "Template not found"
 E_TEMPLATE_ROLE = "The template is for another role"
-# The flat list of rights (docs/permissions-plan.md): one tick, one thing —
+# The flat list of rights (docs/admin.md → Permission templates): one tick, one thing —
 # a tab, an action, or what is shown. Whose workers an HR works with is ownOnly.
 RIGHT_TABS = ("today", "schedule", "workers", "clients", "suppliers", "accounting", "punchlog", "commission", "hours")
 RIGHT_ACTIONS = ("editSchedule", "editWorkers", "editPunches", "editPay", "export", "approveHours", "disputeHours", "fixHours",
@@ -639,6 +656,18 @@ def _seed_templates(db):
                 raise
 
 
+def _seed_templates_once(db):
+    """The default templates are seeded once (appMeta/templates remembers it):
+    a superadmin who deletes them all keeps an empty set. A deployment that
+    already has templates but no flag only gets the flag."""
+    flag = db.collection("appMeta").document("templates")
+    if flag.get().exists:
+        return
+    if not list(db.collection("permTemplates").limit(1).stream()):
+        _seed_templates(db)
+    flag.set({"seeded": _now_iso()})
+
+
 def _load_template(db, tid, role=None):
     """({"id", "role", "rights"}, None) for a template (of this role, when
     one is named), or (None, error). The template says the login's role."""
@@ -658,7 +687,7 @@ def _load_template(db, tid, role=None):
 # such doc's flat rights, worked out one to one from those fields, and
 # deletes them; appMeta/rights remembers it is done. A session signed in
 # before the flat rights has no `rt` claim and the app sends it to the
-# sign-in (docs/permissions-plan.md → Done after the plan).
+# sign-in (archive/docs/permissions-plan.md → Done after the plan).
 
 OLD_RIGHT_FIELDS = ("permissions", "editPerms", "hourPerms", "supplierSections", "showPay")
 _OLD_SECTIONS = ("schedule", "workers", "clients", "suppliers", "accounting", "exports")
@@ -753,14 +782,12 @@ def convert_old_rights(db):
 
 
 def list_templates(db, caller):
-    """Every template (seeded on the first read), with how many logins use
+    """Every template (the defaults seeded once, _seed_templates_once), with how many logins use
     it: in every firm for a superadmin, in its own firm for an owner."""
     if not _can_manage(caller):
         return {"error": E_NO_RIGHTS}
+    _seed_templates_once(db)
     snaps = list(db.collection("permTemplates").stream())
-    if not snaps:
-        _seed_templates(db)
-        snaps = list(db.collection("permTemplates").stream())
     q = db.collection("users")
     if not _is_super(caller):
         q = q.where(filter=FieldFilter("tenantId", "==", caller.get("tenantId")))
@@ -848,8 +875,7 @@ def link_to_templates(db, caller, body, revoke):
     whose rights changed sign in again."""
     if not _is_super(caller):
         return {"error": E_NO_RIGHTS}
-    if not list(db.collection("permTemplates").limit(1).stream()):
-        _seed_templates(db)
+    _seed_templates_once(db)
     tpls = [_template_out(s) for s in db.collection("permTemplates").stream()]
     order = {r: i for i, r in enumerate(ROLES_SUB)}
     tpls.sort(key=lambda t: (order.get(t["role"], 9), t["name"].lower()))
@@ -1021,6 +1047,19 @@ def _doc_key(v):
     return "".join(ch for ch in str(v or "").upper() if ch.isalnum())
 
 
+def _doc_key_forms(key):
+    """The stored keys a typed number matches: an Israeli ID may be stored with or
+    without its leading 0 ("12345678" / "012345678"), so an all-digit key also
+    matches its forms without leading zeros and padded to 9."""
+    forms = [key]
+    if key.isdigit():
+        bare = key.lstrip("0")
+        for k in (bare, bare.zfill(9)):
+            if k and k not in forms:
+                forms.append(k)
+    return forms
+
+
 def doc_keys(d):
     """A worker's document numbers in one standard form (docKeys on the
     worker document), for checkWorkerDoc's one-query lookup. The app
@@ -1039,6 +1078,7 @@ def check_worker_doc(db, caller, body):
     an HR who sees only their own workers is warned about a duplicate
     without seeing the other worker.
 
+    An Israeli ID matches with or without its leading zeros (_doc_key_forms).
     One query on docKeys once the firm's workers all carry it
     (tenants/{t}.docKeysReady). Until then: one full read that also writes
     the missing docKeys and sets the flag."""
@@ -1048,17 +1088,18 @@ def check_worker_doc(db, caller, body):
     key = _doc_key(body.get("docId"))
     if not tid or not key:
         return {"ok": True, "exists": False}
+    forms = _doc_key_forms(key)
     skip = str(body.get("workerId") or "")
     t_ref = db.collection("tenants").document(tid)
     t_snap = t_ref.get()
     if t_snap.exists and (t_snap.to_dict() or {}).get("docKeysReady"):
-        q = t_ref.collection("workers").where(filter=FieldFilter("docKeys", "array_contains", key)).limit(2)
+        q = t_ref.collection("workers").where(filter=FieldFilter("docKeys", "array_contains_any", forms)).limit(2)
         return {"ok": True, "exists": any(s.id != skip for s in q.stream())}
     exists, batch, n = False, db.batch(), 0
     for snap in t_ref.collection("workers").stream():
         d = snap.to_dict() or {}
         keys = doc_keys(d)
-        if snap.id != skip and key in keys:
+        if snap.id != skip and any(k in keys for k in forms):
             exists = True
         if d.get("docKeys") != keys:
             batch.update(snap.reference, {"docKeys": keys})

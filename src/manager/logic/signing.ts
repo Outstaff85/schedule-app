@@ -3,7 +3,7 @@
 // login's ID token, the firm's requests kept in memory (Sent to sign / Signed on the worker),
 // and the signed PDFs taken onto the worker record once: Form 101 as the worker's document
 // (`docUrl`), the contract into `docs` (signed), the signature, the date — the replaced
-// signed documents deleted (docs/contracts-plan.md → D4). Never draws: it emits events.
+// signed documents deleted (docs/contracts.md → A new signature after a change). Never draws: it emits events.
 import { state, type Rec } from '../data/state';
 import { emit } from '../data/events';
 import { autoSave } from '../data/store';

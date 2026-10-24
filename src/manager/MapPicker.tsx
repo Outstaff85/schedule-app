@@ -10,6 +10,7 @@ import { IconCheck, IconCurrentLocation } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { showToast } from './toast';
 import { MAP_DEFAULT_CENTER, loadGoogleMaps } from './maps';
+import { clientRadius } from './clients';
 
 export type MapPlace = { lat: number; lng: number; radius: number; mapsUrl: string };
 export type MapPickProps = {
@@ -31,7 +32,7 @@ export function MapPicker({ props }: { props: MapPickProps }) {
   const g = React.useRef<{ map: any; marker: any; circle: any }>({ map: null, marker: null, circle: null });
   const [pos, setPos] = React.useState<{ lat: number; lng: number } | null>(null);
   const [noSearch, setNoSearch] = React.useState(false);
-  const radius = () => Number(radiusEl.current?.value) || 100;
+  const radius = () => clientRadius(radiusEl.current?.value);
 
   const place = React.useCallback((lat: number, lng: number, recenter: boolean) => {
     setPos({ lat, lng });
@@ -48,7 +49,7 @@ export function MapPicker({ props }: { props: MapPickProps }) {
     const lat = s && s.lat != null ? Number(s.lat) : NaN, lng = s && s.lng != null ? Number(s.lng) : NaN;
     const addr = String((s && s.addr) || '').trim(), hasPos = !isNaN(lat) && !isNaN(lng);
     (async () => {
-      try { await loadGoogleMaps(); } catch (e) { showToast((e as Error).message); props.close(); return; }
+      try { await loadGoogleMaps(); } catch { showToast(tr('Google Maps failed to load')); props.close(); return; }
       if (gone || !mapEl.current) return;
       const google = (window as any).google;
       const { Map, Circle } = await google.maps.importLibrary('maps');

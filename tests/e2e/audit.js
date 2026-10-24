@@ -103,19 +103,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       ['language', () => { openLangSheet(); }],
     ];
     for(const [n, fn] of M){ await step(p, w, 'manager-' + n, fn); }
-    // The scan window (src/scan/Scanner.tsx): the Camera tab with a shot's page under New pages, then the Pages tab
+    // The scan window (src/scan/Scanner.tsx): the full-screen scanner with a shot's pages in its strip (given to the
+    // session with no camera: ManagerScan.hooks().inject), then a page opened large
     try {
-      await p.evaluate(() => {
+      await p.evaluate(async () => {
         window.__scanGoing = startNewScan();
+        for (let i = 0; i < 100 && !document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'); i++) await new Promise(r => setTimeout(r, 100));
         const c = document.createElement('canvas'); c.width = 300; c.height = 400;
         const g = c.getContext('2d'); g.fillStyle = '#e8e4d8'; g.fillRect(0, 0, 300, 400); g.fillStyle = '#556'; g.fillRect(30, 40, 240, 30); g.fillRect(30, 100, 160, 16);
-        const pic = c.toDataURL('image/jpeg');
-        setTimeout(() => { window.postMessage({type: 'scan-pages', key: 's1', pages: [pic]}, location.origin); window.postMessage({type: 'scan-pages', key: 's2', pages: [pic, pic]}, location.origin); }, 1500);
+        const pic = c.toDataURL('image/jpeg').split(',')[1];
+        const H = await ManagerScan.hooks();
+        await H.inject({pics: [{b64: pic, doctype: {doctype: 'id_front', conf: 0.97, turn: 0, turnConf: 0.99}}, {b64: pic}]});
       });
-      await sleep(3500); await shoot(p, 'manager-scanner-camera-' + w);
-      await p.evaluate(() => { const t = document.querySelector('[data-testid="scan-tab-pages"]'); t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); t.focus(); });
-      await sleep(800); await shoot(p, 'manager-scanner-pages-' + w);
-      await p.keyboard.press('Escape'); await sleep(500);
+      await sleep(2500); await shoot(p, 'manager-scanner-camera-' + w);
+      await p.evaluate(() => { const t = document.querySelector('[data-testid="scan-thumb"]'); if (t) t.click(); });
+      await sleep(800); await shoot(p, 'manager-scanner-page-' + w);
+      await p.keyboard.press('Escape'); await sleep(300); await p.keyboard.press('Escape'); await sleep(500);
     } catch (e) { console.log('skip manager-scanner-' + w + ': ' + e.message.split('\n')[0]); }
     // Select mode on the worker plates (after the scan window: Select mode stays on)
     await step(p, w, 'manager-workers-select', () => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-select"] button').click(); });

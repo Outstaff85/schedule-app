@@ -1,7 +1,7 @@
 """The document type model's pages from the phone's own cut (gen/phone_run.py; docs/scan-training.md → "The phone's own
 cuts"): each true page of a scene as the lab cut it — by the corners its edges model found (or, missed, as a person
 leaves them in the editor) and turned by the face on it — drawn onto the model's 256 square HERE, from the full-size
-cut in one step, as the phone draws it (gen/phone.py doctype_input: index.html doctypeAnswer's one drawImage, the
+cut in one step, as the phone draws it (gen/phone.py doctype_input: readers.ts doctypeAnswer's one drawImage, the
 kernel drawn from the phone profile's capture mix — no pre-shrink, no JPEG), and saved as PNG; train_doctypes.square
 then copies the 256 square as it is.
 

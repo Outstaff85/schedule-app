@@ -1,6 +1,6 @@
 /* The worker punch page (/punch, docs/punch.md): its own look, moved one to
    one from the old worker-punch.html in the React migration
-   (react-migration-plan.md → stage 5). Loaded only by src/punch/main.tsx;
+   (archive/docs/react-migration-plan.md → stage 5). Loaded only by src/punch/main.tsx;
    og.css (the tokens, the ground, .gbtn, .lang-btn) comes before it. */
 /* The reset sits in the base layer: the page's own rules below still win, and so do the
    shared windows' Tailwind utilities (their padding, numbered lists). */

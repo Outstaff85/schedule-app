@@ -4,11 +4,12 @@
   "description": "Browser tests: the real pages in Chromium against the Firestore/Auth/Storage emulators and the real functions-auth code (docs/tests.md). Run: npm install && PYTHON=<python with functions-auth/requirements.txt> npm test",
   "scripts": {
     "build": "esbuild firebase-entry.js --bundle --format=esm --outfile=build/firebase-all.js --log-level=warning",
-    "test": "npm run build && npm run test:next && npm run test:phone && npm run test:main && npm run test:hr",
+    "test": "npm run build && npm run test:next && npm run test:phone && npm run test:main && npm run test:hr && npm run test:scanner",
     "test:next": "node next.test.js",
     "test:phone": "node phone-parity.test.js",
     "test:main": "firebase emulators:exec --config ../../firebase.json --only firestore,auth,storage --project demo-schedule \"bash run.sh main.test.js\"",
     "test:hr": "firebase emulators:exec --config ../../firebase.json --only firestore,auth,storage --project demo-schedule \"bash run.sh hr.test.js\"",
+    "test:scanner": "firebase emulators:exec --config ../../firebase.json --only firestore,auth,storage --project demo-schedule \"bash run.sh scanner.test.js\"",
     "audit": "npm run build && firebase emulators:exec --config ../../firebase.json --only firestore,auth,storage --project demo-schedule \"bash run.sh audit.js\""
   },
   "devDependencies": {

@@ -20,7 +20,6 @@ firestore.rules grant nothing) and the file at tenants/<t>/contracts/<id>/<ms>.p
 
 import base64
 import io
-import json
 import re
 import time
 import uuid
@@ -28,7 +27,7 @@ import uuid
 import pymupdf
 from bidi.algorithm import get_display
 
-# The marks (docs/contracts-plan.md → D2 → The marks), in the order the upload lists them.
+# The marks (docs/contracts.md → The marks), in the order the upload lists them.
 WORKER_MARKS = ("given", "surname", "full_name", "id", "id_type", "id_expiry", "dob", "sex", "marital",
                 "phone", "address", "city", "full_address", "health_fund")
 WORK_MARKS = ("start_date", "end_date", "contract_months", "site", "supplier", "schedule")
@@ -613,7 +612,3 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         return {"ok": True}
 
     return {"error": "Unknown action"}
-
-
-def json_reply(obj):
-    return json.dumps(obj, ensure_ascii=False)

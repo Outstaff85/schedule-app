@@ -1,12 +1,12 @@
 // The Accounting exports (docs/accounting.md → Exports), moved from the page in
 // stage 6e: they write the tables accounting.ts builds — never a second
 // calculation. Excel through SheetJS (the page's loadXlsx), PDF as a print page
-// in a new window, CSV as a download.
+// in a new window, CSV as a download (salaryCsv: a BOM for Excel, no formulas).
 import { localYMD } from '@/lib/payroll';
 import { esc } from '@/lib/utils';
 import { tr, uiLocale } from '@/lib/i18n';
 import type { ManagerBridge } from './bridge';
-import { accountantSheets, payableAoa, periodLabel, salaryExportAoa, salaryMonthOf, type ApprovalDoc } from './accounting';
+import { accountantSheets, payableAoa, periodLabel, salaryCsv, salaryExportAoa, salaryMonthOf, type ApprovalDoc } from './accounting';
 
 const PRINT_CSS = 'body{font-family:Arial,sans-serif;padding:20px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}tfoot td{font-weight:bold}';
 
@@ -41,8 +41,7 @@ export async function exportSalary(api: ManagerBridge, format: 'excel' | 'pdf' |
       <tbody>${rows.map(r => '<tr>' + r.map(v => `<td>${esc(String(v))}</td>`).join('') + '</tr>').join('')}</tbody>
       <tfoot><tr><td colspan="6">${esc(tr('Total'))}</td><td>${esc(tot[6])}</td><td></td><td>${esc(tot[8])}</td><td></td></tr></tfoot></table>`)) return;
   } else {
-    const csv = aoa.slice(0, -1).map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const url = URL.createObjectURL(new Blob([salaryCsv(api.accData(), period, onlyIds)], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = fname + '.csv'; a.click(); URL.revokeObjectURL(url);
   }
   api.toast(tr('Salary exported!'));

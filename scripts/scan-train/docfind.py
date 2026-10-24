@@ -1,8 +1,8 @@
-"""The documents on a scanned photo — once the server's finder (removed 2026-10-19: the site's
-scanner is the lab's page); kept here for /scan-train's exam (exam.py: detect, good_quad).
+"""The documents on a scanned photo — once the server's finder (removed 2026-10-19: the phone's
+scanner finds them); kept here for /scan-train's exam (exam.py: detect, good_quad).
 
-The same steps as the scanner lab (scan-lab/index.html, scan-lab/scan-core.js),
-with the accurate model in full precision:
+The same steps as the scanner (src/scan/engine/: geometry.ts, pictures.ts, files.ts), which the site
+and the lab both run, with the accurate model in full precision:
 
 - a white page with photos in it (a form's page, a PDF, a screenshot) is cut
   into its photos first (`photos_on_page`);
@@ -29,10 +29,10 @@ from functools import cmp_to_key
 import numpy as np
 import cv2
 
-# The corner picking is the phone's, ported exactly (gen/phone.py corners, from scan-lab/scan-core.js corners): one
+# The corner picking is the phone's, ported exactly (gen/phone.py corners, from src/scan/engine/geometry.ts corners): one
 # copy, re-exported here under its old names.
 from gen.phone import PEAKS, PEAK_R, BLOB_R, SIDES, PAR, FREE, corners, _spots, _frame_score  # noqa: F401
-# index.html findInside: a document lying on another covers 3–60 % of its flat cut (one copy: gen/phone.py)
+# src/scan/engine/shot.ts findInside: a document lying on another covers 3–60 % of its flat cut (one copy: gen/phone.py)
 from gen.phone import INSIDE_MIN, INSIDE_MAX  # noqa: F401
 
 S, HM = 256, 128      # the document edges model's input and heatmap sides
@@ -263,7 +263,7 @@ def _border_kernel(resize):
 
 
 def find_next_lab(models, img, found, resize=None):
-    """index.html findNext, step by step: the found ones (each grown 4 % from its centre) painted over in the colour of
+    """src/scan/engine/shot.ts findNext, step by step: the found ones (each grown 4 % from its centre) painted over in the colour of
     the photo's border (phone.lab_border_colour), each model on it (the accurate one, then the light one), then the
     same inside a margin of that colour (Math.round of 10 % of the long side; the corners taken back and clamped to
     the photo), then — when one is found already — the two widest strips beside the first (at least 25 % wide and
@@ -321,7 +321,7 @@ def find_next_lab(models, img, found, resize=None):
 
 
 def find_inside(sess, img, q, found, resize="capture"):
-    """A document lying on the found one q (an ID card on its ספח; index.html findInside), or None: q cut flat from
+    """A document lying on the found one q (an ID card on its ספח; src/scan/engine/shot.ts findInside), or None: q cut flat from
     the photo as the phone cuts it (gen/phone.py warp_rgba: not turned, no exact proportion, what falls outside the
     photo black), the model on the cut, and a sure frame of a document's shape (phone.doc_shape) covering 3–60 % of
     the cut taken back onto the photo through the cut's homography — unless it is a document found already (q itself
@@ -353,7 +353,7 @@ def photos_on_page(img):
     gives a photo's sides; then the blocks of ink (ink_blocks: a ספח, a black-and-white copy)
     not already in a photo. None when the picture is (nearly) one photo already. A band mostly
     dark (a screenshot's bar) is not a photo; a picture whose rest is not mostly white is not a
-    white page (none). The phone's copy: src/scan/find.ts photosOnPage."""
+    white page (none). The phone's copy: src/scan/engine/pictures.ts photosOnPage."""
     H, W = img.shape[:2]
     sc = 300 / max(W, H)
     w, h = max(1, round(W * sc)), max(1, round(H * sc))

@@ -1,8 +1,8 @@
 """The phone mirror (scripts/scan-train/gen/phone.py; docs/scan-training.md → "The phone mirror"): exact ports of what
 the scanner lab does to a picture before a model sees it. The parity fixtures tests/scan/phone_parity.json are written
 from phone.py once (`python tests/auth/test_scan_train_phone.py --write`) and checked twice: here (phone.py still gives
-them) and by tests/scan/phone_parity.test.mjs (the lab's own scan-core.js corners / warpRGBA and index.html mrzFind give
-them too, in both copies, scan-lab/ and scan/). The resamplers are measured against Chromium by
+them) and by tests/scan/phone_parity.test.mjs (the scanner engine's own corners / warpRGBA and mrzFind, src/scan/engine/, give
+them too — the one copy the site's scanner and the lab run). The resamplers are measured against Chromium by
 tests/e2e/phone-parity.test.js; here, against OpenCV where they must agree, and the profile's fit on a made-up probe."""
 import json
 import math
@@ -116,7 +116,7 @@ def _box(b):
     return [int(b["x"]), int(b["y"]), int(b["w"]), int(b["h"])]
 
 
-# More documents on one photo (index.html findNext / findInside): the model's answers scripted in call order, so the
+# More documents on one photo (shot.ts findNext / findInside): the model's answers scripted in call order, so the
 # lab's own findNext / findInside (run with a stub canvas and engine) and docfind's must make the same calls and take
 # the same frame. A 400 × 300 photo; each case: the first document found (or none) and the answers.
 PW, PH = 400, 300
@@ -235,7 +235,7 @@ def make_paints():
     return out
 
 
-# The face finder's turn (scan-core.js faceScore / faceTurn; phone.face_score_of / face_turn): the finder's outputs on
+# The face finder's turn (upright.ts faceScore / faceTurn; phone.face_score_of / face_turn): the finder's outputs on
 # its 320 input written by hand, sparse — per stride its "hot" cells [index, cls, obj, 10 kps] (every other cell 0) — in
 # values a float32 holds exactly, so both sides read the same numbers.
 UP = [-0.25, -0.5, 0.25, -0.5, 0.0, 0.0, -0.25, 0.5, 0.25, 0.5]        # eyes above, the mouth straight below: sin 1
@@ -303,7 +303,7 @@ def make_faces():
 
 def make_fixtures():
     fx = {"about": "Written once from scripts/scan-train/gen/phone.py by tests/auth/test_scan_train_phone.py --write; "
-                   "checked by that test and by tests/scan/phone_parity.test.mjs (the lab's scan-core.js and mrzFind).",
+                   "checked by that test and by tests/scan/phone_parity.test.mjs (the scanner engine's corners, warpRGBA and mrzFind, src/scan/engine/).",
           "heatmaps": [], "warps": [], "zones": []}
     cases = {k: (v, None) for k, v in HEATMAPS.items()}
     cases.update(_random_heatmaps())
@@ -350,7 +350,7 @@ def test_the_parity_fixtures_are_phone_py():
 
 
 def test_the_face_turn_reads_the_finder_as_the_lab_does():
-    """phone.face_score_of / face_turn (scan-core.js faceScore / faceTurn, mirrored; tests/scan/phone_parity.test.mjs
+    """phone.face_score_of / face_turn (upright.ts faceScore / faceTurn, mirrored; tests/scan/phone_parity.test.mjs
     runs the lab's own on the same outputs): the surest face, the first of the highest stride by stride and cell by
     cell, clipped to 0..1, 0 under 0.5, times the sine of the eyes-to-mouth angle; the turn whose face is surest, the
     first on a tie, -1 when none."""

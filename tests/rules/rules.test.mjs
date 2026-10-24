@@ -80,6 +80,7 @@ beforeEach(async () => {
     await setDoc(doc(d, 'users', 'u-ownerB'), { username: 'ownerb', tenantId: B, role: 'tenant_admin' });
     await setDoc(doc(d, 'authSecrets', 'u-ownerA'), { passwordHash: 'h', passwordSalt: 's' });
     await setDoc(doc(d, 'workerTokens', 'tok1'), { tenantId: A, workerId: 'w1' });
+    await setDoc(doc(d, 'pushSubscriptions', 'ps1'), { tenantId: A, workerId: 'w1' });
     await setDoc(doc(d, 'usernames', 'ownera'), { uid: 'u-ownerA' });
     await setDoc(doc(d, 'errors', 'e1'), { message: 'x' });
   });
@@ -145,6 +146,39 @@ test('punches: any manager-side login of the firm reads and writes', async () =>
   }
 });
 
+test("punches: only the owner or a superadmin sets a hrId other than the worker's", async () => {
+  // staff (or an all-workers hr) with Edit punches: an edit keeps the hrId, a new punch carries its worker's
+  for (const r of ['staffAll', 'hrAll']) {
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p1'), { hrId: 'u-hrOwn' }));
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p2'), { hrId: null }));
+    await assertSucceeds(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p2'), { notes: 'kept' }));
+    await assertFails(setDoc(doc(db(r), 'tenants', A, 'punches', 'n-' + r), { workerId: 'w1', type: 'in', hrId: 'u-hrOwn' }));
+    await assertFails(setDoc(doc(db(r), 'tenants', A, 'punches', 'm-' + r), { workerId: 'w2', type: 'in' }));
+    await assertSucceeds(setDoc(doc(db(r), 'tenants', A, 'punches', 'o-' + r), { workerId: 'w2', type: 'in', hrId: 'u-hrOwn' }));
+  }
+  await assertSucceeds(setDoc(doc(db('ownerA'), 'tenants', A, 'punches', 'n-owner'), { workerId: 'w1', type: 'in', hrId: 'u-hrOwn' }));
+  // an own-workers hr: only its own workers' punches, never moved to another worker
+  const h = db('hrOwn');
+  await assertFails(setDoc(doc(h, 'tenants', A, 'punches', 'x3'), { workerId: 'w3', type: 'in', hrId: 'u-hrOwn' }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'punches', 'x9'), { workerId: 'w-missing', type: 'in', hrId: 'u-hrOwn' }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'punches', 'p2'), { workerId: 'w3' }));
+});
+
+test('clients: the worker pay changes only with Edit pay; without it the rest saves', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'tenants', A, 'clients', 'cp'), { name: 'Paid', defaultHourlyRate: 40, defaultOtRate: 50 });
+  });
+  for (const r of ['flatClients', 'hrOwnClients']) {
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'clients', 'cp'), { defaultHourlyRate: 35 }));
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'clients', 'cp'), { defaultOtRate: null }));
+    await assertSucceeds(updateDoc(doc(db(r), 'tenants', A, 'clients', 'cp'), { name: 'Renamed by ' + r }));
+    await assertFails(setDoc(doc(db(r), 'tenants', A, 'clients', 'new-' + r), { name: 'x', defaultHourlyRate: 30 }));
+    await assertSucceeds(setDoc(doc(db(r), 'tenants', A, 'clients', 'ok-' + r), { name: 'x', defaultHourlyRate: null }));
+  }
+  await assertSucceeds(updateDoc(doc(db('staffAll'), 'tenants', A, 'clients', 'cp'), { defaultHourlyRate: 35, defaultOtRate: null }));
+  await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'clients', 'cp'), { defaultHourlyRate: 45 }));
+});
+
 test('client: no direct read or write anywhere, even with every tick (portal goes through a function)', async () => {
   for (const sub of ['workers', 'clients', 'suppliers', 'punches', 'pendingHours', 'settings', 'hourApprovals']) {
     await assertFails(getDocs(collection(db('clientA'), 'tenants', A, sub)));
@@ -204,11 +238,14 @@ test('users: own profile, owner sees own firm, superadmin all; nobody writes', a
   await assertFails(updateDoc(doc(db('staffAll'), 'users', 'u-staffAll'), { role: 'tenant_admin' }));
 });
 
-test('password hashes, usernames and punch-link tokens: unreachable for everyone, superadmin included', async () => {
+test('password hashes, usernames, old punch-link tokens and push subscriptions: unreachable for everyone, superadmin included', async () => {
   for (const r of ['superadmin', 'ownerA', 'staffAll', 'supplierA', 'anon']) {
     await assertFails(getDoc(doc(db(r), 'authSecrets', 'u-ownerA')));
     await assertFails(getDoc(doc(db(r), 'workerTokens', 'tok1')));
     await assertFails(setDoc(doc(db(r), 'workerTokens', 'tok2'), { tenantId: A }));
+    // No rule of their own any more: denied by default.
+    await assertFails(getDoc(doc(db(r), 'pushSubscriptions', 'ps1')));
+    await assertFails(setDoc(doc(db(r), 'pushSubscriptions', 'ps2'), { workerId: 'w1' }));
     await assertFails(getDoc(doc(db(r), 'usernames', 'ownera')));
     await assertFails(setDoc(doc(db(r), 'usernames', 'grab'), { uid: 'x' }));
   }

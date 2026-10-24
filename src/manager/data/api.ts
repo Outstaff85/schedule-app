@@ -1,7 +1,7 @@
 // The manager app's way to the backend (React migration stage 8b; from
 // schedule-manager.html): firestore-backend.js loaded once, the fetch(API_URL)
 // dispatcher, the direct calls (gs*) and the worker file uploads.
-import type { FirestoreBackend } from '../../lib/firestore-backend';
+import type { FirestoreBackend, SaveBase, ScheduleBase } from '../../lib/firestore-backend';
 import { getSession, clearSession, gsAuth, fsTenantId } from './session';
 import { reportTiming, reportError } from './telemetry';
 import { notify, tr } from './events';
@@ -18,16 +18,17 @@ type Rec = Record<string, any>;
 export const API_URL = 'api://app';
 
 let fsBackend: Promise<FirestoreBackend> | null = null;
+let fsLoaded: FirestoreBackend | null = null;     // the backend once loaded (sync calls)
 export function loadFirestoreBackend(): Promise<FirestoreBackend> {
   if (fsBackend) return fsBackend;
   // One load per page: the portal screens a supplier or client sees in this
   // page (src/manager/Portal.tsx) load it through src/lib/backend.ts — the
   // same promise, kept on window (initFirestoreBackend may run only once).
-  if (window.__fsBackendLoad) return (fsBackend = window.__fsBackendLoad);
+  if (window.__fsBackendLoad) { window.__fsBackendLoad.then(b => { fsLoaded = b; }, () => {}); return (fsBackend = window.__fsBackendLoad); }
   fsBackend = window.__fsBackendLoad = new Promise<FirestoreBackend>((resolve, reject) => {
     const el = document.createElement('script');
     el.src = 'firestore-backend.js';
-    el.onload = () => window.initFirestoreBackend!().then(resolve, reject);
+    el.onload = () => window.initFirestoreBackend!().then(b => { fsLoaded = b; resolve(b); }, reject);
     el.onerror = () => reject(new Error('firestore-backend.js failed to load'));
     document.head.appendChild(el);
   }).catch(e => { fsBackend = null; window.__fsBackendLoad = undefined; throw e; });
@@ -104,14 +105,30 @@ export function installDispatcher(): void {
 }
 
 // ── Data sync (Firestore) ──────────────────────────────────────────────
-export async function gsSave(data: Rec): Promise<boolean> {
+// opts.base: the data was edited from that base (store.ts: changes kept on
+// the device, an edit on the cached list) — the backend merges it with the
+// server's fresh copy first and hands what it saved to opts.onMerged, with
+// the count of local records whose changes could not be merged (base
+// 'unknown': no base was kept on the device).
+// opts.allowEmpty: an explicit delete of the last worker / client.
+export interface SaveOpts { base?: SaveBase | null; allowEmpty?: boolean; onMerged?: (data: Rec, dropped: number) => void }
+export async function gsSave(data: Rec, opts: SaveOpts = {}): Promise<boolean> {
   // Empty-payload guard: never push an empty dataset (would delete every record).
-  if ((!data.workers || !data.workers.length) && (!data.clients || !data.clients.length)) {
+  if (!opts.allowEmpty && (!data.workers || !data.workers.length) && (!data.clients || !data.clients.length)) {
     console.warn('Empty payload — skipping save');
     return false;
   }
-  try { const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data); return !!(r && r.ok); }
+  try {
+    const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data, undefined, opts.base || null);
+    if (r && r.ok && r.data && opts.onMerged) opts.onMerged(r.data, Number(r.dropped) || 0);
+    return !!(r && r.ok);
+  }
   catch (e) { console.warn('Firestore save failed:', e); return false; }
+}
+// The save base of data the app holds (firestore-backend scheduleBaseOf), at
+// once — null while the backend is not loaded yet.
+export function scheduleBaseOf(data: Rec): ScheduleBase | null {
+  try { return fsLoaded ? fsLoaded.scheduleBaseOf(data) : null; } catch { return null; }
 }
 
 // The firm's workers, clients and suppliers. A failure leaves its reason in
@@ -127,8 +144,14 @@ export async function gsLoad(): Promise<Rec | null> {
   } catch (e: any) { lastLoadError = 'Firestore: ' + ((e && e.message) || e); reportError('loadSchedule failed: ' + lastLoadError, 'gsLoad', ''); return null; }
 }
 
+// A punch the server refused is told to the user (it stays in this device's log only).
 export async function gsSavePunch(entry: Rec): Promise<void> {
-  try { await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); } catch (e) { console.warn('Firestore punch save failed:', e); }
+  try { await (await loadFirestoreBackend()).savePunch(fsTenantId(), entry); }
+  catch (e: any) {
+    console.warn('Firestore punch save failed:', e);
+    reportError('savePunch failed: ' + ((e && e.message) || e), 'gsSavePunch', '');
+    notify(tr('The punch was not saved on the server — {0}', {0: (e && e.message) || String(e)}), 6000);
+  }
 }
 export async function gsDeletePunch(id: unknown): Promise<void> {
   try { await (await loadFirestoreBackend()).deletePunch(fsTenantId(), id); } catch (e) { console.warn('Firestore delete failed:', e); }

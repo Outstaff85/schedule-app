@@ -1,6 +1,6 @@
 // The scanner's server calls (scan_feedback): the pages' document type examples (the queue), the
 // document type model's mode, a full document after a scan's save (H8a, docs/hf-plan.md) with its
-// attempts told the worker's id, the scanner's settings and its training figures (Admin → Scanner). Finding and cutting the documents is the phone's (scan/, the scanner lab's own page — docs/scan.md → The scan window).
+// attempts told the worker's id, the scanner's settings and its training figures (Admin → Scanner). Finding and cutting the documents is the phone's (the full-screen scanner, src/scan/ui/ and src/scan/engine/ — docs/scan.md → The scan window).
 import { SCAN_FEEDBACK_FN_URL } from '@/manager/logic/functions';
 import { loadFirestoreBackend } from '@/manager/data/api';
 
@@ -19,8 +19,8 @@ async function post(url: string, body: unknown) {
 // ---------- this scan's session (docs/scan.md → The scan window) ----------
 // One id per scan — a new scan makes it (resetScan, src/scan-process/session.ts), "Scan again" keeps it — sent
 // with the scan's page examples and its full document, so a training keeps one scan on one side of its exam.
-// The scan's attempts (the lab page's, scan/index.html: their ids on the pages, their folders on the server as
-// they come back, src/scan/lab.ts) are told "saved" with the worker's id when the worker window saves, so the
+// The scan's attempts (src/scan/engine/attempts.ts: their ids on the pages, their folders on the server as
+// they come back) are told "saved" with the worker's id when the worker window saves, so the
 // deletion of a worker's data on request finds them (scripts/scan-train/delete_data.py --worker).
 type Session = { id: string; atts: Set<string>; dirs: Set<string>; workerId: string; told: Set<string> };
 const sessionKey = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
@@ -35,12 +35,12 @@ export function newScanSession(): void {
 }
 /** This scan's session id. */
 export function scanSessionId(): string { return current().id; }
-/** The attempts this scan's pages came from (each page's attempt id, from the lab page). */
+/** The attempts this scan's pages came from (each page's attempt id, from the scanner's engine). */
 export function scanAttempts(atts: (string | undefined)[]): void {
   const s = current();
   for (const a of atts) if (a) s.atts.add(a);
 }
-/** The folders the server gave the lab page's attempts ({attempt id: folder}): this scan's are kept — told at once
+/** The folders the server gave the scanner's attempts ({attempt id: folder}): this scan's are kept — told at once
  * when its worker is already saved. */
 export function attemptFolders(dirs: Record<string, unknown>): void {
   for (const [att, dir] of Object.entries(dirs || {})) {

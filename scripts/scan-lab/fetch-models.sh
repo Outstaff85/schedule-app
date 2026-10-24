@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The scanner lab's models and ONNX Runtime Web, put next to it in the built site
-# (docs/scan-plan.md → Scanner lab). No model file is committed. Each base model
-# comes from the firm's own Firebase Storage (models/scan/base-v1/, through
+# The scanner lab's models and ONNX Runtime Web, put next to its built page in dist/scan-lab/
+# (docs/scan-plan.md → Scanner lab), with their licences (THIRD-PARTY.txt). No model file is
+# committed. Each base model comes from the firm's own Firebase Storage (models/scan/base-v1/, through
 # model_store.py, when the deploy's credentials are set); only a model not stored
 # there yet is downloaded from its authors — once — and stored. /tmp/models (the
 # Actions cache) keeps them between runs.
@@ -16,13 +16,16 @@ mkdir -p "$OUT/ort" "$OUT/ort130" "$CACHE"
 pip install -q onnx numpy google-cloud-storage
 STORE=""
 if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py" ping; then STORE=1; else echo "Firebase Storage not reachable: the authors' links are used"; fi
-# The models' home (docs/hf-plan.md): the public Hugging Face repo, one tag per version, the
+# The models' home (docs/hf-plan.md): the Hugging Face repo, one tag per version, the
 # files named by what they do; Firebase Storage (the old names) only while a version is not moved there yet.
 HF="https://huggingface.co/OutStaff/scanner-models/resolve/$SCAN_MODELS_VERSION"
+# the models' repo is private (owner, 2026-10-24): the deploy reads it with HF_TOKEN, a read-only key for
+# that repo alone (a GitHub Actions secret); the repo is private, so without it the download is refused
+HF_AUTH=(); [ -n "${HF_TOKEN:-}" ] && HF_AUTH=(-H "Authorization: Bearer $HF_TOKEN")
 hfname() { case "$1" in sa24.onnx) echo edges.onnx;; lite.onnx) echo edges-lite.onnx;; yunet640.onnx) echo face.onnx;; *) echo "$1";; esac; }
 fromhf() {  # NAME [the least size in bytes: 100 kB, a model; a small file passes its own]
   for i in 1 2 3; do
-    code=$(curl -sSL -o "$CACHE/$1.part" -w '%{http_code}' "$HF/$(hfname "$1")" || echo 000)
+    code=$(curl -sSL "${HF_AUTH[@]}" -o "$CACHE/$1.part" -w '%{http_code}' "$HF/$(hfname "$1")" || echo 000)
     if [ "$code" = 200 ] && [ "$(stat -c %s "$CACHE/$1.part")" -gt "${2:-100000}" ]; then mv "$CACHE/$1.part" "$CACHE/$1"; echo "from Hugging Face: $(hfname "$1")"; return 0; fi
     rm -f "$CACHE/$1.part"
     case "$code" in 401|403|404) return 1;; esac  # not there: the version is not moved yet
@@ -71,9 +74,27 @@ printf '{"version":"%s","doctype":%s,"mrz":%s,"he":%s}\n' "$SCAN_MODELS_VERSION"
 # The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).
+# ort.all.min.mjs is what the scanner's engine imports at run time (src/scan/engine/ort.ts); the
+# ort-wasm-simd-threaded*.mjs are what both builds' wasm loaders import (docs/build.md → The scanner's entries).
 T="$(mktemp -d)"
 for v in 1.22.0:ort 1.30.0:ort130; do
   (cd "$T" && mkdir -p "${v#*:}" && cd "${v#*:}" && npm pack "onnxruntime-web@${v%%:*}" --silent >/dev/null && tar xzf "onnxruntime-web-${v%%:*}.tgz")
-  cp "$T/${v#*:}/package/dist/ort.all.min.js" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
+  cp "$T/${v#*:}/package/dist/ort.all.min.mjs" "$T/${v#*:}"/package/dist/*.wasm "$T/${v#*:}"/package/dist/ort-wasm-simd-threaded*.mjs "$OUT/${v#*:}/"
 done
+cp "$HERE/THIRD-PARTY.txt" "$OUT/"
+# What the surface's page loads at run time, all from its own folder (docs/build.md → The scanner's entries): the models,
+# models.json at this version, he-layouts.json when the Hebrew reader is there, and both ONNX Runtime builds — the .mjs
+# the scanner's engine imports (src/scan/engine/ort.ts), its .wasm and loaders. A deploy missing one stops here.
+python - "$OUT" "$SCAN_MODELS_VERSION" <<'PY'
+import json, pathlib, sys
+out, version = pathlib.Path(sys.argv[1]), sys.argv[2]
+m = json.loads((out / "models.json").read_text())
+need = ["lite.onnx", "sa24_w16.onnx", "yunet.onnx"] + [f"{d}/{f}" for d in ("ort", "ort130") for f in ("ort.all.min.mjs",)]
+need += ["doctype.onnx"] * m["doctype"] + ["mrz.onnx"] * m["mrz"] + ["he.onnx", "he-layouts.json"] * m["he"]
+missing = [f for f in need if not (out / f).is_file() or (out / f).stat().st_size == 0]
+for d in ("ort", "ort130"):
+    if not list((out / d).glob("*.wasm")) or not list((out / d).glob("ort-wasm-simd-threaded*.mjs")): missing.append(d + "/ (its .wasm and loader .mjs)")
+if m["version"] != version: missing.append(f"models.json says {m['version']}, models-version {version}")
+sys.exit("not put next to the page in " + str(out) + ": " + ", ".join(missing) if missing else 0)
+PY
 ls -la "$OUT"

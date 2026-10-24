@@ -60,87 +60,48 @@ async function saveScanContract(w?: any,pages?: any[]){
 // window.__wCapturedSigPng before the upload, and aiFillForm101 reads it here.
 function getSignaturePng(){ return window.__wCapturedSigPng ?? null; }
 
-// Opens the AI scan flow tagged to an existing worker, so the resulting
-// upload replaces (not duplicates) that worker's previously stored PDF —
-// see the previousFileId strategy in aiFillForm101. Cleared automatically
-// once the upload lands, or when a fresh untagged scan is started.
-// presetAssets ({scanB64,scanMediaType,sigPng,extraPages}) is set only by
-// regenerateWorkerDoc() below, to source the scan image/signature/extra
-// pages from the worker's stored pages (data/pages.ts) instead of the live scan globals — used for a
-// background regenerate where nothing was just scanned in THIS browser
-// session (the live globals could easily belong to a different worker's scan
-// entirely, see regenerateWorkerDoc()'s own comment). Every plain DATA field
-// (name/address/marital/etc.) comes from `targetWorker` unconditionally now
-// — the unified worker modal (showWorkerModal/saveWorker) is the single
-// place that writes those onto the worker record, whether the worker came
-// from a scan or was entered by hand, so there's no more separate "live scan
-// panel" values to branch on for those.
-async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,presetAssets?: any){
-  mode=mode||'download';
+// Builds a worker's Form 101 (functions/main.py) and uploads it with the pages
+// and signature it was built from. Two paths:
+// - live (no presetAssets): a new worker or a worker rescanned in this session —
+//   the scan image, the extra pages (window.__aiPacketOtherPages) and the
+//   signature drawn in the worker window (window.__wCapturedSigPng) are read
+//   into locals before the first await, and only this path clears them at the
+//   end; the worker window shows the upload progress.
+// - rebuild (presetAssets {scanB64,scanMediaType,sigPng,extraPages}, set only by
+//   regenerateWorkerDoc() below): the scan, the signature and the pages come
+//   from the worker's stored pages (data/pages.ts); the live globals are never
+//   read nor cleared — they may belong to another worker being scanned now.
+// Every plain data field (name / address / marital…) comes from the worker
+// record, written by the worker window's save before this runs.
+async function aiFillForm101(isId?: any,workerId?: any,presetAssets?: any){
   const isRegen=!!presetAssets;
-  // Only the blocking new-worker/rescan upload path (mode==='upload' &&
-  // !isRegen) shows its progress in the worker window (its save switches it
-  // to the progress view first) — a background regenerate (isRegen, called
-  // from regenerateWorkerDoc() after the window's already closed) never does.
-  const showBlockingProgress=mode==='upload'&&!isRegen;
-  // Hoisted above the try so the catch block (below) can still flag this
-  // worker's failed upload for the "no document" badge even when the
-  // failure happens before the assignment finishes.
-  let targetWorker=(workerId||window.__aiRescanWorkerId)?workers.find((x?: any)=>x.id===(workerId||window.__aiRescanWorkerId)):null;
-  // Explicit btnEl (or a deliberate null) takes precedence over the implicit
-  // global `event` — needed when this runs in the background from saveWorker(),
-  // where `event` is the Add/Save Worker button, not a Form 101 button.
-  const btn=btnEl!==undefined?btnEl:(event&&event.target?(event.target as HTMLElement).closest('button'):null);
-  const btnLabel=btn?btn.innerHTML:'';
-  // Reported once the PDF is out — the Form 101 panel carries the same
-  // warning inline, but this function also runs in the background from
-  // saveWorker(), where that panel isn't on screen.
+  // The live values, taken before any await (a rebuild finishing meanwhile must not change them).
+  const liveSig=isRegen?null:getSignaturePng();
+  const liveOthers: any[]=isRegen?[]:(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
+  const liveScan=isRegen?null:window.__aiScanImage;
+  const rescanId=isRegen?null:window.__aiRescanWorkerId;
+  // Only the live path (a new worker / a rescan) shows its progress in the worker window.
+  const showBlockingProgress=!isRegen;
+  // Hoisted above the try so the catch block can still flag this worker's failed upload.
+  const targetWorker=(workerId||rescanId)?workers.find((x?: any)=>x.id===(workerId||rescanId)):null;
+  // The worker as the list holds it now: a merged save (or an HR's live list) may replace every
+  // worker object while this awaits the server, so each write after an await goes to the live one.
+  const liveWorker=()=>targetWorker?(workers.find((x?: any)=>x.id===targetWorker.id)||targetWorker):null;
+  // Reported once the PDF is out: this runs after the worker window has closed or in the background.
   let firmMissing: any=[];
   try{
-    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader-2 spin"></i> '+(mode==='upload'?'Uploading…':'Preparing…'); }
-
-    // PDF construction itself (field placement, RTL Hebrew rendering, comb
-    // fields, checkboxes, employer block, children table, signature/scan
-    // pages) lives server-side now — see functions/main.py. It's a Python +
-    // PyMuPDF port of what used to run here via pdf-lib, moved off the
-    // client specifically because pdf-lib's own appearance-stream generator
-    // has a confirmed bug that silently drops a glyph of multi-word RTL
-    // (Hebrew) text; PyMuPDF has no such bug. This function still gathers
-    // every value exactly as before — only "build the PDF bytes" moved.
+    // The PDF itself is built server-side (functions/main.py, PyMuPDF); this gathers the values.
     const profile=await refreshTenantProfile(5*60*1000);
     firmMissing=firmProfileMissing(profile);
 
     const payload: any=form101Payload(targetWorker, isId, profile);
 
-    // Signature ("חתימת המבקש/ת") — drawn server-side as an image if the
-    // worker actually signed on the pad. Regenerating (isRegen) reuses
-    // whatever signature was captured the first time, from Storage
-    // (sigFileId) — there's no open modal to read a live pad from in that case.
-    // getSignaturePng() already returns a data: URL, so the base64 payload
-    // is just the part after the comma.
-    let sigPng=isRegen?(presetAssets.sigPng||null):(typeof getSignaturePng==='function'?getSignaturePng():null);
-
-    // Regenerating reads the scan image back from presetAssets (the stored
-    // pages loaded by regenerateWorkerDoc()) instead of window.__aiScanImage
-    // — that global belongs to whichever scan session happens to be open in
-    // the browser right now, which is a DIFFERENT worker's data if a
-    // background regenerate for worker B fires while the manager is
-    // mid-scanning worker A (or just finished creating worker A from a scan
-    // and is now plain-adding worker B by hand — see openAddWorker()'s own
-    // reset of these globals). otherPagesToUse (ספח appendix card, contract
-    // pages, etc.) follows the same split: a fresh, just-saved worker reads
-    // them from window.__aiPacketOtherPages, a regenerate reads them from
-    // presetAssets.extraPages (stored as pages by saveScanPages() below).
-    const scanImage=isRegen?(presetAssets.scanB64?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:null):window.__aiScanImage;
-    let otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):(Array.isArray(window.__aiPacketOtherPages)?window.__aiPacketOtherPages:[]);
-    // Rescanning an existing worker who already had extra pages (ספח appendix,
-    // ...) saved from a PRIOR scan session, where THIS session only
-    // recaptured the primary page (window.__aiPacketOtherPages is empty):
-    // those previously-saved extra pages must not be silently discarded just
-    // because the manager didn't re-scan them again today — they are read
-    // back for this PDF and kept as they are stored (keep.others). The same
-    // goes for the signature: a rescan with no new signature keeps the one
-    // the worker already gave (keep.sig).
+    // The signature ("חתימת המבקש/ת"): a rebuild reuses the stored one (sigFileId) or a newly drawn one.
+    let sigPng=isRegen?(presetAssets.sigPng||null):liveSig;
+    const scanImage=isRegen?(presetAssets.scanB64?{b64:presetAssets.scanB64,mediaType:presetAssets.scanMediaType}:null):liveScan;
+    let otherPagesToUse=isRegen?(Array.isArray(presetAssets.extraPages)?presetAssets.extraPages:[]):liveOthers;
+    // A rescan that recaptured only the main page keeps the extra pages (ספח…) and the
+    // signature already stored (keep.others / keep.sig).
     const keep: any=isRegen?{front:true,others:true,sig:!presetAssets.sigChanged}:{};
     if(!isRegen&&(!otherPagesToUse.length||!sigPng)&&hasStoredAssets(targetWorker)){
       try{
@@ -159,7 +120,7 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
     if(extraPages.length) payload.extraPages=extraPages;
 
     // A worker with signed documents keeps its signed Form 101 (never built again): a rescan stores only its pages.
-    const keepSigned=mode==='upload'&&!!(targetWorker&&targetWorker.signedAt);
+    const keepSigned=!!(targetWorker&&targetWorker.signedAt);
     const f101t0=Date.now();
     // The function lets in only a signed-in manager-side login (functions/gate.py).
     const idToken=await (await loadFirestoreBackend()).idToken();
@@ -167,105 +128,72 @@ async function aiFillForm101(isId?: any,mode?: any,workerId?: any,btnEl?: any,pr
     const fnJson=await fnResp.json();
     if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Could not build the PDF');
     // Admin → Timings, kind "form101": what each generated form carried —
-    // flags and counts only, no personal data — so a section missing from a
-    // real PDF can be traced to the record or to the PDF build.
+    // flags and counts only, no personal data.
     try{ reportTiming('form101',Date.now()-f101t0,{regen:isRegen,docType:isId?'israeli_id':'passport',
       spouse:!!payload.spouse,spouseNames:!!(payload.spouse&&(payload.spouse.surname||payload.spouse.given)),
       children:(payload.children||[]).length,marital:payload.marital||'',extraPages:(payload.extraPages||[]).length}); }catch(e: any){}
-    const out=Uint8Array.from(atob(fnJson.pdfBase64),(c?: any)=>c.charCodeAt(0));
     const fileName=fnJson.fileName;
 
-    // docType is the one thing this function itself determines (which
-    // branch actually generated the PDF) rather than something the unified
-    // modal collects — everything else (name/address/marital/etc.) is
-    // already on targetWorker, written by saveWorker() before this ran.
-    if(mode==='upload'&&targetWorker){
-      targetWorker.docType=isId?'israeli_id':'passport';
-    }
+    // The document type the PDF was built for (the worker window's save passes the type it saved).
+    if(targetWorker) liveWorker().docType=isId?'israeli_id':'passport';
 
-    if(mode==='upload'){
-      // Worker (targetWorker) already resolved up top — reused here so a
-      // rescan can pass along the previous file's ID: the OCR'd name/doc-
-      // number baked into fileName can drift between scans, so name-based
-      // dedup on the backend alone isn't reliable; a known previousFileId
-      // lets it trash the exact old file.
-      const fileBase64=fnJson.pdfBase64;
-      const w=targetWorker;
-      // Progress bar: real byte-level progress from the Storage upload.
-      // The PDF and the pages upload concurrently, so their progress is
-      // combined by total bytes across both, not just whichever finishes
-      // first; the 20-90% range leaves room for "building PDF" (0%) before
-      // and "done" (100%) after, so the bar visibly moves at every stage.
-      let docLoaded=0,docTotal=0,assetsLoaded=0,assetsTotal=0;
-      const reportUploadProgress=()=>{
-        if(!showBlockingProgress) return;
-        const total=docTotal+assetsTotal;
-        const frac=total>0?(docLoaded+assetsLoaded)/total:0;
-        renderWorkerUploadProgress('מעלה ל-'+DOC_STORE+', נא לא לסגור…',20+Math.round(frac*70));
-      };
-      if(showBlockingProgress) renderWorkerUploadProgress('מעלה ל-'+DOC_STORE+', נא לא לסגור…',20);
-      // saveWorkerDoc (the PDF) and the pages (each its own JPEG, the
-      // signature a PNG — data/pages.ts) write to different Storage files
-      // and don't depend on each other's result — fired concurrently, since
-      // this whole call runs behind a blocking "please wait" overlay for new
-      // workers/rescans.
-      const docPromise=keepSigned?Promise.resolve({ok:true,kept:true} as any):uploadWorkerFile(
-        {action:'saveWorkerDoc',...gsAuth(),workerId:w&&w.id,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
-        (loaded?: any,total?: any)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
-      // The scan's pages and the signature that built this PDF are kept
-      // under the worker (docs/contracts.md → Scanned pages): this is what
-      // lets a LATER edit (income type, marital status, address, ...) rebuild
-      // the exact same PDF with the new values without asking the manager to
-      // re-scan the physical document. Best-effort: a failure here never
-      // rolls back the main upload. A background rebuild (isRegen) stores
-      // nothing — its pages came from Storage a moment ago — except a new
-      // signature (drawn on an existing worker), or the pages of a worker
-      // still on the old sidecar, which are split into pages then.
-      const legacy=!!(w&&w.assetsFileId);
-      const sigNew=!!sigPng&&!keep.sig;
-      const storePages=!!w&&((!!scanImage&&!isRegen)||sigNew||(isRegen&&legacy));
-      const pagesPromise=storePages?saveScanPages(w,
-        {front:scanImage?{b64:scanImage.b64,mediaType:scanImage.mediaType,kind:(scanImage as any).kind}:null,others:otherPagesToUse,sigPng:sigPng||null},
-        keep,(loaded?: any,total?: any)=>{ assetsLoaded=loaded; assetsTotal=total; reportUploadProgress(); }
-      ).catch(()=>null):Promise.resolve(null);
-      const [json,saved]=await Promise.all([docPromise,pagesPromise]);
-      if(!json||json.error) throw new Error((json&&json.error)||'The server did not answer');
-      if(showBlockingProgress) renderWorkerUploadProgress('הועלה בהצלחה',100);
-      if(w){
-        if(!json.kept){ w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id; }
-        w.docUploadFailed=false;
-        if(saved) applySavedPages(w,saved);
-        // Completeness flags for workerDocStatus(): what this saved document
-        // actually contains (on a regenerate these come from the stored pages).
-        if(!json.kept){ w.docHasSignature=!!sigPng; w.docExtraPages=Array.isArray(otherPagesToUse)?otherPagesToUse.length:0; }
-        render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
-        showToast(tr('Documents of {0} saved to {1}',{0:(w.name||''),1:(DOC_STORE)}));
-        window.__aiRescanWorkerId=null;
-        if(contractPages.length) void saveScanContract(w,contractPages);
-      } else showToast(tr('File saved to {0}',{0:(DOC_STORE)}));
-    } else {
-      const blob=new Blob([out],{type:'application/pdf'});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a'); a.href=url;
-      a.download=fileName;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),3000);
-      showToast(tr('Form 101 downloaded'));
-    }
+    // previousFileId lets the backend trash the exact old file (the name in fileName can drift between scans).
+    const fileBase64=fnJson.pdfBase64;
+    let w=liveWorker();
+    // Progress: the PDF and the pages upload at once, combined by total bytes, in the 20–90% range.
+    let docLoaded=0,docTotal=0,assetsLoaded=0,assetsTotal=0;
+    const uploadingLabel=tr('Uploading to {0}, please do not close…',{0:DOC_STORE});
+    const reportUploadProgress=()=>{
+      if(!showBlockingProgress) return;
+      const total=docTotal+assetsTotal;
+      const frac=total>0?(docLoaded+assetsLoaded)/total:0;
+      renderWorkerUploadProgress(uploadingLabel,20+Math.round(frac*70));
+    };
+    if(showBlockingProgress) renderWorkerUploadProgress(uploadingLabel,20);
+    const docPromise=keepSigned?Promise.resolve({ok:true,kept:true} as any):uploadWorkerFile(
+      {action:'saveWorkerDoc',...gsAuth(),workerId:w&&w.id,fileBase64,fileName,mimeType:'application/pdf',previousFileId:(w&&w.docFileId)||null},
+      (loaded?: any,total?: any)=>{ docLoaded=loaded; docTotal=total; reportUploadProgress(); });
+    // The scan's pages and the signature that built this PDF are kept under the worker
+    // (docs/contracts.md → Scanned pages), so a later edit rebuilds the same PDF. Best-effort.
+    // A rebuild stores nothing — its pages came from Storage — except a new signature,
+    // or the pages of a worker still on the old sidecar, which are split into pages then.
+    const legacy=!!(w&&w.assetsFileId);
+    const sigNew=!!sigPng&&!keep.sig;
+    const storePages=!!w&&((!!scanImage&&!isRegen)||sigNew||(isRegen&&legacy));
+    const pagesPromise=storePages?saveScanPages(w,
+      {front:scanImage?{b64:scanImage.b64,mediaType:scanImage.mediaType,kind:(scanImage as any).kind}:null,others:otherPagesToUse,sigPng:sigPng||null},
+      keep,(loaded?: any,total?: any)=>{ assetsLoaded=loaded; assetsTotal=total; reportUploadProgress(); }
+    ).catch(()=>null):Promise.resolve(null);
+    const [json,saved]=await Promise.all([docPromise,pagesPromise]);
+    if(!json||json.error) throw new Error((json&&json.error)||'The server did not answer');
+    if(showBlockingProgress) renderWorkerUploadProgress(tr('Uploaded successfully'),100);
+    w=liveWorker();
+    if(w){
+      if(!json.kept){ w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id; }
+      w.docUploadFailed=false;
+      if(saved) applySavedPages(w,saved);
+      // Completeness flags for workerDocStatus(): what this saved document contains.
+      if(!json.kept){ w.docHasSignature=!!sigPng; w.docExtraPages=Array.isArray(otherPagesToUse)?otherPagesToUse.length:0; }
+      render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); autoSave();
+      showToast(tr('Documents of {0} saved to {1}',{0:(w.name||''),1:(DOC_STORE)}));
+      // The rescan target is cleared only by the live upload it was for.
+      if(!isRegen&&window.__aiRescanWorkerId===rescanId) window.__aiRescanWorkerId=null;
+      if(contractPages.length) void saveScanContract(w,contractPages);
+    } else showToast(tr('File saved to {0}',{0:(DOC_STORE)}));
     // After the success toast's own 2.5s, so the two don't overwrite each other.
     if(firmMissing.length) setTimeout(()=>showToast(tr('⚠ The firm profile is incomplete — empty in Form 101: {0}',{0:(firmMissing.join(', '))}),4000),2600);
     return true;
   }catch(err: any){
     console.error(err);
     showToast(tr('Failed: {0}',{0:(err&&err.message||'')}));
-    // Flag it on the worker (if one's resolved) so the "no document" badge
-    // in the workers list/card catches a silent background failure — the
-    // toast alone is easy to miss, especially on mobile where a flaky
-    // connection mid-upload is the most common trigger for this branch.
-    if(mode==='upload'&&targetWorker){ targetWorker.docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
+    // Flag it on the worker so the "no document" badge catches a silent background failure.
+    if(targetWorker){ liveWorker().docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
     return false;
   }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML=btnLabel; } window.__aiPacketOtherPages=[]; window.__wCapturedSigPng=undefined; }
+  finally{
+    // Only the live path owns the live scan's pages and the drawn signature.
+    if(!isRegen){ window.__aiPacketOtherPages=[]; window.__wCapturedSigPng=undefined; }
+  }
 }
 
 // Auto-generation right after a worker is created from a scan runs
@@ -277,11 +205,11 @@ async function autoUploadWithRetry(isId?: any,workerId?: any){
   // aiFillForm101's finally clears the extra pages and the captured
   // signature — the retry gets them back so it builds the same PDF.
   const keep={pages:window.__aiPacketOtherPages, sig:window.__wCapturedSigPng};
-  let ok=await aiFillForm101(isId,'upload',workerId,null);
+  let ok=await aiFillForm101(isId,workerId);
   if(!ok){
     await new Promise((r?: any)=>setTimeout(r,1500));
     window.__aiPacketOtherPages=keep.pages; window.__wCapturedSigPng=keep.sig;
-    ok=await aiFillForm101(isId,'upload',workerId,null);
+    ok=await aiFillForm101(isId,workerId);
   }
   return ok;
 }
@@ -315,7 +243,7 @@ async function regenerateWorkerDoc(workerId?: any, newSigPng?: any){
     }
     if(newSigPng){ assets.sigPng=newSigPng; assets.sigChanged=true; }
     const isId=w.docType!=='passport';
-    return await aiFillForm101(isId,'upload',workerId,null,assets);
+    return await aiFillForm101(isId,workerId,assets);
   }catch(e: any){ return false; }
 }
 
@@ -349,10 +277,3 @@ async function regenerateAllWorkerDocs(){
     ? (tr('Documents updated: {0}/{1} (some failed — see the marks on the workers)',{0:(done-failed),1:(done)}))
     : (tr('Documents of all workers updated ({0})',{0:(done)})));
 }
-
-// ===== Form 101: fill the fillable template from AI-scanned document data =====
-// The actual PDF filling (pdf-lib + fontkit + the Heebo font, all loaded
-// client-side) moved server-side into a Python/PyMuPDF Cloud Function — see
-// FORM101_FN_URL above and functions/main.py. This client only assembles the
-// JSON payload now; the CDN loaders and Heebo font fetch that used to live
-// here are gone along with the client-side build they supported.
