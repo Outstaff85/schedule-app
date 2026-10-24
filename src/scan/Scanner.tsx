@@ -7,11 +7,14 @@
 // its readouts are there: by Haiku, or by the document type model as Admin → Scanner says (Off / Shadow / Mixed —
 // in Mixed the model's answer is taken when it is sure of the type and the turn, SURE); a page Haiku says lies on
 // its side is turned upright (and what the zone and field readers read on it is dropped). A page typed Other is
-// not saved. The pages are kept on this phone until Done has read them (store.ts, 3 minutes): a window closed by
-// mistake opens again with them, first in the strip (and so do the pages from before a Scan again — 'before').
-// Done waits for the pages' types, sends the scan's training attempts (held until Done), runs the scan process
-// (read, src/scan-process/) with its progress in the window — an error text keeps the window open with the
-// pages — and then gives the pages (onDone) and sends the pages' document type examples.
+// not saved. The pages are kept on this phone until Done has read them (store.ts, 3 minutes), with the type
+// picked by hand on them: a window closed by mistake opens again with them, first in the strip (and so do the
+// pages from before a Scan again — 'before'). Done waits for the pages' types (the pages as they are then: a
+// type picked meanwhile counts; at most WAIT_MS, then a page not typed goes untyped — the scan process types it),
+// sends the scan's training attempts (held until Done), runs the scan process (read, src/scan-process/) with
+// its progress in the window — an error text keeps the window open with the pages — and then gives the pages
+// (onDone) and sends the pages' document type examples. A typing that ends after the window closed (or after
+// Done) gives nothing back to the session: its scan is over (gen).
 import * as React from 'react';
 import { tr } from '@/lib/i18n';
 import { Window } from '@/components/shared/window';
@@ -66,6 +69,8 @@ type Typed = Omit<Stored, 'id' | 'turn' | 'blurry'> & { kind?: Doctype };
 const SURE = 0.9;
 /** The statuses of a shot still in work: its pages are typed once it settles (a refined cut would be typed again). */
 const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
+/** How long Done waits for the pages' types before it goes on without the ones still missing. */
+const WAIT_MS = 30e3;
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
 let nextBefore = 0;
 
@@ -179,6 +184,18 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
   const [queue, setQueue] = React.useState(0);
   const [hint, setHint] = React.useState('');
   const [reading, setReading] = React.useState<{ label: string; pct: number } | null>(null);
+  // this window's scan: bumped when it ends (closed, Done read, unmounted) — a typing still in work then gives
+  // nothing back to the session, and Done stops waiting
+  const gen = React.useRef(0);
+  React.useEffect(() => () => { gen.current++; }, []);
+  // the types picked by hand on this session's pages (kept on the phone with them; a kept page's goes into kept)
+  const chosen = React.useRef(new Map<string, Doctype>());
+  const [chosenTick, setChosenTick] = React.useState(0);
+  const choose = React.useCallback((id: string, kind: Doctype) => {
+    if (keptRef.current.some(x => x.id === id)) { setKept(xs => xs.map(x => (x.id === id ? { ...x, kind } : x))); return; }
+    chosen.current.set(id, kind);
+    setChosenTick(n => n + 1);
+  }, []);
 
   const untype = (id: string) => {
     typed.current.delete(id);
@@ -188,41 +205,52 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
   // A page's type and turn: Mixed takes the model's when it is sure of both, else Haiku's (Shadow keeps the
   // model's answer beside it); a page said to be turned is set upright and given back to the session.
   const classify = React.useCallback(async (s: ScanSession, p: ShotPage) => {
-    const canvas = p.canvas;
+    const canvas = p.canvas, g = gen.current;
     typedOn.current.set(p.id, canvas);
     const still = () => shots.current.get(p.id)?.canvas === canvas;
-    let b64 = await jpegB64(canvas, 0.9).catch(() => '');
-    const m = await mode.current, d = p.readouts?.doctype || null;
-    const a = m === 'off' || !d || !isDoctype(d.doctype) ? null : { doctype: d.doctype, conf: d.conf, turn: d.turn * 90, turnConf: d.turnConf };
-    const sure = !!a && m === 'mixed' && a.conf >= SURE && a.turnConf >= SURE;
-    const { kind, rotate } = sure && a ? { kind: a.doctype as Doctype | null, rotate: a.turn } : b64 ? await detectDoctype(b64, 'image/jpeg') : { kind: null, rotate: 0 };
+    // its picture: tried again lighter when the phone could not make it (low on memory); '' when it cannot be
+    // made at all — the page is then recorded with no picture (Done leaves it out), so Done never waits on it
+    const b64 = await jpegB64(canvas, 0.9).catch(() => jpegB64(canvas, 0.7)).catch(() => '');
+    let kind: Doctype | null = null, rotate = 0, sure = false, m: DoctypeMode = 'shadow';
+    let a: { doctype: Doctype; conf: number; turn: number; turnConf: number } | null = null;
+    try {
+      m = await mode.current;
+      const d = p.readouts?.doctype || null;
+      a = m === 'off' || !d || !isDoctype(d.doctype) ? null : { doctype: d.doctype, conf: d.conf, turn: d.turn * 90, turnConf: d.turnConf };
+      sure = !!a && m === 'mixed' && a.conf >= SURE && a.turnConf >= SURE;
+      ({ kind, rotate } = sure && a ? { kind: a.doctype as Doctype | null, rotate: a.turn } : b64 ? await detectDoctype(b64, 'image/jpeg') : { kind: null, rotate: 0 });
+    } catch { kind = null; rotate = 0; sure = false; }
     if (!still()) return;  // cut again (or deleted) meanwhile: that cut is typed on its own
     const lines = p.readouts?.mrz?.lines, he = cleanHe(p.readouts?.he?.read);
     const t: Typed = { b64, mediaType: 'image/jpeg', doctypeModel: kind, doctypeBy: sure ? 'model' : 'haiku',
       ...(kind ? { kind } : {}), ...(a ? { modelSaid: a.doctype } : {}), ...(m === 'shadow' && a ? { doctypeShadow: a.doctype } : {}),
       ...(Array.isArray(lines) ? { mrz: lines.filter(x => typeof x === 'string').slice(0, 2).map(x => x.slice(0, 60)) } : {}), ...(he ? { he } : {}) };
     // a page turned here was read by the zone reader and the field reader on its side: what they read says nothing
-    if ([90, 180, 270].includes(rotate)) {
+    if (b64 && [90, 180, 270].includes(rotate)) {
       try {
         const up = turned(canvas, rotate / 90) as OffscreenCanvas;
-        b64 = await jpegB64(up, 0.92);
+        const upB64 = await jpegB64(up, 0.92);
         if (!still()) return;
-        t.b64 = b64; delete t.mrz; delete t.he;
-        const np: ShotPage = { ...p, canvas: up, page: { ...p.page, width: up.width, height: up.height } };
-        typedOn.current.set(p.id, up);
-        shots.current.set(p.id, np);
-        s.inject(np);
+        t.b64 = upB64; delete t.mrz; delete t.he;
+        // given back to the session only while this scan goes on (closed meanwhile: the page is still kept on
+        // the phone, turned, but the scan that held it is over)
+        if (gen.current === g) {
+          const np: ShotPage = { ...p, canvas: up, page: { ...p.page, width: up.width, height: up.height } };
+          typedOn.current.set(p.id, up);
+          shots.current.set(p.id, np);
+          s.inject(np);
+        }
       } catch { /* kept as cut */ }
     }
-    if (!t.b64) return;
     typed.current.set(p.id, t);
     setTyping(x => ({ ...x, [p.id]: { kind, pending: false } }));
   }, []);
 
-  /** The pages read and not typed yet (a camera shot's once it settled, or all of them at Done). */
+  /** The pages read and not typed yet (a camera shot's once it settled), or all of them at Done — a page with no
+   *  readouts then too (its search stopped: Haiku types it). */
   const typeWaiting = React.useCallback((s: ScanSession) => {
     for (const p of shots.current.values()) {
-      if (!p.readouts || typedOn.current.get(p.id) === p.canvas) continue;
+      if ((!p.readouts && !forcing.current) || typedOn.current.get(p.id) === p.canvas) continue;
       if (shotBusy.current && !forcing.current && p.record.shot > 0) continue;
       void classify(s, p);
     }
@@ -251,7 +279,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
   }, [session, typeWaiting]);
 
   // a page deleted (its Undo over): no longer typed nor kept on the phone
-  const view = React.useMemo(() => (session ? siteView(session, id => { shots.current.delete(id); typedOn.current.delete(id); untype(id); }) : null), [session]);
+  const view = React.useMemo(() => (session ? siteView(session, id => { shots.current.delete(id); typedOn.current.delete(id); chosen.current.delete(id); untype(id); }) : null), [session]);
 
   // the batches kept on the phone, a moment after every change (cleared when Done has read them)
   const saveOn = React.useRef(true);
@@ -266,28 +294,33 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
       };
       for (const { batch, source, ...p } of keptRef.current) if (source !== 'before') put(batch, source, p);
       for (const [id, shot] of shots.current) {
-        const t = typed.current.get(id);
-        if (!t) continue;
+        const t = typed.current.get(id), k = chosen.current.get(id);
+        if (!t || !t.b64) continue;
         const { key, source } = batchOf(shot);
-        put(key, source, { id, turn: -1, blurry: false, ...t });
+        put(key, source, { id, turn: -1, blurry: false, ...t, ...(k ? { kind: k } : {}) });
       }
       void saveBatches(list);
     }, 400);
     return () => window.clearTimeout(t);
-  }, [kept, typing]);
+  }, [kept, typing, chosenTick]);
 
-  const close = () => { session?.discard(); onClose(); };
+  const close = () => { gen.current++; session?.discard(); onClose(); };
 
-  // Done: the camera stops, the types waited for, the attempts sent, the pages read (src/scan-process/)
-  const finish = async (shown: UiPage[]): Promise<boolean> => {
+  // Done: the camera stops, the types waited for (the pages as they are while it waits: `current`), the attempts
+  // sent, the pages read (src/scan-process/)
+  const finish = async (_shown: UiPage[], current: () => UiPage[]): Promise<boolean> => {
     if (!session) return false;
+    const g = gen.current, until = Date.now() + WAIT_MS;
     setHint('');
     session.sleep();
     forcing.current = true;
-    typeWaiting(session);
-    const mine = () => shown.filter(u => !u.kept && shots.current.has(u.id));
-    while (mine().some(u => !typed.current.has(u.id))) await new Promise(r => setTimeout(r, 100));
-    forcing.current = false;
+    const mine = () => current().filter(u => !u.kept && shots.current.has(u.id));
+    try {
+      typeWaiting(session);
+      while (gen.current === g && Date.now() < until && mine().some(u => !typed.current.has(u.id))) await new Promise(r => setTimeout(r, 100));
+    } finally { forcing.current = false; }
+    if (gen.current !== g) return false;  // the window closed meanwhile
+    const shown = current();
     session.attempts.done();  // the scan's attempts go for training (held until Done)
     const list: Stored[] = [];
     for (const u of shown) {
@@ -296,9 +329,16 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
         if (k) { const { batch: _b, source: _s, ...p } = k; list.push({ ...p, kind: u.chosen || p.kind }); }
         continue;
       }
-      const t = typed.current.get(u.id);
-      if (t) list.push({ id: u.id, turn: -1, blurry: false, ...t, kind: u.chosen || t.kind });
+      let t = typed.current.get(u.id);
+      // not typed in time (or its picture could not be made then): its picture as it is now, untyped if it was
+      // not typed (the scan process types it)
+      if (!t || !t.b64) {
+        const shot = shots.current.get(u.id), b64 = shot ? await jpegB64(shot.canvas, 0.9).catch(() => '') : '';
+        if (b64) t = { ...(t || {}), b64, mediaType: 'image/jpeg' };
+      }
+      if (t && t.b64) list.push({ id: u.id, turn: -1, blurry: false, ...t, kind: u.chosen || chosen.current.get(u.id) || t.kind });
     }
+    if (gen.current !== g) return false;
     void examples(list).then(sendFeedback);  // in the background, queued when offline
     const out: ScannedPage[] = list.filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind, mrz, he }) => ({ b64, mediaType, turn, blurry, kind, ...(mrz ? { mrz } : {}), ...(he ? { he } : {}) }));
     if (read) {
@@ -306,11 +346,13 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
       let err: string | null;
       try { err = await read(out, (label, pct) => setReading({ label, pct })); }
       catch (e) { err = tr('The pages could not be read: {0}', { 0: (e as Error)?.message || String(e) }); }
+      if (gen.current !== g) return false;
       if (err) { setReading(null); setHint(err); session.wake(); return false; }
     }
+    gen.current++;  // this scan is over: a typing still in work gives nothing back
     saveOn.current = false; void saveBatches([]);  // read: nothing left to keep on the phone
     session.done();
-    shots.current.clear(); typed.current.clear(); typedOn.current.clear();
+    shots.current.clear(); typed.current.clear(); typedOn.current.clear(); chosen.current.clear();
     onDone(out);
     return true;
   };
@@ -336,7 +378,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
       description={tr('ID card, its appendix (ספח), passport — several pages and documents at once')}>
       {view && (
         <ScannerScreen mode="site" session={view} kept={keptPages} typing={typing} thumbNote={note} statusText={engineText}
-          onRemoveKept={id => setKept(xs => xs.filter(x => x.id !== id))} onDone={finish}>
+          onRemoveKept={id => setKept(xs => xs.filter(x => x.id !== id))} onChoose={choose} onDone={finish}>
           {(hint || queue > 0) && (
             <div className="pointer-events-none absolute inset-x-4 top-[calc(76px+env(safe-area-inset-top,0px))] z-10 flex flex-col items-start gap-1.5">
               {hint && <div data-testid="scan-error" role="alert" className="og-glass-menu !rounded-[var(--radius-md)] px-3 py-1.5 text-[13px] text-[var(--amber-text)]">{hint}</div>}

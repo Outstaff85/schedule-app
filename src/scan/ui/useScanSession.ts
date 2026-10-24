@@ -15,14 +15,16 @@
 // Delete hides a page at once and offers Undo (the Undo snack); the session (or the host, for a kept page) is
 // told when the snack ends — or at Done, or when the screen goes, which end the snack — and the page's picture
 // is let go then; a page brought back by Undo was never deleted. The document type picked by hand is kept here
-// (the session keeps the model's answer only); Looks good marks that one page (session.keep: its photo's
+// (the session keeps the model's answer only) and told to the host (`onChoose`: the site keeps it on the phone
+// with the page); Looks good marks that one page (session.keep: its photo's
 // attempt is kept once every page of it was looked at). A host may type the pages itself (`typing`: the site's
 // scan window, by Haiku or the model as Admin → Scanner says): its type then stands in for the model's on the
 // page, which counts as being read until the host has typed it.
 //
 // Done: settle() ends the Undo snack (its deletes made) and gives the pages shown; end() then ends the scan
 // (session.done) and empties the screen — done() is the two at once. The site's host reads the pages between
-// the two, and ends the scan only once they are read.
+// the two, and ends the scan only once they are read; while it waits for their types it reads them as they are
+// then (current(): a type picked or given meanwhile counts).
 //
 // After a shot or a pick the live frame waits (the session's rule: Auto does not take the same document
 // twice): `paused` is on, the shutter then starts the live frame again (session.wake), and so does Looks good —
@@ -136,6 +138,8 @@ export interface ScanScreenState {
   done(): UiPage[];
   /** The first half of done(): the Undo snack ended (its deletes made); the pages shown at that moment. */
   settle(): UiPage[];
+  /** The pages shown now (as last drawn): what a host waiting at Done reads again. */
+  current(): UiPage[];
   /** The second half: the session's done(), the pictures let go, the screen empty again. */
   end(): void;
 }
@@ -159,8 +163,12 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
   onRemoveKept?: (id: string) => void;
   /** the host's types of this session's pages, by page id (a page missing is still being typed) */
   typing?: Record<string, PageTyping>;
+  /** a type picked by hand on a page (this session's or a kept one) */
+  onChoose?: (id: string, kind: Doctype) => void;
 } = {}): ScanScreenState {
   const { kept, onRemoveKept, typing } = opts;
+  const onChoose = React.useRef(opts.onChoose);
+  onChoose.current = opts.onChoose;
   const [order, setOrder] = React.useState<string[]>([]);
   const [shots, setShots] = React.useState<Record<string, ShotPage>>({});
   const [srcs, setSrcs] = React.useState<Record<string, string>>({});
@@ -255,6 +263,8 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
     });
     return [...before, ...mine];
   }, [kept, order, hidden, shots, srcs, chosen, looked, typing]);
+  const pagesNow = React.useRef(pages);
+  pagesNow.current = pages;
 
   const wake = React.useCallback(() => {
     putPaused(false);
@@ -277,7 +287,7 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
       const settled = () => setPicking(n => Math.max(0, n - 1));
       session.pick(files).then(settled, settled);
     },
-    choose: (id, kind) => setChosen(m => ({ ...m, [id]: kind })),
+    choose: (id, kind) => { setChosen(m => ({ ...m, [id]: kind })); onChoose.current?.(id, kind); },
     keep: id => {
       if (keptIds.current.has(id)) return;
       session.keep(id);
@@ -295,6 +305,7 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
     fixable: id => (keptIds.current.has(id) ? null : session.fixable(id)),
     fix: (id, pts) => (keptIds.current.has(id) ? Promise.resolve(false) : session.fix(id, pts)),
     settle,
+    current: () => pagesNow.current,
     end,
     done: () => { const shown = settle(); end(); return shown; },
   };

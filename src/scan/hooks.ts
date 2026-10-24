@@ -50,7 +50,7 @@ export async function inject(o: { pics: InjectPage[]; attempt?: string; camera?:
     const pic = o.pics[i], canvas = await decode('data:image/jpeg;base64,' + pic.b64);
     const page: ShotPage = { id: record.attempt + ':' + i, record, pg: i, quad: (i === 0 && o.edges) || WHOLE_PAGE, page: { width: canvas.width, height: canvas.height, turn: -1 },
       canvas, turn: -1, readouts: null, refined: !!before };
-    s.inject(page);
+    s.inject(page, true);
     const readouts: Readouts = {
       doctype: pic.doctype ? { ...pic.doctype, ms: 1, square: canvas } : null,
       mrz: pic.mrz ? { found: false, lines: pic.mrz } : null,

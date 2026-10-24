@@ -865,6 +865,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await H.inject({pics: [{b64: a}]});                 // a camera shot (s<n>)
     await H.inject({pics: [{b64: b}], camera: false});  // a picked picture (f<n>)
     r.typed = await T.until(() => thumbs('[data-kind]') === 2, 15000);
+    // a type picked by hand is kept on the phone with its page (Haiku said ספח: set to Passport)
+    document.querySelectorAll('[data-testid="scan-thumb"]')[0].click();
+    await T.until(() => document.querySelector('[data-testid="page-view"]'), 3000);
+    document.querySelector('[data-testid="kind-chip"][data-kind="passport"]').click(); await T.tick(200);
+    document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);
+    r.picked = [...document.querySelectorAll('[data-testid="scan-thumb"]')].map(e => e.dataset.kind).join();
     document.querySelector('[data-testid="scan-auto"]').click();
     r.autoOff = await T.until(() => H.session().auto === false, 3000);
     document.querySelector('[data-testid="scan-auto"]').click();
@@ -877,13 +883,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
     r.restored = await T.until(() => thumbs('[data-kept]') === 2, 4000);
+    r.keptKinds = [...document.querySelectorAll('[data-testid="scan-thumb"][data-kept]')].map(e => e.dataset.kind).sort().join();
     r.same2 = H.session() === s0;
     T.esc(); await going;
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
     return r;
   }, [JPG, JPG2]);
-  ok(batches.keptAfterDone && batches.same && batches.typed && batches.autoOff && batches.autoOn && /· 2/.test(batches.done) && batches.closed && batches.camOff && batches.restored && batches.same2,
-    'scan window: the session is kept after the window closes (its camera stopped) and is the same when it opens again; the batches are kept on the phone and come back first in the strip; Auto reaches the session ' + JSON.stringify(batches));
+  ok(batches.keptAfterDone && batches.same && batches.typed && batches.autoOff && batches.autoOn && /· 2/.test(batches.done) && batches.closed && batches.camOff && batches.restored && batches.same2
+    && batches.picked === 'passport,sefach' && batches.keptKinds === 'passport,sefach',
+    'scan window: the session is kept after the window closes (its camera stopped) and is the same when it opens again; the batches are kept on the phone and come back first in the strip, with the type picked by hand on a page; Auto reaches the session ' + JSON.stringify(batches));
   // Photos/PDF: several files at once, a PDF split into its pages (pdf.js), in the files' order (the engine's
   // pickedPictures); the window's one file input has no type (the phone's chooser: photos and PDFs side by side)
   const PDF2 = (() => {

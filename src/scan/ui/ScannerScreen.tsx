@@ -15,13 +15,15 @@
 // count in Done and go with it; it may type the pages itself (`typing`, the site: Haiku's or the model's type as
 // Admin → Scanner says) and add a line under a thumbnail (`thumbNote`). Done counts the pages that will be saved
 // (not the ones typed Other). When the host's onDone gives a promise (the site reads the pages first), Done waits
-// for it — busy — and the scan ends (session.done, the screen emptied) only when it says true; false leaves the
-// pages and the scan as they are (the read failed: the host says why). Escape inside it closes the step on top
+// for it — busy, the bar and the pages closed meanwhile (no new page, no change it would miss) — and the scan
+// ends (session.done, the screen emptied) only when it says true; false leaves the pages and the scan as they
+// are (the read failed: the host says why). A type picked by hand is told to the host (onChoose). Escape inside it closes the step on top
 // (the corner editor, then the page opened large) before the window.
 import * as React from 'react';
 import { IconCheck, IconEye } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
+import type { Doctype } from '../engine/doctypes';
 import type { Quad } from '../engine/types';
 import { CaptureBar } from './CaptureBar';
 import { CornerEditor } from './CornerEditor';
@@ -36,12 +38,15 @@ export type ScannerMode = 'site' | 'lab';
 
 const cannotFix = (): string => tr('This page can no longer be fixed — delete it and take it again');
 
-export function ScannerScreen({ mode, session, onDone, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, children }: {
+export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, children }: {
   mode: ScannerMode;
   session: ScanSessionLike;
   /** Done (the site) / Show what the models read (the lab): the pages shown at that moment, in order (the kept
-   *  ones first, `kept: true`); the site's may give a promise — the scan ends once it resolves true */
-  onDone?: (pages: UiPage[]) => void | Promise<boolean>;
+   *  ones first, `kept: true`), and `current` — the pages as they are later (a host that waits reads them again);
+   *  the site's may give a promise — the scan ends once it resolves true */
+  onDone?: (pages: UiPage[], current: () => UiPage[]) => void | Promise<boolean>;
+  /** a type picked by hand on a page */
+  onChoose?: (id: string, kind: Doctype) => void;
   /** start the camera when shown (default) */
   camera?: boolean;
   /** a status of the screen's own (the models loading) in place of the session's */
@@ -60,16 +65,17 @@ export function ScannerScreen({ mode, session, onDone, camera = true, statusText
   children?: React.ReactNode;
 }) {
   const video = React.useRef<HTMLVideoElement>(null);
-  const s = useScanSession(session, video, { kept, onRemoveKept, typing });
+  const s = useScanSession(session, video, { kept, onRemoveKept, typing, onChoose });
   const [finishing, setFinishing] = React.useState(false);
   // the pages that will be saved: not the ones typed Other
   const saved = s.pages.filter(p => kindOf(p) !== 'other').length;
   const finish = async () => {
     if (finishing) return;
     const shown = s.settle();
-    const r = onDone?.(shown);
+    const r = onDone?.(shown, s.current);
     if (!r || typeof r.then !== 'function') { s.end(); return; }
     setFinishing(true);
+    setOpen(null); setFixing(null);
     let ok = false;
     try { ok = await r; } catch { ok = false; }
     setFinishing(false);
@@ -162,15 +168,15 @@ export function ScannerScreen({ mode, session, onDone, camera = true, statusText
           ? <Button variant="primary" size="sm" disabled={!saved || finishing} data-testid="scan-done" data-busy={finishing || undefined} onClick={() => { void finish(); }}>
               {finishing ? <Spinner className="size-[18px]" /> : <IconCheck className="size-[18px]" />}{saved ? tr('Done · {n}', { n: saved }) : tr('Done')}
             </Button>
-          : <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.pages)}>
+          : <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.pages, s.current)}>
               <IconEye className="size-[18px]" />{tr('Show what the models read')}
             </Button>}
       </div>
 
       {/* the bottom: the pages found, and the bar */}
       <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/85 to-transparent pt-6">
-        <Thumbs pages={s.pages} open={open} onOpen={setOpen} note={thumbNote} />
-        <CaptureBar auto={s.auto} paused={s.paused} disabled={s.busy || s.picking} onAuto={s.setAuto} onShutter={s.shutter} onPick={s.pick} />
+        <Thumbs pages={s.pages} open={open} onOpen={id => { if (!finishing) setOpen(id); }} note={thumbNote} />
+        <CaptureBar auto={s.auto} paused={s.paused} disabled={s.busy || s.picking} locked={finishing} onAuto={s.setAuto} onShutter={s.shutter} onPick={s.pick} />
       </div>
 
       {page && (

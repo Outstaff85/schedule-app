@@ -11,11 +11,13 @@
 //
 // Unlike the lab, nothing is decided for the user (owner, 2026-10-24): a new shot or pick does not mark the
 // pages before it as looked at — they stay undecided until Looks good, Retake, Done or a delete.
+import { SCAN_FEEDBACK_FN_URL } from '@/manager/logic/functions';
 import { mkCanvas } from './upright';
 import type { ScanSurface } from './surface';
 import type { Pt, Quad } from './types';
 
-export const TRAIN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/scan_feedback';
+/** scan_feedback: one copy of its URL (src/manager/logic/functions.ts), so a move of the function reaches the attempts too. */
+export const TRAIN_URL = SCAN_FEEDBACK_FN_URL;
 export const QUEUE_MAX = 5, QUEUE_MS = 3600e3, PICTURE_MAX = 1600, FRAMES_KEPT = 6;
 const DB = 'scanAttempts', STORE = 'queue';
 

@@ -9,7 +9,7 @@
 //   await s.startCamera(video); … s.snap(); s.setAuto(false); s.wake(); s.sleep(); s.stop();
 //   await s.pick(files); s.keep(pageId); s.retake(pageId); s.remove(pageId); await s.fix(pageId, pts);
 //   s.hold(); s.resume();  // a page opened large over the camera: the live frame paused under it
-//   s.inject(page);  // a page given from outside (the site's page turned upright, the browser tests)
+//   s.inject(page);  // a page given back from outside (the site's page turned upright); inject(page, true): a new one (the browser tests)
 //   s.done();  // or s.discard(): the window closed without Done
 //
 // Events: frame — the frame to draw, every screen frame (null when there is none; ok — green); status — the
@@ -186,9 +186,13 @@ export class ScanSession {
     this.emit('page', p);
   }
   /** A page given from outside the scan's own work, under its id: the site's scan window gives back a page it
-   *  turned upright (Haiku said it lay on its side), and the browser tests give pages with no camera. A page
-   *  removed is never given again. */
-  inject(p: ShotPage): void { this.putPage(p, true); }
+   *  turned upright (Haiku said it lay on its side) — only a page this scan still holds (one of a scan that
+   *  ended, given back late, is not taken into the next) —, and the browser tests give new pages with no camera
+   *  (`fresh`). A page removed is never given again. */
+  inject(p: ShotPage, fresh = false): void {
+    if (!fresh && !this.pages.has(p.id)) return;
+    this.putPage(p, true);
+  }
   private modelVersion(): string { return this.readers && this.readers.info ? this.readers.info.version : ''; }
   private sleepMs(ms: number): Promise<void> { return new Promise<void>(r => this.env.setTimeout(r, ms)); }
 
