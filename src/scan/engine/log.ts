@@ -1,13 +1,15 @@
-// The scanner's engine (docs/scan-plan.md → S9): what the engine says while it works — the status line (a text
-// and how far, 0..1), the loading-and-work log and the errors — as events; the lab's Errors and
+// The scanner's engine (docs/scan-plan.md → S9): what the engine says while it works — the status line (a key
+// with its figures, status.ts, and how far, 0..1; the screen words it through tr()), the loading-and-work log
+// and the errors (free English text, shown only in the lab's tools drawer) — as events; the lab's Errors and
 // Loading-and-work blocks listen to it, the site's scanner its status line. The way failures are kept on the
 // device through fails.ts (noteFail) and shown when the scanner opens (showFails). Ported from the lab's
 // index.html (log, logErr, logAny, status, noteFail, showFails).
 import { failLine, failLines, readFails, recordFail, type FailKind } from './fails';
+import type { EngineStatus } from './status';
 import type { KeyValue } from './types';
 
 export interface ScanLogEvents {
-  status: (text: string, frac?: number) => void;
+  status: (s: EngineStatus, frac?: number) => void;
   log: (text: string) => void;
   err: (text: string) => void;
   /** The earlier failures on this device, top to bottom (the heading, then the newest first). */
@@ -39,7 +41,7 @@ export class ScanLog {
     }
   }
 
-  status = (text: string, frac?: number): void => this.emit('status', text, frac);
+  status = (s: EngineStatus, frac?: number): void => this.emit('status', s, frac);
   log = (text: string): void => this.emit('log', text);
   err = (text: string): void => this.emit('err', text);
   /** A line from scan's model loading (one onLog for the page and the threads): errors apart. */

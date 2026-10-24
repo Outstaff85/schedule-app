@@ -6,3 +6,5 @@ export * as models from '../../src/scan/engine/models';
 export * as ort from '../../src/scan/engine/ort';
 export * as readers from '../../src/scan/engine/readers';
 export * as fails from '../../src/scan/engine/fails';
+export * as status from '../../src/scan/engine/status';
+export * as statusText from '../../src/scan/status-text';

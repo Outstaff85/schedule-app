@@ -196,6 +196,8 @@ export class Readers {
   layouts: HeLayouts | null = null;
   private ort: Ort | null = null;
   private loading: Promise<ModelsInfo | null> | null = null;
+  /** Bumped by release(): a load begun before it releases what it opens instead of keeping it. */
+  private gen = 0;
 
   constructor(readonly surface: SurfaceRef, private log: (text: string) => void = () => {}, private cpuDir: OrtDir = CPU_ORT) {}
 
@@ -204,19 +206,38 @@ export class Readers {
     return this.loading || (this.loading = this.loadNow());
   }
   private async loadNow(): Promise<ModelsInfo | null> {
-    const s = this.surface;
+    const s = this.surface, g = this.gen;
+    // a session opened after release(): released at once, the load ends
+    const keep = (sess: OrtSession): OrtSession => {
+      if (g === this.gen) return sess;
+      sess.release().catch(() => {});
+      throw new Error('the readers were released');
+    };
     try {
-      const mj = await readModels(s); this.info = mj;
+      const mj = await readModels(s);
+      if (g !== this.gen) return null;
+      this.info = mj;
       if (mj.doctype || mj.mrz || mj.he) this.ort = await loadOrt(s, this.cpuDir);
       const ort = this.ort as Ort;
-      if (mj.doctype) { this.doctype = await cpuSession(ort, s, 'doctype.onnx'); this.log('Document type model loaded'); }
-      if (mj.mrz) { this.mrz = await cpuSession(ort, s, 'mrz.onnx'); this.log('Passport zone reader loaded'); }
+      if (mj.doctype) { this.doctype = keep(await cpuSession(ort, s, 'doctype.onnx')); this.log('Document type model loaded'); }
+      if (mj.mrz) { this.mrz = keep(await cpuSession(ort, s, 'mrz.onnx')); this.log('Passport zone reader loaded'); }
       if (mj.he) {
         const lr = await fetch(layoutsUrl(s), { cache: 'no-cache' });
-        if (lr.ok) { this.layouts = await lr.json() as HeLayouts; this.he = await cpuSession(ort, s, 'he.onnx'); this.log('Hebrew field reader loaded'); }
+        if (lr.ok) { const layouts = await lr.json() as HeLayouts; this.he = keep(await cpuSession(ort, s, 'he.onnx')); this.layouts = layouts; this.log('Hebrew field reader loaded'); }
       }
       return mj;
-    } catch (e) { this.log('Document type model / passport zone reader / Hebrew field reader: ' + errText(e)); return this.info; }
+    } catch (e) {
+      if (g !== this.gen) return null;
+      this.log('Document type model / passport zone reader / Hebrew field reader: ' + errText(e)); return this.info;
+    }
+  }
+
+  /** Every reader's session released (the scanner closed: they live in the page's own ONNX Runtime heap, which
+   *  never shrinks); a load still running releases what it opens; the next load() starts again. */
+  release(): void {
+    this.gen++;
+    for (const sess of [this.doctype, this.mrz, this.he]) if (sess) { try { sess.release().catch(() => {}); } catch { /* gone already */ } }
+    this.doctype = this.mrz = this.he = null; this.layouts = null; this.info = null; this.loading = null;
   }
 
   /** The document type model's answer on a page (a canvas or a loaded image), null with no model in this

@@ -9,6 +9,12 @@
 //  - a failed way is logged through noteFail with its kind (GPU / memory / hang / error), the store capped at 8;
 //  - openSession tries the backends and GPU layouts in the same order with the same status and log lines as
 //    the lab's scan-core.js (run in vm);
+//  - the scanner closed (stopAll): a start or a thread still loading stops what it made, nothing is kept (no
+//    thread, no ready state), the stuck ways and a fall back to the page are forgotten, the next open starts
+//    clean; the page way's and the readers' sessions are released; the capture and file threads follow the
+//    CPU's ONNX Runtime build;
+//  - the status line is a key per step, worded through tr() (src/scan/status-text.ts), the lab's sentence
+//    from statusEnglish();
 //  - every URL comes from the surface's base: the site's scanner never asks for anything under /scan-lab/.
 //
 //   node tests/scan/runtime.test.mjs
@@ -105,7 +111,7 @@ function fakeOrt(created, failIf = () => null) {
 }
 
 const R = await import(pathToFileURL(path.join(TMP, 'runtime.js')).href);
-const { engines: EN, log: LG, surface: SU, models: MO, ort: OR, readers: RD } = R;
+const { engines: EN, log: LG, surface: SU, models: MO, ort: OR, readers: RD, status: ST, statusText: STT } = R;
 const imports = [];
 let ortFor = () => Promise.reject(new Error('no ONNX Runtime here'));
 OR.setOrtImport(url => { imports.push(url); return ortFor(url); });
@@ -113,7 +119,7 @@ OR.setOrtImport(url => { imports.push(url); return ortFor(url); });
 function newEngines(surface, env = {}) {
   const clock = fakeClock(), store = memStore(), failStore = memStore(), log = new LG.ScanLog(failStore, () => 4);
   const said = { status: [], log: [], err: [] };
-  log.on('status', t => said.status.push(t)); log.on('log', t => said.log.push(t)); log.on('err', t => said.err.push(t));
+  log.on('status', s => said.status.push(ST.statusEnglish(s))); log.on('log', t => said.log.push(t)); log.on('err', t => said.err.push(t));
   const eng = new EN.Engines(surface, log, { cores: 8, memory: 8, gpu: true, isolated: false, now: clock.now, setInterval: clock.setInterval, clearInterval: clock.clearInterval, store, ...env });
   return { eng, clock, store, failStore, log, said };
 }
@@ -221,6 +227,157 @@ await run('a way that stops answering while scanning is left: noted as a hang, t
   policy = loadOk; said.status.length = 0;
   await eng.ensureSession();
   assert.equal(eng.engineWay, 'bg-pool'); assert.equal(said.status.filter(t => t.startsWith('Trying '))[0], 'Trying CPU · 3 bg threads + 1…');
+});
+
+// ── the scanner closed: stopAll ──
+const detectOk = (w, m) => (m.type === 'detect' ? { res: { pts: [null, null, null, null], conf: 0 }, ms: 1 } : loadOk(w, m));
+
+await run('stopAll while a start loads: every thread it made stops at once, the state stays idle, the next open starts clean and its shot works', async () => {
+  workers.length = 0;
+  const held = [];
+  policy = (w, m) => (m.type === 'load' && m.want === 'webgpu' ? (held.push([w, m]), undefined) : detectOk(w, m));
+  const { eng, said } = newEngines(SU.siteSurface());
+  const states = []; eng.onChange(s => states.push(s.phase));
+  let why = null; eng.ensureSession().catch(e => { why = e.message; });
+  await flush(10);
+  assert.equal(held.length, 2, 'the GPU live threads are loading beside the loaded capture thread');
+  assert.ok(eng.capThread, 'the capture thread is loaded first');
+  eng.stopAll();
+  assert.ok(workers.every(w => w.dead), 'every thread stopped at once: ' + workers.map(w => w.dead).join(','));
+  for (const [w, m] of held) w.reply(m, loadOk(w, m));  // a late answer changes nothing
+  await flush(10);
+  assert.equal(why, 'the scanner was closed');
+  assert.equal(eng.engine, null); assert.equal(eng.capThread, null);
+  assert.equal(eng.state.phase, 'idle'); assert.equal(states.at(-1), 'idle', 'no ready or failed after the close: ' + states.join(','));
+  assert.ok(!said.err.length, 'the close is not a failure: ' + said.err.join(' | '));
+  // the next open: fresh threads, the shot goes to a live capture thread
+  policy = detectOk; const before = workers.length;
+  await eng.ensureSession();
+  assert.equal(eng.state.phase, 'ready'); assert.equal(eng.engineWay, 'bg-gpulive');
+  assert.ok(workers.slice(before).every(w => !w.dead) && workers.length - before === 3);
+  const shot = await eng.engine.detect('cap', { rgba: new Uint8ClampedArray(4) });
+  assert.equal(shot.ms, 1);
+  eng.stopAll(); assert.ok(workers.every(w => w.dead));
+});
+
+await run('stopAll while the capture thread loads: it is stopped, not kept; a picked file\'s file thread begun before the close is stopped too', async () => {
+  workers.length = 0;
+  policy = () => undefined;  // nothing answers its load
+  const { eng } = newEngines(SU.siteSurface());
+  let why = null; eng.ensureCap().catch(e => { why = e.message; });
+  const lanes = []; eng.growFiles(k => lanes.push(k));  // picked files with no engine yet
+  await flush(5);
+  assert.equal(workers.length, 2, 'the capture thread and a file thread');
+  eng.stopAll();
+  assert.ok(workers.every(w => w.dead));
+  for (const w of workers) w.reply(w.sent[0], loadOk(w, w.sent[0]));
+  await flush(10);
+  assert.match(String(why), /the model was stopped|the scanner was closed/);
+  assert.equal(eng.capThread, null); assert.deepEqual(eng.fileThreads, []); assert.deepEqual(lanes, []);
+  // the next open loads its own capture thread
+  policy = loadOk; await eng.ensureCap();
+  assert.ok(eng.capThread && !workers.at(-1).dead);
+});
+
+await run('stopAll forgets this open: a fall back to the page and the stuck ways — the next open tries the GPU live way first again', async () => {
+  workers.length = 0;
+  policy = (w, m) => (m.type === 'load' ? { error: 'Worker refused' } : undefined);  // every background way fails
+  const created = [], ort = fakeOrt(created);
+  ortFor = async () => ort; OR.setOrtImport(url => { imports.push(url); return ortFor(url); });
+  files = { '/scan/lite.onnx': new Uint8Array(10), '/scan/sa24_w16.onnx': new Uint8Array(10), '/scan/yunet.onnx': new Uint8Array(10) };
+  const { eng, said } = newEngines(SU.siteSurface(), { gpu: false });
+  await eng.ensureSession();
+  assert.equal(eng.engineWay, 'page-cpu'); assert.equal(eng.settings.inWorker, true, 'the setting asked for is kept');
+  assert.deepEqual(ids(eng.waysFor()), ['page-cpu'], 'this open stays on the page');
+  const n = workers.length; await eng.ensureSession(); assert.equal(workers.length, n, 'and is not started again on every use');
+  eng.stuckWays.add('bg-pool');
+  eng.stopAll();
+  assert.equal(eng.stuckWays.size, 0); assert.equal(eng.engineWay, null);
+  assert.deepEqual(ids(eng.waysFor()), ['bg-pool', 'bg-cpu', 'bg-cpu1', 'page-cpu']);
+  policy = loadOk; said.status.length = 0;
+  await eng.ensureSession();
+  assert.equal(said.status.find(t => t.startsWith('Trying ')), 'Trying CPU · 3 bg threads + 1…');
+  assert.equal(eng.engineWay, 'bg-pool');
+  // with WebGPU the first way after a close is the GPU live one
+  const g = newEngines(SU.siteSurface());
+  g.eng.stuckWays.add('bg-gpulive'); g.eng.stopAll();
+  assert.equal(ids(g.eng.waysFor())[0], 'bg-gpulive');
+  // the lab's switch: setting inWorker again asks for the background ways in the same open
+  const p = newEngines(SU.siteSurface(), { gpu: false }); policy = (w, m) => (m.type === 'load' ? { error: 'Worker refused' } : undefined);
+  await p.eng.ensureSession(); assert.equal(p.eng.engineWay, 'page-cpu');
+  p.eng.setSettings({ inWorker: true }); policy = loadOk;
+  await p.eng.ensureSession(); assert.equal(p.eng.engineWay, 'bg-pool');
+  ortFor = () => Promise.reject(new Error('no ONNX Runtime here'));
+  eng.stopAll(); p.eng.stopAll();
+});
+
+await run('the page way\'s sessions and the readers\' sessions are released when they stop', async () => {
+  const released = [];
+  const ort = fakeOrt([]);
+  const create = ort.InferenceSession.create;
+  ort.InferenceSession.create = async (b, o) => { const s = await create(b, o); const id = released.length + ':' + Math.random(); s.release = async () => { released.push(id); }; s.id = id; return s; };
+  ortFor = async () => ort; OR.setOrtImport(url => { imports.push(url); return ortFor(url); });  // the loaded build forgotten
+  files = { '/scan/lite.onnx': new Uint8Array(10), '/scan/sa24_w16.onnx': new Uint8Array(10), '/scan/yunet.onnx': new Uint8Array(10),
+    '/scan/models.json': JSON.stringify({ version: 'v', doctype: true, mrz: true, he: true }), '/scan/he-layouts.json': '{}',
+    '/scan/doctype.onnx': new Uint8Array(10), '/scan/mrz.onnx': new Uint8Array(10), '/scan/he.onnx': new Uint8Array(10) };
+  const { eng } = newEngines(SU.siteSurface(), { gpu: false });
+  const pe = eng.pageEngine();
+  await pe.load('lite.onnx', 'sa24_w16.onnx', 'wasm', true);
+  pe.stop(); await flush();
+  assert.equal(released.length, 3, 'live, capture and the face finder');
+  pe.stop(); await flush(); assert.equal(released.length, 3, 'once');
+  const one = eng.pageEngine(); await one.load('lite.onnx', null, 'wasm', false); one.stop(); await flush();
+  assert.equal(released.length, 4, 'one model for both: released once');
+  released.length = 0;
+  const rd = new RD.Readers(SU.siteSurface());
+  await rd.load(); assert.ok(rd.doctype && rd.mrz && rd.he);
+  rd.release(); await flush();
+  assert.equal(released.length, 3); assert.equal(rd.doctype, null); assert.equal(rd.he, null); assert.equal(rd.info, null);
+  // a load running when they are released: what it opens is released, nothing kept
+  released.length = 0;
+  const p = rd.load(); rd.release(); const info = await p; await flush();
+  assert.equal(info, null); assert.equal(rd.doctype, null); assert.ok(released.length <= 1);
+  await rd.load(); assert.ok(rd.doctype, 'the next load starts again');
+  ortFor = () => Promise.reject(new Error('no ONNX Runtime here'));
+});
+
+await run('the CPU engine choice reaches the capture thread and the file thread: a change of build starts them again on it', async () => {
+  workers.length = 0;
+  policy = loadOk;
+  const { eng } = newEngines(SU.siteSurface());
+  const t1 = await eng.ensureCap();
+  assert.equal(workers.at(-1).sent[0].ort, 'ort');
+  assert.equal(await eng.ensureCap(), t1, 'the same build: kept');
+  eng.growFiles(() => {}); await flush(10);
+  assert.equal(eng.fileThreads.length, 1); assert.equal(workers.at(-1).sent[0].ort, 'ort');
+  eng.setSettings({ cpuDir: 'ort130' });
+  const t2 = await eng.ensureCap();
+  assert.notEqual(t2, t1); assert.ok(workers[0].dead, 'the old capture thread stopped');
+  const capW = workers.find(w => !w.dead && w.sent[0].ort === 'ort130');
+  assert.ok(capW, 'the capture thread on 1.30');
+  const lanes = []; eng.growFiles(k => lanes.push(k)); await flush(10);
+  assert.ok(workers[1].dead, 'the old file thread stopped');
+  assert.equal(eng.fileThreads.length, 1); assert.equal(workers.at(-1).sent[0].ort, 'ort130'); assert.deepEqual(lanes, [1]);
+  await eng.ensureSession();
+  assert.ok(eng.engine.shared); assert.equal(eng.capThread, t2, 'the pool shares the 1.30 capture thread');
+  eng.stopAll();
+});
+
+await run('the status line: a key per step, worded through tr() — plainly for the site, with the models and ways for the lab', () => {
+  const all = [{ key: 'preparing' }, { key: 'preparing_accurate' }, { key: 'trying_way', way: 'CPU ×1 · bg' }, { key: 'downloading', model: 'lite.onnx', got: 1.5e6, total: 3e6 },
+    { key: 'downloading', model: 'lite.onnx', got: 1.5e6, total: 0 }, { key: 'starting', model: 'lite.onnx', on: 'gpu', layout: 'NHWC' }, { key: 'warming', model: 'lite.onnx', on: 'cpu' },
+    { key: 'checking', model: 'lite.onnx', on: 'gpu', layout: 'NCHW' }, { key: 'face' }, { key: 'ready_files' }, { key: 'ready' }, { key: 'failed' }];
+  for (const s of all) {
+    const site = STT.engineStatusText(s, false), lab = STT.engineStatusText(s, true);
+    assert.ok(site && lab && !/\{\w+\}/.test(site + lab), JSON.stringify(s) + ': ' + site + ' / ' + lab);
+    assert.ok(!/onnx|GPU|CPU|log/.test(site), 'the site says it plainly: ' + site);
+  }
+  assert.equal(STT.engineStatusText(all[3], true), 'Downloading lite.onnx: 1.5 / 3.0 MB');
+  assert.equal(STT.engineStatusText(all[3], false), 'Downloading the scanner: 1.5 / 3.0 MB');
+  assert.equal(STT.engineStatusText(all[5], true), 'Starting lite.onnx on the GPU (NHWC)…');
+  assert.equal(ST.statusEnglish(all[5]), 'Starting lite.onnx on the GPU (NHWC)…');
+  assert.equal(ST.statusEnglish(all[7]), 'Checking the GPU (NCHW) with lite.onnx…');
+  return all.length + ' statuses';
 });
 
 // ── the watchdog, against the lab's workerEngine ──
@@ -359,7 +516,7 @@ await run('openSession: the backends and GPU layouts in the same order, the same
           const ctx = { ort, fetch: globalThis.fetch, caches: globalThis.caches, Response, Uint8Array, Float32Array, Math, Promise, Error, String, Object, setTimeout, clearTimeout, self: { navigator: globalThis.navigator }, navigator: globalThis.navigator, OffscreenCanvas: undefined };
           vm.createContext(ctx); vm.runInContext(CORE, ctx);
           r = await ctx.openSession('lite.onnx', sc.want, (t, f) => said.push('status ' + t + ' ' + f), t => said.push('log ' + t), sc.layout);
-        } else r = await MO.openSession(ort, SU.labSurface(), 'lite.onnx', sc.want, (t, f) => said.push('status ' + t + ' ' + f), t => said.push('log ' + t), sc.layout);
+        } else r = await MO.openSession(ort, SU.labSurface(), 'lite.onnx', sc.want, (s, f) => said.push('status ' + ST.statusEnglish(s) + ' ' + f), t => said.push('log ' + t), sc.layout);
         return { created, said, ep: r.ep, layout: r.layout };
       } catch (e) { return { created, said, error: e.message }; }
     };

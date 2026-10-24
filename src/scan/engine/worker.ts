@@ -8,6 +8,7 @@
 import { S, warpRGBA } from './geometry';
 import { cpuSession, detectRGBA, openSession, errText, type Want } from './models';
 import { loadOrt, type GpuLayout, type Ort, type OrtSession } from './ort';
+import type { EngineStatus } from './status';
 import type { OrtDir, SurfaceRef } from './surface';
 import { uprightRGBA } from './upright';
 import type { Quad } from './types';
@@ -20,7 +21,7 @@ export type WorkerIn =
 
 /** The messages the thread sends back. */
 export type WorkerOut =
-  | { type: 'status'; text: string; frac?: number }
+  | { type: 'status'; status: EngineStatus; frac?: number }
   | { type: 'log'; text: string }
   | { type: 'reply'; id: number; error?: string; [k: string]: unknown };
 
@@ -37,11 +38,11 @@ scope.onmessage = async ({ data: m }) => {
   try {
     if (m.type === 'load') {
       ort = await loadOrt(m.surface, m.ort, m.threads);
-      const onStatus = (text: string, frac?: number) => say({ type: 'status', text, frac }), onLog = (text: string) => say({ type: 'log', text });
+      const onStatus = (status: EngineStatus, frac?: number) => say({ type: 'status', status, frac }), onLog = (text: string) => say({ type: 'log', text });
       const a = await openSession(ort, m.surface, m.live, m.want, onStatus, onLog, m.layout);
       live = a.sess;
       const b = m.cap ? await openSession(ort, m.surface, m.cap, m.want, onStatus, onLog, m.layout) : a; cap = b.sess;
-      if (m.face) { onStatus('Loading the face finder…', 1); face = await cpuSession(ort, m.surface, 'yunet.onnx'); }
+      if (m.face) { onStatus({ key: 'face' }, 1); face = await cpuSession(ort, m.surface, 'yunet.onnx'); }
       const layout: GpuLayout | null = a.layout || b.layout;
       say({ type: 'reply', id: m.id, ep: a.ep + (b.ep !== a.ep ? '/' + b.ep : ''), layout });
     } else if (m.type === 'detect') {

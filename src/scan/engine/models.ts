@@ -4,13 +4,14 @@
 // background thread (worker.ts), so it uses no DOM.
 import { corners, S } from './geometry';
 import { tensor, type ExecutionProvider, type GpuLayout, type Ort, type OrtSession } from './ort';
+import type { EngineStatus, StatusOn } from './status';
 import { modelUrl, modelsJsonUrl, type SurfaceRef } from './surface';
 import { mkCanvas } from './upright';
 import type { Corners, Pt } from './types';
 
 export type Want = 'auto' | 'webgpu' | 'wasm';
 export type Ep = 'webgpu' | 'wasm';
-export type OnStatus = (text: string, frac?: number) => void;
+export type OnStatus = (s: EngineStatus, frac?: number) => void;
 export type OnLog = (text: string) => void;
 
 const hasGpu = (): boolean => !!((globalThis as { navigator?: { gpu?: unknown } }).navigator || {}).gpu;
@@ -51,7 +52,7 @@ export interface Opened { sess: OrtSession; ep: Ep; layout: GpuLayout | null }
 // gpuLayout: the GPU memory layout that worked on this device last time (the page remembers it), tried
 // first — a phone whose GPU gets one layout wrong then skips starting, warming and checking it on every open.
 export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: Want, onStatus: OnStatus, onLog: OnLog, gpuLayout?: string | null): Promise<Opened> {
-  const bytes = await fetchModel(s, model, (got, total) => onStatus('Downloading ' + model + ': ' + (got / 1e6).toFixed(1) + (total ? ' / ' + (total / 1e6).toFixed(1) : '') + ' MB', total ? got / total : 0));
+  const bytes = await fetchModel(s, model, (got, total) => onStatus({ key: 'downloading', model, got, total }, total ? got / total : 0));
   // On the GPU both memory layouts are tried: some phone GPUs return zeros with one of them.
   const layouts: GpuLayout[] = gpuLayout === 'NCHW' ? ['NCHW', 'NHWC'] : ['NHWC', 'NCHW'];
   const order = (want === 'auto' ? ['webgpu', 'wasm'] as Ep[] : [want]).flatMap((ep): [Ep, GpuLayout?][] => ep === 'webgpu' ? layouts.map(l => ['webgpu', l]) : [[ep]]);
@@ -59,17 +60,18 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
   for (const [ep, layout] of order) {
     if (ep === 'webgpu' && !hasGpu()) { onLog('WebGPU is not available here'); continue; }
     const name = ep === 'webgpu' ? 'the GPU (' + layout + ')' : 'the CPU';
+    const on: StatusOn = ep === 'webgpu' ? { on: 'gpu', layout: layout as GpuLayout } : { on: 'cpu' };
     try {
-      onStatus('Starting ' + model + ' on ' + name + '…', 1);
+      onStatus({ key: 'starting', model, ...on }, 1);
       // A step that hangs (seen on a phone) is given up after 20 s.
       const limit = <T>(p: Promise<T>, what: string): Promise<T> => Promise.race([p, new Promise<never>((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
       const provider: ExecutionProvider = ep === 'webgpu' ? { name: 'webgpu', preferredLayout: layout as GpuLayout } : ep;
       const sess = await limit(ort.InferenceSession.create(bytes, { executionProviders: [provider], graphOptimizationLevel: 'all' }), 'starting');
-      onStatus('Warming up ' + model + ' on ' + name + '…', 1);
+      onStatus({ key: 'warming', model, ...on }, 1);
       await limit(sess.run({ [sess.inputNames[0]]: tensor(ort, new Float32Array(3 * S * S), [1, 3, S, S]) }), 'warm-up');
       // Each model is checked on its own: a GPU may run one right and the other wrong.
       if (ep === 'webgpu') {
-        onStatus('Checking ' + name + ' with ' + model + '…', 1);
+        onStatus({ key: 'checking', model, ...on }, 1);
         const t = await limit(selfTest(ort, sess), 'self-test');
         onLog('GPU check, ' + model + ', layout ' + layout + ': ' + (t.ok ? 'right — used' : 'wrong on this GPU — not used') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
         if (!t.ok) { try { sess.release().catch(() => {}); } catch { /* gone already */ } gpuWrong = true; continue; }
