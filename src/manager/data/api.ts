@@ -1,7 +1,7 @@
 // The manager app's way to the backend (React migration stage 8b; from
 // schedule-manager.html): firestore-backend.js loaded once, the fetch(API_URL)
 // dispatcher, the direct calls (gs*) and the worker file uploads.
-import type { FirestoreBackend, ScheduleBase } from '../../lib/firestore-backend';
+import type { FirestoreBackend, SaveBase, ScheduleBase } from '../../lib/firestore-backend';
 import { getSession, clearSession, gsAuth, fsTenantId } from './session';
 import { reportTiming, reportError } from './telemetry';
 import { notify, tr } from './events';
@@ -107,9 +107,11 @@ export function installDispatcher(): void {
 // ── Data sync (Firestore) ──────────────────────────────────────────────
 // opts.base: the data was edited from that base (store.ts: changes kept on
 // the device, an edit on the cached list) — the backend merges it with the
-// server's fresh copy first and hands what it saved to opts.onMerged.
+// server's fresh copy first and hands what it saved to opts.onMerged, with
+// the count of local records whose changes could not be merged (base
+// 'unknown': no base was kept on the device).
 // opts.allowEmpty: an explicit delete of the last worker / client.
-export interface SaveOpts { base?: ScheduleBase | null; allowEmpty?: boolean; onMerged?: (data: Rec) => void }
+export interface SaveOpts { base?: SaveBase | null; allowEmpty?: boolean; onMerged?: (data: Rec, dropped: number) => void }
 export async function gsSave(data: Rec, opts: SaveOpts = {}): Promise<boolean> {
   // Empty-payload guard: never push an empty dataset (would delete every record).
   if (!opts.allowEmpty && (!data.workers || !data.workers.length) && (!data.clients || !data.clients.length)) {
@@ -118,7 +120,7 @@ export async function gsSave(data: Rec, opts: SaveOpts = {}): Promise<boolean> {
   }
   try {
     const r = await (await loadFirestoreBackend()).saveSchedule(fsTenantId(), data, undefined, opts.base || null);
-    if (r && r.ok && r.data && opts.onMerged) opts.onMerged(r.data);
+    if (r && r.ok && r.data && opts.onMerged) opts.onMerged(r.data, Number(r.dropped) || 0);
     return !!(r && r.ok);
   }
   catch (e) { console.warn('Firestore save failed:', e); return false; }

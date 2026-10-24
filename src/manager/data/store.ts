@@ -11,9 +11,13 @@
 // worker another manager added or edited meanwhile is never deleted or
 // overwritten. An edit made before the first server load settles waits for it.
 // A full localStorage never stops a save or a load: the cache writes are
-// best-effort.
+// best-effort. The base is kept only when the cache it belongs to was
+// written, and removed when it was not, so the two never disagree; data with
+// no base (a cache from before the base existed) is saved with base
+// 'unknown' — the server's copy of every record it has wins, nothing is
+// deleted, and the user is told when local changes could not be merged.
 // Nothing here draws: every change is an event (events.ts) the page answers.
-import type { ScheduleBase } from '../../lib/firestore-backend';
+import type { SaveBase, ScheduleBase } from '../../lib/firestore-backend';
 import { loadFirestoreBackend, gsLoad, gsSave, scheduleBaseOf, loadError } from './api';
 import { getSession, fsTenantId, STORAGE_KEY, STORAGE_KEY_BASE } from './session';
 import { syncPunchesFromGS } from './punches';
@@ -45,18 +49,25 @@ export function dropWorkerPhotos(): boolean {
 // load, a successful save) — per kind, record id -> a hash of the record
 // (firestore-backend scheduleBaseOf).
 export function BASE_KEY(): string { return STORAGE_KEY() + '_base'; }
-function readBase(): ScheduleBase {
-  try { return JSON.parse(localStorage.getItem(BASE_KEY()) || '{}') || {}; } catch { return {}; }
+// The kept base, or 'unknown' when none is kept (saveSchedule then keeps
+// the server's copy of every record it has: see firestore-backend mergeOnBase).
+function readBase(): SaveBase {
+  try { const b = JSON.parse(localStorage.getItem(BASE_KEY()) || 'null'); return b && typeof b === 'object' ? b : 'unknown'; }
+  catch { return 'unknown'; }
 }
-function keepBase(b: ScheduleBase | null): void {
-  if (!b) return;
+function dropBase(): void { try { localStorage.removeItem(BASE_KEY()); } catch { /* ignore */ } }
+// cacheOk: the cache this base belongs to was written; otherwise the base is
+// removed (a base newer than the cache would make every stale cached record
+// look edited here).
+function keepBase(b: ScheduleBase | null, cacheOk: boolean): void {
+  if (!b || !cacheOk) { dropBase(); return; }
   try { localStorage.setItem(BASE_KEY(), JSON.stringify(b)); }
-  catch { try { localStorage.removeItem(BASE_KEY()); } catch { /* ignore */ } } // none: a later merge deletes nothing
+  catch { dropBase(); } // none kept: the next merged save uses base 'unknown'
 }
 // Best-effort: a full localStorage must not break a save or a load.
-function tryWriteCache(json: string, bak = false): void {
-  try { writeCache(json); if (bak) localStorage.setItem(STORAGE_KEY() + '_bak', json); }
-  catch (e) { console.warn('Cache write failed', e); }
+function tryWriteCache(json: string, bak = false): boolean {
+  try { writeCache(json); if (bak) localStorage.setItem(STORAGE_KEY() + '_bak', json); return true; }
+  catch (e) { console.warn('Cache write failed', e); return false; }
 }
 // true while `state` is what this page last loaded from or saved to the
 // server (the backend's reference copy is then its base); false while it is
@@ -91,11 +102,10 @@ export function applyServerLoad(gd: Rec): boolean {
   }
   applyData(gd);
   fromServer = true;
-  keepBase(scheduleBaseOf(getDataObj()));
+  keepBase(scheduleBaseOf(getDataObj()), tryWriteCache(JSON.stringify(gd)));
   const photosDropped = dropWorkerPhotos();
   emit('data');
   if (photosDropped) autoSave();
-  tryWriteCache(JSON.stringify(gd));
   return true;
 }
 
@@ -122,30 +132,39 @@ export function autoSave(opts?: {allowEmpty?: boolean}): void {
     return;
   }
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+  saveTimer = setTimeout(() => { saveTimer = undefined; void runSave(); }, 800);
+}
+// The save itself (autoSave's debounced body); true when the data reached
+// the server and nothing is left unsaved on the device.
+let inflight: Promise<boolean> | null = null;
+function runSave(): Promise<boolean> {
+  const p = (async (): Promise<boolean> => {
     const seq = editSeq, allowEmpty = allowEmptyOnce;
     allowEmptyOnce = false;
+    let done = false;
     try {
       const data = getDataObj();
       const savedBase = scheduleBaseOf(data); // what this save puts on the server (before any later edit)
       // localStorage as cache only
-      tryWriteCache(JSON.stringify(data), true);
+      const cacheOk = tryWriteCache(JSON.stringify(data), true);
       // Firestore is the primary storage
       try { localStorage.setItem(UNSAVED_KEY(), String(Date.now())); } catch { /* full */ }
       const base = fromServer ? null : readBase();
-      let merged: Rec | null = null;
-      const ok = await gsSave(data, {base, allowEmpty, onMerged: d => { merged = d; }});
+      let merged: Rec | null = null, dropped = 0;
+      const ok = await gsSave(data, {base, allowEmpty, onMerged: (d, n) => { merged = d; dropped = n; }});
       // Edited again while a merged save ran (or a worker window is open over
       // the list): the next save merges once more against the same base;
       // otherwise the merged data is this device's now.
       if (ok && (!base || (seq === editSeq && !host.workerWindowOpen()))) {
-        if (merged) { applyData(merged); keepBase(scheduleBaseOf(getDataObj())); emit('data'); tryWriteCache(JSON.stringify(getDataObj())); }
-        else keepBase(savedBase);
+        if (merged) { applyData(merged); keepBase(scheduleBaseOf(getDataObj()), tryWriteCache(JSON.stringify(getDataObj()))); emit('data'); }
+        else keepBase(savedBase, cacheOk);
         fromServer = true;
+        done = true;
         try { localStorage.removeItem(UNSAVED_KEY()); } catch { /* ignore */ }
       }
       emit('save', 'saved');
-      notify(ok ? tr('Saved') : tr('Save failed — kept on this device'));
+      if (ok && dropped) notify(tr('Changes kept on this device could not be merged with the server — the server copy was kept'), 6000);
+      else notify(ok ? tr('Saved') : tr('Save failed — kept on this device'));
     } catch (e) {
       console.error('Save failed', e);
       emit('save', 'saved');
@@ -153,7 +172,19 @@ export function autoSave(opts?: {allowEmpty?: boolean}): void {
     } finally {
       if (seq === editSeq) pending = false;
     }
-  }, 800);
+    return done && seq === editSeq;
+  })();
+  inflight = p;
+  p.finally(() => { if (inflight === p) inflight = null; });
+  return p;
+}
+// Sign-out: a save still waiting for its 800 ms runs now, one under way is
+// awaited. true when nothing is left unsaved on the device (false: changes
+// would be lost if the device's data were removed now).
+export async function flushSave(): Promise<boolean> {
+  if (saveTimer !== undefined) { clearTimeout(saveTimer); saveTimer = undefined; await runSave(); }
+  else if (inflight) await inflight;
+  return !queuedSave && !pending && !hasUnsavedLocal();
 }
 // The first load settled without a server copy: an edit queued meanwhile is saved now.
 function settleLoad(): void {

@@ -238,6 +238,7 @@
 		}
 		async function mergeOnBase(local, server, base) {
 			const out = Object.assign({}, local);
+			let dropped = 0;
 			for (const kind of [
 				"workers",
 				"clients",
@@ -248,8 +249,19 @@
 					out[kind] = srv;
 					continue;
 				}
-				const b = base[kind] || {}, list = [], seen = /* @__PURE__ */ new Set();
+				const list = [], seen = /* @__PURE__ */ new Set();
 				const byId = new Map(srv.map((x) => [String(x.id), x]));
+				let b;
+				if (base === "unknown") {
+					b = {};
+					(local[kind] || []).forEach((item) => {
+						if (!item || item.id == null) return;
+						const s = byId.get(String(item.id));
+						if (!s) return;
+						b[String(item.id)] = itemHash(item);
+						if (itemHash(s) !== b[String(item.id)]) dropped++;
+					});
+				} else b = base[kind] || {};
 				(local[kind] || []).forEach((item) => {
 					if (!item || item.id == null) return;
 					const id = String(item.id);
@@ -267,12 +279,18 @@
 				});
 				out[kind] = list;
 			}
-			return out;
+			return {
+				data: out,
+				dropped
+			};
 		}
 		async function saveSchedule(t, data, first, base) {
-			let merged = null;
-			if (base) merged = data = await mergeOnBase(data, await loadSchedule(t), base);
-			else if (knownTenant !== t) await loadSchedule(t);
+			let merged = null, dropped = 0;
+			if (base) {
+				const m = await mergeOnBase(data, await loadSchedule(t), base);
+				merged = data = m.data;
+				dropped = m.dropped;
+			} else if (knownTenant !== t) await loadSchedule(t);
 			const hrScoped = !!await hrOnly();
 			const ops = [];
 			const next = {};
@@ -325,7 +343,8 @@
 			return merged ? {
 				ok: true,
 				written: ops.length,
-				data: merged
+				data: merged,
+				dropped
 			} : {
 				ok: true,
 				written: ops.length
@@ -698,6 +717,12 @@
 				ok: true,
 				rejected: 0
 			};
+			const left = await punchesOfBatch(t, String(batchId));
+			for (let i = 0; i < left.length; i += BATCH_LIMIT) {
+				const batch = F.writeBatch(db);
+				left.slice(i, i + BATCH_LIMIT).forEach((p) => batch.delete(F.doc(db, "tenants", t, "punches", String(p.id))));
+				await batch.commit();
+			}
 			await F.updateDoc(ref, {
 				status: "rejected",
 				decidedAt: (/* @__PURE__ */ new Date()).toISOString()

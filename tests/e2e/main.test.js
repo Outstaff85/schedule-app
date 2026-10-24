@@ -3267,6 +3267,66 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       return {saved: s.count, approved: a.ok ? a.created : a.error, punches: punches.length, status: ((q.batches || []).find(b => b.batchId === s.batchId) || {}).status};
     });
     ok(big.saved === 300 && big.approved === 300 && big.punches === 600 && big.status === 'approved', 'hours: a 300-row batch is approved (punches in batch writes of 450) ' + JSON.stringify(big));
+    // An approve that failed part way left some punches: rejecting the batch deletes them.
+    const rj = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const entries = [{workerId: 'w2', date: '05/02/2025', inTime: '08:00', outTime: '12:00'}, {workerId: 'w2', date: '06/02/2025', inTime: '08:00', outTime: '12:00'}];
+      const s = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'savePendingHoursBatch', fileName: 'partial', entries})})).json();
+      await b.savePunch(fsTenantId(), {id: 'imp-' + s.batchId + '-0-in', workerId: 'w2', workerName: 'x', type: 'in', time: '08:00', date: '05/02/2025', ts: new Date(2025, 1, 5, 8).toISOString(), clientId: '', notes: '', gpsWarnings: []});
+      const before = (await b.punchesOfBatch(fsTenantId(), s.batchId)).length;
+      const r = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'rejectPendingHours', batchId: s.batchId})})).json();
+      const after = (await b.punchesOfBatch(fsTenantId(), s.batchId)).length;
+      const q = await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'loadPendingHours'})})).json();
+      return {before, ok: !!r.ok, after, status: ((q.batches || []).find(x => x.batchId === s.batchId) || {}).status};
+    });
+    ok(rj.before === 1 && rj.ok && rj.after === 0 && rj.status === 'rejected', 'hours: rejecting a batch after a partial approve deletes its imported punches ' + JSON.stringify(rj));
+    // A cache from before the save base (_unsaved, no _base) while another device edited a worker: the server's copy of
+    // every worker it has is kept (nothing overwritten or deleted), a worker only on this device is saved.
+    await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const d = await b.loadSchedule(fsTenantId(), false);
+      d.workers.find(w => w.id === 'w2').e2eNote = 'other device';
+      await b.saveSchedule(fsTenantId(), d);
+      const c = JSON.parse(localStorage.getItem(STORAGE_KEY()));
+      c.workers.find(w => w.id === 'w1').e2eNote = 'legacy cache';
+      c.workers.push({id: 'wLegacy', name: 'Added Offline', clientIds: [], token: 'tok-wl', status: 'active', schedule: []});
+      localStorage.setItem(STORAGE_KEY(), JSON.stringify(c));
+      localStorage.setItem(UNSAVED_KEY(), String(Date.now()));
+      localStorage.removeItem(STORAGE_KEY() + '_base');
+    });
+    await pa.goto(BASE + 'schedule-manager.html');
+    const lg = await waitFor(pa, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w2' && w.e2eNote === 'other device') && !hasUnsavedLocal(), 20000);
+    const lc = await pa.evaluate(async () => {
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      const w = id => d.workers.find(x => x.id === id) || {};
+      return {w1: w('w1').e2eNote, w2: w('w2').e2eNote, wL: !!d.workers.find(x => x.id === 'wLegacy'), wB: !!d.workers.find(x => x.id === 'wB'), base: !!localStorage.getItem(STORAGE_KEY() + '_base')};
+    });
+    ok(lg && lc.w1 === 'from A' && lc.w2 === 'other device' && lc.wL && lc.wB && lc.base,
+      'legacy cache: a save with no base keeps the server copies and saves the worker added offline ' + JSON.stringify({lg, lc}));
+    // Sign-out with a change that could not be saved: the user is asked, and on Cancel nothing is removed.
+    const so = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend(), keep = b.saveSchedule;
+      b.saveSchedule = async () => { throw new Error('offline'); };
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        workers.find(w => w.id === 'w1').e2eNote = 'not saved yet';
+        autoSave();
+        await ManagerBridge.signOut();
+        await T.tick(3000);
+        return {asked: !!asked, cache: /not saved yet/.test(localStorage.getItem(STORAGE_KEY()) || ''), unsaved: hasUnsavedLocal()};
+      } finally { window.confirm = conf; b.saveSchedule = keep; }
+    });
+    ok(so.asked && so.cache && so.unsaved, 'sign-out: an unsaved change is not removed without asking ' + JSON.stringify(so));
+    // Saved once the server is back, then sign-out goes through without asking.
+    const so2 = await pa.evaluate(async () => {
+      autoSave();
+      for (let i = 0; i < 40 && hasUnsavedLocal(); i++) await T.tick(250);
+      const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+      return {saved: (d.workers.find(w => w.id === 'w1') || {}).e2eNote === 'not saved yet', unsaved: hasUnsavedLocal()};
+    });
+    ok(so2.saved && !so2.unsaved, 'sign-out: the kept change is saved when the server answers again ' + JSON.stringify(so2));
     ok(pa.errs.length === 0, 'two devices: no page errors ' + pa.errs.join(' | '));
     await ca.close();
   }

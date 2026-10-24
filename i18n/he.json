@@ -563,6 +563,8 @@
   "Save failed": "השמירה נכשלה",
   "Save failed — kept on this device": "השמירה נכשלה — נשמר במכשיר",
   "Empty data — save skipped": "הנתונים ריקים — השמירה דולגה",
+  "Changes kept on this device could not be merged with the server — the server copy was kept": "לא ניתן היה למזג את השינויים שנשמרו במכשיר עם השרת — נשמר העותק שבשרת",
+  "Changes on this device have not reached the server yet and will be lost. Sign out anyway?": "שינויים במכשיר זה עדיין לא הגיעו לשרת ויאבדו. להתנתק בכל זאת?",
   "Save Punch": "שמירת החתמה",
   "Saved": "נשמר",
   "Saved!": "נשמר!",

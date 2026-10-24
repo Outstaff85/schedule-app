@@ -13,7 +13,8 @@
 //   signOut()
 //   loadSchedule(t)             {workers, clients, suppliers, weekStart, savedAt}
 //   saveSchedule(t, data, first?, base?)  writes only the documents that changed
-//                               (base: merged with the server's copy first)
+//                               (base: merged with the server's copy first;
+//                               'unknown': a cache with no base, see mergeOnBase)
 //   scheduleBaseOf(data)        the save base of data the app holds (cache)
 //   listenPunches(t, onChange, since)  live punches from `since` (the app
 //                               passes the start of this month minus a week);
@@ -127,6 +128,9 @@ function sigHash(str: string): string {
 // hash of the record as the app held it when it was last in step with the
 // server (scheduleBaseOf). See saveSchedule's base.
 export type ScheduleBase = Record<string, Record<string, string>>;
+// The base of local data whose base was not kept (a cache from before the
+// save base existed, a base dropped by a full localStorage): see mergeOnBase.
+export type SaveBase = ScheduleBase | 'unknown';
 const itemHash = (item: unknown): string => sigHash(sig(plain(item)));
 // The save base of data the app holds (after a load or a save).
 export function scheduleBaseOf(data: Rec): ScheduleBase {
@@ -260,13 +264,29 @@ export async function initFirestoreBackend() {
   // untouched here stays deleted; one deleted here stays deleted; one added
   // elsewhere (on the server, not in the base) is kept. A kind this login
   // may not write is the server's.
-  async function mergeOnBase(local: Rec, server: Rec, base: ScheduleBase): Promise<Rec> {
+  // base 'unknown' (no base was kept): nothing tells what was edited here,
+  // so a record on the server keeps the server's copy, a record only here is
+  // kept and nothing is deleted; `dropped` counts the records here that
+  // differed from the server's copy (their local changes are not saved).
+  async function mergeOnBase(local: Rec, server: Rec, base: SaveBase): Promise<{data: Rec; dropped: number}> {
     const out: Rec = Object.assign({}, local);
+    let dropped = 0;
     for (const kind of ['workers','clients','suppliers'] as Kind[]) {
       const srv = (server[kind] || []) as Rec[];
       if (!(await mayWrite(kind))) { out[kind] = srv; continue; }
-      const b = base[kind] || {}, list: Rec[] = [], seen = new Set<string>();
+      const list: Rec[] = [], seen = new Set<string>();
       const byId = new Map(srv.map(x => [String(x.id), x]));
+      let b: Record<string, string>;
+      if (base === 'unknown') {
+        b = {};
+        ((local[kind] || []) as Rec[]).forEach(item => {
+          if (!item || item.id == null) return;
+          const s = byId.get(String(item.id));
+          if (!s) return;
+          b[String(item.id)] = itemHash(item);
+          if (itemHash(s) !== b[String(item.id)]) dropped++;
+        });
+      } else b = base[kind] || {};
       ((local[kind] || []) as Rec[]).forEach(item => {
         if (!item || item.id == null) return;
         const id = String(item.id); seen.add(id);
@@ -277,7 +297,7 @@ export async function initFirestoreBackend() {
       srv.forEach(s => { const id = String(s.id); if (!seen.has(id) && !(id in b)) list.push(s); });
       out[kind] = list;
     }
-    return out;
+    return {data: out, dropped};
   }
 
   // Writes the workers/clients/suppliers that differ from what was last
@@ -291,10 +311,12 @@ export async function initFirestoreBackend() {
   // load or save of this page (changes kept on the device while offline, or
   // an edit on the cached list): the server's copy is read fresh and merged
   // with it first (mergeOnBase), so a record added or edited elsewhere is
-  // never deleted or overwritten; the reply's `data` is what was saved.
-  async function saveSchedule(t: string, data: Rec, first?: {ops: Op[]; ids?: unknown[]}, base?: ScheduleBase | null): Promise<Reply> {
-    let merged: Rec | null = null;
-    if (base) merged = data = await mergeOnBase(data, await loadSchedule(t), base);
+  // never deleted or overwritten; the reply's `data` is what was saved, and
+  // `dropped` the local records whose changes could not be merged (base
+  // 'unknown').
+  async function saveSchedule(t: string, data: Rec, first?: {ops: Op[]; ids?: unknown[]}, base?: SaveBase | null): Promise<Reply> {
+    let merged: Rec | null = null, dropped = 0;
+    if (base) { const m = await mergeOnBase(data, await loadSchedule(t), base); merged = data = m.data; dropped = m.dropped; }
     else if (knownTenant !== t) await loadSchedule(t); // never diff against another firm
     const hrScoped = !!(await hrOnly());
     const ops: Op[] = [];
@@ -332,7 +354,7 @@ export async function initFirestoreBackend() {
     }
     for (const kind in next) known[kind as Kind] = next[kind as Kind];
     workerHr.clear(); ((data.workers || []) as Rec[]).forEach(x => { if (x && x.id != null) workerHr.set(String(x.id), x.hrId || null); });
-    return merged ? {ok: true, written: ops.length, data: merged} : {ok: true, written: ops.length};
+    return merged ? {ok: true, written: ops.length, data: merged, dropped} : {ok: true, written: ops.length};
   }
 
   function punchFromDoc(d: any): Rec {
@@ -578,7 +600,7 @@ export async function initFirestoreBackend() {
   // The punches go in batch writes of BATCH_LIMIT (Firestore allows 500
   // writes per batch); the batch is marked approved only after all of them
   // are written, so a failure part way leaves it pending, and approving again
-  // rewrites the same punch documents.
+  // rewrites the same punch documents (rejecting it deletes them).
   async function approvePendingHours(t: string, ctx: ActionCtx, batchId: unknown): Promise<Reply> {
     if (!approver(ctx)) return {error: APPROVER_ERROR};
     const ref = F.doc(db,'tenants',t,'pendingHours',String(batchId));
@@ -628,6 +650,14 @@ export async function initFirestoreBackend() {
     const snap = await F.getDoc(ref);
     if (!snap.exists()) return {error: 'Batch not found'};
     if (snap.data().status !== 'pending') return {ok: true, rejected: 0};
+    // An approve that failed part way left some of the batch's punches
+    // written (approvePendingHours): they go before the batch is marked.
+    const left = await punchesOfBatch(t, String(batchId));
+    for (let i = 0; i < left.length; i += BATCH_LIMIT) {
+      const batch = F.writeBatch(db);
+      left.slice(i, i + BATCH_LIMIT).forEach(p => batch.delete(F.doc(db,'tenants',t,'punches',String(p.id))));
+      await batch.commit();
+    }
     await F.updateDoc(ref, {status: 'rejected', decidedAt: new Date().toISOString()});
     return {ok: true, rejected: (snap.data().rows || []).length};
   }
