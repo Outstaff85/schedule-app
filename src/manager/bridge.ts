@@ -781,6 +781,8 @@ export type ClientInfo = {
   waiting: number;
   /** the `clients` section: Delete from the ⋮ */
   canDelete: boolean;
+  /** Edit pay (hasEditPay): without it the client's worker pay is read-only and saved as it was */
+  canPay: boolean;
   /** `PAY_RULES.otMult`, `shabbatMult` (the law's figures in the OT / Shabbat placeholders) */
   otMult: number;
   shabbatMult: number;

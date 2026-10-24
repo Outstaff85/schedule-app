@@ -141,6 +141,26 @@ def test_unknown_user_and_empty_fields():
 def test_inactive_user_is_refused():
     DB.collection("users").document("u-staff1").update({"active": False})
     assert core.login(DB, "staff1", "staff-pass-1", mint)["error"] == "Account disabled"
+    # Without the password a disabled account looks like any wrong login.
+    assert core.login(DB, "staff1", "wrong-pass", mint)["error"] == core.E_BAD_LOGIN
+
+
+def test_wrong_passwords_are_counted_atomically():
+    """Concurrent wrong guesses each count (a transaction), so the lock comes
+    after LOCK_AFTER_FAILS of them, never later."""
+    from concurrent.futures import ThreadPoolExecutor
+    t = 2_000_000.0
+    def guess(_):
+        try:
+            return core.login(DB, "staff1", "wrong-pass", mint, now=t)["error"] == core.E_BAD_LOGIN
+        except Exception:  # a transaction that gave up after its retries counts nothing
+            return False
+    with ThreadPoolExecutor(core.LOCK_AFTER_FAILS) as ex:
+        counted = sum(ex.map(guess, range(core.LOCK_AFTER_FAILS)))
+    sec = DB.collection("authSecrets").document("u-staff1").get().to_dict()
+    assert counted and sec["failCount"] == counted  # no guess lost
+    if counted == core.LOCK_AFTER_FAILS:
+        assert "Too many" in core.login(DB, "staff1", "staff-pass-1", mint, now=t + 1)["error"]
 
 
 def test_lockout_after_five_wrong_passwords():
@@ -598,6 +618,18 @@ def test_templates_seeded_and_listed():
     # Only a superadmin writes them.
     assert core.save_template(DB, ADMIN1, {"name": "X", "role": "staff"}, Revokes())["error"] == core.E_NO_RIGHTS
     assert core.delete_template(DB, ADMIN1, {"id": "hr"}, Revokes())["error"] == core.E_NO_RIGHTS
+
+
+def test_templates_are_seeded_only_once():
+    """A superadmin who deletes every template keeps an empty set: the
+    defaults are not seeded again (appMeta/templates)."""
+    assert len(core.list_templates(DB, SUPER)["templates"]) == 6
+    assert DB.collection("appMeta").document("templates").get().exists
+    for snap in DB.collection("permTemplates").stream():
+        assert core.delete_template(DB, SUPER, {"id": snap.id}, Revokes()).get("ok")
+    assert core.list_templates(DB, SUPER)["templates"] == []
+    assert core.link_to_templates(DB, SUPER, {}, Revokes())["linked"] == 0
+    assert core.list_templates(DB, ADMIN1)["templates"] == []
 
 
 def test_rights_caps():

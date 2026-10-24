@@ -38,6 +38,7 @@ punch for its workers), never a link to their stored files. It may edit only
 SUPPLIER_EDITABLE.
 """
 
+import secrets
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -497,6 +498,9 @@ def supplier_action(db, caller, body):
         w.update({k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None})
         w["name"] = f"{w.get('docGiven') or ''} {w.get('docSurname') or ''}".strip()
         w["docKeys"] = doc_keys(w)
+        # Its punch link from the start (the app's genToken makes the same
+        # kind); strip_worker never hands it to the supplier.
+        w["token"] = secrets.token_urlsafe(16)
         t_ref.collection("workers").document(wid).set(w)
         return {"ok": True, "worker": strip_worker(w, sid, pay)}
 

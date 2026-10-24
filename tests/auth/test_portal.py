@@ -283,6 +283,11 @@ def test_supplier_worker_crud():
     d = W(T1, wid).get().to_dict()
     assert d["name"] == "New Guy" and d["supplierId"] == "sp1" and d["clientIds"] == [] and "hourlyRate" not in d
     assert d["createdAt"].endswith("Z") and r["worker"]["createdAt"] == d["createdAt"]  # the "NEW" badge
+    # Its punch link is stored at once (22 base64url characters) and never handed to the supplier.
+    assert len(d["token"]) == 22 and d["token"] not in str(r)
+    assert d["token"] not in str(portal.supplier_action(DB, SUP1, {"action": "loadSchedule"}))
+    tid, snap = portal.find_worker(DB, d["token"])
+    assert tid == T1 and snap.id == wid
     r = portal.supplier_action(DB, SUP1, {"action": "supplierUpdateWorker", "workerId": wid,
                                           "worker": {"docSurname": "Man", "hourlyRate": 1, "supplierId": "sp2"}})
     d = W(T1, wid).get().to_dict()

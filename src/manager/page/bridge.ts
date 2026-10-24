@@ -12,7 +12,7 @@ import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
 import { docIdKey } from '../worker';
-import { canChange, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
+import { canChange, hasEditPay, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { csvText } from '../../lib/utils';
@@ -229,7 +229,7 @@ provideBridge({
     return {
       workers:c?workers.filter((w?: any)=>isActiveWorker(w)&&(w.clientIds||[]).includes(c.id)).length:0, monthHours:e.hours||0, billed:e.total||0,
       waiting:c?(__hoursBatches||[]).filter((b?: any)=>b.status==='pending'&&(b.entries||[]).some((x?: any)=>x.clientId===c.id)).length:0,
-      canDelete:hasPermission('clients'), otMult:PAY_RULES.otMult, shabbatMult:PAY_RULES.shabbatMult};
+      canDelete:hasPermission('clients'), canPay:hasEditPay(), otMult:PAY_RULES.otMult, shabbatMult:PAY_RULES.shabbatMult};
   },
   supplierInfo(id?: any){
     const sp=id?suppliers.find((x?: any)=>x.id===id):null, hours=workersMonthHours();

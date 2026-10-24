@@ -1545,5 +1545,7 @@
   "this worker": "עובד זה",
   "Upload again sends only the files that failed.": "העלאה חוזרת תשלח רק את הקבצים שנכשלו.",
   "{0} shift(s) with a date or time that could not be read — fix the file and choose it again": "{0} משמרות עם תאריך או שעה שלא ניתן לקרוא — יש לתקן את הקובץ ולבחור אותו שוב",
-  "(open)": "(פתוחה)"
+  "(open)": "(פתוחה)",
+  "Password changed — please sign in again": "הסיסמה שונתה — יש להתחבר מחדש",
+  "{0} was not deleted — it would change workers this login may not edit": "{0} לא נמחק — המחיקה הייתה משנה עובדים שאין לחשבון הזה הרשאה לערוך"
 }

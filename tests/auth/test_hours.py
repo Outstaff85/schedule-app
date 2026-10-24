@@ -145,6 +145,47 @@ def test_a_fix_for_the_second_shift_of_a_day():
     assert P("a4").get().to_dict()["time"] == "21:00" and P("a2").get().to_dict()["time"] == "17:00"
 
 
+def test_a_fix_of_a_shift_with_no_out_or_no_in_adds_the_missing_punch():
+    # Avi forgot to punch out on the 7th, and to punch in on the 8th.
+    P("c1").set({"id": "c1", "workerId": "w1", "workerName": "Avi", "type": "in", "time": "08:00", "clientId": "c1", "hrId": "u-hr",
+                 "dist": 3, "ts": at("2026-10-07T05:00:00"), "day": "2026-10-07"})
+    P("d1").set({"id": "d1", "workerId": "w1", "type": "out", "time": "16:00", "clientId": "c1", "hrId": "u-hr",
+                 "ts": at("2026-10-08T13:00:00"), "day": "2026-10-08"})
+    for day, line, in_t, out_t in (("2026-10-07", "w1|2026-10-07|08:00|", "08:00", "17:00"),
+                                   ("2026-10-08", "w1|2026-10-08||16:00", "07:00", "16:00")):
+        assert hours.hours_action(DB, CL, {"action": "fix", "month": "2026-10", "workerId": "w1", "day": day,
+                                           "line": line, "inT": in_t, "outT": out_t})["ok"]
+        r = hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|" + day, "accept": True})
+        assert r["ok"] and r["entry"]["status"] == "fixed" and r["entry"]["line"] == f"w1|{day}|{in_t}|{out_t}"
+    ps = {p.id: p.to_dict() for p in DB.collection("tenants").document(T1).collection("punches").stream()}
+    new = [d for pid, d in ps.items() if pid not in ("a1", "a2", "b1", "c1", "d1")]
+    out7 = next(d for d in new if d["type"] == "out")
+    in8 = next(d for d in new if d["type"] == "in")
+    assert out7["time"] == "17:00" and out7["day"] == "2026-10-07" and out7["date"] == "07/10/2026" and out7["ts"].astimezone(timezone.utc).hour == 14
+    assert out7["workerId"] == "w1" and out7["hrId"] == "u-hr" and out7["clientId"] == "c1" and out7["editedBy"] == "approval"
+    assert "dist" not in out7 and out7["id"] in ps
+    assert in8["time"] == "07:00" and in8["day"] == "2026-10-08" and in8["ts"].astimezone(timezone.utc).hour == 4
+    assert len(new) == 2
+    # Accepted once: a second accept finds nothing to resolve.
+    assert hours.hours_action(DB, OWNER, {"action": "resolve", "docId": "client_c1_2026-10", "key": "w1|2026-10-07", "accept": True})["error"] == "Nothing to resolve"
+
+
+def test_concurrent_reviews_of_one_document_lose_nothing():
+    from concurrent.futures import ThreadPoolExecutor
+    P("e1").set({"id": "e1", "workerId": "w1", "type": "in", "time": "08:00", "clientId": "c1", "ts": at("2026-10-09T05:00:00"), "day": "2026-10-09"})
+    lines = ["w1|2026-10-05|08:00|17:00", "w1|2026-10-09|08:00|"]
+
+    def approve(line):
+        try:
+            return hours.hours_action(DB, CL, {"action": "approve", "month": "2026-10", "lines": [line]}).get("ok")
+        except Exception:  # a transaction that gave up after its retries
+            return False
+    with ThreadPoolExecutor(2) as ex:
+        done = [ln for ln, ok in zip(lines, ex.map(approve, lines)) if ok]
+    days = DB.collection("tenants").document(T1).collection("hourApprovals").document("client_c1_2026-10").get().to_dict()["days"]
+    assert done and sorted(days) == sorted(ln.rsplit("|", 2)[0] for ln in done)
+
+
 def test_list_tells_whether_an_hr_sees_only_its_own_workers():
     hours.hours_action(DB, HR, {"action": "approve", "month": "2026-10", "lines": ["w1|2026-10-05|08:00|17:00"]})
     doc = hours.hours_action(DB, OWNER, {"action": "list", "month": "2026-10"})["docs"][0]

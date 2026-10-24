@@ -146,6 +146,39 @@ test('punches: any manager-side login of the firm reads and writes', async () =>
   }
 });
 
+test('punches: only the owner or a superadmin sets a hrId other than the worker's', async () => {
+  // staff (or an all-workers hr) with Edit punches: an edit keeps the hrId, a new punch carries its worker's
+  for (const r of ['staffAll', 'hrAll']) {
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p1'), { hrId: 'u-hrOwn' }));
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p2'), { hrId: null }));
+    await assertSucceeds(updateDoc(doc(db(r), 'tenants', A, 'punches', 'p2'), { notes: 'kept' }));
+    await assertFails(setDoc(doc(db(r), 'tenants', A, 'punches', 'n-' + r), { workerId: 'w1', type: 'in', hrId: 'u-hrOwn' }));
+    await assertFails(setDoc(doc(db(r), 'tenants', A, 'punches', 'm-' + r), { workerId: 'w2', type: 'in' }));
+    await assertSucceeds(setDoc(doc(db(r), 'tenants', A, 'punches', 'o-' + r), { workerId: 'w2', type: 'in', hrId: 'u-hrOwn' }));
+  }
+  await assertSucceeds(setDoc(doc(db('ownerA'), 'tenants', A, 'punches', 'n-owner'), { workerId: 'w1', type: 'in', hrId: 'u-hrOwn' }));
+  // an own-workers hr: only its own workers' punches, never moved to another worker
+  const h = db('hrOwn');
+  await assertFails(setDoc(doc(h, 'tenants', A, 'punches', 'x3'), { workerId: 'w3', type: 'in', hrId: 'u-hrOwn' }));
+  await assertFails(setDoc(doc(h, 'tenants', A, 'punches', 'x9'), { workerId: 'w-missing', type: 'in', hrId: 'u-hrOwn' }));
+  await assertFails(updateDoc(doc(h, 'tenants', A, 'punches', 'p2'), { workerId: 'w3' }));
+});
+
+test('clients: the worker pay changes only with Edit pay; without it the rest saves', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'tenants', A, 'clients', 'cp'), { name: 'Paid', defaultHourlyRate: 40, defaultOtRate: 50 });
+  });
+  for (const r of ['flatClients', 'hrOwnClients']) {
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'clients', 'cp'), { defaultHourlyRate: 35 }));
+    await assertFails(updateDoc(doc(db(r), 'tenants', A, 'clients', 'cp'), { defaultOtRate: null }));
+    await assertSucceeds(updateDoc(doc(db(r), 'tenants', A, 'clients', 'cp'), { name: 'Renamed by ' + r }));
+    await assertFails(setDoc(doc(db(r), 'tenants', A, 'clients', 'new-' + r), { name: 'x', defaultHourlyRate: 30 }));
+    await assertSucceeds(setDoc(doc(db(r), 'tenants', A, 'clients', 'ok-' + r), { name: 'x', defaultHourlyRate: null }));
+  }
+  await assertSucceeds(updateDoc(doc(db('staffAll'), 'tenants', A, 'clients', 'cp'), { defaultHourlyRate: 35, defaultOtRate: null }));
+  await assertSucceeds(updateDoc(doc(db('ownerA'), 'tenants', A, 'clients', 'cp'), { defaultHourlyRate: 45 }));
+});
+
 test('client: no direct read or write anywhere, even with every tick (portal goes through a function)', async () => {
   for (const sub of ['workers', 'clients', 'suppliers', 'punches', 'pendingHours', 'settings', 'hourApprovals']) {
     await assertFails(getDocs(collection(db('clientA'), 'tenants', A, sub)));

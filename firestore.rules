@@ -18,8 +18,9 @@ rules_version = '2';
 //     Schedule tab (what it may change: its edit rights), clients with the
 //     Clients tab, suppliers with the Suppliers tab, the shift settings with
 //     the Schedule tab;
-//   - punches: any manager-side login of the firm (savePunch/updatePunch/
-//     deletePunch had no role gate); bulk month deletion is a function;
+//   - punches: a manager-side login of the firm with Edit punches; a punch's
+//     hrId is its worker's (only the owner or a superadmin sets another);
+//     bulk month deletion is a function;
 //   - pending hours: anyone of the firm may submit, only tenant_admin or
 //     superadmin may approve/reject (requirePendingHoursApprover);
 //   - a supplier never reads Firestore directly: wages and GPS can't be
@@ -57,6 +58,8 @@ service cloud.firestore {
     function mayEd(k) { return role() in ['tenant_admin', 'superadmin'] || can(k); }
     // A staff login writes a firm's clients / suppliers with that tab.
     function staffTab(t, k) { return isStaff(t) && can(k); }
+    // Clients: the owner, a superadmin, staff or HR with the Clients tab.
+    function clientWriter(t) { return isAdmin(t) || staffTab(t, 'clients') || (isHr(t) && can('clients')); }
     // A worker update: with Edit workers anything but the shifts (those too
     // with Edit shifts); with only Edit shifts nothing but the shifts.
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
@@ -66,6 +69,11 @@ service cloud.firestore {
     }
     function oldHr() { return resource.data.get('hrId', null); }
     function newHr() { return request.resource.data.get('hrId', null); }
+    // The hrId of the worker a punch being written belongs to (a missing
+    // worker document denies the write).
+    function punchWorkerHr(t) {
+      return get(/databases/$(database)/documents/tenants/$(t)/workers/$(string(request.resource.data.workerId))).data.get('hrId', null);
+    }
     // Manager-side logins of the firm that see all of its data (never a
     // supplier, never an own-workers hr).
     function manager(t) { return isSuper() || (member(t) && role() in ['tenant_admin', 'staff']) || hrAll(t); }
@@ -128,9 +136,17 @@ service cloud.firestore {
           || (hrAll(t) && hrWorkers(t))
           || (hrMine(t) && hrWorkers(t) && oldHr() == uid()));
       }
+      // A client's worker pay (defaultHourlyRate, and an older client's own
+      // OT / Shabbat rates) is every worker's rate there that has none of its
+      // own: changed only with Edit pay (the owner and a superadmin always);
+      // without it a write leaves the three as they were.
       match /clients/{id} {
         allow read: if manager(t) || isHr(t);
-        allow write: if isAdmin(t) || staffTab(t, 'clients') || (isHr(t) && can('clients'));
+        allow create: if clientWriter(t) && (isAdmin(t) || can('editPay')
+          || (noField('defaultHourlyRate') && noField('defaultOtRate') && noField('defaultShabbatRate')));
+        allow update: if clientWriter(t) && (isAdmin(t) || can('editPay')
+          || (sameField('defaultHourlyRate') && sameField('defaultOtRate') && sameField('defaultShabbatRate')));
+        allow delete: if clientWriter(t);
       }
       // A supplier's own commission rate (commission, set in the supplier
       // window) is changed only by the firm owner or a superadmin; staff and
@@ -150,13 +166,21 @@ service cloud.firestore {
       match /punches/{id} {
         allow read: if manager(t);
         // Written (a manual punch, an edit, a delete) only with Edit punches.
-        allow create, update, delete: if manager(t) && mayEd('editPunches');
+        // A punch's hrId is its worker's HR: only the owner or a superadmin
+        // sets another (setPunchesHr when a worker's HR changes) — anyone
+        // else keeps it on an edit and stamps a new punch with its worker's
+        // (otherwise an own-workers HR would read other workers' punches).
+        allow delete: if manager(t) && mayEd('editPunches');
+        allow update: if manager(t) && mayEd('editPunches') && (isAdmin(t) || newHr() == oldHr());
+        allow create: if manager(t) && mayEd('editPunches') && (isAdmin(t) || newHr() == punchWorkerHr(t));
         // An own-workers hr: the punches stamped with its uid (hrId is set by
-        // the punch function, manual punches and approved hours).
+        // the punch function, manual punches and approved hours), of its own
+        // workers only — a punch is never moved to another worker.
         allow read: if hrMine(t) && oldHr() == uid();
         allow delete: if hrMine(t) && oldHr() == uid() && mayEd('editPunches');
-        allow create: if hrMine(t) && newHr() == uid() && mayEd('editPunches');
-        allow update: if hrMine(t) && oldHr() == uid() && newHr() == uid() && mayEd('editPunches');
+        allow create: if hrMine(t) && newHr() == uid() && mayEd('editPunches') && punchWorkerHr(t) == uid();
+        allow update: if hrMine(t) && oldHr() == uid() && newHr() == uid() && mayEd('editPunches')
+          && request.resource.data.get('workerId', null) == resource.data.get('workerId', null);
       }
       // Hours reviews of client, supplier and HR logins (the `hours` function
       // writes them; managers read them in Accounting). Never written directly.

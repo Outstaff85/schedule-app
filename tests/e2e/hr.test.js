@@ -454,7 +454,43 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {leak: workers.some(w => w.id === 'wX'), punch: getPunchLog().some(e => e.workerId === 'wX'), cache: /Leaked/.test(localStorage.getItem('schedMgr_v1_tenant-one') || '')}; });
   ok(purged.length === 0 && hrIn && !left.leak && !left.punch && !left.cache,
     'sign-out: the firm\'s cache, punches and flags leave the device; another login starts without the last one\'s cache ' + JSON.stringify({purged, hrIn, left}));
-  ok(h.errs.length === 0 && p.errs.length === 0, 'no page errors ' + h.errs.concat(p.errs).join(' | '));
+  // A login that may not write the workers a client's delete changes (an HR with Clients but without Edit pay, and a
+  // worker with a rate at that client) is refused before anything is saved: the client stays, a toast says why.
+  const octx = await newCtx(); const o = await page(octx);
+  await login(o, BASE + 'schedule-manager.html', 'owner1', 'owner-pass-1');
+  await o.waitForNavigation().catch(()=>{});
+  ok(await waitFor(o, () => typeof workers !== 'undefined' && workers.length >= 2 && typeof clients !== 'undefined' && clients.length >= 2, 15000), 'owner (again): data loads');
+  const cd = await o.evaluate(async () => {
+    const keep = localStorage.getItem('schedMgr_session'), s = JSON.parse(keep);
+    const w = workers.find(x => (x.clientIds || []).includes('c1')) || workers[0];
+    w.clientRates = Object.assign({}, w.clientRates, {c1: {rate: 44}});
+    localStorage.setItem('schedMgr_session', JSON.stringify(Object.assign({}, s, {role: 'hr', rights: ['workers', 'clients', 'editSchedule', 'editWorkers', 'editPunches']})));
+    ManagerBridge.deleteClients(['c1']); await T.tick(100);
+    const r = {kept: clients.some(c => c.id === 'c1'), rate: !!(w.clientRates && w.clientRates.c1), toast: /not deleted/.test(document.body.innerText)};
+    localStorage.setItem('schedMgr_session', keep);
+    delete w.clientRates.c1;
+    return r;
+  });
+  ok(cd.kept && cd.rate && cd.toast, 'clients: a delete that would change workers this login may not edit is refused, the client stays ' + JSON.stringify(cd));
+  // One's own password changed together with the phone: the phone is saved first, then the password, then the
+  // session ends on purpose (sign-in screen) — no "Session expired" error in the window.
+  const sp = await o.evaluate(async () => {
+    switchTab('admin'); switchAdminPane('users');
+    const me = getSession().uid;
+    await openEditUserForm(me); await T.tick(150);
+    T.fill('uPhone', '0549998877'); T.fill('uPassword', 'owner-pass-2');
+    await T.tick(50);
+    document.querySelector('#userFormModal [data-testid="user-save"]').click();
+    await T.until(() => !document.getElementById('userFormOverlay').classList.contains('open') || !!T.err(), 15000);
+    return {err: T.err(), closed: !document.getElementById('userFormOverlay').classList.contains('open')};
+  }).catch(e => ({gone: String(e)}));  // the page may already be reloading to the sign-in screen
+  const out = await o.waitForSelector('#loginScreen', {state: 'visible', timeout: 15000}).then(() => true, () => false);
+  await o.fill('#loginUsername', 'owner1'); await o.fill('#loginPassword', 'owner-pass-2'); await o.click('#loginBtn');
+  await o.waitForNavigation().catch(()=>{});
+  ok(await waitFor(o, () => typeof workers !== 'undefined' && workers.length >= 2, 15000), 'owner: signs in with the new password');
+  const phone = await o.evaluate(async () => (await (await fetch(API_URL, {method: 'POST', body: JSON.stringify({action: 'listUsers'})})).json()).users.find(u => u.id === getSession().uid).phone);
+  ok(!sp.err && out && phone === '0549998877', 'users: one\'s own password and phone saved together, then signed out on purpose ' + JSON.stringify({sp, out, phone}));
+  ok(h.errs.length === 0 && p.errs.length === 0 && o.errs.length === 0, 'no page errors ' + h.errs.concat(p.errs, o.errs).join(' | '));
   await b.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED');
   process.exit(fails ? 1 : 0);

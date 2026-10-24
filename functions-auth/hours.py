@@ -47,7 +47,9 @@ import base64
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore_v1.field_path import FieldPath
 
 from core import HOUR_OF, HOUR_PERMS  # noqa: F401 — the ticks this module checks
 
@@ -172,12 +174,6 @@ def _doc_ref(t_ref, kind, owner, month):
 def _days_of(ref):
     s = ref.get()
     return ((s.to_dict() or {}).get("days") or {}) if s.exists else {}
-
-
-def _write_days(ref, kind, owner, owner_name, month, days):
-    # The listed fields are replaced whole (days too); a month's signature stays.
-    ref.set({"kind": kind, "ownerId": owner, "ownerName": owner_name, "month": month, "days": days},
-            merge=["kind", "ownerId", "ownerName", "month", "days"])
 
 
 def _jpeg_size(b):
@@ -346,19 +342,21 @@ def hours_action(db, caller, body, bucket=None):
     name = name[0] if isinstance(name, tuple) else name
     if action == "sign":
         return _sign(t_ref, str(tid), owner, month, ref, by, name, body, bucket)
-    days = _days_of(ref)
 
+    # Each action checks its input first, then changes the days map in a
+    # transaction (two reviews of the same document at once never lose one).
     if action == "approve":
         lines = body.get("lines")
         if not isinstance(lines, list) or len(lines) > MAX_LINES:
             return {"error": "Bad lines"}
-        for line in lines:
-            parts = _clip(line, 160).split("|")
-            if len(parts) != 4 or not parts[1].startswith(month) or (allowed is not None and parts[0] not in allowed):
-                continue
-            days[f"{parts[0]}|{parts[1]}"] = {"status": "approved", "line": "|".join(parts), "byName": by, "at": _now()}
-        _write_days(ref, kind, owner, name, month, days)
-        return {"ok": True, "days": days}
+
+        def mutate(days):
+            for line in lines:
+                parts = _clip(line, 160).split("|")
+                if len(parts) != 4 or not parts[1].startswith(month) or (allowed is not None and parts[0] not in allowed):
+                    continue
+                days[f"{parts[0]}|{parts[1]}"] = {"status": "approved", "line": "|".join(parts), "byName": by, "at": _now()}
+        return {"ok": True, "days": _update_days(db, ref, kind, owner, name, month, mutate)}
 
     wid, day = str(body.get("workerId") or ""), str(body.get("day") or "")
     if not wid or "/" in wid or len(wid) > 100 or len(day) != 10 or not day.startswith(month) or (allowed is not None and wid not in allowed):
@@ -366,10 +364,11 @@ def hours_action(db, caller, body, bucket=None):
     key = f"{wid}|{day}"
     comment = _clip(body.get("comment"), 500).strip()
     if action == "dispute":
-        if comment:
-            days[key] = {"status": "disputed", "line": _clip(body.get("line"), 160), "comment": comment, "byName": by, "at": _now()}
-        elif days.get(key, {}).get("status") == "disputed":
-            days.pop(key)
+        def mutate(days):
+            if comment:
+                days[key] = {"status": "disputed", "line": _clip(body.get("line"), 160), "comment": comment, "byName": by, "at": _now()}
+            elif days.get(key, {}).get("status") == "disputed":
+                days.pop(key)
     else:
         in_t, out_t = _hhmm(body.get("inT")), _hhmm(body.get("outT"))
         if not in_t or not out_t:
@@ -383,17 +382,38 @@ def hours_action(db, caller, body, bucket=None):
             shift = 0
         if shift < 0 or shift >= len(ins):
             return {"error": "Bad shift"}
-        days[key] = {"status": "fix", "line": line, "shift": shift, "oldIn": ins[shift],
-                     "oldOut": outs[shift] if shift < len(outs) else "", "inT": in_t, "outT": out_t,
-                     "comment": comment, "byName": by, "at": _now()}
-    _write_days(ref, kind, owner, name, month, days)
-    return {"ok": True, "days": days}
+        fix = {"status": "fix", "line": line, "shift": shift, "oldIn": ins[shift],
+               "oldOut": outs[shift] if shift < len(outs) else "", "inT": in_t, "outT": out_t,
+               "comment": comment, "byName": by, "at": _now()}
+
+        def mutate(days):
+            days[key] = fix
+    return {"ok": True, "days": _update_days(db, ref, kind, owner, name, month, mutate)}
+
+
+def _update_days(db, ref, kind, owner, owner_name, month, mutate):
+    """Reads the document's days, lets mutate(days) change them and writes them
+    back, in one transaction; returns the days written."""
+    @firestore.transactional
+    def run(tx):
+        snap = ref.get(transaction=tx)
+        days = ((snap.to_dict() or {}).get("days") or {}) if snap.exists else {}
+        mutate(days)
+        # The listed fields are replaced whole (days too); a month's signature stays.
+        tx.set(ref, {"kind": kind, "ownerId": owner, "ownerName": owner_name, "month": month, "days": days},
+               merge=["kind", "ownerId", "ownerName", "month", "days"])
+        return days
+    return run(db.transaction())
 
 
 def _at(day, hhmm):
     """A punch time on a day (Israel time) as a UTC datetime."""
     d = datetime.strptime(day + " " + hhmm, "%Y-%m-%d %H:%M").replace(tzinfo=TZ)
     return d.astimezone(timezone.utc)
+
+
+# The fields a punch made by an accepted fix copies from its shift's other punch.
+_PUNCH_COPY = ("workerId", "workerName", "hrId", "clientId", "site")
 
 
 def _resolve(db, t_ref, caller, body):
@@ -409,7 +429,9 @@ def _resolve(db, t_ref, caller, body):
     entry = days.get(key)
     if not entry or entry.get("status") != "fix":
         return {"error": "Nothing to resolve"}
+    seen = dict(entry)  # the proposal as read: the transaction applies it only while it is still this one
     by = _caller_name(db, caller["uid"])
+    writes = []  # (reference, fields, create?)
     if body.get("accept"):
         wid, day = key.split("|", 1)
         old = str(entry.get("line") or "").split("|")
@@ -422,13 +444,17 @@ def _resolve(db, t_ref, caller, body):
              .where(filter=FieldFilter("ts", ">=", start - timedelta(hours=6)))
              .where(filter=FieldFilter("ts", "<", start + timedelta(days=2))))
         ps = sorted(((p, p.to_dict() or {}) for p in q.stream()), key=lambda x: x[1].get("ts"))
-        p_in = next((p for p, d in ps if d.get("type") == "in" and d.get("time") == old_in
-                     and d.get("ts").astimezone(TZ).strftime("%Y-%m-%d") == day), None)
-        p_out = None
-        if p_in is not None:
-            after = [x for x in ps if x[1].get("ts") > p_in.to_dict().get("ts")]
-            p_out = next((p for p, d in after if d.get("type") == "out" and d.get("time") == old_out), None)
-        if p_in is None or p_out is None:
+        on_day = lambda d: d.get("ts").astimezone(TZ).strftime("%Y-%m-%d") == day
+        p_in = p_out = None
+        if old_in:
+            p_in = next(((p, d) for p, d in ps if d.get("type") == "in" and d.get("time") == old_in and on_day(d)), None)
+            if p_in is not None and old_out:
+                after = [x for x in ps if x[1].get("ts") > p_in[1].get("ts")]
+                p_out = next(((p, d) for p, d in after if d.get("type") == "out" and d.get("time") == old_out), None)
+        elif old_out:  # a shift with no IN: its OUT on that day
+            p_out = next(((p, d) for p, d in ps if d.get("type") == "out" and d.get("time") == old_out and on_day(d)), None)
+        # A shift with no OUT (or no IN) gets the missing punch; the ones it had must be found.
+        if (old_in and p_in is None) or (old_out and p_out is None) or (p_in is None and p_out is None):
             return {"error": "The shift's punches were not found — edit them in the punch log"}
         in_ts = _at(day, entry["inT"])
         out_ts = _at(day, entry["outT"])
@@ -437,10 +463,18 @@ def _resolve(db, t_ref, caller, body):
         stamp = {"editedBy": "approval", "editedAt": _now()}
         # day (YYYY-MM-DD) and date (DD/MM/YYYY, what the punch log shows)
         # follow the new time: an out moved past midnight is on the next day.
-        out_local = out_ts.astimezone(TZ)
-        p_in.reference.update(dict(stamp, time=entry["inT"], ts=in_ts))
-        p_out.reference.update(dict(stamp, time=entry["outT"], ts=out_ts,
-                                    day=out_local.strftime("%Y-%m-%d"), date=out_local.strftime("%d/%m/%Y")))
+        in_local, out_local = in_ts.astimezone(TZ), out_ts.astimezone(TZ)
+        in_f = dict(stamp, time=entry["inT"], ts=in_ts, day=in_local.strftime("%Y-%m-%d"), date=in_local.strftime("%d/%m/%Y"))
+        out_f = dict(stamp, time=entry["outT"], ts=out_ts, day=out_local.strftime("%Y-%m-%d"), date=out_local.strftime("%d/%m/%Y"))
+        base = (p_in or p_out)[1]
+        for found, fields, typ in ((p_in, in_f, "in"), (p_out, out_f, "out")):
+            if found is not None:
+                writes.append((found[0].reference, fields, False))
+            else:
+                new_ref = t_ref.collection("punches").document()
+                doc = {k: base[k] for k in _PUNCH_COPY if base.get(k) is not None}
+                doc.update(fields, id=new_ref.id, type=typ, archived=False)
+                writes.append((new_ref, doc, True))
         # The day's line with that shift's times replaced (the review compares lines).
         if len(old) == 4:
             ins, outs = old[2].split(","), old[3].split(",")
@@ -452,10 +486,25 @@ def _resolve(db, t_ref, caller, body):
             new_line = f"{wid}|{day}|{','.join(ins)}|{','.join(outs)}"
         else:
             new_line = f"{wid}|{day}|{entry['inT']}|{entry['outT']}"
-        entry.update(status="fixed", line=new_line)
+        entry = dict(entry, status="fixed", line=new_line)
     else:
-        entry.update(status="rejected")
+        entry = dict(entry, status="rejected")
     entry.update(resolvedBy=by, resolvedAt=_now())
-    days[key] = entry
-    ref.update({"days": days})
+
+    # The proposal re-read, the punches and the entry written, in one
+    # transaction: two accepts at once never both move the punches.
+    @firestore.transactional
+    def apply(tx):
+        cur = ref.get(transaction=tx)
+        if ((cur.to_dict() or {}).get("days") or {}).get(key) != seen:
+            return False
+        for r, fields, create in writes:
+            if create:
+                tx.create(r, fields)
+            else:
+                tx.update(r, fields)
+        tx.update(ref, {FieldPath("days", key).to_api_repr(): entry})
+        return True
+    if not apply(db.transaction()):
+        return {"error": "Nothing to resolve"}
     return {"ok": True, "entry": entry}

@@ -116,7 +116,11 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
       setTimeout(() => nameRef.current?.focus(), 0);
       return;
     }
-    api.commitClient(editId, clientRecordOf(form, b, c.color || ''));
+    const rec = clientRecordOf(form, b, c.color || '');
+    // Without Edit pay the worker pay stays as it was, older OT / Shabbat rates
+    // too (firestore.rules → clients refuses any change to them).
+    if (!info.canPay) Object.assign(rec, { defaultHourlyRate: c.defaultHourlyRate ?? null, defaultOtRate: c.defaultOtRate ?? null, defaultShabbatRate: c.defaultShabbatRate ?? null });
+    api.commitClient(editId, rec);
   };
   React.useEffect(() => {
     clientWindow.current = { seq: props.seq, save };
@@ -218,7 +222,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
             )}
             <FieldRow>
               <Field label={tr('Worker pay')} htmlFor="cDefRate">
-                <RateInput id="cDefRate" unit={tr('₪/hour')} step={0.5} placeholder="—" value={f.defRate} onChange={e => set('defRate', e.target.value)} />
+                <RateInput id="cDefRate" unit={tr('₪/hour')} step={0.5} placeholder="—" value={f.defRate} disabled={!info.canPay} readOnly={!info.canPay} onChange={e => set('defRate', e.target.value)} />
               </Field>
               {!daily && (
                 <Field label={tr('Client pays')} htmlFor="cBillMain">

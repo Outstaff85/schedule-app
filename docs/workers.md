@@ -24,7 +24,7 @@ One object per worker in the global `workers` array. It is saved as part of the 
 | `schedule` | 7 items, Sunday first: `{type:'work'|'off', start:'HH:MM'|null, end}` |
 | `startDate` / `workStartDate` | same value, one input; `startDate` drives the contract warning, `workStartDate` goes to Form 101 |
 | `expiryEnabled`, `expiryMonths`, `expiryWarnMonths` | opt-in contract-term warning |
-| `token` | punch-link token (`genToken()`, 8 chars) |
+| `token` | punch-link token: `genToken()` (`src/manager/data/ids.ts`) — 16 random bytes from `crypto.getRandomValues` as base64url, 22 characters; a worker a supplier adds gets the same kind from the server (`supplierAddWorker`, `secrets.token_urlsafe(16)`); older 8-character tokens keep working |
 | `createdAt` | ISO; Form 101 signature date |
 | `docType` | `israeli_id` (default) / `passport` |
 | `docId` | ID or passport number. Old records may hold it inside `address` as `ת.ז. 123…`/`Passport X` — always read it through `workerDocId(w)` / `workerAddress(w)` |

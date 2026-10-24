@@ -16,6 +16,7 @@ import {
   IconTruckDelivery, IconUpload, IconUser, IconUserPlus, IconUsers, IconUsersGroup, IconWallet, IconAlertTriangle, IconLock, IconTemplate, IconCalendarEvent, IconUserEdit, IconClockEdit, IconTable, IconList, IconEye,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
+import { getSession } from './data/session';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -353,13 +354,22 @@ export function UserWindow({ props, info, api }: { props: UserProps; info: UserW
     setBusy(true);
     try {
       if (editing) {
-        if (f.password) {
-          const pr = await api.adminCall({ action: 'resetUserPassword', id: u!.id, password: f.password });
-          if (!pr || pr.error) { setErr(tr(String(pr?.error || '')) || tr('Password not changed')); return; }
-        }
+        // The fields first, the password after: a new password ends the login's
+        // sessions (the caller's own too), so nothing may be sent after it.
         // Rights are sent as they are in the form; the server ends the user's sessions only when they really changed.
         const j = await api.adminCall(updateBody(u!.id, f, adminRow));
         if (!j || j.error) { setErr(tr(String(j?.error || '')) || tr('Save failed')); return; }
+        if (f.password) {
+          const pr = await api.adminCall({ action: 'resetUserPassword', id: u!.id, password: f.password });
+          if (!pr || pr.error) { setErr(tr(String(pr?.error || '')) || tr('Password not changed')); return; }
+          if (u!.id === getSession()?.uid) {
+            // One's own password: this device's session has just ended — sign out on purpose.
+            api.closeModal('userFormOverlay');
+            api.toast(tr('Password changed — please sign in again'));
+            window.setTimeout(() => api.signOut(), 1500);
+            return;
+          }
+        }
         await api.userSaved(u!.id, u!.role, adminRow ? u!.role : f.role, f.fullName.trim());
       } else {
         const j = await api.adminCall(createBody(f));
