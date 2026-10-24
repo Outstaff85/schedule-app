@@ -20,7 +20,9 @@
 //    sent at once in the lab; the queue keeps 5 at most offline and empties when back online; a page deleted
 //    after sending goes as attemptOutcome, one deleted while the queue's write is pending goes with it; the
 //    photo is at most 1600 px; the undecided attempts listed (the lab sends them when the page is left, and
-//    beyond UNDECIDED_MAX the oldest — never with a new shot or pick); every unsent attempt keeps its photo
+//    beyond UNDECIDED_MAX the oldest — never with a new shot or pick; each is on the phone marked undecided from its
+//    photo on, so a lab page dropped without pagehide loses none: the next lab page sends them as kept, QUEUE_MAX a
+//    request, the site leaving them alone); every unsent attempt keeps its photo
 //    (the newest FRAMES_KEPT at full size, the older as the training picture), dropped once sent; a pick of
 //    more pictures than FRAMES_KEPT leaves its first page fixable;
 //  - session.remove of the last page of an undecided camera shot is a Retake (the next shot shares its group),
@@ -247,13 +249,13 @@ function fakeServer() {
   return s;
 }
 const settle = async (n = 60) => { for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r)); };
-function attemptsOn(source, { online = () => true } = {}) {
-  const server = fakeServer(), idb = fakeIDB(), sizes = [], logs = [];
-  let t = 1e6, ids = 0;
+function attemptsOn(source, { online = () => true, idb = fakeIDB(), t0 = 1e6, idPrefix = 'a' } = {}) {
+  const server = fakeServer(), sizes = [], logs = [];
+  let t = t0, ids = 0;
   const surface = (source === 'site' ? Surf.siteSurface : Surf.labSurface)(async () => 'tok');
   const at = new A.Attempts(surface, { log: x => logs.push(x), err: x => logs.push('ERR ' + x) }, {
     idb, fetch: server.fetch, now: () => (t += 1000), online, encode: async c => { sizes.push(c.width + 'x' + c.height); return 'jpeg' + c.width; },
-    newId: () => 'a' + (++ids), setTimeout: () => {}, onOnline: () => () => {},
+    newId: () => idPrefix + (++ids), setTimeout: () => {}, onOnline: () => () => {},
   });
   return { at, server, idb, sizes, logs };
 }
@@ -627,6 +629,64 @@ await run('attempts: the lab sends its oldest undecided attempt as kept beyond U
   assert.equal(site.at.undecidedIds().length, sids.length, 'the site keeps them all for Done');
   assert.equal(site.server.bodies.length, 0);
   return 'UNDECIDED_MAX ' + A.UNDECIDED_MAX;
+});
+
+await run('attempts: the lab keeps each undecided attempt on the phone from its photo on; a page gone without pagehide loses none — the next lab page sends them as kept, QUEUE_MAX a request; the site leaves them alone', async () => {
+  const first = attemptsOn('lab'), ids = [], shown = [];
+  first.at.on(f => shown.push(f.waiting));
+  for (let i = 0; i < 7; i++) ids.push(first.at.newAttempt(frame(60, 40), 60, 40, 'camera'));
+  const fix = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
+  assert.ok(first.at.fixed(ids[0], 0, fix));
+  await first.at.pageDeleted(ids[1], 1);
+  first.at.decide('kept', [ids[6]]);
+  await settle(); await first.at.settle(); await first.at.flush(); await settle();
+  assert.deepEqual(sentAttempts(first.server).map(x => x.id), [ids[6]], 'only the one looked at is sent');
+  const rows = await first.at.queued();
+  assert.deepEqual(rows.map(r => r.a.id).sort(), ids.slice(0, 6).sort(), 'the undecided ones are on the phone (written as soon as their photo is encoded)');
+  assert.ok(rows.every(r => r.undecided && !r.a.outcome), 'marked undecided, outcome unset');
+  assert.equal(join(rows.find(r => r.a.id === ids[0]).a.edgesFixed), join(fix), 'the row written again after a fix');
+  assert.deepEqual(rows.find(r => r.a.id === ids[1]).a.deletedPages, [1], 'and after a page deleted');
+  assert.equal(shown[shown.length - 1], 0, 'In queue counts no undecided row');
+  first.at.flush(); await settle();
+  assert.equal(sentAttempts(first.server).length, 1, 'its own page never sends its undecided rows');
+  // the page dropped without pagehide (no keepUndecided): the site on the same phone leaves the rows alone
+  const site = attemptsOn('site', { idb: first.idb, idPrefix: 's' });
+  await site.at.flush(); await settle();
+  assert.equal(site.server.bodies.length, 0, 'the site never sends them');
+  // a new lab page, two hours later (undecided rows are not the offline queue's hour)
+  const second = attemptsOn('lab', { idb: first.idb, t0: 1e6 + 7200e3, idPrefix: 'b' });
+  await second.at.flush(); await settle();
+  const sent = sentAttempts(second.server);
+  assert.deepEqual(sent.map(x => x.id).sort(), ids.slice(0, 6).sort(), 'every leftover sent');
+  assert.ok(sent.every(x => x.outcome === 'kept'), 'as kept');
+  assert.equal(join(sent.find(x => x.id === ids[0]).edgesFixed), join(fix));
+  assert.deepEqual(sent.find(x => x.id === ids[1]).deletedPages, [1]);
+  assert.deepEqual(second.server.bodies.filter(b => b.action === 'attempt').map(b => b.attempts.length), [A.QUEUE_MAX, 1], 'QUEUE_MAX a request');
+  assert.equal((await second.at.queued()).length, 0, 'the queue emptied');
+  assert.ok(second.logs.some(t => t.includes('6 attempt(s) left undecided')), second.logs.join('|'));
+  // offline at the next open: written as kept, then ordinary queued attempts (5 at most)
+  const lost = attemptsOn('lab');
+  for (let i = 0; i < 7; i++) lost.at.newAttempt(frame(60, 40), 60, 40, 'photo');
+  await settle(); await lost.at.settle();
+  let up = false;
+  const off = attemptsOn('lab', { idb: lost.idb, online: () => up, idPrefix: 'c' });
+  await off.at.flush(); await settle();
+  let q = await off.at.queued();
+  assert.equal(q.length, 7); assert.ok(q.every(r => !r.undecided && r.a.outcome === 'kept'), 'kept rows now');
+  await off.at.flush(); await settle();
+  q = await off.at.queued();
+  assert.equal(q.length, A.QUEUE_MAX, 'then the offline queue\'s 5');
+  up = true; await off.at.flush(); await settle();
+  assert.equal(sentAttempts(off.server).length, A.QUEUE_MAX);
+  // a decided row is never overwritten by an undecided write still on its way
+  const race = attemptsOn('lab');
+  let release; race.at.env.encode = () => new Promise(r => { release = () => r('late'); });
+  const r1 = race.at.newAttempt(frame(60, 40), 60, 40, 'camera');
+  race.at.fixed(r1, 0, fix); race.at.decide('kept', [r1]);
+  release(); await settle(); await race.at.settle(); await settle();
+  assert.deepEqual(sentAttempts(race.server).map(x => x.id + ':' + x.outcome), [r1 + ':kept']);
+  assert.equal((await race.at.queued()).length, 0, 'no undecided row left behind');
+  return 'leftovers ' + sent.length;
 });
 
 await run('attempts: every unsent attempt keeps its photo — the newest FRAMES_KEPT at full size, the older as the training picture —, let go once sent', async () => {

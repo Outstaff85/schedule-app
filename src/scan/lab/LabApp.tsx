@@ -129,8 +129,11 @@ function startLab(l: Lab): void {
   session.attempts.start();
   l.kinds.start();
   // the page left: the attempts still undecided go as kept (written to the queue on the phone first, sent now
-  // or on the next open)
+  // or on the next open). A phone often gives no pagehide (the tab swiped away, the browser killed): each
+  // attempt is on the phone from its photo on, marked undecided, and the next open sends those as kept
+  // (attempts.ts flush); hidden (fired more reliably than pagehide) sends what is decided and waiting
   addEventListener('pagehide', () => keepUndecided(l));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void session.attempts.flush(); });
   if (session.readers) void session.readers.load();
   l.capReady = engines.ensureCap().then(() => {}, e => log.log('Accurate model: ' + errText(e)));
   void l.capReady.then(async () => {

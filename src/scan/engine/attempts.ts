@@ -11,7 +11,12 @@
 //
 // Unlike the old lab, nothing is decided for the user (owner, 2026-10-24): a new shot or pick does not mark the
 // pages before it as looked at — they stay undecided until Looks good, Retake, Done or a delete (the lab, with
-// no Done: until the page is left, or beyond UNDECIDED_MAX undecided ones, the oldest sent as kept). Every
+// no Done: until the page is left, or beyond UNDECIDED_MAX undecided ones, the oldest sent as kept). The lab
+// writes each attempt to the queue on the phone as soon as its photo is encoded, marked undecided (outcome unset;
+// the row written again on a fix or a page deleted, and replaced once decided), so a tab swiped away or a
+// browser killed before pagehide loses none: the next lab page sends another page's undecided rows as kept (as
+// the site's Done keeps the ones left alone), in requests of QUEUE_MAX. Undecided rows are not the offline queue:
+// they are left out of its 5 / an hour and of In queue, and the site never sends them. Every
 // attempt not sent yet keeps its photo for the corner editor: the newest FRAMES_KEPT at full size, the older
 // ones as their training picture (at most PICTURE_MAX px; the corners are shares of the photo, so the editor
 // and the recut take either), dropped once it is sent, discarded or done.
@@ -57,7 +62,8 @@ export interface KeptFrame { frame: OffscreenCanvas; w: number; h: number }
 interface Frames { full: KeptFrame | null; small: KeptFrame }
 
 interface Live { a: Omit<AttemptData, 'picture'>; picture: Promise<string>; src: EdgeSource | null }
-interface Queued { a: AttemptData; at: number }
+/** A row of the queue on the phone; `undecided` (the lab): not decided yet, by the page it names. */
+interface Queued { a: AttemptData; at: number; undecided?: string }
 
 /** What the attempts take of the browser (the tests give stand-ins). */
 export interface AttemptsEnv {
@@ -134,6 +140,11 @@ export class Attempts {
   private figuresAt = 0;
   private listeners = new Set<(f: TrainFigures) => void>();
   private offOnline: (() => void) | null = null;
+  /** This page's mark on its undecided rows: a row marked by another page is left over from a page gone without
+   *  being left (its tab swiped away, the browser killed). */
+  private readonly owner = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  /** Attempt id -> the end of its writes to the queue on the phone (each attempt's rows written in order). */
+  private readonly rowChain = new Map<string, Promise<void>>();
 
   constructor(readonly surface: ScanSurface, private log: { log(t: string): void; err(t: string): void }, env: Partial<AttemptsEnv> = {}) {
     this.env = { ...defaultAttemptsEnv(), ...env };
@@ -167,7 +178,9 @@ export class Attempts {
       edgesModel: null, edgesMore: [], edgesFixed: null, edgesMoreFixed: [], model: meta.model ?? this.modelsVersion, way: meta.way || '', pages: 1, deletedPages: [] };
     const picture = this.env.encode(c).catch(e => { this.log.err('Training photo: ' + errText(e)); return ''; });
     this.retakeGroup = null;
-    this.onScreen.push({ a, picture, src: meta.src || null });
+    const live: Live = { a, picture, src: meta.src || null };
+    this.onScreen.push(live);
+    this.keepOnPhone(live);
     this.frames.set(id, { full: { frame, w, h }, small: { frame: c, w: c.width, h: c.height } });
     for (const key of [...this.frames.keys()].slice(0, -FRAMES_KEPT)) (this.frames.get(key) as Frames).full = null;  // full size: the newest few only (memory)
     if (!this.holdForDone && this.onScreen.length > UNDECIDED_MAX) this.decide('kept', this.onScreen.slice(0, this.onScreen.length - UNDECIDED_MAX).map(x => x.a.id));
@@ -206,6 +219,7 @@ export class Attempts {
       while (l.a.edgesMoreFixed.length < Math.max(more, pg)) l.a.edgesMoreFixed.push(null);
       l.a.edgesMoreFixed[pg - 1] = copyQ(pts);
     } else l.a.edgesFixed = copyQ(pts);
+    this.keepOnPhone(l);
     return true;
   }
 
@@ -231,8 +245,39 @@ export class Attempts {
     this.frames.clear();
   }
 
-  /** The window closed without Done: the attempts on it are forgotten (nothing is sent), their photos too. */
-  drop(): void { this.onScreen = []; this.heldForDone = []; this.frames.clear(); this.retakeGroup = null; }
+  /** The window closed without Done: the attempts on it are forgotten (nothing is sent), their photos too (and
+   *  the lab's undecided rows on the phone). */
+  drop(): void {
+    if (!this.holdForDone) for (const l of this.onScreen) { const id = l.a.id; this.track(this.chained(id, () => this.del(id))); }
+    this.onScreen = []; this.heldForDone = []; this.frames.clear(); this.retakeGroup = null;
+  }
+
+  /** fn run after the earlier writes of attempt id's rows (even a failed one). */
+  private chained(id: string, fn: () => Promise<void>): Promise<void> {
+    const p = (this.rowChain.get(id) || Promise.resolve()).then(fn, fn);
+    const tail = p.catch(() => {});
+    this.rowChain.set(id, tail);
+    void tail.then(() => { if (this.rowChain.get(id) === tail) this.rowChain.delete(id); });
+    return p;
+  }
+  /** A write to the queue on the phone that settle() waits for. */
+  private track(w: Promise<void>): void {
+    const t = w.catch(() => {});
+    this.writing.add(t);
+    void t.then(() => { this.writing.delete(t); });
+  }
+
+  /** The lab (no Done): an undecided attempt written to the queue on the phone as it now is (its photo once
+   *  encoded, the corners fixed, the pages deleted), marked undecided by this page - so a page gone without
+   *  pagehide loses none of them. Skipped once decided: its decided row follows (chained after this one). */
+  private keepOnPhone(l: Live): void {
+    if (this.holdForDone || !this.onScreen.includes(l)) return;
+    this.track(this.chained(l.a.id, async () => {
+      if (!this.onScreen.includes(l)) return;
+      const a = await this.data(l);
+      if (this.onScreen.includes(l)) await this.put({ a, at: this.env.now(), undecided: this.owner });
+    }));
+  }
 
   private async data(l: Live): Promise<AttemptData> {
     const src = l.src;
@@ -272,13 +317,13 @@ export class Attempts {
    *  IndexedDB write copies it when it begins), so no deleted page is lost on the way. */
   private async queue(l: Live): Promise<void> {
     this.queuing.set(l.a.id, l);
-    const write = (async () => {
+    const write = this.chained(l.a.id, async () => {  // after its undecided rows (the lab), never overwritten by one
       try {
         const a = await this.data(l), at = this.env.now();
         let n = -1;
         while (n !== a.deletedPages.length) { n = a.deletedPages.length; await this.put({ a, at }); }
       } finally { this.queuing.delete(l.a.id); }
-    })();
+    });
     this.writing.add(write);
     try { await write; } finally { this.writing.delete(write); }
     await this.flush();
@@ -295,7 +340,7 @@ export class Attempts {
   async pageDeleted(id: string, pg: number): Promise<void> {
     if (!id) return;
     const held = this.unsent(id) || this.queuing.get(id);
-    if (held) { held.a.deletedPages.push(pg); return; }  // not sent yet: it goes with its deleted pages
+    if (held) { held.a.deletedPages.push(pg); this.keepOnPhone(held); return; }  // not sent yet: it goes with its deleted pages
     const dir = this.attemptDirs.get(id);
     if (dir) { await this.post({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {}); return; }
     if (this.flushing) { this.lateDeletes.set(id, [...(this.lateDeletes.get(id) || []), pg]); return; }  // on its way: told once its folder is known
@@ -319,25 +364,40 @@ export class Attempts {
     return j;
   }
 
-  /** The queue sent (the old ones dropped: over an hour, or beyond the newest 5); kept when it fails. */
+  /** The attempts waiting to be sent (the undecided rows are not waiting). */
+  private async waiting(): Promise<number> { return (await this.queued()).filter(x => !x.undecided).length; }
+
+  /** The queue sent (the old ones dropped: over an hour, or beyond the newest 5), QUEUE_MAX a request (the
+   *  server takes 10 at most); kept when it fails. The undecided rows are left alone, except in the lab another
+   *  page's (gone without being left): written as kept and sent too - after the 5 / an hour are applied, so none
+   *  is lost online; offline they are then ordinary queued attempts. */
   flush(): Promise<void> {
     if (this.flushing) { this.again = true; return this.flushing; }
     this.flushing = (async () => {
-      let items = (await this.queued()).sort((x, y) => x.at - y.at);
+      const all = (await this.queued()).sort((x, y) => x.at - y.at);
+      let items = all.filter(x => !x.undecided);
       const now = this.env.now();
       const old = items.filter((x, i) => now - x.at > QUEUE_MS || i < items.length - QUEUE_MAX);
       for (const x of old) await this.del(x.a.id);
       items = items.filter(x => !old.includes(x));
+      if (!this.holdForDone) {
+        const left = all.filter(x => x.undecided && x.undecided !== this.owner);
+        for (const x of left) { const kept: Queued = { a: { ...x.a, outcome: 'kept' }, at: now }; await this.put(kept); items.push(kept); }
+        if (left.length) this.log.log('Training: ' + left.length + ' attempt(s) left undecided by an earlier page sent as kept');
+      }
       if (items.length && this.env.online()) {
         try {
-          const j = await this.post({ action: 'attempt', attempts: items.map(x => x.a) });
-          for (const [id, dir] of Object.entries((j.dirs || {}) as Record<string, string>)) {
-            this.attemptDirs.set(id, dir);
-            for (const pg of this.lateDeletes.get(id) || []) void this.post({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {});
-            this.lateDeletes.delete(id);
+          while (items.length) {
+            const batch = items.slice(0, QUEUE_MAX);
+            const j = await this.post({ action: 'attempt', attempts: batch.map(x => x.a) });
+            for (const [id, dir] of Object.entries((j.dirs || {}) as Record<string, string>)) {
+              this.attemptDirs.set(id, dir);
+              for (const pg of this.lateDeletes.get(id) || []) void this.post({ action: 'attemptOutcome', dir, outcome: 'deleted', page: pg }).catch(() => {});
+              this.lateDeletes.delete(id);
+            }
+            for (const x of batch) await this.del(x.a.id);
+            items = items.slice(batch.length);
           }
-          for (const x of items) await this.del(x.a.id);
-          items = [];
           void this.figures(true);
         } catch (e) { this.log.log('Training: kept on the phone (' + errText(e) + ')'); }
       }
@@ -352,6 +412,6 @@ export class Attempts {
     if (this.surface.source !== 'lab' || (!now && this.env.now() - this.figuresAt < 60e3)) return;
     this.figuresAt = this.env.now();
     try { const j = await this.post({ action: 'stats' }); this.fresh = { n: Number(j.attemptsSince) || 0, at: Number(j.attemptsAt) || 15 }; } catch { this.fresh = null; }
-    this.show((await this.queued()).length);
+    this.show(await this.waiting());
   }
 }
