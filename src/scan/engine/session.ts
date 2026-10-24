@@ -37,7 +37,7 @@
 // a fresh frame; a wake, a sleep or a pick in between leaves it to them.
 import { Attempts, type AttemptsEnv } from './attempts';
 import { Camera, type GetUserMedia, type VideoLike } from './camera';
-import { Engines } from './engines';
+import { Engines, type EngineSettings } from './engines';
 import { Live, trackFollower, type Bitmapper, type Figures, type Follower, type SessionClock } from './live';
 import { ScanLog } from './log';
 import { Readers } from './readers';
@@ -274,6 +274,23 @@ export class ScanSession {
   setAuto(on: boolean): void { this.auto = on; }
   /** The follow between the model's answers on or off (the lab's tools). */
   setFollow(on: boolean): void { this.live.follow = on; }
+
+  /** The lab's settings changed (the models, the backend): nothing of the old way stays on the screen — no
+   *  frame, no figures — and the frame and its follow start again on the new way (the lab's index.html, its
+   *  settings' onchange). A shot in work is dropped. */
+  async switchWay(patch: Partial<EngineSettings>): Promise<void> {
+    const was = this.live.running;
+    this.live.running = false; this.held = false;
+    this.shotId++; this.shotInWork = false;
+    while (this.live.inFlight) await this.sleepMs(30);
+    this.live.forget();
+    this.captureMs = null;
+    this.emit('frame', null, false);
+    this.emitFigures();
+    this.engines.setSettings(patch);
+    await this.engines.ensureSession().catch(e => this.log.log('Model: ' + errText(e)));
+    if (was && this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
+  }
 
   /** The live frame starts again from a fresh frame (after a shot: the lab's Looks good / Retake); with the
    *  camera put away by sleep(), it starts again on the video it was shown in. */

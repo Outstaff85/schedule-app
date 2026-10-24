@@ -3,7 +3,8 @@
 // (the corner editor, a step inside the screen), Delete (no question: the Undo snack) and Looks good (this page
 // only). A page the host kept from before (kept) has its type and Delete only: its photo is gone. A step inside
 // the scanner screen, not a window: a tap on the dimmed ground around it, a swipe down or Escape (the screen's)
-// goes back to the camera, and so do Delete and Looks good.
+// goes back to the camera, and so do Delete and Looks good. In the lab (onTick) a tick beside the chips sends the
+// type shown for training at once (src/scan/lab/kinds.ts) — only on a page the document type model answered.
 import * as React from 'react';
 import { IconCheck, IconCrop, IconTrash } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
@@ -16,7 +17,7 @@ import { kindOf, type UiPage } from './useScanSession';
 /** How sure the model is, as the chip says it. */
 export const percent = (conf: number): string => Math.round(conf * 100) + '%';
 
-export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClose, note }: {
+export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClose, note, onTick, tickSent }: {
   page: UiPage;
   /** its place in the strip (1-based) */
   index: number;
@@ -27,6 +28,10 @@ export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClo
   onClose: () => void;
   /** a line under the buttons (this page can no longer be fixed) */
   note?: string | null;
+  /** the lab: the type shown is right — sent for training (shown only when given) */
+  onTick?: () => void;
+  /** the lab: this page's type was sent already */
+  tickSent?: boolean;
 }) {
   const kind = kindOf(page);
   const startY = React.useRef<number | null>(null);
@@ -56,6 +61,11 @@ export function PageView({ page, index, onChoose, onFix, onDelete, onKeep, onClo
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
+        {onTick && (
+          <Button size="sm" on={tickSent} disabled={tickSent} onClick={onTick} data-testid="kind-tick" data-sent={tickSent || undefined} className="justify-self-start">
+            <IconCheck className="size-[18px]" />{tickSent ? tr('Sent for training') : tr('This type is right')}
+          </Button>
+        )}
       </div>
       {page.kept
         ? <div className="grid gap-2">

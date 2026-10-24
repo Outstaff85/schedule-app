@@ -2,7 +2,8 @@
 // docs/tests.md): the engine's pure functions (the other documents' shape, a picture worked on any engine, a
 // document lying on another, picked files in order, a way failure's kind), the kept session, its training
 // attempts, and pages given to the session as its camera would (CI has no camera and no models). Nothing in
-// the app calls them.
+// the app calls them. The scanner lab's page (/scan-next/, src/scan/lab/) loads them too, for its own session
+// (injectInto).
 import { keptSession } from './keep';
 import { WHOLE_PAGE, docShape } from './engine/geometry';
 import { analyzePicture, defaultFilesEnv, pickedPictures } from './engine/files';
@@ -30,9 +31,15 @@ let seq = 0;
 /** Pages given to the session as a shot (camera) or a pick's picture would give them — each first as cut, then
  *  with its readouts. A new photo starts a training attempt (its frame w×h, the model's corners `edges`);
  *  `attempt` gives a shot's pages again (refined: the same ids). Returns the attempt and the pages' ids. */
-export async function inject(o: { pics: InjectPage[]; attempt?: string; camera?: boolean; w?: number; h?: number; edges?: Quad }): Promise<{ attempt: string; ids: string[] }> {
+export type InjectOpts = { pics: InjectPage[]; attempt?: string; camera?: boolean; w?: number; h?: number; edges?: Quad };
+export async function inject(o: InjectOpts): Promise<{ attempt: string; ids: string[] }> {
   const s = keptSession();
   if (!s) throw new Error('no scan session');
+  return injectInto(s, o);
+}
+
+/** The same into a given session (the scanner lab's page, src/scan/lab/LabApp.tsx: window.ScanLab.inject). */
+export async function injectInto(s: ScanSession, o: InjectOpts): Promise<{ attempt: string; ids: string[] }> {
   const before = o.attempt ? [...s.pages.values()].find(p => p.record.attempt === o.attempt) : undefined;
   let record: ShotRecord;
   if (before) record = before.record;

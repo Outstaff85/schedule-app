@@ -1031,55 +1031,127 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sentFix = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts).find(x => x.id === fixed.id) || {};
   ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && fixed.sent && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20 && Math.round(sentFix.edgesFixed[0][1] * 100) === 15,
     'scan corner editor: Fix corners opens the editor on the page\'s photo; a dragged corner is the attempt\'s answer (edgesFixed), sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
-  // The lab's own checks, on the plain lab page (/scan-lab/) until it is the same scanner too (docs/scan-plan.md →
-  // S9, package 7): why a way to run the models failed is kept on the phone (the last 8) and shown in the Errors
-  // block, apart from the loading log; a kept page's document type is the model's answer chosen with a ✓
+  // The scanner lab on the new stack (/scan-next/, src/scan/lab/; docs/scan-plan.md → S9, package 7): the same
+  // full-screen scanner in lab mode, on the lab's own surface (/scan-lab/ and its models — never the site's /scan/),
+  // with the Lab tools drawer — the figures, the Errors block (why a way to run the models failed, kept on the
+  // phone: the last 8) apart from the loading log — and the lab's training collection: a page's document type is
+  // the model's answer, sent only when the user ticks it (keep) or picks another (once, later or when the page is
+  // left), never untouched and never with no model; Looks good sends the attempt at once (no Done in the lab).
   const labPage = await page(ctx);
-  await labPage.goto(BASE + 'scan-lab/');
-  await labPage.waitForFunction(() => typeof noteFail === 'function' && typeof addKind === 'function', null, {timeout: 15000}).catch(() => {});
-  const wayFails = await labPage.evaluate(() => {
-    const ls = localStorage;
+  await labPage.setViewportSize({width: 390, height: 844});
+  const labCalls = [], labReqs = [];
+  labPage.on('request', r => labReqs.push(r.url()));
+  await labPage.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
+    const body = JSON.parse(r.request().postData() || '{}');
+    labCalls.push(body);
+    if (body.action === 'attempt') return r.fulfill({status:200, contentType:'application/json', headers:CORS,
+      body: JSON.stringify({ok: true, dirs: Object.fromEntries((body.attempts || []).map(a => [a.id, 'attempts/new/' + a.source + '/2026-10-20/' + a.id]))})});
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'stats' ? {ok: true, attemptsSince: 3, attemptsAt: 15} : {ok: true})});
+  });
+  await labPage.goto(BASE + 'scan-next/');
+  await labPage.waitForFunction(() => window.ScanLab && document.querySelector('[data-testid="scanner"][data-mode="lab"] [data-testid="scan-status"]'), null, {timeout: 20000}).catch(() => {});
+  const labLook = await labPage.evaluate(async () => {
+    const s = document.querySelector('[data-testid="scanner"][data-mode="lab"]'), b = s ? s.getBoundingClientRect() : {}, S = window.ScanLab && ScanLab.session;
+    const r = {full: !!s && b.left === 0 && b.top === 0 && b.width === 390 && b.height === 844, noScroll: document.documentElement.scrollWidth <= 390,
+      parts: ['scan-status', 'scan-bar', 'scan-shutter', 'scan-pick', 'scan-auto', 'scan-done', 'lab-tools'].filter(t => s && s.querySelector('[data-testid="' + t + '"]')).join(),
+      show: ((s && s.querySelector('[data-testid="scan-done"]')) || {}).textContent, surface: S && [S.surface.base, S.surface.cache, S.surface.source].join()};
+    // the models start (and fail here: no models in the tests) before the way failures are looked at
+    await T.until(() => ['failed', 'ready'].includes(ScanLab.session.engines.state.phase), 20000);
+    document.querySelector('[data-testid="lab-tools"]').click();
+    r.open = await T.until(() => document.querySelector('[data-testid="lab-drawer"]'), 4000);
+    r.blocks = ['lab-figures', 'lab-errors', 'lab-log', 'lab-settings', 'lab-readouts'].filter(t => document.querySelector('[data-testid="' + t + '"]')).join();
+    r.tiles = document.querySelectorAll('[data-testid="lab-figures"] [data-slot="figures"] > button').length;
+    r.logged = await T.until(() => /GPU \(WebGPU\) in this browser/.test((document.querySelector('[data-testid="lab-log"]') || {}).textContent || ''), 4000);
+    return r;
+  }).catch(e => ({error: e.message}));
+  ok(labLook.full && labLook.noScroll && labLook.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done,lab-tools' && labLook.show === 'Show what the models read'
+    && labLook.surface === '/scan-lab/,scan-lab-models,lab' && labLook.open && labLook.blocks === 'lab-figures,lab-errors,lab-log,lab-settings,lab-readouts' && labLook.tiles === 10 && labLook.logged,
+    'scanner lab (/scan-next/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (10 tiles), Errors, the loading log, Settings and the readouts ' + JSON.stringify(labLook));
+  const wayFails = await labPage.evaluate(async () => {
+    const L = ScanLab, ls = localStorage;
     ls.removeItem('scanWayFails');
-    noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
-    noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
-    for (let i = 0; i < 9; i++) noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    for (let i = 0; i < 9; i++) L.log.noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    L.log.noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
+    L.log.noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
     const list = JSON.parse(ls.getItem('scanWayFails'));
-    document.getElementById('errs').textContent = ''; document.getElementById('log').textContent = '';
-    noteFail('CPU ×1 · bg', 'no answer for 25 s');
-    showFails();
-    const logText = document.getElementById('errs').textContent, loading = document.getElementById('log').textContent;
+    L.clearLogs();
+    L.log.noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    L.log.showFails();
+    await T.tick(300);
+    const errs = document.querySelector('[data-testid="lab-errors"]').textContent, loading = document.querySelector('[data-testid="lab-log"]').textContent;
     ls.removeItem('scanWayFails');
-    return {n: list.length, kinds: [failKind('WebGPU device was lost'), failKind('RangeError: Array buffer allocation failed'), failKind('no answer for 25 s'), failKind('model download failed: HTTP 404')].join(),
-      last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)
-        && /^\d\d:\d\d:\d\d Failed — CPU ×1/m.test(logText) && !/Fail/.test(loading)};
+    const lines = errs.split('\n'), head = lines.findIndex(x => /^Earlier failures on this device \(last 8, newest on top\):/.test(x));
+    return {n: list.length, kinds: [...new Set(list.map(f => f.kind))].sort().join(), last: list[7].kind, head,
+      listed: lines.slice(head + 1, head + 9).filter(x => /^ {2}\d{4}-\d\d-\d\d \d\d:\d\d — /.test(x)).length,
+      gpu: /GPU live \+ CPU capture · bg: GPU \(/.test(errs), memory: /bg threads \+ 1: memory \(/.test(errs), hang: /CPU ×1 · bg: hang \(/.test(errs),
+      now: /^\d\d:\d\d:\d\d Failed — CPU ×1 · bg: hang/m.test(errs), apart: !/Fail/.test(loading)};
   }).catch(e => ({error: e.message}));
-  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,memory,hang,error' && wayFails.last === 'hang' && wayFails.shown,
-    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the Errors block, apart from the loading log ' + JSON.stringify(wayFails));
-  // only the user's action is a label — a type picked (sent later, once) or the ✓ (keep); no choice with no model
-  const kinds = await labPage.evaluate(async () => {
-    const sent = [], geval = eval;  // the page's own scope (its let bindings), as the frame's eval was
-    const was = geval('doctypeSess'), post = trainPost;
-    geval(`doctypeSess = { inputNames: ['img'], run: async () => ({ doctype: { data: [0.05, 0, 0.9, 0.05, 0, 0] }, turn: { data: [1, 0, 0, 0] } }) }`);
-    window.trainPost = async body => { sent.push(body); return { ok: true }; };
-    const c = document.createElement('canvas'); c.width = 60; c.height = 40;
-    const page = () => { const w = document.createElement('div'), im = new Image(); im.src = c.toDataURL('image/jpeg'); w.append(im); document.body.append(w); return { w, im }; };
-    const here = kindsHere();
-    const a = page(), b = page(), quiet = page();
-    await addKind(a.w, a.im); await addKind(b.w, b.im); await addKind(quiet.w, quiet.im);
-    const sa = a.w.querySelector('select.kind'), sb = b.w.querySelector('select.kind');
-    a.w.querySelector('button.kind-ok').click(); a.w.querySelector('button.kind-ok').click();  // once
-    sb.value = 'id_front'; sb.onchange(); sendKind(sb);
-    geval('doctypeSess = null');
-    const none = page(); await addKind(none.w, none.im);
-    window.trainPost = post; window.__ds = was; geval('doctypeSess = window.__ds');
-    for (const x of [a, b, quiet, none]) x.w.remove();
-    const ex = sent.map(x => x.examples[0]);
-    return { here, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage].join(),
-      second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined].join(), noModel: !none.w.querySelector('select.kind') };
-  }).catch(e => ({error: e.message}));
-  ok(kinds.here && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel,
-    'scanner lab: a kept page shows the model\'s document type; only the user\'s ✓ or pick is sent, once — never an untouched answer, no choice with no model ' + JSON.stringify(kinds));
+  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,hang,memory' && wayFails.last === 'memory' && wayFails.head >= 0 && wayFails.listed === 8 && wayFails.gpu && wayFails.memory && wayFails.hang && wayFails.now && wayFails.apart,
+    'scanner lab (/scan-next/): a way that failed is kept with its reason (GPU, memory, hang), the last 8, and shown in the drawer\'s Errors block — "Earlier failures on this device (last 8" and each failure with its time —, apart from the loading log ' + JSON.stringify(wayFails));
+  // the types: the model's answer on each page; only the user's tick (keep) or pick is sent, once — never an
+  // untouched answer, no tick with no model; then Show what the models read, and Looks good sending the attempt
+  const labKinds = await labPage.evaluate(async jpg => {
+    T.esc();
+    await T.until(() => !document.querySelector('[data-testid="lab-drawer"]'), 3000);
+    const sure = {doctype: 'sefach', conf: 0.9, turn: 0, turnConf: 1};
+    const a = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), b = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]});
+    const quiet = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), none = await ScanLab.inject({pics: [{b64: jpg}]});
+    const r = {thumbs: await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind="sefach"]').length === 3 && document.querySelectorAll('[data-testid="scan-thumb"]').length === 4, 8000)};
+    const open = id => { document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"]').click(); return T.until(() => document.querySelector('[data-testid="page-view"][data-id="' + id + '"]'), 3000); };
+    const close = async () => { const v = document.querySelector('[data-testid="page-view"]'); if (v) v.click(); await T.until(() => !document.querySelector('[data-testid="page-view"]'), 3000); };
+    await open(a.ids[0]);
+    r.chosen = (document.querySelector('[data-testid="kind-chip"][data-state="on"]') || {dataset: {}}).dataset.kind;
+    r.pct = (document.querySelector('[data-testid="kind-model"]') || {}).textContent;
+    const tick = document.querySelector('[data-testid="kind-tick"]');
+    r.tick = !!tick;
+    if (tick) { tick.click(); await T.tick(50); tick.click(); }  // once
+    r.sentShown = await T.until(() => document.querySelector('[data-testid="kind-tick"][data-sent]'), 3000);
+    await close();
+    await open(b.ids[0]);
+    document.querySelector('[data-testid="kind-chip"][data-kind="id_front"]').click();
+    await close();
+    await open(none.ids[0]);
+    r.noTick = !document.querySelector('[data-testid="kind-tick"]');
+    document.querySelector('[data-testid="kind-chip"][data-kind="passport"]').click();
+    await close();
+    await open(quiet.ids[0]); await close();  // looked at, untouched
+    window.dispatchEvent(new Event('pagehide'));  // the picks still waiting go now
+    // Show what the models read: a sheet with each page's readouts
+    document.querySelector('[data-testid="scan-done"]').click();
+    r.show = await T.until(() => document.querySelectorAll('[data-testid="lab-show-page"]').length === 4, 4000);
+    r.showType = [...document.querySelectorAll('[data-testid="lab-show"] [data-testid="lab-readout-type"]')].map(x => x.textContent).join('|');
+    T.esc();
+    await T.until(() => !document.querySelector('[data-testid="lab-show"]'), 3000);
+    // Looks good on the untouched page: its attempt is sent at once (the lab has no Done)
+    await open(quiet.ids[0]);
+    document.querySelector('[data-testid="page-keep"]').click();
+    r.ids = {a: a.attempt, b: b.attempt, quiet: quiet.attempt, none: none.attempt};
+    return r;
+  }, JPG).catch(e => ({error: e.message}));
+  for (let i = 0; i < 60 && !labCalls.some(c => c.action === 'attempt'); i++) await sleep(150);
+  await sleep(500);
+  const labAdds = labCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
+  const labAtt = labCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []);
+  const ex0 = labAdds[0] || {}, ex1 = labAdds[1] || {};
+  ok(labKinds.thumbs && labKinds.chosen === 'sefach' && labKinds.pct === '90%' && labKinds.tick && labKinds.sentShown && labKinds.noTick && labAdds.length === 2
+    && [ex0.source, ex0.doctypeModel, ex0.doctypeFixed, ex0.keep, !!ex0.pageImage, ex0.doctypeBy].join() === 'page,sefach,sefach,true,true,model'
+    && [ex1.doctypeModel, ex1.doctypeFixed, ex1.keep === undefined, !!ex1.pageImage].join() === 'sefach,id_front,true,true'
+    && labKinds.show && (labKinds.showType.match(/Appendix \(ספח\) 90%/g) || []).length === 3,
+    'scanner lab (/scan-next/): a page\'s type chips start on the model\'s answer; only the user\'s tick (keep) or pick is sent, once — never an untouched answer, no tick with no model; Show what the models read lists each page\'s readouts '
+    + JSON.stringify({labKinds, adds: labAdds.map(e => ({m: e.doctypeModel, f: e.doctypeFixed, keep: e.keep, by: e.doctypeBy, copy: !!e.pageImage}))}));
+  ok(labAtt.length === 1 && labAtt[0].id === (labKinds.ids || {}).quiet && labAtt[0].source === 'lab' && labAtt[0].outcome === 'kept',
+    'scanner lab (/scan-next/): Looks good sends the page\'s attempt at once with source "lab" (no Done in the lab); the pages left alone are not sent ' + JSON.stringify(labAtt.map(x => ({id: x.id, source: x.source, outcome: x.outcome}))));
+  const labSite = labReqs.filter(u => /\/scan\/(models\.json|ort(130)?\/|[\w-]+\.onnx)/.test(u)), labOwn = labReqs.filter(u => /\/scan-lab\//.test(u));
+  ok(!labSite.length && labOwn.length > 0,
+    'scanner lab (/scan-next/): it loads only the lab\'s own files (/scan-lab/) — no request to the site\'s scanner (/scan/) ' + JSON.stringify({site: labSite.slice(0, 5), lab: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));
   await labPage.close();
+  // The plain lab page (/scan-lab/, Admin → Scanner lab) is still served as it was until the last package.
+  const oldLab = await page(ctx);
+  await oldLab.goto(BASE + 'scan-lab/');
+  ok(await oldLab.waitForFunction(() => typeof noteFail === 'function' && typeof addKind === 'function' && !!document.getElementById('startCam'), null, {timeout: 15000}).then(() => true, () => false),
+    'scanner lab: the plain lab page (/scan-lab/) still opens as it was');
+  await oldLab.close();
   // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
   // by Haiku and changed to Contract — with a copy of the page
   const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);

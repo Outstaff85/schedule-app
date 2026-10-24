@@ -173,6 +173,8 @@ export class Attempts {
   canFix(id: string): boolean { return !!this.unsent(id); }
   /** Undecided: on the screen, not looked at yet. */
   undecided(id: string): boolean { return this.onScreen.some(x => x.a.id === id); }
+  /** The attempts not decided yet, oldest first (the lab sends them with its next camera shot: it has no Done). */
+  undecidedIds(): string[] { return this.onScreen.map(x => x.a.id); }
   /** How it went, once decided (null while undecided or unknown). */
   outcomeOf(id: string): Outcome | null { const l = this.unsent(id); return (l && l.a.outcome) || null; }
 

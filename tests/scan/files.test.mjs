@@ -19,7 +19,10 @@
 //  - the attempts: a retake and the next shot share a group; a kept attempt is held until done() on the site and
 //    sent at once in the lab; the queue keeps 5 at most offline and empties when back online; a page deleted
 //    after sending goes as attemptOutcome, one deleted while the queue's write is pending goes with it; the
-//    photo is at most 1600 px.
+//    photo is at most 1600 px; the undecided attempts listed (the lab sends them with its next camera shot);
+//  - the lab's document type collection (src/scan/lab/kinds.ts): the tick sends the type shown at once (keep
+//    when it is the model's), a pick goes KIND_WAIT after the last change or when the page is left, each page
+//    once; never an untouched answer, nothing with no model, nothing of a deleted page.
 //
 //   node tests/scan/files.test.mjs
 import assert from 'node:assert/strict';
@@ -95,7 +98,7 @@ globalThis.OffscreenCanvas = StubCanvas;
 globalThis.ImageData = StubImageData;
 
 const M = await import(pathToFileURL(path.join(TMP, 'files.js')).href);
-const { files: F, attempts: A, session: Sess, shot: Shot, log: Log, surface: Surf } = M;
+const { files: F, attempts: A, session: Sess, shot: Shot, log: Log, surface: Surf, kinds: K } = M;
 
 // ── pictures ──
 /** A w×h photo: noise, nowhere white. */
@@ -591,6 +594,77 @@ await run('workPictures: no more pictures opened ahead of the list than there ar
   const r = await run1;
   assert.equal(r.count, 5); assert.deepEqual(shown, [1, 2, 3, 4, 5]);
 });
+
+await run('attempts: the undecided ones listed, oldest first (the lab sends them with its next camera shot)', async () => {
+  const { at } = attemptsOn('lab');
+  const a = at.newAttempt(frame(100, 80), 100, 80, 'camera'), b = at.newAttempt(frame(100, 80), 100, 80, 'photo'), c = at.newAttempt(frame(100, 80), 100, 80, 'camera');
+  at.decide('kept', [b]);
+  assert.deepEqual(at.undecidedIds(), [a, c]);
+});
+
+// ── the lab's document type collection ──
+function kindsOn() {
+  const posts = [], logs = [], timers = new Map(), hide = new Set();
+  let n = 0;
+  const env = {
+    post: async body => { posts.push(body); return { ok: true }; }, version: () => 'v5', encode: async sq => 'copy' + sq.width,
+    setTimeout: (fn, ms) => { const id = ++n; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => { timers.delete(id); },
+    onPageHide: fn => { hide.add(fn); return () => hide.delete(fn); }, log: t => logs.push(t), err: t => logs.push('ERR ' + t),
+  };
+  const k = new K.Kinds(env);
+  k.start();
+  const fire = () => { const all = [...timers.values()]; timers.clear(); all.forEach(t => t.fn()); return all.map(t => t.ms); };
+  return { k, posts, logs, timers, fire, pagehide: () => hide.forEach(fn => fn()) };
+}
+const answer = (doctype, conf = 0.9) => ({ doctype, conf, turn: 0, turnConf: 1, ms: 1, square: new StubCanvas(256, 256) });
+const examplesOf = posts => posts.filter(b => b.action === 'add').flatMap(b => b.examples);
+
+await run('the lab\'s kinds: the tick sends the type shown at once, keep when it is the model\'s; each page once', async () => {
+  const { k, posts } = kindsOn();
+  k.offer('p1', answer('sefach'));
+  assert.ok(k.offered('p1') && !k.sent('p1'));
+  k.tick('p1', 'sefach'); k.tick('p1', 'sefach');
+  await settle();
+  const ex = examplesOf(posts);
+  assert.equal(ex.length, 1, 'once');
+  assert.deepEqual(ex[0], { source: 'page', model: 'v5', doctypeModel: 'sefach', doctypeFixed: 'sefach', doctypeBy: 'model', pageImage: 'copy256', keep: true });
+  assert.ok(k.sent('p1'));
+  k.offer('p2', answer('id_front')); k.tick('p2', 'passport'); await settle();
+  const e2 = examplesOf(posts)[1];
+  assert.equal(e2.doctypeFixed, 'passport'); assert.equal(e2.doctypeModel, 'id_front'); assert.equal(e2.keep, undefined, 'not the model\'s: no keep');
+});
+
+await run('the lab\'s kinds: a pick goes KIND_WAIT after the last change, or when the page is left; never an untouched answer', async () => {
+  const { k, posts, timers, fire, pagehide } = kindsOn();
+  k.offer('a', answer('sefach')); k.offer('b', answer('passport')); k.offer('quiet', answer('id_back'));
+  k.pick('a', 'id_front'); k.pick('a', 'contract');
+  assert.equal(timers.size, 1, 'a new pick starts the wait again');
+  assert.deepEqual(fire(), [K.KIND_WAIT]); assert.equal(K.KIND_WAIT, 20000);
+  await settle();
+  let ex = examplesOf(posts);
+  assert.equal(ex.length, 1); assert.equal(ex[0].doctypeFixed, 'contract'); assert.equal(ex[0].doctypeModel, 'sefach'); assert.equal(ex[0].keep, undefined);
+  k.pick('a', 'other'); fire(); await settle();
+  assert.equal(examplesOf(posts).length, 1, 'a page goes once');
+  k.pick('b', 'passport'); pagehide(); await settle();
+  ex = examplesOf(posts);
+  assert.equal(ex.length, 2, 'the waiting pick goes when the page is left'); assert.equal(ex[1].doctypeFixed, 'passport'); assert.equal(ex[1].keep, true);
+  pagehide(); fire(); await settle();
+  assert.equal(examplesOf(posts).length, 2, 'the untouched page is never sent');
+});
+
+await run('the lab\'s kinds: nothing with no model, nothing of a deleted page; a pick before the answer waits for it', async () => {
+  const { k, posts, fire, pagehide } = kindsOn();
+  k.offer('none', null); k.pick('none', 'passport'); k.tick('none', 'passport');
+  assert.ok(!k.offered('none'));
+  k.offer('gone', answer('sefach')); k.pick('gone', 'id_front'); k.drop('gone');
+  fire(); pagehide(); await settle();
+  assert.equal(examplesOf(posts).length, 0, 'no model, a deleted page: nothing sent');
+  k.pick('early', 'contract'); k.offer('early', answer('passport'));
+  fire(); await settle();
+  const ex = examplesOf(posts);
+  assert.equal(ex.length, 1); assert.equal(ex[0].doctypeFixed, 'contract'); assert.equal(ex[0].doctypeModel, 'passport');
+});
+
 
 console.log(`\n${passed} passed, ${failed} failed`);
 fs.rmSync(TMP, { recursive: true, force: true });

@@ -38,7 +38,7 @@ export type ScannerMode = 'site' | 'lab';
 
 const cannotFix = (): string => tr('This page can no longer be fixed — delete it and take it again');
 
-export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, children }: {
+export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, kindTick, children }: {
   mode: ScannerMode;
   session: ScanSessionLike;
   /** Done (the site) / Show what the models read (the lab): the pages shown at that moment, in order (the kept
@@ -61,6 +61,9 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   typing?: Record<string, PageTyping>;
   /** a line of the host's under a thumbnail */
   thumbNote?: (p: UiPage) => React.ReactNode;
+  /** the lab's document type collection (src/scan/lab/kinds.ts): a page the model answered gets a tick beside its
+   *  type chips, which sends the type shown */
+  kindTick?: { offered: (id: string) => boolean; sent: (id: string) => boolean; onTick: (id: string, kind: Doctype | null) => void };
   /** drawn over the screen (the lab's tools drawer) */
   children?: React.ReactNode;
 }) {
@@ -185,7 +188,9 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
           onFix={() => startFix(page.id)}
           onDelete={() => { setOpen(null); s.remove(page.id); }}
           onKeep={() => { setOpen(null); s.keep(page.id); }}
-          onClose={() => setOpen(null)} />
+          onClose={() => setOpen(null)}
+          onTick={kindTick && !page.kept && kindTick.offered(page.id) ? () => kindTick.onTick(page.id, kindOf(page)) : undefined}
+          tickSent={kindTick ? kindTick.sent(page.id) : undefined} />
       )}
       {fixing && <CornerEditor key={fixing.id} frame={fixing.data.frame} start={fixing.data.pts} onApply={apply} onCancel={() => setFixing(null)} />}
       {children}

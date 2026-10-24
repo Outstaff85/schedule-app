@@ -1,0 +1,264 @@
+// The scanner lab on the new stack (docs/scan-plan.md → S9, package 7; served at /scan-next/ until it replaces the
+// plain lab page at /scan-lab/): the same full-screen scanner as the site's scan window (src/scan/ui/ScannerScreen,
+// mode 'lab') over a scan session on the lab's own surface — /scan-lab/ and its models (scripts/scan-lab/
+// models-version), its cache scan-lab-models, the training source "lab", the signed-in user's token from
+// src/lib/backend.ts — with the pull-up Lab tools drawer (LabDrawer.tsx), "Show what the models read" in place
+// of the site's Done (a sheet with each page's readouts and timings), and the lab's training collection:
+//  - the attempts (src/scan/engine/attempts.ts): no holdForDone in the lab — an attempt is sent at once on Looks
+//    good (every page of it looked at), on Retake, and — the lab has no Done — with the next camera shot, which
+//    sends the attempts still undecided as kept (as the site's Done keeps the ones left alone; their pages are
+//    not marked looked at); a page deleted goes to its attempt (pageDeleted: with it, or as attemptOutcome);
+//    the corners fixed by hand go with it (edgesFixed); "In queue" and "New for training" in the drawer;
+//  - the document types picked or ticked (kinds.ts), never an untouched answer.
+// The lab's start order is kept: the accurate model first (photos and PDFs can go in within seconds), then the
+// camera's models in the background once nothing is being worked on — the camera waits for both. The session
+// lives as long as the page (the lab's page reloads to start again: the CPU engine choice does).
+import * as React from 'react';
+import { tr } from '@/lib/i18n';
+import { loadBackend } from '@/lib/backend';
+import { Window } from '@/components/shared/window';
+import { Engines, type EngineSettings } from '../engine/engines';
+import { ScanLog } from '../engine/log';
+import { ScanSession } from '../engine/session';
+import { labSurface, CPU_ORT, GPU_ORT, type OrtDir } from '../engine/surface';
+import type { TrainFigures } from '../engine/attempts';
+import type { ShotPage } from '../engine/shot';
+import type { Doctype } from '../engine/doctypes';
+import type { InjectOpts } from '../hooks';
+import { engineStatusText } from '../status-text';
+import { ScannerScreen } from '../ui/ScannerScreen';
+import type { ScanSessionLike, UiPage } from '../ui/useScanSession';
+import { defaultKindsEnv, Kinds } from './kinds';
+import { LabDrawer } from './LabDrawer';
+import { PageReadouts } from './Readouts';
+
+const errText = (e: unknown): string => String((e as Error)?.message || e);
+const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+const LINES_KEPT = 400;
+
+/** The Errors block, the Loading-and-work log (newest on top) and the pictures' timings, as the drawer shows them. */
+export interface LabRecordsSnap { errors: string[]; lines: string[]; timings: string[] }
+
+export class LabRecords {
+  private snap: LabRecordsSnap = { errors: [], lines: [], timings: [] };
+  private listeners = new Set<() => void>();
+  private set(s: Partial<LabRecordsSnap>): void {
+    this.snap = { ...this.snap, ...s };
+    for (const fn of this.listeners) { try { fn(); } catch { /* the listener's own */ } }
+  }
+  subscribe = (fn: () => void): (() => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
+  snapshot = (): LabRecordsSnap => this.snap;
+  /** An error, with its time (the lab's logErr). */
+  err(text: string): void { this.set({ errors: [new Date().toTimeString().slice(0, 8) + ' ' + text, ...this.snap.errors].slice(0, LINES_KEPT) }); }
+  /** A loading-and-work line (the lab's log); a picture's timing is kept apart for the readouts sheet too. */
+  log(text: string): void {
+    this.set({ lines: [text, ...this.snap.lines].slice(0, LINES_KEPT), ...(/^Picture timing/.test(text) ? { timings: [text, ...this.snap.timings].slice(0, 50) } : {}) });
+  }
+  /** The earlier failures on this device, on top of the errors (the heading, then the newest first). */
+  fails(lines: string[]): void { this.set({ errors: [...lines, ...this.snap.errors].slice(0, LINES_KEPT) }); }
+  /** Both emptied (the browser tests, as the lab's test emptied its blocks). */
+  clear(): void { this.set({ errors: [], lines: [] }); }
+}
+
+/** The lab's page-wide parts: one session for the page's life. */
+interface Lab {
+  session: ScanSession;
+  engines: Engines;
+  log: ScanLog;
+  records: LabRecords;
+  kinds: Kinds;
+  cpuDir: OrtDir;
+  /** The accurate model's start settled (the camera waits for it). */
+  capReady: Promise<void>;
+  started: boolean;
+  /** Picks in work (the camera's models wait for them). */
+  picking: number;
+  /** A page deleted (its Undo over): the page's own view forgets it. */
+  removed: (id: string) => void;
+}
+
+/** The signed-in user's ID token for scan_feedback (the attempts, the types, the lab's stats), null when there is none. */
+async function idToken(): Promise<string | null> {
+  try { return await (await loadBackend()).idToken(); } catch { return null; }
+}
+
+let lab: Lab | null = null;
+function getLab(): Lab {
+  if (lab) return lab;
+  // the CPU's ONNX Runtime build: 1.22 (faster and smoother there), ?ort=130 picks 1.30 (the GPU always uses 1.30)
+  const cpuDir: OrtDir = new URLSearchParams(location.search).get('ort') === '130' ? GPU_ORT : CPU_ORT;
+  const surface = labSurface(idToken), log = new ScanLog(), records = new LabRecords();
+  log.on('log', t => records.log(t));
+  log.on('err', t => records.err(t));
+  log.on('fails', l => records.fails(l));
+  window.addEventListener('error', e => log.err('Page error: ' + e.message));
+  window.addEventListener('unhandledrejection', e => log.err('Error: ' + errText((e as PromiseRejectionEvent).reason)));
+  const engines = new Engines(surface, log);
+  engines.setSettings({ cpuDir });
+  const session = new ScanSession(surface, { engines, log });
+  const kinds = new Kinds(defaultKindsEnv(b => session.attempts.post(b), () => session.readers?.info?.version || '', log.log, log.err));
+  return (lab = { session, engines, log, records, kinds, cpuDir, capReady: Promise.resolve(), started: false, picking: 0, removed: () => {} });
+}
+
+/** The lab opened (once): what this device has, the earlier failures, then the accurate model first and the
+ *  camera's models once nothing is being worked on (the lab's page did the same on load). */
+function startLab(l: Lab): void {
+  if (l.started) return;
+  l.started = true;
+  const { session, engines, log } = l, env = engines.env;
+  log.log('CPU engine: ONNX Runtime ' + (l.cpuDir === GPU_ORT ? '1.30.0' : '1.22.0') + ', GPU engine: 1.30.0');
+  log.log('GPU (WebGPU) in this browser: ' + (env.gpu ? 'yes' : 'no'));
+  log.log('CPU: ' + (env.cores || '?') + ' cores' + (env.memory ? ', memory ' + env.memory + ' GB' : '') + '; several background threads of one thread each are used' + (env.isolated ? '' : ' (one core each: this page is not cross-origin isolated)'));
+  log.showFails();
+  session.attempts.start();
+  l.kinds.start();
+  if (session.readers) void session.readers.load();
+  l.capReady = engines.ensureCap().then(() => {}, e => log.log('Accurate model: ' + errText(e)));
+  void l.capReady.then(async () => {
+    while (l.picking) await sleep(300);
+    await engines.ensureSession().catch(e => log.log('Model: ' + errText(e)));
+  });
+}
+
+/** The session as the lab's screen drives it: the camera after the accurate model and any pick in work, picks
+ *  counted, a deleted page's type never sent. */
+function labView(l: Lab): ScanSessionLike {
+  const s = l.session;
+  let camGen = 0;
+  return {
+    get auto() { return s.auto; },
+    on: (ev, fn) => s.on(ev, fn),
+    startCamera: async v => {
+      const g = camGen;
+      await l.capReady;
+      while (l.picking) await sleep(300);
+      if (g !== camGen) return;  // put away meanwhile
+      await s.startCamera(v);
+    },
+    snap: () => s.snap(),
+    setAuto: on => s.setAuto(on),
+    wake: v => s.wake(v),
+    sleep: () => { camGen++; s.sleep(); },
+    hold: () => s.hold(),
+    resume: () => s.resume(),
+    pick: files => {
+      l.picking++;
+      const p = s.pick(files), settled = () => { l.picking--; };
+      p.then(settled, settled);
+      return p;
+    },
+    keep: id => s.keep(id),
+    remove: id => { s.remove(id); l.kinds.drop(id); l.removed(id); },
+    fixable: id => s.fixable(id),
+    fix: (id, pts) => s.fix(id, pts),
+    done: () => s.done(),
+    discard: () => s.discard(),
+  };
+}
+
+/** The lab has no Done: a new camera shot sends the attempts still undecided before it, as kept. */
+function sendEarlier(l: Lab): void {
+  let newest: ShotPage | null = null;
+  for (const p of l.session.pages.values()) if (p.record.shot > 0 && (!newest || p.record.shot > newest.record.shot)) newest = p;
+  const ids = l.session.attempts.undecidedIds().filter(id => !newest || id !== newest.record.attempt);
+  if (ids.length) l.session.attempts.decide('kept', ids);
+}
+
+// The browser tests' hooks (docs/tests.md): the lab's session, its log and records, its types, and pages given
+// with no camera (hooks.ts injectInto). Nothing on the page calls them.
+declare global { interface Window { ScanLab?: unknown } }
+
+export function LabApp() {
+  const l = getLab();
+  const view = React.useMemo(() => labView(l), [l]);
+  const rec = React.useSyncExternalStore(l.records.subscribe, l.records.snapshot);
+  const [engineText, setEngineText] = React.useState<string | undefined>(undefined);
+  const [pages, setPages] = React.useState<{ order: string[]; byId: Record<string, ShotPage> }>({ order: [], byId: {} });
+  const [train, setTrain] = React.useState<TrainFigures | null>(null);
+  const [settings, setSettings] = React.useState<EngineSettings>(l.engines.settings);
+  const [kindsSeen, setKindsSeen] = React.useState(0);
+  const [shown, setShown] = React.useState<UiPage[] | null>(null);
+
+  React.useEffect(() => {
+    let seen = false;
+    l.removed = id => setPages(ps => {
+      if (!ps.byId[id]) return ps;
+      const byId = { ...ps.byId };
+      delete byId[id];
+      return { order: ps.order.filter(x => x !== id), byId };
+    });
+    const offs = [
+      l.session.on('page', p => {
+        setPages(ps => ({ order: ps.order.includes(p.id) ? ps.order : [...ps.order, p.id], byId: { ...ps.byId, [p.id]: p } }));
+        if (p.readouts) l.kinds.offer(p.id, p.readouts.doctype);
+      }),
+      l.session.on('status', st => {
+        if (!seen) { seen = true; setEngineText(undefined); }
+        if (st.key === 'captured') sendEarlier(l);
+      }),
+      // while the models load, the status line says what the engine does (the lab's words: ways, models, layouts)
+      l.log.on('status', st => { if (!seen) setEngineText(engineStatusText(st, true)); }),
+      l.session.attempts.on(setTrain),
+      l.kinds.on(() => setKindsSeen(n => n + 1)),
+    ];
+    startLab(l);
+    window.ScanLab = {
+      session: l.session, log: l.log, kinds: l.kinds, records: l.records,
+      clearLogs: () => l.records.clear(),
+      inject: (o: InjectOpts) => import('../hooks').then(h => h.injectInto(l.session, o)),
+      hooks: () => import('../hooks'),
+    };
+    return () => { offs.forEach(off => off()); l.removed = () => {}; };
+  }, [l]);
+
+  // a new object when a page is offered or sent (kindsSeen): the tick is drawn again
+  const kindTick = React.useMemo(() => ({
+    offered: (id: string) => kindsSeen >= 0 && l.kinds.offered(id),
+    sent: (id: string) => l.kinds.sent(id),
+    onTick: (id: string, kind: Doctype | null) => l.kinds.tick(id, kind),
+  }), [l, kindsSeen]);
+
+  const changeSettings = (patch: Partial<EngineSettings>) => {
+    setSettings(s => ({ ...s, ...patch }));
+    void l.session.switchWay(patch);
+  };
+  // the CPU engine: the page opened again with it (its ONNX Runtime is loaded once per page), as the lab's did
+  const changeCpu = (dir: OrtDir) => { if (dir !== l.cpuDir) location.search = '?ort=' + (dir === GPU_ORT ? '130' : '122') + '&v=' + Date.now(); };
+
+  const list = pages.order.map(id => pages.byId[id]).filter(Boolean);
+  return (
+    <div className="fixed inset-0">
+      <ScannerScreen mode="lab" session={view} statusText={engineText} onChoose={(id, k) => l.kinds.pick(id, k)}
+        onDone={ps => setShown(ps)} kindTick={kindTick}>
+        <LabDrawer session={view} figuresNow={() => l.session.figures()} errors={rec.errors} lines={rec.lines}
+          settings={settings} onSettings={changeSettings} cpuDir={l.cpuDir} onCpuDir={changeCpu} train={train} pages={list} />
+      </ScannerScreen>
+      <Window open={!!shown} onOpenChange={o => { if (!o) setShown(null); }} title={tr('What the models read')}
+        description={tr('Each page\'s readouts and how long they took')}>
+        <div data-testid="lab-show" className="grid gap-3">
+          {(shown || []).map((u, i) => {
+            const p = pages.byId[u.id] || u.shot;
+            return (
+              <div key={u.id} data-testid="lab-show-page" className="grid grid-cols-[72px_1fr] items-start gap-3 rounded-[var(--radius-md)] bg-plate p-2 shadow-[var(--shadow-plate)]">
+                {u.src ? <img src={u.src} alt={tr('Page {n}', { n: i + 1 })} className="w-[72px] rounded-[8px] object-contain" /> : <span />}
+                <div className="grid min-w-0 gap-0.5">
+                  <div className="text-[13px] font-semibold">{tr('Page {n}', { n: i + 1 })}</div>
+                  {p ? <PageReadouts page={p} /> : null}
+                </div>
+              </div>
+            );
+          })}
+          {l.session.figures().captureMs != null && (
+            <div className="text-[12.5px] text-ink-2">{tr('Last camera shot shown in {ms} ms', { ms: Math.round(l.session.figures().captureMs as number) })}</div>
+          )}
+          {rec.timings.length > 0 && (
+            <div className="grid gap-1">
+              <div className="og-label">{tr('Picture timing')}</div>
+              <pre data-testid="lab-timings" className="m-0 whitespace-pre-wrap break-words font-mono text-[12px] leading-4 text-ink-2">{rec.timings.join('\n')}</pre>
+            </div>
+          )}
+        </div>
+      </Window>
+    </div>
+  );
+}
