@@ -695,7 +695,7 @@ async function addKind(w, im) {
 // shot or pick folding it), retaken (Retake: the next one shares its group) or a kept page deleted later.
 // Sent at once to scan_feedback with the signed-in user's token; with no network it waits on the phone
 // (IndexedDB), 5 at most, an hour at most. The lab also shows the new attempts since the last training.
-const TRAIN_URL = 'https://us-central1-schedule-odinson.cloudfunctions.net/scan_feedback';
+const TRAIN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/scan_feedback';
 const TRAIN_SOURCE = location.pathname.includes('scan-lab') ? 'lab' : 'site';  // (no slashes: the copy to /scan/ keeps this line)
 const QUEUE_MAX = 5, QUEUE_MS = 3600e3, PICTURE_MAX = 1600;
 let modelsVersion = '', onScreen = [], retakeGroup = null;

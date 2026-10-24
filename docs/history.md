@@ -171,3 +171,7 @@ One audit of the whole site, verified bug by bug, fixed in batches (each its own
 ## The models' repo made private (2026-10-24)
 
 `OutStaff/scanner-models` was public from 2026-10-19 (no key needed, the models hold no personal data). The owner had it made private: the deploys (`deploy.yml`, `scan-lab-preview.yml`) now pass the GitHub Actions secret `HF_TOKEN` (a read token for that repo alone) to `fetch-models.sh`, merged in PR #355 before the switch; after the switch an anonymous download answers 401 and a rerun of the Hosting deploy still took the models from Hugging Face.
+
+## `functions/` moved to Frankfurt (2026-10-24)
+
+The `functions/` codebase (Form 101, contract templates, signing, the scanner's training data) was the first one and went to Firebase's default region, us-central1; Firestore, Storage (EU) and `functions-auth` were later put in Frankfurt. Every Firestore / Storage call of these functions crossed the ocean (~100 ms each, several per Form 101 or signing), and the phones in Israel are farther from the US too. They are now deployed to europe-west3 and the site calls them there; their us-central1 copies stay until the phones still on the old site have updated, then are removed.

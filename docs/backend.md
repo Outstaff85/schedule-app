@@ -2,7 +2,7 @@
 
 The whole backend: the browser data layer, the Cloud Functions, the data model, the security rules, tests and deploys. There is no other backend — the old Google Apps Script / Google Sheets one was removed (2026-10-03; its code is in git history before that date, and the spreadsheet itself is left untouched as an archive). The plan the move followed: [archive/docs/firestore-plan.md](../archive/docs/firestore-plan.md).
 
-Project `schedule-odinson`; Firestore and the `functions-auth` functions in **europe-west3** (Frankfurt); the `functions/` functions in us-central1.
+Project `schedule-odinson`; Firestore and the `functions-auth` functions in **europe-west3** (Frankfurt); the `functions/` functions also in europe-west3 since 2026-10-24 (the site calls Frankfurt; their us-central1 copies stay only for phones still on the old site, to be removed).
 
 ## Data model (Firestore)
 
@@ -205,7 +205,7 @@ Conditions for `concurrency` > 1: requests run in threads of one process, so a h
 
 **Proposing it.** When new work brings a similar case (several independent AI or server calls, sent one after another, or a function that will receive parallel calls), the pattern is proposed to the user in chat first — what would run at once, which function settings — and applied once they agree.
 
-## Cloud Functions — `functions/` (codebase `default`, us-central1)
+## Cloud Functions — `functions/` (codebase `default`, europe-west3; us-central1 copies until removed)
 
 - `fill_form_101` — builds the Form 101 PDF ([form101.md](form101.md)).
 - `scan_feedback` — the scanner's training examples and their counts (512 MiB, `cpu=1`, `concurrency=20`, 60 s; [scan-training.md](scan-training.md)): `add` (the edges / document type copies), `document` (a full document after the save of the worker window, when the firm collects them — H8a; with the passport zone reader's answer in shadow, `mrzShadow` — H8b, counted as `mrzShadowPassports` / `mrzShadowRight` / `mrzAiRight` by `feedback.mrz_counts`; and the Hebrew field reader's, `heShadow` — H8c, counted as `heShadowCards` / `heShadowRight` / `heAiRight` by `feedback.he_counts` on an Israeli ID card), `attempt` / `attemptOutcome` (every scan attempt from the site and the lab, S8), `mode` (any manager login: the document type model's mode for the scan window), `stats`, and for a super-admin `settings` / `setSettings` (Admin → Scanner: `scanSettings/current.doctypeMode`, `tenants/<id>/settings/scan.collectDocuments`). The files go through `functions/datastore.py`: the private Hugging Face bucket `OutStaff/scanner-data` (the secret `HF_DATA_TOKEN`, write-only, declared on the function), and when the bucket refuses, Firestore `scanTraining` and Storage `training/`; the counts in `scanTrainingStats/current`. No client rule opens any of it.

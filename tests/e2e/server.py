@@ -14,7 +14,7 @@ _orig_bucket = _st.bucket
 main.storage.bucket = lambda name=None: _orig_bucket('demo-schedule.appspot.com')
 from flask import Flask
 app = Flask(__name__)
-# The contract templates (functions/contracts.py — the us-central1 codebase, without its
+# The contract templates (functions/contracts.py — the `functions/` codebase, without its
 # deploy-only imports): the same gate as functions/main.py, the emulators' Firestore and Storage.
 sys.path.append(os.path.join(_HERE, '..', '..', 'functions'))
 import contracts as _contracts, gate as _gate
