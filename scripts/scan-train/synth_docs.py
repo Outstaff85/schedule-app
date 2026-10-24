@@ -51,7 +51,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 import synth
 from gen import rng as grng
-from gen.common import file_sha1, label, record_own_exam_set
+from gen.common import file_sha1, fonts_for, label, record_own_exam_set
 from gen.manifest import FontLog
 from home import WORK, gentle
 from synth_lines import hebrew_fonts
@@ -904,7 +904,9 @@ def gen_params(a):
             print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), "
                   f"{len(pages) - len(laid) - len(kept)} with no known side (in neither), {len(laid)} laid here")
         pages = laid
-    latin, hebrew = a.latin or latin_fonts(), a.hebrew or hebrew_fonts()
+    side = "exam" if a.exam else "train"   # the exam draws every font; training never one heldout.json keeps (examFonts)
+    latin = fonts_for(a.latin or latin_fonts(), side, given=bool(a.latin))
+    hebrew = fonts_for(a.hebrew or hebrew_fonts("all"), side, given=bool(a.hebrew))
     if not latin or not hebrew:
         raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
     return {"model": MODEL, "split": "exam" if a.exam else "train", "count": count, "seed": seed, "out": str(out),

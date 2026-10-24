@@ -2,14 +2,17 @@
 repeated so they count (docs/scan-training.md → "Real data and its weight").
 
   python -m gen mix --model edges --synth-run DIR [--midv N] [--smartdoc N] [--real-repeat 30] [--out DIR]
-  python -m gen mix --model doctype --synth-run DIR [--real-repeat 30] [--out DIR]
+  python -m gen mix --model doctype --synth-run DIR [--synth-run DIR …] [--real-repeat 30] [--out DIR]
       [--hard [mine/hard/pool.jsonl]] [--hard-repeat 3]   # gen mine's hard examples, repeated more
       [--select-run DIR]                                  # a made-up select set (gen build --split select), used when
                                                           # the real select rows are fewer than SELECT_MIN
 
 Writes <out>/train.jsonl (default <home>/models/<model>/), <out>/select.jsonl and <out>/mix.json:
 - the made-up examples of a set drawn through gen build (its QA passed: gen.qa.require_qa; a training run only — a
-  select or exam run is refused; --synth N of them, all by default; a row of weight 0 — a partial scene — is left out),
+  select or exam run is refused; --synth N of them, all by default; a row of weight 0 — a partial scene — is left out);
+  the document type takes several (--synth-run repeated: the phone's own cuts of the made-up scenes and of MIDV's and
+  SmartDoc's training photos, gen build --open, cut by our edges model — rows of source midv / smartdoc, counted apart:
+  OPEN_SHARE, ~15 % is the aim —, synth_pages.py's pages), each sampled to --synth N and counted in mix.json's "runs",
   MIDV and SmartDoc's training documents (never their exam documents: midv.open_exam) for the edges, and the real rows
   of gen real's index (<home>/real/index.jsonl) on the training side that carry the model's target — the edges' self
   rows weighing gen.common.SELF_WEIGHT, the document type leaving self rows out for now;
@@ -46,6 +49,8 @@ from . import common as gc
 from . import manifest
 
 REAL_CAP = 0.30                 # the real rows at most this share of an epoch
+OPEN_SHARE = (0.10, 0.20)       # the document type: MIDV / SmartDoc cut by our edges model, ~15 % of an epoch (the aim)
+OPEN_SOURCES = ("midv", "smartdoc")
 REAL_SHARE = (0.20, 0.30)       # the share aimed at
 DEFAULT_REPEAT = 30
 HARD_REPEAT = 3                 # a hard pool row: this many times its kind's repeat (--hard-repeat)
@@ -168,7 +173,9 @@ def synth_doctype(run, n=0, rng=None, work=None, split="train"):
     pages = json.loads(made.read_text(encoding="utf-8"))
     if cut and any(e.get("exam") or e.get("split", split) != split for e in pages):
         raise SystemExit(f"{run}: holds pages of another side than {split} — the phone's cuts of the exam are never trained on")
-    rows = [{**e, "file": _resolve(made.parent, e["file"]), "synthPage": True, "source": "synth", "weight": 1.0,
+    # a phone cut of an open set's training photo (gen build --open) keeps its set as its source: counted apart
+    rows = [{**e, "file": _resolve(made.parent, e["file"]), "synthPage": True,
+             "source": e["source"] if cut and e.get("source") in OPEN_SOURCES else "synth", "weight": 1.0,
              **({"split": split} if split != "train" else {})} for e in pages]
     return _sample(rows, n, rng)
 
@@ -429,7 +436,28 @@ def summary_line(meta):
             + (f" ({meta['selfLeftOut']} real pages whose type no one saw left out)" if meta.get("selfLeftOut") else "")
             + (f"; hard pool {h['real']} real + {h['synthetic']} made-up, repeated ×{h['repeat']}"
                + (f" (real ×{h['repeatReal']})" if h.get("repeatReal") and h["repeatReal"] != h["repeat"] else "") if h else "")
+            + (f"; open sets cut by our edges model {meta['openShare']:.1%} of an epoch"
+               + ("" if meta.get("openShareOk") else f" (the aim {OPEN_SHARE[0]:.0%}–{OPEN_SHARE[1]:.0%}: gen build … --open midv,smartdoc "
+                  "--open-n N, or more made-up scenes)") if meta.get("model") == "doctype" and "openShare" in meta else "")
             + f"; epoch {meta['epoch']} examples")
+
+
+def runs_of(synth_run):
+    """--synth-run as a list of runs (one path, a list of them, or None), each once."""
+    runs = [synth_run] if isinstance(synth_run, (str, pathlib.PurePath)) else list(synth_run or [])
+    seen = set()
+    for r in runs:
+        k = str(pathlib.Path(r).resolve())
+        if k in seen:
+            raise SystemExit(f"--synth-run {r} given twice")
+        seen.add(k)
+    return runs
+
+
+def open_share(rows):
+    """The open sets' rows (MIDV / SmartDoc cut by our edges model) as a share of an epoch, their repeats counted."""
+    occ = sum(int(r.get("repeat", 1)) for r in rows)
+    return sum(int(r.get("repeat", 1)) for r in rows if r.get("source") in OPEN_SOURCES) / occ if occ else 0.0
 
 
 def main(model, real_dir=None, synth_run=None, synth_n=0, midv_n=0, smartdoc_n=0, real_repeat=DEFAULT_REPEAT, seed=None,
@@ -446,11 +474,23 @@ def main(model, real_dir=None, synth_run=None, synth_n=0, midv_n=0, smartdoc_n=0
     real, select = real_rows(index, model)
     self_out = sum(1 for r in index if model == "doctype" and r.get("split") in gc.TRAIN_SIDE
                    and ((r.get("targets") or {}).get(model) or {}).get("labelBy") == "self")
+    runs = runs_of(synth_run)
+    run_meta = []
     if model == "edges":
-        synth = synth_edges(synth_run, synth_n, rng, work) if synth_run else []
+        if len(runs) > 1:
+            raise SystemExit("--synth-run once for the edges: one made-up photos set (MIDV and SmartDoc come with --midv / --smartdoc)")
+        synth = synth_edges(runs[0], synth_n, rng, work) if runs else []
         more = open_edges(work / "midv", midv_n, rng, "midv") + open_edges(work / "smartdoc", smartdoc_n, rng, "smartdoc")
     else:
-        synth = synth_doctype(synth_run, synth_n, rng, work) if synth_run else []
+        synth = []
+        for run in runs:   # each run sampled on its own (--synth N of each), its rows counted by source
+            got = synth_doctype(run, synth_n, rng, work)
+            by = {}
+            for r in got:
+                by[r["source"]] = by.get(r["source"], 0) + 1
+            run_meta.append({"dir": str(run), "fingerprint": manifest.run_fingerprint(run), "rows": len(got),
+                             "bySource": dict(sorted(by.items()))})
+            synth += got
         more = []
     hard_meta, hard_ids, hard_made = None, set(), {}
     if hard:
@@ -480,8 +520,13 @@ def main(model, real_dir=None, synth_run=None, synth_n=0, midv_n=0, smartdoc_n=0
         meta.pop("hardRepeatUsed", None)
     meta.update({"selectFrom": select_from, **select_meta})
     check(rows, select, index, work)
-    meta.update({"selfLeftOut": self_out, "seed": seed, "synth": manifest.run_fingerprint(synth_run) if synth_run else None, "synthRun": str(synth_run) if synth_run else None,
+    fps = [manifest.run_fingerprint(r) for r in runs]
+    meta.update({"selfLeftOut": self_out, "seed": seed, "synth": (fps[0] if len(fps) == 1 else fps) if fps else None,
+                 "synthRun": str(runs[0]) if runs else None, "synthRuns": [str(r) for r in runs],
                  "realIndex": (greal.read_summary(real_dir) or {}).get("indexSha256"), "realDir": str(real_dir)})
+    if model == "doctype":
+        meta.update({"runs": run_meta, "openShare": round(open_share(rows), 4),
+                     "openShareOk": OPEN_SHARE[0] - 1e-9 <= open_share(rows) <= OPEN_SHARE[1] + 1e-9})
     out = pathlib.Path(out or work / "models" / model)
     meta = write(out, rows, select, meta)
     print(f"mix {out}: " + summary_line(meta))

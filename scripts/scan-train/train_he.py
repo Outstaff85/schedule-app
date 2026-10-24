@@ -18,8 +18,10 @@ fed as the phone draws it: gen/phone.py strip_input), each of the 5 roles the ph
 dob, expiry) read right on at least PHONE_AT (0.9) of its fields, and the ID numbers read with a right check digit on at
 least ID_OK_AT (0.95) — every value unseen (the check vocabulary). Every field read right and by kind ("fieldsRight",
 "byKind") stay in the report for information only, with the page types not examined named ("notExamined": an ID
-card's back or a licence when the check set has none of their fields). gate() names each rule that failed. Before training, the training sets' sources.json are
-checked (gen.sources.assert_clean): a set holding a held-out page or drawn with the check vocabulary is refused; and
+card's back or a licence when the check set has none of their fields). gate() names each rule that failed. The phone
+block is also reported by font split ("phoneByFont": the fonts heldout.json keeps for the exam, examFonts — the check
+set is drawn only in them — against the training ones), for information. Before training, the training sets' sources.json are
+checked (gen.sources.assert_clean): a set holding a held-out page, drawn with the check vocabulary or in an exam font is refused; and
 the check set's (clean_check): one not drawn as the check, with another heldout.json or from other pages is refused; a
 training set drawn through gen build must have passed its QA (gen.qa.require_qa); a fields set cut before the names'
 boxes were widened as the phone reads them (sources.json nameOpen) is refused too (assert_cut_as_read). Labels are taught in the visual order
@@ -61,10 +63,11 @@ ID_OK_AT = 0.95   # the ID numbers read whose check digit agrees
 PAGE_TYPES = ("id_front", "id_back", "sefach", "licence")   # the page types a Hebrew field is read on
 
 
-def load(folder, visual=True):
+def load(folder, visual=True, font=None):
     """[(picture, label in the visual order, kind, info)] of a folder's labels.tsv (file, text as written[, kind,
     the page's sha1 prefix, page type, role, …]): info {"pageType", "role", "page", "seen" (the phone's own cuts' 8th
-    column: a training vocabulary value; None when the set has no such column)} — the page a field was cut from
+    column: a training vocabulary value; None when the set has no such column), "font" (the font split: the phone's own
+    cuts' 9th column, else font — a set's own, its sources.json fontSplit —, else None)} — the page a field was cut from
     is its file name's part before the first "-" (synth_fields.py: <page>-<field>.png) or, for the phone's own cuts
     (gen/outputs/he.py), its 10th column. A picture is beside labels.tsv (synth_fields.py, synth_lines.py) or under its
     img/ (a gen run's he/: labels.tsv names the file only)."""
@@ -79,7 +82,8 @@ def load(folder, visual=True):
         kind = parts[2] if len(parts) > 2 else "line"
         info = {"pageType": parts[4] if len(parts) > 4 else None, "role": parts[5] if len(parts) > 5 else kind,
                 "page": parts[9] if len(parts) > 9 else parts[0].split("-", 1)[0],
-                "seen": parts[7] == "True" if len(parts) > 7 else None}
+                "seen": parts[7] == "True" if len(parts) > 7 else None,
+                "font": parts[8] if len(parts) > 8 and parts[8] in ("train", "exam") else font}
         pic = folder / parts[0]
         if not pic.exists() and (folder / "img" / parts[0]).exists():
             pic = folder / "img" / parts[0]   # a gen run's writer (gen/outputs/he.py) keeps its pictures under img/
@@ -245,13 +249,27 @@ def real_cards(work=None, rows=None):
             "realExamined": False, "realNote": note}
 
 
+def by_font(rows, got):
+    """The phone block by font split (heldout.json examFonts): {"train": …, "exam": …, "unknown": …} of phone_figures
+    over the rows of each split that has any — the gate is the whole block; this says whether the fonts the reader
+    never saw read as well."""
+    out = {}
+    for split in ("train", "exam", None):
+        pick = [(r, g) for r, g in zip(rows, got) if r[3].get("font") == split]
+        if pick:
+            out[split or "unknown"] = phone_figures([r for r, _ in pick], [g for _, g in pick])
+    return out
+
+
 def check(net, rows, dev, phone_rows=()):
     """The exam: the figures on every check field (for information) and the phone block on the ID card fronts (the
-    gate) — over the exam part's rows and the phone's own cuts of the held-out cards (phone_rows)."""
+    gate) — over the exam part's rows and the phone's own cuts of the held-out cards (phone_rows) —, and the phone
+    block by font split (phoneByFont: the exam fonts against the training ones)."""
     got = reads(net, rows, dev)
     out = figures(rows, got)
     pg = reads(net, list(phone_rows), dev, phone_input=True) if phone_rows else []
     out["phone"] = phone_figures(list(rows) + list(phone_rows), got + pg)
+    out["phoneByFont"] = by_font(list(rows) + list(phone_rows), got + pg)
     if phone_rows:
         out["phoneCut"] = phone_figures(list(phone_rows), pg)
     return out
@@ -273,7 +291,7 @@ def main():
     from train_mrz import Lines, MrzNet, collate, export, fit
     fields = load(WORK / "synth" / "he-fields" / "train")
     lines = load(WORK / "synth" / "he")
-    checks = load(WORK / "synth" / "he-fields" / "check")
+    checks = load(WORK / "synth" / "he-fields" / "check", font=(read_meta(WORK / "synth" / "he-fields" / "check") or {}).get("fontSplit"))
     cut = []
     if a.phone_run:
         run = pathlib.Path(a.phone_run)
@@ -331,6 +349,11 @@ def print_report(report):
           f"all five right on {pc(ph['allFive'])} of {ph['fullCards']} cards")
     if report.get("phoneCut"):
         print(f"  of which the phone's own cuts of the held-out cards: {report['phoneCut']['fields']} fields")
+    for split, b in (report.get("phoneByFont") or {}).items():
+        print(f"  {split} fonts: {b['fields']} fields — " + ", ".join(f"{r} {pc(v)}" for r, v in b["byRole"].items())
+              + f"; ID numbers {pc(b['idOk'])}")
+    if "exam" not in (report.get("phoneByFont") or {}):
+        print("  no field in a font heldout.json keeps for the exam was examined (draw the check set again: synth_fields.py --check)")
     print(f"  for information: {report['fieldsRight']:.1%} of every check field read right (select: {report['select']['fieldsRight']:.1%}); "
           f"by kind {report['byKind']}" + (f"; not examined: {', '.join(report['notExamined'])}" if report.get("notExamined") else ""))
     if report.get("realNote"):

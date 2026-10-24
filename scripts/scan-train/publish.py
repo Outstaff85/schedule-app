@@ -24,7 +24,9 @@ too; only the phone's document type model (doctype-lite.onnx) is published — a
 never carried forward.
 
 Then: the counters of the published models are reset (scanTrainingStats/current: edgesSince after the
-edges, doctypesSince after the document type model; their names before H0 are cleared too), the lab is
+edges, doctypesSince after the document type model, passportsSince after the passport zone reader, idCardsSince
+after the Hebrew field reader — the bell's real documents, functions/feedback.py reader_counts; their names before H0
+are cleared too), the lab is
 pointed at the new version (scripts/scan-lab/models-version — committed and deployed by the skill; the
 site follows only after the owner tried it in the lab). With the edges published, the scan attempts of
 this run (S8, pull.py's attempts.json) leave attempts/new/: the train folders to attempts/used/v<N>/, the
@@ -300,10 +302,10 @@ def stats_update(on, v, now, moved):
         stats.update({"edgesSince": 0, "newSince": firestore.DELETE_FIELD, "lastTrainedAt": now, "lastReport": on["edges"]})
     if "doctypes" in on:
         stats.update({"doctypesSince": {k: 0 for k in DOCTYPES}, "kindsSince": firestore.DELETE_FIELD, "lastDoctypesTrainedAt": now, "lastDoctypesReport": on["doctypes"]})
-    if "mrz" in on:
-        stats.update({"lastMrzTrainedAt": now, "lastMrzReport": on["mrz"]})
-    if "he" in on:
-        stats.update({"lastHeTrainedAt": now, "lastHeReport": on["he"]})
+    if "mrz" in on:   # the bell's real passports since the reader's last training (functions/feedback.py reader_counts)
+        stats.update({"passportsSince": 0, "lastMrzTrainedAt": now, "lastMrzReport": on["mrz"]})
+    if "he" in on:    # the bell's real ID cards since the reader's last training
+        stats.update({"idCardsSince": 0, "lastHeTrainedAt": now, "lastHeReport": on["he"]})
     if moved:
         stats["attemptsSince"] = firestore.Increment(-moved)  # the attempts that came in since the pull stay counted
     return stats

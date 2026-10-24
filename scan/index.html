@@ -718,7 +718,9 @@ async function runProbe(files) {
 // the scan window does): a choice under the page set to the model's answer, and a ✓ beside it. Only what the
 // user did is a label — the model's answer nobody touched never is (it would teach the model its own guesses;
 // the training audit, 2026-10-24): a type picked is sent 20 s after the last change or when the page is left,
-// the ✓ sends the type shown at once (keep when it is the model's); each page once. Sent with a 256×256 copy
+// the ✓ sends the type shown at once (keep when it is the model's); each page once — every one sent is a person's
+// answer, so it carries doctypeConfirmed (a type the model gave and the user ticked or picked again is a label, unlike
+// a site page sampled with keep that nobody looked at: gen/real.py doctype_target). Sent with a 256×256 copy
 // (scan_feedback "add", source "page", origin "lab" with the lab's model version) and the copy's turn: the model's
 // answer (turnModel, quarter turns) and who set the turn the copy is at — "face" when the face finder set the page
 // upright, else "model" (the page as cut: its turn is only the model's guess). Only on the lab's own page — never in
@@ -730,7 +732,7 @@ function sendKind(sel) {
   job.sent = true; clearTimeout(job.timer);
   for (const el of sel.parentNode ? sel.parentNode.querySelectorAll('select.kind, button.kind-ok') : []) el.disabled = true;
   const fixed = sel.value, ex = { source: 'page', origin: 'lab', model: modelsVersion, doctypeModel: job.model, doctypeFixed: fixed, doctypeBy: 'model', pageImage: job.copy,
-    turnModel: job.turn, turnBy: job.faced ? 'face' : 'model' };
+    doctypeConfirmed: true, turnModel: job.turn, turnBy: job.faced ? 'face' : 'model' };
   if (fixed === job.model) ex.keep = true;
   trainPost({ action: 'add', examples: [ex] }).then(() => log('Document type sent for training: ' + DOCTYPE_NAMES[fixed] + (fixed === job.model ? ' (the model\'s, confirmed)' : ' (the model said ' + DOCTYPE_NAMES[job.model] + ')')),
     e => logErr('Document type not sent: ' + (e && e.message || e)));

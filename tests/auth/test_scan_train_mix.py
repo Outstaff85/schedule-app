@@ -348,3 +348,69 @@ def test_a_select_runs_seeds_are_its_own():
     a = types.SimpleNamespace(exam=False, split="exam", seed=None, focus=None)
     assert ge.split_of(a) == "exam" and a.exam is True
     assert ge.split_of(types.SimpleNamespace(exam=False, split=None, seed=1, focus=None)) == "train"
+
+
+# ---------- the document type: several runs, the open sets cut by our edges model (completeness fixes 2) ----------
+def _cuts_run(tmp_path, name, pages):
+    """A run of the phone's own cuts (gen/phone_run.py): doctype/pages.json and run.json, a training run."""
+    run = tmp_path / name
+    (run / "doctype" / "img").mkdir(parents=True)
+    (run / "doctype" / "pages.json").write_text(json.dumps(pages), encoding="utf-8")
+    (run / "run.json").write_text(json.dumps({"model": "cuts", "split": "train", "fingerprint": name[0] * 64}), encoding="utf-8")
+    return run
+
+
+def _cut(i, source="template", doctype="id_front", **more):
+    return {"id": f"cut-1-{i}-d0", "file": f"doctype/img/{i}-0.png", "doctype": doctype, "turn_k": 0, "source": source,
+            "split": "train", "exam": False, **more}
+
+
+def test_the_doctype_mix_takes_the_phone_cuts_and_the_open_sets_each_counted(tmp_path, heldout, no_qa, capsys):
+    folder = _index(tmp_path, [_row(i, model="doctype", label="human-confirmed") for i in range(4)])
+    made = _cuts_run(tmp_path, "a-cuts", [_cut(i) for i in range(80)])
+    ref = lambda n: {"id": f"midv-midv-2020-photo-images-alb_id-{n:02d}", "midv": True, "source": "midv-2020/photo", "doc_no": f"{n:02d}"}
+    opened = _cuts_run(tmp_path, "b-open", [_cut(100 + i, "midv", "passport", open=ref(i), key=f"midv:x:{i}") for i in range(15)]
+                       + [_cut(200 + i, "smartdoc", "contract", open={"id": f"smartdoc-background01-datasheet00{1 + i % 4}-001",
+                                                                      "smartdoc": True, "source": "background01"}) for i in range(5)])
+    meta = mix.main("doctype", folder, [made, opened], real_repeat=30, seed=3, out=tmp_path / "mix", work=tmp_path)
+    assert meta["counts"]["synth"] == 80 and meta["counts"]["midv"] == 15 and meta["counts"]["smartdoc"] == 5
+    assert [r["rows"] for r in meta["runs"]] == [80, 20] and meta["runs"][1]["bySource"] == {"midv": 15, "smartdoc": 5}
+    assert meta["synthRuns"] == [str(made), str(opened)] and isinstance(meta["synth"], list) and len(meta["synth"]) == 2
+    assert 0 < meta["openShare"] < 0.25 and "open sets cut by our edges model" in capsys.readouterr().out
+    rows, _, got = mix.load(tmp_path / "mix", "doctype", work=tmp_path)
+    assert {r["source"] for r in rows} == {"synth", "midv", "smartdoc", "real"} and got["fingerprint"] == meta["fingerprint"]
+    # a run once only; the edges take one made-up photos set
+    with pytest.raises(SystemExit, match="given twice"):
+        mix.main("doctype", folder, [made, made], seed=3, out=tmp_path / "m2", work=tmp_path)
+    with pytest.raises(SystemExit, match="once for the edges"):
+        mix.main("edges", folder, [made, opened], seed=3, out=tmp_path / "m3", work=tmp_path)
+    # one page cut from an open set's exam document (MIDV-2020 from 80): the mix is refused
+    bad = _cuts_run(tmp_path, "c-bad", [_cut(300, "midv", "passport", open={"id": "midv-midv-2020-clips-images-alb_id-85-000013",
+                                                                              "midv": True, "source": "midv-2020/clips", "doc_no": "85"})])
+    with pytest.raises(SystemExit, match="open-set exam document"):
+        mix.main("doctype", folder, [made, bad], seed=3, out=tmp_path / "m4", work=tmp_path)
+
+
+def test_the_phone_cuts_of_the_open_sets_never_take_an_exam_document(tmp_path, heldout):
+    from gen import phone_run
+    work = tmp_path / "work"
+    (work / "midv" / "img").mkdir(parents=True)
+    ex = []
+    for n, source in ((12, "midv-2020/photo"), (40, "midv-2020/scan_upright"), (85, "midv-2020/photo"), (90, "midv-2020/clips")):
+        eid = f"midv-{source.replace('/', '-')}-images-alb_id-{n:02d}"
+        (work / "midv" / "img" / f"{eid}.jpg").write_bytes(f"photo {n}".encode())
+        ex.append({"id": eid, "file": f"C:/elsewhere/{eid}.jpg", "midv": True, "source": source, "doc_no": f"{n:02d}", "kind": "id_front",
+                   "doc": Q, "fixed": Q})
+    ex.append({"id": "midv-no-corners-01", "file": "x.jpg", "midv": True, "source": "midv-2020/photo", "doc_no": "01", "kind": "id_front"})
+    (work / "midv" / "examples.json").write_text(json.dumps(ex), encoding="utf-8")
+    got = phone_run.open_scenes(work, ["midv"], 10, seed=1)
+    assert sorted(e["open"]["doc_no"] for e in got) == ["12", "40"] and all(e["doctype"] == "id_front" for e in got)
+    assert all(e["key"].startswith("midv:") and pathlib.Path(e["path"]).exists() for e in got)
+    assert len(phone_run.open_scenes(work, ["midv"], 1, seed=1)) == 1 and phone_run.open_scenes(work, ["midv"], 0) == []
+    t = phone_run._open_truth({**got[0], "kind": "midv"})[0]
+    assert t["source"] == "midv" and t["quad01"] == t["quadDoc"] == Q and t["open"]["doc_no"] in ("12", "40")
+    with pytest.raises(SystemExit, match="one of midv, smartdoc"):
+        phone_run.open_scenes(work, ["midv", "cord"], 5)
+    with pytest.raises(SystemExit, match="run smartdoc.py first"):
+        phone_run.open_scenes(work, ["smartdoc"], 5)
+    assert phone_run.indices({"count": 3, "real": [1], "open": got}) == range(6)

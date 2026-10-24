@@ -471,3 +471,21 @@ def test_the_hebrew_reader_warns_until_real_cards_examined_it():
     line = next(x for x in publish.gate_lines("he", {**rep, "realExamined": False, "realCards": 2}) if "real ID card" in x)
     assert "realExamined false" in line and "2 of 30" in line
     assert not any("real ID card" in x for x in publish.gate_lines("mrz", {"publish": True, "failed": []}))
+
+
+def test_a_reader_published_resets_its_bell_counter(monkeypatch):
+    """publish.py --mrz / --he: the bell's real passports / ID cards since the reader's last training go back to 0
+    (functions/feedback.py reader_counts counts them); a publish without the reader leaves its counter alone."""
+    fs = types.ModuleType("google.cloud.firestore")
+    fs.DELETE_FIELD = object()
+    fs.Increment = lambda n: types.SimpleNamespace(value=n)
+    cloud = types.ModuleType("google.cloud")
+    cloud.firestore = fs
+    monkeypatch.setitem(sys.modules, "google.cloud", cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.firestore", fs)
+    pub = _load("publish")
+    both = pub.stats_update({"mrz": {"a": 1}, "he": {"b": 2}}, "v7", "now", 0)
+    assert both["passportsSince"] == 0 and both["idCardsSince"] == 0 and both["lastVersion"] == "v7"
+    only = pub.stats_update({"doctypes": {"c": 3}}, "v7", "now", 0)
+    assert "passportsSince" not in only and "idCardsSince" not in only
+    assert "passportsSince reset" in pub.described(pub.stats_update({"mrz": {}}, "v7", "now", 0))

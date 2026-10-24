@@ -13,7 +13,8 @@ turn_k: the clockwise quarter turns the crop still needs (geometry: the page's o
 less the face's turn; None for a real attempt with no own top-left — its turn is not known); face_k: the face finder's
 turn (-1: no face); cut_by: phone | editor; iou: the cut's overlap with the true page; kernel: the one the square was
 drawn with; cut_size: the cut's own size; cut_from: native (a scene's full frame) | stored1600 (a real attempt's
-stored photo). A bad cut (IoU 0.6–0.8) is kept within the run's bad share. finish() counts the crops by class and the
+stored photo) | open640 (a MIDV or SmartDoc training photo, --open: source midv / smartdoc, with its open ref). A bad cut
+(IoU 0.6–0.8) is kept within the run's bad share. finish() counts the crops by class and the
 distinct pages (templates) behind them: a class under MIN_CROPS crops or MIN_TEMPLATES distinct pages is reported short. pages.json is read by train_doctypes.py
 --synth-run <run> (its entries count as turn known when turn_k is known)."""
 import json
@@ -53,6 +54,8 @@ def write(folder, res, ctx):
              "turnKnown": d["turnK"] is not None, "split": ctx["split"], "exam": ctx["split"] == "exam"}
         if t.get("templateSha1"):
             e.update({"templateSha1": t["templateSha1"], "templates": [t["templateSha1"]]})
+        if t.get("open"):
+            e["open"] = t["open"]   # the open-set document it was cut from (assert_clean: never an exam one)
         if ctx.get("key"):
             e["key"] = ctx["key"]
         ents.append(e)

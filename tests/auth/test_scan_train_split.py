@@ -369,6 +369,86 @@ def test_assert_clean_refuses_what_the_exam_keeps(tmp_path, heldout):
         sources.assert_clean((), meta=[("synth/he-fields/train", {"split": "check", "vocabulary": "check", "templates": []})], work=w)
 
 
+# ---------- the exam fonts (heldout.json examFonts) ----------
+def test_heldout_json_keeps_two_windows_hebrew_fonts_for_the_exam():
+    """Miriam and Frank Ruehl are the exam's: never drawn for training; Arial, David, Narkisim and Tahoma train."""
+    synth_lines = _load("synth_lines")
+    held = gc.exam_fonts()
+    assert held == {"mriam.ttf", "frank.ttf"} and held <= {n.lower() for n in synth_lines.WIN_HE}
+    assert len(set(n.lower() for n in synth_lines.WIN_HE) - held) >= 4   # enough fonts left to train on
+
+
+def test_training_draws_leave_the_exam_fonts_out_and_the_check_set_takes_only_them(tmp_path, heldout, monkeypatch):
+    heldout([], examFonts=["mriam.ttf"])
+    win = ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/MRIAM.TTF", "C:/Windows/Fonts/david.ttf"]
+    assert gc.fonts_for(win, "train") == [win[0], win[2]]
+    assert gc.fonts_for(win, "check") == [win[1]] and gc.fonts_for(win, "exam") == win
+    assert gc.font_split(["arial.ttf", "OCRB.otf"]) == "train" and gc.font_split(["x/Mriam.ttf"]) == "exam"
+    with pytest.raises(SystemExit, match="never drawn for training"):
+        gc.fonts_for(win, "train", given=True)   # a font given by hand that the exam keeps
+    with pytest.raises(SystemExit, match="nothing left"):
+        gc.fonts_for([win[1]], "train")
+    assert gc.fonts_for([win[0]], "check") == [win[0]]   # none of the exam's on this PC: the training fonts, noted
+    synth_lines = _load("synth_lines")
+    monkeypatch.setattr(synth_lines, "_batch", lambda job: [])   # no TRDG here
+    folder, _ = synth_lines.draw("he", 20, tmp_path / "lines", [win[0]])
+    meta = json.loads((folder / "sources.json").read_text(encoding="utf-8"))
+    assert meta["fonts"] == ["arial.ttf"] and meta["fontSplit"] == "train"
+    with pytest.raises(SystemExit, match="never drawn for training"):
+        synth_lines.draw("he", 20, tmp_path / "lines2", win)
+    found = synth_lines.hebrew_fonts("all")
+    assert all(not gc.is_exam_font(f) for f in synth_lines.hebrew_fonts())
+    assert set(synth_lines.hebrew_fonts("check")) <= set(found)
+
+
+def test_the_fields_sets_name_their_fonts_and_the_check_set_draws_in_the_exam_font(tmp_path, heldout, monkeypatch):
+    heldout([], examFonts=["mriam.ttf"])
+    sf = _load("synth_fields")
+    win = ["C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/mriam.ttf"]
+    monkeypatch.setattr(sf, "hebrew_fonts", lambda side="train": list(win))
+    monkeypatch.setattr(sf, "templates_in", lambda folder: [("a.png", "id_front"), ("b.png", "id_front")])
+    tv = types.ModuleType("template_vary")
+    tv.spec_for = lambda p: {"fields": ["surname"]}
+    monkeypatch.setitem(sys.modules, "template_vary", tv)
+    monkeypatch.setattr(sf, "split_pages", lambda pages, check: pages[:1] if check else pages[1:])
+    monkeypatch.setattr(sf, "file_sha1", lambda p: hashlib.sha1(str(p).encode()).hexdigest())
+
+    def args(check, fonts=None):
+        return types.SimpleNamespace(templates="t", check=check, out=str(tmp_path / ("c" if check else "t")), count=1, seed=0,
+                                     fonts=fonts)
+    train, check = sf.gen_params(args(False)), sf.gen_params(args(True))
+    assert train["fonts"] == [win[0]] and check["fonts"] == [win[1]]
+    with pytest.raises(SystemExit, match="never drawn for training"):
+        sf.gen_params(args(False, win))
+    for params, split in ((train, "train"), (check, "exam")):
+        out = tmp_path / split
+        out.mkdir()
+        sf.gen_write(out, {**params, "pages": []}, [{"entry": ["0-0.png\tא\tgiven"]}])
+        meta = json.loads((out / "sources.json").read_text(encoding="utf-8"))
+        assert meta["fontSplit"] == split and meta["fonts"] == [pathlib.Path(params["fonts"][0]).name]
+
+
+def test_assert_clean_refuses_an_exam_font_in_training(tmp_path, heldout):
+    w, _ = _work(tmp_path, heldout)
+    heldout([], examFonts=["mriam.ttf"])
+    sources.assert_clean([{"id": "p", "source": "drawn", "fonts": ["arial.ttf", "OCRB.otf"]}], work=w)
+    sources.assert_clean([{"id": "x", "source": "drawn", "fonts": ["mriam.ttf"], "exam": True}], work=w)   # the exam's own
+    with pytest.raises(SystemExit, match="examples drawn in an exam font"):
+        sources.assert_clean([{"id": "p", "source": "drawn", "fonts": ["arial.ttf", "mriam.ttf"]}], work=w)
+    with pytest.raises(SystemExit, match="exam font in training"):
+        sources.assert_clean((), meta=[("synth/he", {"split": "train", "vocabulary": "train", "templates": [], "fonts": ["mriam.ttf"]})],
+                             work=w)
+    sources.assert_clean((), meta=[("synth/he", {"split": "train", "vocabulary": "train", "templates": [], "fonts": ["arial.ttf"]})], work=w)
+    held = sources.Held(w)
+    assert held.fonts == {"mriam.ttf"}
+    from gen import manifest
+    refs = manifest.held_refs([{"id": "r1", "split": "train", "fonts": ["Mriam.ttf"]}, {"id": "r2", "split": "train", "fonts": ["arial.ttf"]},
+                               {"id": "r3", "split": "exam", "fonts": ["mriam.ttf"]}], held)
+    assert refs == [("r1", "an exam font")]
+    fonts = [s for s in sources._fonts() if s.id == "font:mriam.ttf"]
+    assert all(s.split == "exam" for s in fonts)
+
+
 def test_train_doctypes_refuses_a_synth_set_with_a_held_out_templates_page(tmp_path, heldout, monkeypatch):
     stub = types.ModuleType("torch")
     stub.nn = types.ModuleType("torch.nn")

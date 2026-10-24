@@ -135,7 +135,9 @@ export async function scanSettings(change?: { doctypeMode?: DoctypeMode; collect
 /** The scanner's training counts — a super-admin's (the bell's "time to retrain"). */
 export type TrainingStats = { due: boolean; edgesSince: number; doctypesDue: boolean; doctypes: Record<string, number>; stats: Record<string, any>;
   /** every scan attempt (docs/scan-plan.md → S8): new since the last training, the threshold, whether it is reached */
-  attemptsSince?: number; attemptsAt?: number; attemptsDue?: boolean };
+  attemptsSince?: number; attemptsAt?: number; attemptsDue?: boolean;
+  /** the readers (functions/feedback.py reader_counts): real passports / ID cards saved since each one's last training */
+  passportsSince?: number; idCardsSince?: number; realNeeded?: number; passportsDue?: boolean; idCardsDue?: boolean };
 export async function trainingStats(): Promise<TrainingStats | null> {
   try {
     const j = await post(SCAN_FEEDBACK_FN_URL, { action: 'stats' });
@@ -143,8 +145,13 @@ export async function trainingStats(): Promise<TrainingStats | null> {
     const at = j.attemptsAt ?? j.stats?.attemptsAt;
     const attemptsAt = at == null ? undefined : Number(at);
     const due = j.attemptsDue ?? j.stats?.attemptsDue;
+    const passportsSince = Number(j.passportsSince ?? j.stats?.passportsSince ?? 0), idCardsSince = Number(j.idCardsSince ?? j.stats?.idCardsSince ?? 0);
+    const realNeeded = j.realNeeded == null ? undefined : Number(j.realNeeded);
     return { due: !!j.due, edgesSince: Number(j.edgesSince ?? j.stats?.edgesSince ?? 0), doctypesDue: !!j.doctypesDue, doctypes: j.doctypes || {}, stats: j.stats || {},
-      attemptsSince, attemptsAt, attemptsDue: due != null ? !!due : attemptsAt != null && attemptsSince >= attemptsAt };
+      attemptsSince, attemptsAt, attemptsDue: due != null ? !!due : attemptsAt != null && attemptsSince >= attemptsAt,
+      passportsSince, idCardsSince, realNeeded,
+      passportsDue: j.passportsDue != null ? !!j.passportsDue : realNeeded != null && passportsSince >= realNeeded,
+      idCardsDue: j.idCardsDue != null ? !!j.idCardsDue : realNeeded != null && idCardsSince >= realNeeded };
   }
   catch { return null; }
 }

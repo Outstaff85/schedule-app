@@ -10,7 +10,8 @@ real examples pull.py and pull_doctypes.py wrote (records, attempts, page copies
                                    # after the exam sets were made (or an exam set on disk was never recorded)
 
 assert_clean(entries) is what every train*.py calls on its inputs before it trains: it refuses an example of a
-held-out template, an exam background, an exam split key or an open set's exam document. Pure: no torch, no
+held-out template, an exam background, an exam font (heldout.json examFonts: an entry's fonts or a set's
+sources.json), an exam split key or an open set's exam document. Pure: no torch, no
 Google package. Prints sha1 prefixes only — never a file name, a name or a number off a document."""
 import json
 import pathlib
@@ -135,18 +136,20 @@ def _occluders(work):
 
 
 def _fonts():
-    exam = set(gc.heldout().get("examFonts") or [])
+    """The fonts here (fonts/ and the PC's Hebrew ones, synth_lines.hebrew_fonts("all")), each on its side: exam when
+    heldout.json's examFonts names it."""
+    exam = gc.exam_fonts()
     paths = sorted((gc.HERE / "fonts").glob("*")) if (gc.HERE / "fonts").is_dir() else []
     try:
         from synth_lines import hebrew_fonts
-        paths += [pathlib.Path(f) for f in hebrew_fonts()]
+        paths += [pathlib.Path(f) for f in hebrew_fonts("all")]
     except Exception:
         pass
     seen, out = set(), []
     for p in paths:
         if p.suffix.lower() in FONTS and p.name.lower() not in seen:
             seen.add(p.name.lower())
-            out.append(Source("font:" + p.name.lower(), "font", None, "exam" if p.name.lower() in {e.lower() for e in exam} else "train",
+            out.append(Source("font:" + p.name.lower(), "font", None, "exam" if gc.is_exam_font(p, exam) else "train",
                               None, str(p), {}))
     return out
 
@@ -238,7 +241,7 @@ def pool(split, kind=None, work=None):
 # ---------- what must never reach training ----------
 class Held:
     """What the exam keeps: the held-out templates' sha1s and page ids (and, failing closed, the site pages with no
-    known side), the exam backgrounds, the exam occluders, the exam split keys."""
+    known side), the exam backgrounds, the exam occluders, the exam fonts (by file name), the exam split keys."""
 
     def __init__(self, work=None):
         every = _all(work)
@@ -249,6 +252,7 @@ class Held:
         bgs = set(gc.heldout().get("examBackgrounds") or [])
         self.backgrounds = bgs | {s.sha1 for s in exam if s.kind == "background"} | {s.sha1[:12] for s in exam if s.kind == "background"}
         self.occluders = {s.sha1 for s in exam if s.kind == "occluder"} | {s.sha1[:12] for s in exam if s.kind == "occluder"}
+        self.fonts = gc.exam_fonts()
         self.keys = {s.split_key for s in exam if s.split_key} | {
             s.split_key for s in every if s.kind == "real" and s.split == "none" and s.split_key}
 
@@ -261,6 +265,8 @@ def problems(entries=(), meta=NO_META, held=None, work=None):
     sets; None when the set has none) belongs to the exam: [(what, count)] — [] when clean."""
     import midv
     held = held or Held(work)
+    fonts = getattr(held, "fonts", None)
+    fonts = gc.exam_fonts() if fonts is None else fonts
     c = Counter()
     for e in entries:
         t = e.get("templateSha1")
@@ -279,6 +285,8 @@ def problems(entries=(), meta=NO_META, held=None, work=None):
             c["examples whose split key is the exam's"] += 1
         if not e.get("exam") and e.get("split") == "none":
             c["examples left out of both sides"] += 1
+        if not e.get("exam") and any(gc.is_exam_font(f, fonts) for f in e.get("fonts") or []):
+            c["examples drawn in an exam font"] += 1
         if (e.get("midv") or e.get("smartdoc")) and midv.open_exam(e):
             c["open-set exam documents"] += 1
         o = e.get("open")
@@ -293,6 +301,9 @@ def problems(entries=(), meta=NO_META, held=None, work=None):
                 c["held-out templates in the set"] += len(bad)
             if meta.get("vocabulary") != "train" or meta.get("split") not in (None, "train"):
                 c["a set drawn with the check vocabulary or as the check"] += 1
+            held_fonts = [f for f in meta.get("fonts") or [] if gc.is_exam_font(f, fonts)]
+            if held_fonts:
+                c["exam font in training"] += len(held_fonts)
     return sorted(c.items())
 
 

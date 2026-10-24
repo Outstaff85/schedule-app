@@ -56,7 +56,7 @@ Every step is the owner's call, from the bell and **Admin → Scanner**; "Bring 
 ## Admin → Scanner and the bell (super-admin only)
 
 - **Admin → Scanner** (new tile): for each model (document edges, document type, field reader) its step (collect → train → lab → shadow → mixed → without AI), the examples collected, the last exam report, the shadow's figures (days, % agreeing with what the user saved, vs the AI); the buttons **Turn on shadow**, **Turn on mixed mode**, **Turn off the AI**, **Bring the AI back** — each asks to confirm and changes a server setting at once, without a deploy; the per-firm switch of the full-document collection (on by default); the bucket's size.
-- **The bell** tells each step and opens the right place: "Enough pages to train the document type model" (→ run `/scan-train` on the PC), "Trained and passed its exam — try it in the lab" (→ Admin → Scanner lab), "N days in shadow: the model X %, the AI Y %" (→ Admin → Scanner), "The AI is needed in only Z % of scans" (→ Admin → Scanner).
+- **The bell** tells each step and opens the right place: "Enough pages to train the document type model", "Enough real passports to train the passport zone reader", "Enough real ID cards to train the Hebrew field reader" (each at 30 real documents saved with their fields since the reader's last training: `scan_feedback`'s `passportsSince` / `idCardsSince`, `feedback.reader_counts`; → run `/scan-train` on the PC), "Trained and passed its exam — try it in the lab" (→ Admin → Scanner lab), "N days in shadow: the model X %, the AI Y %" (→ Admin → Scanner), "The AI is needed in only Z % of scans" (→ Admin → Scanner).
 - Training never starts from the app: it needs the PC's NVIDIA card and the owner's HF token.
 
 ## Stages

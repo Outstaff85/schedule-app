@@ -202,12 +202,15 @@ def write_run(folder, model, split, params, rows, manifest_sha):
 # ---------- what the exam keeps ----------
 def held_refs(rows, held=None, work=None):
     """[(row id, why)] of the rows that reference what the exam keeps: a training row laying a held-out template,
-    on an exam background, with an exam occluder, with an exam split key, or cut from an open set's exam document;
+    on an exam background, with an exam occluder, with an exam split key, drawn in an exam font (heldout.json
+    examFonts), or cut from an open set's exam document;
     an exam row laying a page that is not held out, on a training background, laying a PDF (every PDF is on the
     training side) or with a training occluder."""
     from . import sources
     import midv
     held = held or sources.Held(work)
+    fonts = getattr(held, "fonts", None)
+    fonts = gc.exam_fonts() if fonts is None else fonts
     out = []
     for r in rows:
         shas = [s for s in [r.get("templateSha1")] + list(r.get("templates") or []) if s]
@@ -233,6 +236,8 @@ def held_refs(rows, held=None, work=None):
             out.append((r["id"], "an exam occluder"))
         if r.get("key") and r["key"] in held.keys:
             out.append((r["id"], "an exam split key"))
+        if any(gc.is_exam_font(f, fonts) for f in r.get("fonts") or []):
+            out.append((r["id"], "an exam font"))
         o = r.get("open")
         if isinstance(o, dict) and midv.open_exam(o):
             out.append((r["id"], "an open-set exam document"))

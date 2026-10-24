@@ -7,11 +7,13 @@ same lines again, so only this script is kept.
   python synth_lines.py mrz --count 100000                    # → ~/.scan-train/synth/mrz/
   python synth_lines.py he --count 50000 --fonts C:/Windows/Fonts/arial.ttf C:/Windows/Fonts/david.ttf
 
-Writes <out>/<kind>/<n>.png, <out>/<kind>/labels.tsv (file, text — Hebrew in logical order) and sources.json.
-The Hebrew lines use only the training vocabulary (synth.lines held=False): the check vocabulary is the reader's
-check set's alone (docs/scan-training.md → "Kept apart"); train_he.py refuses lines without sources.json.
+Writes <out>/<kind>/<n>.png, <out>/<kind>/labels.tsv (file, text — Hebrew in logical order) and sources.json (the
+split, the vocabulary, the fonts by file name). The Hebrew lines use only the training vocabulary (synth.lines
+held=False) and never a font heldout.json keeps for the exam (examFonts): those are the reader's check set's alone
+(docs/scan-training.md → "Kept apart"); train_he.py refuses lines without sources.json, or with an exam font.
 The passport zone's font is OCR-B (fonts/OCRB.otf: Matthew Skala's, public domain); the Hebrew
-fonts are the PC's own (Windows: Arial, David, Miriam, Narkisim — whichever are there).
+fonts are the PC's own (Windows: Arial, David, Narkisim, Tahoma — whichever are there; Miriam and Frank Ruehl are
+the exam's, heldout.json examFonts).
 Needs: pip install -r requirements-synth.txt."""
 import argparse
 import json
@@ -37,10 +39,16 @@ def _pillow_compat():
         ImageFont.FreeTypeFont.getsize = getsize
 
 
-def hebrew_fonts():
+def hebrew_fonts(side="train"):
+    """The PC's Hebrew fonts for a draw's side (gen.common.fonts_for): "train" (the default) leaves out the fonts
+    heldout.json keeps for the exam (examFonts), "check" takes only those, "exam" and "all" every one."""
     found = [str(p) for p in (pathlib.Path("C:/Windows/Fonts") / n for n in WIN_HE) if p.exists()]
-    return found or [str(p) for p in pathlib.Path("/usr/share/fonts").rglob("*.ttf")
-                     if p.name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "FreeSans.ttf", "FreeSansBold.ttf")]   # ones with Hebrew
+    found = found or [str(p) for p in pathlib.Path("/usr/share/fonts").rglob("*.ttf")
+                      if p.name in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "FreeSans.ttf", "FreeSansBold.ttf")]   # ones with Hebrew
+    if side == "all":
+        return found
+    from gen.common import fonts_for
+    return fonts_for(found, side)
 
 
 def _batch(job):
@@ -67,7 +75,10 @@ def _batch(job):
 
 
 def draw(kind, count, out, fonts, seed=1, size=40, jobs=1):
-    """count lines of a kind into out/<kind>/ with their labels, in batches of 256 on jobs processes."""
+    """count lines of a kind into out/<kind>/ with their labels, in batches of 256 on jobs processes — never in a font
+    heldout.json keeps for the exam (SystemExit: gen.common.fonts_for); sources.json names the fonts."""
+    from gen.common import font_split, fonts_for
+    fonts = fonts_for(fonts, "train", given=True)
     folder = pathlib.Path(out) / kind
     folder.mkdir(parents=True, exist_ok=True)
     texts = [t for t, _ in lines(kind, count, seed, held=False)]   # never the check vocabulary
@@ -85,7 +96,9 @@ def draw(kind, count, out, fonts, seed=1, size=40, jobs=1):
         done = [_batch(w) for w in work]
     labels = [l for b in done for l in b]
     (folder / "labels.tsv").write_text("\n".join(labels) + "\n", encoding="utf-8")
-    (folder / "sources.json").write_text(json.dumps({"split": "train", "vocabulary": "train", "templates": []}), encoding="utf-8")
+    (folder / "sources.json").write_text(json.dumps({"split": "train", "vocabulary": "train", "templates": [],
+                                                    "fonts": sorted({pathlib.Path(str(f)).name for f in fonts}),
+                                                    "fontSplit": font_split(fonts)}), encoding="utf-8")
     return folder, len(labels)
 
 

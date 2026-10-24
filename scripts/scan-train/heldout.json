@@ -9,7 +9,10 @@
   {"sha1": "9ebcb7be096cf8e52627b70d4870ef979a8fe755", "group": "own:9ebcb7be096c", "kind": "sefach"}
  ],
  "examBackgrounds": [],
- "examFonts": [],
+ "examFonts": [
+  "frank.ttf",
+  "mriam.ttf"
+ ],
  "vocabulary": {"salt": "", "every": 5},
  "open": {"midv2020From": 80, "smartdocPage": "005"},
  "versions": {

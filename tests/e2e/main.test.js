@@ -845,12 +845,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     fw.trainPost = post; fw.kindsHere = here; fw.__ds = was; fw.eval('doctypeSess = window.__ds');
     for (const x of [site, a, b, quiet, none]) x.w.remove();
     const ex = sent.map(x => x.examples[0]);
-    return { inFrame, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage].join(),
+    return { inFrame, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage, ex[0].doctypeConfirmed].join(),
       // a lab example names its origin and the copy's turn: the model's answer, and no face finder turn on these pages
       turn: ex[0] && [ex[0].origin, ex[0].turnModel, ex[0].turnBy].join(),
-      second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined].join(), noModel: !none.w.querySelector('select.kind') };
+      second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined, ex[1].doctypeConfirmed].join(), noModel: !none.w.querySelector('select.kind') };
   });
-  ok(kinds.inFrame && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel
+  ok(kinds.inFrame && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true,true' && kinds.second === 'sefach,id_front,true,true' && kinds.noModel
     && kinds.turn === 'lab,0,model',
     'scanner lab: a kept page shows the model\'s document type; only the user\'s ✓ or pick is sent, once — never an untouched answer, never in the site\'s frame, no choice with no model ' + JSON.stringify(kinds));
   // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
@@ -2266,13 +2266,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:h});
     if (JSON.parse(r.request().postData() || '{}').action !== 'stats') return r.fallback();
     return r.fulfill({status:200, contentType:'application/json', headers:h, body: JSON.stringify({ok: true, due: false, edgesSince: 3, doctypesDue: false, doctypes: {},
-      stats: {attemptsSince: 18}, attemptsSince: 18, attemptsAt: 15, attemptsDue: true})});
+      stats: {attemptsSince: 18}, attemptsSince: 18, attemptsAt: 15, attemptsDue: true,
+      passportsSince: 31, idCardsSince: 4, realNeeded: 30, passportsDue: true, idCardsDue: false})});
   });
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => document.getElementById('firmsScreen').style.display === 'block' && __firmsCache.length === 2 && document.querySelectorAll('#firmsScreenRoot [data-testid="firm-row"]').length === 2), 'boss: firms list (listTenants)');
   const attemptsBell = await waitFor(p, () => notifList().some(n => /^scan-attempts:/.test(n.id) && /18 new scan attempts/.test(n.detail)), 10000);
   ok(attemptsBell, 'boss: the bell says "New scan attempts — time to train" with the count from scan_feedback (attemptsSince / attemptsDue reach the header)');
+  const readersBell = await p.evaluate(() => ({passports: notifList().some(n => /^scan-passports:/.test(n.id) && /31 real passports/.test(n.detail)),
+    cards: notifList().some(n => /^scan-idcards:/.test(n.id))}));
+  ok(readersBell.passports && !readersBell.cards, 'boss: the bell says "Enough real passports to train the passport zone reader" at 30 (passportsDue), and nothing for the ID cards under 30 ' + JSON.stringify(readersBell));
   // The firms list (React, stage 6f-2): ✎ and a bare ⋮ (Edit, Disable, Delete last via Undo); Select; a tap opens the firm (below).
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));

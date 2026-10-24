@@ -227,6 +227,50 @@ def heldout(path=None):
 HELD_KEYS = ("templates", "examBackgrounds", "examFonts", "vocabulary", "open")   # what heldout.json keeps from training
 
 
+# ---------- the fonts the exam keeps (heldout.json examFonts) ----------
+def exam_fonts(path=None):
+    """heldout.json's examFonts: the font files the exam keeps, by file name in lower case — never drawn on the
+    training side (docs/scan-training.md → Kept apart)."""
+    return frozenset(str(f).lower() for f in heldout(path).get("examFonts") or [])
+
+
+def is_exam_font(f, exam=None):
+    """Is a font (a path or a file name) one heldout.json keeps for the exam?"""
+    return pathlib.Path(str(f)).name.lower() in (exam_fonts() if exam is None else exam)
+
+
+def font_split(fonts):
+    """"exam" when any of the fonts (paths or file names) is one heldout.json keeps, else "train"."""
+    ex = exam_fonts()
+    return "exam" if any(is_exam_font(f, ex) for f in fonts or []) else "train"
+
+
+def fonts_for(fonts, side, given=False):
+    """The fonts a draw may use, by its side: "train" (a training or select draw) leaves the exam's out — SystemExit when
+    a font given by hand (given) is one of them, or when none is left; "exam" (gen build --exam, synth_docs.py --exam)
+    takes all of them and each example records its font split; "check" (the Hebrew reader's check set, synth_fields.py
+    --check) takes only the exam's — all of them, with a note, when none of the exam's is on this PC (the set's
+    fontSplit then says "train")."""
+    fonts = [str(f) for f in fonts or []]
+    ex = exam_fonts()
+    held = [f for f in fonts if is_exam_font(f, ex)]
+    if side == "train":
+        if given and held:
+            raise SystemExit("fonts heldout.json keeps for the exam (examFonts) are never drawn for training: "
+                             + ", ".join(sorted(pathlib.Path(f).name for f in held)))
+        left = [f for f in fonts if not is_exam_font(f, ex)]
+        if fonts and not left:
+            raise SystemExit("every font given is one the exam keeps (heldout.json examFonts) — nothing left to train with")
+        return left
+    if side == "check":
+        if held:
+            return held
+        if ex:
+            print("note: no font heldout.json keeps for the exam is on this PC — the check set is drawn in the training fonts")
+        return fonts
+    return fonts
+
+
 def heldout_sha256(path=None):
     """The identity of what heldout.json keeps (its HELD_KEYS, canonical JSON) — not its notes or its "versions" list,
     so marking a published version moves nothing: the exam sets, the made-up sets' QA and the checkpoints' data

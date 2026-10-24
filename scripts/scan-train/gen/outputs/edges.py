@@ -116,7 +116,10 @@ def gen_params(a):
         print(f"{bank.unsplit} usable background photos are not split yet (on neither side): run python -m gen bg split")
     occ = gb.Occluders(WORK, side)
     pdfs = [] if a.exam else gp.pdf_sources(WORK)   # every PDF is on the training side: the exam's contract / other pages are drawn
-    latin, hebrew = a.latin or sd.latin_fonts(), a.hebrew or sd.hebrew_fonts()
+    # an exam run draws every font (each row records its font split); a training or select run never an exam font
+    font_side = "exam" if split == "exam" else "train"
+    latin = gc.fonts_for(a.latin or sd.latin_fonts(), font_side, given=bool(a.latin))
+    hebrew = gc.fonts_for(a.hebrew or sd.hebrew_fonts("all"), font_side, given=bool(a.hebrew))
     if not latin or not hebrew:
         raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
     print(f"pages: {len(pages)} real, {len(pdfs)} PDFs ({'PyMuPDF here' if gp.has_pdf() else 'no PyMuPDF: PDF pages skipped'}); "

@@ -57,7 +57,8 @@ def entry(rid, r, file, links=None, exam_keys=frozenset()):
     if dt.get("labelBy") == "self" and split in EXAM_SIDE:
         split = "none"   # Haiku's type no one saw is no truth for the exam
     return ({"id": rid, "file": str(file), "doctype": r["doctypeFixed"], "given": r.get("doctypeModel"),
-             "by": r.get("doctypeBy") or "haiku", "exam": split == "exam", "key": key, "split": split,
+             "by": r.get("doctypeBy") or "haiku", "confirmed": r.get("doctypeConfirmed") is True, "exam": split == "exam",
+             "key": key, "split": split,
              **({"legacy": True} if legacy else {}), "source": "copy", "labelBy": dt.get("labelBy"),
              "weight": dt.get("weight", 1.0), "sampleWeight": dt.get("sampleWeight", 1),
              "upright": fixed is not None or by in UPRIGHT_BY, "turnBy": by, "turnModel": quarter(r.get("turnModel")),

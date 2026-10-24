@@ -60,7 +60,8 @@ def test_document_types_the_model_gave_and_no_one_changed_are_dropped():
     t = real.doctype_target
     assert t({**base, "doctypeFixed": "passport", "doctypeModel": "passport", "doctypeBy": "model"}) is None
     assert t({**base, "doctypeFixed": "passport", "doctypeModel": "id_front", "doctypeBy": "model"})["labelBy"] == "human-confirmed"
-    assert t({**base, "doctypeFixed": "passport", "doctypeModel": "passport", "doctypeBy": "model", "confirmed": True})["labelBy"] == "human-confirmed"
+    assert t({**base, "doctypeFixed": "passport", "doctypeModel": "passport", "doctypeBy": "model", "doctypeConfirmed": True})["labelBy"] == "human-confirmed"
+    assert t({**base, "doctypeFixed": "passport", "doctypeModel": "passport", "doctypeBy": "model", "confirmed": True}) is None   # no such field
     assert t({**base, "doctypeFixed": "passport", "doctypeModel": "passport"})["labelBy"] == "self"            # Haiku's, no one saw
     assert t({**base, "doctypeFixed": "passport", "doctypeModel": "passport", "workerId": "W"})["labelBy"] == "human-saved"
     assert t({**base, "doctypeFixed": "passport", "doctypeModel": "passport", "sessionId": "S"}, links={"S": "W"})["labelBy"] == "human-saved"
@@ -340,3 +341,51 @@ def test_pull_doctypes_carries_the_dedupe_split_back(tmp_path):
     # a model-own copy of the same page drops the document page
     kept, counts = pd.deduped([{**doc}], own=[{"id": "c9", "file": str(a), "doctype": "id_front", "key": "w:1"}])
     assert kept == [] and counts == {"documentModelOwn": 1}
+
+
+# ---------- a tick in the lab, end to end (completeness fixes 2) ----------
+def _feedback():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("feedback", HERE.parents[1] / "functions" / "feedback.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_a_tick_in_the_lab_reaches_training_as_a_human_confirmed_type():
+    """The lab's ✓ on the model's own type: the payload sendKind sends, through the server's check and record, is a
+    human-confirmed label — and a site page sampled with keep that nobody looked at (the model's type) stays dropped."""
+    import base64
+    import datetime
+    fb = _feedback()
+    jpg = base64.b64encode(bytes([0xFF, 0xD8]) + bytes(100) + bytes([0xFF, 0xD9])).decode()
+    now = datetime.datetime(2026, 10, 24, tzinfo=datetime.timezone.utc)
+    lab = {"source": "page", "origin": "lab", "model": "v6", "doctypeModel": "passport", "doctypeFixed": "passport",
+           "doctypeBy": "model", "pageImage": jpg, "doctypeConfirmed": True, "turnModel": 0, "turnBy": "face", "keep": True}
+    e, why = fb.check(lab)
+    assert why is None and fb.kept(e)
+    rec = fb.record(e, "t", now, None, "doctype/2026-10/x.jpg")
+    assert rec["doctypeConfirmed"] is True
+    dt = real.doctype_target(rec)
+    assert dt is not None and dt["labelBy"] == "human-confirmed" and dt["weight"] == 1.0
+    rows, dropped = real.record_rows([("lab1", rec, None)])
+    assert dropped == 0 and rows[0]["targets"]["doctype"]["labelBy"] == "human-confirmed"
+    # the site's one-in-five sample: keep, the model's type, nobody ticked it — the model's own answer, dropped
+    site = {"source": "page", "doctypeModel": "passport", "doctypeFixed": "passport", "doctypeBy": "model", "pageImage": jpg,
+            "keep": True}
+    e, _ = fb.check(site)
+    rec = fb.record(e, "t", now, None, "doctype/2026-10/y.jpg")
+    assert rec["doctypeConfirmed"] is False and real.doctype_target(rec) is None
+    _, dropped = real.record_rows([("site1", rec, None)])
+    assert dropped == 1
+
+
+def test_the_bell_and_the_pc_need_the_same_number_of_real_documents():
+    assert _feedback().REAL_NEEDED == real.REAL_NEEDED   # duplicated on purpose (CLAUDE.md)
+
+
+def test_the_lab_page_and_its_copy_send_the_tick():
+    for page in ("scan-lab/index.html", "scan/index.html"):
+        text = (HERE.parents[1] / page).read_text(encoding="utf-8")
+        body = text[text.index("function sendKind("):text.index("function dropKind(")]
+        assert "doctypeConfirmed: true" in body, page

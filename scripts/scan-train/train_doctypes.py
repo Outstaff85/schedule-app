@@ -312,8 +312,8 @@ def main():
     print(f"seed {seed} (python train_doctypes.py ... --seed {seed} repeats this run)")
     if a.from_mix:
         ex, select, meta = gmix.load(a.from_mix, "doctype", work=WORK)
-        if meta.get("synthRun"):
-            require_qa(meta["synthRun"], "the mix's made-up pages", work=WORK)   # drawn through gen build: its QA passed
+        for run in meta.get("synthRuns") or ([meta["synthRun"]] if meta.get("synthRun") else []):
+            require_qa(run, "the mix's made-up pages", work=WORK)   # each run drawn through gen build: its QA passed
         pulled = pathlib.Path(meta.get("realDir") or WORK / "real") / "index.jsonl"
     else:
         ex, meta = as_mix(gather(a), a.real_repeat)

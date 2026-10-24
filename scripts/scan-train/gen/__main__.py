@@ -14,6 +14,7 @@ verify, QA").
   python -m gen real [--out DIR]                # every real labelled picture in one index (DIR/index.jsonl; read-only)
   python -m gen mix --model edges|doctype --synth-run DIR [--real-repeat 30] [--out DIR]   # one training list per model
       [--hard [mine/hard/pool.jsonl]] [--hard-repeat 3] [--select-run DIR]   # gen mine's hard examples; a made-up select set
+      (doctype: --synth-run again for each more run — the phone's cuts of the open sets, gen build … --open midv,smartdoc)
   python -m gen profile --frames DIR            # the resampling probe's fixed frames (PNG) and frames.json
   python -m gen profile --from probe.json --frames DIR [--out FILE]   # fit the kernels to a browser's outputs
   python -m gen exam-phone --model edges --count 40 --out DIR   # E4: the lab's edges models, INTER_AREA vs the phone path
@@ -84,7 +85,8 @@ def main(argv=None):
     m = sub.add_parser("mix", help="one training list per model: made-up, open and real data, the real data repeated")
     m.add_argument("--model", required=True, choices=("edges", "doctype"))
     m.add_argument("--real", help="gen real's folder (default <home>/real)")
-    m.add_argument("--synth-run", help="a made-up set drawn through gen build (its QA passed)")
+    m.add_argument("--synth-run", action="append", help="a made-up set drawn through gen build (its QA passed); the "
+                   "document type takes several (repeat it: the phone's cuts, with the open sets' --open run)")
     m.add_argument("--synth", type=int, default=0, help="made-up examples taken (0: all)")
     m.add_argument("--midv", type=int, default=0, help="MIDV training photos taken (edges)")
     m.add_argument("--smartdoc", type=int, default=0, help="SmartDoc training frames taken (edges)")

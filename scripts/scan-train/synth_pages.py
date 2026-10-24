@@ -29,7 +29,7 @@ from PIL import ImageDraw
 import synth
 import synth_docs as sd
 from gen import rng as grng
-from gen.common import file_sha1, label
+from gen.common import file_sha1, fonts_for, label
 from gen.manifest import sha256_file
 from home import WORK
 from midv import open_exam
@@ -324,7 +324,7 @@ def gen_params(a):
         print(f"{len(kept)} real pages kept apart for the exam, {len(pages)} used here")
     return {"model": MODEL, "split": "train", "count": a.count, "seed": a.seed, "out": str(a.out),
             "pages": [{"path": p, "sha1": file_sha1(p), "kind": k} for p, k in pages],
-            "latin": list(sd.latin_fonts()), "hebrew": list(sd.hebrew_fonts()), "openSets": open_sets()}
+            "latin": fonts_for(sd.latin_fonts(), "train"), "hebrew": list(sd.hebrew_fonts()), "openSets": open_sets()}   # never an exam font
 
 
 def gen_prepare(folder, params):

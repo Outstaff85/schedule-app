@@ -3,7 +3,10 @@ the passport zone reader, the Hebrew field reader and the face finder's exam lea
 path, not by the true corners — `python -m gen build --model doctype,mrz,he,face` (`--exam`: the exam's; `--split
 select`: a made-up select set for the document type model's epoch — the edges' select seeds and training side, no --real).
 
-For each scene, made up (gen/scene.py) or real (an attempt's photo with the corners a person kept, --real):
+For each scene, made up (gen/scene.py), real (an attempt's photo with the corners a person kept, --real) or open (a MIDV
+or SmartDoc training photo with its document's own corners, --open midv,smartdoc --open-n N: never an exam document,
+midv.open_exam; each page labelled by the class table, gen.common.label, with its open ref and document key, so
+assert_clean's open-exam check applies — the document type's "MIDV/SmartDoc cut by our edges model" share):
 1. the lab's shot (gen/exam_phone.py shot, the phone path): frame_to_S, the lab's edges-lite on the live frame and
    edges on the capture (the version in scripts/scan-lab/models-version — only read, never changed), corners(), then
    findNext and findInside (docfind.find_next lab=True, docfind.find_inside);
@@ -12,7 +15,8 @@ For each scene, made up (gen/scene.py) or real (an attempt's photo with the corn
 3. each true document cut from the full frame by the PREDICTED corners (gen/phone.py warp_rgba: the lab's cut), then
    turned by the face on it (phone.face_turn: the lab's faceTurn) — the frame at the camera's NATIVE size (native_scene:
    the 1920 × 1080 video or the ~4000 × 3000 photo the lab cuts from, not the 1600 px the edges sets are drawn at); a
-   real attempt is cut from its stored photo (at most 1600 px, JPEG: cutFrom "stored1600");
+   real attempt is cut from its stored photo (at most 1600 px, JPEG: cutFrom "stored1600"), an open photo from the set's
+   own copy (midv.py / smartdoc.py: 640 px on the long side, cutFrom "open640");
 4. its labels from the geometry: turn_k — the clockwise quarter turns the cut still needs (the document's own corner
    order against the predicted one, less the face's turn) — and every field box mapped into the cut through
    H_pred⁻¹·H_true (the camera's projection of the page's own box, then the frame → cut map of the predicted corners);
@@ -328,6 +332,9 @@ def gen_args(ap):
     ap.add_argument("--bad-share", type=float, default=BAD_SHARE, help="the bad cuts' (IoU 0.6–0.8) largest share (default %(default)s)")
     ap.add_argument("--real", type=int, default=0, help="also cut up to N real attempts (examples.json: the photos with the "
                     "corners a person kept, the run's side only)")
+    ap.add_argument("--open", default="", help="also cut open-set training photos by the lab's path: midv, smartdoc or "
+                    "midv,smartdoc (<home>/midv|smartdoc/examples.json; never an exam document) — a training run only")
+    ap.add_argument("--open-n", type=int, default=0, help="how many open photos at most (spread evenly over the sets named)")
 
 
 def real_scenes(work, exam, limit):
@@ -354,16 +361,82 @@ def real_scenes(work, exam, limit):
     return out
 
 
+OPEN_SETS = ("midv", "smartdoc")
+OPEN_LONG = 640   # midv.py / smartdoc.py keep each photo at 640 px on its long side
+
+
+def open_doctype(kind, e):
+    """An open-set example's page kind (the class table, gen.common.label): MIDV's examples carry it already."""
+    from . import common as gc
+    k = e.get("kind") or ""
+    if kind == "midv":
+        return k if k in gc.DOCTYPES else gc.label("midv", k)
+    return gc.label(kind, k)
+
+
+def open_scenes(work, kinds, limit, seed=0):
+    """Up to limit open-set training photos (midv.py / smartdoc.py: <work>/<kind>/examples.json), spread evenly over
+    kinds and drawn by seed — never an exam document (midv.open_exam: MIDV-2020 from document 80, SmartDoc's page 005) —,
+    each with its document's own corners (doc: the page's own top-left first): [{path, sha1, doc, doctype, kind, open
+    (synth_pages.open_ref), key (gen.sources.open_key)}]; a photo with no corners or no file is left out."""
+    import random
+    import midv
+    from . import common as gc
+    from .sources import open_key
+    kinds = [k for k in kinds if k]
+    bad = [k for k in kinds if k not in OPEN_SETS]
+    if bad:
+        raise SystemExit(f"--open {','.join(bad)}: one of {', '.join(OPEN_SETS)}")
+    if not limit or not kinds:
+        return []
+    out = []
+    for n, kind in enumerate(kinds):
+        f = pathlib.Path(work) / kind / "examples.json"
+        if not f.exists():
+            raise SystemExit(f"--open {kind}: no {f} — run {kind}.py first")
+        rows = [e for e in json.loads(f.read_text(encoding="utf-8")) if e.get("doc") and not midv.open_exam(e)]
+        want = limit // len(kinds) + (1 if n < limit % len(kinds) else 0)
+        rows = sorted(rows, key=lambda e: str(e.get("id")))
+        random.Random(f"phone_run open:{seed}:{kind}").shuffle(rows)
+        got = 0
+        for e in rows:
+            if got >= want:
+                break
+            p = pathlib.Path(work) / kind / "img" / pathlib.Path(str(e.get("file"))).name
+            if not p.exists():
+                continue
+            ref = {k: e[k] for k in ("id", "source", "midv", "smartdoc", "doc_no") if k in e}
+            out.append({"path": str(p), "sha1": gc.file_sha1(p), "doc": e["doc"], "doctype": open_doctype(kind, e), "kind": kind,
+                        "open": ref, "key": open_key(e)})
+            got += 1
+    return out
+
+
+def _open_truth(e):
+    """An open photo's one true document: its own corners (the page's own top-left first, so its turn is known)."""
+    return [{"index": 0, "doctype": e["doctype"], "kind": e["doctype"], "source": e["kind"], "quad01": e["doc"],
+             "quadDoc": e["doc"], "quadModel": e["doc"], "fields": [], "face": None, "mrz": None,
+             "pageId": f"{e['kind']}:{(e.get('open') or {}).get('id', '?')}", "templateSha1": None, "seen": True,
+             "insideOf": None, "material": None, "open": e.get("open")}]
+
+
 def gen_params(a):
     from home import WORK
     from .outputs import edges as ge
     split = ge.split_of(a)   # --split select: its own seeds, the training side (ge.gen_params draws it so)
     if split == "select" and a.real:
         raise SystemExit("--real is for a training or exam run: the real attempts keep their own split (gen real)")
-    a.count = a.count or (300 if split != "train" else 2000)
+    kinds = [k.strip() for k in str(getattr(a, "open", "") or "").split(",") if k.strip()]
+    if kinds and split != "train":
+        raise SystemExit("--open is for a training run: the open sets' exam documents stay the edges exam's (midv.open_exam)")
+    count = a.count if a.count is not None else (300 if split != "train" else 2000)
+    if count == 0 and not kinds:
+        raise SystemExit("--count 0 only with --open: a run of the open sets' cuts alone")
+    a.count = count or 1   # the scenes' own parameters drawn as for one scene; the run draws count of them
     out = a.out
     a.out = a.out or "-"   # edges' default name is not ours
     p = ge.gen_params(a)
+    p["count"] = count
     seed = p["seed"]
     models = [m for m in a.models.split(",") if m]
     bad = [m for m in models if m not in OUTPUTS]
@@ -374,15 +447,17 @@ def gen_params(a):
     p.update({"model": MODEL, "generator": GENERATOR, "models": models, "labVersion": version, "edgesSha": edges_sha(paths),
               "faceSha": sha256_of(paths[FACE_FILE]), "editorCap": a.editor_cap, "badShare": a.bad_share,
               "real": real_scenes(WORK, a.exam, a.real),
+              "open": open_scenes(WORK, kinds, getattr(a, "open_n", 0), seed),
               "out": out or str(WORK / "gen" / "runs" / f"cuts-s{seed}-n{p['count']}{'' if split == 'train' else '-' + split}")})
     print(f"the lab's models {version} (edges {p['edgesSha'][:12]}); writers {', '.join(models)}; "
-          f"{len(p['real'])} real attempts; editor cuts at most {a.editor_cap:.0%}, bad cuts at most {a.bad_share:.0%}")
+          f"{len(p['real'])} real attempts; {len(p['open'])} open-set photos; editor cuts at most {a.editor_cap:.0%}, "
+          f"bad cuts at most {a.bad_share:.0%}")
     return p
 
 
 def indices(params):
-    """Every item of the run: the made-up scenes, then the real attempts (--real)."""
-    return range(params["count"] + len(params.get("real") or []))
+    """Every item of the run: the made-up scenes, then the real attempts (--real), then the open photos (--open)."""
+    return range(params["count"] + len(params.get("real") or []) + len(params.get("open") or []))
 
 
 def gen_prepare(folder, params):
@@ -420,7 +495,6 @@ def _batch(job):
     from . import common as gc
     dropped = set(params.get("dropped") or [])
     seed, count = params["seed"], params["count"]
-    exam_fonts = {str(f).lower() for f in gc.heldout().get("examFonts") or []}
     out = []
     for i in indices:
         runs0 = Lab.runs
@@ -443,6 +517,21 @@ def _batch(job):
                 t["role"] = role_of.get(t["index"], "painted")
             rng = r["phone"]
             cut_from = "native"
+        elif i >= count + len(params.get("real") or []):
+            e = params["open"][i - count - len(params.get("real") or [])]
+            frame = cv2.imread(e["path"])
+            truths = _open_truth(e) if frame is not None else []
+            meta = {"templates": [], "class": e["doctype"], "source": e["kind"], "rng": grng.STAGED, "vocabulary": "train",
+                    "open": e.get("open"), "scene": {"recipe": "open", "set": e["kind"]}}
+            cut_from = f"open{OPEN_LONG}"
+            if e.get("key"):
+                meta["key"] = e["key"]
+            rng = grng.py_stream(seed, i, "phone")
+            for t in truths:
+                t["role"] = "answer"
+            if frame is None:
+                out.append({"index": i, "id": f"cut-{seed}-{i}", "entry": {}, "files": [], "runs": 0, "meta": meta})
+                continue
         else:
             e = params["real"][i - count]
             frame = cv2.imread(e["path"])
@@ -468,7 +557,7 @@ def _batch(job):
             cache.put(i, {**rec2, "frame": fsha})
         ctx = {"seed": seed, "index": i, "edgesSha": params["edgesSha"], "split": params["split"], "held": params.get("held", False),
                "cutFrom": cut_from,
-               "fontSplit": "exam" if any(pathlib.Path(f).name.lower() in exam_fonts for f in meta.get("fonts") or []) else "train",
+               "fontSplit": gc.font_split(meta.get("fonts")),
                **({"key": meta["key"]} if meta.get("key") else {})}
         entry, files = {}, []
         for d in res["docs"]:

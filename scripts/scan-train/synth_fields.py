@@ -9,8 +9,10 @@ made up), and nothing is uploaded: the same seed draws the same fields again.
   python synth_fields.py --count 300 --check          # the held-out pages (another seed) → …/check/, to measure on
 
 Kept apart (docs/scan-training.md → "Kept apart"): the check set is drawn only from the real pages kept for the
-exam (synth.held_out: heldout.json) and with the check vocabulary (synth.field_value held=True); training gets the
-other pages and the training vocabulary — the reader is measured on cards and words it never saw.
+exam (synth.held_out: heldout.json), with the check vocabulary (synth.field_value held=True) and in the fonts
+heldout.json keeps for the exam (examFonts; gen.common.fonts_for — the training fonts, with a note, on a PC with
+none of them); training gets the other pages, the training vocabulary and never an exam font — the reader is
+measured on cards, words and fonts it never saw. sources.json names the fonts and their split (fontSplit).
 
 Writes <n>.png (grey), labels.tsv (file, text as written, kind, the page's sha1 prefix, the page type, the field's
 role — hemodel.role_of: a date's dob / expiry / issued) and sources.json (the
@@ -26,7 +28,7 @@ import cv2
 import numpy as np
 
 from gen import rng as grng
-from gen.common import file_sha1, heldout_sha256, record_own_exam_set
+from gen.common import file_sha1, font_split, fonts_for, heldout_sha256, record_own_exam_set
 from gen.manifest import FontLog
 from home import WORK
 from synth_docs import TEMPLATES, templates_in
@@ -145,9 +147,13 @@ def gen_params(a):
         raise SystemExit(f"no marked real page in {a.templates} — run pull_templates.py (template_fields.json names the marked ones)")
     pages = split_pages(pages, a.check)
     out = pathlib.Path(a.out) if a.out else OUT / ("check" if a.check else "train")
+    # the check set only in the fonts heldout.json keeps for the exam; training never in them (gen.common.fonts_for)
+    fonts = fonts_for(a.fonts or hebrew_fonts("all"), "check" if a.check else "train", given=bool(a.fonts))
+    if not fonts:
+        raise SystemExit("no Hebrew font found: give --fonts")
     return {"model": MODEL, "split": "exam" if a.check else "train", "count": a.count, "seed": a.seed or (2 if a.check else 1),
             "out": str(out), "held": bool(a.check), "pages": [{"path": p, "sha1": file_sha1(p), "kind": k} for p, k in pages],
-            "fonts": list(a.fonts or hebrew_fonts())}
+            "fonts": list(fonts)}
 
 
 def gen_prepare(folder, params):
@@ -167,8 +173,10 @@ def gen_write(folder, params, items):
     held = params["held"]
     used = sorted({e["sha1"] for e in params["pages"]} - {None})
     from hemodel import NAME_OPEN
+    fonts = params.get("fonts") or []
     (out / "sources.json").write_text(json.dumps({"split": "check" if held else "train", "vocabulary": "check" if held else "train",
                                                   "templates": used, "heldout_sha256": heldout_sha256(),
+                                                  "fonts": sorted({pathlib.Path(str(f)).name for f in fonts}), "fontSplit": font_split(fonts),
                                                   "nameOpen": NAME_OPEN}, indent=1), encoding="utf-8")   # train_he.py: cut as the phone reads
     if held:
         record_own_exam_set("he-fields/check", out / "labels.tsv")   # the work folder's own check set only

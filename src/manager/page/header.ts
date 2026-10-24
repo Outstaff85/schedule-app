@@ -100,6 +100,8 @@ function notifList(){
   const tr6=scanEdgesNotice(); if(tr6) out.push(tr6);
   const tr7=scanDoctypeNotice(); if(tr7) out.push(tr7);
   const tr8=scanAttemptsNotice(); if(tr8) out.push(tr8);
+  const tr9=scanPassportsNotice(); if(tr9) out.push(tr9);
+  const tr10=scanIdCardsNotice(); if(tr10) out.push(tr10);
   return out.sort((a?: any,b?: any)=>b.at-a.at);
 }
 // The scanner's "time to retrain" notice (docs/scan-plan.md → S6), the super-admin's
@@ -108,7 +110,7 @@ function notifList(){
 let __scanTrain: any=null, __scanTrainAt=0;
 function scanEdgesNotice(){
   if((getSession()||{} as any).role!=='superadmin') return null;
-  if(Date.now()-__scanTrainAt>6*3600e3){ __scanTrainAt=Date.now(); trainingStats().then(r=>{ __scanTrain=r; if(r&&(r.due||r.doctypesDue||r.attemptsDue)) refreshBell(); }); }
+  if(Date.now()-__scanTrainAt>6*3600e3){ __scanTrainAt=Date.now(); trainingStats().then(r=>{ __scanTrain=r; if(r&&(r.due||r.doctypesDue||r.attemptsDue||r.passportsDue||r.idCardsDue)) refreshBell(); }); }
   if(!(__scanTrain&&__scanTrain.due)) return null;
   const n=__scanTrain.edgesSince;
   return {id:'scan-train:'+Math.floor(n/100), lvl:'blue', icon:'ti-scan', title:tr('Time to retrain the document edges model'),
@@ -129,6 +131,21 @@ function scanAttemptsNotice(){
   const n=Number(__scanTrain.attemptsSince||0);
   return {id:'scan-attempts:'+Math.floor(n/15), lvl:'blue', icon:'ti-scan', title:tr('New scan attempts — time to train'),
     detail:tr('{0} new scan attempts since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0), open:openScanAdmin};
+}
+// The readers' notices (docs/scan-plan.md → the bell): enough real passports / Israeli ID cards saved with
+// the fields a person kept since the reader's last training (scan_feedback's passportsDue / idCardsDue,
+// REAL_NEEDED: 30) to train the passport zone reader / the Hebrew field reader on the PC.
+function scanPassportsNotice(){
+  if((getSession()||{} as any).role!=='superadmin'||!(__scanTrain&&__scanTrain.passportsDue)) return null;
+  const n=Number(__scanTrain.passportsSince||0);
+  return {id:'scan-passports:'+Math.floor(n/30), lvl:'blue', icon:'ti-scan', title:tr('Enough real passports to train the passport zone reader'),
+    detail:tr('{0} real passports saved since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0), open:openScanAdmin};
+}
+function scanIdCardsNotice(){
+  if((getSession()||{} as any).role!=='superadmin'||!(__scanTrain&&__scanTrain.idCardsDue)) return null;
+  const n=Number(__scanTrain.idCardsSince||0);
+  return {id:'scan-idcards:'+Math.floor(n/30), lvl:'blue', icon:'ti-scan', title:tr('Enough real ID cards to train the Hebrew field reader'),
+    detail:tr('{0} real ID cards saved since the last training — run /scan-train on the PC',{0:n}), at:new Date().setHours(0,0,0,0), open:openScanAdmin};
 }
 // A scanner notice opens Admin → Scanner (docs/hf-plan.md → Admin → Scanner and the bell).
 function openScanAdmin(){ switchTab('admin'); (window as any).switchAdminPane?.('scanner'); }

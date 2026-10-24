@@ -17,7 +17,9 @@ model version that made it), outcome, retakeGroup, and the targets per model —
 weight:
 - edges (attempts, records' corner copies): "human-moved" when the corners were moved past MOVED_MIN, "human-confirmed"
   for a page the user deleted ("nothing here"), else "self" (the model's own corners, no one touched them);
-- doctype (page copies, documents' pages): "human-confirmed" for a type the user changed or ticked (✓), "human-saved"
+- doctype (page copies, documents' pages): "human-confirmed" for a type the user changed or ticked (✓: the record's
+  doctypeConfirmed, which the scanner lab sends with every type a person ticked or picked — functions/feedback.py keeps
+  it), "human-saved"
   for a document page saved with the worker and for a copy of a scan saved with a worker (its type was seen when
   saving), "self" for Haiku's type left as it was on a scan never saved; a type the document type model gave
   and the user left as it was (doctypeBy model, fixed == model) is dropped: it is the model's own answer as truth —
@@ -89,7 +91,7 @@ def doctype_target(r, saved=False, links=None):
     if fixed not in gc.DOCTYPES:
         return None
     given, by = r.get("doctypeModel"), r.get("doctypeBy")
-    confirmed = r.get("confirmed") is True or r.get("doctypeConfirmed") is True
+    confirmed = r.get("doctypeConfirmed") is True   # a person ticked (✓) or picked it (the lab; feedback.check keeps it)
     changed = given is not None and given != fixed
     if by == "model" and not changed and not confirmed:
         return None
@@ -391,7 +393,8 @@ def read_summary(folder):
 
 
 # ---------- the real cards and passports saved with their fields (the readers' real exam) ----------
-REAL_NEEDED = 30       # real documents on the exam side a reader's real exam needs (train_he.py; gen status for both)
+REAL_NEEDED = 30       # real documents on the exam side a reader's real exam needs (train_he.py; gen status for both) —
+                       # the bell's too (functions/feedback.py REAL_NEEDED: new ones since the reader's training; mirrored)
 FIELD_DOCS = {"he": "israeli_id", "mrz": "passport"}   # the saved worker's docType each reader reads
 
 

@@ -716,7 +716,8 @@ def _scan_document(payload, claims, db, stats_ref, storage):
     datastore.put([(f"{base}/record.json", datastore.as_json(feedback.document_record(doc, tenant, now, doc_id, paths)))], lambda: _model_bucket(storage))
     stats_ref.set({"documentsSince": firestore.Increment(1), "documents": firestore.Increment(1),
                    "fieldsCorrected": firestore.Increment(len(doc["corrected"])), "updatedAt": now,
-                   **{k: firestore.Increment(n) for k, n in {**feedback.mrz_counts(doc), **feedback.he_counts(doc)}.items()}}, merge=True)
+                   **{k: firestore.Increment(n) for k, n in {**feedback.mrz_counts(doc), **feedback.he_counts(doc),
+                                                             **feedback.reader_counts(doc)}.items()}}, merge=True)
     return _json({"ok": True, "kept": True})
 
 
@@ -870,7 +871,9 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     and the Hebrew field reader's (H8c; counted: heShadowCards / heShadowRight / heAiRight).
     {"action": "attempt", "attempts": [...]} / {"action": "attemptOutcome", "dir", "outcome", "workerId"?} from
     the scanner (S8): every scan attempt, for the training, and what became of it (a page deleted, the worker saved).
-    {"action": "stats"} (a super-admin): the counts, and whether retraining is due.
+    {"action": "stats"} (a super-admin): the counts, and whether retraining is due — the edges, the document type, the
+    scan attempts, and the readers (passportsSince / idCardsSince against REAL_NEEDED: the real passports and ID cards
+    saved since each reader's last training, feedback.reader_counts).
     The files go to the private Hugging Face bucket once the server has its token, else to
     Firebase Storage training/ (datastore.py)."""
     if req.method != "POST":
@@ -899,7 +902,8 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
             stats = (stats_ref.get().to_dict() or {})
             return _json({"ok": True, "stats": stats, "due": feedback.edges_since(stats) >= feedback.RETRAIN_AT, "edgesSince": feedback.edges_since(stats),
                           "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats),
-                          "attemptsSince": feedback.attempts_since(stats), "attemptsAt": feedback.ATTEMPTS_AT, "attemptsDue": feedback.attempts_due(stats)})
+                          "attemptsSince": feedback.attempts_since(stats), "attemptsAt": feedback.ATTEMPTS_AT, "attemptsDue": feedback.attempts_due(stats),
+                          **feedback.readers_due(stats)})
         if payload.get("action") == "document":
             return _scan_document(payload, claims, db, stats_ref, storage)
         if payload.get("action") == "attempt":

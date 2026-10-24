@@ -122,7 +122,7 @@ def _found(entry, roots):
     return None
 
 
-WHAT = {"pages": "page", "photos": "background", "pdfs": "PDF", "occluders": "cut-out", "real": "attempt photo"}
+WHAT = {"pages": "page", "photos": "background", "pdfs": "PDF", "occluders": "cut-out", "real": "attempt photo", "open": "open-set photo"}
 
 
 def resolve(params, work=None):
@@ -133,7 +133,8 @@ def resolve(params, work=None):
     out = dict(params)
     assets = pathlib.Path(__file__).resolve().parents[3] / "functions" / "assets"
     for key, roots in (("pages", [work / "templates"]), ("photos", [work / "backgrounds", work / "backgrounds-own"]),
-                       ("pdfs", [work / "contracts", assets]), ("occluders", [work / "occluders"]), ("real", [work / "img"])):
+                       ("pdfs", [work / "contracts", assets]), ("occluders", [work / "occluders"]), ("real", [work / "img"]),
+                       ("open", [work / "midv", work / "smartdoc"])):
         fixed = []
         for e in params.get(key) or []:
             got = _found(e, roots)

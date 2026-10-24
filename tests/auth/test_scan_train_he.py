@@ -315,6 +315,24 @@ def test_the_he_gate_is_the_five_roles_the_phone_reads_on_unseen_id_card_fronts(
     assert any(f.startswith("expiry: not examined") for f in fails)
 
 
+def test_the_he_phone_block_is_reported_by_font_split(tmp_path):
+    """heldout.json's exam fonts: the phone's own cuts carry each field's font split (labels.tsv's 9th column), the check
+    set its sources.json fontSplit; the report gives the phone block by split — the fonts the reader never saw apart."""
+    th = _load("train_he")
+    (tmp_path / "labels.tsv").write_text("a.png\t123\tidNo\tdrawn\tid_front\tidNo\tnew\tFalse\texam\tcut-1-0-d0\n"
+                                        "b.png\tכהן\tname\tabc\tid_front\tsurname\n", encoding="utf-8")
+    rows = th.load(tmp_path, font="train")
+    assert [r[3]["font"] for r in rows] == ["exam", "train"]
+    assert [r[3]["font"] for r in th.load(tmp_path)] == ["exam", None]
+    label = hemodel.visual("כהן")
+    rows = [(f"{c}-{r}.png", label, "name", {"pageType": "id_front", "role": r, "page": f"c{c}", "font": "exam" if c < 2 else "train"})
+            for c in range(4) for r in hemodel.ROLES]
+    got = [label if r[3]["font"] == "train" else "x" for r in rows]
+    by = th.by_font(rows, got)
+    assert set(by) == {"exam", "train"} and by["train"]["byRole"]["surname"] == 1.0 and by["exam"]["byRole"]["surname"] == 0.0
+    assert by["exam"]["cards"] == 2 and th.by_font(rows[:1], got[:1]).keys() == {"exam"}
+
+
 def test_the_phone_exam_takes_a_fresh_cut_run_and_only_unseen_values(tmp_path, monkeypatch):
     import pytest
     from gen import common as gc

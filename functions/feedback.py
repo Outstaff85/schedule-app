@@ -116,6 +116,9 @@ def check(example):
         page_image = _jpeg(example.get("pageImage"))
     return {"image": image, "edgesModel": model, "edgesFixed": fixed, "source": source, "model": version,
             "moved": shift, "doctypeModel": doctype_model, "doctypeFixed": doctype_fixed, "doctypeBy": doctype_by, "pageImage": page_image, "right": keep_right,
+            # a person ticked (✓) or picked the type (the scanner lab's own page sends it with every type it sends): a
+            # label even when it is the model's own answer — unlike a site page sampled with keep that nobody looked at
+            "doctypeConfirmed": source == "page" and doctype_fixed is not None and example.get("doctypeConfirmed") is True,
             # the document type model's answer in shadow mode (Admin → Scanner): only compared, never trusted
             "doctypeShadow": example.get("doctypeShadow") if example.get("doctypeShadow") in DOCTYPES else None,
             # where it was made; the scan it belongs to and the worker, once known (a training keeps one scan, one
@@ -185,6 +188,7 @@ def record(ex, tenant_id, now, path, page_path=None):
     return {"edgesModel": ex["edgesModel"], "edgesFixed": ex["edgesFixed"], "moved": ex["moved"],
             "source": ex["source"], "model": ex["model"], "tenantId": tenant_id or "", "image": path,
             "doctypeModel": ex["doctypeModel"], "doctypeFixed": ex["doctypeFixed"], "doctypeBy": ex.get("doctypeBy", "haiku"), "pageImage": page_path, "right": ex["right"],
+            "doctypeConfirmed": bool(ex.get("doctypeConfirmed")),
             "doctypeShadow": ex.get("doctypeShadow"), "origin": ex.get("origin", "site"), "sessionId": ex.get("sessionId"), "workerId": ex.get("workerId"),
             "turnModel": ex.get("turnModel"), "turnFixed": ex.get("turnFixed"), "turnBy": ex.get("turnBy"),
             "createdAt": now, "deleteAt": now + datetime.timedelta(days=KEEP_DAYS)}
@@ -333,6 +337,35 @@ def he_counts(doc):
         return {}
     return {"heShadowCards": 1, "heShadowRight": int(all(_same_he(fields.get(k), saved[k]) for k in keys)),
             "heAiRight": int(all(_same_he(scanned.get(k), saved[k]) for k in keys))}
+
+
+# ---------- the readers' real documents, for the bell (docs/scan-plan.md → the bell) ----------
+# A reader is worth retraining once REAL_NEEDED new real documents of its kind were saved with the fields a person kept
+# (the PC's gen.real.REAL_NEEDED — duplicated on purpose): a passport for the passport zone reader, an Israeli ID card's
+# front for the Hebrew field reader. publish.py resets the counter of a reader it publishes.
+REAL_NEEDED = 30
+
+
+def reader_counts(doc):
+    """What a saved full document adds to the readers' counters: {passportsSince: 1} for a passport (a page typed
+    passport, the saved docType passport and a zone field kept — MRZ_COMPARED), {idCardsSince: 1} for an Israeli ID card
+    (a page typed id_front, the saved docType israeli_id and a field the Hebrew reader reads kept — HE_COMPARED)."""
+    saved = doc.get("saved") or {}
+    kinds = {pg.get("doctype") for pg in doc.get("pages") or []}
+    out = {}
+    if "passport" in kinds and saved.get("docType") == "passport" and any(saved.get(k) for k in MRZ_COMPARED):
+        out["passportsSince"] = 1
+    if "id_front" in kinds and saved.get("docType") == "israeli_id" and any(saved.get(k) for k in HE_COMPARED):
+        out["idCardsSince"] = 1
+    return out
+
+
+def readers_due(stats):
+    """The readers' counters for the stats answer: the real passports and ID cards saved since each reader's last
+    training, REAL_NEEDED, and whether each is due."""
+    p, c = int(stats.get("passportsSince") or 0), int(stats.get("idCardsSince") or 0)
+    return {"passportsSince": p, "idCardsSince": c, "realNeeded": REAL_NEEDED,
+            "passportsDue": p >= REAL_NEEDED, "idCardsDue": c >= REAL_NEEDED}
 
 
 def document_record(doc, tenant_id, now, doc_id, page_paths):

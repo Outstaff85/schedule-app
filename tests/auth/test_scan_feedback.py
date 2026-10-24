@@ -227,6 +227,21 @@ def test_a_phone_cut_page_teaches_only_its_document_type():
     assert feedback.check({"source": "page", "doctypeModel": "id_front", "doctypeFixed": "sefach"})[1] == "a changed document type needs a small JPEG of the page"
 
 
+def test_a_tick_in_the_lab_is_kept_as_doctype_confirmed_and_a_site_sample_is_not():
+    now = datetime.datetime(2026, 10, 24, tzinfo=datetime.timezone.utc)
+    lab = {"source": "page", "origin": "lab", "model": "v6", "doctypeModel": "passport", "doctypeFixed": "passport",
+           "doctypeBy": "model", "pageImage": JPG, "doctypeConfirmed": True, "keep": True}
+    e, why = feedback.check(lab)
+    assert why is None and e["doctypeConfirmed"] is True and feedback.kept(e) and not feedback.correction(e)
+    assert feedback.record(e, "t", now, None, "p")["doctypeConfirmed"] is True
+    site, _ = feedback.check({"source": "page", "doctypeModel": "passport", "doctypeBy": "model", "pageImage": JPG, "keep": True})
+    assert site["doctypeConfirmed"] is False and feedback.record(site, "t", now, None, "p")["doctypeConfirmed"] is False
+    # only a phone-cut page carries it, as a bool, and only with a type
+    assert feedback.check(ex(keep=True, doctypeModel="passport", doctypeConfirmed=True))[0]["doctypeConfirmed"] is False
+    assert feedback.check({"source": "page", "doctypeModel": "passport", "doctypeConfirmed": "yes", "keep": True})[0]["doctypeConfirmed"] is False
+    assert feedback.check({"source": "page", "doctypeConfirmed": True, "keep": True})[0]["doctypeConfirmed"] is False
+
+
 def test_a_corner_fix_from_the_old_window_still_counts_toward_the_edges_retraining():
     fixed = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.95]]
     e, _ = feedback.check(ex(edgesFixed=fixed))
@@ -517,3 +532,47 @@ def test_an_outcome_from_another_firm_or_for_no_attempt_is_refused(monkeypatch):
     db = _Db({feedback.attempt_key(dir_): {"tenantId": "t9", "dir": dir_}})
     assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted"}, {"tenantId": "t1"}, db, None))[0] == 403
     assert put == []
+
+
+# ---------- the readers' counters for the bell (completeness fixes 2) ----------
+PASSPORT = {"docType": "passport", "docId": "FA123456", "docDob": "01/02/1990", "docGiven": "OKSANA"}
+IL_ID = {"docType": "israeli_id", "docSurname": "כהן", "docId": "123456782"}
+
+
+def test_a_saved_passport_or_id_card_counts_toward_its_reader():
+    pp = [{"b64": DOC_JPG, "doctype": "passport", "primary": True}]
+    d, _ = feedback.check_document(doc(pages=pp, saved=PASSPORT, scanned=PASSPORT))
+    assert feedback.reader_counts(d) == {"passportsSince": 1}
+    d, _ = feedback.check_document(doc(saved=IL_ID, scanned=IL_ID))   # doc(): an id_front page and a ספח
+    assert feedback.reader_counts(d) == {"idCardsSince": 1}
+    # no zone field kept, no page of its kind, another docType: nothing
+    d, _ = feedback.check_document(doc(pages=pp, saved={"docType": "passport", "docGiven": "OKSANA"}))
+    assert feedback.reader_counts(d) == {}
+    d, _ = feedback.check_document(doc(saved=PASSPORT))                     # an id_front page, a passport saved
+    assert feedback.reader_counts(d) == {}
+    d, _ = feedback.check_document(doc(pages=pp, saved=IL_ID))              # a passport page, an ID card saved
+    assert feedback.reader_counts(d) == {}
+    d, _ = feedback.check_document(doc())                                   # no docType saved
+    assert feedback.reader_counts(d) == {}
+
+
+def test_the_readers_are_due_at_30_real_documents():
+    assert feedback.REAL_NEEDED == 30
+    assert feedback.readers_due({}) == {"passportsSince": 0, "idCardsSince": 0, "realNeeded": 30, "passportsDue": False, "idCardsDue": False}
+    got = feedback.readers_due({"passportsSince": 30, "idCardsSince": 29})
+    assert got["passportsDue"] and not got["idCardsDue"] and got["idCardsSince"] == 29
+
+
+def test_the_server_counts_a_saved_passport_and_a_lab_tick(monkeypatch):
+    main, put, _ = _server(monkeypatch)
+    db, stats = _Db(), _Stats()
+    payload = doc(pages=[{"b64": DOC_JPG, "doctype": "passport", "primary": True}], saved=PASSPORT, scanned=PASSPORT)
+    code, j = _body(main._scan_document(payload, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] is True
+    upd = stats.updates[-1]
+    assert upd["passportsSince"].value == 1 and "idCardsSince" not in upd
+    # the lab's tick on the model's own type: kept with doctypeConfirmed in its record
+    tick = dict(PAGE, origin="lab", model="v6", doctypeModel="passport", doctypeFixed="passport", doctypeBy="model", keep=True,
+                doctypeConfirmed=True)
+    code, j = _body(main._scan_add({"examples": [tick]}, {"tenantId": "t1"}, db, stats, None))
+    assert code == 200 and j["kept"] == 1 and db.records[-1][1]["doctypeConfirmed"] is True
