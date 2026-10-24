@@ -51,21 +51,46 @@ export function STORAGE_KEY(): string {
 }
 
 // What this device keeps of a firm for a login — the data cache (every
-// schedMgr_v1* key: per firm, its _bak / _unsaved / _base copies, the
-// unscoped copy), the punch cache (punchLog:<firm>, and the old shared
-// punchLog) and the Form 101 rebuild flags (form101Regen:<firm>) — removed on
-// sign-out and when a different login signs in on this device, so the next
-// login never sees (or saves back) what the last one was allowed to see.
+// schedMgr_v1* key: per firm, its _bak / _unsaved / _base copies, and the
+// unscoped copy older builds wrote) and the punch cache (punchLog:<firm>) —
+// removed on sign-out and when a different login signs in on this device, so
+// the next login never sees (or saves back) what the last one was allowed to
+// see. Kept: the punch page's own keys (its history 'punchLog', its worker
+// cache 'punchWorkers_v1', src/punch/core.ts — the same origin, a foreman's
+// phone may hold both) and the Form 101 rebuild flags (form101Regen:<firm>:
+// no firm data, and the rebuild they promise must still run). The firm-wide
+// 'punchLog' older manager builds wrote is removed once (SHARED_PUNCHLOG_DONE).
 export const LAST_UID_KEY = 'schedMgr_lastUid';
+const SHARED_PUNCHLOG_DONE = 'schedMgr_sharedPunchLogCleared';
 export function purgeDeviceData(): void {
   try {
     const drop: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith(STORAGE_KEY_BASE) || k === 'punchLog' || k.startsWith('punchLog:') || k.startsWith('form101Regen:'))) drop.push(k);
+      if (k && (k === STORAGE_KEY_BASE || k.startsWith(STORAGE_KEY_BASE + '_') || k.startsWith('punchLog:'))) drop.push(k);
     }
     drop.forEach(k => localStorage.removeItem(k));
+    if (!localStorage.getItem(SHARED_PUNCHLOG_DONE)) {
+      localStorage.removeItem('punchLog');
+      localStorage.setItem(SHARED_PUNCHLOG_DONE, '1');
+    }
   } catch { /* storage blocked: nothing kept either */ }
+}
+// The firms with changes kept on this device that have not reached the server
+// (a failed save: schedMgr_v1_<firm>_unsaved younger than 3 days, with that
+// firm's cache still here) — every firm, not only the open one: sign-out
+// removes them all.
+export function unsavedFirms(): string[] {
+  const out: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const m = /^schedMgr_v1_(.+)_unsaved$/.exec(localStorage.key(i) || '');
+      if (!m) continue;
+      const t = +(localStorage.getItem(m[0]) || 0);
+      if (t > 0 && Date.now() - t < 3 * 864e5 && localStorage.getItem(STORAGE_KEY_BASE + '_' + m[1])) out.push(m[1]);
+    }
+  } catch { /* blocked: nothing kept */ }
+  return out;
 }
 // A sign-in: a login other than the device's last one starts with no cache.
 export function adoptLogin(uid: string): void {

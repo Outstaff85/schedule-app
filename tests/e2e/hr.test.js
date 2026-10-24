@@ -305,6 +305,30 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await gsSave(getDataObj());
   });
   ok(await waitFor(h, () => (workers.find(w => w.id === 'w2') || {}).phone === '0520000999', 15000), 'hr: an owner\'s edit of its worker arrives live (no reload)');
+  // The save base follows the live change: the HR closes the app with changes kept on the device (a failed
+  // save), the owner edits the worker again, and the merged save on the next open keeps the owner's newer
+  // edit — the copy the watcher delivered is not taken for an edit made here.
+  const hb = await h.evaluate(async () => {
+    const base = JSON.parse(localStorage.getItem(STORAGE_KEY() + '_base') || 'null');
+    const now = (await loadFirestoreBackend()).scheduleBaseOf(getDataObj());
+    localStorage.setItem(UNSAVED_KEY(), String(Date.now()));
+    return {base: !!base, inStep: !!base && base.workers.w2 === now.workers.w2};
+  });
+  await h.close();
+  await p.evaluate(async () => {
+    await loadData();
+    const w = workers.find(x => x.id === 'w2'); w.phone = '0520000777';
+    await gsSave(getDataObj());
+  });
+  h = await page(hctx);
+  await h.goto(BASE + 'schedule-manager.html');
+  const hm = await waitFor(h, () => typeof workers !== 'undefined' && workers.some(w => w.id === 'w2') && !hasUnsavedLocal(), 20000);
+  const hs = await h.evaluate(async () => {
+    const d = await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false);
+    return {server: (d.workers.find(x => x.id === 'w2') || {}).phone, local: (workers.find(x => x.id === 'w2') || {}).phone};
+  });
+  ok(hb.base && hb.inStep && hm && hs.server === '0520000777' && hs.local === '0520000777',
+    'hr: a live change moves the save base too — a later merged save keeps the owner\'s newer edit ' + JSON.stringify({hb, hm, hs}));
   ok(hv.name === 'Dana Levi' && hv.punches.length === 2 && hv.punches.every(w => w === 'w2'), 'hr: sees only its workers\' punches ' + JSON.stringify(hv));
   const add = await h.evaluate(async () => {
     window.autoUploadWithRetry = async () => {};
@@ -438,9 +462,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(!ro.newBtn && !ro.save && ro.name && ro.tick && ro.edits === 'editSchedule,editWorkers,editPunches,approveHours,disputeHours,fixHours' && /1 login/.test(ro.count), 'owner: the permission templates read-only, with the firm\'s logins on each ' + JSON.stringify(ro));
   // Sign-out leaves nothing of the firm on the device (purgeDeviceData); a different login signing in on it
   // (an owner's session that ended without Sign out, with unsaved changes left) starts with no cache (adoptLogin).
-  await p.evaluate(() => { localStorage.setItem('form101Regen:tenant-one', '1'); ManagerBridge.signOut(); });
+  // Kept: the punch page's own history and worker cache (the same origin: a foreman's phone) and a Form 101
+  // rebuild flag (no firm data; the rebuild it promises must still run when that firm is opened).
+  await p.evaluate(() => {
+    localStorage.setItem('form101Regen:tenant-zz', '1');
+    localStorage.setItem('punchLog', JSON.stringify([{id: 1, workerId: 'w1', workerName: 'Own punch', type: 'in', ts: new Date().toISOString(), time: '08:00'}]));
+    localStorage.setItem('punchWorkers_v1', JSON.stringify({workers: [{id: 'w1', name: 'Own worker', token: 't'}]}));
+    localStorage.setItem('schedMgr_v1', JSON.stringify({workers: [{id: 'wOld', name: 'Old unscoped copy'}]}));
+    ManagerBridge.signOut();
+  });
   await p.waitForSelector('#loginScreen', {state: 'visible', timeout: 15000});
-  const purged = await p.evaluate(() => Object.keys(localStorage).filter(k => /^schedMgr_v1|^punchLog|^form101Regen:/.test(k)));
+  const purged = await p.evaluate(() => Object.keys(localStorage).filter(k => /^schedMgr_v1|^punchLog:/.test(k)));
+  const kept = await p.evaluate(() => {
+    const r = {flag: localStorage.getItem('form101Regen:tenant-zz') === '1', punchLog: /Own punch/.test(localStorage.getItem('punchLog') || ''), punchWorkers: /Own worker/.test(localStorage.getItem('punchWorkers_v1') || '')};
+    localStorage.removeItem('form101Regen:tenant-zz'); localStorage.removeItem('punchLog'); localStorage.removeItem('punchWorkers_v1');
+    return r;
+  });
+  ok(kept.flag && kept.punchLog && kept.punchWorkers, "sign-out: the punch page's punchLog and worker cache and the Form 101 rebuild flags stay on the device " + JSON.stringify(kept));
   await p.evaluate(() => {
     localStorage.setItem('schedMgr_v1_tenant-one', JSON.stringify({workers: [{id: 'wX', name: 'Leaked Owner Worker', clientIds: []}], clients: [{id: 'c1', name: 'Site A'}], suppliers: []}));
     localStorage.setItem('schedMgr_v1_tenant-one_unsaved', String(Date.now()));
@@ -453,7 +491,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const left = await p.evaluate(async () => { await new Promise(r => setTimeout(r, 1500));
     return {leak: workers.some(w => w.id === 'wX'), punch: getPunchLog().some(e => e.workerId === 'wX'), cache: /Leaked/.test(localStorage.getItem('schedMgr_v1_tenant-one') || '')}; });
   ok(purged.length === 0 && hrIn && !left.leak && !left.punch && !left.cache,
-    'sign-out: the firm\'s cache, punches and flags leave the device; another login starts without the last one\'s cache ' + JSON.stringify({purged, hrIn, left}));
+    'sign-out: the firm\'s cache (and the old unscoped copy) and punches leave the device; another login starts without the last one\'s cache ' + JSON.stringify({purged, hrIn, left}));
   // A login that may not write the workers a client's delete changes (an HR with Clients but without Edit pay, and a
   // worker with a rate at that client) is refused before anything is saved: the client stays, a toast says why.
   const octx = await newCtx(); const o = await page(octx);

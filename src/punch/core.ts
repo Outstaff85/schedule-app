@@ -200,15 +200,6 @@ export function haversine(a: number, b: number, c: number, d: number) {
   const x = Math.sin(dL / 2) ** 2 + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.sin(dl / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
-// A leftover bridge to the manager app on the same device: an OUT writes today's shift into its cache.
-function updateScheduleManager(wid: string, s: string, e: string) {
-  try {
-    const k = 'schedMgr_v1', r = localStorage.getItem(k) || localStorage.getItem('scheduleManagerData');
-    if (!r) return;
-    const d = JSON.parse(r), w = d.workers?.find((x: { id: string }) => x.id === wid);
-    if (w) { w.schedule[new Date().getDay()] = { type: 'work', start: s, end: e }; localStorage.setItem(k, JSON.stringify(d)); }
-  } catch { /* no cache */ }
-}
 
 // ── Offline queue ──
 const QUEUE_KEY = 'punchQueue';
@@ -284,11 +275,14 @@ const forSite = (list: Record<string, unknown>[]) => {
   const f = list.filter(w => ((w.clientIds as string[]) || []).includes(SITE.clientId!));
   return f.length ? f : list;
 };
+// This page's own copy of its last load (the manager app's sign-out leaves it; the manager no
+// longer writes the unscoped 'schedMgr_v1' this page used to share, still read once as a fallback).
+const WORKERS_KEY = 'punchWorkers_v1';
 function loadWorkers() {
-  // 1: data passed from the manager app (same device); 2: its cache; 3: the server (init).
+  // 1: data passed from the manager app (same device); 2: this page's cache; 3: the server (init).
   if (_site?.workers?.length) { workers = _site.workers; return; }
   try {
-    const raw = localStorage.getItem('schedMgr_v1') || localStorage.getItem('scheduleManagerData');
+    const raw = localStorage.getItem(WORKERS_KEY) || localStorage.getItem('schedMgr_v1') || localStorage.getItem('scheduleManagerData');
     if (raw) {
       const d = JSON.parse(raw);
       allClients = d.clients || [];
@@ -308,7 +302,7 @@ export async function loadWorkersFromGS(): Promise<boolean> {
     if (data.workers && data.workers.length) {
       allClients = data.clients || [];
       workers = slim(forSite(data.workers));
-      localStorage.setItem('schedMgr_v1', JSON.stringify(data)); // the next open works offline from it
+      try { localStorage.setItem(WORKERS_KEY, JSON.stringify(data)); } catch { /* full: no offline copy */ } // the next open works offline from it
       return true;
     }
   } catch (e) { console.warn('Worker load failed:', (e as Error).message); }
@@ -528,7 +522,6 @@ export function doPunch() {
   };
   log.push(entry); savePunchLog(log);
   void gsSavePunch(entry);
-  if (type === 'out' && last && last.time) updateScheduleManager(w.id, last.time, hh + ':' + mm);
   // The page stays: the face flashes its colour, a check draws, the phone vibrates, the line says so.
   try { navigator.vibrate?.([30, 40, 60]); } catch { /* not allowed */ }
   let text: string;

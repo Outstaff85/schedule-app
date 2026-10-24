@@ -368,7 +368,7 @@ export type ManagerBridge = WorkerBridge & {
   /** the account menu's items: My name, Install app, Sign out; the theme kept on the account */
   editMyName(): void;
   installApp(): void;
-  signOut(): void;
+  signOut(): Promise<void>;
   saveTheme(theme: string): void;
   /** a supplier or client login (stage 3, Portal.tsx): its role, the open tab, its name; null for every other login */
   portal(): { role: 'supplier' | 'client'; tab: string; username: string } | null;

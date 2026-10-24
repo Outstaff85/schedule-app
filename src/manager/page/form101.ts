@@ -84,6 +84,9 @@ async function aiFillForm101(isId?: any,workerId?: any,presetAssets?: any){
   const showBlockingProgress=!isRegen;
   // Hoisted above the try so the catch block can still flag this worker's failed upload.
   const targetWorker=(workerId||rescanId)?workers.find((x?: any)=>x.id===(workerId||rescanId)):null;
+  // The worker as the list holds it now: a merged save (or an HR's live list) may replace every
+  // worker object while this awaits the server, so each write after an await goes to the live one.
+  const liveWorker=()=>targetWorker?(workers.find((x?: any)=>x.id===targetWorker.id)||targetWorker):null;
   // Reported once the PDF is out: this runs after the worker window has closed or in the background.
   let firmMissing: any=[];
   try{
@@ -132,11 +135,11 @@ async function aiFillForm101(isId?: any,workerId?: any,presetAssets?: any){
     const fileName=fnJson.fileName;
 
     // The document type the PDF was built for (the worker window's save passes the type it saved).
-    if(targetWorker) targetWorker.docType=isId?'israeli_id':'passport';
+    if(targetWorker) liveWorker().docType=isId?'israeli_id':'passport';
 
     // previousFileId lets the backend trash the exact old file (the name in fileName can drift between scans).
     const fileBase64=fnJson.pdfBase64;
-    const w=targetWorker;
+    let w=liveWorker();
     // Progress: the PDF and the pages upload at once, combined by total bytes, in the 20–90% range.
     let docLoaded=0,docTotal=0,assetsLoaded=0,assetsTotal=0;
     const uploadingLabel=tr('Uploading to {0}, please do not close…',{0:DOC_STORE});
@@ -164,6 +167,7 @@ async function aiFillForm101(isId?: any,workerId?: any,presetAssets?: any){
     const [json,saved]=await Promise.all([docPromise,pagesPromise]);
     if(!json||json.error) throw new Error((json&&json.error)||'The server did not answer');
     if(showBlockingProgress) renderWorkerUploadProgress(tr('Uploaded successfully'),100);
+    w=liveWorker();
     if(w){
       if(!json.kept){ w.docUrl=json.url; w.docSavedAt=new Date().toISOString(); w.docFileId=json.id; }
       w.docUploadFailed=false;
@@ -183,7 +187,7 @@ async function aiFillForm101(isId?: any,workerId?: any,presetAssets?: any){
     console.error(err);
     showToast(tr('Failed: {0}',{0:(err&&err.message||'')}));
     // Flag it on the worker so the "no document" badge catches a silent background failure.
-    if(targetWorker){ targetWorker.docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
+    if(targetWorker){ liveWorker().docUploadFailed=true; autoSave(); render(); if(typeof renderWorkersPage==='function') renderWorkersPage(); }
     return false;
   }
   finally{

@@ -1285,6 +1285,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }, [JPG, JPG2]);
   await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  // A background rebuild while a merged save replaces every worker object (applyData): the new PDF's link
+  // lands on the worker the list holds now, not on the replaced object (which the save would drop).
+  await p.route(/cloudfunctions\.net\/fill_form_101$/, async r => { await sleep(1500); await r.fulfill({status: 200, contentType: 'application/json',
+    body: JSON.stringify({pdfBase64: btoa('%PDF-1.4 test'), fileName: 'f101.pdf', firmMissing: []})}); });
+  const rpl = await p.evaluate(async () => {
+    const id = 'wrepl' + Date.now();
+    workers.push({id, name: 'Replaced Test', docType: 'israeli_id', docGiven: 'Replaced', docSurname: 'Test', clientIds: [], schedule: [], docFileId: 'old-file', docUrl: 'https://old.example/f.pdf'});
+    const run = regenerateWorkerDoc(id);
+    await T.tick(400);
+    applyData(JSON.parse(JSON.stringify(getDataObj())));
+    const done = await run;
+    const w = workers.find(x => x.id === id);
+    const r = {done, file: !!w.docFileId && w.docFileId !== 'old-file', url: !!w.docUrl && w.docUrl !== 'https://old.example/f.pdf', at: !!w.docSavedAt, type: w.docType};
+    ManagerBridge.deleteWorkers([id]);
+    await T.until(() => !workers.some(x => x.id === id), 5000);
+    return r;
+  });
+  await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  ok(rpl.done && rpl.file && rpl.url && rpl.at && rpl.type === 'israeli_id', 'form 101: a rebuild finishing after a merged save replaced the worker objects writes the new PDF onto the live worker ' + JSON.stringify(rpl));
   ok(sp.ok1 && sp.kinds === 'id_front*,sefach' && sp.sig && sp.noSidecar && sp.paths && sp.sigPath && sp.hasSig === true && sp.extra === 1 && sp.back,
     'scan pages: a new worker from a scan stores each page as its own JPEG (with its kind, the ID card first) and the signature as a PNG, read back in one call ' + JSON.stringify(sp));
   ok(sp.rescan && sp.oldFrontGone, 'scan pages: a rescan of the front keeps the stored ספח and signature, the replaced front is deleted ' + JSON.stringify(sp));
@@ -3488,6 +3507,65 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       return {saved: (d.workers.find(w => w.id === 'w1') || {}).e2eNote === 'not saved yet', unsaved: hasUnsavedLocal()};
     });
     ok(so2.saved && !so2.unsaved, 'sign-out: the kept change is saved when the server answers again ' + JSON.stringify(so2));
+    // A server load landing while an edit's 800 ms save has not run yet (the retry after a failed load): the
+    // edit is kept and saved, merged with that server copy, not replaced by it.
+    const asl = await pa.evaluate(async () => {
+      const b = await loadFirestoreBackend();
+      const gd = await b.loadSchedule(fsTenantId(), false);
+      workers.find(w => w.id === 'w1').e2eNote = 'edited before the reload';
+      autoSave();
+      const applied = applyServerLoad(gd);
+      const local = (workers.find(w => w.id === 'w1') || {}).e2eNote;
+      let server = '';
+      for (let i = 0; i < 40 && server !== 'edited before the reload'; i++) {
+        await T.tick(250);
+        server = ((await b.loadSchedule(fsTenantId(), false)).workers.find(w => w.id === 'w1') || {}).e2eNote;
+      }
+      for (let i = 0; i < 20 && hasUnsavedLocal(); i++) await T.tick(250);
+      return {applied, local, server, unsaved: hasUnsavedLocal()};
+    });
+    ok(!asl.applied && asl.local === 'edited before the reload' && asl.server === 'edited before the reload' && !asl.unsaved,
+      'reload: a server load arriving before a pending save keeps the edit and saves it ' + JSON.stringify(asl));
+    // Another firm opened on this device still has changes kept after a failed save: sign-out removes every
+    // firm's data, so it asks first, and on Cancel nothing is removed.
+    const of = await pa.evaluate(async () => {
+      localStorage.setItem('schedMgr_v1_tenant-zz', JSON.stringify({workers: [{id: 'wz', name: 'Other firm worker', clientIds: []}], clients: [], suppliers: []}));
+      localStorage.setItem('schedMgr_v1_tenant-zz_unsaved', String(Date.now()));
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        await Promise.race([ManagerBridge.signOut(), T.tick(15000)]);
+        return {asked: !!asked, kept: !!localStorage.getItem('schedMgr_v1_tenant-zz') && !!localStorage.getItem('schedMgr_v1_tenant-zz_unsaved'), session: !!localStorage.getItem('schedMgr_session')};
+      } finally {
+        window.confirm = conf;
+        localStorage.removeItem('schedMgr_v1_tenant-zz'); localStorage.removeItem('schedMgr_v1_tenant-zz_unsaved');
+      }
+    });
+    ok(of.asked && of.kept && of.session, 'sign-out: another firm\'s unsaved changes on this device are not removed without asking ' + JSON.stringify(of));
+    // Really offline (the network off, not a stubbed save): the Firestore commit never settles, yet Sign out
+    // asks within seconds; Cancel keeps the change, and it is saved once the network is back.
+    await ca.setOffline(true);
+    const so3 = await pa.evaluate(async () => {
+      let asked = '';
+      const conf = window.confirm;
+      window.confirm = m => { asked = m; return false; };
+      try {
+        workers.find(w => w.id === 'w1').e2eNote = 'offline edit';
+        autoSave();
+        await T.tick(1200);
+        const t0 = Date.now();
+        await Promise.race([ManagerBridge.signOut(), T.tick(15000)]);
+        return {asked: !!asked, ms: Date.now() - t0, cache: /offline edit/.test(localStorage.getItem(STORAGE_KEY()) || ''), unsaved: hasUnsavedLocal(), session: !!localStorage.getItem('schedMgr_session')};
+      } finally { window.confirm = conf; }
+    });
+    await ca.setOffline(false);
+    // The pending commit lands by itself once Firestore reconnects; a save the SDK refused offline is sent again.
+    let back = await waitFor(pa, () => !hasUnsavedLocal(), 30000);
+    if (!back) { await pa.evaluate(() => autoSave()); back = await waitFor(pa, () => !hasUnsavedLocal(), 30000); }
+    const so4 = await pa.evaluate(async () => ((await (await loadFirestoreBackend()).loadSchedule(fsTenantId(), false)).workers.find(w => w.id === 'w1') || {}).e2eNote);
+    ok(so3.asked && so3.ms < 7000 && so3.cache && so3.unsaved && so3.session && back && so4 === 'offline edit',
+      'sign-out offline: asked within seconds (no hang on the pending commit), Cancel keeps the change, saved once back online ' + JSON.stringify({so3, back, so4}));
     ok(pa.errs.length === 0, 'two devices: no page errors ' + pa.errs.join(' | '));
     await ca.close();
   }

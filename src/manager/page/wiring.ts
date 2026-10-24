@@ -9,7 +9,7 @@
 import { byId } from './dom';
 import { tr } from '../logic/i18n';
 import { flushSave, pendingHoursCount } from '../data/store';
-import { adoptLogin, clearSession, getSession, purgeDeviceData, saveSession } from '../data/session';
+import { adoptLogin, clearSession, getSession, purgeDeviceData, saveSession, unsavedFirms } from '../data/session';
 import { FIRMS_CACHE_KEY, clearAdminCaches } from '../logic/admin';
 import { loadFirestoreBackend } from '../data/api';
 import { render } from './render';
@@ -61,11 +61,13 @@ function updateHoursBadge(){ setFrame({counts:{accounting:pendingHoursCount()}})
 export const LOGIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/login';
 
 // Sign out: this page's session (and a supplier's or client's portal session, gate.ts) and the Firebase sign-in end,
-// and the firm's data kept on this device goes (purgeDeviceData). A change not saved yet is saved first
-// (flushSave); when it still could not reach the server, the user is asked before it is removed.
+// and the firms' data kept on this device goes (purgeDeviceData). A change not saved yet is saved first
+// (flushSave: at most 5 s, not at all offline); when it still could not reach the server — or another firm
+// opened on this device still has changes kept after a failed save (unsavedFirms) — the user is asked first.
 export async function logout(){
   let saved = false;
   try{ saved = await flushSave(); }catch(e: any){}
+  if(saved && unsavedFirms().length) saved = false;
   if(!saved && !confirm(tr('Changes on this device have not reached the server yet and will be lost. Sign out anyway?'))) return;
   try{ localStorage.removeItem(FIRMS_CACHE_KEY); }catch(e: any){}
   clearAdminCaches(); clearSession(); clearPortalSessions(); purgeDeviceData();

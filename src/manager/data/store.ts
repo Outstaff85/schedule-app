@@ -19,10 +19,10 @@
 // Nothing here draws: every change is an event (events.ts) the page answers.
 import type { SaveBase, ScheduleBase } from '../../lib/firestore-backend';
 import { loadFirestoreBackend, gsLoad, gsSave, scheduleBaseOf, loadError } from './api';
-import { getSession, fsTenantId, STORAGE_KEY, STORAGE_KEY_BASE } from './session';
+import { getSession, fsTenantId, STORAGE_KEY } from './session';
 import { syncPunchesFromGS } from './punches';
 import { markFirstContent, markFreshContent } from './telemetry';
-import { state, applyData, getDataObj, type Rec } from './state';
+import { state, applyData, getDataObj, normWorker, type Rec } from './state';
 import { emit, notify, host, tr } from './events';
 
 // Set while local changes have not reached the server yet (2026-10-01).
@@ -82,18 +82,19 @@ let pending = false;
 /** a change not yet saved (or a save under way): the new-version reload waits */
 export const savePending = (): boolean => pending;
 
+// Only under the firm's own key: the unscoped 'schedMgr_v1' older builds also
+// wrote is no longer written (the punch page keeps its own cache).
 function writeCache(json: string): void {
   localStorage.setItem(STORAGE_KEY(), json);
-  // Also mirror under the legacy unscoped key — worker-punch.html's
-  // updateScheduleManager() (same-device convenience bridge) still reads
-  // that literal key and has no tenantId of its own to scope by.
-  localStorage.setItem(STORAGE_KEY_BASE, json);
 }
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
 // Apply a fresh server load, unless local changes are still unsaved.
-// Unsaved local changes are saved (merged with this server copy against
-// their base), else the server copy replaces the local data.
+// Unsaved local changes — kept after a failed save, queued before the first
+// load, or an edit whose debounced save has not finished yet (pending) — are
+// saved (merged with this server copy against their base), else the server
+// copy replaces the local data.
 export function applyServerLoad(gd: Rec): boolean {
-  if (queuedSave || hasUnsavedLocal()) {
+  if (queuedSave || pending || saveTimer !== undefined || hasUnsavedLocal()) {
     queuedSave = false;
     fromServer = false;
     notify(tr('Unsaved changes found on this device — saving them now'), 4000);
@@ -109,7 +110,6 @@ export function applyServerLoad(gd: Rec): boolean {
   return true;
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
 // opts.allowEmpty: an explicit delete of the last worker / client (the empty
 // guards would otherwise skip that save forever).
 export function autoSave(opts?: {allowEmpty?: boolean}): void {
@@ -179,11 +179,23 @@ function runSave(): Promise<boolean> {
   return p;
 }
 // Sign-out: a save still waiting for its 800 ms runs now, one under way is
-// awaited. true when nothing is left unsaved on the device (false: changes
-// would be lost if the device's data were removed now).
-export async function flushSave(): Promise<boolean> {
-  if (saveTimer !== undefined) { clearTimeout(saveTimer); saveTimer = undefined; await runSave(); }
-  else if (inflight) await inflight;
+// awaited — for at most timeoutMs, and not at all offline: a Firestore commit
+// without a network never settles (it lands once the device is back online).
+// true when nothing is left unsaved on the device (false: changes would be
+// lost if the device's data were removed now).
+export async function flushSave(timeoutMs = 5000): Promise<boolean> {
+  let p: Promise<boolean> | null = inflight;
+  if (saveTimer !== undefined) { clearTimeout(saveTimer); saveTimer = undefined; p = runSave(); }
+  if (p) {
+    if (navigator.onLine === false) return false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settled = await Promise.race([
+      p.then(() => true, () => true),
+      new Promise<boolean>(r => { timer = setTimeout(() => r(false), timeoutMs); }),
+    ]);
+    clearTimeout(timer);
+    if (!settled) return false;
+  }
   return !queuedSave && !pending && !hasUnsavedLocal();
 }
 // The first load settled without a server copy: an edit queued meanwhile is saved now.
@@ -281,22 +293,38 @@ function applyHrWorkerChanges(): void {
   if (host.workerWindowOpen()) { clearTimeout(hrRetry); hrRetry = setTimeout(applyHrWorkerChanges, 2000); return; }
   const changes = hrWorkerChanges.splice(0);
   let n = 0;
+  // What the save base learns: the server's copy of each worker applied here
+  // (in step with the server now), and the workers removed.
+  const inStep: Rec[] = [], dropped: string[] = [];
   changes.forEach(({added, removed, changed}) => {
     const gone = new Set(removed.map(String));
     const before = state.workers.length;
     state.workers = state.workers.filter(w => !gone.has(String(w.id)));
     n += before - state.workers.length;
-    added.forEach(x => { if (!state.workers.some(w => String(w.id) === String(x.id))) { state.workers.push(x); n++; } });
+    dropped.push(...gone);
+    added.forEach(raw => { const x = normWorker(raw); if (!state.workers.some(w => String(w.id) === String(x.id))) { state.workers.push(x); inStep.push(x); n++; } });
     // An edit made elsewhere replaces this copy, unless this copy has edits
     // of its own not yet saved (those win and are saved over it).
     (changed || []).forEach(({data, unsaved}) => {
       const i = state.workers.findIndex(w => String(w.id) === String(data.id));
       if (i < 0 || unsaved(state.workers[i])) return;
-      state.workers[i] = data; n++;
+      const x = normWorker(data);
+      state.workers[i] = x; inStep.push(x); n++;
     });
   });
   if (!n) return;
-  try { localStorage.setItem(STORAGE_KEY(), JSON.stringify(getDataObj())); } catch { /* full */ }
+  const cacheOk = tryWriteCache(JSON.stringify(getDataObj()));
+  // The base follows, so a later merged save (after a failed save, or an edit
+  // made before the next load came back) neither takes the owner's edit for
+  // one made here nor writes back a worker that was taken away.
+  const base = readBase();
+  if (base !== 'unknown') {
+    const ws = Object.assign({}, base.workers || {});
+    dropped.forEach(id => { delete ws[id]; });
+    const fresh = scheduleBaseOf({workers: inStep});
+    if (fresh) Object.assign(ws, fresh.workers);
+    keepBase(Object.assign({}, base, {workers: ws}), cacheOk);
+  } else if (!cacheOk) dropBase();
   emit('data');
 }
 

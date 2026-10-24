@@ -96,7 +96,7 @@ provideBridge({
   toggleBell:(e?: any)=>toggleBell(e),
   editMyName:()=>{ editMyName(); },
   installApp:()=>{ window.installApp(); },
-  signOut:()=>{ logout(); },
+  signOut:()=>logout(),
   saveTheme:(t?: any)=>setTheme(t),
   portal:()=>portalInfo(),
   setLanguage:(l?: any)=>{ setLanguage(l); },
