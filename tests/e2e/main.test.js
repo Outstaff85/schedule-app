@@ -629,12 +629,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const inp = document.getElementById('hoursImportFile'), dt = new DataTransfer();
     dt.items.add(new File([csv], 'bad.csv', {type: 'text/csv'}));
     inp.files = dt.files; inp.dispatchEvent(new Event('change', {bubbles: true}));
-    r.red = await T.until(() => document.querySelector('#hoursImportPreview [data-testid="hours-bad-dates"]'), 5000)
+    r.red = await T.until(() => document.querySelector('#hoursImportPreview [data-testid="hours-bad-rows"]'), 5000)
       && document.querySelectorAll('#hoursImportPreview [data-bad]').length === 1;
     document.getElementById('hoursImportSubmitBtn').click();
     await T.tick(600);
     r.notSent = (await pend()) === before;
     closeModal('hoursImportOverlay');
+    // times in other forms become HH:MM; a day with no times is dropped; a time that is not one is red and nothing is sent
+    const tcsv = 'Date,In,Out
+01/10/2026,8.30,1700
+02/10/2026,8,16:30:00
+03/10/2026,,
+04/10/2026,abc,12:00
+';
+    r.times = (await parseHoursExcelFile(new File([tcsv], 't.csv'))).map(x => x.inTime + '-' + x.outTime).join();
+    openHoursImportModal('w1'); await T.tick(50);
+    const inp2 = document.getElementById('hoursImportFile'), dt2 = new DataTransfer();
+    dt2.items.add(new File([tcsv], 'badtime.csv', {type: 'text/csv'}));
+    inp2.files = dt2.files; inp2.dispatchEvent(new Event('change', {bubbles: true}));
+    r.redTime = await T.until(() => document.querySelector('#hoursImportPreview [data-testid="hours-bad-rows"]'), 5000)
+      && document.querySelectorAll('#hoursImportPreview [data-bad]').length === 1;
+    document.getElementById('hoursImportSubmitBtn').click();
+    await T.tick(600);
+    r.timeNotSent = (await pend()) === before;
+    closeModal('hoursImportOverlay');
+    // the server refuses a time that is not HH:MM, and an OUT with no IN
+    const st1 = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'01/10/2026', inTime:'8.30', outTime:'12:00'}]})})).json();
+    const st2 = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'01/10/2026', inTime:'', outTime:'12:00'}]})})).json();
+    r.serverRefusesTime = !!st1.error && !!st2.error && (await pend()) === before;
     // the server side refuses a date that is not dd/MM/yyyy (it would never become a punch on its day)
     const sv = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'savePendingHoursBatch', fileName:'x', entries:[{workerId:'w1', date:'1/10/2026', inTime:'08:00', outTime:'12:00'}]})})).json();
     r.serverRefuses = !!sv.error && (await pend()) === before;
@@ -642,6 +664,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(hd.xlsx === '01/10/2026,02/10/2026' && hd.csv === '05/10/2026,31/02/2026' && hd.red && hd.notSent && hd.serverRefuses,
     'upload hours: dates in other forms become dd/MM/yyyy, a CSV is read day first, a date that is not one is red and nothing is sent ' + JSON.stringify(hd));
+  ok(hd.times === '08:30-17:00,08:00-16:30,abc-12:00' && hd.redTime && hd.timeNotSent && hd.serverRefusesTime,
+    'upload hours: times in other forms become HH:MM, a day with no times is dropped, a time that is not one is red and nothing is sent ' + JSON.stringify(hd));
   // The worker window's save (docs/workers.md → Saving): closed with nothing changed it writes nothing; an edited
   // number that another worker has is refused for every login; a rescan that finds a passport builds Form 101 as one.
   const ws4 = await p.evaluate(async () => {
@@ -655,7 +679,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     workers.push({id: 'wa4n', name: 'Noop Four', docGiven: 'Noop', docSurname: 'Four', clientIds: [], schedule: off()},
       {id: 'wa4a', name: 'Dup A', docGiven: 'Dup', docSurname: 'A', docId: '111111118', docType: 'israeli_id', clientIds: [], schedule: off()},
       {id: 'wa4b', name: 'Dup B', docGiven: 'Dup', docSurname: 'B', docId: '022222222', docType: 'israeli_id', clientIds: [], schedule: off()},
-      {id: 'wa4p', name: 'Hand Added', docGiven: 'Hand', docSurname: 'Added', docId: '1234567', docType: 'israeli_id', clientIds: [], schedule: off()});
+      {id: 'wa4p', name: 'Hand Added', docGiven: 'Hand', docSurname: 'Added', docId: '1234567', docType: 'israeli_id', clientIds: [], schedule: off()},
+      {id: 'wa4s', name: 'Eight Digits', docGiven: 'Eight', docSurname: 'Digits', docId: '33333334', docType: 'israeli_id', clientIds: [], schedule: off()});
     const idx = id => workers.findIndex(w => w.id === id), rec = id => workers[idx(id)];
     try {
       // 1. opened and closed: no save, no start date of today, no Form 101 rebuild
@@ -668,6 +693,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       await saveWorker({auto: true}); await T.tick(100);
       r.dup = alerts.length === 1 && rec('wa4a').docId === '111111118' && commits === 0;
       closeModal('workerOverlay');
+      // 2b. an older 8-digit number, another field edited: the number is written as stored (the signed print's hash stays)
+      openEditWorker(idx('wa4s')); await T.tick(50);
+      T.fill('wPhone', '0501234567'); await T.tick(20);
+      await saveWorker({auto: true}); await T.tick(100);
+      r.keepId = commits === 1 && rec('wa4s').docId === '33333334' && rec('wa4s').phone === '0501234567';
+      closeModal('workerOverlay');
       // 3. a worker added by hand (Israeli ID), rescanned: the passport found builds a passport Form 101 and the type is kept
       window.__aiRescanWorkerId = 'wa4p';
       openWorkerModalFromScan({type: 'passport', given: 'HAND', surname: 'ADDED', passportNo: 'AB1234567'});
@@ -678,7 +709,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       B.commitEdit = keep.commit; B.regenerateDoc = keep.regen; window.alert = keep.alert; window.autoUploadWithRetry = keep.upload;
       window.__aiRescannedWorkerId = null; window.__aiRescanWorkerId = null;
       document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
-      for (const id of ['wa4n', 'wa4a', 'wa4b', 'wa4p']) { const i = idx(id); if (i >= 0) workers.splice(i, 1); }
+      for (const id of ['wa4n', 'wa4a', 'wa4b', 'wa4p', 'wa4s']) { const i = idx(id); if (i >= 0) workers.splice(i, 1); }
       await gsSave(getDataObj());
     }
     r.alerts = alerts; r.uploads = uploads;
@@ -686,6 +717,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ws4.noop, 'worker window: opened and closed with nothing changed — nothing saved, no start date set, no Form 101 rebuild ' + JSON.stringify(ws4));
   ok(ws4.dup, 'worker window: an edited document number that another worker has is refused (the number matched without its leading 0) ' + JSON.stringify(ws4));
+  ok(ws4.keepId, 'worker window: an older 8-digit ID is kept as stored when another field is edited (no new signature asked) ' + JSON.stringify(ws4));
   ok(ws4.passport, 'worker window: a hand-added worker rescanned with a passport builds Form 101 as a passport and keeps the type ' + JSON.stringify(ws4));
   // Scan again from the worker modal: typed values stay, empty ones take the scan's
   const rs = await p.evaluate(async () => {

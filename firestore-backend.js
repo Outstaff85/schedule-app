@@ -604,6 +604,8 @@
 			const entries = Array.isArray(params.entries) ? params.entries : [];
 			if (!entries.length) return { error: "No recognized shifts to upload" };
 			if (entries.some((e) => !/^\d{2}\/\d{2}\/\d{4}$/.test(String(e.date || "")))) return { error: "A shift has a date that is not dd/MM/yyyy" };
+			const hhmm = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v));
+			if (entries.some((e) => e.inTime && !hhmm(e.inTime) || e.outTime && !hhmm(e.outTime) || e.outTime && !e.inTime)) return { error: "A shift has a time that is not HH:MM" };
 			const ref = F.doc(col(t, "pendingHours"));
 			const rows = entries.map((e) => ({
 				rowId: crypto.randomUUID(),
@@ -675,8 +677,11 @@
 			};
 			const ddmmyyyy = (d) => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
 			const writes = [];
+			let created = 0;
 			(b.rows || []).forEach((r, i) => {
 				const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
+				if (!inTs) return;
+				created++;
 				[["in", r.inTime], ["out", r.outTime]].forEach(([type, time]) => {
 					if (!time) return;
 					let ts = tsFor(r.date, time), date = r.date;
@@ -713,7 +718,7 @@
 			});
 			return {
 				ok: true,
-				created: (b.rows || []).length
+				created
 			};
 		}
 		async function rejectPendingHours(t, ctx, batchId) {

@@ -417,6 +417,9 @@ def build_form101_pdf(p):
     # whole); an older caller sends them as one `address`, split by _split_street.
     if p.get("street") or p.get("houseNumber"):
         street, number = str(p.get("street") or "").strip(), str(p.get("houseNumber") or "").strip()
+        # No house number of its own: an older record keeps it inside the street ("הרצל 12").
+        if street and not number:
+            street, number = _split_street(street)
     else:
         street, number = _split_street(p.get("address")) if p.get("address") else (None, None)
     if street:

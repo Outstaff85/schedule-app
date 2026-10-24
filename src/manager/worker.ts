@@ -110,6 +110,14 @@ export function docIdKey(v: string): string {
   return /^\d+$/.test(s) ? s.replace(/^0+/, '') : s;
 }
 
+/** An edit whose number only differs in form from the stored one (an 8-digit ID now padded, dashes,
+ * capitals) keeps the stored form: the signed print's hash and the Form 101 stay as they are. */
+export function keepStoredDocId(fields: Partial<WorkerRecord>, prev: WorkerRecord): Partial<WorkerRecord> {
+  const stored = String(prev.docId || '');
+  if (typeof fields.docId !== 'string' || !stored || fields.docId === stored || (fields.docType || prev.docType || 'israeli_id') !== (prev.docType || 'israeli_id')) return fields;
+  return docIdKey(fields.docId) === docIdKey(stored) ? { ...fields, docId: prev.docId } : fields;
+}
+
 /** What a save writes onto the record (`commonFields`). The roster only when it was opened. */
 export function commonFields(v: WorkerForm, o: {
   status: string; colorIdx: number; children: Child[]; clientIds: string[]; docType: string;

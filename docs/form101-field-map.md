@@ -49,8 +49,8 @@ Rectangles below are page coordinates as PyMuPDF reports them: origin top-left, 
 | `dob` | 119.7,221.2,209.1,235.2 | `p.dob` → `DDMMYYYY` (`_ddmmyyyy`), comb 8, size 10 |
 | `aliyah` | 28.5,220.9,117.9,234.9 | not filled |
 | `passport_no` | 393.1,250.9,538.4,264.9 | `p.no`, comb 13, size 10 — foreign passport only |
-| `addr_street` | 231.4,244.1,389.8,258.1 | `p.street`; without it the street from `p.address` (`_split_street`: the number may be first or last), `set_hebrew` 11 |
-| `addr_number` | 204.1,243.8,227.1,257.8 | `p.houseNumber` as it is (`12א`, `12/3`); without it the number from `p.address`, `set_text_centered` |
+| `addr_street` | 231.4,244.1,389.8,258.1 | `p.street` (with `p.houseNumber` empty, split by `_split_street` — an older record keeps the number in the street); without it the street from `p.address` (`_split_street`: the number may be first or last), `set_hebrew` 11 |
+| `addr_number` | 204.1,243.8,227.1,257.8 | `p.houseNumber` as it is (`12א`, `12/3`); without it the number from `p.street` / `p.address`, `set_text_centered` |
 | `addr_city` | 109.3,243.5,199.9,257.5 | `p.city`, `set_hebrew` 11 |
 | `addr_zip` | 30.5,243.8,107.4,257.8 | not filled |
 | `worker_phone` | 83.0,311.9,159.1,325.9 | `p.workerPhone`, `set_hebrew` 10 |

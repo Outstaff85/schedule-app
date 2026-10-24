@@ -1544,6 +1544,6 @@
   "enter the in and out times — {0} is paid by the hour (dates only need \"₪/day\" in the pay window: worker card → Pay)": "יש להזין שעת כניסה ויציאה — {0} מקבל/ת שכר לפי שעה (לתאריכים בלבד צריך ״₪/יום״ בחלון השכר: כרטיס העובד ← שכר)",
   "this worker": "עובד זה",
   "Upload again sends only the files that failed.": "העלאה חוזרת תשלח רק את הקבצים שנכשלו.",
-  "{0} shift(s) with a date that could not be read — fix the file and choose it again": "{0} משמרות עם תאריך שלא ניתן לקרוא — יש לתקן את הקובץ ולבחור אותו שוב",
+  "{0} shift(s) with a date or time that could not be read — fix the file and choose it again": "{0} משמרות עם תאריך או שעה שלא ניתן לקרוא — יש לתקן את הקובץ ולבחור אותו שוב",
   "(open)": "(פתוחה)"
 }

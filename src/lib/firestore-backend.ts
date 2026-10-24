@@ -580,6 +580,9 @@ export async function initFirestoreBackend() {
     if (!entries.length) return {error: 'No recognized shifts to upload'};
     // Only dd/MM/yyyy dates: a shift with another date would not become a punch on its day.
     if (entries.some(e => !/^\d{2}\/\d{2}\/\d{4}$/.test(String(e.date || '')))) return {error: 'A shift has a date that is not dd/MM/yyyy'};
+    // Times only as HH:MM, and an OUT only with its IN: anything else would make no punch, or an OUT alone.
+    const hhmm = (v: unknown) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v));
+    if (entries.some(e => (e.inTime && !hhmm(e.inTime)) || (e.outTime && !hhmm(e.outTime)) || (e.outTime && !e.inTime))) return {error: 'A shift has a time that is not HH:MM'};
     const ref = F.doc(col(t,'pendingHours'));
     const rows = entries.map(e => ({rowId: crypto.randomUUID(), workerId: e.workerId || '', clientId: e.clientId || null,
       date: e.date || '', inTime: e.inTime || '', outTime: e.outTime || ''}));
@@ -618,7 +621,8 @@ export async function initFirestoreBackend() {
     const names: Record<string, string> = {}, hrs: Record<string, string | null> = {};
     workersSnap.forEach((d: any) => { names[d.id] = d.data().name || ''; hrs[d.id] = d.data().hrId || null; });
     const note = 'Imported' + (b.fileName ? ' from ' + b.fileName : '');
-    // A row whose date or time is not readable makes no punch (null), never one at "now".
+    // A row whose date or time is not readable makes no punch (null), never one at "now"
+    // (savePendingHours lets only dd/MM/yyyy and HH:MM through; an older batch may hold others).
     const tsFor = (date: string, time: string): string | null => {
       const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(date || '');
       const tm = /^(\d{1,2}):(\d{2})/.exec(String(time || '').trim());
@@ -628,8 +632,12 @@ export async function initFirestoreBackend() {
     };
     const ddmmyyyy = (d: Date) => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
     const writes: [any, Rec][] = [];
+    let created = 0;
     ((b.rows || []) as Rec[]).forEach((r, i) => {
+      // An IN that is missing or not readable: the whole row is skipped, so no OUT is left alone.
       const inTs = r.inTime ? tsFor(r.date, r.inTime) : null;
+      if (!inTs) return;
+      created++;
       ([['in', r.inTime], ['out', r.outTime]] as [string, string][]).forEach(([type, time]) => {
         if (!time) return;
         let ts = tsFor(r.date, time), date = r.date;
@@ -651,7 +659,7 @@ export async function initFirestoreBackend() {
       await batch.commit();
     }
     await F.updateDoc(ref, {status: 'approved', decidedAt: new Date().toISOString()});
-    return {ok: true, created: (b.rows || []).length};
+    return {ok: true, created};
   }
   async function rejectPendingHours(t: string, ctx: ActionCtx, batchId: unknown): Promise<Reply> {
     if (!approver(ctx)) return {error: APPROVER_ERROR};

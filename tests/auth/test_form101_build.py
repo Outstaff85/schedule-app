@@ -1,7 +1,8 @@
 """Form 101's build (functions/main.py `build_form101_pdf`, docs/form101.md → Building the PDF):
 an Israeli ID typed without its leading 0 fills the 9-box comb padded to 9 digits, and a house
 number with a letter ("12א") is printed whole in its own box, the street in the street box — sent
-apart as `street` / `houseNumber`; an older caller's one `address` is still split."""
+apart as `street` / `houseNumber`; an older caller's one `address`, or a street that still holds
+the number (no `houseNumber`), is still split."""
 
 import importlib.util
 import os
@@ -45,6 +46,12 @@ def test_a_house_number_with_a_letter_stays_whole():
 
 def test_an_older_caller_s_address_is_still_split():
     f = _fields(_build(address="הרצל 12")[0])
+    assert f["addr_number"] == "12"
+    assert f["addr_street"] == "הרצל"
+
+
+def test_an_older_record_s_number_inside_the_street_is_split():
+    f = _fields(_build(address="הרצל 12", street="הרצל 12", houseNumber="")[0])
     assert f["addr_number"] == "12"
     assert f["addr_street"] == "הרצל"
 

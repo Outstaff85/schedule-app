@@ -462,6 +462,9 @@ def test_check_worker_doc_answers_only_yes_or_no():
     hr = {"uid": "u-hr", "role": "hr", "tenantId": T1}
     assert core.check_worker_doc(DB, hr, {"docId": "012345678"}) == {"ok": True, "exists": True}
     assert core.check_worker_doc(DB, hr, {"docId": "ab1234567"}) == {"ok": True, "exists": True}
+    tref = DB.collection("tenants").document(T1)
+    tref.set({"docKeysReady": False}, merge=True)
+    assert core.check_worker_doc(DB, hr, {"docId": "12345678"}) == {"ok": True, "exists": True}  # full read
     assert core.check_worker_doc(DB, hr, {"docId": "012345678", "workerId": "w1"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, hr, {"docId": "999"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, ADMIN2, {"docId": "012345678"})["exists"] is False  # other firm
@@ -473,6 +476,11 @@ def test_check_worker_doc_answers_only_yes_or_no():
     assert core.check_worker_doc(DB, hr, {"docId": "x77"}) == {"ok": True, "exists": True}
     assert core.check_worker_doc(DB, hr, {"docId": "x77", "workerId": "w3"}) == {"ok": True, "exists": False}
     assert core.check_worker_doc(DB, hr, {"docId": "AB1234567"}) == {"ok": True, "exists": True}
+    # An 8-digit ID matches one stored padded to 9, and the other way round (before and after the flag).
+    w.document("w4").set({"id": "w4", "docId": "23456789", "docKeys": ["23456789"]})
+    assert core.check_worker_doc(DB, hr, {"docId": "023456789"}) == {"ok": True, "exists": True}
+    assert core.check_worker_doc(DB, hr, {"docId": "12345678"}) == {"ok": True, "exists": True}
+    assert core.check_worker_doc(DB, hr, {"docId": "023456789", "workerId": "w4"}) == {"ok": True, "exists": False}
 
 
 def test_full_name_for_every_role_and_update_my_name():

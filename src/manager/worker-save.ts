@@ -9,7 +9,7 @@
 // uploads come through the bridge.
 import { tr } from '@/lib/i18n';
 import type { Child, DayShift, ManagerBridge, WorkerRecord } from './bridge';
-import { commonFields, docIdKey, form101Changed, mergeIntoDuplicate, sameFields, workerDocId, type WorkerForm } from './worker';
+import { commonFields, docIdKey, form101Changed, keepStoredDocId, mergeIntoDuplicate, sameFields, workerDocId, type WorkerForm } from './worker';
 
 export type EditorState = { values: WorkerForm; clientIds: string[]; children: Child[]; roster: DayShift[] | null; sig: string | null };
 
@@ -74,6 +74,8 @@ export async function saveWorker(api: ManagerBridge, o: {
   if (editId !== null) {
     const prev = api.record(editId);
     if (!prev) { close(); return; }
+    // A number only re-formatted by the save (an older 8-digit ID) is written as it was stored.
+    fields = keepStoredDocId(fields, prev);
     // The type being saved (a rescan may have found a passport for a worker added as an Israeli ID).
     const isId = (fields.docType || prev.docType || 'israeli_id') !== 'passport';
     // Closed with nothing changed: nothing to save.

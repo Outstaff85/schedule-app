@@ -69,7 +69,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
     - health fund (`hf_yes` plus the Hebrew name, `HEALTH_FUND_HE`).
   - **Passport:** `resident_no`; marital status (single unless set); `passport_no` (13 boxes); start date; health fund.
   - **Income:** `INCOME_TYPE_CB`. Other income: `none` → `cb_p1_10`; otherwise `cb_p1_11` plus `OTHER_INCOME_CB`.
-  - **Address:** `addr_street` / `addr_number` from `street` / `houseNumber` (an older caller's one `address` is split by `_split_street`) and `addr_city`, for both document types.
+  - **Address:** `addr_street` / `addr_number` from `street` / `houseNumber` (an older caller's one `address`, or a `street` that still holds the number while `houseNumber` is empty — an older record — is split by `_split_street`) and `addr_city`, for both document types.
   - **Children:** up to 6 rows (`CHILD_FIELD_SUFFIXES`). The name is split on the first space into given name and surname; the date of birth goes to 8 boxes; the ID or passport number goes to `child_passport_no*` (letters kept).
   - **Spouse, section ו** (`fill_spouse`):
     - names;

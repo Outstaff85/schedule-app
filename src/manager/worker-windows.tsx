@@ -18,7 +18,7 @@ import { PagedList } from '@/components/shared/paged-list';
 import type { HoursBatch, HoursEntry, ManagerBridge, WorkerHead } from './bridge';
 import { HoursStatusChip, TiIcon, WorkerHeadLine } from './worker-head';
 import { WORKER_DOC_TYPES } from './worker';
-import { isHoursDate } from './logic/dates';
+import { isHoursEntry } from './logic/dates';
 
 function Title({ children }: { children: React.ReactNode }) {
   return <div className="mb-3 text-lg font-bold text-ink" data-testid="window-title">{children}</div>;
@@ -204,10 +204,10 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
       setReading('');
     }
   };
-  // Shifts from the file whose date could not be read as a date: shown in red, nothing is sent.
-  const badDates = entries.filter(en => !isHoursDate(en.date));
+  // Shifts from the file whose date or time could not be read (or an out with no in): shown in red, nothing is sent.
+  const badRows = entries.filter(en => !isHoursEntry(en));
   const submit = async () => {
-    if (badDates.length) { api.toast(tr('{0} shift(s) with a date that could not be read — fix the file and choose it again', { 0: badDates.length }), 6000); return; }
+    if (badRows.length) { api.toast(tr('{0} shift(s) with a date or time that could not be read — fix the file and choose it again', { 0: badRows.length }), 6000); return; }
     const problem = manualRowsProblem(rows, info.daily, info.name);
     if (problem) { setBad(problem.rows); api.toast(problem.text, 6000); return; }
     setBad([]);
@@ -238,9 +238,9 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
       <div id="hoursImportPreview" className="min-h-5 text-xs text-ink-3">
         {reading || (entries.length > 0 && <>
           <div className="mb-1 text-ink-2">{tr('{0} shift(s) found:', { 0: entries.length })}</div>
-          {badDates.length > 0 && <div data-testid="hours-bad-dates" className="mb-1 text-[var(--red)]">{tr('{0} shift(s) with a date that could not be read — fix the file and choose it again', { 0: badDates.length })}</div>}
-          {[...badDates, ...entries.filter(en => isHoursDate(en.date))].slice(0, 10).map((en, i) => (
-            <div key={i} data-bad={!isHoursDate(en.date) || undefined} className={cn(!isHoursDate(en.date) && 'text-[var(--red)]')}>{en.date || '?'} · {en.inTime}{en.outTime ? '–' + en.outTime : ' ' + tr('(open)')}</div>
+          {badRows.length > 0 && <div data-testid="hours-bad-rows" className="mb-1 text-[var(--red)]">{tr('{0} shift(s) with a date or time that could not be read — fix the file and choose it again', { 0: badRows.length })}</div>}
+          {[...badRows, ...entries.filter(en => isHoursEntry(en))].slice(0, 10).map((en, i) => (
+            <div key={i} data-bad={!isHoursEntry(en) || undefined} className={cn(!isHoursEntry(en) && 'text-[var(--red)]')}>{en.date || '?'} · {en.inTime || '?'}{en.outTime ? '–' + en.outTime : ' ' + tr('(open)')}</div>
           ))}
           {entries.length > 10 && <div>{tr('…{0} more', { 0: entries.length - 10 })}</div>}
         </>)}

@@ -1021,6 +1021,19 @@ def _doc_key(v):
     return "".join(ch for ch in str(v or "").upper() if ch.isalnum())
 
 
+def _doc_key_forms(key):
+    """The stored keys a typed number matches: an Israeli ID may be stored with or
+    without its leading 0 ("12345678" / "012345678"), so an all-digit key also
+    matches its forms without leading zeros and padded to 9."""
+    forms = [key]
+    if key.isdigit():
+        bare = key.lstrip("0")
+        for k in (bare, bare.zfill(9)):
+            if k and k not in forms:
+                forms.append(k)
+    return forms
+
+
 def doc_keys(d):
     """A worker's document numbers in one standard form (docKeys on the
     worker document), for checkWorkerDoc's one-query lookup. The app
@@ -1039,6 +1052,7 @@ def check_worker_doc(db, caller, body):
     an HR who sees only their own workers is warned about a duplicate
     without seeing the other worker.
 
+    An Israeli ID matches with or without its leading zeros (_doc_key_forms).
     One query on docKeys once the firm's workers all carry it
     (tenants/{t}.docKeysReady). Until then: one full read that also writes
     the missing docKeys and sets the flag."""
@@ -1048,17 +1062,18 @@ def check_worker_doc(db, caller, body):
     key = _doc_key(body.get("docId"))
     if not tid or not key:
         return {"ok": True, "exists": False}
+    forms = _doc_key_forms(key)
     skip = str(body.get("workerId") or "")
     t_ref = db.collection("tenants").document(tid)
     t_snap = t_ref.get()
     if t_snap.exists and (t_snap.to_dict() or {}).get("docKeysReady"):
-        q = t_ref.collection("workers").where(filter=FieldFilter("docKeys", "array_contains", key)).limit(2)
+        q = t_ref.collection("workers").where(filter=FieldFilter("docKeys", "array_contains_any", forms)).limit(2)
         return {"ok": True, "exists": any(s.id != skip for s in q.stream())}
     exists, batch, n = False, db.batch(), 0
     for snap in t_ref.collection("workers").stream():
         d = snap.to_dict() or {}
         keys = doc_keys(d)
-        if snap.id != skip and key in keys:
+        if snap.id != skip and any(k in keys for k in forms):
             exists = True
         if d.get("docKeys") != keys:
             batch.update(snap.reference, {"docKeys": keys})
