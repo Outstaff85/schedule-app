@@ -12,7 +12,7 @@
 // Every page is given the moment it is cut (and again when refined), so the screen can show, delete or fix it
 // at once. A newer shot (or the scanner put away) drops the work of an older one (the shot id).
 import { MAX_DOCS, docShape, goodQuad, insideDoc, quadIoU } from './geometry';
-import type { LoadableEngine } from './engines';
+import type { Engine, LoadableEngine } from './engines';
 import { smallRGBA, type Live } from './live';
 import { mrzZone, type DoctypeAnswer, type HeRead, type Readers } from './readers';
 import type { SessionStatus } from './status';
@@ -36,7 +36,7 @@ export function toCanvas(out: Rgba): OffscreenCanvas {
 
 /** A cut page's size and turn — its pixels live once, on its canvas (as the lab kept only the canvas). */
 export type PageInfo = Omit<Upright, 'data'>;
-const info = (out: Upright): PageInfo => ({ width: out.width, height: out.height, turn: out.turn, ...(out.turnError ? { turnError: out.turnError } : {}) });
+export const info = (out: Upright): PageInfo => ({ width: out.width, height: out.height, turn: out.turn, ...(out.turnError ? { turnError: out.turnError } : {}) });
 
 /** The readers' answers on a page: the document type (null with no model), the passport zone (null with no
  *  reader; found false when the page has none), the Hebrew fields of a card (null with no reader or when the
@@ -51,8 +51,10 @@ export interface Readouts {
 /** One shot: its photo (the attempt's picture, kept for the corner editor), the corners each page was cut by
  *  — the model's, for training: the first document's and the others' — and the way the model ran on. */
 export interface ShotRecord {
-  /** The shot's number in this session, and its training attempt's id. */
+  /** The shot's number in this session, its batch (a camera shot is a batch of its own; the pictures of one pick
+   *  share theirs) and its training attempt's id. */
   shot: number;
+  batch: number;
   attempt: string;
   input: 'camera' | 'photo' | 'pdf';
   frame: OffscreenCanvas;
@@ -94,6 +96,10 @@ export interface ShotCtx {
   modelVersion(): string;
   /** A new shot begins: its id (work for an older one is dropped from now on). */
   begin(): number;
+  /** A new batch's number (the shot's). */
+  batch(): number;
+  /** The shot's first page is cut: its training attempt begins (attempts.ts). */
+  recorded(record: ShotRecord): void;
   /** The shot id now: work for an older one is dropped. */
   current(): number;
   status(s: SessionStatus): void;
@@ -133,13 +139,14 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   if (!v || !engine || !lastRes || lastRes.pts.some(p => !p)) { c.status({ key: 'no_frame' }); return 0; }
   live.running = false;
   const id = c.begin(), t0 = c.now(), { frame, pix, w, h } = freeze(v);
-  const record: ShotRecord = { shot: id, attempt: c.newId(), input: 'camera', frame, w, h, edgesModel: null, edgesMore: [], pages: 1, way: c.way(), model: c.modelVersion() };
+  const record: ShotRecord = { shot: id, batch: c.batch(), attempt: c.newId(), input: 'camera', frame, w, h, edgesModel: null, edgesMore: [], pages: 1, way: c.way(), model: c.modelVersion() };
   let first: ShotPage | null = null;
   const put = async (pts: Quad, refined: boolean): Promise<boolean> => {
     const out = await engine.warp(pix.slice(), w, h, pts, true);
     if (out.turnError) c.log.err('Face finder: ' + out.turnError);
     if (id !== c.current()) return false;
     record.edgesModel = copy(pts);
+    if (!first) c.recorded(record);
     first = { id: record.attempt + ':0', record, pg: 0, quad: copy(pts), page: info(out), canvas: toCanvas(out), turn: out.turn, readouts: null, refined };
     c.page(first);
     return true;
@@ -213,7 +220,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
 
 /** A document lying on another (findInside): the found one q cut flat (not turned) and looked at on its own;
  *  its corners taken back onto the photo, or null. */
-export async function findInside(pix: Uint8ClampedArray, w: number, h: number, q: Quad, eng: LoadableEngine, found: Quad[]): Promise<Quad | null> {
+export async function findInside(pix: Uint8ClampedArray, w: number, h: number, q: Quad, eng: Engine, found: Quad[]): Promise<Quad | null> {
   const flat = toCanvas(await eng.warp(pix.slice(), w, h, q, false)), W = flat.width, H = flat.height;
   const { res } = await eng.detect(eng.hasCap() ? 'cap' : 'live', { rgba: smallRGBA(flat, W, H) });
   return insideDoc(res, W, H, q, found);
@@ -229,7 +236,7 @@ export function borderColour(frame: OffscreenCanvas): string {
 }
 
 /** The next document on the photo, or null (see the head of this file). */
-export async function findNext(frame: OffscreenCanvas, w: number, h: number, found: Quad[], eng: LoadableEngine): Promise<Quad | null> {
+export async function findNext(frame: OffscreenCanvas, w: number, h: number, found: Quad[], eng: Engine): Promise<Quad | null> {
   const fresh = (q: Quad) => docShape(q, w, h) && found.every(f => quadIoU(q, f) <= 0.3);
   const tryIt = async (which: 'cap' | 'live', src: OffscreenCanvas, sw: number, sh: number, map: (p: Pt) => Pt): Promise<Quad | null> => {
     const { res } = await eng.detect(which, { rgba: smallRGBA(src, sw, sh) });
