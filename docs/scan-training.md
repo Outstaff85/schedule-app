@@ -173,7 +173,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 
 | What | Where |
 |---|---|
-| page kinds, their examples, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx` (`classify`, `examples`), `src/scan/server.ts` (`sendFeedback`, `doctypeMode`, `sendScanDocument`) — the pages are cut by the lab's page (`scan/`), so they send document type examples only (`source: "page"`), no corner examples |
+| page kinds, their examples, sending a full document (H8a) | `src/scan/doctype.ts`, `src/scan/Scanner.tsx` (`classify`, `examples`), `src/scan/server.ts` (`sendFeedback`, `doctypeMode`, `sendScanDocument`) — the pages are cut by the full-screen scanner on the phone, so they send document type examples only (`source: "page"`), no corner examples |
 | receiving, checks, counts | `functions/main.py` (`scan_feedback`), `functions/feedback.py` |
 | the bell's notices | `src/manager/page/header.ts` (`scanEdgesNotice`, `scanDoctypeNotice`, `scanAttemptsNotice` — S8, at 15 new attempts) |
 | the training data on Hugging Face | `functions/datastore.py`; `scripts/scan-train/move_data_to_hf.py` (once), `delete_data.py` (on request), `common.py` (`DATA`, `data_records`, `data_file`), `pull.py` (`records`) |
@@ -181,7 +181,7 @@ At deploy each copy's `fetch-models.sh` takes its version from Hugging Face (`re
 | the models on Hugging Face | `scripts/scan-train/publish.py`, `move_to_hf.py` (once), `common.py` (`REPO`, `model_path`, `next_version`); the deploys: `scripts/scan*/fetch-models.sh` |
 | 12-month deletion | `firestore.indexes.json` (TTL), `scripts/scan/storage_lifecycle.py`, `.github/workflows/deploy-rules.yml` |
 | training | `scripts/scan-train/` (corners: `pull.py`, `attempts.py` — the scan attempts' examples —, `train.py`, `onnxbatch.py`, `exam.py`; page kinds: `pull_doctypes.py`, `train_doctypes.py`, `exam_doctypes.py`; both: `publish.py`, `clean.py`, `common.py`, `requirements.txt`), `.claude/skills/scan-train/SKILL.md` |
-| the document type models at work | `scan-lab/index.html` (`doctypeNote`, `doctypeSess`), `scan/embed.js` (`answer` — each posted page's), `src/scan/Scanner.tsx` (Off / Shadow / Mixed), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
+| the document type models at work | `scan-lab/index.html` (`doctypeNote`, `doctypeSess`), `src/scan/engine/readers.ts` (`doctypeAnswer` — each page's readouts in the site's scanner), `src/scan/Scanner.tsx` (Off / Shadow / Mixed), the deploy's `models.json` (`scripts/scan/fetch-models.sh`, `scripts/scan-lab/fetch-models.sh`) |
 | model versions | `scripts/scan-lab/models-version`, `scripts/scan/models-version`, `functions/scan_models_version.txt` |
 | the passport zone reader (H8b) and the made-up lines | `scripts/scan-train/synth.py` (the lines), `synth_lines.py` (drawn with TRDG), `fonts/OCRB.otf`, `requirements-synth.txt`, `mrzmodel.py` (the model's contract, the line finding, line 2's values), `train_mrz.py`, `exam_mrz.py`, `publish.py` (`mrz.onnx`) |
 | the made-up document photos | `scripts/scan-train/synth_docs.py` (the documents, the photo), `synth.py` (`order_corners`, `scene_quad`), `train.py --synth` |

@@ -1,6 +1,6 @@
 // The scanner's server calls (scan_feedback): the pages' document type examples (the queue), the
 // document type model's mode, a full document after a scan's save (H8a, docs/hf-plan.md), the
-// scanner's settings and its training figures (Admin → Scanner). Finding and cutting the documents is the phone's (scan/, the scanner lab's own page — docs/scan.md → The scan window).
+// scanner's settings and its training figures (Admin → Scanner). Finding and cutting the documents is the phone's (the full-screen scanner, src/scan/ui/ and src/scan/engine/ — docs/scan.md → The scan window).
 import { SCAN_FEEDBACK_FN_URL } from '@/manager/logic/functions';
 import { loadFirestoreBackend } from '@/manager/data/api';
 

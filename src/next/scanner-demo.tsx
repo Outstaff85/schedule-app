@@ -51,7 +51,7 @@ export function ScannerDemo() {
       <p className="text-[13px] text-muted-foreground">{tr('The scanner on a fake session: no camera and no models. The first screen plays — the shutter takes a page, a thumbnail opens it.')}</p>
       <div className="flex flex-wrap gap-5">
         <PhoneFrame id="scanner-camera" label={tr('Camera')}>
-          <ScannerScreen mode="site" session={live} onDone={p => done(p.length)} />
+          <ScannerScreen mode="site" session={live} onDone={p => { done(p.length); }} />
         </PhoneFrame>
         <PhoneFrame id="scanner-page" label={tr('A page opened large')}>
           <ScannerScreen mode="site" session={pageSession} camera={false} initial={{ page: 'p1' }} />

@@ -12,8 +12,12 @@
 // and drives a ScanSessionLike (useScanSession.ts): the camera starts when the screen is shown (camera: false
 // leaves it off) and the session sleeps when it goes (the models stay). The site's host gives the pages it keeps
 // already (`kept`: its batches on the phone, the pages from before Scan again): they come first in the strip,
-// count in Done and go with it. Escape inside it closes the step on top (the corner editor, then the page opened
-// large) before the window.
+// count in Done and go with it; it may type the pages itself (`typing`, the site: Haiku's or the model's type as
+// Admin → Scanner says) and add a line under a thumbnail (`thumbNote`). Done counts the pages that will be saved
+// (not the ones typed Other). When the host's onDone gives a promise (the site reads the pages first), Done waits
+// for it — busy — and the scan ends (session.done, the screen emptied) only when it says true; false leaves the
+// pages and the scan as they are (the read failed: the host says why). Escape inside it closes the step on top
+// (the corner editor, then the page opened large) before the window.
 import * as React from 'react';
 import { IconCheck, IconEye } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
@@ -25,18 +29,19 @@ import { LiveOverlay } from './LiveOverlay';
 import { PageView } from './PageView';
 import { StatusPill } from './StatusPill';
 import { Thumbs } from './Thumbs';
-import { useScanSession, type Fixable, type KeptPage, type ScanSessionLike, type UiPage } from './useScanSession';
+import { Spinner } from '@/components/ui/spinner';
+import { kindOf, useScanSession, type Fixable, type KeptPage, type PageTyping, type ScanSessionLike, type UiPage } from './useScanSession';
 
 export type ScannerMode = 'site' | 'lab';
 
 const cannotFix = (): string => tr('This page can no longer be fixed — delete it and take it again');
 
-export function ScannerScreen({ mode, session, onDone, camera = true, statusText, initial, kept, onRemoveKept, children }: {
+export function ScannerScreen({ mode, session, onDone, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, children }: {
   mode: ScannerMode;
   session: ScanSessionLike;
   /** Done (the site) / Show what the models read (the lab): the pages shown at that moment, in order (the kept
-   *  ones first, `kept: true`) */
-  onDone?: (pages: UiPage[]) => void;
+   *  ones first, `kept: true`); the site's may give a promise — the scan ends once it resolves true */
+  onDone?: (pages: UiPage[]) => void | Promise<boolean>;
   /** start the camera when shown (default) */
   camera?: boolean;
   /** a status of the screen's own (the models loading) in place of the session's */
@@ -47,11 +52,29 @@ export function ScannerScreen({ mode, session, onDone, camera = true, statusText
   kept?: KeptPage[];
   /** a kept page deleted (once its Undo is over) */
   onRemoveKept?: (id: string) => void;
+  /** the host's types of this session's pages (the site), by page id */
+  typing?: Record<string, PageTyping>;
+  /** a line of the host's under a thumbnail */
+  thumbNote?: (p: UiPage) => React.ReactNode;
   /** drawn over the screen (the lab's tools drawer) */
   children?: React.ReactNode;
 }) {
   const video = React.useRef<HTMLVideoElement>(null);
-  const s = useScanSession(session, video, { kept, onRemoveKept });
+  const s = useScanSession(session, video, { kept, onRemoveKept, typing });
+  const [finishing, setFinishing] = React.useState(false);
+  // the pages that will be saved: not the ones typed Other
+  const saved = s.pages.filter(p => kindOf(p) !== 'other').length;
+  const finish = async () => {
+    if (finishing) return;
+    const shown = s.settle();
+    const r = onDone?.(shown);
+    if (!r || typeof r.then !== 'function') { s.end(); return; }
+    setFinishing(true);
+    let ok = false;
+    try { ok = await r; } catch { ok = false; }
+    setFinishing(false);
+    if (ok) s.end();
+  };
   const [open, setOpen] = React.useState<string | null>(null);
   const [fixing, setFixing] = React.useState<{ id: string; data: Fixable } | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
@@ -136,8 +159,8 @@ export function ScannerScreen({ mode, session, onDone, camera = true, statusText
       <div className="absolute inset-x-0 top-0 z-10 flex items-start gap-2 px-4 pt-[calc(28px+env(safe-area-inset-top,0px))]">
         <StatusPill session={session} text={statusText} className="mr-auto" />
         {mode === 'site'
-          ? <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.done())}>
-              <IconCheck className="size-[18px]" />{s.pages.length ? tr('Done · {n}', { n: s.pages.length }) : tr('Done')}
+          ? <Button variant="primary" size="sm" disabled={!saved || finishing} data-testid="scan-done" data-busy={finishing || undefined} onClick={() => { void finish(); }}>
+              {finishing ? <Spinner className="size-[18px]" /> : <IconCheck className="size-[18px]" />}{saved ? tr('Done · {n}', { n: saved }) : tr('Done')}
             </Button>
           : <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.pages)}>
               <IconEye className="size-[18px]" />{tr('Show what the models read')}
@@ -146,7 +169,7 @@ export function ScannerScreen({ mode, session, onDone, camera = true, statusText
 
       {/* the bottom: the pages found, and the bar */}
       <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/85 to-transparent pt-6">
-        <Thumbs pages={s.pages} open={open} onOpen={setOpen} />
+        <Thumbs pages={s.pages} open={open} onOpen={setOpen} note={thumbNote} />
         <CaptureBar auto={s.auto} paused={s.paused} disabled={s.busy || s.picking} onAuto={s.setAuto} onShutter={s.shutter} onPick={s.pick} />
       </div>
 

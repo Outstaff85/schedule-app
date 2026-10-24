@@ -16,7 +16,13 @@
 // told when the snack ends — or at Done, or when the screen goes, which end the snack — and the page's picture
 // is let go then; a page brought back by Undo was never deleted. The document type picked by hand is kept here
 // (the session keeps the model's answer only); Looks good marks that one page (session.keep: its photo's
-// attempt is kept once every page of it was looked at).
+// attempt is kept once every page of it was looked at). A host may type the pages itself (`typing`: the site's
+// scan window, by Haiku or the model as Admin → Scanner says): its type then stands in for the model's on the
+// page, which counts as being read until the host has typed it.
+//
+// Done: settle() ends the Undo snack (its deletes made) and gives the pages shown; end() then ends the scan
+// (session.done) and empties the screen — done() is the two at once. The site's host reads the pages between
+// the two, and ends the scan only once they are read.
 //
 // After a shot or a pick the live frame waits (the session's rule: Auto does not take the same document
 // twice): `paused` is on, the shutter then starts the live frame again (session.wake), and so does Looks good —
@@ -66,6 +72,10 @@ export interface KeptPage {
   kind: Doctype | null;
 }
 
+/** A page's type as the host gives it (the site's scan window): null when it found none; pending while it is
+ *  still typing it. */
+export interface PageTyping { kind: Doctype | null; pending: boolean }
+
 /** A page as the screen shows it. */
 export interface UiPage {
   id: string;
@@ -79,6 +89,8 @@ export interface UiPage {
   reading: boolean;
   /** The type picked by hand, null when the model's stands. */
   chosen: Doctype | null;
+  /** The host's type (`typing`), which stands in for the model's; undefined when the host types nothing. */
+  typed?: Doctype | null;
   /** Looks good was tapped on it (a kept page counts as looked at). */
   looked: boolean;
   /** The session's page (its record, corners, readouts); null for a page the host kept. */
@@ -87,8 +99,9 @@ export interface UiPage {
   kept: boolean;
 }
 
-/** The type a page goes with: the one picked by hand, else the model's. */
-export const kindOf = (p: UiPage): Doctype | null => p.chosen || p.model;
+/** The type a page goes with: the one picked by hand, else the host's (when it types the pages), else the
+ *  model's. */
+export const kindOf = (p: UiPage): Doctype | null => p.chosen || (p.typed !== undefined ? p.typed : p.model);
 
 /** The statuses after which the live frame waits for wake() (a shot taken, a pick in work or over). */
 const PAUSING = new Set<SessionStatus['key']>(['captured', 'picture_finding', 'picture_cutting', 'picked', 'pick_failed', 'pick_open_failed']);
@@ -121,6 +134,10 @@ export interface ScanScreenState {
   /** Done: the Undo snack ended (its delete made), the session's done(); the pages shown at that moment (their
    *  pictures let go: a page's pixels are its shot's canvas). The screen starts empty again. */
   done(): UiPage[];
+  /** The first half of done(): the Undo snack ended (its deletes made); the pages shown at that moment. */
+  settle(): UiPage[];
+  /** The second half: the session's done(), the pictures let go, the screen empty again. */
+  end(): void;
 }
 
 /** A page's picture as a JPEG blob. */
@@ -140,8 +157,10 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
   kept?: KeptPage[];
   /** a kept page deleted (its Undo over) */
   onRemoveKept?: (id: string) => void;
+  /** the host's types of this session's pages, by page id (a page missing is still being typed) */
+  typing?: Record<string, PageTyping>;
 } = {}): ScanScreenState {
-  const { kept, onRemoveKept } = opts;
+  const { kept, onRemoveKept, typing } = opts;
   const [order, setOrder] = React.useState<string[]>([]);
   const [shots, setShots] = React.useState<Record<string, ShotPage>>({});
   const [srcs, setSrcs] = React.useState<Record<string, string>>({});
@@ -228,11 +247,14 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
     const before = (kept || []).filter(k => !hidden[k.id]).map((k): UiPage => (
       { id: k.id, src: k.src, model: k.kind, conf: null, reading: false, chosen: chosen[k.id] || null, looked: true, shot: null, kept: true }));
     const mine = order.filter(id => !hidden[id] && shots[id]).map((id): UiPage => {
-      const shot = shots[id], d = shot.readouts?.doctype || null;
-      return { id, src: srcs[id] || '', model: d ? d.doctype : null, conf: d ? d.conf : null, reading: !shot.readouts, chosen: chosen[id] || null, looked: !!looked[id], shot, kept: false };
+      const shot = shots[id], d = shot.readouts?.doctype || null, t = typing ? typing[id] : undefined;
+      const page: UiPage = { id, src: srcs[id] || '', model: d ? d.doctype : null, conf: d ? d.conf : null, reading: !shot.readouts || (!!typing && (!t || t.pending)),
+        chosen: chosen[id] || null, looked: !!looked[id], shot, kept: false };
+      if (typing) page.typed = t && !t.pending ? t.kind : null;
+      return page;
     });
     return [...before, ...mine];
-  }, [kept, order, hidden, shots, srcs, chosen, looked]);
+  }, [kept, order, hidden, shots, srcs, chosen, looked, typing]);
 
   const wake = React.useCallback(() => {
     putPaused(false);
@@ -272,18 +294,23 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
     },
     fixable: id => (keptIds.current.has(id) ? null : session.fixable(id)),
     fix: (id, pts) => (keptIds.current.has(id) ? Promise.resolve(false) : session.fix(id, pts)),
-    done: () => {
-      // the snack ends with Done: its delete is made (no Undo offered for a page already gone)
-      if (pendingDeletes.current.size) finishUndo('commit');
-      for (const id of [...pendingDeletes.current]) commitDelete(id);
-      const shown = pages;
-      session.done();
-      // the session let its pages go: so does the screen (it starts empty, nothing kept in memory)
-      for (const id of [...urls.current.keys()]) letGo(id);
-      madeFrom.current.clear();
-      setOrder([]); setShots({}); setSrcs({}); setChosen({}); setLooked({}); setHidden({});
-      clearPreview(); putBusy(false);
-      return shown;
-    },
+    settle,
+    end,
+    done: () => { const shown = settle(); end(); return shown; },
   };
+
+  function settle(): UiPage[] {
+    // the snack ends with Done: its delete is made (no Undo offered for a page already gone)
+    if (pendingDeletes.current.size) finishUndo('commit');
+    for (const id of [...pendingDeletes.current]) commitDelete(id);
+    return pages;
+  }
+  function end(): void {
+    session.done();
+    // the session let its pages go: so does the screen (it starts empty, nothing kept in memory)
+    for (const id of [...urls.current.keys()]) letGo(id);
+    madeFrom.current.clear();
+    setOrder([]); setShots({}); setSrcs({}); setChosen({}); setLooked({}); setHidden({});
+    clearPreview(); putBusy(false);
+  }
 }

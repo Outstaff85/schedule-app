@@ -31,9 +31,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (process.env.E2E_NOW) await ctx.clock.install({time: new Date(process.env.E2E_NOW)});
     await ctx.route('**/*', async r => {
       const u = r.request().url();
-      // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose
-      // models never start, so the lab page's own script runs (its file reading is tested)
-      if (/\/scan\/ort(130)?\/ort\.all\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript',
+      // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose models never
+      // start — the ES module the site's scanner imports (<base>ort(130)/ort.all.min.mjs, src/scan/engine/ort.ts),
+      // and the script the plain lab page (/scan-lab/) loads, so its own code runs (its checks below)
+      if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.mjs$/.test(u)) return r.fulfill({status:200, contentType:'text/javascript',
+        body:"export const env={wasm:{},webgpu:{}};export function Tensor(){};export const InferenceSession={create:async()=>{throw new Error('no models in the tests')}};"});
+      if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript',
         body:"window.ort={env:{wasm:{},webgpu:{}},Tensor:function(){},InferenceSession:{create:async()=>{throw new Error('no models in the tests')}}};"});
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
@@ -87,8 +90,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     });
     return ctx;
   }
-  // the scan window's frame (/scan/, the lab's page) runs without its engine here: CI fetches no models
-  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => { if (!/\/scan\//.test(e.stack || '')) p.errs.push(e.message); }); p.on('dialog', d => d.accept()); return p; };
+  // the plain lab page (/scan-lab/, its own checks below) runs without its engine here: CI fetches no models
+  const page = async ctx => { const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => { if (!/\/scan(-lab)?\//.test(e.stack || '')) p.errs.push(e.message); }); p.on('dialog', d => d.accept()); return p; };
   const waitFor = async (p, fn, ms=10000) => { const end = Date.now()+ms; while (Date.now() < end) { try { if (await p.evaluate(fn)) return true; } catch (e) {} await sleep(150); } return false; };
   const login = async (p, url, u, pw) => {
     await p.goto(url);
@@ -735,15 +738,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(rs.scanOpen && rs.given === 'Typed' && rs.city === 'Haifa' && rs.phone === 'P-123' && rs.rescanned && rs.draft === null && rs.card, 'scan again from the worker modal keeps typed values, fills empty ones; card has the button');
-  // The scan window (src/scan/Scanner.tsx): the scanner lab's own page, copied as it is (scan/,
-  // /scan/?embed=1), inside the window; its pages come back by postMessage (scan/embed.js) into the
-  // strip — a shot again (its corners refined) replaces that shot's pages; each gets Haiku's kind;
-  // Done reads them in the window (src/scan-process/) and opens the worker window with what was read.
+  // The scan window (src/scan/Scanner.tsx, docs/scan.md → The scan window): the full-screen scanner (src/scan/ui/,
+  // mode 'site') in a full Window, on a scan session of the site's own surface (/scan/). CI has no camera and no
+  // models, so the pages are given to the session as a shot or a pick would give them (ManagerScan.hooks().inject,
+  // src/scan/hooks.ts) — first as cut, then with what the readers read; each gets its kind (the model's when Mixed
+  // is sure of it, else Haiku's); Done reads them in the window (src/scan-process/) and opens the worker window.
   const JPG = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDpKKKKAP/Z';
   const feedbackCalls = [];
   let attemptsOffline = false;
   const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
-  // Haiku's page kinds (aiDetectAlign): the first page an ID card, the second a ספח; the ID card's read (aiReadDoc)
+  // Haiku's page kinds (aiDetectAlign): the page it is asked about is the ספח (the ID card is the model's, in Mixed); the ID card's read (aiReadDoc)
   let kindCalls = 0;
   const readCalls = [];
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
@@ -756,7 +760,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: body.image === JPG ? 'id_front' : 'sefach', rotate: 0}})});
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: 0}})});
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
@@ -768,42 +772,67 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // Admin → Scanner set to Mixed: a page the document type model is sure of needs no Haiku
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'mode' ? {ok: true, doctypeMode: 'mixed'} : {ok: true})});
   });
+  // every request while the scan window is used: none may go to the lab's folder (the site loads only /scan/)
+  const scanUrls = [];
+  const onScanReq = r => scanUrls.push(r.url());
+  ctx.on('request', onScanReq);
   await p.evaluate(() => { localStorage.removeItem('scanFeedbackQueue'); window.__scanGoing = startNewScan(); });
-  await p.waitForSelector('[data-testid="scanner"]');
-  const lab = await p.evaluate(async () => {
-    const f = document.querySelector('[data-testid="scan-lab-frame"]');
-    const page = await (await fetch('/scan/?embed=1')).text();
-    return {src: f && f.getAttribute('src'), camera: f && f.getAttribute('allow'), copy: /Scanner lab/.test(page) && /\/scan\/embed\.js/.test(page) && /\/scan\/scan-core\.js/.test(page) && !/\/scan-lab\//.test(page)};
+  await p.waitForSelector('[data-testid="scanner"] [data-testid="scan-status"]');
+  const look = await p.evaluate(async () => {
+    const w = document.querySelector('[data-testid="window"][data-kind="full"]'), r = w ? w.getBoundingClientRect() : {}, de = document.documentElement;
+    const H = await ManagerScan.hooks(), s = H.session();
+    return {full: !!w && r.left === 0 && r.top === 0 && r.width >= de.clientWidth - 1 && r.height >= de.clientHeight - 1, site: !!(w && w.querySelector('[data-testid="scanner"][data-mode="site"]')),
+      parts: ['scan-status', 'scan-bar', 'scan-shutter', 'scan-pick', 'scan-auto', 'scan-done'].filter(t => w && w.querySelector('[data-testid="' + t + '"]')).join(),
+      noFrame: !document.querySelector('iframe'), base: s && s.surface.base, source: s && s.surface.source};
   });
-  // the lab page's shot: first one page, then (its corners refined, a second document found) two
-  // the second page another picture (the ספח), so Haiku's mocked kind follows the page, not the call's order
+  // the shot: first one page (the document type model sure of the ID card), then — its corners refined, a second
+  // document found on it — two (the ספח, which the model does not know: Haiku types it)
   const JPG2 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD2yiiiv2Q/kM//2Q==';
-  // the document type model's answers (embed.js): sure of the ID card, none on the ספח (Haiku types it)
-  const answers = [{doctype: 'id_front', conf: 0.97, turn: 0, turnConf: 0.99}, null];
-  // the passport zone reader's lines on the first page (embed.js; docs/hf-plan.md → H8b), read with an O for a 0
+  // the document type model's answer on the ID card (sure: 0.97 of the type, 0.99 of the turn)
+  const sure = {doctype: 'id_front', conf: 0.97, turn: 0, turnConf: 0.99};
+  // the passport zone reader's lines on the first page (docs/hf-plan.md → H8b), read with an O for a 0
   // in the number and in the birth date — the parser mends them by position and by the check digit
-  const zones = [['P<UKRBONDARENKO<<ANDREI<NATALIIA<<<<<<<<<<<<', 'NW259O50<6UKR84O3124M29051983631000292908728'], null];
-  // the Hebrew field reader's fields on the first page (embed.js; docs/hf-plan.md → H8c), as the card prints them
-  const hes = [{layout: 'new', surname: 'כהן', given: 'דוד', idNo: '1 2345678 2', dob: '1.2.1990', idOk: true}, null];
-  const post = (key, n) => p.evaluate(([pics, key, n, answers, zones, hes]) => window.postMessage({type: 'scan-pages', key, pages: pics.slice(0, n).map(x => 'data:image/jpeg;base64,' + x), answers: answers.slice(0, n), mrz: zones.slice(0, n), he: hes.slice(0, n)}, location.origin), [[JPG, JPG2], key, n, answers, zones, hes]);
-  await post('s1', 1);
-  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 1, null, {timeout: 15000}).catch(() => {});
-  await post('s1', 2);
-  await p.waitForFunction(() => document.querySelectorAll('[data-testid="scan-page"][data-kind]').length === 2, null, {timeout: 15000}).catch(() => {});
-  // Each page shows Haiku's kind; one set to Other is not saved; set to Contract it is again.
-  const kinds0 = await p.evaluate(() => [...document.querySelectorAll('[data-testid="scan-page"]')].map(e => e.dataset.kind).join(','));
-  const pickKind = async kd => {
-    await p.click('[data-testid="scan-kind"] >> nth=1'); await p.click('[data-testid="scan-kind-' + kd + '"]');
-    await p.waitForSelector('[data-testid="scan-kind-' + kd + '"]', {state: 'detached'}); await p.waitForTimeout(300);
-  };
-  await pickKind('other');
-  const otherDone = await p.textContent('[data-testid="scan-done"]');
-  await pickKind('contract');
+  const zones = ['P<UKRBONDARENKO<<ANDREI<NATALIIA<<<<<<<<<<<<', 'NW259O50<6UKR84O3124M29051983631000292908728'];
+  // the Hebrew field reader's fields on the first page (docs/hf-plan.md → H8c), as the card prints them
+  const hes = {layout: 'new', surname: 'כהן', given: 'דוד', idNo: '1 2345678 2', dob: '1.2.1990', idOk: true};
+  const shot = await p.evaluate(async ([a, b, sure, zones, hes]) => {
+    const H = await ManagerScan.hooks(), r = {};
+    const first = {b64: a, doctype: sure, mrz: zones, he: hes};
+    const s = await H.inject({pics: [first]});
+    r.one = await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 1, 15000);
+    await H.inject({attempt: s.attempt, pics: [first, {b64: b}]});
+    r.two = await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 2, 15000);
+    r.kinds0 = [...document.querySelectorAll('[data-testid="scan-thumb"]')].map(e => e.dataset.kind).join(',');
+    r.attempt = s.attempt;
+    return r;
+  }, [JPG, JPG2, sure, zones, hes]);
+  // A thumbnail opens the page large: one set to Other is not saved (Done counts one); set to Contract it is again.
+  // Looks good on both pages keeps the shot's attempt — held until Done (owner, 2026-10-21).
+  const view = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks(), r = {};
+    const open = async i => { document.querySelectorAll('[data-testid="scan-thumb"]')[i].click(); return T.until(() => document.querySelector('[data-testid="page-view"]'), 3000); };
+    r.opened = await open(1);
+    document.querySelector('[data-testid="kind-chip"][data-kind="other"]').click(); await T.tick(200);
+    document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);  // a tap on the dimmed ground: back to the camera
+    r.back = !document.querySelector('[data-testid="page-view"]');
+    r.otherDone = document.querySelector('[data-testid="scan-done"]').textContent;
+    r.notSaved = !!document.querySelector('[data-testid="scan-not-saved"]');
+    await open(1);
+    document.querySelector('[data-testid="kind-chip"][data-kind="contract"]').click(); await T.tick(200);
+    document.querySelector('[data-testid="page-keep"]').click(); await T.tick(200);
+    await open(0);
+    document.querySelector('[data-testid="page-keep"]').click(); await T.tick(200);
+    r.looked = document.querySelectorAll('[data-testid="scan-thumb"][data-looked]').length;
+    await T.tick(1500);
+    r.held = H.attempts().heldForDone.length;
+    return r;
+  });
+  const sentBeforeDone = feedbackCalls.some(c => c.action === 'attempt' && (c.attempts || []).some(x => x.id === shot.attempt));
   const scw = await p.evaluate(async () => {
-    const r = {pages: document.querySelectorAll('[data-testid="scan-page"]').length, done: document.querySelector('[data-testid="scan-done"]').textContent};
+    const r = {done: document.querySelector('[data-testid="scan-done"]').textContent};
     document.querySelector('[data-testid="scan-done"]').click();
     await window.__scanGoing;
-    r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]') && !document.querySelector('[data-testid="scan-reading"]'), 4000);
+    r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000);
     r.worker = document.getElementById('workerOverlay').classList.contains('open');
     r.given = T.val('wGiven'); r.docId = T.val('wDocId'); r.city = T.val('wCity');
     r.front = !!window.__aiScanImage;
@@ -813,71 +842,50 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     closeModal('workerOverlay'); window.__aiScanImage = null; window.__aiPacketOtherPages = [];
     return r;
   });
-  await p.waitForTimeout(500);
-  // The lab page stays loaded (lab.ts): closed, it is hidden and kept; opened again within 3 minutes it is
-  // the same page (not loaded again), laid over the window's slot
-  const kindAtDone = kindCalls; // the Haiku calls of this scan, before the next checks post their own pages
-  const kept = await p.evaluate(async () => {
-    const f = document.querySelector('[data-testid="scan-lab-frame"]');
-    const r = {hidden: !!f && f.style.visibility === 'hidden' && document.body.contains(f)};
-    f.contentWindow.__mark = 1;
-    const going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    await new Promise(res => setTimeout(res, 600));
-    const g = document.querySelector('[data-testid="scan-lab-frame"]');
-    r.same = g === f && g.contentWindow.__mark === 1;
-    r.shown = g.style.visibility === 'visible';
-    const sl = document.querySelector('[data-testid="scan-lab-slot"]').getBoundingClientRect(), fr = g.getBoundingClientRect();
-    r.over = Math.abs(sl.top - fr.top) < 2 && Math.abs(sl.left - fr.left) < 2 && Math.abs(sl.width - fr.width) < 2;
-    // a tap there reaches the lab page: above the window, with its own pointer events
-    r.tap = document.elementFromPoint(sl.left + sl.width / 2, sl.top + Math.min(sl.height / 2, 100)) === g;
-    T.esc(); await going;
-    r.closed = await T.until(() => g.style.visibility === 'hidden', 3000);
-    return r;
-  });
-  // Batches (owner, 2026-10-20): the last batch under New pages; a new one folds it into a line; Looks good
-  // folds it too; a tap unfolds a line; closed and opened again, the batches come back from this phone
+  await p.waitForTimeout(800);
+  const kindAtDone = kindCalls; // the Haiku calls of this scan, before the next checks give their own pages
+  const sentAtDone = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts || []).find(x => x.id === shot.attempt) || {};
+  ok(look.full && look.site && look.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done' && look.noFrame && look.base === '/scan/' && look.source === 'site'
+    && shot.one && shot.two && shot.kinds0 === 'id_front,sefach' && view.back && /· 1/.test(view.otherDone) && view.notSaved && /· 2/.test(scw.done)
+    && scw.closed && scw.worker && scw.front && scw.given === 'Scanned' && scw.docId === '123456782' && scw.city === 'Haifa' && scw.kinds === 'front,contract:contract' && readCalls.length === 1,
+    'scan window: the full-screen scanner (status line, bar, Done) on the site\'s own session (/scan/, no frame); a shot\'s pages (a refined shot gives them again under their ids), each with its kind; Other is not saved, Contract is the contract; Done reads them in the window (one full read of the ID card) and opens the worker window with what was read ' + JSON.stringify({look, shot, view, scw, readCalls, kindCalls: kindAtDone}));
+  ok(view.looked === 2 && view.held === 1 && !sentBeforeDone && sentAtDone.outcome === 'kept' && sentAtDone.source === 'site',
+    'scan window: Looks good on every page of a shot keeps its attempt, held on the phone until Done, then sent ' + JSON.stringify({looked: view.looked, held: view.held, sentBeforeDone, outcome: sentAtDone.outcome}));
+  // The session stays (keep.ts): closed, its camera is stopped and it is kept; opened again within 3 minutes it is
+  // the same session (the models not started again). Batches (owner, 2026-10-20): the pages are kept on this phone
+  // until Done has read them — closed and opened again, they come back first in the strip; Auto reaches the session.
   const batches = await p.evaluate(async ([a, b]) => {
-    const post = (key, pic) => window.postMessage({type: 'scan-pages', key, pages: ['data:image/jpeg;base64,' + pic]}, location.origin);
-    const n = sel => document.querySelectorAll(sel).length;
-    // the window's two tabs (variant C): Camera (the lab, its bar, New pages) and Pages (the folded batches, counted on the tab)
-    const tab = name => { const t = document.querySelector('[data-testid="scan-tab-' + name + '"]'); t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); t.focus(); };
-    const onPages = () => (document.querySelector('[data-testid="scan-tab-pages"]').textContent.match(/\d+/) || ['0'])[0];
-    const r = {};
+    const H = await ManagerScan.hooks(), r = {};
+    const s0 = H.session();
+    r.keptAfterDone = !!s0 && !s0.camera.on;
+    const thumbs = sel => document.querySelectorAll('[data-testid="scan-thumb"]' + (sel || '')).length;
     let going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    post('s91', a);
-    r.preview = await T.until(() => n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
-    post('f91.1', b);
-    r.foldedByNew = await T.until(() => onPages() === '1' && n('[data-testid="scan-preview"] [data-testid="scan-page"]') === 1, 4000);
-    document.querySelector('[data-testid="scan-keep"]').click();
-    r.foldedByKeep = await T.until(() => onPages() === '2' && !document.querySelector('[data-testid="scan-preview"]'), 4000);
-    // the bar: Auto is handed to the lab page's own Auto capture
-    const frameAuto = () => document.querySelector('[data-testid="scan-lab-frame"]').contentWindow.document.getElementById('auto').checked;
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    r.same = H.session() === s0 && thumbs() === 0;
+    await H.inject({pics: [{b64: a}]});                 // a camera shot (s<n>)
+    await H.inject({pics: [{b64: b}], camera: false});  // a picked picture (f<n>)
+    r.typed = await T.until(() => thumbs('[data-kind]') === 2, 15000);
     document.querySelector('[data-testid="scan-auto"]').click();
-    r.autoOff = await T.until(() => !frameAuto(), 3000);
+    r.autoOff = await T.until(() => H.session().auto === false, 3000);
     document.querySelector('[data-testid="scan-auto"]').click();
-    r.autoOn = await T.until(() => frameAuto(), 3000);
-    tab('pages');
-    r.pagesTab = await T.until(() => n('[data-testid="scan-batch"]') === 2 && !document.querySelector('[data-testid="scan-lab-slot"]'), 4000);
-    r.camHidden = await T.until(() => document.querySelector('[data-testid="scan-lab-frame"]').style.visibility === 'hidden', 3000);
-    T.tap('[data-testid="scan-batch"]');
-    r.unfolds = await T.until(() => { const d = document.querySelector('[data-testid="scan-batch"] [data-no-tap]'); return !!d && d.offsetHeight > 0 && getComputedStyle(d).opacity === '1'; }, 4000);
+    r.autoOn = await T.until(() => H.session().auto === true, 3000);
     r.done = document.querySelector('[data-testid="scan-done"]').textContent;
-    await new Promise(res => setTimeout(res, 700)); // kept on the phone a moment after a change
-    T.esc(); await going;
-    await new Promise(res => setTimeout(res, 500)); // the window gone, as a person opens it again
+    await T.tick(700); // kept on the phone a moment after a change
+    T.esc(); r.closed = (await going) === null;
+    r.camOff = !H.session().camera.on;
+    await T.tick(500); // the window gone, as a person opens it again
     going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    tab('pages');
-    r.restored = await T.until(() => n('[data-testid="scan-batch"]') === 2, 4000);
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    r.restored = await T.until(() => thumbs('[data-kept]') === 2, 4000);
+    r.same2 = H.session() === s0;
     T.esc(); await going;
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
     return r;
   }, [JPG, JPG2]);
-  ok(batches.preview && batches.foldedByNew && batches.foldedByKeep && batches.autoOff && batches.autoOn && batches.pagesTab && batches.camHidden && batches.unfolds && /2/.test(batches.done) && batches.restored,
-    'scan window, batches: the last one under New pages, folded by the next one and by Looks good (counted on the Pages tab), Auto reaches the lab, the Pages tab lists them (the camera hidden), a line unfolds on a tap, kept on the phone after the window closes ' + JSON.stringify(batches));
-  // The lab's Photo or PDF…: several files at once, a PDF split into its pages (pdf.js), in the files' order
+  ok(batches.keptAfterDone && batches.same && batches.typed && batches.autoOff && batches.autoOn && /· 2/.test(batches.done) && batches.closed && batches.camOff && batches.restored && batches.same2,
+    'scan window: the session is kept after the window closes (its camera stopped) and is the same when it opens again; the batches are kept on the phone and come back first in the strip; Auto reaches the session ' + JSON.stringify(batches));
+  // Photos/PDF: several files at once, a PDF split into its pages (pdf.js), in the files' order (the engine's
+  // pickedPictures); the window's one file input has no type (the phone's chooser: photos and PDFs side by side)
   const PDF2 = (() => {
     const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
       '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 280] >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 280] >>'];
@@ -888,164 +896,182 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       + 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + x + '\n%%EOF';
   })();
   const picked = await p.evaluate(async ([jpg, pdf]) => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, input = fw.document.getElementById('file');
+    const H = await ManagerScan.hooks();
     const files = [new File([Uint8Array.from(atob(jpg), c => c.charCodeAt(0))], 'a.jpg', {type: 'image/jpeg'}), new File([pdf], 'b.pdf', {type: 'application/pdf'})];
     const out = [];
-    try { for await (const [url, tag] of fw.pickedPictures(files)) out.push(tag + ' ' + url.slice(0, 10)); } catch (e) { out.push('error ' + e.message); }
+    try { for await (const pic of H.engine.pickedPictures(files, H.engine.filesEnv(), () => {})) out.push(pic.tag + ' ' + pic.url.slice(0, 10)); } catch (e) { out.push('error ' + e.message); }
     // the other documents on a photo must have a document's shape: this frame (two corners on one point,
     // from a real scan) was cut into a smeared third page; a skewed card is still one
-    const shape = [fw.docShape([[0.255, 0.162], [0.997, 0], [0.248, 0.425], [0.255, 0.163]], 1002, 1045),
-      fw.docShape([[0.687, 0.461], [0.936, 0.462], [0.938, 0.795], [0.537, 0.803]], 1600, 1200)];
-    return {out, shape, accept: input.accept, multiple: input.multiple, one: !fw.document.getElementById('file2'), button: input.parentElement.textContent.trim()};
+    const shape = [H.engine.docShape([[0.255, 0.162], [0.997, 0], [0.248, 0.425], [0.255, 0.163]], 1002, 1045),
+      H.engine.docShape([[0.687, 0.461], [0.936, 0.462], [0.938, 0.795], [0.537, 0.803]], 1600, 1200)];
+    // the window: its one Photos/PDF input; a pick and a shot in it (no models here: they fail, and say so)
+    const going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const input = document.querySelector('[data-testid="scan-files"]');
+    const r = {out, shape, multiple: input.multiple, accept: input.accept, inputs: document.querySelectorAll('[data-testid="scanner"] input[type=file]').length, button: document.querySelector('[data-testid="scan-pick"]').textContent};
+    const dt = new DataTransfer(); files.forEach(f => dt.items.add(f)); input.files = dt.files; input.dispatchEvent(new Event('change', {bubbles: true}));
+    r.pickSaid = await T.until(() => /could not|from your files/.test(document.querySelector('[data-testid="scan-status"]').textContent), 30000);
+    await T.until(() => !document.querySelector('[data-testid="scan-shutter"]').disabled, 10000);
+    document.querySelector('[data-testid="scan-shutter"]').click();
+    await T.tick(1000);
+    T.esc(); await going;
+    return r;
   }, [JPG, PDF2]);
-  ok(picked.multiple && picked.accept === '' && picked.one && picked.button === 'Photos or PDF…'
+  ctx.off('request', onScanReq);
+  const labUrls = scanUrls.filter(u => u.includes('/scan-lab/')), siteUrls = scanUrls.filter(u => /\/scan\/(models\.json|ort(130)?\/|[\w-]+\.onnx)/.test(u));
+  ok(picked.multiple && picked.accept === '' && picked.inputs === 1 && picked.button === 'Photos/PDF' && picked.pickSaid
     && picked.out.join('|') === 'file 1 of 2 blob:http:|file 2 of 2, page 1 of 2 data:image|file 2 of 2, page 2 of 2 data:image',
-    'scan window: the lab\'s one Photos or PDF… (no file type: the phone\'s file chooser, photos and PDFs side by side) takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+    'scan window: one Photos/PDF (no file type: the phone\'s file chooser, photos and PDFs side by side) takes several files at once, a PDF page by page, in the files\' order ' + JSON.stringify(picked));
+  ok(!labUrls.length && siteUrls.length > 0,
+    'scan window: picking files and shooting load only the site\'s scanner (/scan/) — no request to /scan-lab/ ' + JSON.stringify({lab: labUrls.slice(0, 5), site: [...new Set(siteUrls.map(u => u.replace(/^.*\/scan\//, '/scan/')))]}));
+  ok(picked.shape.join() === 'false,true', 'scan window: another document found on a photo needs a document\'s shape (no triangle, no sliver) ' + JSON.stringify(picked.shape));
   // Picked files are worked on by several threads at once (analyzePicture on any engine, no screen): a stand-in
   // engine finds one document and no more; a picture with no frame found is the page as it is
   const apic = await p.evaluate(async jpg => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    const calls = [];
-    const stub = (pts) => ({ hasCap: () => false, detect: async (which, input) => { calls.push(which + ':' + input.rgba.length); return { res: calls.length === 1 ? { pts, conf: 0.9 } : { pts: [null, null, null, null], conf: 0 }, ms: 1 }; },
-      warp: async (rgba, w, h, q) => ({ width: 4, height: 3, data: new Uint8ClampedArray(48).buffer, turn: 0 }) });
-    const url = 'data:image/jpeg;base64,' + jpg;
-    const one = await fw.analyzePicture(url, false, stub([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]));
+    const H = await ManagerScan.hooks(), calls = [];
+    const stub = pts => ({hasCap: () => false, stop() {}, detect: async which => { calls.push(which); return {res: calls.length === 1 ? {pts, conf: 0.9} : {pts: [null, null, null, null], conf: 0}, ms: 1}; },
+      warp: async () => ({width: 4, height: 3, data: new Uint8ClampedArray(48), turn: 0})});
+    const url = 'data:image/jpeg;base64,' + jpg, env = {decode: H.engine.filesEnv().decode, log: () => {}, now: () => performance.now()};
+    const one = await H.engine.analyzePicture(url, false, stub([[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]), () => {}, env);
     calls.length = 0;
-    const none = await fw.analyzePicture(url, false, stub([null, null, null, null]));
+    const none = await H.engine.analyzePicture(url, false, stub([null, null, null, null]), () => {}, env);
     // a document lying on the one found: looked for on that one's cut, its corners taken back onto the photo
     const outer = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
-    const inner = {hasCap: () => false, detect: async () => ({res: {pts: [[0.25, 0.5], [0.75, 0.5], [0.75, 0.8], [0.25, 0.8]], conf: 0.9}, ms: 1}),
-      warp: async () => ({width: 800, height: 500, data: new Uint8ClampedArray(800 * 500 * 4).buffer, turn: 0})};
-    const c = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, inner, [outer]);
-    const big = await fw.findInside(new Uint8ClampedArray(16), 2, 2, outer, {...inner, detect: async () => ({res: {pts: [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]], conf: 0.9}, ms: 1})}, [outer]);
-    return {parts: one.length, docs: one[0].docs.length, first: one[0].docs[0].pts[2].join(), whole: none[0].docs[0].pts.map(q => q.join()).join(';'), size: [one[0].w, one[0].h].join('x'), threads: typeof fw.growFiles,
-      inside: c && c.map(q => q.map(v => Math.round(v * 100)).join()).join(';'), big};
+    const inner = {hasCap: () => false, stop() {}, detect: async () => ({res: {pts: [[0.25, 0.5], [0.75, 0.5], [0.75, 0.8], [0.25, 0.8]], conf: 0.9}, ms: 1}),
+      warp: async () => ({width: 800, height: 500, data: new Uint8ClampedArray(800 * 500 * 4), turn: 0})};
+    const c = await H.engine.findInside(new Uint8ClampedArray(16), 2, 2, outer, inner, [outer]);
+    const big = await H.engine.findInside(new Uint8ClampedArray(16), 2, 2, outer, {...inner, detect: async () => ({res: {pts: [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]], conf: 0.9}, ms: 1})}, [outer]);
+    return {parts: one.parts.length, docs: one.parts[0].docs.length, first: one.parts[0].docs[0].pts[2].join(), whole: none.parts[0].docs[0].pts.map(q => q.join()).join(';'),
+      inside: c && c.map(q => q.map(v => Math.round(v * 100)).join()).join(';'), big,
+      kinds: [H.engine.failKind('WebGPU device was lost'), H.engine.failKind('RangeError: Array buffer allocation failed'), H.engine.failKind('no answer for 25 s'), H.engine.failKind('model download failed: HTTP 404')].join()};
   }, JPG);
-  ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.threads === 'function'
-    && apic.inside === '30,50;70,50;70,74;30,74' && apic.big === null,
-    'scanner lab, picked files: a picture is worked on any engine with no screen (its threads run several at once) — the document found, else the picture as it is; a document lying on another is found on its cut and taken back onto the photo, one covering it all is not ' + JSON.stringify(apic));
-  // Why a way to run the models failed is kept on the phone (the last 8) and shown when the lab opens — in the
-  // Errors block, with each new failure and its time, apart from the loading log;
-  // the way that worked is remembered for a day only
-  const wayFails = await p.evaluate(() => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, ls = fw.localStorage;
-    ls.removeItem('scanWayFails');
-    fw.noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
-    fw.noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
-    for (let i = 0; i < 9; i++) fw.noteFail('CPU ×1 · bg', 'no answer for 25 s');
-    const list = JSON.parse(ls.getItem('scanWayFails'));
-    fw.document.getElementById('errs').textContent = ''; fw.document.getElementById('log').textContent = '';
-    fw.noteFail('CPU ×1 · bg', 'no answer for 25 s');
-    fw.showFails();
-    const logText = fw.document.getElementById('errs').textContent, loading = fw.document.getElementById('log').textContent;
-    return {n: list.length, kinds: [fw.failKind('WebGPU device was lost'), fw.failKind('RangeError: Array buffer allocation failed'), fw.failKind('no answer for 25 s'), fw.failKind('model download failed: HTTP 404')].join(),
-      last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)
-        && /^\d\d:\d\d:\d\d Failed — CPU ×1/m.test(logText) && !/Fail/.test(loading)};
-  });
-  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,memory,hang,error' && wayFails.last === 'hang' && wayFails.shown,
-    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the Errors block, apart from the loading log ' + JSON.stringify(wayFails));
-  // A kept page's document type: the model's answer chosen under the page with a ✓; only the user's action is a
-  // label — a type picked (sent later, once) or the ✓ (keep); nothing in the site's frame, nothing with no model
-  const kinds = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, sent = [];
-    const was = fw.eval('doctypeSess'), post = fw.trainPost, here = fw.kindsHere;
-    fw.eval(`doctypeSess = { inputNames: ['img'], run: async () => ({ doctype: { data: [0.05, 0, 0.9, 0.05, 0, 0] }, turn: { data: [1, 0, 0, 0] } }) }`);
-    fw.trainPost = async body => { sent.push(body); return { ok: true }; };
-    const c = fw.document.createElement('canvas'); c.width = 60; c.height = 40;
-    const page = () => { const w = fw.document.createElement('div'), im = new fw.Image(); im.src = c.toDataURL('image/jpeg'); w.append(im); fw.document.body.append(w); return { w, im }; };
-    const site = page(); await fw.addKind(site.w, site.im);
-    const inFrame = !site.w.querySelector('select.kind');
-    fw.kindsHere = () => true;
-    const a = page(), b = page(), quiet = page();
-    await fw.addKind(a.w, a.im); await fw.addKind(b.w, b.im); await fw.addKind(quiet.w, quiet.im);
-    const sa = a.w.querySelector('select.kind'), sb = b.w.querySelector('select.kind');
-    a.w.querySelector('button.kind-ok').click(); a.w.querySelector('button.kind-ok').click();  // once
-    sb.value = 'id_front'; sb.onchange(); fw.sendKind(sb);
-    fw.eval('doctypeSess = null');
-    const none = page(); await fw.addKind(none.w, none.im);
-    fw.trainPost = post; fw.kindsHere = here; fw.__ds = was; fw.eval('doctypeSess = window.__ds');
-    for (const x of [site, a, b, quiet, none]) x.w.remove();
-    const ex = sent.map(x => x.examples[0]);
-    return { inFrame, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage].join(),
-      second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined].join(), noModel: !none.w.querySelector('select.kind') };
-  });
-  ok(kinds.inFrame && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel,
-    'scanner lab: a kept page shows the model\'s document type; only the user\'s ✓ or pick is sent, once — never an untouched answer, never in the site\'s frame, no choice with no model ' + JSON.stringify(kinds));
-  // Every scan attempt goes for training (docs/scan-plan.md → S8): the lab's code in the site's frame sends each
-  // as it is decided — a retake shares its group with the next shot, the photo at most 1600 px, source "site";
-  // a kept page deleted later is told by its folder; with no network they wait on the phone, 5 at most
+  ok(apic.parts === 1 && apic.docs === 1 && apic.first === '0.9,0.9' && apic.whole === '0,0;1,0;1,1;0,1' && apic.inside === '30,50;70,50;70,74;30,74' && apic.big === null && apic.kinds === 'GPU,memory,hang,error',
+    'scanner engine, picked files: a picture is worked on any engine with no screen — the document found, else the picture as it is; a document lying on another is found on its cut and taken back onto the photo, one covering it all is not; a way failure\'s kind ' + JSON.stringify(apic));
+  // Every scan attempt goes for training (docs/scan-plan.md → S8): a retake shares its group with the next shot, the
+  // photo at most 1600 px, source "site"; a kept one waits for Done; a kept page deleted later is told by its folder
   const att = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    const shot = () => { const c = fw.document.createElement('canvas'); c.width = 3200; c.height = 2400; const g = c.getContext('2d'); g.fillStyle = '#ddd'; g.fillRect(0, 0, 3200, 2400); return fw.newAttempt(c, 3200, 2400, 'camera'); };
-    const a = shot(); a.edgesModel = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
-    fw.decideAttempts('retaken');
-    const b = shot(); b.edgesMore = [[[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]]; b.pages = 2;
-    fw.decideAttempts('kept');
-    await new Promise(res => setTimeout(res, 2500));
-    await fw.flushAttempts();
-    return {held: fw.heldForDone.length, a: a.id, b: b.id, group: b.group === a.group, size: JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b.picture), ch => ch.charCodeAt(0))))};
-  });
-  // a kept attempt waits for the window's Done (owner, 2026-10-21); then it goes
-  att.held = att.held === 1 && !feedbackCalls.some(c => c.action === 'attempt' && (c.attempts || []).some(x => x.id === att.b));
-  await p.evaluate(async id => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    fw.doneAttempts(); await fw.flushAttempts();
-    await fw.attemptPageDeleted(id, 1);
-  }, att.b);
-  const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
-  const atA = sent.find(x => x.id === att.a) || {}, atB = sent.find(x => x.id === att.b) || {};
-  const outc = feedbackCalls.find(c => c.action === 'attemptOutcome') || {};
-  ok(att.held && att.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
-    && att.size === '{"h":1200,"w":1600}' && outc.dir === 'attempts/new/site/2026-10-20/' + att.b && outc.outcome === 'deleted' && outc.page === 1,
-    'scan attempts: a retake sent at once, a kept one only on Done (a retake and the next shot one group, the photo at most 1600 px), a page deleted later told by its folder '
-    + JSON.stringify({att, a: {o: atA.outcome, g: atA.group}, b: {o: atB.outcome, g: atB.group, p: atB.pages}, outc}));
-  attemptsOffline = true;
-  const queue = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    for (let i = 0; i < 7; i++) { const c = fw.document.createElement('canvas'); c.width = 40; c.height = 30; fw.newAttempt(c, 40, 30, 'photo'); fw.doneAttempts(); await fw.flushAttempts(); }
-    await fw.flushAttempts();
-    const r = {waiting: (await fw.queued()).length, shown: fw.document.getElementById('train').textContent};
-    return r;
-  });
-  attemptsOffline = false;
-  const online = await p.evaluate(async () => {
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow;
-    await fw.flushAttempts();
-    return {waiting: (await fw.queued()).length, shown: fw.document.getElementById('train').textContent};
-  });
-  ok(queue.waiting === 5 && queue.shown === 'In queue: 5 / 5' && online.waiting === 0 && online.shown === '',
-    'scan attempts: with no network they wait on the phone, 5 at most ("In queue: 5 / 5"), and go when it is back ' + JSON.stringify({queue, online}));
-  // The corner editor (S8-3): the window's Fix corners on a new page opens the lab's editor on its photo; a corner
-  // dragged and Apply make the moved corners the attempt's answer, sent with it when it is kept
-  const fixed = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks();
     const going = startNewScan();
-    await T.until(() => document.querySelector('[data-testid="scan-lab-slot"]'));
-    const fw = document.querySelector('[data-testid="scan-lab-frame"]').contentWindow, fd = fw.document;
-    const c = fd.createElement('canvas'); c.width = 800; c.height = 600; c.getContext('2d').fillRect(0, 0, 800, 600);
-    const a = fw.newAttempt(c, 800, 600, 'camera'); a.edgesModel = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
-    const img = fd.getElementById('shotImg'); img.src = c.toDataURL('image/jpeg'); img.dataset.att = a.id; img.dataset.pg = '0'; fd.getElementById('shot').hidden = false;
-    window.postMessage({type: 'scan-pages', key: 's77', pages: [img.src], attempts: [{att: a.id, pg: 0}]}, location.origin);
-    const r = {button: await T.until(() => document.querySelector('[data-testid="scan-preview"] [data-testid="scan-fix"]'), 4000)};
-    document.querySelector('[data-testid="scan-preview"] [data-testid="scan-fix"]').click();
-    r.editor = await T.until(() => fd.getElementById('cornerEditor'), 4000);
-    const cv = fd.querySelector('#cornerEditor canvas'), b = cv.getBoundingClientRect();
-    const k = Math.min(b.width / 800, b.height / 600), ox = (b.width - 800 * k) / 2, oy = (b.height - 600 * k) / 2;
-    const ev = (type, x, y) => cv.dispatchEvent(new fw.PointerEvent(type, {clientX: b.left + ox + x * 800 * k, clientY: b.top + oy + y * 600 * k, pointerId: 1, bubbles: true}));
-    ev('pointerdown', 0.1, 0.1); ev('pointermove', 0.2, 0.15); ev('pointerup', 0.2, 0.15);
-    [...fd.querySelectorAll('#cornerEditor button')].find(x => x.textContent === 'Apply').click();
-    r.closed = await T.until(() => !fd.getElementById('cornerEditor'), 2000);
-    r.fixed = a.edgesFixed && a.edgesFixed[0].map(v => Math.round(v * 100)).join();
-    r.id = a.id;
-    fw.doneAttempts(); await fw.flushAttempts();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const A = H.attempts();
+    const shot = src => { const c = new OffscreenCanvas(3200, 2400), g = c.getContext('2d'); g.fillStyle = '#ddd'; g.fillRect(0, 0, 3200, 2400); return A.newAttempt(c, 3200, 2400, 'camera', {src}); };
+    const a = shot({edgesModel: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]], edgesMore: [], pages: 1});
+    A.decide('retaken', [a]);
+    const b = shot({edgesModel: null, edgesMore: [[[0.5, 0.5], [0.8, 0.5], [0.8, 0.8], [0.5, 0.8]]], pages: 2});
+    A.decide('kept', [b]);
+    await T.tick(2500);
+    const r = {a, b, held: A.heldForDone.length};
+    A.done();
+    r.sent = await T.until(() => A.attemptDirs.has(b), 8000);
+    await A.pageDeleted(b, 1);
     T.esc(); await going;
     return r;
   });
+  const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
+  const atA = sent.find(x => x.id === att.a) || {}, atB = sent.find(x => x.id === att.b) || {};
+  const outc = feedbackCalls.find(c => c.action === 'attemptOutcome') || {};
+  const sizeB = atB.picture ? await p.evaluate(b64 => JSON.stringify(ManagerScan.jpegSize(Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)))), atB.picture) : '';
+  ok(att.held === 1 && att.sent && atA.group === atB.group && atA.outcome === 'retaken' && atB.outcome === 'kept' && atA.source === 'site' && atB.input === 'camera' && atB.pages === 2 && (atB.edgesMore || []).length === 1
+    && sizeB === '{"h":1200,"w":1600}' && outc.dir === 'attempts/new/site/2026-10-20/' + att.b && outc.outcome === 'deleted' && outc.page === 1,
+    'scan attempts: a retake sent at once, a kept one only on Done (a retake and the next shot one group, the photo at most 1600 px), a page deleted later told by its folder '
+    + JSON.stringify({att, a: {o: atA.outcome, g: atA.group}, b: {o: atB.outcome, g: atB.group, p: atB.pages}, sizeB, outc}));
+  // With no network the attempts wait on the phone, 5 at most — the window says so — and go when it is back
+  attemptsOffline = true;
+  const queue = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks();
+    window.__queueGoing = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const A = H.attempts();
+    for (let i = 0; i < 7; i++) { A.newAttempt(new OffscreenCanvas(40, 30), 40, 30, 'photo'); A.done(); }
+    const shown = await T.until(() => (document.querySelector('[data-testid="scan-queue"]') || {}).textContent === 'In queue: 5 / 5', 10000);
+    return {shown, text: (document.querySelector('[data-testid="scan-queue"]') || {}).textContent || '', waiting: (await A.queued()).length};
+  });
+  attemptsOffline = false;
+  const online = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks(), A = H.attempts();
+    await A.flush();
+    const r = {gone: await T.until(() => !document.querySelector('[data-testid="scan-queue"]'), 8000), waiting: (await A.queued()).length};
+    T.esc(); await window.__queueGoing;
+    return r;
+  });
+  ok(queue.shown && queue.waiting === 5 && online.gone && online.waiting === 0,
+    'scan attempts: with no network they wait on the phone, 5 at most ("In queue: 5 / 5" in the window), and go when it is back ' + JSON.stringify({queue, online}));
+  // The corner editor (S8-3): Fix corners on a page opens the editor on its photo; a corner dragged and Apply make
+  // the moved corners the attempt's answer (edgesFixed), sent with it
+  const fixed = await p.evaluate(async jpg => {
+    const H = await ManagerScan.hooks();
+    const going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const a = await H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
+    await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]').length === 1, 15000);
+    document.querySelector('[data-testid="scan-thumb"]').click();
+    const r = {button: await T.until(() => document.querySelector('[data-testid="page-fix"]'), 4000)};
+    document.querySelector('[data-testid="page-fix"]').click();
+    r.editor = await T.until(() => document.querySelector('[data-testid="corner-canvas"][data-fit]'), 4000);
+    const c = document.querySelector('[data-testid="corner-canvas"]'), b = c.getBoundingClientRect(), [ox, oy, iw, ih] = c.dataset.fit.split(',').map(Number);
+    const ev = (type, x, y) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: b.left + ox + x * iw, clientY: b.top + oy + y * ih}));
+    ev('pointerdown', 0.1, 0.1); ev('pointermove', 0.15, 0.12); ev('pointermove', 0.2, 0.15); ev('pointerup', 0.2, 0.15);
+    document.querySelector('[data-testid="corner-apply"]').click();
+    r.closed = await T.until(() => !document.querySelector('[data-testid="corner-editor"]'), 3000);
+    r.fixed = (H.attempts().cornersOf(a.attempt, 0) || [[]])[0].map(v => Math.round(v * 100)).join();
+    r.id = a.attempt;
+    H.attempts().done();
+    r.sent = await T.until(() => H.attempts().attemptDirs.has(a.attempt), 8000);
+    T.esc(); await going;
+    return r;
+  }, JPG);
   const sentFix = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts).find(x => x.id === fixed.id) || {};
-  ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20,
-    'scan corner editor: the window\'s Fix corners opens the lab\'s editor on the photo; a dragged corner is the attempt\'s answer, sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
-  ok(picked.shape.join() === 'false,true', 'scan window: another document found on a photo needs a document\'s shape (no triangle, no sliver) ' + JSON.stringify(picked.shape));
-  ok(kept.hidden && kept.same && kept.shown && kept.over && kept.tap && kept.closed,
-    'scan window: the lab page is kept loaded after the window closes and shown again over the window\'s slot (no new load), a tap there reaching it ' + JSON.stringify(kept));
+  ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && fixed.sent && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20 && Math.round(sentFix.edgesFixed[0][1] * 100) === 15,
+    'scan corner editor: Fix corners opens the editor on the page\'s photo; a dragged corner is the attempt\'s answer (edgesFixed), sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
+  // The lab's own checks, on the plain lab page (/scan-lab/) until it is the same scanner too (docs/scan-plan.md →
+  // S9, package 7): why a way to run the models failed is kept on the phone (the last 8) and shown in the Errors
+  // block, apart from the loading log; a kept page's document type is the model's answer chosen with a ✓
+  const labPage = await page(ctx);
+  await labPage.goto(BASE + 'scan-lab/');
+  await labPage.waitForFunction(() => typeof noteFail === 'function' && typeof addKind === 'function', null, {timeout: 15000}).catch(() => {});
+  const wayFails = await labPage.evaluate(() => {
+    const ls = localStorage;
+    ls.removeItem('scanWayFails');
+    noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
+    noteFail('CPU · 3 bg threads + 1', 'RangeError: Array buffer allocation failed');
+    for (let i = 0; i < 9; i++) noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    const list = JSON.parse(ls.getItem('scanWayFails'));
+    document.getElementById('errs').textContent = ''; document.getElementById('log').textContent = '';
+    noteFail('CPU ×1 · bg', 'no answer for 25 s');
+    showFails();
+    const logText = document.getElementById('errs').textContent, loading = document.getElementById('log').textContent;
+    ls.removeItem('scanWayFails');
+    return {n: list.length, kinds: [failKind('WebGPU device was lost'), failKind('RangeError: Array buffer allocation failed'), failKind('no answer for 25 s'), failKind('model download failed: HTTP 404')].join(),
+      last: list[7].kind, shown: /Earlier failures on this device \(last 8/.test(logText) && /CPU ×1 · bg: hang/.test(logText)
+        && /^\d\d:\d\d:\d\d Failed — CPU ×1/m.test(logText) && !/Fail/.test(loading)};
+  }).catch(e => ({error: e.message}));
+  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,memory,hang,error' && wayFails.last === 'hang' && wayFails.shown,
+    'scanner lab: a way that failed is kept with its reason (memory, hang, GPU, error), the last 8, and shown in the Errors block, apart from the loading log ' + JSON.stringify(wayFails));
+  // only the user's action is a label — a type picked (sent later, once) or the ✓ (keep); no choice with no model
+  const kinds = await labPage.evaluate(async () => {
+    const sent = [], geval = eval;  // the page's own scope (its let bindings), as the frame's eval was
+    const was = geval('doctypeSess'), post = trainPost;
+    geval(`doctypeSess = { inputNames: ['img'], run: async () => ({ doctype: { data: [0.05, 0, 0.9, 0.05, 0, 0] }, turn: { data: [1, 0, 0, 0] } }) }`);
+    window.trainPost = async body => { sent.push(body); return { ok: true }; };
+    const c = document.createElement('canvas'); c.width = 60; c.height = 40;
+    const page = () => { const w = document.createElement('div'), im = new Image(); im.src = c.toDataURL('image/jpeg'); w.append(im); document.body.append(w); return { w, im }; };
+    const here = kindsHere();
+    const a = page(), b = page(), quiet = page();
+    await addKind(a.w, a.im); await addKind(b.w, b.im); await addKind(quiet.w, quiet.im);
+    const sa = a.w.querySelector('select.kind'), sb = b.w.querySelector('select.kind');
+    a.w.querySelector('button.kind-ok').click(); a.w.querySelector('button.kind-ok').click();  // once
+    sb.value = 'id_front'; sb.onchange(); sendKind(sb);
+    geval('doctypeSess = null');
+    const none = page(); await addKind(none.w, none.im);
+    window.trainPost = post; window.__ds = was; geval('doctypeSess = window.__ds');
+    for (const x of [a, b, quiet, none]) x.w.remove();
+    const ex = sent.map(x => x.examples[0]);
+    return { here, chosen: sa ? sa.value : null, n: sent.length, first: ex[0] && [ex[0].source, ex[0].doctypeModel, ex[0].doctypeFixed, ex[0].keep, !!ex[0].pageImage].join(),
+      second: ex[1] && [ex[1].doctypeModel, ex[1].doctypeFixed, ex[1].keep === undefined].join(), noModel: !none.w.querySelector('select.kind') };
+  }).catch(e => ({error: e.message}));
+  ok(kinds.here && kinds.chosen === 'sefach' && kinds.n === 2 && kinds.first === 'page,sefach,sefach,true,true' && kinds.second === 'sefach,id_front,true' && kinds.noModel,
+    'scanner lab: a kept page shows the model\'s document type; only the user\'s ✓ or pick is sent, once — never an untouched answer, no choice with no model ' + JSON.stringify(kinds));
+  await labPage.close();
   // Done sent the pages' document type examples (source "page"): the ID card typed by the model, the ספח
   // by Haiku and changed to Contract — with a copy of the page
   const ex = feedbackCalls.filter(c => c.action === 'add').flatMap(c => c.examples || []);
@@ -1058,17 +1084,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const zs = docCall.mrzShadow || {};
   ok((zs.lines || []).length === 2 && zs.docId === 'NW259050' && zs.docDob === '12/03/1984' && zs.docExpiry === '19/05/2029' && zs.docSex === 'M'
     && zs.docSurname === 'BONDARENKO' && zs.docGiven === 'ANDREI NATALIIA' && zs.nationality === 'UKR' && zs.allChecks === true,
-    'scan, the passport zone reader in shadow (H8b): the lab\'s lines on the primary page go with the document, mended (O → 0) and taken where the check digits agree ' + JSON.stringify(zs));
+    'scan, the passport zone reader in shadow (H8b): its lines on the primary page go with the document, mended (O → 0) and taken where the check digits agree ' + JSON.stringify(zs));
   const hs = docCall.heShadow || {};
   ok(hs.layout === 'new' && hs.idOk === true && hs.docSurname === 'כהן' && hs.docGiven === 'דוד' && hs.docId === '123456782' && hs.docDob === '01/02/1990' && !('docExpiry' in hs),
-    'scan, the Hebrew field reader in shadow (H8c): the lab\'s fields on the primary page go with the document in the worker fields\' forms ' + JSON.stringify(hs));
+    'scan, the Hebrew field reader in shadow (H8c): its fields on the primary page go with the document in the worker fields\' forms ' + JSON.stringify(hs));
   ok(docCall.workerId === 'w-test' && (docCall.pages || []).length === 1 && docCall.pages[0].primary && docCall.pages[0].doctype === 'id_front' && docCall.pages[0].b64
     && docCall.read.given === 'Scanned' && docCall.scanned.docGiven === 'Scanned' && docCall.scanned.docSurname === 'Person' && docCall.saved.docSurname === 'Persson',
     'scan, the save after it: the document goes to scan_feedback (H8a) — its own pages (not the contract), the AI\'s read, the fields the scan filled and the ones saved '
     + JSON.stringify({workerId: docCall.workerId, pages: (docCall.pages || []).map(x => x.doctype + (x.primary ? '*' : '')), scanned: docCall.scanned, saved: docCall.saved}));
-  ok(lab.src === '/scan/?embed=1' && lab.camera === 'camera' && lab.copy && kinds0 === 'id_front,sefach' && /\(1\)/.test(otherDone) && scw.pages === 2 && /2/.test(scw.done)
-    && scw.closed && scw.worker && scw.front && scw.given === 'Scanned' && scw.docId === '123456782' && scw.city === 'Haifa' && scw.kinds === 'front,contract:contract' && readCalls.length === 1,
-    'scan window: the scanner lab\'s page copied as it is (/scan/, embed.js) inside the window; its shot\'s pages come back (a refined shot replaces them), each with Haiku\'s kind; Other is not saved, Contract is the contract; Done reads them in the window (one full read of the ID card) and opens the worker window with what was read ' + JSON.stringify({lab, kinds0, otherDone, scw, readCalls, kindCalls}));
   await p.unroute(/cloudfunctions\.net\/scan_feedback$/); await p.unroute(/cloudfunctions\.net\/ai_read$/);
   // The contract pages of a scan become one PDF, a page per photo (src/scan/pdf.ts).
   const cpdf = await p.evaluate(async jpg => {

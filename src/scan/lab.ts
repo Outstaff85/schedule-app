@@ -1,3 +1,5 @@
+// No longer imported (docs/scan-plan.md → S9, package 6: the scan window is the full-screen scanner, its session
+// kept by keep.ts); removed with the old pages.
 // The scanner lab's page (scan/) in the scan window, kept loaded for 3 minutes after the window
 // closes (owner, 2026-10-20): the next worker's scan opens at once, without the models starting again
 // (4–8 s). An iframe moved in the page is loaded again, so the frame lives in the page's body, laid

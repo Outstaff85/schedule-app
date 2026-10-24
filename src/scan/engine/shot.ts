@@ -40,11 +40,12 @@ export type PageInfo = Omit<Upright, 'data'>;
 export const info = (out: Upright): PageInfo => ({ width: out.width, height: out.height, turn: out.turn, ...(out.turnError ? { turnError: out.turnError } : {}) });
 
 /** The readers' answers on a page: the document type (null with no model), the passport zone (null with no
- *  reader; found false when the page has none), the Hebrew fields of a card (null with no reader or when the
- *  page is no card), and what failed. */
+ *  reader; found false when the page has none — lines: the text of every line box the reader read, which the
+ *  site keeps beside the AI's read, as its scan window did), the Hebrew fields of a card (null with no reader or
+ *  when the page is no card), and what failed. */
 export interface Readouts {
   doctype: DoctypeAnswer | null;
-  mrz: { found: false } | { found: true; line2: string; ok: number; ms: number } | null;
+  mrz: { found: false; lines?: string[] } | { found: true; line2: string; ok: number; ms: number; lines?: string[] } | null;
   he: { read: HeRead; ms: number } | null;
   errors: { reader: 'doctype' | 'mrz' | 'he'; text: string }[];
 }
@@ -120,7 +121,7 @@ export async function readPage(readers: Readers | null, canvas: OffscreenCanvas,
   try { r.doctype = await readers.doctypeAnswer(canvas); } catch (e) { r.errors.push({ reader: 'doctype', text: errText(e) }); }
   try {
     const t0 = now(), lines = await readers.mrzRead(canvas);
-    if (lines !== null) { const z = mrzZone(lines); r.mrz = z ? { found: true, line2: z.line2, ok: z.ok, ms: now() - t0 } : { found: false }; }
+    if (lines !== null) { const z = mrzZone(lines); r.mrz = z ? { found: true, line2: z.line2, ok: z.ok, ms: now() - t0, lines } : { found: false, lines }; }
   } catch (e) { r.errors.push({ reader: 'mrz', text: errText(e) }); }
   try {
     const t0 = now(), f = await readers.heRead(canvas);

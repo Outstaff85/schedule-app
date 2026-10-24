@@ -1,31 +1,40 @@
-// The scan window (docs/scan.md → The scan window): the scanner lab's own page, copied as it is
-// into the site (scan/, served at /scan/ — owner, 2026-10-19: "the scan must be the lab's"), opened
-// inside the window. Its pages come back in batches (scan/embed.js: a camera shot, or the files of one
-// pick): the last batch is shown large under New pages; looked at — Looks good, or a new batch coming —
-// it folds into a line below, which a tap unfolds and ⋮ / a swipe deletes (owner, 2026-10-20). Every page
-// has its document type — Haiku's, or the document type model's as Admin → Scanner says (Off / Shadow /
-// Mixed). The batches are kept on this phone until Done has read them (store.ts); Done reads every
-// batch's pages in order and sends the pages' examples.
+// The scan window (docs/scan.md → The scan window): the full-screen scanner (src/scan/ui/ScannerScreen.tsx, mode
+// 'site') in a full Window, driving a scan session on the site's own surface (/scan/ and its models — never the
+// lab's, CLAUDE.md → Scanner: the lab and the site are apart). The session — its engines and the models they
+// loaded — outlives the window by 3 minutes (keep.ts), so the next worker's scan opens at once.
+//
+// Every page the session cuts (a camera shot — batch s<n> —, or the pictures of one pick — f<n>) is typed once
+// its readouts are there: by Haiku, or by the document type model as Admin → Scanner says (Off / Shadow / Mixed —
+// in Mixed the model's answer is taken when it is sure of the type and the turn, SURE); a page Haiku says lies on
+// its side is turned upright (and what the zone and field readers read on it is dropped). A page typed Other is
+// not saved. The pages are kept on this phone until Done has read them (store.ts, 3 minutes): a window closed by
+// mistake opens again with them, first in the strip (and so do the pages from before a Scan again — 'before').
+// Done waits for the pages' types, sends the scan's training attempts (held until Done), runs the scan process
+// (read, src/scan-process/) with its progress in the window — an error text keeps the window open with the
+// pages — and then gives the pages (onDone) and sends the pages' document type examples.
 import * as React from 'react';
-import { IconBolt, IconCamera, IconCheck, IconCrop, IconFileText, IconLoader2, IconPhoto, IconTrash } from '@tabler/icons-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Window } from '@/components/shared/window';
-import { Plate } from '@/components/shared/plate';
-import { PagedList } from '@/components/shared/paged-list';
-import { undoDelete } from '@/components/shared/undo';
-import { Button } from '@/components/ui/button';
 import { tr } from '@/lib/i18n';
-import { DOCTYPE_LABELS, DOCTYPES, detectDoctype, pageCopy, rotateImage, type Doctype } from './doctype';
+import { Window } from '@/components/shared/window';
+import { loadFirestoreBackend } from '@/manager/data/api';
+import { DOCTYPES, detectDoctype, pageCopy, type Doctype } from './doctype';
 import { doctypeMode, sendFeedback, type DoctypeMode, type Example } from './server';
-import { autoLab, continueLab, filesLab, labDeleted, labDone, labFix, showLab, sleepLab, snapLab, startLab } from './lab';
 import { loadBatches, saveBatches } from './store';
+import { engineStatusText } from './status-text';
+import { releaseSession, takeSession } from './keep';
+import { ScanSession } from './engine/session';
+import { siteSurface } from './engine/surface';
+import { QUEUE_MAX } from './engine/attempts';
+import { turned } from './engine/upright';
+import type { ShotPage } from './engine/shot';
+import type { SessionStatus } from './engine/status';
+import { ScannerScreen } from './ui/ScannerScreen';
+import { kindOf, type KeptPage, type PageTyping, type ScanSessionLike, type UiPage } from './ui/useScanSession';
 
-/** The Hebrew field reader's fields on an ID card (docs/hf-plan.md → H8c; the lab's heRead): the card layout it
+/** The Hebrew field reader's fields on an ID card (docs/hf-plan.md → H8c; the readers' heRead): the card layout it
  * found and each field as written — only kept beside the AI's read. */
 export type HeFields = { layout?: string; surname?: string; given?: string; idNo?: string; dob?: string; expiry?: string; idOk?: boolean };
 const HE_KEYS = ['layout', 'surname', 'given', 'idNo', 'dob', 'expiry'] as const;
-/** The fields as posted, cleaned: known keys only, short strings; undefined when there are none. */
+/** The fields as read, cleaned: known keys only, short strings; undefined when there are none. */
 function cleanHe(v: unknown): HeFields | undefined {
   if (!v || typeof v !== 'object') return undefined;
   const o = v as Record<string, unknown>, out: HeFields = {};
@@ -37,23 +46,32 @@ function cleanHe(v: unknown): HeFields | undefined {
 /** mrz: the passport zone reader's lines on the page (docs/hf-plan.md → H8b), he: the Hebrew field reader's
  * fields (H8c) — only kept beside the AI's read. */
 export type ScannedPage = { b64: string; mediaType: string; turn: number; blurry: boolean; kind?: Doctype; mrz?: string[]; he?: HeFields };
-// Each page has its kind: Haiku's or the model's (doctypeModel, doctypeBy) and the one shown, which a tap can change;
-// in shadow the model's answer is only kept (doctypeShadow) for the example. part: the posted key it came under.
-type Page = ScannedPage & { uid: number; part?: string; att?: string; pg?: number; doctypeModel?: Doctype | null; doctypePending?: boolean; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype };
-let nextUid = 0;
-/** A batch: a camera shot (s<n>), the files of one pick (f<n>, posted in parts f<n>.<i>), or the pages before a Scan again. */
-type Batch = { key: string; source: 'camera' | 'file' | 'before'; kept: boolean; pages: Page[] };
-/** The document type model's answer on a page (scan/embed.js), when this version has the model. */
-type Answer = { doctype: Doctype; conf: number; turn: number; turnConf: number } | null;
-/** The lab page's pages of one shot or one part of a pick (scan/embed.js). */
-type Posted = { type: 'scan-pages'; key: string; pages: string[]; answers?: Answer[]; mrz?: (string[] | null)[]; he?: unknown[]; attempts?: { att: string; pg: number }[] };
+
+/** read: the scan process run on Done (src/scan-process/) — the window shows its progress
+ * and closes when it succeeds; an error text keeps the window open with the pages. */
+export type ReadFn = (pages: ScannedPage[], progress: (label: string, pct: number) => void) => Promise<string | null>;
+
+/** A page as the window keeps it (on the phone too): what Done gives, and how it was typed — Haiku's or the
+ * model's type (doctypeModel, doctypeBy), the model's answer beside it (modelSaid) and, in Shadow, kept for the
+ * example (doctypeShadow). */
+type Stored = ScannedPage & { id: string; doctypeModel?: Doctype | null; doctypeBy?: 'haiku' | 'model'; doctypeShadow?: Doctype; modelSaid?: Doctype };
+/** A batch: a camera shot (s<n>), the pictures of one pick (f<n>), or the pages before a Scan again. */
+type Batch = { key: string; source: 'camera' | 'file' | 'before'; pages: Stored[] };
+/** A page kept from before, with its batch. */
+type KeptStored = Stored & { batch: string; source: Batch['source'] };
+/** How a page of this session was typed, with its picture as it is given. */
+type Typed = Omit<Stored, 'id' | 'turn' | 'blurry'> & { kind?: Doctype };
+
 /** How sure the model must be of the type and the turn for Mixed to skip Haiku (as the server's docfind.DOCTYPE_SURE was). */
 const SURE = 0.9;
+/** The statuses of a shot still in work: its pages are typed once it settles (a refined cut would be typed again). */
+const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
+let nextBefore = 0;
 
 /** The pages' training examples (functions/feedback.py, source "page"): every page with a type from
  * Haiku or the model — a changed one with its copy, one right page in five with its copy too. */
-async function examples(pages: Page[]): Promise<Example[]> {
+async function examples(pages: Stored[]): Promise<Example[]> {
   const out: Example[] = [];
   for (const p of pages) {
     if (!p.doctypeModel) continue;
@@ -66,271 +84,274 @@ async function examples(pages: Page[]): Promise<Example[]> {
   return out;
 }
 
-/** A batch's name: its pages' types (ID card + Appendix (ספח)), else where it came from. */
-function batchTitle(b: Batch): string {
-  const kinds = [...new Set(b.pages.map(p => p.kind).filter((k): k is Doctype => !!k))];
-  if (kinds.length) return kinds.map(k => tr(DOCTYPE_LABELS[k])).join(' + ');
-  return b.source === 'camera' ? tr('Camera') : b.source === 'file' ? tr('Files') : tr('Scanned before');
+/** A canvas as JPEG base64 (no data: prefix). */
+async function jpegB64(c: OffscreenCanvas, quality: number): Promise<string> {
+  const b = new Uint8Array(await (await c.convertToBlob({ type: 'image/jpeg', quality })).arrayBuffer());
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
 }
 
-/** read: the scan process run on Done (src/scan-process/) — the window shows its progress
- * and closes when it succeeds; an error text keeps the window open with the pages. */
-export type ReadFn = (pages: ScannedPage[], progress: (label: string, pct: number) => void) => Promise<string | null>;
+const isDoctype = (k: unknown): k is Doctype => (DOCTYPES as readonly unknown[]).includes(k);
+const batchOf = (p: ShotPage): { key: string; source: Batch['source'] } =>
+  (p.record.shot > 0 ? { key: 's' + p.record.batch, source: 'camera' } : { key: 'f' + p.record.batch, source: 'file' });
 
-/** One page: its picture, its type (a tap changes it), a remove button, and — on the new pages — a button that opens
- * the lab's corner editor for it (docs/scan-plan.md → S8). */
-function PageTile({ p, onKind, onRemove, onFix, superAdmin }: { p: Page; onKind: (k: Doctype) => void; onRemove: () => void; onFix?: () => void; superAdmin?: boolean }) {
-  // a super-admin sees how the document type model did on the page (docs/scan.md → The scan window): its own pick,
-  // or beside the AI's — the same as the AI's, or not
-  const model = !superAdmin || p.doctypePending || !p.modelSaid ? null
-    : p.doctypeBy === 'model' ? { text: tr('model'), ok: true }
-    : p.modelSaid === p.doctypeModel ? { text: tr('model ✓'), ok: true } : { text: tr('model ≠ AI'), ok: false };
-  return (
-    <div className={'relative overflow-hidden rounded-lg bg-plate' + (p.kind === 'other' ? ' opacity-60' : '')} data-testid="scan-page" data-kind={p.kind || undefined}>
-      <img src={'data:' + p.mediaType + ';base64,' + p.b64} alt="" data-testid="scan-page-img" className="block aspect-[3/4] w-full object-contain" />
-      <div className="absolute inset-x-1 bottom-1 flex flex-col items-start gap-0.5">
-        {model && <span data-testid="scan-model" data-ok={model.ok ? '1' : '0'} className={'rounded-md bg-background/80 px-1.5 text-[11px] ' + (model.ok ? 'text-ok' : 'text-warn')}>{model.text}</span>}
-        {p.kind === 'other' && <span className="rounded-md bg-background/70 px-1.5 text-[11px]">{tr('Not saved')}</span>}
-        {p.blurry && p.kind !== 'other' && <span className="rounded-md bg-background/70 px-1.5 text-[11px] text-warn" data-testid="scan-blurry">{tr('Blurry — take it again')}</span>}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button" data-testid="scan-kind" className="max-w-full truncate rounded-md bg-background/80 px-1.5 py-0.5 text-[11px]" disabled={p.doctypePending}>
-              {p.doctypePending ? <IconLoader2 className="inline size-3 animate-spin" /> : p.kind ? tr(DOCTYPE_LABELS[p.kind]) : tr('Document type')}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="z-[52]">
-            {DOCTYPES.map(kd => (
-              <DropdownMenuItem key={kd} data-testid={'scan-kind-' + kd} onSelect={() => onKind(kd)}>
-                {tr(DOCTYPE_LABELS[kd])}{kd === p.kind ? <IconCheck className="ml-auto !text-ok" /> : null}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <button type="button" aria-label={tr('Remove')} className="absolute right-1 top-1 rounded-md bg-background/70 p-1" onClick={onRemove}>
-        <IconTrash className="size-4" />
-      </button>
-      {onFix && (
-        <button type="button" aria-label={tr('Fix corners')} data-testid="scan-fix" className="absolute left-1 top-1 rounded-md bg-background/70 p-1" onClick={onFix}>
-          <IconCrop className="size-4" />
-        </button>
-      )}
-    </div>
-  );
+/** The signed-in user's ID token for the training attempts (scan_feedback), null when there is none. */
+async function idToken(): Promise<string | null> {
+  try { return await (await loadFirestoreBackend()).idToken(); } catch { return null; }
+}
+/** The site's scan session (made once, kept 3 minutes after the window closes: keep.ts). */
+const newSiteSession = (): ScanSession => new ScanSession(siteSurface(idToken));
+
+/** The session as the screen drives it, with the window told of each page deleted. */
+function siteView(s: ScanSession, removed: (id: string) => void): ScanSessionLike {
+  return {
+    get auto() { return s.auto; },
+    on: (ev, fn) => s.on(ev, fn),
+    startCamera: v => s.startCamera(v),
+    snap: () => s.snap(),
+    setAuto: on => s.setAuto(on),
+    wake: v => s.wake(v),
+    sleep: () => s.sleep(),
+    hold: () => s.hold(),
+    resume: () => s.resume(),
+    pick: files => s.pick(files),
+    keep: id => s.keep(id),
+    remove: id => { s.remove(id); removed(id); },
+    fixable: id => s.fixable(id),
+    fix: (id, pts) => s.fix(id, pts),
+    done: () => s.done(),
+    discard: () => s.discard(),
+  };
 }
 
 export function Scanner({ open, onDone, onClose, initial, read, superAdmin }: {
   open: boolean; onDone: (pages: ScannedPage[]) => void; onClose: () => void;
   /** a super-admin sees the document type model's chip on each page */
   superAdmin?: boolean;
-  /** pages already scanned (this session's, for "Scan again"): shown first, folded */
+  /** pages already scanned (this session's, for "Scan again"): shown first */
   initial?: ScannedPage[]; read?: ReadFn;
 }) {
-  const [hint, setHint] = React.useState('');
-  const [batches, setBatches] = React.useState<Batch[]>(() => (initial && initial.length
-    ? [{ key: 'before', source: 'before', kept: true, pages: initial.map(p => ({ ...p, uid: ++nextUid, doctypeModel: null })) }] : []));
-  const [unfolded, setUnfolded] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState<'camera' | 'pages'>('camera');
-  const [auto, setAuto] = React.useState(true);
-  const pick = React.useRef<HTMLInputElement>(null);
-  const [reading, setReading] = React.useState<{ label: string; pct: number } | null>(null);
-  const [finishing, setFinishing] = React.useState(false);
+  // the site's session, taken when the window opens and kept 3 minutes after it closes (its camera stopped at once)
+  const [session, setSession] = React.useState<ScanSession | null>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const s = takeSession(newSiteSession);
+    setSession(s);
+    void s.prepare();
+    return () => releaseSession();
+  }, [open]);
+
   // Admin → Scanner's mode, read when the window opens (shadow until it is known)
   const mode = React.useRef<Promise<DoctypeMode>>(Promise.resolve('shadow'));
   React.useEffect(() => { if (open) { mode.current = doctypeMode(); void sendFeedback(); } }, [open]);
 
-  // The batches kept on this phone (a window closed by mistake): back, folded, before the new ones — not after a Scan again.
+  // the pages kept from before (the phone's batches, the pages before a Scan again), first in the strip
+  const [kept, setKept] = React.useState<KeptStored[]>(() => (initial || []).map(p => ({ ...p, id: 'before:' + ++nextBefore, batch: 'before', source: 'before' as const, doctypeModel: null })));
+  const keptRef = React.useRef(kept); keptRef.current = kept;
   const restored = React.useRef(false);
   React.useEffect(() => {
     if (!open || restored.current || (initial && initial.length)) return;
     restored.current = true;
     void loadBatches<Batch>().then(old => {
       if (!old || !old.length) return;
-      const back = old.map(b => ({ ...b, kept: true, pages: b.pages.map(p => ({ ...p, uid: ++nextUid, doctypePending: false })) }));
-      setBatches(xs => [...back.filter(b => !xs.some(x => x.key === b.key)), ...xs]);
+      const back: KeptStored[] = [];
+      for (const b of old) {
+        if (!b || !Array.isArray(b.pages) || b.source === 'before') continue;
+        for (const p of b.pages) {
+          if (!p || typeof p.b64 !== 'string' || typeof p.mediaType !== 'string') continue;
+          back.push({ ...p, id: typeof p.id === 'string' ? p.id : 'kept:' + ++nextBefore, kind: isDoctype(p.kind) ? p.kind : undefined, batch: String(b.key), source: b.source === 'camera' ? 'camera' : 'file' });
+        }
+      }
+      setKept(xs => [...back.filter(p => !xs.some(x => x.id === p.id)), ...xs]);
     });
   }, [open, initial]);
-  // …and saved again on every change, a moment later (cleared when Done has read them)
+  const keptPages = React.useMemo<KeptPage[]>(() => kept.map(p => ({ id: p.id, src: 'data:' + p.mediaType + ';base64,' + p.b64, kind: p.kind || null })), [kept]);
+
+  // this session's pages: the latest cut of each (by id), how each was typed, and the cut each was typed on
+  const shots = React.useRef(new Map<string, ShotPage>());
+  const typed = React.useRef(new Map<string, Typed>());
+  const typedOn = React.useRef(new Map<string, OffscreenCanvas>());
+  const [typing, setTyping] = React.useState<Record<string, PageTyping>>({});
+  const shotBusy = React.useRef(false);
+  const forcing = React.useRef(false);
+  const [engineText, setEngineText] = React.useState<string | undefined>(undefined);
+  const [queue, setQueue] = React.useState(0);
+  const [hint, setHint] = React.useState('');
+  const [reading, setReading] = React.useState<{ label: string; pct: number } | null>(null);
+
+  const untype = (id: string) => {
+    typed.current.delete(id);
+    setTyping(t => { if (!(id in t)) return t; const n = { ...t }; delete n[id]; return n; });
+  };
+
+  // A page's type and turn: Mixed takes the model's when it is sure of both, else Haiku's (Shadow keeps the
+  // model's answer beside it); a page said to be turned is set upright and given back to the session.
+  const classify = React.useCallback(async (s: ScanSession, p: ShotPage) => {
+    const canvas = p.canvas;
+    typedOn.current.set(p.id, canvas);
+    const still = () => shots.current.get(p.id)?.canvas === canvas;
+    let b64 = await jpegB64(canvas, 0.9).catch(() => '');
+    const m = await mode.current, d = p.readouts?.doctype || null;
+    const a = m === 'off' || !d || !isDoctype(d.doctype) ? null : { doctype: d.doctype, conf: d.conf, turn: d.turn * 90, turnConf: d.turnConf };
+    const sure = !!a && m === 'mixed' && a.conf >= SURE && a.turnConf >= SURE;
+    const { kind, rotate } = sure && a ? { kind: a.doctype as Doctype | null, rotate: a.turn } : b64 ? await detectDoctype(b64, 'image/jpeg') : { kind: null, rotate: 0 };
+    if (!still()) return;  // cut again (or deleted) meanwhile: that cut is typed on its own
+    const lines = p.readouts?.mrz?.lines, he = cleanHe(p.readouts?.he?.read);
+    const t: Typed = { b64, mediaType: 'image/jpeg', doctypeModel: kind, doctypeBy: sure ? 'model' : 'haiku',
+      ...(kind ? { kind } : {}), ...(a ? { modelSaid: a.doctype } : {}), ...(m === 'shadow' && a ? { doctypeShadow: a.doctype } : {}),
+      ...(Array.isArray(lines) ? { mrz: lines.filter(x => typeof x === 'string').slice(0, 2).map(x => x.slice(0, 60)) } : {}), ...(he ? { he } : {}) };
+    // a page turned here was read by the zone reader and the field reader on its side: what they read says nothing
+    if ([90, 180, 270].includes(rotate)) {
+      try {
+        const up = turned(canvas, rotate / 90) as OffscreenCanvas;
+        b64 = await jpegB64(up, 0.92);
+        if (!still()) return;
+        t.b64 = b64; delete t.mrz; delete t.he;
+        const np: ShotPage = { ...p, canvas: up, page: { ...p.page, width: up.width, height: up.height } };
+        typedOn.current.set(p.id, up);
+        shots.current.set(p.id, np);
+        s.inject(np);
+      } catch { /* kept as cut */ }
+    }
+    if (!t.b64) return;
+    typed.current.set(p.id, t);
+    setTyping(x => ({ ...x, [p.id]: { kind, pending: false } }));
+  }, []);
+
+  /** The pages read and not typed yet (a camera shot's once it settled, or all of them at Done). */
+  const typeWaiting = React.useCallback((s: ScanSession) => {
+    for (const p of shots.current.values()) {
+      if (!p.readouts || typedOn.current.get(p.id) === p.canvas) continue;
+      if (shotBusy.current && !forcing.current && p.record.shot > 0) continue;
+      void classify(s, p);
+    }
+  }, [classify]);
+
+  React.useEffect(() => {
+    if (!session) return;
+    let seen = false;
+    const offs = [
+      session.on('page', p => {
+        shots.current.set(p.id, p);
+        if (typedOn.current.get(p.id) === p.canvas) return;  // typed on this cut already (or turned upright here)
+        if (typedOn.current.has(p.id)) { typedOn.current.delete(p.id); untype(p.id); }  // a new cut: typed again once read
+        typeWaiting(session);
+      }),
+      session.on('status', st => {
+        if (!seen) { seen = true; setEngineText(undefined); }
+        const busy = SHOT_WORK.has(st.key);
+        if (busy !== shotBusy.current) { shotBusy.current = busy; if (!busy) typeWaiting(session); }
+      }),
+      // while the models load, the status line says so (plainly: no model files or GPU layouts on the site)
+      session.log.on('status', st => { if (!seen) setEngineText(engineStatusText(st, false)); }),
+      session.attempts.on(f => setQueue(f.waiting)),
+    ];
+    return () => offs.forEach(off => off());
+  }, [session, typeWaiting]);
+
+  // a page deleted (its Undo over): no longer typed nor kept on the phone
+  const view = React.useMemo(() => (session ? siteView(session, id => { shots.current.delete(id); typedOn.current.delete(id); untype(id); }) : null), [session]);
+
+  // the batches kept on the phone, a moment after every change (cleared when Done has read them)
   const saveOn = React.useRef(true);
   React.useEffect(() => {
     if (!saveOn.current) return;
-    const t = window.setTimeout(() => { void saveBatches(batches.filter(b => b.source !== 'before')); }, 400);
+    const t = window.setTimeout(() => {
+      const list: Batch[] = [];
+      const put = (key: string, source: Batch['source'], p: Stored) => {
+        let b = list.find(x => x.key === key);
+        if (!b) list.push(b = { key, source, pages: [] });
+        b.pages.push(p);
+      };
+      for (const { batch, source, ...p } of keptRef.current) if (source !== 'before') put(batch, source, p);
+      for (const [id, shot] of shots.current) {
+        const t = typed.current.get(id);
+        if (!t) continue;
+        const { key, source } = batchOf(shot);
+        put(key, source, { id, turn: -1, blurry: false, ...t });
+      }
+      void saveBatches(list);
+    }, 400);
     return () => window.clearTimeout(t);
-  }, [batches]);
+  }, [kept, typing]);
 
-  const setPage = (uid: number, patch: Partial<Page>) => setBatches(xs => xs.map(b => ({ ...b, pages: b.pages.map(p => (p.uid === uid ? { ...p, ...patch } : p)) })));
-  const removePage = (uid: number) => {
-    labDeleted(batchesRef.current.flatMap(b => b.pages).filter(p => p.uid === uid)); // the scanner's training: a page not wanted (S8)
-    setBatches(xs => xs.map(b => ({ ...b, pages: b.pages.filter(p => p.uid !== uid) })).filter(b => b.pages.length));
+  const close = () => { session?.discard(); onClose(); };
+
+  // Done: the camera stops, the types waited for, the attempts sent, the pages read (src/scan-process/)
+  const finish = async (shown: UiPage[]): Promise<boolean> => {
+    if (!session) return false;
+    setHint('');
+    session.sleep();
+    forcing.current = true;
+    typeWaiting(session);
+    const mine = () => shown.filter(u => !u.kept && shots.current.has(u.id));
+    while (mine().some(u => !typed.current.has(u.id))) await new Promise(r => setTimeout(r, 100));
+    forcing.current = false;
+    session.attempts.done();  // the scan's attempts go for training (held until Done)
+    const list: Stored[] = [];
+    for (const u of shown) {
+      if (u.kept) {
+        const k = keptRef.current.find(x => x.id === u.id);
+        if (k) { const { batch: _b, source: _s, ...p } = k; list.push({ ...p, kind: u.chosen || p.kind }); }
+        continue;
+      }
+      const t = typed.current.get(u.id);
+      if (t) list.push({ id: u.id, turn: -1, blurry: false, ...t, kind: u.chosen || t.kind });
+    }
+    void examples(list).then(sendFeedback);  // in the background, queued when offline
+    const out: ScannedPage[] = list.filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind, mrz, he }) => ({ b64, mediaType, turn, blurry, kind, ...(mrz ? { mrz } : {}), ...(he ? { he } : {}) }));
+    if (read) {
+      setReading({ label: tr('Reading the pages…'), pct: 2 });
+      let err: string | null;
+      try { err = await read(out, (label, pct) => setReading({ label, pct })); }
+      catch (e) { err = tr('The pages could not be read: {0}', { 0: (e as Error)?.message || String(e) }); }
+      if (err) { setReading(null); setHint(err); session.wake(); return false; }
+    }
+    saveOn.current = false; void saveBatches([]);  // read: nothing left to keep on the phone
+    session.done();
+    shots.current.clear(); typed.current.clear(); typedOn.current.clear();
+    onDone(out);
+    return true;
   };
-  // Each new page's kind and turn, all at once: Mixed takes the model's when it is sure of both, else
-  // Haiku's (Shadow keeps the model's answer beside it); a page said to be turned is set upright.
-  const classify = (pages: Page[], answers: Answer[]) => pages.forEach(async (pg, i) => {
-    const m = await mode.current, a = m === 'off' ? null : answers[i] || null;
-    const sure = m === 'mixed' && a && (DOCTYPES as readonly string[]).includes(a.doctype) && a.conf >= SURE && a.turnConf >= SURE;
-    const { kind, rotate } = sure ? { kind: a!.doctype, rotate: a!.turn } : await detectDoctype(pg.b64, pg.mediaType);
-    const patch: Partial<Page> = { kind: kind || undefined, doctypeModel: kind, doctypePending: false, doctypeBy: sure ? 'model' : 'haiku',
-      ...(a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { modelSaid: a.doctype } : {}),
-      ...(m === 'shadow' && a && (DOCTYPES as readonly string[]).includes(a.doctype) ? { doctypeShadow: a.doctype } : {}) };
-    // a page turned here was read by the zone reader and the field reader on its side: what they read says nothing
-    if ([90, 180, 270].includes(rotate)) { try { patch.b64 = await rotateImage(pg.b64, pg.mediaType, rotate); patch.mediaType = 'image/jpeg'; patch.mrz = undefined; patch.he = undefined; } catch { /* kept as cut */ } }
-    setPage(pg.uid, patch);
-  });
 
-  // The lab page's pages: a shot's again (its corners refined) replace that shot's; a pick's parts join
-  // its batch; a new batch folds the one shown before it.
-  React.useEffect(() => {
-    if (!open) return;
-    const on = (e: MessageEvent) => {
-      const m = e.data as Posted;
-      if (e.origin !== location.origin || !m || m.type !== 'scan-pages' || !Array.isArray(m.pages) || typeof m.key !== 'string') return;
-      const from = Array.isArray(m.attempts) ? m.attempts : [];
-      const zones = Array.isArray(m.mrz) ? m.mrz : [], fields = Array.isArray(m.he) ? m.he : [];
-      const pages: Page[] = m.pages.map((u, i) => ({ u, a: from[i], z: zones[i], f: cleanHe(fields[i]) })).filter(({ u }) => typeof u === 'string' && u.startsWith('data:image/')).map(({ u, a, z, f }) => ({
-        uid: ++nextUid, part: m.key, b64: u.split(',')[1], mediaType: u.slice(5, u.indexOf(';')), turn: -1, blurry: false, doctypePending: true,
-        ...(a && typeof a.att === 'string' && a.att ? { att: a.att, pg: Number(a.pg) || 0 } : {}),
-        ...(Array.isArray(z) ? { mrz: z.filter(t => typeof t === 'string').slice(0, 2).map(t => t.slice(0, 60)) } : {}),
-        ...(f ? { he: f } : {}),
-      }));
-      if (!pages.length) return;
-      const key = m.key.split('.')[0], source = key.startsWith('f') ? 'file' : 'camera';
-      setBatches(xs => (xs.some(b => b.key === key)
-        ? xs.map(b => (b.key === key ? { ...b, pages: [...b.pages.filter(p => p.part !== m.key), ...pages] } : b))
-        : [...xs.map(b => ({ ...b, kept: true })), { key, source, kept: false, pages }]));
-      setHint('');
-      classify(pages, Array.isArray(m.answers) ? m.answers : []);
-    };
-    window.addEventListener('message', on);
-    return () => window.removeEventListener('message', on);
-  }, [open]);
-
-  const all = batches.flatMap(b => b.pages);
-  const kept = all.filter(p => p.kind !== 'other'); // an "Other" page is not saved unless its kind is changed
-  const pending = all.some(p => p.doctypePending);
-  const preview = batches.find(b => !b.kept);
-  const folded = batches.filter(b => b.kept);
-  const batchesRef = React.useRef(batches); batchesRef.current = batches;
-  // the lab page over its slot while the window shows it (lab.ts); hidden, its camera stopped, when the slot goes
-  // the Camera tab shown: the lab's camera starts; the Pages tab: the slot goes, so the camera stops
-  const slot = React.useCallback((el: HTMLDivElement | null) => {
-    if (!el) return undefined;
-    const hide = showLab(el, tr('Scanner'));
-    startLab();
-    return hide;
-  }, []);
-  const close = () => onClose();
-
-  // Looks good: the batch folds, the camera goes on. Retake / Remove: the batch goes, the camera goes on.
-  const fold = (b: Batch) => { setBatches(xs => xs.map(x => (x.key === b.key ? { ...x, kept: true } : x))); continueLab(); };
-  const drop = (b: Batch) => { setBatches(xs => xs.filter(x => x.key !== b.key)); continueLab(true); };
-  // Delete never asks: the Undo snack brings the batch back where it was
-  const deleteBatch = (b: Batch) => {
-    const at = batchesRef.current.findIndex(x => x.key === b.key);
-    setBatches(xs => xs.filter(x => x.key !== b.key));
-    undoDelete(tr('Pages removed'), () => labDeleted(b.pages), () => setBatches(xs => (xs.some(x => x.key === b.key) ? xs : [...xs.slice(0, at), b, ...xs.slice(at)])));
+  // under a thumbnail: Not saved on a page typed Other; a super-admin sees how the document type model did on the
+  // page (docs/scan.md → The scan window) — its own pick, or beside the AI's: the same as the AI's, or not
+  const note = (p: UiPage) => {
+    const t: Partial<Stored> | undefined = p.kept ? kept.find(x => x.id === p.id) : typed.current.get(p.id);
+    const model = !superAdmin || !t || !t.modelSaid ? null
+      : t.doctypeBy === 'model' ? { text: tr('model'), ok: true }
+      : t.modelSaid === t.doctypeModel ? { text: tr('model ✓'), ok: true } : { text: tr('model ≠ AI'), ok: false };
+    if (!model && kindOf(p) !== 'other') return null;
+    return (
+      <span className="flex flex-wrap gap-1">
+        {kindOf(p) === 'other' && <span data-testid="scan-not-saved" className="text-[11px] text-ink-2">{tr('Not saved')}</span>}
+        {model && <span data-testid="scan-model" data-ok={model.ok ? '1' : '0'} className={'text-[11px] ' + (model.ok ? 'text-ok' : 'text-warn')}>{model.text}</span>}
+      </span>
+    );
   };
-  const tiles = (b: Batch, cols: string) => (
-    <div className={'grid gap-2 ' + cols} data-testid="scan-pages">
-      {b.pages.map(p => <PageTile key={p.uid} p={p} onKind={k => setPage(p.uid, { kind: k })} onRemove={() => removePage(p.uid)}
-        onFix={!b.kept && p.att ? () => labFix(p.att!, p.pg || 0) : undefined} superAdmin={superAdmin} />)}
-    </div>
-  );
 
   return (
-    // Done stays at the window's bottom over the pages scrolled under it (owner, 2026-10-22), on the sheet's own ground
-    <Window open={open} onOpenChange={o => { if (!o) close(); }} title={tr('Scan documents')}
-      className="[&_[data-slot$=-footer]]:sticky [&_[data-slot$=-footer]]:bottom-[-20px] [&_[data-slot$=-footer]]:pb-5 [&_[data-slot$=-footer]]:z-10 [&_[data-slot$=-footer]]:pt-3 [&_[data-slot$=-footer]]:bg-[linear-gradient(to_top,var(--plate-bottom)_75%,transparent)]"
-      description={tr('ID card, its appendix (ספח), passport — several pages and documents at once')}
-      footer={<Button variant="primary" data-testid="scan-done" disabled={!kept.length || finishing}
-        onClick={async () => {
-          setFinishing(true);
-          labDone(); // the kept attempts go for training
-          sleepLab(); // the camera stops
-          // waits for the pages' kinds
-          while (batchesRef.current.some(b => b.pages.some(p => p.doctypePending))) await new Promise(r => setTimeout(r, 100));
-          const list = batchesRef.current.flatMap(b => b.pages);
-          void examples(list).then(sendFeedback); // in the background, queued when offline
-          const out = list.filter(p => p.kind !== 'other').map(({ b64, mediaType, turn, blurry, kind, mrz, he }) => ({ b64, mediaType, turn, blurry, kind, ...(mrz ? { mrz } : {}), ...(he ? { he } : {}) }));
-          if (read) {
-            setReading({ label: tr('Reading the pages…'), pct: 2 });
-            let err: string | null;
-            try { err = await read(out, (label, pct) => setReading({ label, pct })); }
-            catch (e) { err = tr('The pages could not be read: {0}', { 0: (e as Error)?.message || String(e) }); }
-            if (err) { setReading(null); setFinishing(false); setHint(err); return; }
-          }
-          saveOn.current = false; void saveBatches([]); // read: nothing left to keep on the phone
-          onDone(out);
-        }}>
-        {finishing || pending ? <IconLoader2 className="size-[18px] animate-spin" /> : null}
-        {tr('Done ({0})', { 0: kept.length })}
-      </Button>}>
-      {reading ? (
-        <div className="flex flex-col gap-3 px-4 py-6 sm:px-0" data-testid="scan-reading">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconLoader2 className="size-[18px] animate-spin" />{reading.label}</div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-plate"><div className="h-full rounded-full bg-ok transition-[width]" style={{ width: reading.pct + '%' }} /></div>
-        </div>
-      ) : (
-      <div className="flex flex-col gap-3 px-4 pb-2 sm:px-0" data-testid="scanner">
-        <Tabs value={tab} onValueChange={v => setTab(v as 'camera' | 'pages')}>
-          <TabsList>
-            <TabsTrigger value="camera" data-testid="scan-tab-camera"><IconCamera className="size-4" />{tr('Camera')}</TabsTrigger>
-            <TabsTrigger value="pages" data-testid="scan-tab-pages"><IconFileText className="size-4" />{tr('Pages')}
-              {folded.length ? <span className="text-muted-foreground">{folded.reduce((n, b) => n + b.pages.length, 0)}</span> : null}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="camera" className="flex flex-col gap-3">
-            {/* the scanner lab's page, copied as it is (scan/), laid over this slot (lab.ts); its pages come back through scan/embed.js */}
-            <div ref={slot} className="h-[46vh] w-full rounded-lg bg-background" data-testid="scan-lab-slot" />
-            {/* the window's own controls for the lab (its buttons are hidden there): Photos, the shutter, Auto */}
-            <div className="grid grid-cols-3 items-center" data-testid="scan-bar">
-              <input ref={pick} type="file" accept="image/*,application/pdf" multiple hidden data-testid="scan-files"
-                onChange={e => { filesLab([...(e.target.files || [])]); e.target.value = ''; }} />
-              <Button variant="ghost" className="justify-self-start" data-testid="scan-photos" onClick={() => pick.current?.click()}>
-                <IconPhoto className="size-4" />{tr('Photos or PDF')}
-              </Button>
-              <button type="button" aria-label={tr('Capture')} data-testid="scan-snap" onClick={() => snapLab()}
-                className="justify-self-center size-16 rounded-full border-4 border-foreground/80 bg-foreground/15 shadow-[var(--shadow-plate)] transition active:scale-95" />
-              <Button variant="ghost" className={'justify-self-end ' + (auto ? 'text-ok' : 'text-muted-foreground')} data-testid="scan-auto" aria-pressed={auto}
-                onClick={() => { autoLab(!auto); setAuto(!auto); }}>
-                <IconBolt className="size-4" />{tr('Auto')}
-              </Button>
+    <Window full open={open} onOpenChange={o => { if (!o) close(); }} title={tr('Scan documents')}
+      description={tr('ID card, its appendix (ספח), passport — several pages and documents at once')}>
+      {view && (
+        <ScannerScreen mode="site" session={view} kept={keptPages} typing={typing} thumbNote={note} statusText={engineText}
+          onRemoveKept={id => setKept(xs => xs.filter(x => x.id !== id))} onDone={finish}>
+          {(hint || queue > 0) && (
+            <div className="pointer-events-none absolute inset-x-4 top-[calc(76px+env(safe-area-inset-top,0px))] z-10 flex flex-col items-start gap-1.5">
+              {hint && <div data-testid="scan-error" role="alert" className="og-glass-menu !rounded-[var(--radius-md)] px-3 py-1.5 text-[13px] text-[var(--amber-text)]">{hint}</div>}
+              {queue > 0 && <div data-testid="scan-queue" className="og-glass-menu !rounded-full px-3 py-1 text-[12px] text-ink-2">{tr('In queue: {n} / {max}', { n: queue, max: QUEUE_MAX })}</div>}
             </div>
-            {hint && <div className="text-sm text-muted-foreground" data-testid="scan-hint">{hint}</div>}
-            {preview && (
-              <section className="flex flex-col gap-2" data-testid="scan-preview">
-                <div className="text-[13px] font-semibold text-muted-foreground">{tr('New pages')} · {preview.pages.length}</div>
-                {tiles(preview, 'grid-cols-2 sm:grid-cols-3')}
-                <div className="flex gap-2">
-                  <Button data-testid="scan-keep" onClick={() => fold(preview)}><IconCheck className="size-4" />{tr('Looks good')}</Button>
-                  <Button variant="ghost" data-testid="scan-drop" onClick={() => drop(preview)}>
-                    {preview.source === 'camera' ? tr('Retake') : tr('Remove')}
-                  </Button>
-                </div>
-              </section>
-            )}
-          </TabsContent>
-          <TabsContent value="pages" className="flex min-h-[calc(46vh+5.5rem)] flex-col gap-3">
-            {hint && <div className="text-sm text-muted-foreground">{hint}</div>}
-            {folded.length > 0 ? (
-              <section data-testid="scan-batches">
-                <PagedList items={folded} render={b => (
-                  <Plate key={b.key} data-testid="scan-batch" size="sm" title={batchTitle(b)}
-                    sub={(b.source === 'camera' ? tr('Camera') : b.source === 'file' ? tr('Files') : tr('Scanned before')) + ' · ' + tr('{0} pages', { 0: b.pages.length })}
-                    icon={b.source === 'file' ? <IconFileText className="size-4" /> : <IconCamera className="size-4" />}
-                    right={<span className="flex gap-1">{b.pages.slice(0, 3).map(p => (
-                      <img key={p.uid} src={'data:' + p.mediaType + ';base64,' + p.b64} alt="" className="h-8 w-auto rounded" />
-                    ))}</span>}
-                    onOpen={() => setUnfolded(u => (u === b.key ? null : b.key))} expanded={unfolded === b.key}
-                    onDelete={() => deleteBatch(b)}>
-                    <div className="pt-2">{tiles(b, 'grid-cols-2 sm:grid-cols-3')}</div>
-                  </Plate>
-                )} />
-              </section>
-            ) : (
-              <div className="py-8 text-center text-sm text-muted-foreground" data-testid="scan-no-pages">{tr('No pages yet: take a picture or pick photos on the Camera tab')}</div>
-            )}
-          </TabsContent>
-        </Tabs>
-      </div>
+          )}
+          {reading && (
+            <div data-testid="scan-reading" className="absolute inset-0 z-40 grid place-items-center bg-background/90 px-6 backdrop-blur-md">
+              <div className="grid w-full max-w-sm gap-3">
+                <div className="text-center text-[14px] font-semibold text-ink-2">{reading.label}</div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-plate"><div className="h-full rounded-full bg-ok transition-[width]" style={{ width: reading.pct + '%' }} /></div>
+              </div>
+            </div>
+          )}
+        </ScannerScreen>
       )}
     </Window>
   );
