@@ -521,7 +521,9 @@ def build_form101_pdf(p):
     return b.finalize(), file_name
 
 
-options.set_global_options(region="us-central1")
+# Frankfurt, next to Firestore and Storage (2026-10-24); us-central1 kept for a
+# while for phones still on the old site, removed once they have updated.
+options.set_global_options(region=["europe-west3", "us-central1"])
 
 
 def _verify_token(token):

@@ -22,7 +22,7 @@ All end in the same step 5: one new version holds whatever was trained; the rest
   `python -m venv scripts/scan-train/.venv`, then in it
   `pip install torch --index-url https://download.pytorch.org/whl/cu124` and `pip install -r scripts/scan-train/requirements.txt`.
 - Google access under the owner's own account: `gcloud auth application-default login` (once; the owner signs in in the browser). Never ask for keys or passwords in chat.
-- Hugging Face, the models' home (`OutStaff/scanner-models`, public; docs/hf-plan.md): the owner's token on the PC — `hf auth whoami` must say `OutStaff` (else the owner runs `hf auth login`; the token is never pasted in chat). The owner's PC keeps it in `H:\hf\home` (`HF_HOME`).
+- Hugging Face, the models' home (`OutStaff/scanner-models`, private; docs/hf-plan.md): the owner's token on the PC — `hf auth whoami` must say `OutStaff` (else the owner runs `hf auth login`; the token is never pasted in chat). The owner's PC keeps it in `H:\hf\home` (`HF_HOME`).
 - Once, before the first training on Hugging Face: `python scripts/scan-train/move_to_hf.py --apply` (the versions still in Storage go to Hugging Face as tags) and `python scripts/scan-train/rename_fields.py --apply` (the records collected before H0 get today's names). Each says what it would do without `--apply`; both are safe to run again.
 
 ## Stopped in the middle

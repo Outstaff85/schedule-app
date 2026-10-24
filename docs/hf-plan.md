@@ -7,7 +7,7 @@ Status: **started** (owner, 2026-10-19: "start, and merge the whole plan once al
 ## Decisions (owner, 2026-10-19)
 
 - **One place for everything about models, AI and training: Hugging Face** (account `OutStaff`).
-- **Models → `OutStaff/scanner-models`, a public model repository.** Every version is a tag (`base-v1`, `v2`, …) with its exam report. Public: no key is needed to download, and the models hold no personal data.
+- **Models → `OutStaff/scanner-models`, a private model repository** (public until 2026-10-24, then made private by the owner). Every version is a tag (`base-v1`, `v2`, …) with its exam report. The deploys read it with the GitHub Actions secret `HF_TOKEN` (a read token for that repo alone).
 - **Training data → `OutStaff/scanner-data`, a private Storage Bucket** (HF's object storage, no Git history — files are written and deleted one by one, a deletion is real). Private storage is free up to 100 GB per account; the estimate is ~15 GB after years. **Never public.**
 - **Server: a mirror.** The server keeps loading its models from Firebase Storage as now; at deploy the site's version is copied there from HF, and only that version is kept in Firebase (the others are deleted — HF keeps them for a rollback). At run time the server never calls HF, so an HF outage does not stop scanning. The server **warms up**: the models load when an instance starts, before its first scan.
 - **Kept without a time limit**, with a script that deletes every example of one worker or one firm on request (replaces the 12-month deletion).
@@ -37,7 +37,7 @@ The bell's notices become "Time to retrain the document edges model" and "Enough
  worker window                     ──read───▶ ai_read: Sonnet / Haiku
  Done / Save                       ──examples▶ scan_feedback ──write only──┐
         ▲ models at deploy                                                  ▼
- HF OutStaff/scanner-models (PUBLIC)  ◀── publish ── OWNER'S PC: /scan-train ◀── HF OutStaff/scanner-data
+ HF OutStaff/scanner-models (PRIVATE) ◀── publish ── OWNER'S PC: /scan-train ◀── HF OutStaff/scanner-data
  tags base-v1, v2, … + exam reports                  download, train, exam, yes    (PRIVATE bucket)
  Firestore: workers, punches, the bell's counters — unchanged
 ```

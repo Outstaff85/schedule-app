@@ -26,7 +26,7 @@ The page talks only to the `punch` Cloud Function (`PUNCH_FN_URL` = `https://eur
 | The month on My Hours | `{action:'myMonth', token, month:'YYYY-MM'}` → `{punches, pay, clients}` |
 | Days off and shift offers (My Schedule) | `{action:'myRequests' / 'setUnavailable' / 'offerShift' / 'cancelRequest', token, …}` ([backend.md](backend.md) → `punch`) |
 | Error telemetry | `{action:'logError', token, …}` (stored only for a working link) |
-| Documents to sign (`src/punch/sign.ts`) | the **`sign_documents`** function (`SIGN_FN_URL`, us-central1), every call with the link's token: `{action:'mine'}` → the worker's latest request (`{id, status, templateName, signDate, dateFixed, signedAt}` or null), `{action:'view', which}` (Form 101 / the contract, both at once), `{action:'sign', signaturePng}`, then `{action:'build', which}` twice at once ([contracts.md](contracts.md) → Signing) |
+| Documents to sign (`src/punch/sign.ts`) | the **`sign_documents`** function (`SIGN_FN_URL`, europe-west3), every call with the link's token: `{action:'mine'}` → the worker's latest request (`{id, status, templateName, signDate, dateFixed, signedAt}` or null), `{action:'view', which}` (Form 101 / the contract, both at once), `{action:'sign', signaturePng}`, then `{action:'build', which}` twice at once ([contracts.md](contracts.md) → Signing) |
 
 The function hands out only this worker and their sites, and accepts punches for this worker only.
 
