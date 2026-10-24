@@ -4,6 +4,9 @@ cuts"): on each passport page as the lab cut and turned it, the zone's two lines
 
   <run>/mrz/img/<scene>-<page>-<line>.png
   <run>/mrz/labels.tsv       file, text, the page's id, find_ok (1: both boxes on their true lines)
+  <run>/mrz/pages.json       one entry per passport page: its id, td3, the boxes found, ok, why it failed, how it was
+                             cut (cut_by, turn_k, iou) and its two true lines (made-up values) — exam_mrz.py's phone-path
+                             exam reads it (photo → edges → cut → turn → find → read: the stage that failed)
 
 A page is TD3 when its zone is two lines of 44. A failed find is counted, not hidden: "none" (fewer than two lines
 found), "wrong" (two boxes, not on the true lines — their crops are written with find_ok 0, never to train on as they
@@ -44,7 +47,7 @@ def write(folder, res, ctx):
         ok = len(boxes) == 2 and len(true) == 2 and all(_hit(b, f["quad"]) for b, f in zip(boxes, true))
         why = None if ok else ("notUpright" if d["turnK"] not in (0, None) else "none" if len(boxes) < 2 else "wrong")
         ents.append({"doc": d["j"], "page": d["id"], "td3": td3, "found": len(boxes), "ok": ok, "why": why, "cut_by": d["cutBy"],
-                     "turn_k": d["turnK"]})
+                     "turn_k": d["turnK"], "iou": d["iou"], "lines": lines if td3 else None})
         if len(boxes) != 2 or not td3:
             continue
         for k, (b, text) in enumerate(zip(boxes, lines)):
@@ -64,6 +67,8 @@ def finish(folder, entries, params):
     (folder / DIR / "labels.tsv").write_text("".join(f"{e['file'].rsplit('/', 1)[-1]}\t{e['text']}\t{e['page']}\t{int(e['find_ok'])}\n"
                                                      for e in lines), encoding="utf-8")
     pages = [e for e in entries if not e.get("file")]
+    import json
+    (folder / DIR / "pages.json").write_text(json.dumps(pages, ensure_ascii=False), encoding="utf-8")
     failed = {}
     for e in pages:
         if e["why"]:

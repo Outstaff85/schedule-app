@@ -1,0 +1,79 @@
+{
+ "note": "MRZ line 2 cases on which scripts/scan-train/mrzmodel.py fields and src/scan-process/mrz.ts parseMrz must agree (docId, docDob, docExpiry, docSex: the sex only with the composite check digit right). tests/auth/test_scan_train_exam_gates.py checks mrzmodel.fields against \"want\", tests/scan/mrz-sex.test.mjs checks parseMrz / mrzFields.",
+ "thisYear": 2026,
+ "cases": [
+  {
+   "name": "valid composite, F",
+   "line2": "L898902C36UTO7408122F1204159ZE184226B<<<<<10",
+   "line1": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+   "want": {
+    "docId": "L898902C3",
+    "docDob": "12/08/1974",
+    "docExpiry": "15/04/2012",
+    "docSex": "F"
+   }
+  },
+  {
+   "name": "valid composite, M",
+   "line2": "L898902C36UTO7408122M1204159ZE184226B<<<<<10",
+   "line1": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+   "want": {
+    "docId": "L898902C3",
+    "docDob": "12/08/1974",
+    "docExpiry": "15/04/2012",
+    "docSex": "M"
+   }
+  },
+  {
+   "name": "composite digit wrong",
+   "line2": "L898902C36UTO7408122F1204159ZE184226B<<<<<11",
+   "line1": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+   "want": {
+    "docId": "L898902C3",
+    "docDob": "12/08/1974",
+    "docExpiry": "15/04/2012"
+   }
+  },
+  {
+   "name": "composite filler",
+   "line2": "L898902C36UTO7408122F1204159ZE184226B<<<<<1<",
+   "line1": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+   "want": {
+    "docId": "L898902C3",
+    "docDob": "12/08/1974",
+    "docExpiry": "15/04/2012"
+   }
+  },
+  {
+   "name": "no sex (<), composite right",
+   "line2": "L898902C36UTO7408122<1204159ZE184226B<<<<<10",
+   "line1": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+   "want": {
+    "docId": "L898902C3",
+    "docDob": "12/08/1974",
+    "docExpiry": "15/04/2012"
+   }
+  },
+  {
+   "name": "dob check wrong, composite right over it",
+   "line2": "L898902C36UTO7408125F1204159ZE184226B<<<<<19",
+   "line1": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+   "want": {
+    "docId": "L898902C3",
+    "docExpiry": "15/04/2012",
+    "docSex": "F"
+   }
+  },
+  {
+   "name": "sex M, the personal number empty",
+   "line2": "L898902C36UTO7408122M1204159<<<<<<<<<<<<<<<8",
+   "line1": "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+   "want": {
+    "docId": "L898902C3",
+    "docDob": "12/08/1974",
+    "docExpiry": "15/04/2012",
+    "docSex": "M"
+   }
+  }
+ ]
+}

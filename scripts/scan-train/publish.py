@@ -10,8 +10,10 @@ Each model is named by its flag — --edges, --doctypes, --mrz, --he (the Hebrew
 layouts, H8c) — and only a named model's report is read: with no flag the reports found are printed and
 nothing is published. A report is bound to the exact files its exam examined (its "model_sha256",
 written by exam.py, exam_doctypes.py, exam_mrz.py and train_he.py): a report written for another file is
-refused ("report_X.json is for a different model; run the exam again"). A model whose exam said not worth
-publishing is left out unless forced (--force-edges, --force-doctypes, --force-mrz, --force-he; the owner's
+refused ("report_X.json is for a different model; run the exam again"). Each named model's gate is printed first
+(gate_lines: the rules its exam says failed, or that none did, and the warnings — no real passport examined
+(realExamined false), MIDV not examined (midvSkipped), the templates set contaminated, the document type model with no
+real page kept apart). A model whose exam said not worth publishing is left out unless forced (--force-edges, --force-doctypes, --force-mrz, --force-he; the owner's
 explicit call); a model is also refused when its new .onnx file is the very file of the lab's version
 (nothing new — the old edges left on the PC, a model already published; its --force-<model> overrides),
 and --force-doctypes is refused while the only exam is "your documents" with a document type or the turn
@@ -191,6 +193,37 @@ def doctypes_measured(report):
         r.get("sureTurnRight") is not None and r["sureTurnRight"] >= 0.98 for r in yours.values())
 
 
+def gate_lines(k, report):
+    """What a model's exam decided, in lines: the rules that failed (its report's "failed"), or that none did, and the
+    warnings the owner must see before a yes."""
+    what = REPORTS[k][1]
+    pub = report.get("publish")
+    head = f"{what[0].upper() + what[1:]} — the exam: " + ("worth publishing" if pub else "nothing to set it against (not decided)"
+                                                          if pub is None else "NOT worth publishing")
+    out = [head] + [f"  rule failed: {f}" for f in report.get("failed") or [] if pub is not None and not pub]
+    if pub and not report.get("failed"):
+        out.append("  no rule failed")
+    warn = []
+    if k == "mrz":
+        if report.get("realExamined") is False:
+            warn.append("no real passport examined this reader (realExamined false): try it in the lab before the site")
+        if report.get("midvSkipped"):
+            warn.append("MIDV's exam passports were not examined (--no-midv: midvSkipped)")
+        if report.get("passportsSkipped"):
+            warn.append(f"{report['passportsSkipped']} real passport pages could not be downloaded or read (passportsSkipped)")
+    if k == "edges" and report.get("contaminated"):
+        warn.append("the templates set is contaminated for " + ", ".join(f"{n} ({', '.join(v)})" for n, v in report["contaminated"].items())
+                    + ": never the gate alone")
+    if k == "doctypes" and pub is None:
+        warn.append("no page copies from the site kept apart: not set against Haiku")
+    t = report.get("turnExam") or {}
+    if k == "doctypes" and not t.get("pages"):
+        warn.append("the turn exam was not measured (no page whose turn is known)")
+    elif k == "doctypes" and t.get("sureTurnRight") is None:
+        warn.append(f"the turn exam: no turn the model is sure of on {t['pages']} pages (turn right {t.get('turn')})")
+    return out + [f"  warning: {w}" for w in warn]
+
+
 def load(a):
     """The reports of the models named: {flag: report}. SystemExit with no flag (the reports found printed),
     for a missing report, a report bound to another file, a refused force or a model with nothing new."""
@@ -206,6 +239,7 @@ def load(a):
             raise SystemExit(f"no {file} — run {exam} first ({what})")
         report = read_json(WORK / file)
         bound(k, report)
+        print("\n".join(gate_lines(k, report)))
         if not report.get("publish"):
             if not getattr(a, "force_" + k):
                 print(f"{what[0].upper() + what[1:]}: left out — the exam said not worth publishing (--force-{k} to publish anyway)")

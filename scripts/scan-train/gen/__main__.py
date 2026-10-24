@@ -15,6 +15,7 @@ verify, QA").
   python -m gen profile --frames DIR            # the resampling probe's fixed frames (PNG) and frames.json
   python -m gen profile --from probe.json --frames DIR [--out FILE]   # fit the kernels to a browser's outputs
   python -m gen exam-phone --model edges --count 40 --out DIR   # E4: the lab's edges models, INTER_AREA vs the phone path
+  python -m gen exam-sets [--work DIR]          # the exam sets pinned in exam_sets.json and the rows in exam_rows.jsonl
 """
 import argparse
 import sys
@@ -97,7 +98,19 @@ def main(argv=None):
     e.add_argument("--count", type=int, default=40, help="photos of each exam set (the same ones every run)")
     e.add_argument("--version", help="the model version (default: the lab's, scripts/scan-lab/models-version)")
     e.add_argument("--out", help="the folder exam_phone.json goes to (default: the work folder)")
+    x = sub.add_parser("exam-sets", help="the exam sets pinned (exam_sets.json: each manifest's sha256 and the heldout.json "
+                       "it was pinned under) and the exam rows written (exam_rows.jsonl)")
+    x.add_argument("--work", help="the work folder (default SCAN_TRAIN_HOME, else ~/.scan-train)")
     a = ap.parse_args(argv)
+    if a.command == "exam-sets":
+        from . import common as gc
+        from .exam_sets import report as exam_sets_report
+        print("\n".join(exam_sets_report(a.work)))
+        stale = gc.stale_exam_sets(a.work)
+        if stale:
+            print("made under another heldout.json (draw them again): " + ", ".join(stale))
+            return 1
+        return 0
     if a.command == "sources":
         from .sources import report
         lines, bad = report(a.work)

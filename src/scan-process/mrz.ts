@@ -8,7 +8,8 @@ import type { Rec } from './types';
 
 export type Mrz = {
   line1: string; line2: string;
-  /** only the values whose check digit is right (sex: M / F) */
+  /** only the values whose check digit is right (sex: M / F, only with the composite check digit right — the sex has
+   * none of its own; scripts/scan-train/mrzmodel.py fields gives it the same way, tests/scan/mrz-sex.test.mjs) */
   passportNo?: string; dob?: string; expiry?: string; sex?: string;
   surname?: string; given?: string; nationality?: string;
   /** every check digit of line 2 right, the composite one too */
@@ -93,7 +94,6 @@ export function parseMrz(text: string, thisYear = new Date().getFullYear()): Mrz
   const dobOk = mrzCheck(l2.slice(13, 19)) === +l2[19], expOk = mrzCheck(l2.slice(21, 27)) === +l2[27];
   if (dobOk) out.dob = date(l2.slice(13, 19), y => (y > yy ? 19 : 20));
   if (expOk) out.expiry = date(l2.slice(21, 27), () => 20);
-  if (l2[20] === 'M' || l2[20] === 'F') out.sex = l2[20];
   const nat = l2.slice(10, 13).replace(/</g, '');
   if (/^[A-Z]{3}$/.test(nat)) out.nationality = nat;
   const [sur, giv] = l1.slice(5).split('<<');
@@ -102,7 +102,9 @@ export function parseMrz(text: string, thisYear = new Date().getFullYear()): Mrz
   if (name(giv)) out.given = name(giv);
   const persOk = mrzCheck(l2.slice(28, 42)) === +l2[42] || (l2[42] === '<' && /^<+$/.test(l2.slice(28, 42)));
   const composite = l2.slice(0, 10) + l2.slice(13, 20) + l2.slice(21, 43);
-  out.allChecks = !!n && dobOk && expOk && persOk && mrzCheck(composite) === +l2[43];
+  const compositeOk = mrzCheck(composite) === +l2[43];
+  if ((l2[20] === 'M' || l2[20] === 'F') && compositeOk) out.sex = l2[20];   // no check digit of its own: the composite one
+  out.allChecks = !!n && dobOk && expOk && persOk && compositeOk;
   return out;
 }
 

@@ -283,3 +283,33 @@ def test_the_name_boxes_open_toward_the_left_and_labels_carry_page_type_and_role
     many = [(None, "x", "k", {"page": str(p)}) for p in range(40) for _ in range(3)]
     sel, exam = th.check_split(many)
     assert sel and exam and not {r[3]["page"] for r in sel} & {r[3]["page"] for r in exam} and len(sel) + len(exam) == len(many)
+
+
+def test_the_he_gate_is_the_five_roles_the_phone_reads_on_unseen_id_card_fronts():
+    # train_he imports no torch at the top: its gate is checked where torch is not installed
+    th = _load("train_he")
+    good_id = hemodel.visual("123456782")
+    rows, got = [], []
+    for card in range(10):
+        for role in hemodel.ROLES:
+            label = good_id if role == "idNo" else hemodel.visual("כהן")
+            rows.append((f"{card}-{role}.png", label, role if role in ("idNo",) else "name", {"pageType": "id_front", "role": role, "page": f"c{card}"}))
+            got.append(label)
+        rows.append((f"{card}-addr.png", "x", "address", {"pageType": "sefach", "role": "address", "page": f"s{card}"}))
+        got.append("y")   # a ספח field read wrong: information only, not the gate
+    rep = {**th.figures(rows, got), "phone": th.phone_figures(rows, got)}
+    assert rep["phone"]["byRole"] == {r: 1.0 for r in hemodel.ROLES} and rep["phone"]["idOk"] == 1.0
+    assert rep["phone"]["allFive"] == 1.0 and rep["phone"]["cards"] == 10
+    assert rep["fieldsRight"] < 0.9 and rep["notExamined"] == ["id_back", "licence"]
+    assert th.gate(rep) == (True, [])
+    # one role under 0.9 fails the gate, whatever the rest
+    bad = [("wrong" if r[3]["role"] == "dob" and int(r[3]["page"][1:]) < 2 else g) for r, g in zip(rows, got)]
+    rep = {"phone": th.phone_figures(rows, bad)}
+    ok, fails = th.gate(rep)
+    assert not ok and fails == ["dob: 80.0% read right < 90%"] and rep["phone"]["allFive"] == 0.8
+    # ID numbers whose check digit fails, and a role not examined
+    ids = [hemodel.visual("123456789") if r[3]["role"] == "idNo" else g for r, g in zip(rows, got)]
+    rows2 = [r for r in rows if r[3]["role"] != "expiry"]
+    ok, fails = th.gate({"phone": th.phone_figures(rows2, [g for r, g in zip(rows, ids) if r[3]["role"] != "expiry"])})
+    assert not ok and any(f.startswith("idNo: 0.0%") for f in fails) and any("ID numbers with a right check digit 0.0%" in f for f in fails)
+    assert any(f.startswith("expiry: not examined") for f in fails)

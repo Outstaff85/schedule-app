@@ -280,14 +280,15 @@ def test_v3_v4_and_v5s_edges_are_not_held_out_clean_and_exam_never_gates_on_them
     for name in ("onnxruntime", "docfind"):
         monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
     exam = _load("exam", "exam_manifest")
-    s = lambda mean, n=5: {"n": n, "mean": mean}
+    s = lambda mean, n=5: {"n": n, "mean": mean, "within2": 0.5, "missed": 0.0, "extra": {"n": 0, "found": None},
+                           "retaken": {"n": 0, "other": None}}
     only_dirty = {"sets": {"templates": 9}, "models": {"edges.onnx": {"templates": {"before": s(0.05), "after": s(0.01), "contaminated": ["v5"]}}}}
-    assert exam.gate(only_dirty) is False                                                       # never the gate alone
-    with_clean = {"sets": {"templates": 9, "midv": 9}, "models": {"edges.onnx": {
-        "templates": {"before": s(0.05), "after": s(0.01), "contaminated": ["v5"]}, "midv": {"before": s(0.05), "after": s(0.04)}}}}
-    assert exam.gate(with_clean) is True
+    assert exam.gate(only_dirty)[0] is False                                                    # never the gate alone
+    with_clean = {"sets": {"templates": 9, "e2": 9}, "models": {"edges.onnx": {
+        "templates": {"before": s(0.05), "after": s(0.01), "contaminated": ["v5"]}, "e2": {"before": s(0.05), "after": s(0.04)}}}}
+    assert exam.gate(with_clean)[0] is True
     with_clean["models"]["edges.onnx"]["templates"]["after"] = s(0.06)                          # still counted: worse there is NO
-    assert exam.gate(with_clean) is False
+    assert exam.gate(with_clean)[0] is False
 
 
 def test_an_edges_entry_names_every_real_page_laid_and_training_refuses_a_held_second_card(tmp_path, monkeypatch, heldout):

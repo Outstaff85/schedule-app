@@ -13,7 +13,8 @@ accurate model's confirming them (sure: they are the first document's), up to th
 findNext (docfind.find_next with lab=True: its goodQuad, docShape and quadIoU, its paint colour) and one lying on each
 found by find_inside (at most 5), the same rules on both paths — counted: shots, confirmed, moved, documents found, the photos
 with two documents where both were found, the photos with none where a shot was taken. Nothing is trained, nothing
-is published: it reports the gap. Writes <out>/exam_phone.json."""
+is published: it reports the gap. Writes <out>/exam_phone.json, and its rows (one per photo, model and input: exam
+"exam-phone", which "lab", set "<set>@<input>") into exam_rows.jsonl (gen/exam_sets.py)."""
 import json
 import pathlib
 import random
@@ -131,6 +132,9 @@ def main(model, count, version=None, out=None):
               "measured": bool(phone.load_profile().get("measured")),
               "model_sha256": {n: sha256_of(p) for n, p in paths.items()},
               "count": count, "sets": {s: len(ex) for s, ex in sets.items()}, "models": {}, "shots": {}}
+    from . import exam_sets as es
+    from exam import ok_of
+    rows = []
     t0 = time.time()
     for s, examples in sets.items():
         imgs = [cv2.imread(e["file"]) for e in examples]
@@ -145,6 +149,9 @@ def main(model, count, version=None, out=None):
                     pts, conf = docfind.detect(sess[n], im, rz)
                     answers.append([list(map(float, p)) for p in pts] if docfind.good_quad(pts, conf) else None)
                 row[rz] = score(answers, examples)
+                for a, e in zip(answers, examples):
+                    x, ok = ok_of(a, e)
+                    rows.append(es.row("exam-phone", n, "lab", report["model_sha256"][n], f"{s}@{rz}", e.get("id"), e.get("manifest"), x, ok))
             row["phone"] = PHONE_OP[n]
             dirty = contaminated([version], n) if s == "templates" else []
             if dirty:
@@ -154,6 +161,7 @@ def main(model, count, version=None, out=None):
                               for p in ("area", "phone")}
         print(f"  {SETS[s]}: {len(examples)} photos ({time.time() - t0:.0f} s)", flush=True)
     report["seconds"] = round(time.time() - t0, 1)
+    es.write_rows("exam-phone", rows, WORK)
     (out / "exam_phone.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     print_table(report)
     print(f"report: {out / 'exam_phone.json'}")

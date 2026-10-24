@@ -111,7 +111,9 @@ def check(s):
 
 def fields(line2, this_year=None):
     """The values of MRZ line 2 whose check digit is right, as the worker window keeps them
-    (docId, docDob and docExpiry DD/MM/YYYY, docSex) — src/scan-process/mrz.ts parseMrz without its mending."""
+    (docId, docDob and docExpiry DD/MM/YYYY, docSex) — src/scan-process/mrz.ts parseMrz without its mending. The sex has
+    no check digit of its own: it is given only when the composite check digit (position 44, over 1–10, 14–20 and 22–43)
+    is right, as parseMrz gives it (tests/scan/mrz_sex.json holds the cases both must agree on)."""
     import datetime
     l2 = (line2 + "<" * 44)[:44]
     yy = (this_year or datetime.date.today().year) % 100
@@ -122,6 +124,6 @@ def fields(line2, this_year=None):
         part, c = l2[s:e], l2[e]
         if part.isdigit() and c.isdigit() and check(part) == int(c) and 1 <= int(part[2:4]) <= 12 and 1 <= int(part[4:6]) <= 31:
             out[key] = f"{part[4:6]}/{part[2:4]}/{century(int(part[:2]))}{part[:2]}"
-    if l2[20] in "MF":
+    if l2[20] in "MF" and l2[43].isdigit() and check(l2[0:10] + l2[13:20] + l2[21:43]) == int(l2[43]):
         out["docSex"] = l2[20]
     return out

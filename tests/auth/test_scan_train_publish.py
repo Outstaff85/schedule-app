@@ -329,9 +329,9 @@ def page():
 
 
 def test_haiku_and_the_site_are_not_measured_without_haikus_own_answer(exam_doctypes):
-    r = exam_doctypes.score("m.onnx", [{"img": page(), "doctype": "id_front"}, {"img": page(), "doctype": "passport", "by": "haiku"}])
+    r = exam_doctypes.score("m.onnx", [{"img": page(), "doctype": "id_front", "upright": True}, {"img": page(), "doctype": "passport", "by": "haiku"}])
     assert r["site"] is None and r["haiku"] is None and r["haikuPages"] is None
-    assert r["doctype"] == 0.5 and r["turn"] is not None
+    assert r["doctype"] == 0.5 and r["turn"] is not None and r["turnPages"] == 1   # only the page whose turn is known
     r = exam_doctypes.score("m.onnx", [{"img": page(), "doctype": "id_front", "given": "passport"}])
     assert r["haikuPages"] == 1 and r["haiku"] == 0.0 and r["site"] == 1.0
 
@@ -375,6 +375,8 @@ def test_synth_docs_records_the_documents_own_top_left():
 
 def test_your_documents_report_has_no_turn_and_counts_by_document(exam_doctypes, tmp_path, monkeypatch):
     import cv2
+    import common
+    from gen import common as gc
     work = tmp_path / "work"
     (work / "synth" / "docs-exam" / "img").mkdir(parents=True)
     (work / "new").mkdir()
@@ -387,7 +389,10 @@ def test_your_documents_report_has_no_turn_and_counts_by_document(exam_doctypes,
     (work / "synth" / "docs-exam" / "examples.json").write_text(json.dumps(ex))
     monkeypatch.setattr(exam_doctypes, "WORK", work)
     monkeypatch.setattr(exam_doctypes, "EXAM_PHOTOS", work / "synth" / "docs-exam" / "examples.json")
-    exam_doctypes.main()
+    monkeypatch.setattr(common, "version_of", lambda copy: "v5")
+    monkeypatch.setattr(common, "model_path", lambda v, n: (_ for _ in ()).throw(SystemExit("no lab model here")))
+    gc.record_exam_set("synth/docs-exam", work / "synth" / "docs-exam" / "examples.json", work=work)   # drawn under today's heldout.json
+    exam_doctypes.main(["--no-phone-cut"])
     rep = json.loads((work / "report_doctypes.json").read_text())
     y = rep["yoursModels"]["doctype-lite.onnx"]
     assert y["turn"] is None and y["sureTurnRight"] is None and y["turnPages"] is None   # drawn before "upright" was recorded
