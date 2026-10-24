@@ -19,7 +19,7 @@ if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && python "$HERE/model_store.py"
 # files named by what they do; Firebase Storage (the old names) only while a version is not moved there yet.
 HF="https://huggingface.co/OutStaff/scanner-models/resolve/$SCAN_MODELS_VERSION"
 # the models' repo is private (owner, 2026-10-24): the deploy reads it with HF_TOKEN, a read-only key for
-# that repo alone (a GitHub Actions secret); without it a public repo is still read as before
+# that repo alone (a GitHub Actions secret); the repo is private, so without it the download is refused
 HF_AUTH=(); [ -n "${HF_TOKEN:-}" ] && HF_AUTH=(-H "Authorization: Bearer $HF_TOKEN")
 hfname() { case "$1" in sa24.onnx) echo edges.onnx;; lite.onnx) echo edges-lite.onnx;; yunet640.onnx) echo face.onnx;; *) echo "$1";; esac; }
 fromhf() {  # NAME [the least size in bytes: 100 kB, a model; a small file passes its own]
