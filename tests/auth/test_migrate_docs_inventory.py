@@ -75,6 +75,7 @@ FILES = {
     f"{W}/w1/signature/1-signature.png": 8,
     f"{W}/w4/assets/1-x_assets.json": 1000,
     f"{W}/w4/other/x.bin": 3,
+    f"{W}/w4/loose.bin": 4,  # right under the worker, in no folder: still a worker file, not outside
     # a worker that has no record any more
     f"{W}/wgone/pages/1-0-id_front.jpg": 11,
     # the firm's contract templates, and a file outside workers/
@@ -122,7 +123,7 @@ def _expect(r):
     assert r["signature"] == {"count": 2, "bytes": 17}
     assert r["signatureOrphans"] == {"count": 1, "bytes": 8}
     assert r["assets"] == {"count": 1, "bytes": 1000}
-    assert r["otherWorkerFiles"] == {"count": 1, "bytes": 3}
+    assert r["otherWorkerFiles"] == {"count": 2, "bytes": 7}
     assert r["deletedWorkerFiles"] == {"count": 1, "bytes": 11}
     assert r["outsideFiles"] == {"count": 1, "bytes": 2}
     assert r["templates"] == {"files": {"count": 1, "bytes": 77}, "records": 2, "deleted": 1}
@@ -211,6 +212,11 @@ def test_id_lists_are_cut():
     ids = rep[T]["workers"]["onSidecarIds"]
     assert rep[T]["workers"]["onSidecar"] == inv.LIST_MAX + 7
     assert len(ids) == inv.LIST_MAX + 1 and ids[-1] == "... 7 more"
+
+
+def test_tenant_flag_needs_a_value(capsys):
+    assert inv.main(["docs_inventory.py", "--tenant"]) == 2
+    assert "--tenant needs a firm id" in capsys.readouterr().err
 
 
 def test_wrappers_have_no_write():

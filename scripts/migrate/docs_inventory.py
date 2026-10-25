@@ -29,8 +29,10 @@ For each firm it reports (counts, and bytes where a file is counted):
                     signatures no worker (sigFileId) or request (sigPath)
                     refers to
   assets            the old scan sidecars
-  otherWorkerFiles  any other file under workers/
-  deletedWorkerFiles files under a worker id that has no record
+  otherWorkerFiles  any other file under workers/ (also one right under
+                    workers/ or workers/<w>/, in no folder)
+  deletedWorkerFiles files under a worker id that has no record (also counted
+                    in their folder above: an overlap, not a further share)
   templates         the template files under contracts/, and the template
                     records (kept / deleted)
   workers           the count; onSidecar (assetsFileId, no scanPages);
@@ -174,11 +176,12 @@ def inventory_tenant(db, bucket, t):
         if rest[0] == "contracts":
             _add(r["templates"]["files"], size)
             continue
-        if rest[0] != "workers" or len(rest) < 4:
+        if rest[0] != "workers":
             _add(r["outsideFiles"], size)
             continue
-        wid, folder = rest[1], rest[2]
-        if wid not in workers:
+        wid = rest[1] if len(rest) > 2 else ""
+        folder = rest[2] if len(rest) > 3 else ""  # a file right under workers/ or workers/<w>/ has no folder
+        if wid and wid not in workers:
             _add(r["deletedWorkerFiles"], size)
         if folder == "form101":
             key = "signed" if name in signed_101 else "unsigned" if name in unsigned_101 else "unreferenced"
@@ -247,7 +250,13 @@ def main(argv):
     if any(a in ("-h", "--help") for a in argv[1:]):
         print(__doc__)
         return 0
-    tenants = [argv[argv.index("--tenant") + 1]] if "--tenant" in argv else None
+    tenants = None
+    if "--tenant" in argv:
+        i = argv.index("--tenant")
+        if i + 1 >= len(argv) or not argv[i + 1].strip():
+            print("--tenant needs a firm id", file=sys.stderr)
+            return 2
+        tenants = [argv[i + 1]]
     import firebase_admin
     from firebase_admin import firestore, storage
     firebase_admin.initialize_app(options={"projectId": "schedule-odinson"})
