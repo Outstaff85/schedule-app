@@ -72,7 +72,14 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
     if (!can || state[key]) return;
     setState(s => ({ ...s, [key]: 'busy' }));
     let r = null;
-    try { const res = await api.findScanFields(w.id, [key], w.docType || 'israeli_id'); r = res && res[key]; } catch (e) { console.error(e); }
+    try { const res = await api.findScanFields(w.id, [key], w.docType || 'israeli_id'); r = res && res[key]; }
+    catch (e) {
+      // the search failed or did not answer: the row can be tapped again, the reason in a note
+      console.error(e);
+      setState(s => { const n = { ...s }; delete n[key]; return n; });
+      api.toast(tr('The scan search failed: {0} — tap the field to try again', { 0: String((e as Error)?.message || e) }), 6000);
+      return;
+    }
     if (!r || !r.value) { setState(s => ({ ...s, [key]: 'none' })); return; }
     api.setScanField(w.id, key, r.value);
     api.toast(scanLabel(key, w.docType) + ': ' + r.value + (r.unsure ? ' — ' + tr('check it') : ''), r.unsure ? 5000 : undefined);
@@ -160,11 +167,12 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
   );
 }
 
-/** Sent to sign (waiting for the worker) / Signed with its date / Needs sending again (the template was deleted). */
+/** Sent to sign (waiting for the worker) / Signed with its date — the latest signing's, also while its documents are
+ * still being built ('signing') / Needs sending again (the template was deleted). */
 function SignChip({ req, signDate }: { req: SignRequestView | null; signDate?: string }) {
-  if (req && (req.status === 'sent' || req.status === 'signing')) return <Badge variant="info" data-testid="card-sign-state" data-state="sent"><IconSend />{tr('Sent to sign')}</Badge>;
+  if (req && req.status === 'sent') return <Badge variant="info" data-testid="card-sign-state" data-state="sent"><IconSend />{tr('Sent to sign')}</Badge>;
   if (req && req.status === 'withdrawn') return <Badge variant="warn" data-testid="card-sign-state" data-state="withdrawn"><IconAlertTriangle />{tr('Needs sending again')}</Badge>;
-  const d = (req && req.status === 'signed' && req.signDate) || signDate;
+  const d = (req && (req.status === 'signed' || req.status === 'signing') && req.signDate) || signDate;
   return d ? <Badge variant="ok" data-testid="card-sign-state" data-state="signed"><IconSignature />{tr('Signed {0}', { 0: d })}</Badge> : null;
 }
 
