@@ -23,15 +23,6 @@ export function isSignedWorker(w: Rec | null | undefined): boolean {
   return !!(w && (w.signedAt || w.signedRequestId));
 }
 
-/** The worker's files that are never deleted (docs/contracts.md → Signed files are kept): every
- * docs[] entry marked signed, and for a signed worker its Form 101 (`docFileId`) and signature.
- * The server refuses them too (users_admin deleteWorkerDoc, functions-auth/files.py signed_file). */
-export function keptSignedFiles(w: Rec): Set<string> {
-  const kept = new Set<string>((w.docs || []).filter((d: Rec) => d && d.signed && d.fileId).map((d: Rec) => String(d.fileId)));
-  if (isSignedWorker(w)) [w.docFileId, w.sigFileId].filter(Boolean).forEach(id => kept.add(String(id)));
-  return kept;
-}
-
 export async function signCall<T = Rec>(body: Rec): Promise<T> {
   const idToken = await (await loadFirestoreBackend()).idToken();
   const resp = await fetch(SIGN_FN_URL, {

@@ -14,9 +14,11 @@ on the bucket, which this way never has to be made by hand.
   loadWorkerAssets  {fileId: <storage path>} -> {ok, scanB64, scanMediaType, sigPng, extraPages}
                     the old sidecar (one JSON with the pictures inside), read until the
                     worker's sidecar is split into pages (scripts/migrate/scan_pages.py)
-  deleteWorkerDoc   {fileId: <storage path>} -> {ok: true}
-                    refused (E_SIGNED) for a signed file, which is never deleted
-                    (docs/contracts.md → Signed files are kept; signed_file below)
+  deleteWorkerDoc   {fileId: <storage path>, manual?: true} -> {ok: true}
+                    a signed file is never deleted on its own — a file replaced, a
+                    rescan, a new signing (E_SIGNED; signed_file below); only a
+                    person's own delete removes it: Remove on the card, Delete worker
+                    (manual: true; owner, 2026-10-25 — docs/contracts.md → Signed files are kept)
 
 A fileId is the object's path, tenants/<tenantId>/workers/...; only a path in
 the caller's own firm is accepted (a superadmin's: the firm it is viewing).
@@ -137,7 +139,12 @@ def run(bucket, caller, body, worker_hr=None, signed_lookup=None):
     if action == "deleteWorkerDoc":
         if not _workers_writer(caller):
             return {"error": E_NO_RIGHT}
-        # one check for every browser path that deletes a file (docs/contracts.md → Signed files are kept)
+        # one check for every browser path that deletes a file on its own (docs/contracts.md → Signed files are
+        # kept); a person's own delete (manual) removes a signed file too
+        if body.get("manual") is True:
+            if blob.exists():
+                blob.delete()
+            return {"ok": True}
         if signed_lookup is None:
             return {"error": E_SIGNED}
         wid = path.split("/")[3]

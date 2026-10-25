@@ -338,15 +338,14 @@ def test_supplier_worker_crud():
     assert not W(T1, wid).get().exists
 
 
-def test_supplier_cannot_delete_a_signed_worker():
-    # documents plan S0b: a signed worker's record (and so its signed files) is kept
+def test_supplier_may_delete_a_signed_worker():
+    # a person's own delete: a signed worker goes too (owner, 2026-10-25; docs/contracts.md → Signed files are kept)
     for mark in ({"signedAt": "2026-10-20T10:00:00Z"}, {"signedRequestId": "r1"}):
         wid = portal.supplier_action(DB, SUP1, {"action": "supplierAddWorker",
                                                 "worker": {"docGiven": "Signed", "docSurname": "Guy"}})["worker"]["id"]
         W(T1, wid).update(mark)
-        assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": wid}) == {"error": portal.E_SIGNED_WORKER}
-        assert W(T1, wid).get().exists
-        W(T1, wid).delete()
+        assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": wid}) == {"ok": True}
+        assert not W(T1, wid).get().exists
 
 
 def test_non_suppliers_are_refused():
