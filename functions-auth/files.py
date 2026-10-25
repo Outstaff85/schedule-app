@@ -140,7 +140,10 @@ def run(bucket, caller, body, worker_hr=None, signed_lookup=None):
         # one check for every browser path that deletes a file (docs/contracts.md → Signed files are kept)
         if signed_lookup is None:
             return {"error": E_SIGNED}
-        worker, requests = signed_lookup(path.split("/")[3])
+        wid = path.split("/")[3]
+        if not wid:
+            return {"error": E_NOT_FIRM}
+        worker, requests = signed_lookup(wid)
         if signed_file(path, worker, requests):
             return {"error": E_SIGNED}
         if blob.exists():

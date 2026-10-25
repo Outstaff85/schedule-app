@@ -246,3 +246,11 @@ def test_delete_without_a_lookup_deletes_nothing():
     b = _signed_bucket()
     assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": UPL}) == {"error": files.E_SIGNED}
     assert UPL in b.store
+
+
+def test_delete_of_a_path_with_no_worker_is_refused():
+    # tenants/<t>/workers/ with no worker id: nothing to look up, nothing deleted
+    seen = []
+    assert files.run(Bucket(), ADMIN, {"action": "deleteWorkerDoc", "fileId": f"tenants/{T1}/workers/"}, None,
+                     lambda wid: seen.append(wid) or (None, [])) == {"error": files.E_NOT_FIRM}
+    assert seen == []
