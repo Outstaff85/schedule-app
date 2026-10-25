@@ -553,14 +553,18 @@ def pull(names=("backgrounds", "backgrounds-own")):
     """The bank from the private bucket, then made ready (prepare): a bank pushed without its catalog is catalogued,
     checked and split here."""
     import datasets_hf
+    from . import bgfetch
     datasets_hf.pull(list(names))
+    bgfetch.reapply()   # the photos gen bg fetch brought and the owner has not pushed yet keep their sources entries
     return prepare(names=names)
 
 
 def push(names=("backgrounds", "backgrounds-own")):
     """The bank → the private bucket. The owner's step after looking at the bank (never run by a generator)."""
     import datasets_hf
+    from . import bgfetch
     datasets_hf.push(list(names))
+    bgfetch.mark_pushed()   # gen bg fetch's photos are in the bucket now
 
 
 # ---------- sampling ----------

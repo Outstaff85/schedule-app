@@ -24,7 +24,9 @@ table and the documents").
   same camera with their height. Labels are projections of the pages' own corners and field boxes: exact (the tests
   measure the rendered edges against them: < 0.5 px).
 - Light, a shadow under each page, a card's glare, then the phone's noise / blur / JPEG still come from synth_docs
-  (light(), camera(), lay()'s shadow and glare).
+  (light(), camera(), lay()'s shadow and glare) — unless the scene carries capture settings (gen/capture.py: gen tune's
+  camera parameters and gen ablate's effects, a training run's params "capture"): then the same steps with those
+  settings, and an effect switched off still draws its random numbers.
 Streams: scene (recipe, layout, camera, background, occluders), page (each page's drawing), camera (light and the
 phone's effects) — gen.rng.streams."""
 import math
@@ -169,6 +171,7 @@ class Scene:
     occluders: list = field(default_factory=list)
     fingers: list = field(default_factory=list)
     worn: dict = field(default_factory=dict)
+    capture: dict = None    # gen/capture.py's settings (a training run's params "capture"); None: today's draw
 
 
 # ---------- planning ----------
@@ -236,10 +239,12 @@ def _worn(rng, page):
     return r / page.ppm
 
 
-def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, force_bend=None, tilt_weights=None):
+def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, force_bend=None, tilt_weights=None,
+         capture=None):
     """A scene: rngs {"scene", "page"} (random.Random each), pool (gen.pages.Pool), F (synth_docs.Fonts), bank
     (gen.backgrounds.Bank or None: procedural only), occluders (gen.backgrounds.Occluders or None), tilt_weights (gen
-    mine's focus: {"0-15": w, ...}, the camera's tilt by bucket; None: uniform). None when the camera found no pose (the
+    mine's focus: {"0-15": w, ...}, the camera's tilt by bucket; None: uniform), capture (gen/capture.py's settings:
+    the camera's tilt and distance here, the effects in render; None: today's). None when the camera found no pose (the
     caller draws the next recipe)."""
     rs, rp = rngs["scene"], rngs["page"]
     recipe = recipe or pick_recipe(rs, weights)
@@ -285,7 +290,8 @@ def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, fo
     else:
         w, h = rs.uniform(90, 300), rs.uniform(60, 220)
         pts = np.array([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]])
-    cam = gcam.sample(rs, pts, partial=recipe == "partial", tilt_weights=tilt_weights)
+    from . import capture as gcap
+    cam = gcam.sample(rs, pts, partial=recipe == "partial", tilt_weights=tilt_weights, **gcap.camera_kw(capture))
     if cam is None or (docs and not all((cam.depth(d.lift(d.boundary(6))) > 1).all() for d in docs)):
         return None
     # the background: on the same plane, at its physical size — no coarser than the frame there
@@ -309,7 +315,7 @@ def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, fo
         size = int(min(PROC_MAX, max(256, math.ceil(2 * reach * pp))))
         bg = {"entry": None, "sha1": None, "category": "procedural", "seed": seed, "kind": None, "size": size, "ppm": pp,
               "framePpm": ppm, "A": similarity(rs.uniform(0, 360), 1.0 / pp, (size / 2, size / 2), centre)}
-    sc = Scene(recipe, docs, cam, bg, worn=worn)
+    sc = Scene(recipe, docs, cam, bg, worn=worn, capture=capture)
     _add_fingers(rs, sc)
     _add_occluders(rs, sc, occluders)
     return sc
@@ -531,11 +537,11 @@ def prepare(rgba):
     return {"src": src, "pyr": [src]}
 
 
-def render_doc(cam, d, rgba=None, pad=0, roi=None, prepared=None):
+def render_doc(cam, d, rgba=None, pad=0, roi=None, prepared=None, mip=True):
     """A page through the camera: (roi, its premultiplied BGR float32, its alpha 0..1 float32); rgba: an H × W × 4
     picture to put in place of the page's own (the tests' masks); roi: only this part of the frame (x0, y0, x1, y1) —
     each pixel is drawn the same as in the whole page's region; prepared: prepare(rgba) kept by a caller warping one
-    picture many times."""
+    picture many times; mip False: plain bilinear sampling (gen ablate's "mip" switched off)."""
     import cv2
     roi = roi or roi_of(cam, d, pad)
     if roi is None:
@@ -546,7 +552,7 @@ def render_doc(cam, d, rgba=None, pad=0, roi=None, prepared=None):
             rgba = np.dstack([cv2.cvtColor(a[..., :3], cv2.COLOR_RGB2BGR), a[..., 3]])
         prepared = prepare(rgba)
     mu, mv = doc_maps(cam, d, roi)
-    out = warp_mip(prepared["src"], mu, mv, cv2.BORDER_CONSTANT, pyr=prepared["pyr"])
+    out = warp_mip(prepared["src"], mu, mv, cv2.BORDER_CONSTANT, max_level=7 if mip else 0, pyr=prepared["pyr"])
     alpha = np.clip(out[..., 3] / 255.0, 0, 1)
     rgb = out[..., :3]
     if d.bend:
@@ -571,17 +577,18 @@ def background_image(sc):
     return img
 
 
-def render_background(sc):
+def render_background(sc, mip=True):
     import cv2
     cam = sc.cam
     img = background_image(sc)
     xs, ys = _grid(0, 0, cam.W, cam.H)
     P = apply(np.linalg.inv(sc.bg["A"]), _to_plane(cam, xs, ys))
-    out = warp_mip(img, P[:, 0].reshape(xs.shape), P[:, 1].reshape(xs.shape), cv2.BORDER_REFLECT_101)
+    out = warp_mip(img, P[:, 0].reshape(xs.shape), P[:, 1].reshape(xs.shape), cv2.BORDER_REFLECT_101, max_level=7 if mip else 0)
     return out
 
 
-def _shadow(frame, roi, alpha, rng, size):
+def _shadow(frame, roi, alpha, rng, size, on=True):
+    """A soft shadow under a page or an occluder; on False: its random numbers drawn, nothing laid (gen ablate)."""
     import cv2
     x0, y0, x1, y1 = roi
     dx, dy = int(round(size * rng.uniform(-0.02, 0.02))), int(round(size * rng.uniform(0.005, 0.03)))
@@ -592,7 +599,11 @@ def _shadow(frame, roi, alpha, rng, size):
     if sx1 <= sx0 or sy1 <= sy0:
         return
     sh[sy0:sy1, sx0:sx1] = alpha[sy0 - y0 - dy:sy1 - y0 - dy, sx0 - x0 - dx:sx1 - x0 - dx]
-    sh = cv2.GaussianBlur(sh, (0, 0), max(1.0, size * rng.uniform(0.004, 0.015)))
+    sigma = max(1.0, size * rng.uniform(0.004, 0.015))
+    if not on:
+        rng.uniform(0.25, 0.55)
+        return
+    sh = cv2.GaussianBlur(sh, (0, 0), sigma)
     frame *= (1 - rng.uniform(0.25, 0.55) * sh)[..., None]
 
 
@@ -622,30 +633,34 @@ def render(sc, rng=None, effects=True):
     import cv2
     import random
     import synth_docs as sd
+    from . import capture as gcap
     rng = rng or random.Random(0)
-    frame = render_background(sc)
+    cap = getattr(sc, "capture", None)
+    fx = gcap.effects_of(cap)
+    frame = render_background(sc, mip=fx["mip"])
     order = sorted(sc.docs, key=lambda d: (d.inside_of is not None, d.index))
     for d in order:
-        got = render_doc(sc.cam, d)
+        got = render_doc(sc.cam, d, mip=fx["mip"])
         if got is None:
             continue
         roi, rgb, alpha = got
         x0, y0, x1, y1 = roi
         if effects and rng.random() < 0.7:
-            _shadow(frame, roi, alpha, rng, max(x1 - x0, y1 - y0))
+            _shadow(frame, roi, alpha, rng, max(x1 - x0, y1 - y0), on=fx["shadow"])
         if effects and d.page.material == "card" and rng.random() < 0.4:
-            rgb = _glare(rgb, alpha, rng)
+            glared = _glare(rgb, alpha, rng)   # its random numbers drawn either way
+            rgb = glared if fx["glare"] else rgb
         part = frame[y0:y1, x0:x1]
         frame[y0:y1, x0:x1] = part * (1 - alpha[..., None]) + rgb
     for o in sc.occluders:
         img = o["img"]
-        got = render_doc(sc.cam, Placed(Pic((img.shape[1], img.shape[0])), o["A"]), rgba=img)
+        got = render_doc(sc.cam, Placed(Pic((img.shape[1], img.shape[0])), o["A"]), rgba=img, mip=fx["mip"])
         if got is None:
             continue
         roi, rgb, alpha = got
         x0, y0, x1, y1 = roi
         if effects:
-            _shadow(frame, roi, alpha, rng, max(x1 - x0, y1 - y0))
+            _shadow(frame, roi, alpha, rng, max(x1 - x0, y1 - y0), on=fx["shadow"])
         frame[y0:y1, x0:x1] = frame[y0:y1, x0:x1] * (1 - alpha[..., None]) + rgb
     img = np.clip(frame, 0, 255).astype(np.uint8)
     for f in sc.fingers:
@@ -653,7 +668,8 @@ def render(sc, rng=None, effects=True):
         cv2.fillPoly(img, [np.round(P * 16).astype(np.int32)], f["colour"], cv2.LINE_AA, shift=4)
     if effects:
         sd.light(rng, img)
-        img = sd.camera(rng.randrange(1 << 30))(image=img)["image"]
+        seed = rng.randrange(1 << 30)
+        img = (sd.camera(seed) if cap is None else gcap.pipeline(seed, cap))(image=img)["image"]
     painted = [q for d, q in zip(sc.docs, doc_quads01(sc)) if d.painted]
     if painted:   # on the final frame, as the phone paints the photo it captured
         img = paint(img, painted)

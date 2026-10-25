@@ -61,6 +61,10 @@ def gen_args(ap):
     ap.add_argument("--focus", help="gen mine's focus.json: draw more of what the exams got wrong (a training run only)")
     ap.add_argument("--focus-model", help="whose multipliers --focus takes (default: edges; the phone's own cuts: the "
                     "first writer it has)")
+    ap.add_argument("--no-tune", action="store_true", help="draw with today's capture settings, not gen tune's / gen "
+                    "ablate's (<home>/gen/tune.json, ablation.json — read for a training run only, when there)")
+    ap.add_argument("--capture", help="a capture settings file (gen/capture.py; gen ablate's trials) in place of the work "
+                    "folder's — not for the exam")
     ap.add_argument("--latin", nargs="*")
     ap.add_argument("--hebrew", nargs="*")
 
@@ -133,6 +137,12 @@ def gen_params(a):
             "weights": _weights(a), "templateShare": a.template_share, "pdfShare": a.pdf_share,
               "proceduralShare": a.procedural_share, "sharp": a.sharp, "held": bool(a.exam),
             "latin": list(latin), "hebrew": list(hebrew)}
+    from .. import capture as gcap
+    cap, rec = gcap.for_run(a, split, WORK)   # gen tune's camera and gen ablate's effects: a training run only
+    if cap:
+        params["capture"], params["tune"] = cap, rec
+        print(f"capture settings {rec['id']}: " + ", ".join(f"{k} {v}" for k, v in cap.items() if k != "effects")
+              + "; effects off: " + (", ".join(e for e, on in cap["effects"].items() if not on) or "none"))
     if getattr(a, "focus", None):
         if a.exam:
             raise SystemExit("--focus is for a training run: the exam is drawn the same every time")
@@ -260,7 +270,8 @@ def scene_of(params, i, F, pool, bank, occ):
     from .. import scene as gs
     r = grng.streams(params["seed"], i)
     for _ in range(8):   # a pose that fits: the next draws of the same streams (the same every run)
-        sc = gs.plan(r, pool, F, bank, occ, weights=params["weights"], tilt_weights=params.get("tiltWeights"))
+        sc = gs.plan(r, pool, F, bank, occ, weights=params["weights"], tilt_weights=params.get("tiltWeights"),
+                     capture=params.get("capture"))
         if sc is not None:
             return r, sc
     return r, None
