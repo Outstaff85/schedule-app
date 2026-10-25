@@ -5,8 +5,9 @@
 //
 // Every page the session cuts (a camera shot — batch s<n> —, or the pictures of one pick — f<n>) is typed once
 // its readouts are there: by Haiku, or by the document type model as Admin → Scanner says (Off / Shadow / Mixed —
-// in Mixed the model's answer is taken when it is sure of the type and the turn, SURE); a page Haiku says lies on
-// its side is turned upright (and what the zone and field readers read on it is dropped). A page typed Other is
+// in Mixed the model's type is taken when it is sure of it, SURE); its turn (turn.ts) is the face's, else the
+// model's when it is sure of the turn (Shadow and Mixed), else Haiku's — 90, 180 or 270° clockwise: a page so
+// turned is set upright (and what the zone and field readers read on it is dropped). A page typed Other is
 // not saved. The pages are kept on this phone until Done has read them (store.ts, 3 minutes), with the type
 // picked by hand on them: a window closed by mistake opens again with them, first in the strip (and so do the
 // pages from before a Scan again — 'before'). Done waits for the pages' types (the pages as they are then: a
@@ -31,6 +32,7 @@ import { ScanSession } from './engine/session';
 import { siteSurface } from './engine/surface';
 import { QUEUE_MAX } from './engine/attempts';
 import { turned } from './engine/upright';
+import { finalTurn, modelPick, type ModelPick } from './turn';
 import type { ShotPage } from './engine/shot';
 import type { SessionStatus } from './engine/status';
 import { ScannerScreen } from './ui/ScannerScreen';
@@ -69,8 +71,6 @@ type KeptStored = Stored & { batch: string; source: Batch['source'] };
 /** How a page of this session was typed, with its picture as it is given. */
 type Typed = Omit<Stored, 'id' | 'turn' | 'blurry'> & { kind?: Doctype };
 
-/** How sure the model must be of the type and the turn for Mixed to skip Haiku (as the server's docfind.DOCTYPE_SURE was). */
-const SURE = 0.9;
 /** The statuses of a shot still in work: its pages are typed once it settles (a refined cut would be typed again). */
 const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
 /** How long Done waits for the pages' types before it goes on without the ones still missing. */
@@ -210,10 +210,10 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin, work
     setTyping(t => { if (!(id in t)) return t; const n = { ...t }; delete n[id]; return n; });
   };
 
-  // A page's type and turn: Mixed takes the model's when it is sure of both, else Haiku's (Shadow keeps the
-  // model's answer beside it); a page said to be turned is set upright and given back to the session. A page the
-  // face finder already set upright (its cut's turn ≥ 0) keeps its turn — the model or Haiku only types it (as the
-  // PC's docfind.with_doctype: the model's turn only for a page with no face), and Mixed needs only the type sure.
+  // A page's type and turn (turn.ts): Mixed takes the model's type when it is sure of it, else Haiku's (Shadow
+  // keeps the model's answer beside it); the turn is the face's (the page came upright), else the model's when it
+  // is sure of the turn (Shadow and Mixed), else Haiku's — a page so turned is set upright and given back to the
+  // session.
   const classify = React.useCallback(async (s: ScanSession, p: ShotPage) => {
     const canvas = p.canvas, g = gen.current;
     typedOn.current.set(p.id, canvas);
@@ -221,20 +221,18 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin, work
     // its picture: tried again lighter when the phone could not make it (low on memory); '' when it cannot be
     // made at all — the page is then recorded with no picture (Done leaves it out), so Done never waits on it
     const b64 = await jpegB64(canvas, 0.9).catch(() => jpegB64(canvas, 0.7)).catch(() => '');
-    const faced = p.turn >= 0;
-    let kind: Doctype | null = null, rotate = 0, sure = false, m: DoctypeMode = 'shadow';
-    let a: { doctype: Doctype; conf: number; turn: number; turnConf: number } | null = null;
+    let kind: Doctype | null = null, rotate = 0, m: DoctypeMode = 'shadow', pick: ModelPick = modelPick('off', p.turn, null);
     try {
       m = await mode.current;
-      const d = p.readouts?.doctype || null;
-      a = m === 'off' || !d || !isDoctype(d.doctype) ? null : { doctype: d.doctype, conf: d.conf, turn: d.turn * 90, turnConf: d.turnConf };
-      sure = !!a && m === 'mixed' && a.conf >= SURE && (faced || a.turnConf >= SURE);
-      ({ kind, rotate } = sure && a ? { kind: a.doctype as Doctype | null, rotate: a.turn } : b64 ? await detectDoctype(b64, 'image/jpeg') : { kind: null, rotate: 0 });
-      if (faced) rotate = 0;
-    } catch { kind = null; rotate = 0; sure = false; }
+      pick = modelPick(m, p.turn, p.readouts?.doctype);
+      const h = pick.haiku && b64 ? await detectDoctype(b64, 'image/jpeg') : { kind: null, rotate: 0 };
+      kind = pick.kind || h.kind;
+      rotate = finalTurn(p.turn, pick, h.rotate);
+    } catch { kind = pick.kind; rotate = finalTurn(p.turn, pick, 0); }
+    const a = pick.said, sure = !!pick.kind;
     if (!still()) return;  // cut again (or deleted) meanwhile: that cut is typed on its own
     const lines = p.readouts?.mrz?.lines, he = cleanHe(p.readouts?.he?.read);
-    const t: Typed = { b64, mediaType: 'image/jpeg', doctypeModel: kind, doctypeBy: sure ? 'model' : 'haiku', turnBy: faced ? 'face' : sure ? 'model' : 'haiku',
+    const t: Typed = { b64, mediaType: 'image/jpeg', doctypeModel: kind, doctypeBy: sure ? 'model' : 'haiku', turnBy: p.turn >= 0 ? 'face' : pick.rotate !== null ? 'model' : 'haiku',
       ...(kind ? { kind } : {}), ...(a ? { modelSaid: a.doctype } : {}), ...(m === 'shadow' && a ? { doctypeShadow: a.doctype } : {}),
       ...(Array.isArray(lines) ? { mrz: lines.filter(x => typeof x === 'string').slice(0, 2).map(x => x.slice(0, 60)) } : {}), ...(he ? { he } : {}) };
     // a page turned here was read by the zone reader and the field reader on its side: what they read says nothing

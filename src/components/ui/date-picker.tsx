@@ -1,6 +1,7 @@
 // Date Picker: the Calendar inside a Popover — it replaces every type="date"
 // field (archive/docs/react-migration-plan.md). The field shows the date as dd/mm/yyyy (the
-// app's numeric date); the value is a local YYYY-MM-DD string, like the data.
+// app's numeric date); the value is a local YYYY-MM-DD string, like the data. The calendar's caption picks
+// the month and the year (two small fields), its arrows step a month.
 import * as React from 'react';
 import { format, parse, isValid } from 'date-fns';
 import { IconCalendar } from '@tabler/icons-react';
@@ -14,6 +15,11 @@ const toDate = (v?: string) => {
   const d = parse(v, 'yyyy-MM-dd', new Date());
   return isValid(d) ? d : undefined;
 };
+
+// The month and the year are picked from two fields in the calendar's caption (a contract's end a year
+// ahead, a date of birth decades back): from 1920 to 30 years ahead.
+const FIRST_MONTH = new Date(1920, 0, 1);
+const lastMonth = () => new Date(new Date().getFullYear() + 30, 11, 1);
 
 function DatePicker({ value, onChange, placeholder, disabled, className, id }: {
   value?: string;
@@ -38,6 +44,9 @@ function DatePicker({ value, onChange, placeholder, disabled, className, id }: {
           mode="single"
           selected={date}
           defaultMonth={date}
+          captionLayout="dropdown"
+          startMonth={FIRST_MONTH}
+          endMonth={lastMonth()}
           onSelect={d => { if (d) { onChange(format(d, 'yyyy-MM-dd')); setOpen(false); } }}
         />
       </PopoverContent>

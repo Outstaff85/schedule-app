@@ -487,6 +487,7 @@ function workerHeadOf(w?: any){
     notices:ns.map((n?: any)=>({lvl:n.lvl, word:n.word, title:n.title, icon:n.icon||'', detail:n.detail||'',
       acts:(n.acts||(n.act?[n.act]:[])).map((a?: any)=>({label:a.label, icon:a.icon||'', wa:!!a.wa, run:a.fn}))}))};
 }
+// a contract has no expiry (its date starts the contract term, shown on the card's contract line): no entry here
 function docExpiryMap(w?: any){ const m: any={}; workerDocExpiries(w).forEach((x?: any)=>{ m[String(x.doc.id)]={level:x.level, text:x.text}; }); return m; }
 
 // Per-client and per-supplier rate tables in Accounting: turned off for now

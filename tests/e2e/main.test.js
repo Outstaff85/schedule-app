@@ -67,6 +67,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         val: id => { const el = document.getElementById(id); return el ? (el.dataset.value != null ? el.dataset.value : el.value) : undefined; },
         scan: id => ((document.getElementById(id) || {}).dataset || {}).scan || '',
         hint: key => document.querySelector('[data-testid="scan-hint"][data-for="' + key + '"]'),
+        // the element is what a person sees at its middle — on top of every window, not behind one (pointer
+        // events are counted on for every element meanwhile: an open Radix window turns them off for the page)
+        onTop(sel){ const el = T.el(sel); if(!el) return false; const st = document.createElement('style'); st.textContent = '*{pointer-events:auto !important}';
+          document.head.append(st); const b = el.getBoundingClientRect(); const hit = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 60)); st.remove();
+          return !!hit && el.contains(hit); },
         removeClient: id => document.querySelector('[data-testid="editor-clients"] [data-client="' + id + '"] button').click(),
         async addClient(id){
           document.getElementById('wClientSearch').click();
@@ -736,6 +741,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(rs.scanOpen && rs.given === 'Typed' && rs.city === 'Haifa' && rs.phone === 'P-123' && rs.rescanned && rs.draft === null && rs.card, 'scan again from the worker modal keeps typed values, fills empty ones; card has the button');
+  // The scanner opened from the worker card or the worker window is on top of them, not behind (owner, 2026-10-25:
+  // "the scan button does not open" — it opened behind the worker window, the camera running unseen and the page dead).
+  const scanTop = await p.evaluate(async () => {
+    const r = {};
+    openWorkerCard(0); await T.tick(100);
+    document.querySelector('#workerCardModal [data-testid="card-scan"]').click();
+    r.cardOpened = await T.until(() => document.querySelector('[data-testid="scanner"]'));
+    r.cardTop = T.onTop('[data-testid="scanner"]');
+    r.under = document.getElementById('workerOverlay').classList.contains('open'); // the worker window waits under it for the scan
+    T.esc(); await T.until(() => !document.querySelector('[data-testid="scanner"]'));
+    document.querySelector('#workerModal [data-testid="editor-scan"]').click();
+    r.editorOpened = await T.until(() => document.querySelector('[data-testid="scanner"]'));
+    r.editorTop = T.onTop('[data-testid="scanner"]');
+    T.esc(); await T.until(() => !document.querySelector('[data-testid="scanner"]'));
+    closeModal('workerOverlay'); window.__aiRescanWorkerId = null; window.__wDraft = null;
+    return r;
+  });
+  ok(scanTop.cardOpened && scanTop.cardTop && scanTop.under && scanTop.editorOpened && scanTop.editorTop,
+    'scan buttons: the scanner from the worker card and from the worker window opens on top of the worker window ' + JSON.stringify(scanTop));
   // The scan window (src/scan/Scanner.tsx, docs/scan.md → The scan window): the full-screen scanner (src/scan/ui/,
   // mode 'site') in a full Window, on a scan session of the site's own surface (/scan/). CI has no camera and no
   // models, so the pages are given to the session as a shot or a pick would give them (ManagerScan.hooks().inject,
@@ -746,7 +770,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   let attemptsOffline = false;
   const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
   // Haiku's page kinds (aiDetectAlign): the page it is asked about is the ספח (the ID card is the model's, in Mixed); the ID card's read (aiReadDoc)
-  let kindCalls = 0;
+  let kindCalls = 0, alignTurn = 0;  // Haiku's turn (the upright turn checks below set it)
   const readCalls = [];
   let haikuTurn = 90;   // Haiku's turn for the ספח in the first scan below (none after it)
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
@@ -759,9 +783,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
-    // the ספח is said to need a quarter turn (haikuTurn, this scan only): the face finder set it upright already (its
+    // the ספח is said to need a quarter turn (haikuTurn, this scan only; alignTurn for the upright turn checks below): the face finder set it upright already (its
     // turn 0, given below), so it is not turned
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: haikuTurn}})});
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: haikuTurn || alignTurn}})});
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
@@ -899,6 +923,52 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(batches.keptAfterDone && batches.same && batches.typed && batches.autoOff && batches.autoOn && /· 2/.test(batches.done) && batches.closed && batches.camOff && batches.restored && batches.same2
     && batches.picked === 'passport,sefach' && batches.keptKinds === 'passport,sefach',
     'scan window: the session is kept after the window closes (its camera stopped) and is the same when it opens again; the batches are kept on the phone and come back first in the strip, with the type picked by hand on a page; Auto reaches the session ' + JSON.stringify(batches));
+  // The upright turn of a page (src/scan/turn.ts): a ספח (no face) lying on its side or upside down ends upright —
+  // by the document type model's turn when it is sure of the turn though not of the type (Haiku's wrong 0 not
+  // taken), else by Haiku's (180° and 270° too); a page the face set upright is not turned by Haiku. The page: a
+  // 300×500 picture with a red square in its top left corner — where the square is on the page the session holds
+  // afterwards says how it was turned (90° clockwise: top right; 180°: bottom right; 270°: bottom left).
+  const turnPic = await p.evaluate(async () => {
+    const c = new OffscreenCanvas(300, 500), g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 300, 500); g.fillStyle = '#e00000'; g.fillRect(0, 0, 60, 60);
+    const u8 = new Uint8Array(await (await c.convertToBlob({type: 'image/jpeg', quality: 0.95})).arrayBuffer());
+    let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  });
+  await p.evaluate(async () => { window.__turnGoing = startNewScan(); await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]')); });
+  const turnCase = async (haiku, doctype, faceTurn) => {
+    alignTurn = haiku; const before = kindCalls;
+    const r = await p.evaluate(async ([pic, doctype, faceTurn]) => {
+      const H = await ManagerScan.hooks(), s = H.session();
+      const {ids} = await H.inject({pics: [{b64: pic, doctype, ...(faceTurn == null ? {} : {faceTurn})}], camera: false});
+      const id = ids[0], out = {typed: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"][data-kind]'), 15000)};
+      await T.tick(300);
+      const c = s.pages.get(id).canvas, g = c.getContext('2d'), W = c.width, Hh = c.height;
+      const red = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[0] > 170 && d[1] < 100 && d[2] < 100; };
+      out.size = W + 'x' + Hh;
+      out.corner = red(15, 15) ? 'tl' : red(W - 15, 15) ? 'tr' : red(W - 15, Hh - 15) ? 'br' : red(15, Hh - 15) ? 'bl' : '-';
+      return out;
+    }, [turnPic, doctype, faceTurn]);
+    r.haiku = kindCalls - before;
+    return r;
+  };
+  const turns = {
+    modelSure: await turnCase(0, {doctype: 'sefach', conf: 0.6, turn: 1, turnConf: 0.97}),
+    haiku180: await turnCase(180, null),
+    haiku270: await turnCase(270, null),
+    face: await turnCase(90, null, 0),
+    mixedSure: await turnCase(90, {doctype: 'sefach', conf: 0.96, turn: 2, turnConf: 0.95}),
+  };
+  alignTurn = 0;
+  await p.evaluate(async () => {
+    T.esc(); await window.__turnGoing;
+    await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
+  });
+  const tc = t => [t.typed ? 'typed' : 'untyped', t.size, t.corner, 'haiku' + t.haiku].join(' ');
+  ok(tc(turns.modelSure) === 'typed 500x300 tr haiku1' && tc(turns.haiku180) === 'typed 300x500 br haiku1' && tc(turns.haiku270) === 'typed 500x300 bl haiku1'
+    && tc(turns.face) === 'typed 300x500 tl haiku1' && tc(turns.mixedSure) === 'typed 300x500 br haiku0',
+    'scan window, the upright turn: a ספח with no face is turned by the model\'s sure turn (90°, Haiku asked only for the type, its 0 not taken), else by Haiku\'s (180°, 270°); a page the face set upright is not turned by Haiku; Mixed sure of the type and the turn (180°) needs no Haiku '
+    + JSON.stringify(Object.fromEntries(Object.entries(turns).map(([k, v]) => [k, tc(v)]))));
   // Photos/PDF: several files at once, a PDF split into its pages (pdf.js), in the files' order (the engine's
   // pickedPictures); the window's one file input has no type (the phone's chooser: photos and PDFs side by side)
   const PDF2 = (() => {
@@ -1308,6 +1378,159 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(af.city === 'חיפה' && af.addrHint && af.given === 'Neo', 'after a scan, empty fields are searched automatically (city found, street not found → hint)');
   const calls = await srv('/aicalls');
   ok(calls.filter(c => c.includes('city')).length === 1 && calls.some(c => c.includes('city') && c.includes('address') && c.includes('houseNumber')), 'the empty fields go in ONE AI search ('+JSON.stringify(calls)+')');
+  // A field search always ends (owner, 2026-10-25: it hung on "searching"): a search that does not answer in its
+  // time, or that fails, gives the field back to be searched again, with a note — in the worker window and on the card.
+  const fh = await p.evaluate(async () => {
+    const keep = {...SCAN_FIND_MS}; SCAN_FIND_MS.find = 400;
+    const orig = window.fetch, toastEl = document.getElementById('toast'), notes = [];
+    const seen = new MutationObserver(() => { const t = toastEl.textContent; if(t && notes[notes.length - 1] !== t) notes.push(t); });
+    seen.observe(toastEl, {childList: true, subtree: true, characterData: true});
+    let mode = 'hang';
+    window.fetch = function(url, opts){
+      if (typeof url === 'string' && url.startsWith('api://') && /"aiFindField"/.test(String(opts && opts.body)))
+        return mode === 'hang' ? new Promise(() => {}) : Promise.resolve(new Response(JSON.stringify({error: 'AI overloaded'}), {headers: {'Content-Type': 'application/json'}}));
+      return orig.apply(this, arguments);
+    };
+    const r = {};
+    try {
+      workers[0].address = ''; workers[0].city = '';
+      openEditWorker(0); await T.tick();
+      r.marked = T.scan('wAddress') === 'missing';
+      document.getElementById('wAddress').click(); await T.tick(50);
+      r.busy = T.scan('wAddress') === 'busy';
+      r.ended = await T.until(() => T.scan('wAddress') === 'missing', 3000);
+      r.timeNote = notes.some(t => /did not answer/.test(t));
+      mode = 'error';
+      document.getElementById('wAddress').click();
+      r.errEnded = await T.until(() => notes.some(t => /AI overloaded/.test(t)), 3000) && T.scan('wAddress') === 'missing';
+      closeModal('workerOverlay'); await T.tick(100);
+      mode = 'hang';
+      openWorkerCard(0); await T.tick(100);
+      document.getElementById('cardMiss_address').click(); await T.tick(50);
+      r.rowBusy = !!document.querySelector('#cardMiss_address .animate-spin');
+      r.rowEnded = await T.until(() => { const el = document.getElementById('cardMiss_address'); return !!el && el.getAttribute('role') === 'button' && !el.querySelector('.animate-spin'); }, 3000);
+      closeModal('workerCardOverlay');
+    } finally { window.fetch = orig; Object.assign(SCAN_FIND_MS, keep); seen.disconnect(); }
+    return r;
+  });
+  ok(fh.marked && fh.busy && fh.ended && fh.timeNote && fh.errEnded && fh.rowBusy && fh.rowEnded,
+    'field search: a search with no answer in its time, or a failed one, ends — the field (and the card\'s row) can be searched again, with a note ' + JSON.stringify(fh));
+  // Documents: a newer visa (work permit) replaces the older one — its expiry no longer warns; a contract has no expiry,
+  // so an old contract entry's `expiry` (from before 2026-10-25) is never a document reminder.
+  const dx = await p.evaluate(() => {
+    const w = workers[1], keepDocs = w.docs;
+    const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return localYMD(d); };
+    w.docs = [{id: 'dx1', type: 'visa', name: 'old.pdf', fileId: 'f1', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-5)},
+      {id: 'dx2', type: 'other', name: 'note.pdf', fileId: 'f2', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-3)},
+      {id: 'dx4', type: 'contract', name: 'c.pdf', fileId: 'f4', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-4)}];
+    const expired = () => workerNotices(w).filter(n => n.icon === 'ti-id-badge-2' && /expired/.test(n.word)).map(n => n.title);
+    const r = {before: expired().join()};
+    ManagerBridge.addDocs(w.id, [{id: 'dx3', type: 'visa', name: 'new.pdf', fileId: 'f3', url: 'u', mediaType: 'application/pdf', uploadedAt: new Date().toISOString(), expiry: day(300)}]);
+    r.after = expired().join();
+    r.level = workerDocStatus(w).level;
+    w.docs = keepDocs; render();
+    return r;
+  });
+  ok(dx.before === 'Visa,Other' && dx.after === 'Other' && dx.level === 'error',
+    'documents: a new visa uploaded replaces the old one — the old one\'s expiry no longer warns; another document still does; a contract\'s old expiry never warns ' + JSON.stringify(dx));
+  // The contract term (owner, 2026-10-25): a contract has no end date; the worker's term option (months, warn ahead)
+  // counts from the latest contract's date — a new contract restarts it — or from the start date with no contract.
+  const ct0 = await p.evaluate(() => {
+    const w = workers[1]; window.__termKeep = JSON.stringify(w);
+    const d = new Date(); d.setMonth(d.getMonth() - 14);
+    Object.assign(w, {status: 'active', expiryEnabled: true, expiryMonths: 12, expiryWarnMonths: 1, startDate: localYMD(d), docs: []});
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); render();
+    const ex = workerExpiryStatus(w);
+    openWorkerCard(1);
+    return {level: ex && ex.level, notice: workerNotices(w).filter(n => n.icon === 'ti-file-certificate').map(n => n.title + ':' + (n.act || {}).label).join()};
+  });
+  await p.waitForSelector('#workerCardModal [data-testid="worker-card"]');
+  ct0.card = await p.evaluate(() => /Contract\s*Expired —/.test(document.querySelector('#workerCardModal [data-testid="worker-card"]').innerText));
+  await p.click('#workerCardModal [data-testid="card-more"]');
+  await p.click('[role="menuitem"]:has-text("Add document")');
+  await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
+  const ctToday = await p.evaluate(() => { const d = new Date(); window.__ctYmd = localYMD(d); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); });
+  ct0.label = await p.evaluate(() => document.getElementById('wdContractDate').closest('.grid').innerText);
+  ct0.shown = await p.evaluate(() => document.getElementById('wdContractDate').innerText.trim());
+  ct0.noExpiry = await p.evaluate(() => !document.getElementById('wdExpiry'));
+  await p.setInputFiles('#wdFiles', {name: 'new-contract.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')});
+  await p.click('#wdSubmit');
+  ct0.saved = await waitFor(p, () => (workers[1].docs || []).some(d => d.type === 'contract' && d.contractDate === window.__ctYmd && !d.expiry) && !document.getElementById('workerDocOverlay').classList.contains('open'), 20000);
+  await p.waitForSelector('#workerCardModal [data-testid="worker-doc"]', {timeout: 10000}).catch(() => {});
+  const ct1 = await p.evaluate(want => {
+    const w = workers[1], card = document.querySelector('#workerCardModal [data-testid="worker-card"]');
+    const r = {status: workerExpiryStatus(w), cardTerm: !!card && /Contract\s*(Expired|Expiring soon) —/.test(card.innerText),
+      docRow: [...document.querySelectorAll('#workerCardModal [data-testid="worker-doc"]')].map(x => x.innerText).join('|').includes('Contract date ' + want),
+      notices: workerNotices(w).filter(n => n.icon === 'ti-file-certificate' || n.icon === 'ti-id-badge-2').length};
+    const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return localYMD(d); };
+    const add = (id, at, more) => ManagerBridge.addDocs(w.id, [{id, type: 'contract', name: 'c.pdf', fileId: 'f', url: 'u', mediaType: 'application/pdf', uploadedAt: at, ...more}]);
+    // an old entry with an expiry (before contracts lost theirs): the term counts from its upload, it is no document reminder
+    add('cold', new Date(Date.now() + 1000).toISOString(), {expiry: day(-5)});
+    r.oldExpiry = workerExpiryStatus(w); r.oldNotes = workerDocExpiries(w).length;
+    // a contract dated 11.5 months ago, warn 1 month ahead: the term ends in about two weeks — warning
+    add('c350', '2999-01-01T00:00:00.000Z', {contractDate: day(-350)}); const s = workerExpiryStatus(w);
+    const want350 = new Date(day(-350) + 'T00:00:00'); want350.setMonth(want350.getMonth() + 12);
+    r.warn = !!s && s.level === 'warning' && localYMD(s.deadline) === localYMD(want350);
+    r.notice = workerNotices(w).filter(n => n.icon === 'ti-file-certificate').map(n => n.title + ':' + (n.act || {}).label).join();
+    add('c400', '2999-01-02T00:00:00.000Z', {contractDate: day(-400)}); const so = workerExpiryStatus(w); r.over = so && so.level;
+    // a signed contract counts from its signing day
+    const keepSign = w.signDate, sd = new Date(day(-400) + 'T00:00:00');
+    w.signDate = String(sd.getDate()).padStart(2, '0') + '/' + String(sd.getMonth() + 1).padStart(2, '0') + '/' + sd.getFullYear();
+    add('csig', '2999-01-03T00:00:00.000Z', {signed: true}); const ss = workerExpiryStatus(w); r.signedOver = ss && ss.level;
+    w.signDate = keepSign;
+    // the term option off: no warning whatever the contract
+    w.expiryEnabled = false; r.off = workerExpiryStatus(w);
+    return r;
+  }, ctToday);
+  // The worker window's contract-expiry section says where the term counts from.
+  const ct3 = await p.evaluate(async () => {
+    const w = workers[1];
+    w.docs = (w.docs || []).filter(d => !['cold', 'c350', 'c400', 'csig'].includes(d.id)); w.expiryEnabled = true;
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openEditWorker(1);
+    await T.until(() => !!document.querySelector('#workerModal [data-testid="editor-expiry-btn"]'), 5000);
+    const btn = document.querySelector('#workerModal [data-testid="editor-expiry-btn"]');
+    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+    await T.until(() => /Counted from/.test(btn.parentElement.textContent), 3000);
+    const t = btn.parentElement.textContent;
+    closeModal('workerOverlay');
+    return t;
+  });
+  // A fresh window: today as the contract date; its picker shows the month and the year as fields, above the window.
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); ManagerBridge.openDocUpload(workers[1].id); });
+  await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
+  const ct2 = await p.evaluate(() => ({date: document.getElementById('wdContractDate').innerText.trim(), type: document.getElementById('wdType').innerText.trim()}));
+  const ctY = new Date().getFullYear() - 1;
+  await p.click('#wdContractDate');
+  await p.waitForSelector('[data-slot="popover-content"] select.rdp-years_dropdown');
+  ct2.onTop = await p.evaluate(() => T.onTop('[data-slot="popover-content"]'));
+  await p.selectOption('[data-slot="popover-content"] select.rdp-years_dropdown', String(ctY));
+  await p.click('[data-slot="popover-content"] button:text-is("15")');
+  await waitFor(p, () => !document.querySelector('[data-slot="popover-content"]'), 3000);
+  ct2.picked = await p.evaluate(() => document.getElementById('wdContractDate').innerText.trim());
+  ct2.pickedWant = '15/' + ctToday.slice(3, 5) + '/' + ctY;
+  await p.evaluate(() => { closeModal('workerDocOverlay'); const w = workers[1], k = JSON.parse(window.__termKeep); Object.keys(w).forEach(x => delete w[x]); Object.assign(w, k); render(); autoSave(); });
+  ok(ct0.level === 'overdue' && ct0.notice === 'Contract ended:Extend' && ct0.card && /Contract date/.test(ct0.label) && !/optional/i.test(ct0.label) && ct0.shown === ctToday && ct0.noExpiry && ct0.saved
+    && ct1.status === null && !ct1.cardTerm && ct1.docRow && ct1.notices === 0 && ct1.oldExpiry === null && ct1.oldNotes === 0
+    && ct1.warn && ct1.notice === 'Contract ending:Extend' && ct1.over === 'overdue' && ct1.signedOver === 'overdue' && ct1.off === null
+    && ct3.includes('Counted from the latest contract (' + ctToday + ')')
+    && ct2.date === ctToday && ct2.type === 'Contract' && ct2.onTop && ct2.picked === ct2.pickedWant,
+    'contract term: counted from the latest contract (Add document\'s Contract date, today by default; a signed one\'s signing day; an old one\'s upload), else the start date — '
+    + 'a new contract ends the overdue warning, 11.5 months into a 12-month term warns, the option off never warns; the window opens with today again ' + JSON.stringify({ct0, ct1, ct2, ct3, ctToday}));
+  // A worker whose only missing document is the signature: its notice's action opens the worker window (the signature pad), not the camera.
+  const so = await p.evaluate(async () => {
+    const w = workers[1], keep = JSON.stringify(w);
+    Object.assign(w, {docId: w.docId || '123456782', docUrl: 'https://x/f.pdf', scanPages: [{fileId: 'tenants/tenant-one/workers/' + w.id + '/pages/p.jpg', kind: 'id_front', primary: true}], docExtraPages: 1, docHasSignature: false});
+    const n = workerNotices(w).find(x => x.title === 'Missing documents');
+    const r = {detail: n && n.detail, label: n && n.act && n.act.label};
+    if (n && n.act) { n.act.fn(); await T.tick(300); }
+    r.window = document.getElementById('workerOverlay').classList.contains('open');
+    r.noScanner = !document.querySelector('[data-testid="scanner"]');
+    closeModal('workerOverlay'); await T.tick(100);
+    workers[workers.indexOf(w)] = JSON.parse(keep); render();
+    return r;
+  });
+  ok(so.detail === 'signature' && so.label === 'Sign' && so.window && so.noScanner,
+    'notices: only the signature missing — Sign opens the worker window, not the scanner ' + JSON.stringify(so));
   // Every growing list pages by 10; the next 10 come only when the user scrolls to the end
   for (const [w, h] of [[1280, 800], [390, 800]]) {
     await p.setViewportSize({width:w, height:h});
@@ -1514,7 +1737,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="card-sign"]');
   await p.click('[data-testid="card-sign"]');
   await p.waitForSelector('[data-testid="sign-window"][data-state="ready"]', {timeout: 30000});
-  sg.form = await p.evaluate(() => ({tpl: document.querySelector('[data-testid="sign-template"]').innerText, date: !!document.getElementById('signDate')}));
+  sg.form = await p.evaluate(() => ({tpl: document.querySelector('[data-testid="sign-template"]').innerText, date: !!document.getElementById('signDate'), top: T.onTop('[data-testid="sign-window"]')}));
+  ok(sg.form.top, 'documents to sign: the window opened from the worker card is on top of the card, not behind it');
   await p.click('[data-testid="sign-send"]');
   await p.waitForSelector('[data-testid="sign-sent"]', {timeout: 30000});
   sg.sent = await p.evaluate(() => ({wa: (document.querySelector('[data-testid="sign-whatsapp"]') || {}).href || '', chip: (document.querySelector('[data-testid="card-sign-state"]') || {}).dataset?.state}));
@@ -1580,14 +1804,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const n = workerNotices(w).find(x => x.title === 'Documents changed — needs a new signature');
     r.changed = !!n && n.lvl === 'amber' && !!n.act;
     n.act.fn(); await T.tick(300);
-    r.window = !!document.querySelector('[data-testid="sign-window"]');
+    r.window = !!document.querySelector('[data-testid="sign-window"]') && T.onTop('[data-testid="sign-window"]');
+    r.noScanner = !document.querySelector('[data-testid="scanner"]');
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(200);
     w.phone = phone;
     r.back = !has();
     return r;
   });
-  ok(!d4.fresh && !d4.firm && d4.changed && d4.window && d4.back,
-    'new signature (D4): a changed phone marks Documents changed — needs a new signature, its Sign opens the sign window; a change to the firm\'s details does not ' + JSON.stringify(d4));
+  ok(!d4.fresh && !d4.firm && d4.changed && d4.window && d4.noScanner && d4.back,
+    'new signature (D4): a changed phone marks Documents changed — needs a new signature, its Sign opens the sign window on top of the card (no scanner); a change to the firm\'s details does not ' + JSON.stringify(d4));
   await p.keyboard.press('Escape'); await sleep(300);
   // D5: Download data on the worker card — one PDF: the summary, Form 101, the contract, the ID card, the ספח, the other documents.
   await p.evaluate(() => { window.__opened = []; window.__origOpen2 = window.open; window.open = u => { window.__opened.push(String(u)); return {}; };
@@ -1651,8 +1876,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   for (let i = 1; i <= 10; i++) await p.mouse.move(sgBb2.x + 20 + i * 15, sgBb2.y + 30 + (i % 2 ? 15 : -10));
   await p.mouse.up();
   await p.click('[data-testid="sign-window"] [data-testid="sign-button"]');
+  // the card says Signed with this signing's date at once — not Sent to sign (nor an older date) while the PDFs are built
+  ok(await waitFor(p, () => { const c = document.querySelector('#workerCardModal [data-testid="card-sign-state"]');
+    return !document.querySelector('[data-testid="sign-window"]') && !!c && c.dataset.state === 'signed' && /\d{2}\/\d{2}\/\d{4}/.test(c.innerText); }, 15000),
+    'signing in person: the card shows Signed with the new date as soon as the window closes');
   ok(await waitFor(p, () => { const w = workers.find(x => x.id === 'w2'); return !!(w && w.signedAt && (w.docs || []).some(d => d.signed)); }, 40000),
     'signing in person: the window closes at once, the two PDFs are built in the background and the worker gets them');
+  ok(await p.evaluate(() => { const w = workers.find(x => x.id === 'w2'), c = document.querySelector('#workerCardModal [data-testid="card-sign-state"]');
+    return !!w.signDate && !!c && c.innerText.includes(w.signDate); }), "signing in person: the card's date is the worker's new signing date");
   await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
   // Delete through ⋮ and the Undo snack: the template and its file go.
   await p.evaluate(() => { switchTab('admin'); switchAdminPane('contracts'); });

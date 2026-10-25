@@ -24,6 +24,7 @@ import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
 import { SignWindow, takeSign } from './SignWindow';
 import { signCall } from './logic/signing';
+import { contractDocDate } from './logic/workers';
 import { openPdf } from './contracts';
 
 /** Download data (docs/contracts.md → Download data): one PDF of everything kept under the worker, put together on the server now. */
@@ -72,7 +73,14 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
     if (!can || state[key]) return;
     setState(s => ({ ...s, [key]: 'busy' }));
     let r = null;
-    try { const res = await api.findScanFields(w.id, [key], w.docType || 'israeli_id'); r = res && res[key]; } catch (e) { console.error(e); }
+    try { const res = await api.findScanFields(w.id, [key], w.docType || 'israeli_id'); r = res && res[key]; }
+    catch (e) {
+      // the search failed or did not answer: the row can be tapped again, the reason in a note
+      console.error(e);
+      setState(s => { const n = { ...s }; delete n[key]; return n; });
+      api.toast(tr('The scan search failed: {0} — tap the field to try again', { 0: String((e as Error)?.message || e) }), 6000);
+      return;
+    }
     if (!r || !r.value) { setState(s => ({ ...s, [key]: 'none' })); return; }
     api.setScanField(w.id, key, r.value);
     api.toast(scanLabel(key, w.docType) + ': ' + r.value + (r.unsure ? ' — ' + tr('check it') : ''), r.unsure ? 5000 : undefined);
@@ -125,7 +133,10 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
   const plate = (d: WorkerDoc) => {
     const x = snap.docExpiry[String(d.id)];
     const c = x ? (x.level === 'error' ? 'var(--red)' : 'var(--amber)') : 'var(--green)';
-    const exText = d.expiry ? (x && x.level === 'error' ? tr('Expired {0}', { 0: fmtDMY(d.expiry) }) : tr('Expires {0}', { 0: fmtDMY(d.expiry) })) : tr('No expiry date');
+    // a contract has no expiry: its date is the day the contract term counts from (workerExpiryStatus)
+    const cd = d.type === 'contract' ? contractDocDate(w, d) : null;
+    const exText = d.type === 'contract' ? (cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : '')
+      : d.expiry ? (x && x.level === 'error' ? tr('Expired {0}', { 0: fmtDMY(d.expiry) }) : tr('Expires {0}', { 0: fmtDMY(d.expiry) })) : tr('No expiry date');
     const Icon = d.type === 'contract' ? IconFileCertificate : d.type === 'other' ? IconFile : IconIdBadge2;
     return (
       <Plate key={d.id} data-testid="worker-doc" data-doc={d.id} className="mb-1.5" size="sm" color={c} icon={<Icon />}
@@ -160,11 +171,12 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
   );
 }
 
-/** Sent to sign (waiting for the worker) / Signed with its date / Needs sending again (the template was deleted). */
+/** Sent to sign (waiting for the worker) / Signed with its date — the latest signing's, also while its documents are
+ * still being built ('signing') / Needs sending again (the template was deleted). */
 function SignChip({ req, signDate }: { req: SignRequestView | null; signDate?: string }) {
-  if (req && (req.status === 'sent' || req.status === 'signing')) return <Badge variant="info" data-testid="card-sign-state" data-state="sent"><IconSend />{tr('Sent to sign')}</Badge>;
+  if (req && req.status === 'sent') return <Badge variant="info" data-testid="card-sign-state" data-state="sent"><IconSend />{tr('Sent to sign')}</Badge>;
   if (req && req.status === 'withdrawn') return <Badge variant="warn" data-testid="card-sign-state" data-state="withdrawn"><IconAlertTriangle />{tr('Needs sending again')}</Badge>;
-  const d = (req && req.status === 'signed' && req.signDate) || signDate;
+  const d = (req && (req.status === 'signed' || req.status === 'signing') && req.signDate) || signDate;
   return d ? <Badge variant="ok" data-testid="card-sign-state" data-state="signed"><IconSignature />{tr('Signed {0}', { 0: d })}</Badge> : null;
 }
 
@@ -274,7 +286,9 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
             <DropdownMenuTrigger asChild>
               <Button size="icon" aria-label={tr('More')} data-testid="card-more"><IconDotsVertical className="size-[18px]" /></Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
+            {/* its items open other windows: the focus does not go back to ⋮ in the card behind them once the menu
+                has closed — it closed a date picker opened meanwhile in Add document (a focus outside it) */}
+            <DropdownMenuContent onCloseAutoFocus={e => e.preventDefault()}>
               {more.map(m => <DropdownMenuItem key={m.label} onSelect={m.run}>{m.icon}{m.label}</DropdownMenuItem>)}
             </DropdownMenuContent>
           </DropdownMenu>

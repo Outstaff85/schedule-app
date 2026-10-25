@@ -39,6 +39,7 @@ import {
   WORKER_DOC_TYPES, contractTerms, fmtDMY, formOf, type FormKey, type WorkerForm,
 } from './worker';
 import { ContractSection } from './WorkerContract';
+import { contractDocDate, currentContractDoc } from './logic/workers';
 import { saveWorker, type EditorState } from './worker-save';
 
 /** A scan field's mark: empty and searchable, searching, not found, "check" (two reads differ), found (green for a moment). */
@@ -195,9 +196,15 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     });
     if (!keys.length) return;
     setMarks(cur => { const n = { ...cur }; keys.forEach(k => { n[k] = { k: 'busy' }; }); return n; });
-    let res: Record<string, ScanHit> | null = null;
-    try { res = await api.findScanFields(editId, keys, docType); } catch (e) { console.error(e); }
+    let res: Record<string, ScanHit> | null = null, failed: unknown = null;
+    try { res = await api.findScanFields(editId, keys, docType); } catch (e) { console.error(e); failed = e; }
     if (editor.current?.seq !== props.seq) return; // the window was closed or opened again meanwhile
+    // the search failed or did not answer: the fields can be searched again (a tap), the reason in a note
+    if (failed) {
+      setMarks(cur => { const n = { ...cur }; keys.forEach(k => { if (n[k]?.k === 'busy') n[k] = { k: 'missing' }; }); return n; });
+      api.toast(tr('The scan search failed: {0} — tap the field to try again', { 0: String((failed as Error)?.message || failed) }), 6000);
+      return;
+    }
     for (const k of keys) {
       const r = res && res[k];
       if (r && r.value) {
@@ -213,8 +220,10 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     const prev = String((form.getValues() as unknown as Record<string, string>)[key] || '').trim();
     setMark(key, { k: 'check', rechecked: true, msg: tr('Reading the scan again…') });
     let r: ScanHit | null | undefined = null;
-    try { const res = await api.findScanFields(editId, [key], docType); r = res && res[key]; } catch (e) { console.error(e); }
+    let failed = false;
+    try { const res = await api.findScanFields(editId, [key], docType); r = res && res[key]; } catch (e) { console.error(e); failed = true; }
     if (editor.current?.seq !== props.seq) return;
+    if (failed) { setMark(key, { k: 'check', msg: checkMsg(key) }); api.toast(tr('The scan search failed — tap the field to try again'), 5000); return; }
     if (!r || !r.value) { setMark(key, { k: 'check', rechecked: true, msg: tr('Check — the second read did not find the field') }); return; }
     if (norm(r.value) === norm(prev)) { flashFound(key); return; }
     set(key as FormKey, r.value);
@@ -325,6 +334,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   const docColor = { ok: 'var(--ok)', warn: 'var(--warn)', error: 'var(--bad)' }[info.docLevel];
   const addClient = (id: string) => { if (id && !clientIds.includes(id)) setClientIds([...clientIds, id]); };
   const left = info.clients.filter(c => !clientIds.includes(c.id));
+  const termDoc = currentContractDoc(w);
   const docs = [...(w.docs || [])].sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
 
   return (
@@ -451,7 +461,10 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
                     <Field label={tr('Months until the deadline')}><Input type="number" min={1} step={1} id="wExpiryMonths" {...form.register('expiryMonths')} /></Field>
                     <Field label={tr('Warn how many months ahead')}><Input type="number" min={0} step={1} id="wExpiryWarnMonths" {...form.register('expiryWarnMonths')} /></Field>
                   </FieldRow>
-                  {v.expiryEnabled && !v.startDate && <Hint tone="bad"><IconAlertTriangle className="inline size-3" /> {tr('No start date — the warning does not work without it.')}</Hint>}
+                  {/* the term counts from the latest contract (a new one restarts it), else from the start date (workerExpiryStatus) */}
+                  {termDoc ? <Hint tone="muted">{tr('Counted from the latest contract ({0})', { 0: termDoc.date.toLocaleDateString('en-GB') })}</Hint>
+                    : v.startDate ? <Hint tone="muted">{tr('Counted from the start date ({0})', { 0: fmtDMY(v.startDate) })}</Hint> : null}
+                  {!termDoc && v.expiryEnabled && !v.startDate && <Hint tone="bad"><IconAlertTriangle className="inline size-3" /> {tr('No start date — the warning does not work without it.')}</Hint>}
                 </div>
               )}
             </div>
@@ -469,9 +482,10 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               <DocLine color={info.docMissing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconId />} title={tr('ID / Passport')} sub={info.docExpiryText || v.docId}
                 act={info.docMissing.length || info.docFailed ? <Button size="sm" onClick={() => api.rescan()}>{tr('Upload')}</Button> : null} />
               <DocLine color={w.docUrl ? 'var(--ok)' : 'var(--warn)'} icon={<IconFileText />} title={tr('Form 101')} sub={w.docUrl ? tr('Saved') : tr('Not saved yet')} />
-              {docs.map(d => { const x = info.docExpiry[String(d.id)];
+              {docs.map(d => { const x = info.docExpiry[String(d.id)], cd = d.type === 'contract' ? contractDocDate(w, d) : null;
                 return <DocLine key={d.id} color={x ? (x.level === 'error' ? 'var(--bad)' : 'var(--warn)') : 'var(--ok)'} icon={d.type === 'contract' ? <IconFileCertificate /> : <IconIdBadge2 />}
-                  title={tr(WORKER_DOC_TYPES[d.type] || 'Document')} sub={x ? x.text : d.expiry ? tr('Expires {0}', { 0: fmtDMY(d.expiry) }) : d.name || ''}
+                  title={tr(WORKER_DOC_TYPES[d.type] || 'Document')} sub={x ? x.text : d.type === 'contract' ? (cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : d.name || '')
+                    : d.expiry ? tr('Expires {0}', { 0: fmtDMY(d.expiry) }) : d.name || ''}
                   act={x ? <Button size="sm" onClick={() => api.openDocUpload(w.id)}>{tr('Renew')}</Button> : null} />; })}
               <Button className="mt-1 justify-self-start" onClick={() => api.openDocUpload(w.id)}><IconUpload className="size-4" />{tr('Add document')}</Button>
             </> : <div className="text-[13px] text-ink-2">{tr('Documents are added on the worker card after the worker is saved.')}</div>}

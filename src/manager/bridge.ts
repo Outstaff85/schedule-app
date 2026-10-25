@@ -160,7 +160,7 @@ export type SignContext = {
 };
 /** A worker's sign request as the window shows it (src/manager/logic/signing.ts). */
 export type SignRequestView = { id: string; status: string; templateName?: string; signDate?: string | null; sentAt?: string; signedAt?: string; way?: string };
-export type WorkerDoc = { id: string; type: string; name?: string; fileId?: string; url?: string; mediaType?: string; uploadedAt?: string; expiry?: string };
+export type WorkerDoc = { id: string; type: string; name?: string; fileId?: string; url?: string; mediaType?: string; uploadedAt?: string; expiry?: string; contractDate?: string; signed?: boolean };
 /** A scanned page kept as its own JPEG in Storage (docs/contracts.md → Scanned pages). */
 export type ScanPage = { fileId: string; kind: 'id_front' | 'id_back' | 'sefach' | 'passport' | 'other'; primary?: boolean; savedAt: string };
 export type Child = { name: string; idNo: string; dob: string };

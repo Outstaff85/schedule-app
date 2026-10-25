@@ -37,10 +37,12 @@ export function signRequestOf(workerId: string): SignRequest | null {
     .sort((a, b) => String(b.sentAt || '').localeCompare(String(a.sentAt || '')))[0] || null;
 }
 
-/** Reads the firm's requests (at most once a minute unless forced) and takes the signed ones onto the workers. */
-export function loadSignRequests(force?: boolean): Promise<void> {
-  if (busy) return busy;
-  if (!force && Date.now() - at < 60e3) return Promise.resolve();
+/** Reads the firm's requests (at most once a minute — or once in `maxAge` ms — unless forced) and takes the signed
+ * ones onto the workers. A forced read while another is on its way reads again after it: the one on its way may
+ * have left before what the caller waits for (a signing just built) was there. */
+export function loadSignRequests(force?: boolean, maxAge = 60e3): Promise<void> {
+  if (busy) return force ? busy.then(() => loadSignRequests(true)) : busy;
+  if (!force && Date.now() - at < maxAge) return Promise.resolve();
   at = Date.now();
   busy = (async () => {
     try {
@@ -56,7 +58,7 @@ export function loadSignRequests(force?: boolean): Promise<void> {
 
 /** A sent request, known at once (the list is read again later). */
 export function rememberRequest(r: SignRequest): void {
-  reqs = [r, ...reqs.map(x => (x.workerId === r.workerId && x.status === 'sent' ? { ...x, status: 'replaced' as const } : x))];
+  reqs = [r, ...reqs.filter(x => x.id !== r.id).map(x => (x.workerId === r.workerId && x.status === 'sent' ? { ...x, status: 'replaced' as const } : x))];
   emit('requests');
 }
 

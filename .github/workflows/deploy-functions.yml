@@ -53,12 +53,23 @@ jobs:
       - name: LibreOffice (the Word templates' test)
         run: which soffice || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libreoffice-writer-nogui fonts-dejavu-core)
 
+      # pip's downloads kept between runs (the same key as tests.yml): the scanner's training packages (CPU torch ~200 MB)
+      - name: Python packages kept
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('functions-auth/requirements.txt', 'scripts/scan-train/requirements-synth.txt') }}-scan-train-1
+
       # A failing login/user-management test stops the deploy. pytest goes
       # into a separate venv so it never reaches the deployed functions.
+      # The same packages as tests.yml's "Python for the functions" — tests/auth holds the scanner's training checks
+      # too (they need torch and albumentations); keep the two lists equal.
       - name: Test login and user management on the emulators
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
           "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi flask opencv-python-headless onnx
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q onnxruntime timm onnx2torch albumentations==2.0.8 albucore==0.0.24
           firebase emulators:exec --only firestore,auth --project demo-schedule "$RUNNER_TEMP/testvenv/bin/python -m pytest tests/auth -q"
 
       - name: Write service account credentials

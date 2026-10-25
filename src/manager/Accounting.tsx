@@ -237,8 +237,8 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
         {det(tr('Bank'), bank(e.workerId), 'bank')}
         {payOnly && det(tr('My commission'), <>{'₪' + myCom(e).toFixed(0)} <span className="font-normal text-ink-3">({w && w.payMode === 'daily' && snap.me.commissionDayRate > 0 ? tr('{n} days × ₪{r}', { n: e.daysUsed, r: snap.me.commissionDayRate }) : tr('{h}h × ₪{r}', { h: e.hours.toFixed(1), r: snap.me.commissionRate })})</span></>, 'com')}
         <div className="mt-1.5 flex justify-end gap-2">
-          <Button size="sm" data-testid="sal-card" onClick={() => api.openWorker(e.workerId)}>{tr('Open card')}</Button>
-          {(!payOnly || canPay(e.workerId)) && <Button size="sm" data-testid="sal-pay" onClick={() => api.openPay(e.workerId)}><IconPencil />{tr('Pay')}</Button>}
+          <Button size="sm" data-testid="sal-card" onClick={() => { setRow(null); api.openWorker(e.workerId); }}>{tr('Open card')}</Button>
+          {(!payOnly || canPay(e.workerId)) && <Button size="sm" data-testid="sal-pay" onClick={() => { setRow(null); api.openPay(e.workerId); }}><IconPencil />{tr('Pay')}</Button>}
         </div>
       </div>
     );

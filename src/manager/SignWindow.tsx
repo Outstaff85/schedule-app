@@ -79,7 +79,9 @@ export function SignWindow({ workerId, api, onClose }: { workerId: string; api: 
   const signHere = async (png: string) => {
     if (!sent) return;
     try {
-      await signCall({ action: 'sign', id: sent.id, signaturePng: png });
+      const r = await signCall<{ signDate?: string }>({ action: 'sign', id: sent.id, signaturePng: png });
+      // signed now: the card shows Signed with this signing's date at once (its documents are built in the background)
+      rememberRequest({ ...sent, status: 'signing', signDate: r.signDate || signDate || sent.signDate || null });
       api.toast(tr('Signed — the documents are being saved'));
       buildSigned(sent.id, api);
       onClose();

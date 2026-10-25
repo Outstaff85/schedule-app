@@ -5,7 +5,7 @@
 import * as React from 'react';
 import {
   IconAlertCircle, IconAlertTriangle, IconBrandWhatsapp, IconCalendarPlus, IconCircleCheck, IconCircleX, IconClock, IconClockOff,
-  IconCloudOff, IconFileAlert, IconFileCertificate, IconId, IconIdBadge2, IconPhone, IconRefresh, IconScan,
+  IconCloudOff, IconFileAlert, IconFileCertificate, IconId, IconIdBadge2, IconPhone, IconRefresh, IconScan, IconSignature, IconUpload,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -18,7 +18,7 @@ import { hoursShort } from './today';
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'ti-scan': IconScan, 'ti-refresh': IconRefresh, 'ti-calendar-plus': IconCalendarPlus, 'ti-phone': IconPhone, 'ti-brand-whatsapp': IconBrandWhatsapp,
   'ti-cloud-off': IconCloudOff, 'ti-id': IconId, 'ti-id-badge-2': IconIdBadge2, 'ti-file-alert': IconFileAlert, 'ti-file-certificate': IconFileCertificate,
-  'ti-clock-off': IconClockOff,
+  'ti-clock-off': IconClockOff, 'ti-signature': IconSignature, 'ti-upload': IconUpload,
 };
 export function TiIcon({ name, className }: { name: string; className?: string }) {
   const I = ICONS[name] || IconAlertTriangle;
