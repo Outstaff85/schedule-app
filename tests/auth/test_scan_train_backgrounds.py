@@ -406,3 +406,30 @@ def test_datasets_hf_has_the_new_sets_and_pulls_and_pushes_through_the_api(tmp_p
     assert calls and calls[-1][1].endswith("datasets/occluders") and calls[-1][2]["exclude"] == ["raw/*"]
     with pytest.raises(SystemExit):
         datasets_hf.pull(["nope"], api=api)
+
+
+def test_a_bank_pulled_without_its_catalog_is_made_ready_and_a_build_refuses_one_that_is_not(tmp_path):
+    """gen bg pull → gb.prepare: photos the catalog does not name are catalogued, checked and split with no hand step
+    (owner, 2026-10-25: a fresh PC's pull left them out and the scenes lay every page on a procedural surface);
+    gen build refuses a bank that is not ready (require_ready); a ready bank loads no model."""
+    work = tmp_path / "work"
+    d = work / "backgrounds"
+    d.mkdir(parents=True)
+    src = []
+    for i, q in enumerate(("wooden table", "fabric texture", "granite texture")):
+        cv2.imwrite(str(d / f"p{i}.jpg"), texture(20 + i, 1800, 1200), [cv2.IMWRITE_JPEG_QUALITY, 95])
+        src.append({"file": f"p{i}.jpg", "query": q, "license": "cc0"})
+    (d / "sources.json").write_text(json.dumps(src), encoding="utf-8")
+    assert gb.pending(work) == {"uncatalogued": 3, "unchecked": 0, "unsplit": 0}
+    with pytest.raises(SystemExit, match="3 photos not catalogued"):
+        gb.require_ready(work)
+    out = gb.prepare(work, detector=lambda img: 0.05)
+    assert out == {"backgrounds": {"uncatalogued": 0, "unchecked": 0, "unsplit": 0}}
+    files = gb.load(work)["files"]
+    assert set(files) == {"p0.jpg", "p1.jpg", "p2.jpg"}
+    assert all(e["status"] == "ok" and e["split"] in ("train", "exam", "none") for e in files.values())
+    gb.require_ready(work)
+
+    def boom(img):
+        raise AssertionError("a ready bank is not checked again")
+    assert gb.prepare(work, detector=boom) == {}

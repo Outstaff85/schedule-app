@@ -111,9 +111,8 @@ def gen_params(a):
     if a.exam and not pages:
         print("no real page kept apart here: the exam's pages are all drawn (with the check vocabulary)")
     side = "exam" if split == "exam" else "train"   # a select run draws the training side's pages and backgrounds
+    gb.require_ready(WORK)
     bank = gb.Bank(WORK, side, a.procedural_share)
-    if bank.unsplit:
-        print(f"{bank.unsplit} usable background photos are not split yet (on neither side): run python -m gen bg split")
     occ = gb.Occluders(WORK, side)
     pdfs = [] if a.exam else gp.pdf_sources(WORK)   # every PDF is on the training side: the exam's contract / other pages are drawn
     # an exam run draws every font (each row records its font split); a training or select run never an exam font

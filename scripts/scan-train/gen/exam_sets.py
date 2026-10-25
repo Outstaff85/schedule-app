@@ -5,7 +5,8 @@
   sha256 of heldout.json it was pinned under (gen.common.heldout_sha256). These pins carry "pin": true: the next exam
   pins them again by itself, so a pin made under another heldout.json is only reported, never "stale". `refresh` re-pins
   a set whose manifest changed and says so ("changed"); a drawn set made under another heldout.json is refused until it is
-  drawn again (`require_fresh`: the rebuild command is printed) — `gen exam-sets` and gen sources --check fail on those
+  drawn again (`require_fresh` draws it again by itself — the automatic cycle never stops there — and refuses only a set it
+  cannot draw again: the rebuild command is printed) — `gen exam-sets` and gen sources --check fail on those
   (gen.common.stale_exam_sets: the drawn sets only, recorded by record_exam_set — synth/docs-exam, he-fields/check,
   gen/<exam run>).
 - The answers of a model that does not change (the parent version, the lab's) are kept in <work>/exams/<model sha256
@@ -24,6 +25,8 @@ import datetime
 import hashlib
 import json
 import pathlib
+import subprocess
+import sys
 
 from . import common as gc
 
@@ -129,10 +132,45 @@ def run_stale(folder):
     return bool(r) and r.get("heldoutSha256") != gc.heldout_sha256()
 
 
-def require_fresh(drawn, work=None):
-    """drawn {set name: folder or exam_sets.json name}: SystemExit naming each drawn set made under another heldout.json
-    and the command that draws it again — an exam on a set drawn before the held-out pages changed would score pages
-    that may now be training ones."""
+# the drawn sets named in exam_sets.json → the arguments that draw each again (run in scripts/scan-train)
+REDRAW = {"synth/docs-exam": ["synth_docs.py", "--templates", "--exam"],
+          "he-fields/check": ["synth_fields.py", "--count", "300", "--check"]}
+
+
+def redraw_argv(src):
+    """The arguments that draw a stale set again under today's heldout.json: an exam_sets.json name (REDRAW), or a gen
+    run's own build from its run.json (the model, count, seed, split and folder; the cut exam's editor and bad-cut
+    shares) — None when it cannot be told (no parameters, or a run that also cut real or open-set photos)."""
+    if str(src) in REDRAW:
+        return list(REDRAW[str(src)])
+    from .manifest import read_run
+    prm = (read_run(pathlib.Path(src)) or {}).get("params") or {}
+    if not prm.get("count") or prm.get("seed") is None or prm.get("real") or prm.get("open"):
+        return None
+    split = prm.get("split") or "train"
+    rest = ["--count", str(prm["count"]), "--seed", str(prm["seed"]), "--out", str(src)]
+    rest += ["--exam"] if split == "exam" else ["--split", split]
+    if prm.get("model") == "edges":
+        return ["-m", "gen", "build", "--model", "edges"] + rest
+    models = prm.get("models") or []
+    if prm.get("generator") != "gen.phone_run" or not models:
+        return None
+    if len(models) == 1 and models[0] in ("doctype", "he"):
+        rest.append("--cuts")
+    return (["-m", "gen", "build", "--model", ",".join(models)] + rest
+            + ["--editor-cap", str(prm.get("editorCap", 0.15)), "--bad-share", str(prm.get("badShare", 0.1))])
+
+
+def run_redraw(argv):
+    """One redraw, in scripts/scan-train with this Python (a test replaces it)."""
+    subprocess.run([sys.executable, *argv], cwd=str(HERE), check=True)
+
+
+def require_fresh(drawn, work=None, redraw=True):
+    """drawn {set name: folder or exam_sets.json name}: each drawn set made under another heldout.json is drawn again
+    (redraw: the automatic cycle goes on by itself), then checked once more; SystemExit naming a set that is still
+    stale or cannot be drawn again by itself, with the command that draws it — an exam on a set drawn before the
+    held-out pages changed would score pages that may now be training ones."""
     stale_names = set(gc.stale_exam_sets(work))
     bad = []
     for name, src in drawn.items():
@@ -141,9 +179,18 @@ def require_fresh(drawn, work=None):
         p = pathlib.Path(src)
         if (p / "run.json").exists():
             if run_stale(p):
-                bad.append((name, REBUILD["gen"]))
+                bad.append((name, REBUILD["gen"], redraw_argv(p)))
         elif str(src) in stale_names:
-            bad.append((name, REBUILD.get(str(src), "draw it again")))
+            bad.append((name, REBUILD.get(str(src), "draw it again"), redraw_argv(src)))
+    if bad and redraw and all(argv for _, _, argv in bad):
+        done = []
+        for name, _, argv in bad:
+            if argv not in done:
+                print(f"heldout.json changed since {name} was drawn — drawing it again: python {' '.join(argv)}", flush=True)
+                run_redraw(argv)
+                done.append(argv)
+        return require_fresh(drawn, work, redraw=False)
+    bad = [(n, cmd) for n, cmd, _ in bad]
     if bad:
         raise SystemExit("heldout.json changed since these exam sets were drawn — draw them again, then examine (the parent is "
                          "examined again on the new sets):\n  " + "\n  ".join(f"{n}: {cmd}" for n, cmd in bad))

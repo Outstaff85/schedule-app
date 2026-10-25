@@ -191,8 +191,12 @@ def bg(a):
         added, updated = gb.add(a.dir, a.category, series=a.series, licence=a.licence, url=a.url, owner=a.owner, name=name)
         print(f"{name}: {added} photos added, {updated} updated — next: python -m gen bg check")
         return 0
-    if a.action in ("pull", "push"):
-        (gb.pull if a.action == "pull" else gb.push)()
+    if a.action == "push":
+        gb.push()
+        return 0
+    if a.action == "pull":
+        for n, todo in gb.pull().items():
+            print(f"{n}: made ready — {len(gb.load(name=n)['files'])} photos catalogued; still pending {json.dumps(todo)}")
         return 0
     out = {}
     for n in ("backgrounds", "backgrounds-own"):
