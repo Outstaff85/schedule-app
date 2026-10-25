@@ -117,7 +117,7 @@ Keeping the files is the safe default, so this does not wait for Q2.
   - One A4 holds `id_front` and `id_back` side by side at the top and `sefach` below. A missing ספח leaves its box empty, with a Hebrew caption saying it is missing.
   - A `passport` goes on the top half of a page.
   - Each `other` page gets its own page.
-  - The layout itself is Q7, **answered before this stage freezes b1**.
+  - The layout itself is Q7 (answered: the document — ID card or passport — and the ספח on one sheet).
 - **Pinned libraries:**
   - a separate lock file `functions/requirements.lock` holds the full resolved set (`pip freeze` on Python 3.12, with `--require-hashes`): pymupdf, python-bidi, Pillow, fontTools (needed by `subset_fonts`), firebase-admin, firebase-functions, huggingface_hub and every dependency; `functions/requirements.txt` installs from it.
   - A test reads `pymupdf.VersionBind` and the locked versions and fails if they change without a new builder version.
@@ -492,7 +492,7 @@ Each signing send also stops adding a template copy, and each firm profile edit 
   - whether a slim copy (S9a), whose view at signing shows the pages separately, is acceptable.
 - **Q5 — revoke the download links** already saved in Firestore (`docUrl`, `docs[].url`) once every download goes through the server?
 - **Q6 — scanned contracts.** Should the scanned contract photos (`saveScanContract`) become `scanPages` of kind `contract` in S6, or stay a PDF in `docs[]`?
-- **Q7 — the ID sheet layout** (needed before S1 freezes b1). Front and back side by side above the ספח, or all three stacked? For a passport, the passport and the visa on one sheet?
+- **Q7 — the ID sheet layout — answered (owner, 2026-10-25):** the worker's document and the ספח on one A4 sheet — the ID card (front, and its back when scanned) or the passport, with the ספח on the same sheet. The exact placement (side by side or stacked) follows the pictures' shapes so each stays readable; a missing ספח leaves its box empty with a Hebrew caption.
 - **Q8 — the bundle's default ticks.** Everything, or only Form 101 + contract?
 - **Q9 — deleting a firm.** What happens to its signed documents and template versions: the archive download then deletion (S3), or kept for Q4's period?
 - **Q10 — the safety net** (needs the owner's hands in the cloud console): turn on bucket soft delete (or object versioning) and Firestore point-in-time recovery or a scheduled export? Before S3b.
