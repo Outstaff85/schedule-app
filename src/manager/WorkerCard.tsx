@@ -282,7 +282,9 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
             <DropdownMenuTrigger asChild>
               <Button size="icon" aria-label={tr('More')} data-testid="card-more"><IconDotsVertical className="size-[18px]" /></Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
+            {/* its items open other windows: the focus does not go back to ⋮ in the card behind them once the menu
+                has closed — it closed a date picker opened meanwhile in Add document (a focus outside it) */}
+            <DropdownMenuContent onCloseAutoFocus={e => e.preventDefault()}>
               {more.map(m => <DropdownMenuItem key={m.label} onSelect={m.run}>{m.icon}{m.label}</DropdownMenuItem>)}
             </DropdownMenuContent>
           </DropdownMenu>

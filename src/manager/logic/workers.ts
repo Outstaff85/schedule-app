@@ -15,23 +15,53 @@ export const DOC_STORE = 'Firebase Storage';
 // (per user request 2026-10-11). Accounting still counts their hours.
 export function isActiveWorker(w: Rec | null | undefined): boolean { return !!w && w.status !== 'fired'; }
 
-// ── Contract-expiry warning (per-worker, opt-in) ──
-// A worker can set expiryMonths (how many months after startDate the deadline
-// hits) and expiryWarnMonths (how many months before the deadline to start
-// warning). null if the feature is off / unset for this worker, else
-// {level:'warning'|'overdue', deadline}. The one source for every badge and notice.
-export function workerExpiryStatus(w: Rec | null | undefined): {level: 'warning' | 'overdue'; deadline: Date} | null {
-  if (!w || !isActiveWorker(w) || !w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
+// ── Contract-expiry warning ──
+// The latest contract uploaded (currentDocs) with a date set in Add document
+// governs (owner, 2026-10-25): a new contract restarts the count — its date is
+// the deadline (the contract is good through that day), the warning starts
+// expiryWarnMonths before it, or WORKER_DOC_WARN_DAYS.contract days before it
+// when the worker's own term (expiryEnabled) is off. With no such contract,
+// the worker's term (per-worker, opt-in): expiryMonths after startDate is the
+// deadline, the warning expiryWarnMonths before it. null if neither applies
+// or it is not due yet, else {level:'warning'|'overdue', deadline, doc?}
+// (doc: the contract document that set it). The one source for every badge
+// and notice; such a contract's date is not also a document reminder
+// (workerDocExpiries).
+export function workerExpiryStatus(w: Rec | null | undefined): {level: 'warning' | 'overdue'; deadline: Date; doc?: Rec} | null {
+  if (!w || !isActiveWorker(w)) return null;
+  const now = new Date();
+  const c = currentContractDoc(w);
+  if (c) {
+    const today = new Date(now); today.setHours(0, 0, 0, 0);
+    const warnFrom = new Date(c.date);
+    if (w.expiryEnabled) warnFrom.setMonth(warnFrom.getMonth() - Number(w.expiryWarnMonths || 0));
+    else warnFrom.setDate(warnFrom.getDate() - WORKER_DOC_WARN_DAYS.contract);
+    if (c.date < today) return {level: 'overdue', deadline: c.date, doc: c.doc};
+    if (today >= warnFrom) return {level: 'warning', deadline: c.date, doc: c.doc};
+    return null;
+  }
+  if (!w.expiryEnabled || !w.startDate || !w.expiryMonths) return null;
   const start = new Date(w.startDate + 'T00:00:00');
   if (isNaN(start.getTime())) return null;
   const deadline = new Date(start);
   deadline.setMonth(deadline.getMonth() + Number(w.expiryMonths));
   const warnFrom = new Date(deadline);
   warnFrom.setMonth(warnFrom.getMonth() - Number(w.expiryWarnMonths || 0));
-  const now = new Date();
   if (now >= deadline) return {level: 'overdue', deadline};
   if (now >= warnFrom) return {level: 'warning', deadline};
   return null;
+}
+/** The contract that sets the term: of the latest contract upload (currentDocs — an Add document upload, a scanned
+ * or a signed contract), the file with a date set (the latest date if its files differ); null when that upload
+ * has no date — the worker's own term (startDate + expiryMonths) counts then. */
+export function currentContractDoc(w: Rec): {doc: Rec; date: Date} | null {
+  let best: {doc: Rec; date: Date} | null = null;
+  for (const d of currentDocs(w)) {
+    if (d.type !== 'contract') continue;
+    const date = parseDocDate(d.expiry);
+    if (date && !isNaN(date.getTime()) && (!best || date > best.date)) best = {doc: d, date};
+  }
+  return best;
 }
 
 // ── Worker document completeness ──
@@ -61,7 +91,8 @@ export function parseDocDate(v: unknown): Date | null {
 type DocNote = {doc: Rec; level: 'error' | 'warn'; date: Date; text: string};
 /** The worker's documents that count for expiry: of a contract, a visa or a work permit only the latest upload
  * (the files uploaded together share their time) — a new one replaces the old, so the old one's date no longer
- * warns; every "other" document counts. */
+ * warns; every "other" document counts. (The current contract's date is the contract term — workerExpiryStatus —
+ * not a document reminder: workerDocExpiries leaves it out.) */
 export function currentDocs(w: Rec): Rec[] {
   const docs = (w.docs || []) as Rec[], latest: Record<string, string> = {};
   for (const d of docs) if (d.type !== 'other') { const at = String(d.uploadedAt || ''); if (!(d.type in latest) || at > latest[d.type]) latest[d.type] = at; }
@@ -71,6 +102,7 @@ export function workerDocExpiries(w: Rec): DocNote[] {
   const today = new Date(); today.setHours(0,0,0,0);
   const out: DocNote[] = [], seen = new Set<string>();
   for (const d of currentDocs(w)) {
+    if (d.type === 'contract') continue;  // the contract term: workerExpiryStatus
     const date = parseDocDate(d.expiry);
     if (!date || isNaN(date.getTime())) continue;
     // One reminder per document, not per file (a visa uploaded as front +

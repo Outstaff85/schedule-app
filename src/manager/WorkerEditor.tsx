@@ -39,6 +39,7 @@ import {
   WORKER_DOC_TYPES, contractTerms, fmtDMY, formOf, type FormKey, type WorkerForm,
 } from './worker';
 import { ContractSection } from './WorkerContract';
+import { currentContractDoc } from './logic/workers';
 import { saveWorker, type EditorState } from './worker-save';
 
 /** A scan field's mark: empty and searchable, searching, not found, "check" (two reads differ), found (green for a moment). */
@@ -333,6 +334,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   const docColor = { ok: 'var(--ok)', warn: 'var(--warn)', error: 'var(--bad)' }[info.docLevel];
   const addClient = (id: string) => { if (id && !clientIds.includes(id)) setClientIds([...clientIds, id]); };
   const left = info.clients.filter(c => !clientIds.includes(c.id));
+  const termDoc = currentContractDoc(w);
   const docs = [...(w.docs || [])].sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
 
   return (
@@ -459,7 +461,8 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
                     <Field label={tr('Months until the deadline')}><Input type="number" min={1} step={1} id="wExpiryMonths" {...form.register('expiryMonths')} /></Field>
                     <Field label={tr('Warn how many months ahead')}><Input type="number" min={0} step={1} id="wExpiryWarnMonths" {...form.register('expiryWarnMonths')} /></Field>
                   </FieldRow>
-                  {v.expiryEnabled && !v.startDate && <Hint tone="bad"><IconAlertTriangle className="inline size-3" /> {tr('No start date — the warning does not work without it.')}</Hint>}
+                  {termDoc && <Hint tone="muted">{tr('The latest contract sets the term: it ends {0} (Add document → its date).', { 0: termDoc.date.toLocaleDateString('en-GB') })}</Hint>}
+                  {!termDoc && v.expiryEnabled && !v.startDate && <Hint tone="bad"><IconAlertTriangle className="inline size-3" /> {tr('No start date — the warning does not work without it.')}</Hint>}
                 </div>
               )}
             </div>
