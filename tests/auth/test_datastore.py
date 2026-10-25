@@ -63,3 +63,50 @@ def test_a_bucket_that_refuses_leaves_the_files_in_firebase(monkeypatch):
     monkeypatch.setenv("HF_DATA_TOKEN", "t")
     b = Bucket()
     assert datastore.put([("edges/2026-10/a.jpg", b"1")], lambda: b) == ["training/scan/2026-10/a.jpg"] and b.files
+
+
+class ReadBlob:
+    def __init__(self, files, name):
+        self.files, self.name = files, name
+
+    def download_as_bytes(self):
+        if self.name not in self.files:
+            raise LookupError("404")
+        return self.files[self.name]
+
+
+class ReadBucket:
+    def __init__(self, files):
+        self.files = files
+
+    def blob(self, name):
+        return ReadBlob(self.files, name)
+
+
+def test_a_file_is_read_back_from_where_it_went(monkeypatch):
+    """get(): the bucket with the server's token; a file the bucket does not have (kept in Firebase after a refusal) from Firebase."""
+    import pathlib
+    import sys
+    import types
+    asked = []
+
+    class Api:
+        def __init__(self, token):
+            pass
+
+        def download_bucket_files(self, bucket_id, files, raise_on_missing_files=False):
+            for path, dest in files:
+                asked.append(path)
+                if path != "attempts/new/site/2026-10-24/a/answer.json":
+                    raise FileNotFoundError(path)
+                pathlib.Path(dest).write_bytes(b'{"tenantId": "t1"}')
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(HfApi=Api))
+    monkeypatch.setenv("HF_DATA_TOKEN", "t")
+    fb = ReadBucket({"training/attempts/new/site/2026-10-24/b/answer.json": b'{"tenantId": "t2"}'})
+    assert datastore.get("attempts/new/site/2026-10-24/a/answer.json", lambda: fb) == b'{"tenantId": "t1"}'
+    assert datastore.get("attempts/new/site/2026-10-24/b/answer.json", lambda: fb) == b'{"tenantId": "t2"}'
+    assert datastore.get("attempts/new/site/2026-10-24/c/answer.json", lambda: fb) is None
+    assert datastore.get("attempts/new/site/2026-10-24/c/answer.json") is None
+    monkeypatch.delenv("HF_DATA_TOKEN")
+    asked.clear()
+    assert datastore.get("attempts/new/site/2026-10-24/b/answer.json", lambda: fb) == b'{"tenantId": "t2"}' and asked == []

@@ -2,6 +2,7 @@
 a kept page teaches its corners (the moved ones, else the model's), a deleted page "nothing here",
 a retaken one with no corners moved only the exam."""
 import importlib.util
+import json
 import pathlib
 
 _spec = importlib.util.spec_from_file_location("attempts", pathlib.Path(__file__).resolve().parents[2] / "scripts" / "scan-train" / "attempts.py")
@@ -62,7 +63,203 @@ def test_a_document_lying_on_another_is_not_painted_over_with_it():
     beside = [[0.92, 0.1], [0.99, 0.1], [0.99, 0.3], [0.92, 0.3]]
     ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesMore": [beside, card]})
     assert kinds(ex) == [("edges", 0), ("edges", 1), ("edges", 2)]
-    assert ex[2]["target"] == card and ex[2]["paint"] == [beside]
+    # the card is taught on the sefach's flat cut ("on": the sefach's index), nothing painted; the page beside it is not on one
+    assert ex[2]["target"] == card and ex[2]["paint"] == [] and ex[2]["on"] == 0
+    assert ex[1]["on"] is None and ex[1]["paint"] == [sefach] and ex[0]["on"] is None
     # deleted, it teaches nothing ("nothing here" would be said of the photo with the sefach on it)
     ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesMore": [card], "deletedPages": [1]})
     assert kinds(ex) == [("edges", 0)]
+
+
+
+def test_a_page_found_inside_another_is_decided_as_the_phone_found_it():
+    sefach = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    card = [[0.3, 0.55], [0.7, 0.55], [0.7, 0.8], [0.3, 0.8]]
+    # the user dragged a corner of the card just past the sefach's edge: still found on its cut, nothing painted
+    past = [[0.3, 0.55], [0.7, 0.55], [0.7, 0.8], [0.05, 0.95]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesMore": [card], "edgesMoreFixed": [past]})
+    assert ex[1]["on"] == 0 and ex[1]["paint"] == [] and ex[1]["target"] == past and ex[1]["cut"] == sefach
+    # the sefach's corners moved: the card is cut at the right corners of the page it lies on
+    sef2 = [[0.12, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesFixed": sef2, "edgesMore": [card]})
+    assert ex[1]["on"] == 0 and ex[1]["cut"] == sef2
+    # the user shrank the outer page off the card (its corners moved to its upper half): the card stays on the phone's
+    # own cut, the outer page's model quad, which holds it (the right corners' cut would not show it at all)
+    upper = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.45], [0.1, 0.45]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": sefach, "edgesFixed": upper, "edgesMore": [card]})
+    assert ex[1]["on"] == 0 and ex[1]["cut"] == sefach and ex[1]["paint"] == []
+    # a page findNext found beside the first, its corners dragged onto the first one, is still taught on the photo
+    # (the user's corners never decide it; its model quad lies outside the first one's)
+    first = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    beside = [[0.92, 0.1], [0.99, 0.1], [0.99, 0.3], [0.92, 0.3]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": first, "edgesMore": [beside],
+                               "edgesMoreFixed": [[[0.5, 0.2], [0.6, 0.2], [0.6, 0.3], [0.5, 0.3]]]})
+    assert ex[1]["on"] is None and ex[1]["cut"] is None and ex[1]["paint"] == [first]
+
+
+def test_a_deleted_outer_page_keeps_its_kept_inner_page_on_the_phones_cut():
+    other = [[0.02, 0.02], [0.08, 0.02], [0.08, 0.08], [0.02, 0.08]]
+    sefach = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    card = [[0.3, 0.55], [0.7, 0.55], [0.7, 0.8], [0.3, 0.8]]
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": other, "edgesMore": [sefach, card], "deletedPages": [1]})
+    # the sefach was deleted but the card found inside it kept: no "nothing here" for the sefach (the photo still shows
+    # the card there), and the card on the phone's own cut — the sefach's model quad
+    assert kinds(ex) == [("edges", 0), ("edges", 2)]
+    assert ex[1]["on"] == 1 and ex[1]["cut"] == sefach and ex[1]["paint"] == []
+    # both deleted: the sefach's "nothing here" stands (nothing kept lies in it), the card teaches nothing
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": other, "edgesMore": [sefach, card], "deletedPages": [1, 2]})
+    assert kinds(ex) == [("edges", 0), ("none", 1)]
+
+def _pull():
+    import sys
+    here = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "scan-train"
+    sys.path.insert(0, str(here))
+    spec = importlib.util.spec_from_file_location("pull_retakes", here / "pull.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _group_on(pull, want):
+    """A retake group whose key lands on the side want."""
+    for n in range(10000):
+        if pull.split_of(pull.split_key({"group": f"shot-{n}"})) == want:
+            return f"shot-{n}"
+    raise AssertionError(want)
+
+
+def test_one_retake_group_lands_on_one_side_and_a_hard_page_of_a_training_group_is_left_out(tmp_path, monkeypatch):
+    # pull.py splits attempts by their retake group, not by their own id: a retaken shot (no fix — a "hard" page) and
+    # the kept retake of the same document are on one side; on the training side the hard page is in neither (counted)
+    pull = _pull()
+    monkeypatch.setattr(pull, "WORK", tmp_path)
+    monkeypatch.setattr(pull, "painted", lambda src, dest, quads: True)
+    fetch = lambda dest: True
+    for side in ("train", "exam"):
+        g = _group_on(pull, side)
+        folders = [(f"attempts/new/lab/2026-10-24/{g}", {"id": g, "group": g, "outcome": "retaken", "edgesModel": A}, [], fetch),
+                   (f"attempts/new/lab/2026-10-24/{g}-b", {"id": f"{g}-b", "group": g, "outcome": "kept", "edgesModel": A2,
+                                                            "edgesFixed": A}, [], fetch)]   # its corners moved: a human label
+        out = []
+        pulled = pull.attempt_examples(out, folders)
+        hard, kept = out
+        assert hard["hard"] and not kept["hard"] and hard["group"] == kept["group"] == g and hard["key"] == kept["key"]
+        if side == "train":
+            assert pulled["train"] == [d for d, _, _, _ in folders] and pulled["exam"] == []
+            assert hard["exam"] is False and hard["split"] == "none" and pulled["hardLeftOut"] == 1   # not in the exam, counted
+            assert kept["exam"] is False and kept["split"] == "train"
+        else:
+            assert pulled["exam"] == [d for d, _, _, _ in folders] and pulled["train"] == [] and pulled["hardLeftOut"] == 0
+            assert hard["exam"] is True and kept["exam"] is True
+
+
+def test_a_saved_worker_keys_the_whole_retake_group_and_a_kept_exam_group_keeps_its_new_retakes(tmp_path, monkeypatch):
+    pull = _pull()
+    monkeypatch.setattr(pull, "WORK", tmp_path)
+    monkeypatch.setattr(pull, "painted", lambda src, dest, quads: True)
+    fetch = lambda dest: True
+    g = _group_on(pull, "train")
+    saved = [{"outcome": "saved", "workerId": "W1"}]   # only the kept retake was told the worker's id
+    folders = [("attempts/new/site/d/a1", {"id": "a1", "group": g, "outcome": "retaken", "edgesModel": A}, [], fetch),
+               ("attempts/new/site/d/a2", {"id": "a2", "group": g, "outcome": "kept", "edgesModel": A2, "edgesFixed": A}, saved, fetch)]
+    keys = pull.attempt_keys(folders)
+    assert keys["attempts/new/site/d/a1"] == keys["attempts/new/site/d/a2"] == pull.split_key({"workerId": "W1"})
+    # a group kept as the exam before (attempts/exam/): its new retakes go to the exam too, whatever their hash
+    out = []
+    pulled = pull.attempt_examples(out, folders[1:], exam_keys=frozenset({keys["attempts/new/site/d/a2"]}), keys=keys)
+    assert pulled["exam"] == ["attempts/new/site/d/a2"] and out[0]["exam"] is True
+
+
+# ---------- self labels and a page lying on another (Training 8) ----------
+def test_self_is_set_only_when_no_corner_was_moved():
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": A, "edgesMore": [B], "edgesMoreFixed": [C]})
+    assert [x["self"] for x in ex] == [True, False]            # page 0 untouched: the model's own corners; page 1 moved
+    ex = attempts.examples_of({"outcome": "kept", "edgesModel": A, "edgesFixed": A2})
+    assert ex[0]["self"] is False and ex[0]["target"] == A2
+    assert attempts.examples_of({"outcome": "kept", "edgesModel": A, "edgesMore": [B], "deletedPages": [1]})[1]["self"] is False   # a deletion is a human act
+    assert attempts.examples_of({"outcome": "retaken", "edgesModel": A})[0]["self"] is False                   # hard: no target at all
+
+
+def test_a_self_label_weighs_little_and_is_never_the_exams(tmp_path, monkeypatch):
+    pull = _pull()
+    monkeypatch.setattr(pull, "WORK", tmp_path)
+    monkeypatch.setattr(pull, "painted", lambda src, dest, quads: True)
+    fetch = lambda dest: True
+    for side in ("train", "exam"):
+        g = _group_on(pull, side)
+        out = []
+        pulled = pull.attempt_examples(out, [(f"attempts/new/site/d/{g}", {"id": g, "group": g, "outcome": "kept", "edgesModel": A,
+                                                                          "edgesMore": [B], "edgesMoreFixed": [C]}, [], fetch)])
+        own, moved = out
+        assert own["self"] and own["weight"] <= 0.3 and not moved["self"] and moved["weight"] == 1.0
+        if side == "train":
+            assert own["split"] == "train" and pulled["selfLeftOut"] == 0      # trained on, lightly
+        else:
+            assert own["exam"] is False and own["split"] == "none" and pulled["selfLeftOut"] == 1   # never scores the model against itself
+            assert moved["exam"] is True
+    # a kept record's sampled right page (moved below MOVED_MIN) is self too
+    recs = [("r1", {"image": "x.jpg", "edgesModel": A, "edgesFixed": A, "moved": 0.001}, lambda p, d: True),
+            ("r2", {"image": "x.jpg", "edgesModel": A, "edgesFixed": A2, "moved": 0.02}, lambda p, d: True)]
+    r1, r2 = pull.record_examples(recs, {})
+    assert r1["self"] and r1["weight"] <= 0.3 and not r2["self"] and r2["weight"] == 1.0
+
+
+def _sheet_and_card(tmp_path):
+    """A photo (600 × 400) with a sheet and an ID card lying on it, and a red dot at the card's first corner."""
+    import cv2
+    import numpy as np
+    img = np.full((400, 600, 3), 90, np.uint8)
+    sheet = [[0.15, 0.1], [0.85, 0.12], [0.83, 0.9], [0.17, 0.88]]
+    card = [[0.35, 0.45], [0.65, 0.46], [0.64, 0.7], [0.36, 0.69]]
+    cv2.fillPoly(img, [np.array([[x * 600, y * 400] for x, y in sheet], np.int32)], (235, 235, 235))
+    cv2.fillPoly(img, [np.array([[x * 600, y * 400] for x, y in card], np.int32)], (180, 140, 120))
+    cv2.circle(img, (round(card[0][0] * 600), round(card[0][1] * 400)), 4, (0, 0, 255), -1)
+    f = tmp_path / "photo.png"
+    cv2.imwrite(str(f), img)
+    return f, sheet, card
+
+
+def test_a_sheet_and_the_card_on_it_never_give_two_answers_on_the_same_photo(tmp_path, monkeypatch):
+    import cv2
+    import numpy as np
+    pull = _pull()
+    photo, sheet, card = _sheet_and_card(tmp_path)
+    monkeypatch.setattr(pull, "WORK", tmp_path)
+    (tmp_path / "img").mkdir()
+    fetch = lambda dest: bool(pathlib.Path(dest).write_bytes(photo.read_bytes()))
+    card_fixed = [[0.351, 0.452], [0.65, 0.46], [0.64, 0.7], [0.36, 0.69]]
+    out = []
+    pull.attempt_examples(out, [("attempts/new/lab/d/s1", {"id": "s1", "group": "s1", "outcome": "kept", "edgesModel": sheet,
+                                                          "edgesMore": [card], "edgesMoreFixed": [card_fixed]}, [], fetch)])
+    pictures = {}
+    for e in out:
+        content = pathlib.Path(e["file"]).read_bytes()
+        pictures.setdefault(content, set()).add(json.dumps(e["fixed"]))
+    assert all(len(t) == 1 for t in pictures.values())        # no picture carries two different answers
+    s, c = out
+    assert not s.get("inside") and c["inside"] and c["self"] is False
+    cut = cv2.imread(c["file"])
+    from gen import phone
+    W, H, _ = phone.warp_size(600, 400, sheet)
+    assert cut.shape[:2] == (H, W)                             # the sheet's flat cut, not turned
+    # the card's corners in the cut's 0..1 frame: back on the photo by unwarp, and the red dot where its first corner is
+    back = phone.unwarp(sheet, c["fixed"])
+    assert np.abs(np.array(back) - np.array(card_fixed)).max() < 1e-5
+    back_model = phone.unwarp(sheet, c["model"])
+    assert np.abs(np.array(back_model) - np.array(card)).max() < 1e-5
+    x, y = c["model"][0][0] * W, c["model"][0][1] * H
+    px = cut[int(y), int(x)]
+    assert px[2] > 200 and px[0] < 80 and px[1] < 80
+
+
+def test_the_flat_cut_mapping_is_the_inverse_of_unwarp():
+    pull = _pull()
+    from gen import phone
+    outer = [[0.1, 0.05], [0.9, 0.1], [0.95, 0.95], [0.05, 0.9]]
+    pts = [[0.3, 0.3], [0.6, 0.32], [0.62, 0.6], [0.31, 0.58]]
+    got = pull.into_cut(outer, pts)
+    assert all(0 < v < 1 for p in got for v in p)
+    back = phone.unwarp(outer, got)
+    assert max(abs(a - b) for p, q in zip(back, pts) for a, b in zip(p, q)) < 1e-5
+    assert pull.into_cut(outer, [[0.1, 0.05], [0.95, 0.95]]) == [[0.0, 0.0], [1.0, 1.0]]
+    assert pull.into_cut(outer, None) is None

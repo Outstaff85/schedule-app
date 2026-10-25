@@ -38,6 +38,7 @@ def test_kinds_by_folder():
     assert midv.kind_of("photo/aze_passport/00.jpg") == "passport"
     assert midv.kind_of("39_rus_internalpassport/images/TS") == "passport"
     assert midv.kind_of("48_usa_passportcard/x") == "id_front" and midv.kind_of("alb_id/00.jpg") == "id_front"
+    assert midv.kind_of("21_esp_drvlic/images/TS") == "other"   # a driving licence: "other", like the owner's (the class table)
 
 
 _sd = importlib.util.spec_from_file_location("smartdoc", HERE / "smartdoc.py")
@@ -127,6 +128,15 @@ def test_the_edges_exam_keeps_whole_documents_apart():
     sd = lambda doc: {"id": f"smartdoc-background03-{doc}-frame_0012", "smartdoc": True}
     assert midv.open_exam(sd("tax005")) and midv.open_exam(sd("datasheet005")) and not midv.open_exam(sd("tax004"))
     assert not midv.open_exam({"id": "a-user-page-80", "exam": False})   # the users' own exam is pull.py's
+    # a clip's frames by their clip's document (its folder), not by the frame number at the end of the id
+    clip = {"id": "midv-midv-2020-clips-images-alb_id-85-000013", "midv": True, "source": "midv-2020/clips"}
+    assert midv.open_exam(clip) and not midv.open_exam({**clip, "id": "midv-midv-2020-clips-images-alb_id-07-000013"})
+    assert midv.open_exam({**clip, "doc_no": "85"}) and not midv.open_exam({**clip, "doc_no": "07"})   # build() keeps doc_no
+    p = pathlib.Path
+    assert midv.doc_number(p("midv-2020/clips/images/alb_id/85/000013.jpg"), p("raw/midv-2020/clips/annotations/alb_id/85.json"),
+                           p("raw/midv-2020/clips/images/alb_id/85/000013.jpg")) == "85"
+    assert midv.doc_number(p("midv-2020/photo/images/alb_id/07.jpg"), p("raw/midv-2020/photo/annotations/alb_id.json"),
+                           p("raw/midv-2020/photo/images/alb_id/07.jpg")) == "07"
 
 
 def test_the_work_folder_can_be_on_another_disk(monkeypatch, tmp_path):
@@ -180,3 +190,52 @@ def test_the_edges_exam_takes_any_first_corner():
     assert df.quad_error(right[1:] + right[:1], right) == 0.0
     assert df.quad_error([[0.51, 0.1], [0.9, 0.5], [0.5, 0.9], [0.1, 0.5]], right) < 0.011
     assert df.quad_error(right[::-1], right) > 0.5
+
+
+def test_documents_70_to_79_are_the_zone_readers_real_check_neither_trained_nor_the_exam():
+    assert midv_mrz.is_select("70") and midv_mrz.is_select("79") and not midv_mrz.is_select("69") and not midv_mrz.is_select("80")
+    assert not any(midv_mrz.is_exam(str(n)) for n in range(70, 80))
+    assert midv_mrz.SELECT_FROM == 70 < midv_mrz.EXAM_FROM == 80
+
+
+def test_the_zone_reader_keeps_the_weights_best_on_the_real_lines_first(tmp_path):
+    import pytest
+    pytest.importorskip("torch")
+    spec = importlib.util.spec_from_file_location("train_mrz_t7", HERE / "train_mrz.py")
+    tm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tm)
+    # real lines right first, then the made-up ones, then fewer characters wrong
+    assert tm.score((0.8, 0.1), (0.90, 0.02)) > tm.score((0.7, 0.1), (0.99, 0.01))
+    assert tm.score(None, (0.95, 0.02)) == (-1.0, 0.95, -0.02)
+    # an old best.pt better on made-up lines only does not throw away a run better on the real ones (both scored today)
+    old, new = tm.score((0.60, 0.2), (0.97, 0.01)), tm.score((0.75, 0.1), (0.93, 0.02))
+    assert not tm.keep_old(old, new) and tm.keep_old(new, old) and not tm.keep_old(None, new)
+    rep = tm.train_report(0.9, 0.02, (0.75, 0.1), [1] * 10, [1] * 3, [1] * 4, True, {"at": "2026-10-20"}, 0.93, 1914, 1e-5)
+    assert rep["keptOld"] is True and rep["keptFrom"] == "2026-10-20" and rep["newRunLinesRight"] == 0.93
+    assert rep["realLinesRight"] == 0.75 and rep["midvLines"] == 1914 and rep["realCheckLines"] == 4
+    rep = tm.train_report(0.9, 0.02, None, [1], [1], [], False, None, 0.9, 0, 0.0)
+    assert rep["keptOld"] is False and rep["keptFrom"] is None and rep["realLinesRight"] is None
+    # best.pt from before the split (midv_mrz.py trained on 00–79) learned the select lines: it records no selectFrom
+    legacy = {"weights": {}, "acc": 0.97, "at": "2026-10-22"}
+    old_midv = {"weights": {}, "args": {"midv": True}, "midvLines": 1914, "at": "2026-10-23"}
+    clean = {"weights": {}, "selectFrom": midv_mrz.SELECT_FROM, "at": "2026-10-24"}
+    assert not tm.select_clean(legacy) and not tm.select_clean(old_midv) and tm.select_clean(clean) and not tm.select_clean(None)
+    assert not tm.select_clean({"selectFrom": midv_mrz.SELECT_FROM - 10})   # another split: not the select set of today
+    # it is compared on the made-up lines only, so it never wins on the real check against a run that has one
+    before = tm.score_old(legacy, (0.99, 0.0), (0.97, 0.01))
+    assert before == (-1.0, 0.97, -0.01) and not tm.keep_old(before, tm.score((0.40, 0.3), (0.90, 0.02)))
+    assert tm.score_old(clean, (0.99, 0.0), (0.97, 0.01)) == (0.99, 0.97, -0.01)
+    # a run decided on the real check never starts from it, nor goes on with a last.pt that did: --fresh once
+    import pytest as _pt
+    with _pt.raises(SystemExit, match="--fresh"):
+        tm.check_start(legacy, True, False)
+    with _pt.raises(SystemExit, match="--fresh"):
+        tm.check_start(clean, True, False, last={"epoch": 3})
+    assert tm.check_start(legacy, True, True) is True              # --fresh: random weights, clean
+    assert tm.check_start(None, True, False) is True               # nothing saved: random weights
+    assert tm.check_start(clean, True, False) is True
+    assert tm.check_start(legacy, False, False) is False           # no real check: allowed, the new weights stay marked
+    assert tm.check_start(legacy, True, True, last={"selectFrom": midv_mrz.SELECT_FROM}) is True
+    # a phone-cut zone line found on the wrong place (find_ok 0) is left out of a labels.tsv
+    (tmp_path / "labels.tsv").write_text("a.png\tLINE1\tcut-1\t1\nb.png\tLINE2\tcut-1\t0\nc.png\tLINE3\n", encoding="utf-8")
+    assert [t for _, t in tm.load(tmp_path)] == ["LINE1", "LINE3"]

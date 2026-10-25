@@ -108,7 +108,13 @@ function oldContext(extra = {}) {
 const PAGE_FNS = ['quadArea', 'quadConvex', 'inQuad', 'quadIoU', 'docShape', 'findInside', 'photosOnPage', 'whiteEdges', 'mrzFind', 'mrzRead', 'mrzNote',
   'heLogical', 'heIdOk', 'heLine', 'heRead', 'restartSteady', 'smoothen', 'failKind', 'noteFail', 'showFails'];
 const PAGE_LINES = ['const STEADY_MS', 'const HOLD', 'let smooth', 'let anchor', 'const farthest', 'const WHOLE_PAGE', 'const MAX_DOCS', 'const goodQuad', 'const MRZ_CHARS', 'const HE_CHARS', 'const DOCTYPE_NAMES', 'const FAIL_KEY'];
-const PAGE_CODE = PAGE_LINES.map(lineSource).join('\n') + '\nvar mrzSess = null, heSess = null, heLayouts = null;\n' + PAGE_FNS.map(fnSource).join('\n') +
+// heLine with the field margins the training set after the freeze (readers.ts HE_MX / HE_MY = hemodel.py MARGIN_X /
+// MARGIN_Y): the frozen lab's 1.5 % / 25 % margins replaced by them, the rest of it as it stood.
+const HE_MARGINS = [['(bx - 0.015 * bw)', '(bx - 0.22 * bw)'], ['(by - 0.25 * bh)', '(by - 0.7 * bh)'], ['(bx + bw * 1.015)', '(bx + bw * (1 + 0.22))'], ['(by + bh * 1.25)', '(by + bh * (1 + 0.7))']];
+const pageFn = name => (name !== 'heLine' ? fnSource(name) : HE_MARGINS.reduce((src, [a, b]) => {
+  assert.ok(src.includes(a), 'the frozen heLine has no ' + a); return src.replace(a, b);
+}, fnSource(name)));
+const PAGE_CODE = PAGE_LINES.map(lineSource).join('\n') + '\nvar mrzSess = null, heSess = null, heLayouts = null;\n' + PAGE_FNS.map(pageFn).join('\n') +
   '\nfunction oldFollow(r) {\n' + lineSource('      if (smooth) smooth = r.apply(smooth);') + '\n' + lineSource('      if (r.moved > JERK') + '\n}' +
   '\nfunction oldHint(raw, res) { const missing = raw.pts.filter(p => !p).length; const el = {}; const $ = () => el;\n' +
   stmtSource("$('hint').textContent = missing ?", "'Found';") + '\nreturn el.textContent; }' +

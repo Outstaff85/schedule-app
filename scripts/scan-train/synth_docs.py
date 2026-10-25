@@ -19,6 +19,10 @@ Some photos teach the other cases the site's examples teach: the first document 
 over in the border's colour (as the next document search sees it — pull.painted) and "nothing
 here" (no document; empty maps, as a deleted page).
 
+The background photos follow the bank's sides (gen/backgrounds.py, when the folder has its catalog.json): a
+training run lays documents only on usable training-side photos, --exam only on exam-side ones (none yet: procedural
+surfaces only) — background_photos.
+
 Run on the owner's PC before train.py --synth; nothing is uploaded — the same seed draws the same
 photos again, so only this script is kept.
 
@@ -29,18 +33,26 @@ photos again, so only this script is kept.
   python synth_docs.py --templates --exam                    # the exam photos of the real pages kept apart (exam.py)
 
 Writes <out>/img/<n>.jpg (the long side 640) and <out>/examples.json in pull.py's form (fixed:
-the corners 0..1, top-left first clockwise as the model gives them; null: nothing here).
+the corners 0..1, top-left first clockwise as the model gives them; null: nothing here; a real page
+answered also names it, "template": a short sha1 of its kind folder and file name, page_id, "templateSha1" its
+content sha1, "templatePath" its kind folder / file name on this PC, "templates" the content sha1s of every real
+page laid on the photo (the answer's, a pair's second card, a painted-over document: train.py checks them all); "upright": the index in fixed of the document's
+own top-left, and "doc": the same corners in the document's own order — its top-left first — so exam_doctypes.py
+cuts the page upright). This script is a thin wrapper over `python -m gen build --model edges` (gen/build.py): the
+set's folder also gets manifest.jsonl and run.json (docs/scan-training.md → "Made-up sets: build, verify, QA").
 Needs: pip install -r requirements-synth.txt."""
-import argparse
+import hashlib
 import json
 import pathlib
-import random
 
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 import synth
+from gen import rng as grng
+from gen.common import file_sha1, fonts_for, label, record_own_exam_set
+from gen.manifest import FontLog
 from home import WORK, gentle
 from synth_lines import hebrew_fonts
 
@@ -59,7 +71,7 @@ NONE_SHARE, PAINTED_SHARE = 0.05, 0.1
 PAIR_SHARE, PAIR_ON = 0.15, 0.6
 SHEETS = ("sefach", "insert")
 TEMPLATES = WORK / "templates"   # deleted by clean / publish
-TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence")   # a licence: "other" to the page kinds
+TEMPLATE_KINDS = ("id_front", "id_back", "passport", "sefach", "insert", "licence", "contract", "other")   # a licence: "other" to the page kinds
 WIDTH = {"id_front": 85.6, "id_back": 85.6, "licence": 85.6, "passport": 125.0}  # mm; a sheet keeps its own size
 CARDS = ("id_front", "id_back", "licence")   # ID-1 cards: rounded corners, a laminate's glare
 WIN_LATIN = ("arial.ttf", "arialbd.ttf", "times.ttf", "calibri.ttf", "verdana.ttf", "tahoma.ttf", "segoeui.ttf")
@@ -76,7 +88,12 @@ def latin_fonts():
 
 class Fonts:
     def __init__(self, latin, hebrew):
-        self.latin, self.hebrew, self.cache = latin, hebrew, {}
+        # FontLog: the fonts picked are remembered for the manifest (gen/manifest.py), not one draw changed
+        self.latin, self.hebrew, self.cache = FontLog(latin), FontLog(hebrew), {}
+
+    def used(self):
+        """The fonts picked since the last call (one example's)."""
+        return sorted(set(self.latin.take()) | set(self.hebrew.take()))
 
     def get(self, which, size, rng):
         path = rng.choice(self.latin if which == "latin" else self.hebrew) if which != "mrz" else str(OCRB)
@@ -95,6 +112,44 @@ def put(d, xy, s, font, fill, rtl=False):
     else:
         from bidi.algorithm import get_display
         d.text(xy, get_display(s), font=font, fill=fill, anchor="ra")
+
+
+def text_box(d, xy, s, font, rtl=False):
+    """The box (x, y, w, h) put(d, xy, s, font, …, rtl) inks — measured, nothing drawn, no draw of the stream."""
+    if not rtl:
+        b = d.textbbox(xy, s, font=font)
+    elif RTL:
+        b = d.textbbox(xy, s, font=font, direction="rtl", anchor="ra")
+    else:
+        from bidi.algorithm import get_display
+        b = d.textbbox(xy, get_display(s), font=font, anchor="ra")
+    return (int(b[0]), int(b[1]), max(1, int(b[2] - b[0])), max(1, int(b[3] - b[1])))
+
+
+class Drawn(tuple):
+    """A drawn document: it unpacks as (RGBA, rect) as always — rect the document's own part of the picture (a
+    passport's data page under the booklet's other page) — and also carries what gen/pages.py needs: .fields
+    [(role, text, box)] (box: the text's (x, y, w, h) in the picture's pixels, or its four corners when a fold's bow
+    moved it), .mrz the zone's two lines (a passport) or None, .face the holder's photo's box or None, and .quad the
+    document's corners in the picture, its own top-left first."""
+
+    def __new__(cls, im, rect, fields=(), mrz=None, face=None):
+        t = super().__new__(cls, (im, rect))
+        t.fields, t.mrz, t.face = list(fields), mrz, face
+        x0, y0, x1, y1 = rect
+        t.quad = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+        return t
+
+
+# a printed label → the field's role (gen/pages.py: the field reader's kinds)
+ROLES = {"שם משפחה": "surname", "שם פרטי": "given", "תאריך לידה": "dob", "מספר זהות": "idNo", "כתובת": "address",
+         "מקום לידה": "birthplace", "תאריך הנפקה": "issued", "מין": "sex", "Surname": "surname", "Given names": "given",
+         "Nationality": "nationality", "Date of birth": "dob", "Sex": "sex", "Date of expiry": "expiry",
+         "Passport No.": "passportNo"}
+
+
+def _moved(boxes, dy=0):
+    return [(r, t, (b[0], b[1] + dy, b[2], b[3])) for r, t, b in boxes]
 
 
 # ---------- the flat documents ----------
@@ -145,20 +200,24 @@ def rounded(im, r):
     return im
 
 
-def fields(d, F, rng, x, y, w, rows, rtl, size, gap):
-    """Label / value pairs down a column (the labels small and grey)."""
+def fields(d, F, rng, x, y, w, rows, rtl, size, gap, boxes=None):
+    """Label / value pairs down a column (the labels small and grey); boxes (a list): each value's (role, text, box)
+    is added to it."""
     for label, value in rows:
         lf, vf = F.get("hebrew" if rtl else "latin", size // 2, rng), F.get("hebrew" if rtl else "latin", size, rng)
         xx = x + w if rtl else x
         put(d, (xx, y), label, lf, (90, 90, 100), rtl)
         put(d, (xx, y + size // 2 + 4), value, vf, (15, 15, 25), rtl)
+        if boxes is not None:
+            boxes.append((ROLES.get(label, "text"), value, text_box(d, (xx, y + size // 2 + 4), value, vf, rtl)))
         y += size + size // 2 + gap
     return y
 
 
-def he_value(rng, kind):
+def he_value(rng, kind, held=False):
+    """A Hebrew value of a kind; held: from the check vocabulary (synth.he_line)."""
     while True:
-        t, k = synth.he_line(rng)
+        t, k = synth.he_line(rng, held=held)
         if k == kind:
             return t
 
@@ -168,7 +227,7 @@ def date(rng, y0, y1):
     return f"{dd:02d}.{m:02d}.{y}"
 
 
-def id_front(rng, F):
+def id_front(rng, F, held=False):
     w, h = int(85.6 * PX), int(54 * PX)
     im = security_print(rng, w, h, pastel(rng))
     d = ImageDraw.Draw(im)
@@ -185,24 +244,25 @@ def id_front(rng, F):
         im.paste(Image.blend(g, Image.new("RGB", g.size, (235, 235, 235)), 0.6), (w // 2, h - ph // 3 - 20))
     tx0 = (px + pw + 30) if photo_left else 30
     tw = w - pw - 90
-    rows = [("שם משפחה", he_value(rng, "surname")), ("שם פרטי", he_value(rng, "given")),
+    rows = [("שם משפחה", he_value(rng, "surname", held)), ("שם פרטי", he_value(rng, "given", held)),
             ("תאריך לידה", date(rng, 1955, 2007)), ("מספר זהות", synth.israeli_id(rng))]
-    fields(d, F, rng, tx0, int(h * 0.22), tw, rows, True, rng.randint(26, 34), 6)
+    boxes = []
+    fields(d, F, rng, tx0, int(h * 0.22), tw, rows, True, rng.randint(26, 34), 6, boxes)
     if rng.random() < 0.6:
         d.rounded_rectangle((px + pw // 4, int(h * 0.82), px + pw // 4 + 90, int(h * 0.82) + 70), 10, fill=(205, 175, 90))
     put(d, (w // 2 - 120, h // 2), "SPECIMEN", F.get("latin", 60, rng), tuple((c + 3 * 230) // 4 for c in band))
-    return rounded(im, 3 * PX), (0, 0, w, h)
+    return Drawn(rounded(im, 3 * PX), (0, 0, w, h), boxes, None, (px, int(h * 0.25), pw, ph))
 
 
-def id_back(rng, F):
+def id_back(rng, F, held=False):
     w, h = int(85.6 * PX), int(54 * PX)
     im = security_print(rng, w, h, pastel(rng))
     d = ImageDraw.Draw(im)
-    y = 30
+    y, boxes = 30, []
     for label in ("כתובת", "מקום לידה", "תאריך הנפקה", "מין"):
-        v = {"כתובת": f"{he_value(rng, 'street')}, {he_value(rng, 'city')}", "מקום לידה": he_value(rng, "city"),
+        v = {"כתובת": f"{he_value(rng, 'street', held)}, {he_value(rng, 'city', held)}", "מקום לידה": he_value(rng, "city", held),
              "תאריך הנפקה": date(rng, 2010, 2025), "מין": rng.choice(("זכר", "נקבה"))}[label]
-        y = fields(d, F, rng, 30, y, w - 60, [(label, v)], True, rng.randint(24, 30), 4)
+        y = fields(d, F, rng, 30, y, w - 60, [(label, v)], True, rng.randint(24, 30), 4, boxes)
     if rng.random() < 0.7:   # a barcode-like strip
         x, bw = 40, rng.randint(300, 500)
         while x < 40 + bw:
@@ -212,13 +272,17 @@ def id_back(rng, F):
     else:                    # or three lines of a card's zone
         mf = F.get("mrz", 34, rng)
         for k in range(3):
-            put(d, (30, h - 150 + k * 42), "".join(rng.choice(synth.MRZ_CHARS) for _ in range(30)), mf, (20, 20, 20))
-    return rounded(im, 3 * PX), (0, 0, w, h)
+            line = "".join(rng.choice(synth.MRZ_CHARS) for _ in range(30))
+            put(d, (30, h - 150 + k * 42), line, mf, (20, 20, 20))
+            boxes.append(("zone", line, text_box(d, (30, h - 150 + k * 42), line, mf)))
+    return Drawn(rounded(im, 3 * PX), (0, 0, w, h), boxes)
 
 
-def passport(rng, F):
+def passport(rng, F, held=False, fit=False):
     """The data page; often with the booklet's other page above it (the passport lies open): the
-    corners are the data page's only."""
+    corners are the data page's only. fit: the zone's font made small enough for its 44 characters to stay on the
+    page (gen/pages.py; synth_docs.py's own photos keep today's size, whose zone runs past the page's right edge, so a
+    set drawn before is drawn again byte for byte — the mrz font takes no draw of the stream either way)."""
     w, h = int(125 * PX), int(88 * PX)
     im = security_print(rng, w, h, pastel(rng, (215, 245)))
     d = ImageDraw.Draw(im)
@@ -231,15 +295,24 @@ def passport(rng, F):
             ("Date of birth", f["dob"]), ("Sex", f["sex"] or "X"), ("Date of expiry", f["expiry"]), ("Passport No.", f["passportNo"])]
     sz = rng.randint(24, 30)
     half = (len(rows) + 1) // 2
-    fields(d, F, rng, pw + 80, 80, 0, rows[:half], False, sz, 4)
-    fields(d, F, rng, pw + 80 + int(w * 0.3), 80, 0, rows[half:], False, sz, 4)
+    boxes = []
+    fields(d, F, rng, pw + 80, 80, 0, rows[:half], False, sz, 4, boxes)
+    fields(d, F, rng, pw + 80 + int(w * 0.3), 80, 0, rows[half:], False, sz, 4, boxes)
     zone = int(h * 0.24)
     d.rectangle((0, h - zone, w, h), fill=pastel(rng, (225, 250)))
     mf = F.get("mrz", int(w / 44 * 1.55), rng)
+    if fit:
+        size = int(w / 44 * 1.55)
+        while size > 10 and max(text_box(d, (36, 0), l, mf)[2] for l in (l1, l2)) > w - 72:
+            size -= 1
+            mf = F.get("mrz", size, rng)
     put(d, (36, h - zone + 20), l1, mf, (20, 20, 20))
     put(d, (36, h - zone + 20 + int(zone * 0.42)), l2, mf, (20, 20, 20))
+    boxes += [("mrz1", l1, text_box(d, (36, h - zone + 20), l1, mf)),
+              ("mrz2", l2, text_box(d, (36, h - zone + 20 + int(zone * 0.42)), l2, mf))]
+    face = (40, 80, pw, ph)
     if rng.random() < 0.35:
-        return im.convert("RGBA"), (0, 0, w, h)
+        return Drawn(im.convert("RGBA"), (0, 0, w, h), boxes, (l1, l2), face)
     hu = int(h * rng.uniform(0.6, 1.0))   # the other page, part of it in the photo
     top = security_print(rng, w, hu, pastel(rng, (220, 248)))
     td = ImageDraw.Draw(top)
@@ -255,7 +328,7 @@ def passport(rng, F):
     for k in range(10):                   # the gutter's fold
         c = 150 + k * 9
         bd.line((0, hu - 5 + k, w, hu - 5 + k), fill=(c, c, c))
-    return book.convert("RGBA"), (0, hu, w, hu + h)
+    return Drawn(book.convert("RGBA"), (0, hu, w, hu + h), _moved(boxes, hu), (l1, l2), (face[0], face[1] + hu, face[2], face[3]))
 
 
 def paper(rng, w, h):
@@ -266,7 +339,7 @@ def paper(rng, w, h):
     return im
 
 
-def sefach(rng, F):
+def sefach(rng, F, held=False):
     """The ספח: a printed form on paper, folded; the part photographed varies in shape."""
     w = int(rng.uniform(140, 210) * PX)
     h = int(w / rng.uniform(0.65, 1.6))
@@ -274,9 +347,10 @@ def sefach(rng, F):
     d = ImageDraw.Draw(im)
     sz = rng.randint(22, 30)
     put(d, (w - 40, 30), rng.choice(("ספח לתעודת זהות", "ספח", "פרטים אישיים")), F.get("hebrew", sz + 8, rng), (30, 30, 60), True)
-    y = fields(d, F, rng, 40, 90, w - 80, [("שם משפחה", he_value(rng, "surname")), ("שם פרטי", he_value(rng, "given")),
-                                         ("מספר זהות", synth.israeli_id(rng)), ("כתובת", f"{he_value(rng, 'street')} {he_value(rng, 'city')}")],
-               True, sz, 8)
+    boxes = []
+    y = fields(d, F, rng, 40, 90, w - 80, [("שם משפחה", he_value(rng, "surname", held)), ("שם פרטי", he_value(rng, "given", held)),
+                                         ("מספר זהות", synth.israeli_id(rng)), ("כתובת", f"{he_value(rng, 'street', held)} {he_value(rng, 'city', held)}")],
+               True, sz, 8, boxes)
     rows = rng.randint(2, 6)              # a table: children / spouse
     cols = (0.3, 0.55, 0.8, 1.0)
     for r in range(rows + 1):
@@ -284,18 +358,28 @@ def sefach(rng, F):
         if yy > h - 40:
             break
         d.line((40, yy, w - 40, yy), fill=(80, 80, 90), width=2)
-        if r:
-            put(d, (w - 50, yy - sz - 12), he_value(rng, "given"), F.get("hebrew", sz, rng), (20, 20, 30), True)
-            put(d, (int(w * 0.5), yy - sz - 12), synth.israeli_id(rng), F.get("latin", sz, rng), (20, 20, 30))
-            put(d, (60, yy - sz - 12), date(rng, 1995, 2024), F.get("latin", sz, rng), (20, 20, 30))
+        if r:   # the same draws in the same order as always: the value, then its font
+            t = he_value(rng, "given", held)
+            f = F.get("hebrew", sz, rng)
+            put(d, (w - 50, yy - sz - 12), t, f, (20, 20, 30), True)
+            boxes.append(("childGiven", t, text_box(d, (w - 50, yy - sz - 12), t, f, True)))
+            t = synth.israeli_id(rng)
+            f = F.get("latin", sz, rng)
+            put(d, (int(w * 0.5), yy - sz - 12), t, f, (20, 20, 30))
+            boxes.append(("childId", t, text_box(d, (int(w * 0.5), yy - sz - 12), t, f)))
+            t = date(rng, 1995, 2024)
+            f = F.get("latin", sz, rng)
+            put(d, (60, yy - sz - 12), t, f, (20, 20, 30))
+            boxes.append(("childDob", t, text_box(d, (60, yy - sz - 12), t, f)))
     for c in cols:
         x = 40 + int((w - 80) * c)
         d.line((x, y, x, min(h - 40, y + rows * (sz + 18))), fill=(80, 80, 90), width=2)
     put(d, (60, h - 60), "SPECIMEN", F.get("latin", 30, rng), (150, 80, 80))
-    return folded(rng, im).convert("RGBA"), (0, 0, w, h)
+    bow = {}
+    return Drawn(folded(rng, im, bow).convert("RGBA"), (0, 0, w, h), bowed(boxes, bow))
 
 
-def insert(rng, F):
+def insert(rng, F, held=False):
     """A loose sheet put into a passport (a form, a residence notice): a passport page's size or a
     little bigger, printed, sometimes a stamp."""
     w = int(rng.uniform(120, 150) * PX)
@@ -304,26 +388,30 @@ def insert(rng, F):
     d = ImageDraw.Draw(im)
     rtl = rng.random() < 0.6
     sz = rng.randint(22, 30)
-    y = 40
+    y, boxes = 40, []
     for _ in range(rng.randint(5, 14)):
         if y > h - 60:
             break
         n = rng.randint(2, 7)
         if rtl:
-            s = " ".join(he_value(rng, rng.choice(("given", "surname", "city", "street"))) for _ in range(n // 2 + 1))
+            s = " ".join(he_value(rng, rng.choice(("given", "surname", "city", "street")), held) for _ in range(n // 2 + 1))
         else:
             s = " ".join(rng.choice(synth.SURNAMES + synth.GIVEN) for _ in range(n))
-        put(d, (w - 40 if rtl else 40, y), s, F.get("hebrew" if rtl else "latin", sz, rng), (25, 25, 35), rtl)
+        f = F.get("hebrew" if rtl else "latin", sz, rng)
+        put(d, (w - 40 if rtl else 40, y), s, f, (25, 25, 35), rtl)
+        boxes.append(("text", s, text_box(d, (w - 40 if rtl else 40, y), s, f, rtl)))
         y += sz + rng.randint(10, 26)
     if rng.random() < 0.6:
         cx, cy, r = rng.randint(120, w - 120), rng.randint(120, h - 120), rng.randint(60, 110)
         d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(60, 70, 150), width=5)
     put(d, (40, h - 50), "SPECIMEN", F.get("latin", 26, rng), (150, 80, 80))
-    return folded(rng, im).convert("RGBA"), (0, 0, w, h)
+    bow = {}
+    return Drawn(folded(rng, im, bow).convert("RGBA"), (0, 0, w, h), bowed(boxes, bow))
 
 
-def folded(rng, im):
-    """Paper as photographed: its fold lines and a gentle bow (the corners stay where they are)."""
+def folded(rng, im, bow=None):
+    """Paper as photographed: its fold lines and a gentle bow (the corners stay where they are); bow (a dict) gets
+    the bow's amplitude and the picture's size when there is one (unbow: where a point of the flat page went)."""
     a = np.asarray(im).astype(np.float32)
     h, w = a.shape[:2]
     for _ in range(rng.randint(0, 2)):
@@ -341,7 +429,34 @@ def folded(rng, im):
         dy = amp * h * np.sin(np.pi * xs / w) * np.sin(np.pi * ys / h)   # zero on the sides: the corners stay
         dx = amp * w * 0.5 * np.sin(np.pi * ys / h) * np.sin(2 * np.pi * xs / w)
         a = cv2.remap(a, xs + dx, ys + dy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        if bow is not None:
+            bow.update(amp=float(amp), w=w, h=h)
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+
+
+def unbow(bow, pts):
+    """Where points of the flat page (x, y in pixel edges) lie after folded()'s bow: remap shows at q what lay at
+    q + d(q) (q pixel centres), so a point p lands where q + d(q) = p (a few fixed-point steps; the bow is gentle)."""
+    if not bow:
+        return [[float(x), float(y)] for x, y in pts]
+    amp, w, h = bow["amp"], bow["w"], bow["h"]
+    out = []
+    for x, y in pts:
+        px, py = x - 0.5, y - 0.5          # pixel edges → the centres remap works in
+        qx, qy = px, py
+        for _ in range(12):
+            dy = amp * h * np.sin(np.pi * qx / w) * np.sin(np.pi * qy / h)
+            dx = amp * w * 0.5 * np.sin(np.pi * qy / h) * np.sin(2 * np.pi * qx / w)
+            qx, qy = px - dx, py - dy
+        out.append([float(qx + 0.5), float(qy + 0.5)])
+    return out
+
+
+def bowed(boxes, bow):
+    """Field boxes after folded()'s bow: a box the bow moved becomes its four corners (its top-left first, clockwise)."""
+    if not bow:
+        return boxes
+    return [(r, t, unbow(bow, [(x, y), (x + bw, y), (x + bw, y + bh), (x, y + bh)])) for r, t, (x, y, bw, bh) in boxes]
 
 
 def templates_in(folder):
@@ -410,19 +525,49 @@ DRAW = {"id_front": id_front, "id_back": id_back, "passport": passport, "sefach"
 
 # ---------- the photo ----------
 
-def background(rng, W, H, photos):
+def background(rng, W, H, photos, meta=None):
+    """The photo's ground: one of the background photos (cut at random) or a procedural surface; meta (a dict)
+    gets which ("bg": the photo's path, or "bgKind": the surface)."""
+    meta = {} if meta is None else meta
     if photos and rng.random() < 0.6:
-        img = cv2.imread(rng.choice(photos))
+        path = rng.choice(photos)
+        img = cv2.imread(path)
         if img is not None:
+            meta["bg"] = path
             h, w = img.shape[:2]
             s = max(W / w, H / h) * rng.uniform(1.0, 1.6)
             img = cv2.resize(img, (int(w * s) + 1, int(h * s) + 1), interpolation=cv2.INTER_AREA)
             y, x = rng.randint(0, img.shape[0] - H), rng.randint(0, img.shape[1] - W)
             return img[y:y + H, x:x + W].copy()
+    img = surface(rng, W, H, meta)
+    for _ in range(rng.randint(0, 3)):    # things lying about: a sheet, a phone, a pen
+        c = tuple(rng.randint(0, 255) for _ in range(3))
+        x, y = rng.randint(-W // 4, W), rng.randint(-H // 4, H)
+        if rng.random() < 0.3:
+            cv2.line(img, (x, y), (x + rng.randint(-300, 300), y + rng.randint(-300, 300)), c, rng.randint(4, 12))
+        else:
+            box = cv2.boxPoints(((x, y), (rng.randint(60, W // 3), rng.randint(60, H // 3)), rng.uniform(0, 90)))
+            cv2.fillPoly(img, [box.astype(np.int32)], c)
+    return img
+
+
+SURFACES = ("plain", "wood", "cloth", "check", "dark", "sheet")
+
+
+def surface(rng, W, H, meta=None, scale=1.0):
+    """A procedural surface W × H (BGR): plain, wood, cloth, check, dark or a sheet; meta gets "bgKind". scale: the
+    patterns' size in pixels times this (a surface drawn at more pixels per mm keeps the look of its patterns in mm:
+    gen/scene.py draws it at the frame's own resolution); 1 draws as always."""
+    meta = {} if meta is None else meta
+    k = float(scale)
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
-    kind = rng.choice(("plain", "wood", "cloth", "check", "dark", "sheet"))
+    kind = rng.choice(SURFACES)
+    meta["bgKind"] = kind
     col = np.array([rng.randint(30, 230) for _ in range(3)], np.float32)
-    noise = cv2.resize(np.random.default_rng(rng.randint(0, 1 << 30)).random((H // 16 + 1, W // 16 + 1)).astype(np.float32), (W, H))
+    cell = 16 if k == 1 else max(1, int(round(16 * k)))
+    noise = cv2.resize(np.random.default_rng(rng.randint(0, 1 << 30)).random((H // cell + 1, W // cell + 1)).astype(np.float32), (W, H))
+    if k != 1:
+        xs, ys = xs / k, ys / k   # the patterns below in the base pixels (PROC_PPM's)
     if kind == "wood":
         col = np.array(rng.choice(((60, 100, 150), (40, 70, 110), (90, 140, 190), (120, 160, 200))), np.float32)
         g = np.sin((ys * rng.uniform(0.02, 0.08) + 8 * noise) + np.sin(xs * 0.01) * 3) * 0.5 + 0.5
@@ -442,16 +587,7 @@ def background(rng, W, H, photos):
     else:
         img = np.ones((H, W, 3), np.float32) * col
     img = img * (0.85 + 0.3 * noise[..., None])
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    for _ in range(rng.randint(0, 3)):    # things lying about: a sheet, a phone, a pen
-        c = tuple(rng.randint(0, 255) for _ in range(3))
-        x, y = rng.randint(-W // 4, W), rng.randint(-H // 4, H)
-        if rng.random() < 0.3:
-            cv2.line(img, (x, y), (x + rng.randint(-300, 300), y + rng.randint(-300, 300)), c, rng.randint(4, 12))
-        else:
-            box = cv2.boxPoints(((x, y), (rng.randint(60, W // 3), rng.randint(60, H // 3)), rng.uniform(0, 90)))
-            cv2.fillPoly(img, [box.astype(np.int32)], c)
-    return img
+    return np.clip(img, 0, 255).astype(np.uint8)
 
 
 def lay(rng, img, doc, rect, quad, card):
@@ -526,41 +662,60 @@ def border_colour(img):
     return [int(v) for v in np.median(border, axis=0)]
 
 
+TEMPLATE_SHA1 = {}   # a real page's id → its content sha1 (the examples' templateSha1: train*.py checks it against heldout.json)
+TEMPLATE_PATH = {}   # a real page's id → its path (the examples' templatePath: kind folder / name, on this PC only)
+
+
+def page_id(path, kind):
+    """A real page's short id in the examples ("template"): a sha1 prefix of its kind folder and file name —
+    the exam reports per document (exam_doctypes.py byDocument) without copying a worker's file name."""
+    return hashlib.sha1(f"{kind}/{pathlib.Path(path).name}".encode("utf-8")).hexdigest()[:10]
+
+
 def document(rng, F, tpl, kinds=None):
-    """A document to lay: (RGBA, rect, kind, card) — a real page (tpl: (pages, share, sharp)) or a drawn one;
-    `kinds`: only these kinds (a sheet, a card)."""
+    """A document to lay: (RGBA, rect, kind, card, page id or None) — a real page (tpl: (pages, share, sharp))
+    or a drawn one; `kinds`: only these kinds (a sheet, a card)."""
     pages, share, sharp = tpl
     if kinds:
         pages = [pg for pg in pages if pg[1] in kinds]
     if pages and rng.random() < share:
         path, kind = rng.choice(pages)
         doc, rect = template(rng, F, path, kind, sharp)
-        return doc, rect, "template:" + kind, kind in CARDS
+        pid = page_id(path, kind)
+        TEMPLATE_SHA1[pid], TEMPLATE_PATH[pid] = file_sha1(path), path
+        return doc, rect, "template:" + kind, kind in CARDS, pid
     names = [k for k in KINDS if not kinds or k in kinds]
     kind = rng.choices(names, [KINDS[k] for k in names])[0]
     doc, rect = DRAW[kind](rng, F)
-    return doc, rect, kind, kind.startswith("id")
+    return doc, rect, kind, kind.startswith("id"), None
 
 
 def _area(q):
     return abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))) / 2
 
 
-def photo(rng, F, photos, tpl=((), 0, False)):
-    """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind)."""
+def photo(rng, F, photos, tpl=((), 0, False), meta=None):
+    """One made-up photo: (BGR image at LONG, the corners 0..1 or None, the kind, the real page's id or None,
+    the index in the corners of the document's own top-left or None). meta (a dict) gets what the manifest
+    records: the background, every real page laid ("laid": their ids), the scene and the camera's seed, and "doc" —
+    the answer's corners in the document's own order (its top-left first: the turn, exam_doctypes.py)."""
+    meta = {} if meta is None else meta
+    laid = meta.setdefault("laid", [])
     W, H = rng.choice(SIZES)
-    img = background(rng, W, H, photos)
+    img = background(rng, W, H, photos, meta)
     none = rng.random() < NONE_SHARE
     two = not none and rng.random() < PAINTED_SHARE   # another document found first, painted over
     pair = not none and not two and rng.random() < PAIR_SHARE   # a card on the sheet or beside it, both in sight
-    quad = painted = None
+    quad = painted = src = None
     if not none:
-        doc, rect, kind, card = document(rng, F, tpl, SHEETS if pair else None)
+        doc, rect, kind, card, src = document(rng, F, tpl, SHEETS if pair else None)
+        laid.append(src)
         quad = synth.scene_quad(rng, (rect[2] - rect[0]) / (rect[3] - rect[1]), W, H,
                                 fill=(0.15, 0.45) if two else (0.3, 0.7) if pair else (0.18, 0.8))
         none = quad is None
     if two and quad:
-        d2, r2, _, card2 = document(rng, F, tpl)
+        d2, r2, _, card2, s1 = document(rng, F, tpl)
+        laid.append(s1)
         for _ in range(10):
             q2 = synth.scene_quad(rng, (r2[2] - r2[0]) / (r2[3] - r2[1]), W, H, fill=(0.1, 0.3))
             if q2 and not _overlaps(quad, q2, W, H):
@@ -572,7 +727,8 @@ def photo(rng, F, photos, tpl=((), 0, False)):
         if rng.random() < 0.25:
             finger(rng, img, quad)
     if pair and quad:
-        d2, r2, k2, card2 = document(rng, F, tpl, CARDS)
+        d2, r2, k2, card2, s2 = document(rng, F, tpl, CARDS)
+        laid.append(s2)
         a1, a2 = (rect[2] - rect[0]) / (rect[3] - rect[1]), (r2[2] - r2[0]) / (r2[3] - r2[1])
         q2 = None
         if rng.random() < PAIR_ON:
@@ -586,19 +742,29 @@ def photo(rng, F, photos, tpl=((), 0, False)):
         if q2:
             lay(rng, img, d2, r2, q2, card2)
             if _area(q2) > _area(quad):   # the answer: the larger document, whole
-                quad, kind = q2, k2
+                quad, kind, src = q2, k2, s2
             kind += "+2"
     if painted:
         col = border_colour(img)
         for q in painted:
             cv2.fillPoly(img, [np.array(q, np.int32)], col)
     light(rng, img)
-    img = camera(rng.randint(0, 1 << 30))(image=img)["image"]
+    cam = rng.randint(0, 1 << 30)
+    img = camera(cam)(image=img)["image"]
     s = LONG / max(W, H)
     img = cv2.resize(img, (round(W * s), round(H * s)), interpolation=cv2.INTER_AREA)
+    meta["scene"] = {"size": [W, H], "none": bool(none), "painted": bool(painted), "pair": bool(pair)}
+    meta["camera"] = {"seed": cam}
     if none:
-        return img, None, "none"
-    return img, synth.order_corners([[x / W, y / H] for x, y in quad]), kind
+        return img, None, "none", None, None
+    meta["doc"] = [[x / W, y / H] for x, y in quad]   # the document's own order: its top-left first
+    fixed = synth.order_corners([[x / W, y / H] for x, y in quad])
+    return img, fixed, kind, src, upright_index(fixed, (quad[0][0] / W, quad[0][1] / H))
+
+
+def upright_index(fixed, top_left):
+    """Which of the ordered corners is the document's own top-left (the exam cuts the page upright by it)."""
+    return min(range(4), key=lambda i: (fixed[i][0] - top_left[0]) ** 2 + (fixed[i][1] - top_left[1]) ** 2)
 
 
 def _overlaps(a, b, W, H):
@@ -608,13 +774,31 @@ def _overlaps(a, b, W, H):
     return (m1 & m2).sum() > 0.02 * m1.sum()
 
 
+def rel_path(path):
+    """A real page's path as the examples name it: its kind folder / file name (on this PC only)."""
+    return "/".join(pathlib.Path(path).parts[-2:])
+
+
+def doc_class(kind):
+    """The page kind (gen.common.DOCTYPES) of a photo's answer, for the manifest and the QA sheet; "none" for no document."""
+    if kind == "none":
+        return "none"
+    k = kind.split("+")[0]
+    return label("template", k.split(":", 1)[1]) if k.startswith("template:") else label("drawn", k)
+
+
+# ---------- gen build (gen/build.py): the set through the manifest ----------
+MODEL, CHUNK = "edges", 200
+
+
 def _batch(job):
-    seed, start, n, folder, latin, hebrew, photos, show, tpl = job
+    seed, indices, folder, latin, hebrew, photos, show, tpl, bgs = job
     F = Fonts(latin, hebrew)
     out = []
-    for i in range(start, start + n):
-        rng = random.Random(seed * 1_000_003 + i)
-        img, corners, kind = photo(rng, F, photos, tpl)
+    for i in indices:
+        rng = grng.legacy(seed, i)   # random.Random(seed * 1_000_003 + i), as always
+        meta = {}
+        img, corners, kind, src, up = photo(rng, F, photos, tpl, meta)
         f = pathlib.Path(folder) / "img" / f"{i}.jpg"
         cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         if show:
@@ -625,77 +809,141 @@ def _batch(job):
                 cv2.circle(v, tuple(int(c) for c in P[0]), 7, (0, 0, 255), -1)   # the first corner
             cv2.putText(v, kind, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.imwrite(str(pathlib.Path(folder) / "show" / f"{i}.jpg"), v)
-        out.append({"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
-                    "exam": False, "synth": True, "kind": kind, "none": corners is None})
+        laid = [TEMPLATE_SHA1.get(p) for p in [src] + [p for p in meta["laid"] if p and p != src] if p]
+        entry = {"id": f"syn-{seed}-{i}", "file": str(f), "model": None, "fixed": corners, "moved": 0,
+                 "exam": False, "synth": True, "kind": kind, "none": corners is None,
+                 **({"template": src, "templateSha1": TEMPLATE_SHA1.get(src), "templatePath": rel_path(TEMPLATE_PATH[src])} if src else {}),
+                 # every real page laid on the photo (the answer, a pair's second card, a painted-over document):
+                 # train.py's assert_clean checks each against what the exam keeps, not only the answer's
+                 **({"templates": sorted({s for s in laid if s})} if any(laid) else {}),
+                 **({"upright": up, "doc": meta["doc"]} if corners else {})}
+        bg = bgs.get(meta.get("bg")) or {}
+        out.append({"index": i, "id": entry["id"], "entry": entry, "files": [f"img/{i}.jpg"], "meta": {
+            "templates": laid, "bgSha1": bg.get("sha1"), "bgCategory": bg.get("category"), "bgKind": meta.get("bgKind"),
+            "fonts": F.used(), "vocabulary": "train", "class": doc_class(kind),
+            "source": "template" if src else "none" if kind == "none" else "drawn",
+            "scene": {**meta["scene"], "kind": kind}, "camera": meta["camera"],
+            "labels": {"fixed": corners, "doc": meta.get("doc"), "upright": up, "none": corners is None}}})
     return out
 
 
-def draw(count, out, seed=1, jobs=1, photos=(), show=False, latin=None, hebrew=None, tpl=((), 0, False)):
-    folder = pathlib.Path(out)
-    (folder / "img").mkdir(parents=True, exist_ok=True)
-    if show:
-        (folder / "show").mkdir(exist_ok=True)
-    latin, hebrew = latin or latin_fonts(), hebrew or hebrew_fonts()
-    if not latin or not hebrew:
-        raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
-    work = [(seed, s, min(200, count - s), str(folder), latin, hebrew, list(photos), show, tpl) for s in range(0, count, 200)]
-    if jobs > 1:
-        from multiprocessing import Pool
-        with Pool(jobs) as pool:
-            done = pool.map(_batch, work)
-    else:
-        done = [_batch(w) for w in work]
-    ex = [e for b in done for e in b]
-    (folder / "examples.json").write_text(json.dumps(ex, ensure_ascii=False), encoding="utf-8")
-    return folder, ex
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--count", type=int, default=20000)
-    ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--out", default=str(OUT))
-    ap.add_argument("--jobs", type=int, default=gentle())
+def gen_args(ap):
+    """synth_docs.py's options (and python -m gen build --model edges)."""
+    ap.add_argument("--count", type=int, default=None, help="photos (default 20000; with --exam 300)")
+    ap.add_argument("--seed", type=int, default=None, help="default 1 (with --exam 7)")
+    ap.add_argument("--out", default=None, help="default ~/.scan-train/synth/docs (with --exam …/docs-exam)")
+    ap.add_argument("--jobs", type=int, default=None, help="processes (default: all cores but two, gently)")
     ap.add_argument("--backgrounds", help="a folder of background photos (tables, floors, cloths — no documents in them); default ~/.scan-train/backgrounds when there")
     ap.add_argument("--show", action="store_true", help="also show/<n>.jpg with the corners drawn (green; red: the first)")
     ap.add_argument("--templates", nargs="?", const=str(TEMPLATES), help="real pages laid like the drawn ones "
                     "(a folder with id_front/, id_back/, passport/, sefach/, insert/; default ~/.scan-train/templates)")
     ap.add_argument("--template-share", type=float, default=0.4, help="the share of photos with a real page")
     ap.add_argument("--sharp", action="store_true", help="keep the real pages' face and text as they are (not washed out)")
-    ap.add_argument("--exam", action="store_true", help="the exam photos: only the real pages kept apart (synth.held_out), "
+    ap.add_argument("--exam", action="store_true", help="the exam photos: only the real pages kept apart (heldout.json), "
                     "every photo with one; default out ~/.scan-train/synth/docs-exam, 300 photos, its own seed")
     ap.add_argument("--latin", nargs="*")
     ap.add_argument("--hebrew", nargs="*")
-    a = ap.parse_args()
-    photos = []
-    # the background photos: the given folder, else the set kept in the bucket (datasets_hf.py pull backgrounds)
+
+
+def background_photos(folder, split="train"):
+    """[{"path", "sha1", "category"}] of a backgrounds folder's photos on one side (train, or exam for --exam). A folder
+    with the bank's catalog.json (gen/backgrounds.py: {"files": …}): only the photos it lists whose side()
+    is `split` (usable: checked ok with a confirmed licence; on that side of `bg split`; a locked exam photo never
+    trains); a photo it does not list is left out. A folder with none (or the old {name: {category}} list): every
+    photo for training but heldout.json's examBackgrounds, which only the exam takes. The category: the catalog's
+    when there, else the sub-folder's name, else "uncategorised"."""
+    if not folder:
+        return []
+    from gen import backgrounds as gb
+    folder = pathlib.Path(folder)
+    try:
+        catalog = json.loads((folder / "catalog.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        catalog = {}
+    bank = isinstance(catalog, dict) and isinstance(catalog.get("files"), dict)
+    files = catalog.get("files", catalog) if isinstance(catalog, dict) else {}
+    locked = gb.locked_of(catalog if bank else {})
+    out = []
+    for p in folder.rglob("*"):   # in the folder's own order, as always (the order is recorded: gen verify)
+        if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            info = files.get(p.name) if isinstance(files.get(p.name), dict) else {}
+            sha = file_sha1(p)
+            if gb.is_locked({"sha1": sha}, p.name, locked):
+                side = "exam"
+            elif bank:
+                side = gb.side({**info, "sha1": sha}, p.name, locked) if info else "none"
+            else:
+                side = "train"
+            if side != split:
+                continue
+            cat = info.get("category") or (p.parent.name if p.parent != folder else "uncategorised")
+            out.append({"path": str(p), "sha1": sha, "category": cat})
+    return out
+
+
+def gen_params(a):
+    """Everything needed to draw any photo of the set again (run.json "params")."""
     folder = a.backgrounds or (str(WORK / "backgrounds") if (WORK / "backgrounds").is_dir() else None)
+    photos = background_photos(folder, "exam" if a.exam else "train")
     if folder:
-        photos = [str(p) for p in pathlib.Path(folder).rglob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
-        print(f"{len(photos)} background photos from {folder}")
+        print(f"{len(photos)} background photos on the {'exam' if a.exam else 'training'} side from {folder}")
     pages = templates_in(a.templates) if a.templates else []
     if a.templates and not pages:
         raise SystemExit(f"no pages in {a.templates} — run pull_templates.py or put photos into its id_front/, sefach/… folders")
-    kept = [pg for pg in pages if synth.held_out(pg[0])]
+    kept = [pg for pg in pages if synth.exam_page(pg[0])]   # the exam's pages (a site page with no side: in neither)
+    count, seed, out, share = a.count or 20000, a.seed or 1, a.out or str(OUT), a.template_share
     if a.exam:
         if not kept:
             raise SystemExit("no real page is kept apart for the exam — put more pages into the templates folder")
-        if a.out == str(OUT):
-            a.out = str(EXAM_OUT)
-        if a.count == 20000:
-            a.count = 300
-        if a.seed == 1:
-            a.seed = 7
-        pages, a.template_share = kept, 1.0
-        print(f"exam photos from {len(kept)} real pages kept apart: " + ", ".join(pathlib.Path(p).name for p, _ in kept))
-    elif kept:
-        pages = [pg for pg in pages if not synth.held_out(pg[0])]
-        print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), {len(pages)} laid here")
-    folder, ex = draw(a.count, a.out, a.seed, a.jobs, photos, a.show, a.latin, a.hebrew, (pages, a.template_share, a.sharp))
+        count, seed, out = a.count or 300, a.seed or 7, a.out or str(EXAM_OUT)
+        pages, share = kept, 1.0
+        print(f"exam photos from {len(kept)} real pages kept apart: " + ", ".join(sorted((file_sha1(p) or "?")[:8] for p, _ in kept)))
+    else:
+        laid = [pg for pg in pages if not synth.held_out(pg[0])]
+        if len(laid) < len(pages):
+            print(f"{len(kept)} real pages kept apart for the exam (synth_docs.py --templates --exam), "
+                  f"{len(pages) - len(laid) - len(kept)} with no known side (in neither), {len(laid)} laid here")
+        pages = laid
+    side = "exam" if a.exam else "train"   # the exam draws every font; training never one heldout.json keeps (examFonts)
+    latin = fonts_for(a.latin or latin_fonts(), side, given=bool(a.latin))
+    hebrew = fonts_for(a.hebrew or hebrew_fonts("all"), side, given=bool(a.hebrew))
+    if not latin or not hebrew:
+        raise SystemExit("no Latin or Hebrew font found: give --latin / --hebrew")
+    return {"model": MODEL, "split": "exam" if a.exam else "train", "count": count, "seed": seed, "out": str(out),
+            "pages": [{"path": p, "sha1": file_sha1(p), "kind": k} for p, k in pages], "share": share, "sharp": a.sharp,
+            "photos": photos, "photosSplit": "exam" if a.exam else "train", "show": a.show, "latin": list(latin),
+            "hebrew": list(hebrew)}
+
+
+def gen_prepare(folder, params):
+    (pathlib.Path(folder) / "img").mkdir(parents=True, exist_ok=True)
+    if params.get("show"):
+        (pathlib.Path(folder) / "show").mkdir(exist_ok=True)
+
+
+def gen_jobs(params, indices, folder):
+    tpl = ([(e["path"], e["kind"]) for e in params["pages"]], params["share"], params["sharp"])
+    photos = [e["path"] for e in params["photos"]]
+    bgs = {e["path"]: {"sha1": e["sha1"], "category": e.get("category")} for e in params["photos"]}
+    return [(params["seed"], chunk, folder, params["latin"], params["hebrew"], photos, params.get("show", False), tpl, bgs)
+            for chunk in (indices[k:k + CHUNK] for k in range(0, len(indices), CHUNK))]
+
+
+def gen_write(folder, params, items):
+    ex = [it["entry"] for it in items]
+    (pathlib.Path(folder) / "examples.json").write_text(json.dumps(ex, ensure_ascii=False), encoding="utf-8")
+    if params["split"] == "exam":
+        record_own_exam_set("synth/docs-exam", pathlib.Path(folder) / "examples.json")   # gen sources --check: made with today's heldout.json (the work folder's own set only)
     by = {}
     for e in ex:
         by[e["kind"]] = by.get(e["kind"], 0) + 1
     print(f"{len(ex)} photos in {folder}: " + ", ".join(f"{k} {n}" for k, n in sorted(by.items())))
+
+
+def main(argv=None):
+    """The old CLI: python -m gen build --model edges with today's defaults."""
+    from gen.build import cli
+    cli(MODEL, argv, prog="synth_docs.py")
 
 
 if __name__ == "__main__":

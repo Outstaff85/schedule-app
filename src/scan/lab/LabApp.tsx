@@ -13,7 +13,9 @@
 //    (attempts.ts UNDECIDED_MAX, memory); a page
 //    deleted otherwise goes to its attempt (pageDeleted: with it, or as attemptOutcome); the corners fixed by
 //    hand go with it (edgesFixed); "In queue" and "New for training" in the drawer;
-//  - the document types picked or ticked (kinds.ts), never an untouched answer.
+//  - the document types picked or ticked (kinds.ts), never an untouched answer — each with the face finder's turn
+//    (turnBy "face" when it set the page upright, else "model");
+//  - the resampling probe (probe.ts, Lab tools → Settings): its lines go to the Loading-and-work log.
 // The lab's start order is kept: the accurate model first (photos and PDFs can go in within seconds), then the
 // camera's models in the background once nothing is being worked on — the camera waits for both (startLab runs
 // before the camera's start: the screen's effect runs before this page's). The session lives as long as the
@@ -40,6 +42,7 @@ import { ScannerScreen } from '../ui/ScannerScreen';
 import type { ScanSessionLike, UiPage } from '../ui/useScanSession';
 import { defaultKindsEnv, Kinds } from './kinds';
 import { LabDrawer } from './LabDrawer';
+import { runProbe } from './probe';
 import { PageReadouts } from './Readouts';
 
 const errText = (e: unknown): string => String((e as Error)?.message || e);
@@ -212,7 +215,7 @@ export function LabApp() {
     const offs = [
       l.session.on('page', p => {
         setPages(ps => ({ order: ps.order.includes(p.id) ? ps.order : [...ps.order, p.id], byId: { ...ps.byId, [p.id]: p } }));
-        if (p.readouts) l.kinds.offer(p.id, p.readouts.doctype);
+        if (p.readouts) l.kinds.offer(p.id, p.readouts.doctype, p.turn);  // the face finder's turn: turnBy "face" when it set the page upright
       }),
       l.session.on('status', () => { if (!seen) { seen = true; setEngineText(undefined); } }),
       // while the models load, the status line says what the engine does (the lab's words: ways, models, layouts)
@@ -259,7 +262,8 @@ export function LabApp() {
       <ScannerScreen mode="lab" session={view} statusText={engineText} onChoose={(id, k) => l.kinds.pick(id, k)}
         onDone={ps => setShown(ps)} kindTick={kindTick}>
         <LabDrawer session={view} figuresNow={() => l.session.figures()} errors={rec.errors} lines={rec.lines}
-          settings={settings} onSettings={changeSettings} cpuDir={l.cpuDir} onCpuDir={changeCpu} train={train} pages={list} />
+          settings={settings} onSettings={changeSettings} cpuDir={l.cpuDir} onCpuDir={changeCpu} train={train} pages={list}
+          onProbe={files => { runProbe(files, t => l.log.log(t)).catch(e => l.log.err('Probe: ' + errText(e))); }} />
       </ScannerScreen>
       <Window open={!!shown} onOpenChange={o => { if (!o) setShown(null); }} title={tr('What the models read')}
         description={tr('Each page\'s readouts and how long they took')}>

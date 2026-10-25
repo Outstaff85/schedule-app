@@ -140,12 +140,16 @@ export type HeLayouts = Record<string, { role: string; box: HeBox }[]>;
 /** A card read by one layout. */
 export interface HeRead { layout: string; idOk: boolean; surname?: string; given?: string; idNo?: string; dob?: string; expiry?: string; [role: string]: string | boolean | undefined }
 
-/** The part of a W×H card a field's box is read from (a little margin round it) and its width once scaled to
- *  MRZ_H high; null when it is too small. */
+/** A field's layout box grown by a share of its width on each side and of its height above and below: a corner a
+ *  little off on the phone's cut, or a field running past its box, stays in (scripts/scan-train/hemodel.py MARGIN_X /
+ *  MARGIN_Y, mirrored there and in gen/phone.py he_rect; synth_fields.py cuts the training fields the same way). */
+export const HE_MX = 0.22, HE_MY = 0.7;
+/** The part of a W×H card a field's box is read from (the HE_MX / HE_MY margin round it) and its width once scaled
+ *  to MRZ_H high; null when it is too small. */
 export function heLineBox(W: number, H: number, box: HeBox): { x0: number; y0: number; w: number; h: number; nw: number } | null {
   const [bx, by, bw, bh] = box;
-  const x0 = Math.max(0, (bx - 0.015 * bw) * W), y0 = Math.max(0, (by - 0.25 * bh) * H);
-  const x1 = Math.min(W, (bx + bw * 1.015) * W), y1 = Math.min(H, (by + bh * 1.25) * H);
+  const x0 = Math.max(0, (bx - HE_MX * bw) * W), y0 = Math.max(0, (by - HE_MY * bh) * H);
+  const x1 = Math.min(W, (bx + bw * (1 + HE_MX)) * W), y1 = Math.min(H, (by + bh * (1 + HE_MY)) * H);
   const w = x1 - x0, h = y1 - y0;
   if (w < 4 || h < 4) return null;
   return { x0, y0, w, h, nw: Math.max(1, Math.min(MRZ_W, Math.round(w * MRZ_H / h))) };
@@ -232,6 +236,14 @@ export class Readers {
     }
   }
 
+  /** Sessions given by hand (the lab's resampling probe, src/scan/lab/probe.ts: stand-ins that only keep the tensor
+   *  each is given — no model runs, the scan's own readers are never touched). */
+  use(ort: Ort, sessions: { doctype?: OrtSession | null; mrz?: OrtSession | null; he?: OrtSession | null }): this {
+    this.ort = ort;
+    this.doctype = sessions.doctype || null; this.mrz = sessions.mrz || null; this.he = sessions.he || null;
+    return this;
+  }
+
   /** Every reader's session released (the scanner closed: they live in the page's own ONNX Runtime heap, which
    *  never shrinks); a load still running releases what it opens; the next load() starts again. */
   release(): void {
@@ -277,9 +289,15 @@ export class Readers {
     const sess = this.he;
     if (!sess || !this.layouts || !canvas) return null;
     const W = canvas.width, H = canvas.height;
-    return heReadLayouts(W, H, this.layouts, async box => {
-      const b = heLineBox(W, H, box);
-      return b ? heLogical((await this.readLine(sess, canvas, b.x0, b.y0, b.w, b.h, b.nw, HE_CHARS)).trim()) : '';
-    });
+    return heReadLayouts(W, H, this.layouts, box => this.heLine(canvas, box));
+  }
+
+  /** One Hebrew field's line read on a card by its layout box (heLineBox's part of it), in writing order; '' when the
+   *  box is too small or there is no reader. */
+  async heLine(canvas: Drawable, box: HeBox): Promise<string> {
+    const sess = this.he;
+    if (!sess) return '';
+    const b = heLineBox(canvas.width, canvas.height, box);
+    return b ? heLogical((await this.readLine(sess, canvas, b.x0, b.y0, b.w, b.h, b.nw, HE_CHARS)).trim()) : '';
   }
 }

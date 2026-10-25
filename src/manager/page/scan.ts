@@ -43,7 +43,7 @@ export async function openNewScan(sameSession?: boolean){
   const initial: ScannedPage[]=sameSession?sessionPages().map(p=>({b64:p.b64,mediaType:p.mediaType,turn:0,blurry:false,kind:(p.kind||undefined) as any})):[];
   if(!sameSession) resetScan();
   let found: any=null;
-  const pages=await openScanner({initial,read:async(list,progress)=>{
+  const pages=await openScanner({initial,workerId:window.__aiRescanWorkerId||undefined,read:async(list,progress)=>{
     // a page whose kind came from the scanner was also turned by it: only a page with no face and no kind is turned here
     found=await readScan(list.map(p=>({b64:p.b64,mediaType:p.mediaType,kind:p.kind||null,upright:p.turn>=0||!!p.kind,...(p.mrz?{mrz:p.mrz}:{}),...(p.he?{he:p.he}:{})})),progress);
     return found?null:tr('No ID card or passport was found in the pages — add a photo of one');

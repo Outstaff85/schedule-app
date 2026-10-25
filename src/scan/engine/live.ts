@@ -89,10 +89,13 @@ const copy = (q: Quad): Quad => q.map(p => p.slice() as Pt);
 
 // The S×S canvas a frame is scaled through when the GPU cannot scale it (one, as the lab's).
 let small: OffscreenCanvas | null = null;
-/** A picture (w×h) scaled to S×S → its RGBA. */
+/** A picture (w×h) scaled to S×S → its RGBA. The canvas is cleared first: a cut running past the photo (warpRGBA
+ *  leaves it transparent — findInside's input) reads back black, as gen/phone.py warp_rgba(...)[..., :3] trains it,
+ *  never the picture drawn before (the last live frame, findNext's painted photo). */
 export function smallRGBA(src: VideoLike | Drawable, w: number, h: number): Uint8ClampedArray {
   if (!small) small = mkCanvas(S, S);
   const g = small.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+  g.clearRect(0, 0, S, S);
   g.drawImage(src as CanvasImageSource, 0, 0, w, h, 0, 0, S, S);
   return g.getImageData(0, 0, S, S).data;
 }

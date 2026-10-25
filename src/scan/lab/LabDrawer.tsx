@@ -5,7 +5,8 @@
 // capture, the follow's frames per second and ms; drawn only while the drawer is open, useFigures), the training
 // queue ("In queue: n / 5") and the new attempts since the last training (a super-admin's), the settings (the
 // models; the CPU's ONNX Runtime build, which reloads the page with ?ort=130 as the lab's did; the backend —
-// switching clears the frame and the figures), the readouts of every page, the errors (newest on top, with
+// switching clears the frame and the figures — and the resampling probe, probe.ts: frames.json and the frames of
+// `python -m gen profile --frames DIR` picked, probe.json saved), the readouts of every page, the errors (newest on top, with
 // their times, and the earlier failures on this device) and the loading-and-work log. The log and error lines
 // are the engine's own English text (data, like the error texts the functions return); the labels go through tr().
 import * as React from 'react';
@@ -77,7 +78,7 @@ function Choice<T extends string>({ value, choices, onChange, testid }: { value:
   );
 }
 
-export function LabDrawer({ session, figuresNow, errors, lines, settings, onSettings, cpuDir, onCpuDir, train, pages }: {
+export function LabDrawer({ session, figuresNow, errors, lines, settings, onSettings, cpuDir, onCpuDir, train, pages, onProbe }: {
   session: ScanSessionLike;
   /** the figures now (the tiles before the first figures event) */
   figuresNow: () => LiveFigures;
@@ -91,6 +92,8 @@ export function LabDrawer({ session, figuresNow, errors, lines, settings, onSett
   train: TrainFigures | null;
   /** the pages found, in order, with their readouts */
   pages: ShotPage[];
+  /** the resampling probe's files picked (frames.json and its frames) */
+  onProbe?: (files: File[]) => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const live = useFigures(session, open);
@@ -124,6 +127,18 @@ export function LabDrawer({ session, figuresNow, errors, lines, settings, onSett
             <Choice testid="lab-engine" value={cpuDir} choices={ENGINE_CHOICES} onChange={onCpuDir} />
             <Choice testid="lab-backend" value={settings.backend} choices={BACKEND_CHOICES} onChange={backend => onSettings({ backend })} />
           </div>
+          {onProbe && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild size="sm">
+                <label data-testid="lab-probe">
+                  {tr('Resampling probe…')}
+                  <input type="file" accept=".png,.json" multiple hidden
+                    onChange={e => { const files = [...(e.target.files || [])]; e.target.value = ''; if (files.length) onProbe(files); }} />
+                </label>
+              </Button>
+              <span className="text-[12px] text-ink-2">{tr('Pick frames.json and the frames of python -m gen profile --frames DIR; saves probe.json')}</span>
+            </div>
+          )}
         </div>
 
         <Head>{tr('Readouts')}</Head>

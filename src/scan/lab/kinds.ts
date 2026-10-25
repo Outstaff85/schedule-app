@@ -4,7 +4,11 @@
 // a label — the model's answer nobody touched never is (it would teach the model its own guesses; the training
 // audit, 2026-10-24): a type picked is sent KIND_WAIT after the last change or when the page is left (pagehide);
 // the tick sends the type shown at once (keep: true when it is the model's); each page once, with a 256×256 copy
-// (scan_feedback "add", source "page", doctypeBy "model"). Only in lab mode — the site's scan window types its
+// (scan_feedback "add", source "page", doctypeBy "model", origin "lab" with the lab's model version). Every one sent
+// is a person's answer, so it carries doctypeConfirmed (a type the model gave and the user ticked or picked again is a
+// label, unlike a site page sampled with keep that nobody looked at: gen/real.py doctype_target), and the copy's turn:
+// the model's answer (turnModel, quarter turns) and who set the turn the copy is at — "face" when the face finder set
+// the page upright (the page's turn ≥ 0), else "model" (the page as cut: its turn is only the model's guess). Only in lab mode — the site's scan window types its
 // pages itself (src/scan/Scanner.tsx) — and only with a document type model in the version (no answer: nothing
 // is offered, nothing sent). The tick says "Sent for training" only once scan_feedback took it; a send that
 // failed (offline, no token) is shown as not sent and tried again when the device is back online, with the next
@@ -23,6 +27,12 @@ export interface KindExample {
   doctypeBy: 'model';
   pageImage: string;
   keep?: true;
+  origin: 'lab';
+  doctypeConfirmed: true;
+  /** the model's turn answer (clockwise quarter turns) */
+  turnModel: number;
+  /** who set the turn the copy is at: the face finder, or nobody (the model's guess) */
+  turnBy: 'face' | 'model';
 }
 
 /** What the collection takes of the page (the tests give their own). */
@@ -70,7 +80,7 @@ export function defaultKindsEnv(post: KindsEnv['post'], version: KindsEnv['versi
 export type KindState = 'idle' | 'sending' | 'sent' | 'failed' | 'dropped';
 /** A page offered: the model's answer (the latest cut's), its copy, the type picked, its timer, its send (and
  *  the type a failed send was for). */
-interface Job { model: Doctype; copy: Promise<string>; chosen: Doctype | null; timer: unknown; state: KindState; fixed?: Doctype }
+interface Job { model: Doctype; turn: number; faced: boolean; copy: Promise<string>; chosen: Doctype | null; timer: unknown; state: KindState; fixed?: Doctype }
 
 export class Kinds {
   private readonly jobs = new Map<string, Job>();
@@ -93,14 +103,15 @@ export class Kinds {
   on(fn: () => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
   private changed(): void { for (const fn of this.listeners) { try { fn(); } catch { /* the listener's own */ } } }
 
-  /** A page's document type answer (again on each cut: the latest stands until it is sent); nothing with no model. */
-  offer(id: string, a: DoctypeAnswer | null): void {
+  /** A page's document type answer (again on each cut: the latest stands until it is sent), with the face finder's
+   *  turn on that cut (≥ 0: the page was set upright by its face; -1 none, -2 failed); nothing with no model. */
+  offer(id: string, a: DoctypeAnswer | null, faceTurn = -1): void {
     if (!a) return;
     const copy = this.env.encode(a.square);
     copy.catch(() => {});
-    const j = this.jobs.get(id);
-    if (j) { if (j.state === 'idle') { j.model = a.doctype; j.copy = copy; } return; }
-    this.jobs.set(id, { model: a.doctype, copy, chosen: null, timer: null, state: 'idle' });
+    const faced = faceTurn >= 0, j = this.jobs.get(id);
+    if (j) { if (j.state === 'idle') { j.model = a.doctype; j.turn = a.turn; j.faced = faced; j.copy = copy; } return; }
+    this.jobs.set(id, { model: a.doctype, turn: a.turn, faced, copy, chosen: null, timer: null, state: 'idle' });
     const k = this.early.get(id);
     if (k) { this.early.delete(id); this.pick(id, k); }
     this.changed();
@@ -169,7 +180,8 @@ export class Kinds {
     this.changed();
     if (!again && !keepalive) void this.retry();
     return j.copy.then(pageImage => {
-      const ex: KindExample = { source: 'page', model: version, doctypeModel: model, doctypeFixed: kind, doctypeBy: 'model', pageImage };
+      const ex: KindExample = { source: 'page', model: version, doctypeModel: model, doctypeFixed: kind, doctypeBy: 'model', pageImage,
+        origin: 'lab', doctypeConfirmed: true, turnModel: j.turn, turnBy: j.faced ? 'face' : 'model' };
       if (kind === model) ex.keep = true;
       return this.env.post({ action: 'add', examples: [ex] }, keepalive ? { keepalive: true } : undefined);
     }).then(() => {

@@ -1,11 +1,15 @@
 """Real photos of passports' machine-readable zones for the passport zone reader (docs/scan-training.md →
-4, "The passport zone reader"; docs/hf-plan.md → H8b): MIDV-2020's passports (Azerbaijan, Greece,
-Latvia, Serbia, Russia's internal passport) — each one's zone text is in its template's annotation,
-and every photo, scan and video frame of it has the document's corners. Each picture is cut flat by
+4, "The passport zone reader"; docs/hf-plan.md → H8b): MIDV-2020's passports whose zone text is in
+their template's annotation — Azerbaijan, Greece, Latvia and Serbia (aze, grc, lva, srb: the only kinds
+in midv-mrz/; Russia's internal passport is in TYPES, but zones() finds no zone line in its annotation,
+so it gives none) — and every photo, scan and video frame of one has the document's corners (the video
+frames only with --clip-step N, 0 by default). Each picture is cut flat by
 its corners the way the scanner cuts a page (the document's own top-left first, at the template's
 size), then:
-- **train** (documents 00–79 of each kind): the two zone lines cut out where the template has them,
+- **train** (documents 00–69 of each kind): the two zone lines cut out where the template has them,
   with a margin, in grey — ~/.scan-train/midv-mrz/train/<n>.png and labels.tsv (train_mrz.py --midv);
+- **select** (documents 70–79): cut the same way into ~/.scan-train/midv-mrz/select/ — never trained on: train_mrz.py
+  --midv picks its epoch and keeps best.pt by the real lines right on them first (SELECT_FROM);
 - **exam** (documents 80–99, never trained on): the flat page as it is — ~/.scan-train/midv-mrz/exam/
   <n>.png and exam.json with its two true lines; exam_mrz.py finds the lines on it the way the phone
   does (mrzmodel.find_lines) and reads them.
@@ -22,12 +26,13 @@ import pathlib
 import re
 
 from home import WORK
-from midv import OUT as MIDV, is_clip, pictures
+from midv import MIDV_EXAM_FROM, OUT as MIDV, is_clip, pictures
 
 OUT = WORK / "midv-mrz"   # kept by common.clear_work
 TYPES = ("alb_id", "aze_passport", "esp_id", "est_id", "fin_id", "grc_passport", "lva_passport",
          "rus_internalpassport", "srb_passport", "svk_id")
-EXAM_FROM = 80          # documents 80–99 of each kind: the exam
+EXAM_FROM = MIDV_EXAM_FROM   # documents 80–99 of each kind: the exam (heldout.json "open")
+SELECT_FROM = 70            # documents 70–79: train_mrz.py's real check (the epoch and best.pt), never trained on
 LINE = re.compile(r"[A-Z0-9<]{44}")
 PAGE_W = 1000           # the flat page's width (the scanner's cut pages are about this size)
 
@@ -92,6 +97,11 @@ def is_exam(tid):
     return tid.isdigit() and int(tid) >= EXAM_FROM
 
 
+def is_select(tid):
+    """A document of train_mrz.py's real check set (70–79): neither trained on nor the exam."""
+    return tid.isdigit() and SELECT_FROM <= int(tid) < EXAM_FROM
+
+
 # ---------- building ----------
 
 def templates(src):
@@ -126,9 +136,9 @@ def build(src, out, clip_step=0):
     tpl = templates(src)
     if not tpl:
         raise SystemExit(f"no passport zone in the templates under {src} — run midv.py --download midv2020 first")
-    for d in ("train", "exam"):
+    for d in ("train", "select", "exam"):
         (out / d).mkdir(parents=True, exist_ok=True)
-    labels, exam, n = [], [], 0
+    labels, select, exam, n = [], [], [], 0
     for ann_path, img_path, quad in pictures(src, max(clip_step, 1)):
         rel = img_path.relative_to(src)
         if "templates" in [q.lower() for q in rel.parts] or (is_clip(rel, ann_path) and not clip_step):
@@ -154,14 +164,16 @@ def build(src, out, clip_step=0):
             cv2.imwrite(str(f), page)
             exam.append({"page": f.name, "lines": [t for _, t in lines], "kind": key[0], "source": "/".join(rel.parts[:2])})
             continue
+        part, rows = ("select", select) if is_select(key[1]) else ("train", labels)
         for k, ((x, y, w, h), text) in enumerate(lines):
             mx, my = w * 0.02, h * 0.3
             x0, y0 = max(0, int((x - mx) * s)), max(0, int((y - my) * s))
             x1, y1 = min(W, int((x + w + mx) * s) + 1), min(H, int((y + h + my) * s) + 1)
             name = f"{n}-{k + 1}.png"
-            cv2.imwrite(str(out / "train" / name), page[y0:y1, x0:x1])
-            labels.append(f"{name}\t{text}")
+            cv2.imwrite(str(out / part / name), page[y0:y1, x0:x1])
+            rows.append(f"{name}\t{text}")
     (out / "train" / "labels.tsv").write_text("\n".join(labels) + "\n", encoding="utf-8")
+    (out / "select" / "labels.tsv").write_text("\n".join(select) + ("\n" if select else ""), encoding="utf-8")
     (out / "exam" / "exam.json").write_text(json.dumps(exam), encoding="utf-8")
     return len(labels), len(exam)
 
@@ -173,7 +185,8 @@ def main():
     a = ap.parse_args()
     src = pathlib.Path(a.src) if a.src else MIDV / "raw"
     lines, pages = build(src, OUT, a.clip_step)
-    print(f"{lines} zone lines to train on in {OUT / 'train'}; {pages} passport pages for the exam in {OUT / 'exam'}")
+    print(f"{lines} zone lines to train on in {OUT / 'train'} (documents 70–79 in {OUT / 'select'}: the real check); "
+          f"{pages} passport pages for the exam in {OUT / 'exam'}")
 
 
 if __name__ == "__main__":
