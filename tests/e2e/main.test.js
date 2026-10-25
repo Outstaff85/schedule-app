@@ -770,7 +770,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   let attemptsOffline = false;
   const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'};
   // Haiku's page kinds (aiDetectAlign): the page it is asked about is the ספח (the ID card is the model's, in Mixed); the ID card's read (aiReadDoc)
-  let kindCalls = 0;
+  let kindCalls = 0, alignTurn = 0;  // Haiku's turn (the upright turn checks below set it)
   const readCalls = [];
   let haikuTurn = 90;   // Haiku's turn for the ספח in the first scan below (none after it)
   await p.route(/cloudfunctions\.net\/ai_read$/, async r => {
@@ -783,9 +783,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     }
     if (body.action !== 'aiDetectAlign') return r.fallback();
     kindCalls++;
-    // the ספח is said to need a quarter turn (haikuTurn, this scan only): the face finder set it upright already (its
+    // the ספח is said to need a quarter turn (haikuTurn, this scan only; alignTurn for the upright turn checks below): the face finder set it upright already (its
     // turn 0, given below), so it is not turned
-    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: haikuTurn}})});
+    return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify({ok: true, align: {kind: 'sefach', rotate: haikuTurn || alignTurn}})});
   });
   await p.route(/cloudfunctions\.net\/scan_feedback$/, async r => {
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:CORS});
@@ -923,6 +923,52 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(batches.keptAfterDone && batches.same && batches.typed && batches.autoOff && batches.autoOn && /· 2/.test(batches.done) && batches.closed && batches.camOff && batches.restored && batches.same2
     && batches.picked === 'passport,sefach' && batches.keptKinds === 'passport,sefach',
     'scan window: the session is kept after the window closes (its camera stopped) and is the same when it opens again; the batches are kept on the phone and come back first in the strip, with the type picked by hand on a page; Auto reaches the session ' + JSON.stringify(batches));
+  // The upright turn of a page (src/scan/turn.ts): a ספח (no face) lying on its side or upside down ends upright —
+  // by the document type model's turn when it is sure of the turn though not of the type (Haiku's wrong 0 not
+  // taken), else by Haiku's (180° and 270° too); a page the face set upright is not turned by Haiku. The page: a
+  // 300×500 picture with a red square in its top left corner — where the square is on the page the session holds
+  // afterwards says how it was turned (90° clockwise: top right; 180°: bottom right; 270°: bottom left).
+  const turnPic = await p.evaluate(async () => {
+    const c = new OffscreenCanvas(300, 500), g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 300, 500); g.fillStyle = '#e00000'; g.fillRect(0, 0, 60, 60);
+    const u8 = new Uint8Array(await (await c.convertToBlob({type: 'image/jpeg', quality: 0.95})).arrayBuffer());
+    let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  });
+  await p.evaluate(async () => { window.__turnGoing = startNewScan(); await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]')); });
+  const turnCase = async (haiku, doctype, faceTurn) => {
+    alignTurn = haiku; const before = kindCalls;
+    const r = await p.evaluate(async ([pic, doctype, faceTurn]) => {
+      const H = await ManagerScan.hooks(), s = H.session();
+      const {ids} = await H.inject({pics: [{b64: pic, doctype, ...(faceTurn == null ? {} : {faceTurn})}], camera: false});
+      const id = ids[0], out = {typed: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"][data-kind]'), 15000)};
+      await T.tick(300);
+      const c = s.pages.get(id).canvas, g = c.getContext('2d'), W = c.width, Hh = c.height;
+      const red = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[0] > 170 && d[1] < 100 && d[2] < 100; };
+      out.size = W + 'x' + Hh;
+      out.corner = red(15, 15) ? 'tl' : red(W - 15, 15) ? 'tr' : red(W - 15, Hh - 15) ? 'br' : red(15, Hh - 15) ? 'bl' : '-';
+      return out;
+    }, [turnPic, doctype, faceTurn]);
+    r.haiku = kindCalls - before;
+    return r;
+  };
+  const turns = {
+    modelSure: await turnCase(0, {doctype: 'sefach', conf: 0.6, turn: 1, turnConf: 0.97}),
+    haiku180: await turnCase(180, null),
+    haiku270: await turnCase(270, null),
+    face: await turnCase(90, null, 0),
+    mixedSure: await turnCase(90, {doctype: 'sefach', conf: 0.96, turn: 2, turnConf: 0.95}),
+  };
+  alignTurn = 0;
+  await p.evaluate(async () => {
+    T.esc(); await window.__turnGoing;
+    await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
+  });
+  const tc = t => [t.typed ? 'typed' : 'untyped', t.size, t.corner, 'haiku' + t.haiku].join(' ');
+  ok(tc(turns.modelSure) === 'typed 500x300 tr haiku1' && tc(turns.haiku180) === 'typed 300x500 br haiku1' && tc(turns.haiku270) === 'typed 500x300 bl haiku1'
+    && tc(turns.face) === 'typed 300x500 tl haiku1' && tc(turns.mixedSure) === 'typed 300x500 br haiku0',
+    'scan window, the upright turn: a ספח with no face is turned by the model\'s sure turn (90°, Haiku asked only for the type, its 0 not taken), else by Haiku\'s (180°, 270°); a page the face set upright is not turned by Haiku; Mixed sure of the type and the turn (180°) needs no Haiku '
+    + JSON.stringify(Object.fromEntries(Object.entries(turns).map(([k, v]) => [k, tc(v)]))));
   // Photos/PDF: several files at once, a PDF split into its pages (pdf.js), in the files' order (the engine's
   // pickedPictures); the window's one file input has no type (the phone's chooser: photos and PDFs side by side)
   const PDF2 = (() => {
