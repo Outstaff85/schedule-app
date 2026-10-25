@@ -170,13 +170,55 @@ def test_outside_the_window_and_not_tonight(work):
 def test_not_due_is_reported_once_a_night(work):
     clock, sent = Clock(T(2026, 10, 25, 2, 0)), []
     r = Runner(clock)
-    assert make(work, clock, r, stats=dict, sent=sent, now_mode=True).run() == "not-due"
-    assert make(work, clock, r, stats=dict, sent=sent, now_mode=True).run() == "not-due"
+    assert make(work, clock, r, stats=dict, sent=sent).run() == "not-due"
+    assert make(work, clock, r, stats=dict, sent=sent, now_mode=True).run() == "not-due"   # a manual check the same night
     assert [s["state"] for s in sent] == ["not-due"] and r.calls == []
     st = loop.read_state()
     assert st["lastNight"] == "2026-10-25" and "lastStart" not in st
     clock.t = T(2026, 10, 26, 2, 0)   # Monday: Sunday's slot was used by the check
     assert make(work, clock, r, stats=due_edges, sent=sent).run() == "not-tonight"
+
+
+def test_a_scheduled_not_due_night_uses_its_slot_a_manual_one_does_not(work):
+    clock, sent = Clock(T(2026, 10, 25, 2, 30)), []
+    r = Runner(clock)
+    assert make(work, clock, r, stats=dict, sent=sent).run() == "not-due"   # the scheduled check: Sunday used
+    assert loop.read_state()["lastNight"] == "2026-10-25"
+    clock.t = T(2026, 10, 28, 1, 0)   # Wednesday 01:00, a manual check before the night's run
+    assert make(work, clock, r, stats=dict, sent=sent, now_mode=True).run() == "not-due"
+    assert loop.read_state()["lastNight"] == "2026-10-25"
+    clock.t = T(2026, 10, 28, 2, 0)   # the night's own run still may start
+    assert make(work, clock, r, sent=sent).run() == "rejected"
+    st = loop.read_state()
+    assert st["lastNight"] == st["lastStart"] == "2026-10-28"
+
+
+def test_counters_that_cannot_be_read_are_said_and_tried_again(work):
+    clock, sent = Clock(T(2026, 10, 25, 2, 0)), []
+    r = Runner(clock)
+    loop.write_state({"lastNight": "2026-10-21", "lastStart": "2026-10-21"})   # the last cycle: a Wednesday
+
+    def offline():
+        raise OSError("no network")
+    assert make(work, clock, r, stats=offline, sent=sent).run() == "unreadable"
+    assert make(work, clock, r, stats=offline, sent=sent).run() == "unreadable"   # once a night
+    assert [s["state"] for s in sent] == ["failed"] and sent[0]["needsOwner"] and r.calls == []
+    assert set(sent[0]) == {"id", "startedAt", "finishedAt", "state", "due", "models", "version", "branch", "prUrl", "notes", "needsOwner", "log"}
+    clock.t = T(2026, 10, 26, 2, 0)   # Monday: Sunday's slot was not used, the next night tries again
+    assert make(work, clock, r, sent=sent).run() == "rejected"
+
+
+def test_an_error_of_the_loop_itself_ends_the_cycle_with_its_report(work):
+    clock, sent = Clock(T(2026, 10, 25, 2, 0)), []
+
+    def on_step(argv):
+        if argv[1:3] == ["gen", "real"]:
+            raise RuntimeError("a bug")
+    r = Runner(clock, on_step=on_step)
+    with pytest.raises(RuntimeError):
+        make(work, clock, r, sent=sent).run()
+    assert sent[-1]["state"] == "failed" and any("RuntimeError" in n for n in sent[-1]["notes"])
+    assert names(r.calls)[-1] == "clean.py" and loop.read_state()["cycle"] is None
 
 
 def test_a_whole_cycle_published(work):
@@ -201,7 +243,7 @@ def test_a_whole_cycle_published(work):
     order = names(r.calls)
     assert order[:4] == ["pull.py", "pull_doctypes.py", "pull_templates.py", "gen real"]
     want = ["gen bg", "gen bg", "gen tune", "gen build", "gen qa", "gen build", "gen qa", "gen build", "synth_docs.py", "gen build",
-            "synth_lines.py", "synth_fields.py", "synth_fields.py", "gen mix", "gen mix", "train.py", "train_doctypes.py",
+            "synth_lines.py", "synth_fields.py", "synth_fields.py", "gen mix", "gen mix", "train.py", "train.py", "train_doctypes.py",
             "train_mrz.py", "train_he.py", "exam.py", "exam_doctypes.py", "exam_mrz.py", "gen mine", "gen ablate"]
     assert order[4:] == want
     assert "clean.py" not in order   # the delivery's publish.py clears the copies itself
@@ -280,14 +322,44 @@ def test_paused_at_eight_and_resumed_the_next_night(work):
         return "ok", 0
     r = Runner(clock, outcome=outcome)
     assert make(work, clock, r, sent=sent).run() == "paused"
-    assert sent[-1]["state"] == "paused" and loop.read_state()["cycle"]["current"] == "train_edges"
+    assert sent[-1]["state"] == "paused" and loop.read_state()["cycle"]["current"] == "train_edges_lite"
+    assert not sent[-1]["models"]["edges"]["trained"]
     n = len(r.calls)
     # a Monday night: the unfinished cycle goes on whatever the day, at the step it stopped in, with --resume
     clock.t = T(2026, 10, 26, 2, 0)
     assert make(work, clock, r, sent=sent).run() == "rejected"
     rest = r.calls[n:]
-    assert rest[0] == ["train.py", "--from-mix", str(work / "models" / "edges"), "--resume"]
+    mix = str(work / "models" / "edges")
+    assert rest[0] == ["train.py", "--from-mix", mix, "--models", "edges-lite.onnx", "--resume"]
+    # the other edges model had not started: a fresh run, never a --resume of an older run's checkpoint
+    assert rest[1] == ["train.py", "--from-mix", mix, "--models", "edges.onnx"]
     assert "pull.py" not in names(rest)
+    assert sent[-1]["models"]["edges"]["trained"]
+
+
+def test_the_second_edges_model_is_not_resumed_from_an_old_checkpoint(work):
+    clock = Clock(T(2026, 10, 25, 2, 0))
+    (work / "checkpoints").mkdir()
+    old = work / "checkpoints" / "edges.onnx.pt"
+    old.write_bytes(b"the published run")
+    import os
+    os.utime(old, (1_000_000_000, 1_000_000_000))   # long before this cycle
+    state = {"stopped": False}
+
+    def outcome(argv):
+        if argv[0] == "train.py" and not state["stopped"]:
+            state["stopped"] = True
+            (work / "checkpoints" / "edges-lite.onnx.pt").write_bytes(b"epoch 2")
+            clock.t = T(2026, 10, 25, 8, 0)
+            return "stopped", 1
+        return "ok", 0
+    r = Runner(clock, outcome=outcome)
+    make(work, clock, r).run()
+    clock.t = T(2026, 10, 26, 2, 0)
+    make(work, clock, r).run()
+    trains = [a for a in r.calls if a[0] == "train.py"]
+    assert "--resume" in trains[1] and "--models" in trains[1] and "edges-lite.onnx" in trains[1]
+    assert trains[2][-2:] == ["--models", "edges.onnx"]
 
 
 def test_a_training_stopped_before_its_first_epoch_starts_again_without_resume(work):
@@ -412,8 +484,16 @@ def test_one_loop_at_a_time(work, monkeypatch):
 
 def test_pid_alive():
     import os
+    import subprocess
     assert loop.pid_alive(os.getpid())
     assert not loop.pid_alive(0)
+    if sys.platform == "win32":   # a live program that is not Python: a dead loop's PID given to another program
+        p = subprocess.Popen(["ping", "-n", "30", "127.0.0.1"], stdout=subprocess.DEVNULL)
+        try:
+            assert not loop.pid_alive(p.pid)
+        finally:
+            p.kill()
+            p.wait()
 
 
 # ---------- the scheduled task ----------

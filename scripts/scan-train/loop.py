@@ -56,7 +56,9 @@ NIGHT_START, NIGHT_END = 2, 8          # the night window, local hours [02:00, 0
 NEW_CYCLE_DAYS = (6, 2)                # Sunday, Wednesday (date.weekday())
 GAP_DAYS = 3                           # at least this many days between two cycles' starts
 GOLDEN_MIN = 20                        # golden attempts before anything is published by itself
-GRACE_S = 600                          # a stopped step's time to reach its safe point before it is killed
+GRACE_S = 150                          # a stopped step's time to reach its safe point before it is killed: the stop
+                                       # comes at 08:00 and Windows ends the task after 6 h 05 min (08:05 at the
+                                       # earliest), so the kill, the pause and its report come before that
 TRIES = 2                              # a step that failed this many times in a row ends the cycle
 POLL_S = 5
 EDGES_COUNT, CUTS_COUNT = 8000, 2000   # the made-up sets of a cycle (the skill's sizes)
@@ -246,22 +248,26 @@ STEPS = [
      else ["synth_fields.py", "--count", str(HE_CHECK), "--check"], None),
     ("mix_edges", "edges", lambda c: _gen("mix", "--model", "edges", "--synth-run", str(run_dir(c, "edges")), *hard_args()), None),
     ("mix_doctype", "doctype", lambda c: _gen("mix", "--model", "doctype", "--synth-run", str(run_dir(c, "cuts")), *hard_args()), None),
-    ("train_edges", "edges", lambda c: ["train.py", "--from-mix", str(work() / "models" / "edges")], ("checkpoints/edges*.pt",)),
+    # the two edges models a step each: train.py --resume resumes every model it is given, and one not started yet
+    # would be "resumed" from an older run's checkpoint (refused: other data) — so each goes on alone
+    ("train_edges_lite", "edges", lambda c: ["train.py", "--from-mix", str(work() / "models" / "edges"), "--models", "edges-lite.onnx"],
+     ("checkpoints/edges-lite.onnx.pt",)),
+    ("train_edges", "edges", lambda c: ["train.py", "--from-mix", str(work() / "models" / "edges"), "--models", "edges.onnx"],
+     ("checkpoints/edges.onnx.pt",)),
     ("train_doctype", "doctype", lambda c: ["train_doctypes.py", "--from-mix", str(work() / "models" / "doctype")],
-     ("checkpoints/doctype*.pt",)),
+     ("checkpoints/doctype-lite.onnx.pt",)),
     ("train_mrz", "mrz", lambda c: ["train_mrz.py", *(["--midv"] if _midv("train") else []), "--phone-run", str(run_dir(c, "cuts"))],
      ("mrz-ckpt/last.pt",)),
     ("train_he", "he", lambda c: ["train_he.py", "--phone-run", str(run_dir(c, "cuts")),
-                                  *(["--phone-exam", str(_exam_cuts())] if _exam_cuts() else [])], ("checkpoints/he*.pt",)),
+                                  *(["--phone-exam", str(_exam_cuts())] if _exam_cuts() else [])], ("checkpoints/he.pt",)),
     ("exam_edges", "edges", lambda c: ["exam.py", "--no-browser"], None),
     ("exam_doctype", "doctype", lambda c: ["exam_doctypes.py"], None),
     ("exam_mrz", "mrz", lambda c: ["exam_mrz.py", *([] if _midv("exam") else ["--no-midv"])], None),
     ("mine", None, lambda c: _gen("mine"), None),
     ("ablate", None, lambda c: _gen("ablate"), None),
 ]
-TRAIN_STEP = {"edges": "train_edges", "doctype": "train_doctype", "mrz": "train_mrz", "he": "train_he"}
-# the exam that writes each model's report (train_he.py's check is the Hebrew reader's exam)
-EXAM_STEP = {"edges": "exam_edges", "doctype": "exam_doctype", "mrz": "exam_mrz", "he": "train_he"}
+TRAIN_STEPS = {"edges": ("train_edges_lite", "train_edges"), "doctype": ("train_doctype",), "mrz": ("train_mrz",),
+               "he": ("train_he",)}
 
 
 def wanted(serves, plan):
@@ -422,6 +428,9 @@ def write_state(st, dry=False):
 
 
 def pid_alive(pid):
+    """Whether a loop may still be running as this PID: a live process — on Windows a live Python one, since a dead
+    loop's PID is soon given to another program (the PC turned off mid-cycle, the task ended by Windows), and a lock
+    held by that program would stop every night after."""
     if not pid:
         return False
     if sys.platform == "win32":
@@ -429,14 +438,21 @@ def pid_alive(pid):
         k = ctypes.windll.kernel32
         k.OpenProcess.restype = ctypes.c_void_p
         k.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        k.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_ulong)]
         k.CloseHandle.argtypes = [ctypes.c_void_p]
         h = k.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
         if not h:
             return False
-        code = ctypes.c_ulong()
-        ok = k.GetExitCodeProcess(h, ctypes.byref(code))
-        k.CloseHandle(h)
-        return bool(ok) and code.value == 259    # STILL_ACTIVE
+        try:
+            code = ctypes.c_ulong()
+            if not k.GetExitCodeProcess(h, ctypes.byref(code)) or code.value != 259:    # STILL_ACTIVE
+                return False
+            buf, size = ctypes.create_unicode_buffer(1024), ctypes.c_ulong(1024)
+            if not k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return True   # alive, its name unknown: taken as a loop (never two at once)
+            return "python" in pathlib.Path(buf.value).name.lower()
+        finally:
+            k.CloseHandle(h)
     try:
         os.kill(int(pid), 0)
         return True
@@ -540,6 +556,47 @@ class Loop:
                 f.write(f"--- {now_iso(self.clock())} {msg}\n")
 
     def run(self):
+        """A night's run → "outside" | "not-tonight" | "not-due" | "unreadable" | the cycle's state. An error of the
+        loop itself ends the cycle in progress as "failed" with its report (crashed), never silently."""
+        try:
+            return self._run()
+        except Exception as e:
+            self.crashed(e)
+            raise
+
+    def unreadable(self, t, e):
+        """The server's counters could not be read: said in a report (once a night, as a not-due one); the night's
+        slot is not used, so the next night tries again."""
+        self.out(f"the server's counters could not be read: {type(e).__name__}: {e}")
+        night = t.date().isoformat()
+        if self.st.get("lastUnreadableNight") != night:
+            self.st["lastUnreadableNight"] = night
+            rep = new_report(f"c{t:%Y%m%d-%H%M}", now_iso(t), {}, {}, loop_dir() / "loop.log")
+            rep.update(state="failed", finishedAt=now_iso(t))
+            rep["notes"].append(f"the server's counters could not be read ({type(e).__name__}): nothing started")
+            rep["needsOwner"].append("check the PC is online and signed in to Google (gcloud auth application-default login)")
+            self.send(rep)
+        write_state(self.st, self.dry)
+        return "unreadable"
+
+    def crashed(self, e):
+        """An error of the loop itself (not a step's): the cycle in progress ends "failed" with clean.py and its report."""
+        if not self.cycle:
+            return
+        rep = self.report
+        self.say("the loop stopped on an error:\n" + traceback.format_exc())
+        rep.update(state="failed", finishedAt=now_iso(self.clock()))
+        rep["notes"].append(f"the loop stopped on an error ({type(e).__name__}) at {self.cycle.get('current') or 'the decision'}")
+        rep["needsOwner"].append(f"look at the log ({rep['log']}) — the loop's own error")
+        try:
+            self.keep_mine()
+            if not self.cycle.get("delivering"):   # a delivery begun: its copies are left for the owner to check
+                self.clean()
+        except Exception:
+            pass
+        self.end()
+
+    def _run(self):
         t = self.clock()
         if not self.now_mode and not in_window(t):
             self.out(f"{t:%H:%M}: outside the night window ({NIGHT_START:02d}:00–{NIGHT_END:02d}:00) — nothing runs (run --now to run anyway)")
@@ -551,8 +608,12 @@ class Loop:
             self.out(f"{night}: no new cycle tonight (Sunday or Wednesday nights, {GAP_DAYS} days apart; next: "
                      f"{next_start(night + datetime.timedelta(days=1), self.st.get('lastNight'), self.st.get('lastStart'))})")
             return "not-tonight"
-        due = due_of(self.stats())
-        self.st["lastNight"] = night.isoformat()
+        try:
+            due = due_of(self.stats())
+        except Exception as e:   # the counters could not be read (offline, the Google sign-in expired): said, tried again
+            return self.unreadable(t, e)
+        if not self.now_mode:   # a manual run that found nothing due leaves the calendar's slot to the night
+            self.st["lastNight"] = night.isoformat()
         if not any_due(due):
             self.out("nothing due: " + json.dumps(due))
             if self.st.get("lastNotDueNight") != night.isoformat():
@@ -565,7 +626,7 @@ class Loop:
         n = int(self.st.get("cycles") or 0) + 1
         cid = f"c{t:%Y%m%d-%H%M}"
         plan = plan_of(due)
-        self.st.update(lastStart=night.isoformat(), cycles=n)
+        self.st.update(lastNight=night.isoformat(), lastStart=night.isoformat(), cycles=n)
         self.st["cycle"] = {"id": cid, "night": night.isoformat(), "seed": 10 + n % 90000, "plan": plan, "steps": {},
                             "decision": None, "report": new_report(cid, now_iso(t), due, plan, loop_dir() / f"{cid}.log")}
         self.save()
@@ -602,10 +663,9 @@ class Loop:
                 s["rc"] = rc
                 if outcome == "ok":
                     s.update(status="done", fails=0, at=now_iso(self.clock()))
-                    if name in TRAIN_STEP.values():
-                        for m, step in TRAIN_STEP.items():
-                            if step == name and m in rep["models"]:
-                                rep["models"][m]["trained"] = True
+                    for m, steps in TRAIN_STEPS.items():   # trained once each of its trainings is done
+                        if name in steps and m in rep["models"] and all(c["steps"].get(x, {}).get("status") == "done" for x in steps):
+                            rep["models"][m]["trained"] = True
                     if name == "mine":
                         self.keep_mine()
                     break
