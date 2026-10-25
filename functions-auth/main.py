@@ -12,7 +12,8 @@ Firestore database. The logic is in core.py, files.py, portal.py and ai.py.
                updateUser, resetUserPassword, deleteUser, listTenants,
                setTenantActive, deleteTenant (also deletes the firm's Storage
                files), updateTenant, loadTenantProfile; loadWorkerAssets,
-               deleteWorkerDoc for files in Storage (files.py)
+               deleteWorkerDoc for files in Storage (files.py; a signed file is
+               never deleted)
   punch        POST {action, token, ...}: the worker punch link (portal.py)
   supplier     POST {action, ...} with "Authorization: Bearer <ID token>" of a
                supplier login: the supplier portal (portal.py)
@@ -156,7 +157,19 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
             def worker_hr(wid):
                 snap = _db().collection("tenants").document(tid).collection("workers").document(wid).get()
                 return (snap.to_dict() or {}).get("hrId") if snap.exists else None
-            return _json(files.run(storage.bucket(), caller, body, worker_hr))
+
+            def signed_lookup(wid):
+                # what a file delete is checked against (files.signed_file): the worker and its signings
+                from google.cloud.firestore_v1.base_query import FieldFilter
+                t_ref = _db().collection("tenants").document(tid)
+                snap = t_ref.collection("workers").document(wid).get()
+                reqs = [d.to_dict() for d in t_ref.collection("signRequests")
+                        .where(filter=FieldFilter("workerId", "==", wid)).stream()]
+                reqs += [d.to_dict() for d in _db().collection("transferRequests")
+                         .where(filter=FieldFilter("toTenant", "==", tid))
+                         .where(filter=FieldFilter("newWorkerId", "==", wid)).stream()]
+                return (snap.to_dict() if snap.exists else None), reqs
+            return _json(files.run(storage.bucket(), caller, body, worker_hr, signed_lookup))
         result = core.run_action(_db(), caller, body, _revoke)
         if body.get("action") == "deleteTenant" and result.get("ok"):
             result["removed"]["files"] = files.delete_tenant_files(storage.bucket(), body.get("tenantId"))

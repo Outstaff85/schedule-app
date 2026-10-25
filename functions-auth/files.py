@@ -15,6 +15,8 @@ on the bucket, which this way never has to be made by hand.
                     the old sidecar (one JSON with the pictures inside), read until the
                     worker's sidecar is split into pages (scripts/migrate/scan_pages.py)
   deleteWorkerDoc   {fileId: <storage path>} -> {ok: true}
+                    refused (E_SIGNED) for a signed file, which is never deleted
+                    (docs/contracts.md → Signed files are kept; signed_file below)
 
 A fileId is the object's path, tenants/<tenantId>/workers/...; only a path in
 the caller's own firm is accepted (a superadmin's: the firm it is viewing).
@@ -36,6 +38,31 @@ E_NOT_FIRM = "The file doesn't belong to this firm"
 E_NO_FILE = "No fileId"
 E_NOT_FOUND = "File not found"
 E_NO_RIGHT = "No rights to workers"
+E_SIGNED = "A signed document is kept and can't be deleted"
+
+
+def signed_file(path, worker, requests):
+    """True when path is a signed file, which is never deleted (documents plan, S0b):
+    - a part (parts.*.path) or the signature (sigPath) of any of the worker's signing
+      requests (its signRequests, and the transferRequests that made this worker);
+    - a docs[] entry marked signed;
+    - for a signed worker (signedAt / signedRequestId): its docFileId, any docs[].fileId
+      and its sigFileId."""
+    for r in requests or []:
+        r = r or {}
+        if r.get("sigPath") and path == r.get("sigPath"):
+            return True
+        for part in (r.get("parts") or {}).values():
+            if isinstance(part, dict) and part.get("path") == path:
+                return True
+    w = worker or {}
+    docs = [d for d in (w.get("docs") or []) if isinstance(d, dict)]
+    if any(d.get("signed") and d.get("fileId") == path for d in docs):
+        return True
+    if w.get("signedAt") or w.get("signedRequestId"):
+        if path in (w.get("docFileId"), w.get("sigFileId")) or any(d.get("fileId") == path for d in docs):
+            return True
+    return False
 
 
 def _path_ok(path, tenant_id):
@@ -61,9 +88,12 @@ def _workers_writer(caller):
     return role in ("staff", "hr") and "workers" in rights and "editWorkers" in rights
 
 
-def run(bucket, caller, body, worker_hr=None):
+def run(bucket, caller, body, worker_hr=None, signed_lookup=None):
     """bucket: a google.cloud.storage Bucket (or anything with .blob(path)
-    returning an object with exists/download_as_bytes/delete)."""
+    returning an object with exists/download_as_bytes/delete).
+    signed_lookup(workerId) -> (the worker record or None, [its signing requests]):
+    what deleteWorkerDoc checks the path against (signed_file); without it,
+    deleteWorkerDoc deletes nothing."""
     action = str(body.get("action") or "")
     if action not in ACTIONS:
         return {"error": "Unknown action"}
@@ -107,6 +137,15 @@ def run(bucket, caller, body, worker_hr=None):
     if action == "deleteWorkerDoc":
         if not _workers_writer(caller):
             return {"error": E_NO_RIGHT}
+        # one check for every browser path that deletes a file (docs/contracts.md → Signed files are kept)
+        if signed_lookup is None:
+            return {"error": E_SIGNED}
+        wid = path.split("/")[3]
+        if not wid:
+            return {"error": E_NOT_FIRM}
+        worker, requests = signed_lookup(wid)
+        if signed_file(path, worker, requests):
+            return {"error": E_SIGNED}
         if blob.exists():
             blob.delete()
         return {"ok": True}

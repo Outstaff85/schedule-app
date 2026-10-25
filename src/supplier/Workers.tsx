@@ -30,7 +30,7 @@ import { plateRate } from './money';
 async function deleteNow(id: string): Promise<boolean> {
   try {
     const r = await supplierCall({ action: 'supplierDeleteWorker', workerId: id });
-    if (r.error) { toast.error(r.error); return false; }
+    if (r.error) { toast.error(tr(r.error)); return false; }
     return true;
   } catch (e) { toast.error(tr('Failed: {0}', { 0: (e as Error).message })); return false; }
 }
