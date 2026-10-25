@@ -125,6 +125,7 @@ jobs:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('functions-auth/requirements.txt', 'scripts/scan-train/requirements-synth.txt') }}-scan-train-1
 
+      # keep this list equal to deploy-functions.yml's test venv (it runs tests/auth before deploying)
       - name: Python for the functions
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
