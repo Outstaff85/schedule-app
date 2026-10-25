@@ -348,7 +348,13 @@ def test_the_parity_fixtures_are_phone_py():
     assert len(fx["heatmaps"]) == len(now["heatmaps"]) and len(fx["zones"]) == len(now["zones"])
     assert fx["moreDocs"] == json.loads(json.dumps(now["moreDocs"]))
     assert fx["paints"] == json.loads(json.dumps(now["paints"]))
-    assert fx["faces"] == json.loads(json.dumps(now["faces"]))
+    # the scores go through sqrt / atan2 / sin, whose last bit differs between platforms' maths libraries: to 1e-12,
+    # as phone_parity.test.mjs compares faceScore; everything else exactly
+    nf = json.loads(json.dumps(now["faces"]))
+    assert fx["faces"]["strides"] == nf["strides"] and fx["faces"]["turns"] == nf["turns"]
+    assert [(a["name"], a["hot"]) for a in fx["faces"]["scores"]] == [(b["name"], b["hot"]) for b in nf["scores"]]
+    for a, b in zip(fx["faces"]["scores"], nf["scores"]):
+        assert abs(a["score"] - b["score"]) <= 1e-12, a["name"]
 
 
 def test_the_face_turn_reads_the_finder_as_the_lab_does():
