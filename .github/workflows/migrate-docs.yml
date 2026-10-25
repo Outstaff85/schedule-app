@@ -1,0 +1,45 @@
+name: Workers' documents (inventory and migrations)
+
+# The workers' documents plan (docs/documents-plan.md). Started only by hand.
+# inventory (S0): scripts/migrate/docs_inventory.py reads every firm's workers,
+# signing requests, contract templates and Storage files and reports counts and
+# bytes per prefix; it writes, moves and deletes nothing (read-only wrappers,
+# tests/auth/test_migrate_docs_inventory.py). It still reads real workers' data,
+# so it is run only with the owner's yes. The later stages' migrations
+# (template_versions, hold_signed, unsigned_docs, sign_copies) are added here
+# as their own choices, each with its dry-run.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'inventory (read-only report of the workers documents)'
+        required: true
+        default: 'inventory'
+        type: choice
+        options: ['inventory']
+      tenant:
+        description: 'One firm id only (empty: every firm)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Write service account credentials
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/gcp-sa.json"
+      - name: Documents inventory (read-only)
+        if: ${{ inputs.task == 'inventory' }}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
+          TENANT: ${{ inputs.tenant }}
+        run: |
+          pip install -q firebase-admin
+          if [ -n "$TENANT" ]; then python scripts/migrate/docs_inventory.py --tenant "$TENANT"; else python scripts/migrate/docs_inventory.py; fi

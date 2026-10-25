@@ -384,118 +384,22 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
     return {"error": "Unknown action"}
 
 
-# ---- "Download data" (D5): one PDF of everything kept under the worker -----------------------
-
-HE_DOC_TYPES = {"contract": "חוזה", "visa": "ויזה", "work_permit": "היתר עבודה", "other": "מסמך"}
-HE_KINDS = {"id_front": "תעודת זהות", "id_back": "תעודת זהות (גב)", "passport": "דרכון", "sefach": "ספח", "other": "מסמך"}
-
-
-def _dmy(s):
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", str(s or ""))
-    return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else str(s or "")
-
-
-def _summary_page(doc, rows, listing, title):
-    """The first page: the worker's data and the list of the documents that follow — Hebrew labels, right to left."""
-    import pymupdf
-    from bidi.algorithm import get_display
-    page = doc.new_page(width=595, height=842)
-    font_path = str(contracts._font())
-    page.insert_font(fontfile=font_path, fontname="Heebo")
-    font = pymupdf.Font(fontfile=font_path)
-    right, y = 555, 70
-
-    def line(text, size=11, x_right=right):
-        nonlocal y
-        disp = get_display(str(text))
-        page.insert_text((x_right - font.text_length(disp, fontsize=size), y), disp, fontname="Heebo", fontsize=size)
-        y += size + 9
-
-    line(title, 16)
-    y += 6
-    for label, value in rows:
-        if value:
-            line(label + ": " + str(value))
-    y += 8
-    line("המסמכים בקובץ:", 12)
-    for i, name in enumerate(listing, 1):
-        line(f"{i}. {name}", 11, right - 12)
-
-
-def _image_page(doc, data):
-    import pymupdf
-    page = doc.new_page(width=595, height=842)
-    try:
-        page.insert_image(pymupdf.Rect(30, 30, 565, 812), stream=data, keep_proportion=True)
-    except Exception:
-        page.insert_text((40, 60), "?")
-
+# ---- "Download data" (D5): the old device's call ----------------------------------------------
 
 def bundle(db, bucket, tenant, claims, wid, own):
-    """The worker's data as one PDF, put together now and not kept: a summary, Form 101, the
-    contract, the ID card or passport, the ספח, the other documents (docs/contracts.md → Download data)."""
-    import pymupdf
-    worker = _worker(db, tenant, wid)
-    if worker is None or (own and worker.get("hrId") != claims.get("uid")):
+    """The old `bundle` {workerId} of a device that has not reloaded since `worker_docs` came (docs/documents-plan.md
+    → S2; removed in S10): everything kept under the worker in one PDF, put together by the same code as `worker_docs`
+    (workerdocs.py: the summary, the ID sheet, the captions, the pay rule for contracts) — Form 101 is the stored
+    `docFileId`, since an old device sends no values. Answered as base64 JSON, as before."""
+    import workerdocs
+    try:
+        worker = workerdocs.worker_of(db, tenant, dict(claims, own=own), wid)
+    except workerdocs.Refused:
         return {"error": E_NO_WORKER}
-    t = db.collection("tenants").document(tenant)
-
-    def names(coll, ids):
-        out = []
-        for i in ids:
-            s = t.collection(coll).document(str(i)).get()
-            if s.exists:
-                out.append((s.to_dict() or {}).get("name") or "")
-        return ", ".join(x for x in out if x)
-
-    def blob(path):
-        b = bucket.blob(str(path or ""))
-        return b.download_as_bytes() if path and b.exists() else None
-
-    parts = []  # (label, kind, bytes): kind pdf / image
-    f101 = blob(worker.get("docFileId"))
-    if f101:
-        parts.append(("טופס 101", "pdf", f101))
-    docs = worker.get("docs") if isinstance(worker.get("docs"), list) else []
-    contracts_ = sorted([d for d in docs if d.get("type") == "contract"], key=lambda d: (not d.get("signed"), str(d.get("uploadedAt") or "")))
-    for d in contracts_[:1]:
-        data = blob(d.get("fileId"))
-        if data:
-            parts.append(("חוזה" + (" (חתום)" if d.get("signed") else ""), "pdf" if data[:4] == b"%PDF" else "image", data))
-    pages = worker.get("scanPages") if isinstance(worker.get("scanPages"), list) else []
-    for kinds in (("id_front", "id_back", "passport"), ("sefach",), ("other",)):
-        for p in pages:
-            if p.get("kind") in kinds:
-                data = blob(p.get("fileId"))
-                if data:
-                    parts.append((HE_KINDS.get(p.get("kind"), "מסמך"), "image", data))
-        if kinds == ("sefach",):
-            for d in [d for d in docs if d.get("type") != "contract"] + contracts_[1:]:
-                data = blob(d.get("fileId"))
-                if data:
-                    parts.append((HE_DOC_TYPES.get(d.get("type"), "מסמך"), "pdf" if data[:4] == b"%PDF" else "image", data))
-    passport = worker.get("docType") == "passport"
-    sign_date = worker.get("signDate") or ""
-    rows = [
-        ("שם פרטי", worker.get("docGiven")), ("שם משפחה", worker.get("docSurname")),
-        ("מספר דרכון" if passport else "מספר זהות", worker.get("docId") or worker.get("passportNo") or worker.get("israeliId")),
-        ("תוקף", worker.get("docExpiry")), ("תאריך לידה", worker.get("docDob")), ("טלפון", worker.get("phone")),
-        ("כתובת", ", ".join(x for x in [" ".join(x for x in [worker.get("address"), worker.get("houseNumber")] if x), worker.get("city")] if x)),
-        ("תאריך תחילת עבודה", _dmy(worker.get("startDate") or worker.get("workStartDate"))),
-        ("לקוח / אתר", names("clients", worker.get("clientIds") or [])),
-        ("ספק", names("suppliers", [worker["supplierId"]]) if worker.get("supplierId") else ""),
-        ("תאריך החתימה", sign_date),
-    ]
-    out = pymupdf.open()
-    _summary_page(out, rows, [p[0] for p in parts], (worker.get("name") or "").strip() or "עובד")
-    for _label, kind, data in parts:
-        if kind == "pdf":
-            try:
-                out.insert_pdf(pymupdf.open(stream=data, filetype="pdf"))
-                continue
-            except Exception:
-                pass
-        _image_page(out, data)
-    data = out.tobytes(garbage=4, deflate=True)
-    name = re.sub(r"[\\/:*?\"<>|]", " ", (worker.get("name") or "worker").strip()) + " - data.pdf"
-    return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": name, "pages": out.page_count, "parts": [p[0] for p in parts]}
+    try:
+        out = workerdocs.build_bundle(db, bucket, tenant, claims, wid, worker, {k: True for k in workerdocs.INCLUDE}, None,
+                                      None, old_device=True)
+    except workerdocs.Refused as e:
+        return {"error": e.error}
+    return {"ok": True, "pdfBase64": base64.b64encode(out["pdf"]).decode(), "name": out["name"], "pages": out["pages"],
+            "parts": out["labels"]}

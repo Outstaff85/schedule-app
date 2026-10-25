@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **not started**. No stage has a PR yet. S0 (the inventory and the owner's answers) comes first, then S0b (stop deleting signed files).
+Status: **in progress**. Done (one PR, not merged yet): S0's inventory script (its figures wait for a run of `migrate-docs.yml` with the owner's yes), S0b (signed files are never deleted) and S2 (Download data with the picker and the A4 ID sheet). Still open: the owner's answers Q1–Q6, Q9, Q10. Next: S1.
 
 ## What and why
 
@@ -81,7 +81,8 @@ Each stage is one PR from the work branch, with its own checks and a green Tests
 - **The owner's answers:** Q1 before S9; Q2 and Q3 before S4; Q10 before S3b; Q4 and Q9 before S10; the rest at their stage. **Counsel** (Q4) before S9's option B.
 - Tests: a unit test of the inventory on the emulator (counts by prefix, no writes).
 - Docs: this file (the figures go into "Weight").
-- Status: not started.
+- **As built:** `scripts/migrate/docs_inventory.py` reaches Firestore and Storage only through two read-only wrappers (`ReadOnlyDb`: stream a collection; `ReadOnlyBucket`: list names and sizes), so no write call exists on what it holds. Per firm it prints one JSON report and then a `TOTAL` line: `form101` (signed / unsigned / unreferenced: a file no record points at, such as an earlier unsigned Form 101), `docs` (signed contracts / other uploads), `signCopies` by request status (`unknown`: no request with that id), `pages`, `signature`, `signatureOrphans`, `assets`, `templates` (files under `contracts/`, records, deleted records), `deletedWorkerFiles` (files under a worker id with no record), `otherWorkerFiles`, `outsideFiles`, `workers` (`signed`, `onSidecar`, `pdfOnly`, with their ids, cut at 50) and `requests` (by status, `notApplied`: signed with no `appliedAt`, with their ids). A file is signed when a signing request's part points at it, or (Form 101) it is the `docFileId` of a worker with `signedAt`, or (contract) a `docs[]` entry with `signed: true`. `migrate-docs.yml` (manual, `task: inventory`, optional `tenant`) runs it with the deploy's service account. Tests: `tests/auth/test_migrate_docs_inventory.py` — the counts by prefix on the Firestore emulator (every document unchanged after the run, update times included) and on stand-ins whose every write method fails, the wrappers expose no write method, and the script's source calls none.
+- Status: **done** (with S0b and S2 in one PR): the script, the workflow and the test. Not yet run against the real project: the figures and the owner's answers are still to come.
 
 ### S0b — stop deleting signed files (never reverted)
 Keeping the files is the safe default, so this does not wait for Q2.
@@ -92,7 +93,7 @@ Keeping the files is the safe default, so this does not wait for Q2.
 - `supplierDeleteWorker` refuses a signed worker (`signedAt` / `signedRequestId`).
 - Tests: `test_files.py` (`deleteWorkerDoc` refuses each kind of signed path, an unsigned path still deletes); `test_portal.py` (a signed worker cannot be deleted by the supplier); e2e: removing a signed document leaves it, and Delete worker leaves its signed files.
 - Docs: docs/contracts.md (signed files are kept), docs/workers.md, docs/portals.md, docs/history.md (why the 2026-10-20 "no archive" deletes stopped).
-- Status: not started.
+- Status: **done** (with S0 and S2 in one PR). The check is `signed_file` in `functions-auth/files.py`, fed by `signed_lookup` in `functions-auth/main.py`; it also refuses a signing's signature (`sigPath`), a signed worker's `sigFileId`, and the parts of the `transferRequests` that made a worker; without a lookup `deleteWorkerDoc` deletes nothing (docs/contracts.md → Signed files are kept).
 
 ### S1 — a builder that gives the same bytes every time (old documents untouched)
 - **New folder `functions/builders/`:**
@@ -200,7 +201,7 @@ Keeping the files is the safe default, so this does not wait for Q2.
   - docs/components.md: only if a shared piece is added.
   - CLAUDE.md "Files": `functions/` names `worker_docs`.
 - Rollback: revert. No data has changed.
-- Status: not started.
+- Status: **done** (with S0 and S0b in one PR). Built ahead of S1, so: the ID sheet is `functions/idsheet.py`, shared by `worker_docs` and the old `signing.bundle` (S1 freezes its copy for the signed documents); the preview is the current `build_form101_pdf` with no pages of its own (the sheet and the other pages are added after it), marked on every form page; `HE_KINDS` / `HE_DOC_TYPES` and the summary page moved to `idsheet.py` / `workerdocs.py`. Choices where this stage left one: a file path outside the worker's folder, or a stored file that cannot be read, is skipped and counted in `X-Dropped` rather than failing the whole bundle; a contract left out for pay is reported in an extra exposed header `X-Withheld` (and a toast), and the file name in `X-Name`; a signed worker whose signed copy is not found gets no Form 101 (never a preview in its place); for a worker still on a sidecar, the sidecar's first picture is the document and the rest are other pages; a passport worker gets no empty ספח box; the old `signing.bundle` now applies the pay rule too and leaves the scans out when the stored Form 101 is in it.
 
 ### S3 — contract templates versioned and never overwritten
 - **Data model:** a new subcollection `tenants/<t>/contractTemplates/<tid>/versions/<n>` = `{fileId: tenants/<t>/contracts/<tid>/v<n>.pdf, sha256, size, pages, placed, marks, unknown, pictures, createdAt, createdBy}`.
@@ -468,7 +469,7 @@ Shipped on its own, before S4, so reverting S4 can never take the lock enforceme
 
 ## Weight
 
-This is an estimate until S0 measures it. Measured builds: an unsigned Form 101 with its scans is 0.2–1.2 MB (198 KB with three small JPEGs, 1.16 MB with three large ones), and 140 KB without pages. The scan pages are about 300–600 KB each, about 1–2 MB per worker.
+This is an estimate until S0's inventory (`migrate-docs.yml`, `task: inventory`) is run with the owner's yes; its figures then replace it. Measured builds: an unsigned Form 101 with its scans is 0.2–1.2 MB (198 KB with three small JPEGs, 1.16 MB with three large ones), and 140 KB without pages. The scan pages are about 300–600 KB each, about 1–2 MB per worker.
 
 | Per worker | Today | When done |
 |---|---|---|

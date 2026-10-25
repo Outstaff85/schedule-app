@@ -10,6 +10,7 @@ import type { AccData, AccWorker, ApprovalDoc, HrLogin } from './accounting';
 import type { UserRow } from './users';
 import type { MapPickProps } from './MapPicker';
 import type { BellItem } from './BellPanel';
+import type { DownloadInclude, WorkerPdf } from './logic/workerdocs';
 
 export type Notice = { lvl: 'red' | 'amber'; word: string; title: string };
 /** A worker today: on vacation, the latest punch (in / out), no punch on a started shift, or nothing. */
@@ -314,6 +315,11 @@ export type WorkerBridge = {
   /** what the sign window needs (docs/contracts.md → Signing): the saved worker, Form 101's values and the contract's marks
    * (the firm's profile refreshed first), whether this login sees pay and sets the signing date, the worker's punch link */
   signContext(workerId: string): Promise<SignContext | null>;
+  /** Download data (docs/workers.md → Download data): the parts picked, put together by `worker_docs` — Form 101's values
+   * (`form101Payload`, the firm's profile refreshed first) sent when it is picked — and the PDF opened; what it holds */
+  downloadData(workerId: string, include: DownloadInclude): Promise<Omit<WorkerPdf, 'blob'>>;
+  /** whether this login sees pay (`canSeePay`): a contract may hold pay, so without it the contract is left out */
+  seesPay(): boolean;
   /** the worker's latest sign request (`signRequestOf`), and reading them again */
   signRequest(workerId: string): SignRequestView | null;
   reloadSignRequests(): Promise<void>;

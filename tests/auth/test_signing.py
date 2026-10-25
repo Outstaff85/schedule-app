@@ -161,30 +161,3 @@ def test_the_print_hash_is_kept_with_the_send():
     lst = signing.run(db, bucket, OWNER, {"action": "list"}, build101)["requests"]
     assert lst[0]["printHash"] == "abc123" and lst[0]["printMarks"] == req["printMarks"]
 
-
-def test_download_data_is_one_pdf_in_the_plan_order():
-    db, bucket, t = _setup()
-    w = db.data[("tenants", "t1", "workers", "w1")]
-    db.collection("tenants").document("t1").collection("clients").document("c1").set({"name": "Site A"})
-    w.update({"docGiven": "אבי", "docSurname": "כהן", "docId": "123456782", "clientIds": ["c1"], "signDate": "01/09/2026", "hourlyRate": 55,
-              "docFileId": "tenants/t1/workers/w1/form101/1-f.pdf",
-              "scanPages": [{"fileId": "tenants/t1/workers/w1/pages/1-1-sefach.jpg", "kind": "sefach"},
-                            {"fileId": "tenants/t1/workers/w1/pages/1-0-id_front.jpg", "kind": "id_front", "primary": True}],
-              "docs": [{"type": "visa", "fileId": "tenants/t1/workers/w1/docs/1-visa.pdf"},
-                       {"type": "contract", "signed": True, "fileId": "tenants/t1/workers/w1/docs/2-c.pdf"}]})
-    one = lambda text: (lambda d: (d.new_page().insert_text((50, 50), text), d.tobytes())[1])(pymupdf.open())
-    from PIL import Image
-    import io
-    jpg = io.BytesIO(); Image.new("RGB", (40, 30), "white").save(jpg, "JPEG")
-    bucket.store.update({w["docFileId"]: one("FORM101"), "tenants/t1/workers/w1/docs/2-c.pdf": one("CONTRACT"),
-                         "tenants/t1/workers/w1/docs/1-visa.pdf": one("VISA"),
-                         "tenants/t1/workers/w1/pages/1-0-id_front.jpg": jpg.getvalue(), "tenants/t1/workers/w1/pages/1-1-sefach.jpg": jpg.getvalue()})
-    r = signing.run(db, bucket, STAFF_RO, {"action": "bundle", "workerId": "w1"}, build101)
-    assert r["parts"] == ["טופס 101", "חוזה (חתום)", "תעודת זהות", "ספח", "ויזה"] and r["pages"] == 6
-    doc = pymupdf.open(stream=base64.b64decode(r["pdfBase64"]))
-    first = doc[0].get_text()
-    assert "123456782" in first and "Site A" in first and "01/09/2026" in first and "55" not in first  # never pay
-    assert "FORM101" in doc[1].get_text() and "CONTRACT" in doc[2].get_text() and "VISA" in doc[5].get_text()
-    # an own-workers HR only its own; a login without the Workers tab nothing
-    assert signing.run(db, bucket, HR_OWN, {"action": "bundle", "workerId": "w2"}, build101) == {"error": signing.E_NO_WORKER}
-    assert signing.run(db, bucket, {"uid": "x", "role": "staff", "tenantId": "t1", "rt": ["today"]}, {"action": "bundle", "workerId": "w1"}, build101) == {"error": signing.E_NO_RIGHT}

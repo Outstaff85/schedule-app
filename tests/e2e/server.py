@@ -55,6 +55,20 @@ def sign_documents(request):
     except ValueError as e:
         return app.response_class(json.dumps({'error': str(e)}), status=400, mimetype='application/json')
     return app.response_class(json.dumps(out, default=str), mimetype='application/json')
+# The worker's documents built on request (functions/workerdocs.py, the `worker_docs` function): the same gate, the
+# real Form 101 build, the emulators' Firestore and Storage; a PDF is answered raw with its headers.
+import workerdocs as _workerdocs
+def worker_docs(request):
+    body = request.get_json(silent=True, force=True) or {}
+    if body.get('ping') is True:
+        return app.response_class(json.dumps({'ok': True, 'warm': True}), mimetype='application/json')
+    status, error, claims = _gate.claims_of(request.headers, lambda t: main.auth.verify_id_token(t, check_revoked=True))
+    if status:
+        return app.response_class(json.dumps({'error': error}), status=status, mimetype='application/json')
+    out = _workerdocs.run(DB, _orig_bucket('demo-schedule.appspot.com'), claims, body, _fmain.build_form101_pdf)
+    if out.get('error'):
+        return app.response_class(json.dumps({'error': out['error']}), status=out.get('status') or 400, mimetype='application/json')
+    return app.response_class(out['pdf'], headers=_workerdocs.headers(out))
 
 # Anthropic stand-in for aiFindField: finds the city (ישוב), nothing else.
 CALLS = []
@@ -130,6 +144,7 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_POST(self):
         raw = self.rfile.read(int(self.headers['Content-Length'] or 0))
+        extra = {}
         if self.path == '/seed':
             seed(); status, data = 200, b'{"ok":true}'
         elif self.path == '/aicalls':
@@ -217,14 +232,19 @@ class H(BaseHTTPRequestHandler):
             docs = [d.to_dict() for d in DB.collection('tenants').document(T1).collection('punches').stream()]
             status, data = 200, json.dumps({'n': len(docs), 'ids': sorted(d['id'] if isinstance(d.get('id'), str) else str(d.get('id')) for d in docs), 'days': [d.get('day') for d in docs]}).encode()
         else:
-            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read, '/weather': main.weather, '/contract_templates': contract_templates, '/sign_documents': sign_documents}[self.path]
+            fn = {'/login': main.login, '/users_admin': main.users_admin, '/punch': main.punch, '/supplier': main.supplier, '/hours': main.hours, '/ai_read': main.ai_read, '/weather': main.weather, '/contract_templates': contract_templates, '/sign_documents': sign_documents, '/worker_docs': worker_docs}[self.path]
             hdr = {'Content-Type': 'application/json'}
             if self.headers.get('Authorization'): hdr['Authorization'] = self.headers['Authorization']
             with app.test_request_context('/', method='POST', data=raw, headers=hdr):
                 from flask import request
                 r = fn(request)
                 status, data = r.status_code, r.get_data()
-        self.send_response(status); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(data)
+                # worker_docs answers a raw PDF: its own type and headers go back as they are
+                extra = {k: v for k, v in r.headers.items() if k.startswith('X-') or k in ('Content-Type', 'Access-Control-Expose-Headers')} if self.path == '/worker_docs' else {}
+        self.send_response(status)
+        if 'Content-Type' not in extra: self.send_header('Content-Type', 'application/json')
+        for k, v in extra.items(): self.send_header(k, v)
+        self.end_headers(); self.wfile.write(data)
 
 seed()
 print('ready', flush=True)

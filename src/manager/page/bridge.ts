@@ -46,6 +46,8 @@ import { canSeePay, canSetSignDate } from '../logic/access';
 import { contractValues } from '../logic/contract-values';
 import { form101Payload } from '../logic/form101';
 import { loadSignRequests, signRequestOf } from '../logic/signing';
+import { workerDocsCall } from '../logic/workerdocs';
+import { openPdfBlob } from '../contracts';
 import { refreshTenantProfile } from './admin';
 Object.defineProperties(window, {
   "renderDashboard": {get: () => renderDashboard, configurable: true},
@@ -396,7 +398,11 @@ provideBridge({
   // Delete never asks (the card's Undo snack): when its time is up the entries go, saved, and their files are deleted.
   removeDocs(wid?: any,ids?: any){
     const w=workers.find((x?: any)=>x.id===wid); if(!w) return;
-    const gone=(w.docs||[]).filter((d?: any)=>ids.includes(String(d.id))); if(!gone.length) return;
+    const picked=(w.docs||[]).filter((d?: any)=>ids.includes(String(d.id)));
+    // a signed document is never removed (docs/contracts.md → Signed files are kept)
+    const gone=picked.filter((d?: any)=>!d.signed);
+    if(gone.length<picked.length) showToast(tr('Signed documents are kept'));
+    if(!gone.length) return;
     w.docs=(w.docs||[]).filter((d?: any)=>!gone.includes(d));
     autoSave(); render();
     gone.forEach((d?: any)=>{ if(d.fileId) gsDeleteWorkerDoc(d.fileId); });
@@ -417,6 +423,15 @@ provideBridge({
       values:contractValues(w,{profile,clients,suppliers,seePay}), canSeePay:seePay, canSetDate:canSetSignDate(), punchLink:link,
       whatsapp:link?'https://wa.me/'+String(w.phone||'').replace(/\D/g,'').replace(/^0/,'972')+'?text='+encodeURIComponent(tr('Documents to sign: {0}',{0:link})):''};
   },
+  async downloadData(workerId?: any,include?: any){
+    const w=workers.find((x?: any)=>x.id===workerId); if(!w) throw new Error(tr('Worker not found'));
+    const profile=include&&include.form101?await refreshTenantProfile(5*60*1000):null;
+    const r=await workerDocsCall({action:'bundle', workerId, include, ...(include&&include.form101?{form101:form101Payload(w,w.docType!=='passport',profile)}:{})});
+    openPdfBlob(r.blob,r.name);
+    const {blob:_b,...rest}=r;
+    return rest;
+  },
+  seesPay:()=>canSeePay(),
   signRequest:(workerId?: any)=>signRequestOf(workerId) as any,
   reloadSignRequests:()=>loadSignRequests(true),
   findScanFields:(editId?: any,keys?: any,docType?: any)=>findScanFields(editId?workers.find((x?: any)=>x.id===editId)||null:null,keys,docType),

@@ -23,16 +23,9 @@ import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-
 import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
 import { SignWindow, takeSign } from './SignWindow';
-import { signCall } from './logic/signing';
 import { contractDocDate } from './logic/workers';
-import { openPdf } from './contracts';
-
-/** Download data (docs/contracts.md → Download data): one PDF of everything kept under the worker, put together on the server now. */
-async function downloadData(id: string, api: ManagerBridge) {
-  api.toast(tr('Putting the documents together…'));
-  try { const r = await signCall<{ pdfBase64: string; name: string }>({ action: 'bundle', workerId: id }); openPdf(r.pdfBase64, r.name); }
-  catch (e: any) { api.toast(tr('Download failed: {0}', { 0: String(e?.message || e) }), 5000); }
-}
+import { WORKER_DOCS_FN_URL, warmCloudFunctions } from './logic/functions';
+import { DownloadData } from './DownloadData';
 import { HoursStatusChip, NoticeChipsAll, WorkerHeadLine } from './worker-head';
 import { INCOME_LABELS, OTHER_INCOME_LABELS, WORKER_DOC_TYPES, fmtDMY, missingScanKeys, recordScanValues, scanLabel, workerAddress, workerDocId, workerHasScan } from './worker';
 import { hoursShort } from './today';
@@ -121,7 +114,10 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
   const { end } = sel;
   React.useEffect(() => { if (!active) end(); }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
   const remove = (which: string[]) => {
-    const gone = docs.filter(d => which.includes(String(d.id)));
+    // a signed document is never removed (docs/contracts.md → Signed files are kept)
+    const picked = docs.filter(d => which.includes(String(d.id)));
+    const gone = picked.filter(d => !d.signed);
+    if (gone.length < picked.length) api.toast(tr('Signed documents are kept'));
     if (!gone.length) return;
     gone.forEach(d => hiddenDocs.add(String(d.id))); redraw();
     const one = gone.length === 1 ? gone[0] : null;
@@ -144,7 +140,7 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
         sub={<>{d.name || 'file'} · <span style={{ color: x ? c : undefined }}>{exText}</span></>}
         actions={[{ label: tr('Open'), icon: <IconDownload />, onSelect: () => open(d) }]}
         onOpen={() => open(d)}
-        onDelete={can ? () => remove([String(d.id)]) : undefined}
+        onDelete={can && !d.signed ? () => remove([String(d.id)]) : undefined}
         selecting={sel.on} selected={sel.picked.has(String(d.id))} onToggle={() => sel.toggle(String(d.id))} />
     );
   };
@@ -187,6 +183,9 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
   React.useEffect(() => { lastPane = { wid: w.id, pane }; }, [w.id, pane]);
   const press = React.useRef(0);
   const [signing, setSigning] = React.useState(() => takeSign(w.id));
+  const [downloading, setDownloading] = React.useState(false);
+  // Download data's function is woken while the card is read (a cold start costs seconds)
+  React.useEffect(() => { warmCloudFunctions([WORKER_DOCS_FN_URL]); }, [w.id]);
   const req = api.signRequest(w.id);
 
   const status = w.status || 'active';
@@ -198,7 +197,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
     ...(snap.canPay ? [{ icon: <IconCash />, label: tr('Pay'), run: () => api.payFromCard(w.id) }] : []),
     ...(can ? [{ icon: <IconUpload />, label: tr('Add document'), run: () => api.openDocUpload(w.id) }] : []),
     ...(w.docUrl ? [{ icon: <IconDownload />, label: tr('Download document'), run: () => window.open(w.docUrl, '_blank', 'noopener') }] : []),
-    { icon: <IconFileDownload />, label: tr('Download data'), run: () => void downloadData(w.id, api) },
+    { icon: <IconFileDownload />, label: tr('Download data'), run: () => setDownloading(true) },
     ...(can ? [{ icon: <IconFileUpload />, label: tr('Upload hours'), run: () => api.openHoursImport(w.id) }] : []),
     ...(can && snap.canExport ? [{ icon: <IconFileExport />, label: tr('Export hours'), run: () => api.openHoursExport(w.id) }] : []),
     ...(can ? [{ icon: <IconLink />, label: tr('Punch link'), run: () => api.copyLink(w.id) }] : []),
@@ -224,6 +223,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
         {!!w.movedToOtherFirm && <Badge variant="warn" data-testid="card-moved">{tr('Moved to another firm')}</Badge>}
       </div>
       {signing && <SignWindow workerId={w.id} api={api} onClose={() => setSigning(false)} />}
+      {downloading && <DownloadData w={w} api={api} onClose={() => setDownloading(false)} />}
       {(can || w.docSavedAt) && (
         <div className="mb-2.5 flex flex-wrap items-center justify-end gap-2" data-testid="card-tools">
           {can && (

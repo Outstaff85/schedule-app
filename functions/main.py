@@ -32,6 +32,7 @@ import signing
 import datastore
 import feedback
 import gate
+import workerdocs
 from PIL import Image
 
 ASSETS_DIR = pathlib.Path(__file__).parent / "assets"
@@ -930,5 +931,39 @@ def sign_documents(req: https_fn.Request) -> https_fn.Response:
         return _json(signing.run(db, bucket, claims, payload, build101, firestore.SERVER_TIMESTAMP))
     except ValueError as e:
         return _json({"error": str(e)}, 400)
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
+
+# ===== The worker's documents built on request (workerdocs.py; docs/workers.md → Download data) =====
+
+@https_fn.on_request(
+    cors=options.CorsOptions(cors_origins="*", cors_methods=["post"]),
+    memory=options.MemoryOption.GB_1,
+    cpu=1,
+    # 4, not the 20 of the parallel AI calls: each build holds every page of a worker in memory (docs/backend.md)
+    concurrency=4,
+    timeout_sec=120,
+)
+def worker_docs(req: https_fn.Request) -> https_fn.Response:
+    """"Download data" with its picker ({"action": "bundle", "workerId", "include": {form101, contract, scans, docs},
+    "form101"}) and the Form 101 preview ({"action": "form101", "workerId", "form101"}) from a manager login with the
+    Workers right (workerdocs.run): answered as raw application/pdf with X-Pages / X-Parts / X-Dropped / X-Withheld /
+    X-Name (exposed through CORS), an error as JSON. Built now, never stored."""
+    if req.method != "POST":
+        return _json({"error": "POST only"}, 405)
+    try:
+        payload = req.get_json(silent=True, force=True) or {}
+        pong = _ping_response(payload)
+        if pong:
+            return pong
+        status, error, claims = gate.claims_of(req.headers, _verify_token)
+        if status:
+            return _json({"error": error}, status)
+        from firebase_admin import firestore, storage
+        out = workerdocs.run(firestore.client(), _model_bucket(storage), claims, payload, build_form101_pdf)
+        if out.get("error"):
+            return _json({"error": out["error"]}, out.get("status") or 400)
+        return https_fn.Response(out["pdf"], status=200, headers=workerdocs.headers(out))
     except Exception as e:
         return _json({"error": str(e)}, 500)
