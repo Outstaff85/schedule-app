@@ -382,19 +382,7 @@ def test_a_saved_outcome_needs_the_worker_and_the_attempts_own_firm():
 
 
 # ---------- the server's side (functions/main.py) with Storage, the bucket and Firestore mocked ----------
-def _main():
-    """functions/main.py under a name of its own (functions-auth's tests import theirs as "main")."""
-    import sys
-    if "scan_functions_main" in sys.modules:
-        return sys.modules["scan_functions_main"]
-    fn = str(ROOT / "functions")
-    if fn not in sys.path:
-        sys.path.append(fn)  # its own modules (contracts, signing, datastore, feedback, gate)
-    spec = importlib.util.spec_from_file_location("scan_functions_main", ROOT / "functions" / "main.py")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["scan_functions_main"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+# functions/main.py comes from the `functions_main` fixture (conftest.py): loaded once per run, as test_form101_build.py's
 
 
 class _Ref:
@@ -447,8 +435,7 @@ def _body(resp):
     return resp.status_code, json.loads(resp.get_data())
 
 
-def _server(monkeypatch, collects=True, answer=None):
-    main = _main()
+def _server(monkeypatch, main, collects=True, answer=None):
     put, asked = [], []
     monkeypatch.setattr(main, "collects_documents", lambda db, t: asked.append(t) or collects)
     monkeypatch.setattr(main.datastore, "put", lambda files, fb=None: put.extend(files) or [p for p, _ in files])
@@ -460,8 +447,8 @@ def _server(monkeypatch, collects=True, answer=None):
 PAGE = {"source": "page", "doctypeModel": "sefach", "doctypeFixed": "id_back", "pageImage": JPG}
 
 
-def test_the_server_keeps_the_lab_version_and_the_new_fields(monkeypatch):
-    main, put, _ = _server(monkeypatch)
+def test_the_server_keeps_the_lab_version_and_the_new_fields(monkeypatch, functions_main):
+    main, put, _ = _server(monkeypatch, functions_main)
     db, stats = _Db(), _Stats()
     lab = dict(PAGE, origin="lab", model="v5", turnModel=1, turnBy="face")
     site = dict(PAGE, model="v5", sessionId="s1", workerId="w1", turnBy="haiku")
@@ -473,14 +460,14 @@ def test_the_server_keeps_the_lab_version_and_the_new_fields(monkeypatch):
     assert len(put) == 2
 
 
-def test_a_firm_with_its_collection_off_keeps_no_page_copy(monkeypatch):
-    main, put, asked = _server(monkeypatch, collects=False)
+def test_a_firm_with_its_collection_off_keeps_no_page_copy(monkeypatch, functions_main):
+    main, put, asked = _server(monkeypatch, functions_main, collects=False)
     db, stats = _Db(), _Stats()
     code, j = _body(main._scan_add({"examples": [PAGE, dict(PAGE, doctypeFixed="sefach", keep=True)]}, {"tenantId": "t1"}, db, stats, None))
     assert code == 200 and j["kept"] == 0 and j["right"] == 1 and put == [] and db.records == [] and asked == ["t1"]
     assert "doctypesSince" not in stats.updates[-1]
     # the super-admin in the lab (no firm) always keeps them
-    main, put, asked = _server(monkeypatch, collects=False)
+    main, put, asked = _server(monkeypatch, functions_main, collects=False)
     code, j = _body(main._scan_add({"examples": [PAGE]}, {"role": "superadmin"}, _Db(), _Stats(), None))
     assert j["kept"] == 1 and len(put) == 1 and asked == []
 
@@ -488,10 +475,10 @@ def test_a_firm_with_its_collection_off_keeps_no_page_copy(monkeypatch):
 DIR = "attempts/new/site/2026-10-24/s12"
 
 
-def test_a_kept_attempt_gets_an_owner_note_and_a_saved_outcome_is_checked_against_it_without_reading_the_bucket(monkeypatch):
+def test_a_kept_attempt_gets_an_owner_note_and_a_saved_outcome_is_checked_against_it_without_reading_the_bucket(monkeypatch, functions_main):
     import json
     seen = []
-    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or None)
+    main, put, _ = _server(monkeypatch, functions_main, answer=lambda p: seen.append(p) or None)
     db = _Db()
     code, j = _body(main._scan_attempts({"attempts": [att()]}, {"tenantId": "t1"}, db, _Stats(), None))
     base = j["dirs"]["s12"]
@@ -506,10 +493,10 @@ def test_a_kept_attempt_gets_an_owner_note_and_a_saved_outcome_is_checked_agains
     assert _body(main._scan_attempt_outcome({"dir": base, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, db, None))[0] == 403
 
 
-def test_an_attempt_kept_before_the_notes_is_checked_by_its_answer_json(monkeypatch):
+def test_an_attempt_kept_before_the_notes_is_checked_by_its_answer_json(monkeypatch, functions_main):
     import json
     seen = []
-    main, put, _ = _server(monkeypatch, answer=lambda p: seen.append(p) or json.dumps({"tenantId": "t1"}).encode())
+    main, put, _ = _server(monkeypatch, functions_main, answer=lambda p: seen.append(p) or json.dumps({"tenantId": "t1"}).encode())
     code, j = _body(main._scan_attempt_outcome({"dir": DIR, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t1"}, _Db(), None))
     assert code == 200 and j["ok"] and seen == [DIR + "/answer.json"] and len(put) == 1
     # a note for another folder under the same key is never taken
@@ -517,16 +504,16 @@ def test_an_attempt_kept_before_the_notes_is_checked_by_its_answer_json(monkeypa
     assert _body(main._scan_attempt_outcome({"dir": DIR, "outcome": "deleted"}, {"tenantId": "t1"}, db, None))[0] == 200
 
 
-def test_an_outcome_from_another_firm_or_for_no_attempt_is_refused(monkeypatch):
+def test_an_outcome_from_another_firm_or_for_no_attempt_is_refused(monkeypatch, functions_main):
     import json
     dir_ = DIR
-    main, put, _ = _server(monkeypatch, answer=json.dumps({"tenantId": "t1"}).encode())
+    main, put, _ = _server(monkeypatch, functions_main, answer=json.dumps({"tenantId": "t1"}).encode())
     assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved", "workerId": "w1"}, {"tenantId": "t2"}, _Db(), None))[0] == 403
     assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "saved"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
     assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "kept"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
     assert _body(main._scan_attempt_outcome({"dir": "documents/t1/x", "outcome": "deleted"}, {"tenantId": "t1"}, _Db(), None))[0] == 400
     assert put == []
-    main, put, _ = _server(monkeypatch, answer=None)
+    main, put, _ = _server(monkeypatch, functions_main, answer=None)
     assert _body(main._scan_attempt_outcome({"dir": dir_, "outcome": "deleted", "page": 1}, {"tenantId": "t1"}, _Db(), None))[0] == 404
     # the firm in the note decides, not the answer.json
     db = _Db({feedback.attempt_key(dir_): {"tenantId": "t9", "dir": dir_}})
@@ -563,8 +550,8 @@ def test_the_readers_are_due_at_30_real_documents():
     assert got["passportsDue"] and not got["idCardsDue"] and got["idCardsSince"] == 29
 
 
-def test_the_server_counts_a_saved_passport_and_a_lab_tick(monkeypatch):
-    main, put, _ = _server(monkeypatch)
+def test_the_server_counts_a_saved_passport_and_a_lab_tick(monkeypatch, functions_main):
+    main, put, _ = _server(monkeypatch, functions_main)
     db, stats = _Db(), _Stats()
     payload = doc(pages=[{"b64": DOC_JPG, "doctype": "passport", "primary": True}], saved=PASSPORT, scanned=PASSPORT)
     code, j = _body(main._scan_document(payload, {"tenantId": "t1"}, db, stats, None))

@@ -181,8 +181,10 @@ def _quads(seed=11, n=12):
         c = rng.uniform(0.2, 0.8, (2, 2))
         r = rng.uniform(0.05, 0.4, (2, 2))
         ts = [sorted(rng.uniform(0, 2 * math.pi, 4)) for _ in range(2)]
-        out.append(tuple([[float(c[k, 0] + r[k, 0] * math.cos(t)), float(c[k, 1] + r[k, 1] * math.sin(t))] for t in ts[k]]
-                         for k in range(2)))
+        # rounded to 6 places: math.cos / sin come from the platform's libm (MSVC and glibc differ in the last bit), so
+        # unrounded the same seed gives other quads on Windows and on CI; the rounded inputs are the same everywhere
+        out.append(tuple([[round(float(c[k, 0] + r[k, 0] * math.cos(t)), 6), round(float(c[k, 1] + r[k, 1] * math.sin(t)), 6)]
+                          for t in ts[k]] for k in range(2)))
     return out
 
 

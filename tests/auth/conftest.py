@@ -28,3 +28,32 @@ def strict_importorskip(modname, minversion=None, reason=None, **kw):
 
 if os.environ.get("SCAN_TRAIN_FULL") == "1":
     pytest.importorskip = strict_importorskip
+
+
+_FUNCTIONS_MAIN = "functions_main"
+
+
+@pytest.fixture(scope="session")
+def functions_main():
+    """functions/main.py, executed once for the whole run and shared by every test that needs it (test_form101_build.py,
+    test_scan_feedback.py). It declares its secrets (`SecretParam("HF_DATA_TOKEN")`) at import, and firebase_functions keeps
+    one process-wide registry of declared params, so a second copy loaded under another name fails with "Duplicate
+    Parameter Error". Kept under a name of its own: functions-auth's tests import theirs as "main". A failed load is not
+    left half-built in sys.modules."""
+    import importlib.util
+    import pathlib
+    import sys
+    if _FUNCTIONS_MAIN in sys.modules:
+        return sys.modules[_FUNCTIONS_MAIN]
+    fn = pathlib.Path(__file__).resolve().parents[2] / "functions"
+    if str(fn) not in sys.path:
+        sys.path.append(str(fn))  # after functions-auth: its main stays `main`; main.py's own modules (contracts, signing, datastore, feedback, gate)
+    spec = importlib.util.spec_from_file_location(_FUNCTIONS_MAIN, fn / "main.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[_FUNCTIONS_MAIN] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except BaseException:
+        sys.modules.pop(_FUNCTIONS_MAIN, None)
+        raise
+    return mod
