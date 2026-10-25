@@ -38,6 +38,7 @@ KS_FULL = 0.3      # a full step at this distance or more
 KS_NEED = 0.25     # still this far with the setting at its limit: the owner's (a new effect)
 STEP = 0.1         # a step: at most this share of the setting's range (gen/capture.py LIMITS)
 HISTORY = 20       # the last steps kept in tune.json
+NOT_A_KIND = ("other", "none")   # real pages of no document type: never "a new document type" for the owner
 # setting → (the statistic it moves, +1 when raising the setting raises the statistic)
 TUNABLE = {"blurP": ("sharpness", -1), "noiseP": ("noise", +1), "noiseMax": ("noise", +1),
            "brightnessShift": ("brightness", +1), "nearPower": ("fill", +1), "tiltMax": ("tilt", +1)}
@@ -113,7 +114,7 @@ def missing_kinds(work, info):
     out = {}
     for r in rows:
         t = ((r.get("targets") or {}).get("doctype") or {}).get("doctype")
-        if t and t not in drawn and r.get("split") == "train":
+        if t and t not in drawn and t not in NOT_A_KIND and r.get("split") == "train":
             out[t] = out.get(t, 0) + 1
     return out
 

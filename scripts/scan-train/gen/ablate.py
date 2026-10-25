@@ -18,7 +18,9 @@ training run's `gen build` reads (gen/capture.py), and to the cycle's report not
 The cadence: the cycle calls it every cycle and it decides itself — it runs once every EVERY cycles (the first call
 runs), PER_RUN effects a run, the ones tested longest ago first. A cycle is counted once (--cycle, or the
 SCAN_TRAIN_CYCLE environment variable, names it; without either every call counts). A run stopped half way (the 08:00
-stop) keeps the trials done in ablation.json ("current") and the next call goes on with it, whatever the cadence.
+stop) keeps the trials done in ablation.json ("current") and the next call goes on with it, whatever the cadence; a
+trial that fails on MAX_FAILED calls running gives that run up (the effect stays as it was, its turn comes again in
+EVERY cycles) so a broken trial never costs every night.
 
 The trials run in a home of their own, <home>/gen/ablation/home (SCAN_TRAIN_HOME for the child processes): the work
 folder's inputs linked in read-only use (models, real data, templates, backgrounds, the exam runs …), its own new/,
@@ -39,6 +41,7 @@ EVERY = 4                 # cycles between two ablation runs
 PER_RUN = 2               # effects tried a run
 MARGIN = 0.05             # of the mean corner error: closer is unclear
 MIN_REAL = 20             # real exam pages at least to decide
+MAX_FAILED = 3            # calls in a row with a failed trial: that run is given up (the next comes in EVERY cycles)
 COUNT, EPOCHS, SEED = 1500, 3, 11
 MODEL = "edges-lite.onnx"
 REAL_SETS = ("users",)
@@ -166,14 +169,26 @@ def ablate(work=None, cycle=None, runner=None, force=False, now=None):
     finally:
         if own:
             runner.close()
-    st["current"] = None if not failed else st["current"]
-    if not failed:
-        st["lastRun"] = {"at": _now(now), "effects": list(decided), "cycle": cycle}
+    gave_up = False
+    if failed:
+        cur["failedCalls"] = int(cur.get("failedCalls") or 0) + 1
+        gave_up = cur["failedCalls"] >= MAX_FAILED
+        if gave_up:   # a trial that keeps failing must not cost every night: the effect waits for the next turn
+            for x in failed:
+                e = x.split(":", 1)[0]
+                if e in st["effects"]:
+                    st["effects"][e].update({"tested": _now(now), "verdict": "failed", "why": x})
+    if not failed or gave_up:
+        st["current"] = None
+        st["lastRun"] = {"at": _now(now), "effects": list(decided), "cycle": cycle, **({"failed": failed} if failed else {})}
         st["calls"] = 0
     save(work, st)
     lines = [f"{DESCRIBE[e]}: {v} — " + st["effects"][e]["why"] + (" — switched off" if v == "hurts" else "")
              for e, v in decided.items()]
-    if failed:
+    if gave_up:
+        lines.append(f"a trial failed {MAX_FAILED} times running (" + "; ".join(failed) + ") — given up until the next "
+                     f"ablation in {EVERY} cycles; the effect stays as it was")
+    elif failed:
         lines.append("a trial did not finish (" + "; ".join(failed) + ") — the next call tries again")
     gneeds.note(work, "ablate", lines or ["nothing decided"], now)
     return {"ran": True, "decided": decided, "failed": failed, "wait": 0}

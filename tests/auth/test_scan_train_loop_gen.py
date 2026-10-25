@@ -457,3 +457,47 @@ def test_needs_are_listed_until_solved_and_clean_keeps_the_generators_state(work
     common.clear_work()
     assert sorted(p.name for p in (work / "gen").iterdir()) == ["needs.json", "notes", "tune.json"]
     assert not (work / "new").exists()
+
+
+# ---------- the review's checks ----------
+def test_collect_compares_the_cycles_start_as_an_instant_whatever_its_offset(work):
+    import datetime
+    at = datetime.datetime(2026, 10, 25, 1, 30, tzinfo=datetime.timezone.utc)
+    gneeds.note(work, "tune", ["moved"], now=at)
+    # 03:00 in Israel (+02:00) is 01:00 UTC: the note (01:30 UTC) came after the start, though "01:30" < "03:00" as text
+    assert gneeds.collect(work, since="2026-10-25T03:00:00+02:00")["notes"] == ["tune: moved"]
+    assert gneeds.collect(work, since="2026-10-25T01:00:00Z")["notes"] == ["tune: moved"]
+    assert gneeds.collect(work, since="2026-10-25T04:00:00+02:00")["notes"] == []
+    assert gneeds.collect(work, since=at)["notes"] == ["tune: moved"]
+
+
+def test_a_trial_that_keeps_failing_is_given_up_and_waits_for_its_next_turn(work):
+    calls = []
+
+    def broken(cap):
+        calls.append(cap)
+        raise gab.TrialFailed("train.py exited 1")
+    for k in range(gab.MAX_FAILED - 1):
+        r = gab.ablate(work, cycle=f"x{k}", runner=broken)
+        assert r["failed"] and gab.load(work)["current"]
+    r = gab.ablate(work, cycle="xlast", runner=broken)
+    st = gab.load(work)
+    assert r["failed"] and st["current"] is None and st["calls"] == 0 and st["lastRun"]["failed"]
+    assert all(st["effects"][e]["on"] for e in gcap.EFFECTS)                    # nothing switched by a failure
+    assert "given up" in " ".join(gneeds.collect(work)["notes"])
+    n = len(calls)
+    assert gab.ablate(work, cycle="next", runner=broken)["ran"] is False and len(calls) == n   # not every night
+
+
+def test_bg_fetch_comes_back_to_a_page_it_left_half_way(work):
+    bgfetch.fetch(work, limit=1, http=FakeOpenverse(), sleep=lambda s: None, prepare=lambda w: None)
+    pages = bgfetch.load_state(work)["pages"]
+    assert pages and all(p == 1 for p in pages.values())     # one photo of page 1 taken, the rest of it still to see
+
+
+def test_tune_never_asks_for_the_other_kind(work, monkeypatch):
+    from gen import real as greal
+    rows = [{"split": "train", "targets": {"doctype": {"doctype": "other"}}},
+            {"split": "train", "targets": {"doctype": {"doctype": "passport"}}}]
+    monkeypatch.setattr(greal, "read_index", lambda folder: rows)
+    assert gtune.missing_kinds(work, {"counts": {"byClass": {"id_front": 3}}}) == {"passport": 1}

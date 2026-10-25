@@ -264,6 +264,7 @@ def fetch(work=None, limit=PER_RUN, http=None, sleep=None, prepare=None, now=Non
                         break
                     for r in results:
                         if want <= 0 or left <= 0:
+                            st["pages"][q] = page - 1   # the page's rest not looked at: this page again next run
                             break
                         rid, lic = str(r.get("id") or ""), str(r.get("license") or "").lower()
                         if not rid or rid in known or lic not in LICENCES or r.get("mature"):

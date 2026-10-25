@@ -49,13 +49,28 @@ def note(work, step, lines, now=None):
     gcap.write(gcap.gen_dir(work) / "notes" / f"{step}.json", {"at": _now(now), "step": step, "notes": lines})
 
 
+def _instant(t):
+    """An ISO time (any offset, a trailing Z, or none: the PC's local time) → an aware datetime; None when unreadable."""
+    if isinstance(t, datetime.datetime):
+        d = t
+    else:
+        try:
+            d = datetime.datetime.fromisoformat(str(t).strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return d if d.tzinfo else d.astimezone()
+
+
 def collect(work=None, steps=("bg-fetch", "tune", "ablate"), since=None):
     """→ {"notes": [str], "needsOwner": [str]} for the cycle's report: each step's last lines (only those written at
-    or after `since`, an ISO time, when given) and every open need."""
+    or after `since`, an ISO time, when given — compared as instants whatever their offsets: the notes are written in
+    UTC, the cycle's start may be in local time) and every open need."""
     notes = []
+    start = _instant(since) if since is not None else None
     for s in steps:
         got = gcap.read(gcap.gen_dir(work) / "notes" / f"{s}.json")
-        if got and (since is None or str(got.get("at") or "") >= str(since)):
+        at = _instant(got.get("at")) if got else None
+        if got and (since is None or start is None or (at is not None and at >= start)):
             notes += [f"{s}: {x}" for x in got.get("notes") or []]
     needs = [v["text"] for _, v in sorted(load(work)["items"].items())]
     return {"notes": notes, "needsOwner": needs}
