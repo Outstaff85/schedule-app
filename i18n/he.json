@@ -1700,7 +1700,7 @@
   "The training loop failed": "מחזור האימון נכשל",
   "The training loop needs you": "מחזור האימון זקוק לך",
   "Automatic training": "אימון אוטומטי",
-  "The PC trains by itself at night (Sunday and Wednesday, 02:00–08:00) when a model is due, and gives the lab a new version only when every exam says it is better — as a pull request to merge. The site is never changed by it.": "המחשב מאמן בעצמו בלילה (ראשון ורביעי, 02:00–08:00) כשמגיע זמנו של מודל, ונותן למעבדה גרסה חדשה רק כשכל מבחן אומר שהיא טובה יותר — כבקשת משיכה למיזוג. האתר לעולם אינו משתנה על ידו.",
+  "The PC trains by itself at night, 02:00–08:00, when a model is due: a new cycle on a Sunday or Wednesday night, at least 3 days after the last. It gives the lab a new version only when every exam says it is not worse anywhere and better somewhere and the golden set is there — as a pull request to merge. The site is never changed by it.": "המחשב מאמן בעצמו בלילה, 02:00–08:00, כשמגיע זמנו של מודל: מחזור חדש בליל ראשון או רביעי, לפחות 3 ימים אחרי הקודם. הוא נותן למעבדה גרסה חדשה רק כשכל מבחן אומר שהיא לא גרועה יותר בשום מקום וטובה יותר במקום כלשהו, וסט הזהב קיים — כבקשת משיכה למיזוג. האתר לעולם אינו משתנה על ידו.",
   "No cycle reported yet.": "עדיין לא דווח אף מחזור.",
   "better": "טוב יותר",
   "not better": "לא טוב יותר",

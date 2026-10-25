@@ -76,6 +76,7 @@ def test_only_the_shared_fields_are_kept_and_no_number_of_a_document():
     assert c["notes"] == ["passport … refused", "v9 in 2 min"] and c["needsOwner"] == ["ID … — look"]
     assert c["models"] == {"edges": {"trained": True, "verdict": None, "failed": ["card … cut"], "examReport": None}}
     assert c["due"] == {"edgesSince": 24, "attemptsDue": True, "doctypes": {"passport": 21}}
+    assert loop_report.clean(report(prUrl="https://x-access-token:secret@github.com/o/r/pull/1"))["prUrl"] is None
     long = loop_report.clean(report(notes=["a" * 1000] * 50))
     assert len(long["notes"]) == loop_report.LIST_MAX and len(long["notes"][0]) == loop_report.TEXT_MAX
 
@@ -140,3 +141,23 @@ def test_dry_run_writes_nothing(tmp_path, capsys, monkeypatch):
     loop_report.main([str(f), "--dry-run"])
     out = capsys.readouterr().out
     assert '"version": "v9"' in out and "toast: Scanner training: new lab version v9" in out and "scanTrainingStats/loop" in out
+
+
+def test_a_counter_that_is_not_a_finite_number_is_dropped():
+    """NaN or infinity in `due` would make scan_feedback's stats answer invalid JSON (json.dumps writes NaN) and the
+    browser would lose every scanner notice of the bell."""
+    c = loop_report.clean(report(due={"a": float("nan"), "b": float("inf"), "c": 3, "d": {"x": float("nan"), "y": 2}}))
+    assert c["due"] == {"c": 3, "d": {"y": 2}}
+
+
+def test_nights_with_nothing_due_keep_one_row_and_no_toast():
+    cycles = [{"id": f"c{i}", "state": "rejected"} for i in range(5)]
+    fs = Fs({("scanTrainingStats", "loop"): {"latest": cycles[0], "history": cycles}})
+    run = Run([])
+    for n in range(30):
+        loop_report.send(report(id=f"n{n}", state="not-due", models={}, version=None, prUrl=None), client=fs, run=run, windows=True)
+    hist = fs.docs[("scanTrainingStats", "loop")]["history"]
+    assert [h["id"] for h in hist] == ["n29", "c0", "c1", "c2", "c3", "c4"] and run.cmds == []
+    run = Run([0])
+    loop_report.send(report(id="n30", state="not-due", needsOwner=["run: gcloud auth application-default login"]), client=fs, run=run, windows=True)
+    assert len(run.cmds) == 1   # a not-due night that needs the owner still shows its toast

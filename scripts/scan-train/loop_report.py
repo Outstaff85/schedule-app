@@ -5,11 +5,13 @@ of a cycle here — when the cycle starts, pauses at 08:00, and ends — and sen
     owner's own Google credentials as publish.py writes the counters (common.db(): Application Default Credentials):
       {"latest": <the report>, "history": [<the last 20 reports, newest first>], "updatedAt": iso}
     A report sent again under the same "id" (the same cycle: running → paused → published) replaces its entry in the
-    history instead of adding one. The app reads it only through scan_feedback's "stats" answer ("loop": the super-admin's
-    bell and Admin → Scanner → Automatic training); firestore.rules lets only a super-admin read the document and nobody
+    history instead of adding one, and a "not-due" night replaces the previous "not-due" one. The app reads it only
+    through scan_feedback's "stats" answer ("loop": the super-admin's bell and Admin → Scanner → Automatic training);
+    firestore.rules lets only a super-admin read the document and nobody
     write it (the PC writes through the Admin side of the owner's credentials).
   - **A Windows toast** on the PC with one line (line(): the state, and the version or what needs the owner), drawn by
-    the built-in Windows.UI.Notifications through Windows PowerShell — BurntToast is not installed —, else `msg *`.
+    the built-in Windows.UI.Notifications through Windows PowerShell — BurntToast is not installed —, else `msg *`;
+    none for a "not-due" night that needs nothing of the owner (quiet()).
 
 Only the fields of the shared report dict are written (clean()): unknown keys are dropped, every string is cut short,
 the lists capped, and in the free texts (notes, needsOwner, the exams' failed rules) any run of 7 or more digits — what
@@ -26,6 +28,7 @@ import argparse
 import base64
 import datetime
 import json
+import math
 import os
 import re
 import subprocess
@@ -37,6 +40,7 @@ STATES = ("not-due", "running", "paused", "published", "rejected", "waiting-gold
 MODELS = ("edges", "doctype", "mrz", "he")
 VERDICTS = ("yes", "no")
 TEXT_MAX, LIST_MAX = 300, 20                     # a string's length and a list's items in a stored report
+PR_URL = re.compile(r"https://[^/@\s]+/[^\s]*$")  # https, and no user:token@ before the host (a token never stored)
 DIGITS = re.compile(r"\d{7,}")                   # an ID / passport number's digits: never stored
 APP_ID = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"   # Windows PowerShell's own toast sender
 TITLE = "Scanner training"
@@ -56,15 +60,20 @@ def _texts(v):
     return [_text(x, scrub=True) for x in (v if isinstance(v, (list, tuple)) else [])][:LIST_MAX]
 
 
+def _num(x):
+    """A finite number (not a boolean): NaN or infinity would make the stats answer invalid JSON for the browser."""
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
 def _due(v):
-    """The counters that made the cycle due (the bell's): numbers, booleans and {kind: number} only."""
+    """The counters that made the cycle due (the bell's): finite numbers, booleans and {kind: number} only."""
     out = {}
     for k, x in (v.items() if isinstance(v, dict) else []):
         k = _text(k)[:64]
-        if isinstance(x, bool) or isinstance(x, (int, float)):
+        if isinstance(x, bool) or _num(x):
             out[k] = x
         elif isinstance(x, dict):
-            out[k] = {_text(a)[:64]: b for a, b in x.items() if isinstance(b, (int, float)) and not isinstance(b, bool)}
+            out[k] = {_text(a)[:64]: b for a, b in x.items() if _num(b)}
     return dict(list(out.items())[:LIST_MAX])
 
 
@@ -87,7 +96,7 @@ def clean(report):
         "models": {m: _model(models[m]) for m in MODELS if m in models},
         "version": _text(r.get("version")),
         "branch": _text(r.get("branch")),
-        "prUrl": _text(r.get("prUrl")) if str(r.get("prUrl") or "").startswith("https://") else None,
+        "prUrl": _text(r.get("prUrl")) if PR_URL.match(str(r.get("prUrl") or "")) else None,
         "notes": _texts(r.get("notes")),
         "needsOwner": _texts(r.get("needsOwner")),
         "log": _text(r.get("log")),
@@ -96,8 +105,11 @@ def clean(report):
 
 def merged(doc, report, now):
     """The new scanTrainingStats/loop: the report as latest, at the head of the history (its earlier entry of the same
-    cycle replaced), the history cut to HISTORY."""
-    old = [h for h in ((doc or {}).get("history") or []) if isinstance(h, dict) and h.get("id") != report["id"]]
+    cycle replaced), the history cut to HISTORY. A "not-due" report replaces any earlier "not-due" one too, so nights
+    with nothing to train keep one row and never push the real cycles out of the history."""
+    nd = report["state"] == "not-due"
+    old = [h for h in ((doc or {}).get("history") or [])
+           if isinstance(h, dict) and h.get("id") != report["id"] and not (nd and h.get("state") == "not-due")]
     return {"latest": report, "history": [report, *old][:HISTORY], "updatedAt": now}
 
 
@@ -164,13 +176,21 @@ def toast(text, run=subprocess.run, windows=None):
     return False
 
 
+def quiet(report):
+    """A report that needs no toast: a night with nothing due and nothing for the owner (it is still stored)."""
+    return report.get("state") == "not-due" and not report.get("needsOwner")
+
+
 def send(report, client=None, run=subprocess.run, windows=None):
-    """The loop's one call (loop.py): the report to Firestore and a toast on the PC. Never raises."""
+    """The loop's one call (loop.py): the report to Firestore and a toast on the PC (none for a quiet "not-due" night).
+    Never raises."""
     r = clean(report)
     try:
         store(r, client)
     except Exception as e:
         print(f"warning: the loop's report was not stored in Firestore ({type(e).__name__}: {e})", file=sys.stderr)
+    if quiet(r):
+        return
     try:
         if not toast(line(r), run=run, windows=windows):
             print(f"note: no toast shown — {TITLE}: {line(r)}", file=sys.stderr)

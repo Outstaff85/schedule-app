@@ -133,7 +133,7 @@ const LOOP_COLOR: Record<string, string> = { published: 'var(--ok)', rejected: '
 function AutoTraining({ history, locale }: { history: LoopReport[] | null; locale: string }) {
   return (
     <Section label={tr('Automatic training')} count={history?.length || undefined} panel data-testid="scan-loop">
-      <p className="mb-2 text-sm text-muted-foreground">{tr('The PC trains by itself at night (Sunday and Wednesday, 02:00–08:00) when a model is due, and gives the lab a new version only when every exam says it is better — as a pull request to merge. The site is never changed by it.')}</p>
+      <p className="mb-2 text-sm text-muted-foreground">{tr('The PC trains by itself at night, 02:00–08:00, when a model is due: a new cycle on a Sunday or Wednesday night, at least 3 days after the last. It gives the lab a new version only when every exam says it is not worse anywhere and better somewhere and the golden set is there — as a pull request to merge. The site is never changed by it.')}</p>
       {!history ? <Skeleton className="h-12 w-full" /> : (
         <PagedList items={history} empty={<p className="text-sm text-muted-foreground" data-testid="scan-loop-empty">{tr('No cycle reported yet.')}</p>} render={r => {
           const verdicts = LOOP_MODELS.filter(m => r.models[m]?.trained).map(m => loopModelName(m) + ': ' + (r.models[m]?.verdict === 'yes' ? tr('better') : r.models[m]?.verdict === 'no' ? tr('not better') : '—'));
