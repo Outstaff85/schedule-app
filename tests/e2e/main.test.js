@@ -1821,7 +1821,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await T.tick(200);
     window.fetch = f0;
     r.gone = !workers.some(x => x.id === 'wS');
-    r.asked = asked.sort();
+    r.asked = [...new Set(asked)].sort();   // a delete passes fetch twice: the page's call and the backend's call to the function
     return r;
   });
   const keepF101 = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/form101', {method: 'POST'})).json();
