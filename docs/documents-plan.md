@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **not started**. No stage has a PR yet. S0 (the inventory and the owner's answers) comes first, then S0b (stop deleting signed files).
+Status: **S0's inventory script is done** (branch `docs-plan-s0`, not merged yet); its figures wait for a run of `migrate-docs.yml` with the owner's yes, and the owner's answers are still open. Next: S0b (stop deleting signed files).
 
 ## What and why
 
@@ -81,7 +81,8 @@ Each stage is one PR from the work branch, with its own checks and a green Tests
 - **The owner's answers:** Q1 before S9; Q2 and Q3 before S4; Q10 before S3b; Q4 and Q9 before S10; the rest at their stage. **Counsel** (Q4) before S9's option B.
 - Tests: a unit test of the inventory on the emulator (counts by prefix, no writes).
 - Docs: this file (the figures go into "Weight").
-- Status: not started.
+- **As built:** `scripts/migrate/docs_inventory.py` reaches Firestore and Storage only through two read-only wrappers (`ReadOnlyDb`: stream a collection; `ReadOnlyBucket`: list names and sizes), so no write call exists on what it holds. Per firm it prints one JSON report and then a `TOTAL` line: `form101` (signed / unsigned / unreferenced: a file no record points at, such as an earlier unsigned Form 101), `docs` (signed contracts / other uploads), `signCopies` by request status (`unknown`: no request with that id), `pages`, `signature`, `signatureOrphans`, `assets`, `templates` (files under `contracts/`, records, deleted records), `deletedWorkerFiles` (files under a worker id with no record), `otherWorkerFiles`, `outsideFiles`, `workers` (`signed`, `onSidecar`, `pdfOnly`, with their ids, cut at 50) and `requests` (by status, `notApplied`: signed with no `appliedAt`, with their ids). A file is signed when a signing request's part points at it, or (Form 101) it is the `docFileId` of a worker with `signedAt`, or (contract) a `docs[]` entry with `signed: true`. `migrate-docs.yml` (manual, `task: inventory`, optional `tenant`) runs it with the deploy's service account. Tests: `tests/auth/test_migrate_docs_inventory.py` — the counts by prefix on the Firestore emulator (every document unchanged after the run, update times included) and on stand-ins whose every write method fails, the wrappers expose no write method, and the script's source calls none.
+- Status: **done** (branch `docs-plan-s0`): the script, the workflow and the test. Not yet run against the real project: the figures and the owner's answers are still to come.
 
 ### S0b — stop deleting signed files (never reverted)
 Keeping the files is the safe default, so this does not wait for Q2.
@@ -468,7 +469,7 @@ Shipped on its own, before S4, so reverting S4 can never take the lock enforceme
 
 ## Weight
 
-This is an estimate until S0 measures it. Measured builds: an unsigned Form 101 with its scans is 0.2–1.2 MB (198 KB with three small JPEGs, 1.16 MB with three large ones), and 140 KB without pages. The scan pages are about 300–600 KB each, about 1–2 MB per worker.
+This is an estimate until S0's inventory (`migrate-docs.yml`, `task: inventory`) is run with the owner's yes; its figures then replace it. Measured builds: an unsigned Form 101 with its scans is 0.2–1.2 MB (198 KB with three small JPEGs, 1.16 MB with three large ones), and 140 KB without pages. The scan pages are about 300–600 KB each, about 1–2 MB per worker.
 
 | Per worker | Today | When done |
 |---|---|---|
