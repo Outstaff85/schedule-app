@@ -67,5 +67,12 @@ A "NO": say so, then step 10 before training again — or `python clean.py`.
 ## 12. Give the new version to the lab
 Commit `scripts/scan-lab/models-version` (and `scripts/scan-train/heldout.json` when `publish.py` said it marked the new version not held-out clean) on the work branch and deploy it the usual way (CLAUDE.md → Git workflow: Tests workflow, PR, merge with the owner's OK). The lab (`/scan-lab/`, Admin → Scanner lab) then runs `v<N>`; the owner tries it on the phone.
 
+## The automatic cycle (loop.py)
+The same flow runs by itself at night once the owner installed it (docs/scan-training.md → 7): `python loop.py install` registers the Windows task "OutStaff scan-train loop" (02:00 daily, wakes the PC — wake timers must be allowed in the power options —, only while the owner is logged on); `python loop.py uninstall` removes it. A new cycle starts on a Sunday or Wednesday night, 3 days apart, when the bell's counters say due; it stops at 08:00 and goes on the next night. It publishes to the lab by itself only what every exam said yes to, and only once the golden set (20 golden attempts) exists; it opens a PR and never merges. When the owner asks:
+- **where it stands:** `python loop.py status` (and the cycle's log it names; `<home>/loop/state.json`);
+- **stop it now:** `python loop.py stop` — the running step stops at its next safe point, the cycle is paused and goes on the next night; to stop it for good, `python loop.py uninstall`;
+- **run it now:** `python loop.py run --now` (no calendar, no night window; still only when something is due); `python loop.py run --dry-run` prints the steps without running any.
+Never run `/scan-train` by hand while a cycle is in progress (`loop.py status`): they share the work folder.
+
 ## 13. Later — give it to the site (only when the owner says the lab's cycle is done and the lab is better)
 Set the same version in **both** `scripts/scan/models-version` (the phone's models) and `functions/scan_models_version.txt` (written into each training example; a test keeps them equal), then deploy. The site's scanner is the same scanner as the lab's (`src/scan/`), with its own copy of the models in `/scan/`, so it runs the version the way the lab does. Rolling back = the previous version in the same files.
