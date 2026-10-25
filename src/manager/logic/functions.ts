@@ -14,6 +14,8 @@ export const SCAN_FEEDBACK_FN_URL = 'https://europe-west3-schedule-odinson.cloud
 export const CONTRACTS_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/contract_templates';
 // One signature for Form 101 and the contract (functions/signing.py; docs/contracts.md → Signing).
 export const SIGN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/sign_documents';
+// The worker's documents built on request: Download data and the Form 101 preview (functions/workerdocs.py; docs/workers.md → Download data).
+export const WORKER_DOCS_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/worker_docs';
 // The AI reads (firestore-backend.js sends them).
 export const AI_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/ai_read';
 export const USERS_ADMIN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/users_admin';

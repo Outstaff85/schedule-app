@@ -56,7 +56,11 @@ export const deleteTemplate = (id: string) => call<{ ok: true }>({ action: 'dele
 /** A PDF in base64 opened in a new tab (a template, its sample). */
 export function openPdf(b64: string, name = 'contract.pdf'): void {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  openPdfBlob(new Blob([bytes], { type: 'application/pdf' }), name);
+}
+/** A PDF opened in a new tab (or saved, when the browser blocks the tab) — Download data's answer. */
+export function openPdfBlob(blob: Blob, name = 'data.pdf'): void {
+  const url = URL.createObjectURL(blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' }));
   const win = window.open(url, '_blank', 'noopener');
   if (!win) { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
   setTimeout(() => URL.revokeObjectURL(url), 60000);
