@@ -1,10 +1,11 @@
 // shadcn/ui Calendar (react-day-picker) in Odinson Glass: days as soft tiles,
 // today ringed, the chosen day green; month and weekday names in the chosen
-// language (date-fns locale); the week starts on Sunday, as in the app.
+// language (date-fns locale); the week starts on Sunday, as in the app;
+// captionLayout="dropdown" shows the month and the year as two small fields.
 import * as React from 'react';
 import { DayPicker, type DayButton } from 'react-day-picker';
 import { enGB, he, ru } from 'date-fns/locale';
-import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 
@@ -26,7 +27,13 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: R
         button_previous: 'grid size-8 place-items-center rounded-[10px] text-ink-2 hover:bg-white/10 hover:text-ink disabled:opacity-40',
         button_next: 'grid size-8 place-items-center rounded-[10px] text-ink-2 hover:bg-white/10 hover:text-ink disabled:opacity-40',
         month_caption: 'flex h-8 items-center justify-center',
-        caption_label: 'text-sm font-semibold',
+        caption_label: 'pointer-events-none flex items-center gap-0.5 text-sm font-semibold',
+        // captionLayout="dropdown": the month and the year as two small fields, each a native select laid unseen over
+        // its label (the phone's own picker opens) — a date years away is two taps, not a month arrow per month
+        dropdowns: 'flex h-8 items-center justify-center gap-1.5',
+        dropdown_root: 'relative rounded-[10px] border border-white/15 px-2 py-0.5 hover:bg-white/10 has-focus-visible:border-[var(--uline-2)]',
+        dropdown: 'absolute inset-0 w-full cursor-pointer opacity-0 [&_option]:bg-background [&_option]:text-ink',
+        chevron: 'size-3.5 text-ink-2',
         month_grid: 'w-full border-collapse',
         weekdays: 'flex',
         weekday: 'w-9 text-[11px] font-semibold uppercase text-muted-foreground',
@@ -43,7 +50,8 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: R
       }}
       components={{
         Chevron: ({ orientation, className: c }) =>
-          orientation === 'left' ? <IconChevronLeft className={cn('size-4', c)} /> : <IconChevronRight className={cn('size-4', c)} />,
+          orientation === 'left' ? <IconChevronLeft className={cn('size-4', c)} /> : orientation === 'down' ? <IconChevronDown className={cn('size-3.5', c)} />
+            : <IconChevronRight className={cn('size-4', c)} />,
         DayButton: (p: React.ComponentProps<typeof DayButton>) => {
           const { day, modifiers, ...rest } = p;
           void day; void modifiers;

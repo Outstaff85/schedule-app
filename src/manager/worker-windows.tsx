@@ -100,7 +100,8 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
           <SelectContent>{Object.entries(WORKER_DOC_TYPES).map(([k, l]) => <SelectItem key={k} value={k}>{tr(l)}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
-      <Field label={tr('Expiry date (optional — reminder before it expires)')}><DatePicker id="wdExpiry" value={expiry} onChange={setExpiry} /></Field>
+      {/* a contract's date is its end: the contract warning counts to it from now on (workerExpiryStatus) */}
+      <Field label={type === 'contract' ? tr('Contract end date (optional — the contract warning counts to it)') : tr('Expiry date (optional — reminder before it expires)')}><DatePicker id="wdExpiry" value={expiry} onChange={setExpiry} /></Field>
       <Field label={tr('Files (several at once is fine — PDF or photos)')}>
         <Input type="file" id="wdFiles" multiple accept="application/pdf,.pdf,image/*,.doc,.docx" className="h-auto py-2" onChange={e => setFiles([...(e.target.files || [])])} />
       </Field>

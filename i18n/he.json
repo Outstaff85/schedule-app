@@ -215,6 +215,8 @@
   "Expires {0}": "בתוקף עד {0}",
   "Expiring soon": "עומד לפוג",
   "Expiry date (optional — reminder before it expires)": "תאריך תפוגה (רשות — תזכורת לפני התפוגה)",
+  "Contract end date (optional — the contract warning counts to it)": "תאריך סיום החוזה (רשות — התראת החוזה נספרת אליו)",
+  "The latest contract sets the term: it ends {0} (Add document → its date).": "החוזה האחרון קובע את התקופה: הוא מסתיים ב־{0} (הוספת מסמך ← התאריך שלו).",
   "Export": "ייצוא",
   "Export button": "כפתור ייצוא",
   "Export CSV": "ייצוא CSV",

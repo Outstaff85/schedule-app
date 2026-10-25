@@ -93,7 +93,7 @@ export function workerNotices(w?: any, today?: any){
     detail:tr('Signed {0}',{0:w.signDate||''}), act:can?{label:tr('Sign'), icon:'ti-signature', fn:go(()=>{ askSign(id); openWorkerCard(idx()); })}:null});
   const ex=workerExpiryStatus(w);
   if(ex) out.push({lvl:ex.level==='overdue'?'red':'amber', icon:'ti-file-certificate', word:tr('Contract'), title:ex.level==='overdue'?tr('Contract ended'):tr('Contract ending'), detail:ex.deadline.toLocaleDateString('en-GB'),
-    act:can?{label:tr('Extend'), icon:'ti-calendar-plus', fn:go(()=>openEditWorker(idx()))}:null});
+    act:can?(ex.doc?renew:{label:tr('Extend'), icon:'ti-calendar-plus', fn:go(()=>openEditWorker(idx()))}):null});
   if(today && today.k==='none') out.push({lvl:'red', icon:'ti-clock-off', word:tr('No punch'), title:tr('No punch on today\'s shift'), detail:today.sh?today.sh.start+'–'+(today.sh.end||''):'',
     acts:noPunchActs(w,today.sh)});
   return out.sort((a?: any,b?: any)=>(a.lvl==='red'?0:1)-(b.lvl==='red'?0:1));
