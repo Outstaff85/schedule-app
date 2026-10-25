@@ -515,3 +515,18 @@ def attempts_since(stats):
 
 def attempts_due(stats):
     return attempts_since(stats) >= ATTEMPTS_AT
+
+
+# ===== The automatic training cycle's reports (docs/scan-training.md → The automatic cycle → Reports) =====
+# Written by the owner's PC (scripts/scan-train/loop_report.py) into scanTrainingStats/loop: {"latest", "history"}.
+LOOP_DOC = "loop"
+LOOP_HISTORY = 20
+
+
+def loop_reports(doc):
+    """The stats answer's "loop": the latest report of the cycle on the PC and the last LOOP_HISTORY (newest first) —
+    for the super-admin's bell and Admin → Scanner → Automatic training. Nothing when the PC never sent one."""
+    doc = doc if isinstance(doc, dict) else {}
+    latest = doc.get("latest") if isinstance(doc.get("latest"), dict) else None
+    history = [h for h in (doc.get("history") or []) if isinstance(h, dict)][:LOOP_HISTORY]
+    return {"latest": latest, "history": history}
