@@ -33,6 +33,8 @@ Object.defineProperties(window, {
   "showWorkerModal": {get: () => showWorkerModal, configurable: true},
   "supplierMonthPayable": {get: () => supplierMonthPayable, configurable: true},
   "saveWorker": {get: () => saveWorker, configurable: true},
+  // the field search's times (the browser tests shorten them)
+  "SCAN_FIND_MS": {get: () => SCAN_FIND_MS, configurable: true},
 });
 
 // --- Worker Modal -------------------------------------------------------------
@@ -87,20 +89,34 @@ async function workerScanPages(w?: any){
   return __scanPagesCache[key]={front:{b64:j.scanB64,mediaType:j.scanMediaType||'image/jpeg'},
     others:j.extraPages.filter((p?: any)=>p&&p.b64)};
 }
+// A field search always ends (owner, 2026-10-25: a search that never answered left the field "searching"
+// for good): each step has its time — the stored pages, the search, the zoomed re-reads — and a step
+// that takes longer is given up (the re-reads: the first read is kept).
+export const SCAN_FIND_MS={pages:45000, find:60000, verify:30000};
+function within<T>(p: Promise<T>, ms: number, what: string): Promise<T>{
+  return new Promise<T>((resolve,reject)=>{
+    const t=setTimeout(()=>reject(new Error(tr('{0} did not answer in {1} s',{0:what,1:Math.round(ms/1000)}))),ms);
+    p.then(v=>{ clearTimeout(t); resolve(v); },e=>{ clearTimeout(t); reject(e); });
+  });
+}
 // Searches the worker's page photos for one or more fields in ONE aiFindField
 // request (the photos are the expensive part, so they go once). Each value
 // found with a box is re-read zoomed — one batched aiVerifyFields per page —
 // and the zoomed read wins. Resolves {key: {value, unsure}} (unsure: the two
-// reads disagreed; value '' when not found), or null when there is no scan.
+// reads disagreed; value '' when not found), or null when there is no scan;
+// rejects when the pages could not be read or the search failed or did not
+// answer in time (SCAN_FIND_MS) — the window then lets the field be searched again.
 export async function findScanFields(w?: any,keys?: any,docType?: any){
-  const pages=await workerScanPages(w);
-  if(!pages||!keys.length) return null;
+  if(!keys||!keys.length) return null;
+  if(!workerScanLive(w)&&!workerHasScan(w)) return null;
+  const pages=await within(workerScanPages(w),SCAN_FIND_MS.pages,tr('Reading the scanned pages'));
+  if(!pages) throw new Error(tr('The scanned pages could not be read'));
   // The fields' own page first: ספח pages for the address, else the front.
   const sefachFirst=keys.every((k?: any)=>SCAN_FIND_FIELDS[k].page==='sefach');
   const list=(sefachFirst?[...pages.others,pages.front]:[pages.front,...pages.others]).filter(Boolean).slice(0,4);
-  const j=await (await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiFindField',...gsAuth(),fields:keys,docType,
-    images:list.map((p?: any)=>({image:p.b64,mediaType:p.mediaType}))})})).json();
-  if(j&&j.error) console.warn('aiFindField failed: '+j.error);
+  const j: any=await within(fetch(API_URL,{method:'POST',body:JSON.stringify({action:'aiFindField',...gsAuth(),fields:keys,docType,
+    images:list.map((p?: any)=>({image:p.b64,mediaType:p.mediaType}))})}).then(r=>r.json()),SCAN_FIND_MS.find,tr('The scan search'));
+  if(!j||j.error){ console.warn('aiFindField failed: '+(j&&j.error)); throw new Error(String((j&&j.error)||'no answer')); }
   const found=(j&&j.ok&&j.found)||{};
   const out: any={}, zoom=new Map(); // page index -> zoom jobs
   for(const k of keys){
@@ -115,7 +131,7 @@ export async function findScanFields(w?: any,keys?: any,docType?: any){
   const norm=(x?: any)=>String(x||'').replace(/[\s.\/-]/g,'').toUpperCase();
   await Promise.all([...zoom].map(async([pi,jobs]: any)=>{
     try{
-      const vals=await verifierFor({b64:list[pi].b64,mediaType:list[pi].mediaType})(jobs);
+      const vals=await within(verifierFor({b64:list[pi].b64,mediaType:list[pi].mediaType})(jobs),SCAN_FIND_MS.verify,tr('The zoomed re-read'));
       for(const jb of jobs){
         const z=String(vals[jb.field]||'').replace(/\s+/g,' ').trim();
         if(z){ out[jb.field].unsure=norm(z)!==norm(out[jb.field].value); out[jb.field].value=z; }

@@ -195,9 +195,15 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     });
     if (!keys.length) return;
     setMarks(cur => { const n = { ...cur }; keys.forEach(k => { n[k] = { k: 'busy' }; }); return n; });
-    let res: Record<string, ScanHit> | null = null;
-    try { res = await api.findScanFields(editId, keys, docType); } catch (e) { console.error(e); }
+    let res: Record<string, ScanHit> | null = null, failed: unknown = null;
+    try { res = await api.findScanFields(editId, keys, docType); } catch (e) { console.error(e); failed = e; }
     if (editor.current?.seq !== props.seq) return; // the window was closed or opened again meanwhile
+    // the search failed or did not answer: the fields can be searched again (a tap), the reason in a note
+    if (failed) {
+      setMarks(cur => { const n = { ...cur }; keys.forEach(k => { if (n[k]?.k === 'busy') n[k] = { k: 'missing' }; }); return n; });
+      api.toast(tr('The scan search failed: {0} — tap the field to try again', { 0: String((failed as Error)?.message || failed) }), 6000);
+      return;
+    }
     for (const k of keys) {
       const r = res && res[k];
       if (r && r.value) {
@@ -213,8 +219,10 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     const prev = String((form.getValues() as unknown as Record<string, string>)[key] || '').trim();
     setMark(key, { k: 'check', rechecked: true, msg: tr('Reading the scan again…') });
     let r: ScanHit | null | undefined = null;
-    try { const res = await api.findScanFields(editId, [key], docType); r = res && res[key]; } catch (e) { console.error(e); }
+    let failed = false;
+    try { const res = await api.findScanFields(editId, [key], docType); r = res && res[key]; } catch (e) { console.error(e); failed = true; }
     if (editor.current?.seq !== props.seq) return;
+    if (failed) { setMark(key, { k: 'check', msg: checkMsg(key) }); api.toast(tr('The scan search failed — tap the field to try again'), 5000); return; }
     if (!r || !r.value) { setMark(key, { k: 'check', rechecked: true, msg: tr('Check — the second read did not find the field') }); return; }
     if (norm(r.value) === norm(prev)) { flashFound(key); return; }
     set(key as FormKey, r.value);

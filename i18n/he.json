@@ -1648,5 +1648,12 @@
   "The Hebrew field reader failed: {error}": "קורא השדות בעברית נכשל: {error}",
   "Sent for training": "נשלח לאימון",
   "This type is right": "הסוג הזה נכון",
-  "Sending…": "שולח…"
+  "Sending…": "שולח…",
+  "{0} did not answer in {1} s": "{0} לא ענה תוך {1} שניות",
+  "Reading the scanned pages": "קריאת הדפים הסרוקים",
+  "The scanned pages could not be read": "לא ניתן היה לקרוא את הדפים הסרוקים",
+  "The scan search": "החיפוש בסריקה",
+  "The zoomed re-read": "הקריאה החוזרת המוגדלת",
+  "The scan search failed: {0} — tap the field to try again": "החיפוש בסריקה נכשל: {0} — הקישו על השדה כדי לנסות שוב",
+  "The scan search failed — tap the field to try again": "החיפוש בסריקה נכשל — הקישו על השדה כדי לנסות שוב"
 }

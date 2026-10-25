@@ -84,7 +84,10 @@ export function workerNotices(w?: any, today?: any){
   if(st.expiry){ const bad=st.expiry.level==='error'; out.push({lvl:bad?'red':'amber', icon:'ti-id', word:bad?tr('ID expired'):tr('ID {n}d',{n:days(st.expiry.date)}), title:tr('ID / Passport'), detail:st.expiry.text, act:rescan}); }
   st.docExpiries.forEach((x?: any)=>{ const bad=x.level==='error', label=tr(WORKER_DOC_TYPES[x.doc.type]||'Document');
     out.push({lvl:bad?'red':'amber', icon:'ti-id-badge-2', word:bad?tr('{0} expired',{0:label}):tr('{0} {n}d',{0:label,n:days(x.date)}), title:label, detail:x.text, act:renew}); });
-  if(st.missing.length) out.push({lvl:'amber', icon:'ti-file-alert', word:tr('Documents'), title:tr('Missing documents'), detail:st.missing.join(', '), act:rescan});
+  // only the signature missing: drawn in the worker window (Form 101 → its signature pad), not photographed
+  const sigOnly=st.missing.length===1&&w.docHasSignature===false;
+  if(st.missing.length) out.push({lvl:'amber', icon:'ti-file-alert', word:tr('Documents'), title:tr('Missing documents'), detail:st.missing.join(', '),
+    act:sigOnly?(can?{label:tr('Sign'), icon:'ti-signature', fn:go(()=>openEditWorker(idx()))}:null):rescan});
   // D4: what the signed documents print about the worker changed — a new signature (the old documents stay until then)
   if(signedChanged(w)) out.push({lvl:'amber', icon:'ti-signature', word:tr('Documents changed'), title:tr('Documents changed — needs a new signature'),
     detail:tr('Signed {0}',{0:w.signDate||''}), act:can?{label:tr('Sign'), icon:'ti-signature', fn:go(()=>{ askSign(id); openWorkerCard(idx()); })}:null});
@@ -133,6 +136,9 @@ export function openWorkerCard(wi?: any){
   ov.__reopen=()=>{ const i=workers.findIndex((x?: any)=>x.id===w.id); if(i>=0) openWorkerCard(i); };
   island()!.openCard(w.id);
   ov.classList.add('open');
+  // its Sent to sign / Signed chip from the server's requests, also when opened from another tab than Workers
+  // (a signing done on the worker's own page, a date set there): read again when 10 s old
+  void loadSignRequests(false, 10e3);
 }
 
 // The worker card's ✎: its edit form (closing it comes back to the card).

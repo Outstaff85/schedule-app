@@ -59,10 +59,18 @@ export function parseDocDate(v: unknown): Date | null {
   return null;
 }
 type DocNote = {doc: Rec; level: 'error' | 'warn'; date: Date; text: string};
+/** The worker's documents that count for expiry: of a contract, a visa or a work permit only the latest upload
+ * (the files uploaded together share their time) — a new one replaces the old, so the old one's date no longer
+ * warns; every "other" document counts. */
+export function currentDocs(w: Rec): Rec[] {
+  const docs = (w.docs || []) as Rec[], latest: Record<string, string> = {};
+  for (const d of docs) if (d.type !== 'other') { const at = String(d.uploadedAt || ''); if (!(d.type in latest) || at > latest[d.type]) latest[d.type] = at; }
+  return docs.filter(d => d.type === 'other' || String(d.uploadedAt || '') === latest[d.type]);
+}
 export function workerDocExpiries(w: Rec): DocNote[] {
   const today = new Date(); today.setHours(0,0,0,0);
   const out: DocNote[] = [], seen = new Set<string>();
-  for (const d of (w.docs || []) as Rec[]) {
+  for (const d of currentDocs(w)) {
     const date = parseDocDate(d.expiry);
     if (!date || isNaN(date.getTime())) continue;
     // One reminder per document, not per file (a visa uploaded as front +

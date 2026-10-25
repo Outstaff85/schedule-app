@@ -21,3 +21,12 @@
    (z-index 100–960): their menus, selects, date pickers and tooltips open
    above them (Radix copies the content's z-index to its wrapper). */
 [data-slot="select-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"], [data-slot="tooltip-content"] { z-index: 3600; }
+/* A Window (src/components/shared/window.tsx: a Dialog, a Drawer or the full-screen
+   scanner) opened from a window drawn in one of those overlays — Documents to sign
+   from the worker card, the scanner from the card or the worker window, a contract
+   upload from the Contract section — opens above it, never behind it (where it was
+   dead: Radix turns the page's pointer events off while it is open). Below the
+   menus above, the Undo snack (3500) and the Select bar (3400). */
+[data-slot="dialog-overlay"], [data-slot="dialog-content"], [data-slot="drawer-overlay"], [data-slot="drawer-content"],
+[data-slot="alert-dialog-overlay"], [data-slot="alert-dialog-content"], [data-slot="sheet-overlay"], [data-slot="sheet-content"],
+[data-slot="window-full-ground"], [data-slot="window-full"] { z-index: 3000; }
