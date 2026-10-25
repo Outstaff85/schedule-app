@@ -201,7 +201,7 @@ Keeping the files is the safe default, so this does not wait for Q2.
   - docs/components.md: only if a shared piece is added.
   - CLAUDE.md "Files": `functions/` names `worker_docs`.
 - Rollback: revert. No data has changed.
-- Status: not started.
+- Status: **done** on the branch `docs-plan-s2`, reviewed and fixed on `docs-plan-s2-rev` (not merged). Built ahead of S1, so: the ID sheet is `functions/idsheet.py`, shared by `worker_docs` and the old `signing.bundle` (S1 freezes its copy for the signed documents); the preview is the current `build_form101_pdf` with no pages of its own (the sheet and the other pages are added after it), marked on every form page; `HE_KINDS` / `HE_DOC_TYPES` and the summary page moved to `idsheet.py` / `workerdocs.py`. Choices where this stage left one: a file path outside the worker's folder, or a stored file that cannot be read, is skipped and counted in `X-Dropped` rather than failing the whole bundle; a contract left out for pay is reported in an extra exposed header `X-Withheld` (and a toast), and the file name in `X-Name`; a signed worker whose signed copy is not found gets no Form 101 (never a preview in its place); for a worker still on a sidecar, the sidecar's first picture is the document and the rest are other pages; a passport worker gets no empty ספח box; the old `signing.bundle` now applies the pay rule too and leaves the scans out when the stored Form 101 is in it.
 
 ### S3 — contract templates versioned and never overwritten
 - **Data model:** a new subcollection `tenants/<t>/contractTemplates/<tid>/versions/<n>` = `{fileId: tenants/<t>/contracts/<tid>/v<n>.pdf, sha256, size, pages, placed, marks, unknown, pictures, createdAt, createdBy}`.

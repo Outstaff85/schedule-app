@@ -38,11 +38,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
       if (u.startsWith(FB)) return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:`export * from '${FB}firebase-app.js';`});
-      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read|weather|contract_templates|sign_documents)$/) || [])[1];
+      const fn = (u.match(/cloudfunctions\.net\/(login|users_admin|punch|supplier|hours|ai_read|weather|contract_templates|sign_documents|worker_docs)$/) || [])[1];
       if (fn) {
         if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST'}});
         const h = r.request().headers();
         const res = await fetch('http://127.0.0.1:5055/' + fn, {method:'POST', body:r.request().postData(), headers: h.authorization ? {Authorization: h.authorization} : {}});
+        if (fn === 'worker_docs') {
+          // a raw PDF with its headers, read by the page through CORS (Access-Control-Expose-Headers), as the function answers it
+          const headers = {'Access-Control-Allow-Origin':'*'};
+          res.headers.forEach((v, k) => { if (/^(x-|content-type$|access-control-expose-headers$)/i.test(k)) headers[k] = v; });
+          return r.fulfill({status:res.status, headers, body: Buffer.from(await res.arrayBuffer())});
+        }
         return r.fulfill({status:res.status, contentType:'application/json', headers:{'Access-Control-Allow-Origin':'*'}, body: await res.text()});
       }
       if (/cdnjs\.cloudflare\.com\/.*\/pdf(\.worker)?\.min\.js$/.test(u)) return r.fulfill({status:200, contentType:'application/javascript', body:require('fs').readFileSync(require.resolve('pdfjs-dist/build/' + u.split('/').pop()))});
@@ -1847,11 +1853,28 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(!d4.fresh && !d4.firm && d4.changed && d4.window && d4.noScanner && d4.back,
     'new signature (D4): a changed phone marks Documents changed — needs a new signature, its Sign opens the sign window on top of the card (no scanner); a change to the firm\'s details does not ' + JSON.stringify(d4));
   await p.keyboard.press('Escape'); await sleep(300);
-  // D5: Download data on the worker card — one PDF: the summary, Form 101, the contract, the ID card, the ספח, the other documents.
+  // D5 / documents plan S2: Download data on the worker card — the picker window (Form 101 and the ID sheet ticked by
+  // default, the contract and the other documents not), then one PDF from worker_docs: the summary first, the parts picked.
   await p.evaluate(() => { window.__opened = []; window.__origOpen2 = window.open; window.open = u => { window.__opened.push(String(u)); return {}; };
+    try { localStorage.removeItem('downloadDataPicks'); } catch (e) {}
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openWorkerCard(workers.findIndex(w => w.id === 'w1')); });
   await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
   await p.click('[role="menuitem"]:has-text("Download data")');
+  await p.waitForSelector('[data-testid="download-window"]', {timeout: 10000});
+  // the window slides in: measured once it stands still over the card
+  await waitFor(p, () => T.onTop('[data-testid="download-window"]'), 5000);
+  const d5w = await p.evaluate(() => {
+    const st = k => { const el = document.querySelector('[data-testid="download-' + k + '"]'); return el ? (el.disabled ? 'off' : el.dataset.state) : 'none'; };
+    return {form101: st('form101'), contract: st('contract'), scans: st('scans'), docs: st('docs'), top: T.onTop('[data-testid="download-window"]')};
+  });
+  ok(d5w.form101 === 'checked' && d5w.contract === 'unchecked' && ['checked', 'off'].includes(d5w.scans) && ['unchecked', 'off'].includes(d5w.docs) && d5w.top,
+    'download data: the picker opens over the card — Form 101 and the ID sheet ticked, the contract and the other documents not ' + JSON.stringify(d5w));
+  await p.click('[data-testid="download-contract"]');
+  const d5resp = p.waitForResponse(r => /cloudfunctions\.net\/worker_docs$/.test(r.url()) && r.request().method() === 'POST' && /"bundle"/.test(r.request().postData() || ''), {timeout: 30000});
+  await p.click('[data-testid="download-go"]');
+  const d5r = await d5resp;
+  const d5h = {pages: Number(d5r.headers()['x-pages']), parts: d5r.headers()['x-parts'], type: d5r.headers()['content-type'],
+    body: JSON.parse(d5r.request().postData())};
   ok(await waitFor(p, () => window.__opened.length === 1, 30000), 'download data: the PDF opens');
   const d5 = await p.evaluate(async () => {
     const buf = await (await fetch(window.__opened[0])).arrayBuffer();
@@ -1859,10 +1882,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const pdf = await pdfjsLib.getDocument({data: new Uint8Array(buf)}).promise;
     const first = (await (await pdf.getPage(1)).getTextContent()).items.map(i => i.str).join(' ');
     window.open = window.__origOpen2;
+    const closed = !document.querySelector('[data-testid="download-window"]');
+    let kept = null; try { kept = JSON.parse(localStorage.getItem('downloadDataPicks')); } catch (e) {}
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
-    return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /50/.test(first)};
+    return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /50/.test(first), closed, kept};
   });
-  ok(d5.pages >= 4 && d5.name && d5.sign && !d5.pay, 'download data: one PDF — the summary (names, the signing date, never pay) then Form 101, the contract, the scanned pages ' + JSON.stringify(d5));
+  ok(d5.pages === d5h.pages && d5h.type === 'application/pdf' && /^summary,form101-(signed|stored|preview)/.test(d5h.parts) && /contract/.test(d5h.parts)
+    && d5h.body.include.form101 === true && d5h.body.include.contract === true && d5h.body.include.docs === false && d5h.body.form101 && 'employer' in d5h.body.form101
+    && d5.name && d5.sign && !d5.pay && d5.closed && d5.kept && d5.kept.contract === true,
+    'download data: one raw PDF — the summary (names, the signing date, never pay) then Form 101 and the contract, its page count in X-Pages; Form 101\'s values sent; the choice kept ' + JSON.stringify({d5, d5h: {pages: d5h.pages, parts: d5h.parts, type: d5h.type}}));
   // D6: a worker of firm two moves to this firm — the request, the worker's consent and signing in their own page, the copy.
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });

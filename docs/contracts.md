@@ -175,16 +175,11 @@ Tests: `tests/auth/test_files.py` (each kind of signed path refused, also with t
 
 ## Download data (D5)
 
-**Download data** in the worker card's ⋮ (any login that sees the worker) asks `sign_documents` `bundle` `{workerId}` (`bundle` in `functions/signing.py`; a staff or HR login needs the Workers tab, an own-workers HR only its own workers) and opens the PDF it returns. It is put together now and not kept:
+**Download data** in the worker card's ⋮ opens a picker (Form 101, the contract, the ID and scans, the other documents) and the `worker_docs` function puts the picked parts into one PDF after a summary page — the stored signed Form 101 whole, or a preview marked as not signed; the contract only for a login that sees pay unless its sign request printed none; the ID card or passport with the ספח on **one A4 sheet**; never stored. Described in [workers.md](workers.md) → Download data (`functions/workerdocs.py`, `functions/idsheet.py`; docs/documents-plan.md → S2).
 
-1. a summary page — the names, the ID or passport number and its expiry, the date of birth, the phone, the address, the start date, the clients, the supplier, the signing date, and the list of the documents that follow; Hebrew labels, right to left; never pay or rates;
-2. Form 101 (the stored one, `docFileId`);
-3. the contract (the signed one first);
-4. the ID card or passport pages, 5. the ספח, 6. the other documents (visa, work permit, other, an older contract), then the other scanned pages.
+The old call, `sign_documents` `bundle` `{workerId}` (`bundle` in `functions/signing.py`), stays for a device that has not reloaded: everything, Form 101 the stored `docFileId`, as base64 JSON — put together by the same code (`workerdocs.build_bundle`), so the summary, the ID sheet, the captions and the pay rule are one copy.
 
-A PDF document goes in as it is; a picture gets a page of its own.
-
-Tests: `tests/auth/test_signing.py` (the order, never pay, who may) and the browser check "download data".
+Tests: `tests/auth/test_worker_docs.py` (both calls) and the browser check "download data".
 
 ## Moving to another firm (D6)
 
