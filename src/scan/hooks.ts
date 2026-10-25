@@ -28,8 +28,9 @@ export const session = (): ScanSession | null => keptSession();
 export const attempts = () => { const s = keptSession(); if (!s) throw new Error('no scan session'); return s.attempts; };
 
 /** One page to give: its JPEG, and what the readers read on it (the document type model's answer — turn in
- *  quarter turns —, the passport zone's lines, the Hebrew fields). */
-export interface InjectPage { b64: string; doctype?: { doctype: Doctype; conf: number; turn: number; turnConf: number } | null; mrz?: string[] | null; he?: HeRead | null }
+ *  quarter turns —, the passport zone's lines, the Hebrew fields); faceTurn: the turn the face finder gave it
+ *  (≥ 0: set upright by its face; -1, the default: no face). */
+export interface InjectPage { b64: string; doctype?: { doctype: Doctype; conf: number; turn: number; turnConf: number } | null; mrz?: string[] | null; he?: HeRead | null; faceTurn?: number }
 
 let seq = 0;
 
@@ -59,9 +60,9 @@ export async function injectInto(s: ScanSession, o: InjectOpts): Promise<{ attem
   record.pages = o.pics.length;
   const decode = defaultFilesEnv().decode, ids: string[] = [];
   for (let i = 0; i < o.pics.length; i++) {
-    const pic = o.pics[i], canvas = await decode('data:image/jpeg;base64,' + pic.b64);
-    const page: ShotPage = { id: record.attempt + ':' + i, record, pg: i, quad: (i === 0 && o.edges) || WHOLE_PAGE, page: { width: canvas.width, height: canvas.height, turn: -1 },
-      canvas, turn: -1, readouts: null, refined: !!before };
+    const pic = o.pics[i], canvas = await decode('data:image/jpeg;base64,' + pic.b64), turn = pic.faceTurn ?? -1;
+    const page: ShotPage = { id: record.attempt + ':' + i, record, pg: i, quad: (i === 0 && o.edges) || WHOLE_PAGE, page: { width: canvas.width, height: canvas.height, turn },
+      canvas, turn, readouts: null, refined: !!before };
     s.inject(page, true);
     const readouts: Readouts = {
       doctype: pic.doctype ? { ...pic.doctype, ms: 1, square: canvas } : null,

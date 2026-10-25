@@ -511,7 +511,8 @@ def doctype_of(sess, img):
 def with_doctype(sess, page, turn):
     """(page, turn, doctype fields): the document type read; a page with no face (turn < 0) is set
     upright by the document type model when it is sure of the turn (turn then ≥ 0). Nothing changes when there is no model or
-    it fails."""
+    it fails. The site's scan window turns a page by the same rule (modelPick / finalTurn in src/scan/turn.ts): a fix
+    in one is mirrored in the other."""
     if sess is None:
         return page, turn, {}
     try:

@@ -81,6 +81,9 @@ jobs:
       - name: Scanner picked files and attempts (src/scan/engine/ files on threads, the training attempts)
         run: node tests/scan/files.test.mjs
 
+      - name: Scanner page turn (src/scan/turn.ts - the face's, the model's sure turn, else Haiku's)
+        run: node tests/scan/turn.test.mjs
+
       # LibreOffice for the Word templates' conversion (services/docx2pdf, docs/contracts.md → Word templates)
       # its packages kept between runs: the runners' Ubuntu mirror was down to ~40 KB/s (2026-10-22) and
       # the 60 MB of them took the whole job's time; a kept package is not downloaded again
