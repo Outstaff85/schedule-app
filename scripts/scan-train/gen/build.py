@@ -72,6 +72,13 @@ def draw(mod, params, indices, folder, jobs):
     """The items of the indices, sorted by index — the same whatever the number of processes."""
     work = mod.gen_jobs(params, list(indices), str(folder))
     if jobs > 1 and len(work) > 1:
+        from home import RESERVE, memory_jobs
+        fits = memory_jobs(jobs, getattr(mod, "PROCESS_GB", 0.5))   # the generator's own measure of one process
+        if fits < jobs:
+            print(f"memory: {fits} processes instead of {jobs} (each ~{getattr(mod, 'PROCESS_GB', 0.5)} GB, "
+                  f"{RESERVE:.0%} of the free memory left to the system)", flush=True)
+        jobs = fits
+    if jobs > 1 and len(work) > 1:
         from multiprocessing import Pool
         with Pool(min(jobs, len(work))) as pool:
             done = pool.map(mod._batch, work)

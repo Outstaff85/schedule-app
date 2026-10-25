@@ -51,6 +51,7 @@ EDITOR_CAP = 0.15   # the editor cuts' share of the pages kept (the real corner-
 BAD_SHARE = 0.1     # the bad cuts' share of the pages kept
 LAB_FILES = ("edges-lite.onnx", "edges.onnx")
 FACE_FILE = "face.onnx"
+PROCESS_GB = 2.0    # one drawing process at its peak: the native frames (up to ~4000 × 3000) and the lab's models (measured 2026-10-25: ~1.5 GB)
 IOU_GRID = 256
 UNIT = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
 
