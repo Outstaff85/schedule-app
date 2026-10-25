@@ -503,10 +503,58 @@ def split(work=None, share=EXAM_SHARE, cap=EXAM_PER_SERIES, name="backgrounds"):
     return report(cat)
 
 
+def pending(work=None, name="backgrounds"):
+    """What keeps a bank's photos out of the scenes: {"uncatalogued": photos in the folder the catalog does not name,
+    "unchecked": catalogued but not checked yet (status new), "unsplit": usable but on neither side yet}."""
+    d = pathlib.Path(work) / name if work else folder().parent / name
+    cat = load(work, name)
+    files, locked = cat["files"], locked_of(cat)
+    here = [p.name for p in d.glob("*") if p.suffix.lower() in PICTURES and p.is_file()] if d.is_dir() else []
+    return {"uncatalogued": sum(1 for f in here if f not in files),
+            "unchecked": sum(1 for e in files.values() if e.get("status") == "new"),
+            "unsplit": sum(1 for f, e in files.items() if usable(e) and e.get("split") not in ("train", "exam", "none")
+                           and not is_locked(e, f, locked))}
+
+
+def prepare(work=None, names=("backgrounds", "backgrounds-own"), detector=None):
+    """A pulled bank made ready for the scenes with no hand step (the automatic training cycle): the photos the catalog
+    does not name are catalogued (auto category; the owner's own shots in backgrounds-own as theirs), the new ones
+    checked, then the bank split — what `bg add` / `bg check` / `bg split` do. → {name: pending() after}. A bank that
+    is already ready is left as it is (no model is loaded)."""
+    out = {}
+    for name in names:
+        d = pathlib.Path(work) / name if work else folder().parent / name
+        todo = pending(work, name)
+        if not d.is_dir() or not any(todo.values()):
+            continue
+        if todo["uncatalogued"]:
+            add(d, "auto", work=work, owner=name == "backgrounds-own", name=name)
+        if pending(work, name)["unchecked"]:
+            detector = detector or edges_detector(work)
+            check(work, detector=detector, name=name)
+        split(work, name=name)
+        out[name] = pending(work, name)
+    return out
+
+
+def require_ready(work=None, names=("backgrounds", "backgrounds-own")):
+    """SystemExit when a bank has photos the scenes cannot use yet (not catalogued, checked or split): a set drawn then
+    would silently lie every page on a procedural surface (owner, 2026-10-25: a fresh PC's pull did exactly that)."""
+    for name in names:
+        todo = pending(work, name)
+        if any(todo.values()):
+            raise SystemExit(f"{name}: {todo['uncatalogued']} photos not catalogued, {todo['unchecked']} not checked, "
+                             f"{todo['unsplit']} not split — run python -m gen bg pull (it makes the bank ready), or bg add / "
+                             "check / split by hand")
+
+
 # ---------- the private bucket (datasets_hf.py) ----------
 def pull(names=("backgrounds", "backgrounds-own")):
+    """The bank from the private bucket, then made ready (prepare): a bank pushed without its catalog is catalogued,
+    checked and split here."""
     import datasets_hf
     datasets_hf.pull(list(names))
+    return prepare(names=names)
 
 
 def push(names=("backgrounds", "backgrounds-own")):

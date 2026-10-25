@@ -335,7 +335,8 @@ def is_check(text):
 def main():
     gentle(spare_core=False)   # below-normal priority: the PC stays usable (the GPU as it is)
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=str(WORK / "synth" / "mrz"))
+    ap.add_argument("--data", default=str(WORK / "synth" / "mrz"),
+                    help="the made-up lines: synth_lines.py's folder (its --out, holding mrz/) or the mrz/ folder itself")
     ap.add_argument("--epochs", type=int, default=12)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--workers", type=int, default=4)
@@ -355,6 +356,8 @@ def main():
         last = torch.load(CKPT / "last.pt", weights_only=False)
         a = argparse.Namespace(**last["args"])
         print(f"going on with the stopped training from epoch {last['epoch'] + 2}/{a.epochs}")
+    if not (pathlib.Path(a.data) / "labels.tsv").exists() and (pathlib.Path(a.data) / "mrz" / "labels.tsv").exists():
+        a.data = str(pathlib.Path(a.data) / "mrz")   # synth_lines.py mrz --out DIR writes DIR/mrz
     items = load(pathlib.Path(a.data))
     if len(items) < 1000:
         raise SystemExit(f"only {len(items)} lines in {a.data}: run synth_lines.py mrz first")

@@ -600,3 +600,37 @@ def test_publish_prints_the_gate_lines_and_the_warnings():
     assert any("realExamined false" in x for x in lines) and any("midvSkipped" in x for x in lines)
     lines = publish.gate_lines("edges", {"publish": True, "failed": [], "contaminated": {"edges.onnx": ["v5"]}})
     assert "  no rule failed" in lines and any("contaminated" in x for x in lines)
+
+
+def test_a_stale_drawn_set_is_drawn_again_by_itself_and_refused_only_when_that_fails(tmp_path, heldout, monkeypatch):
+    """The automatic cycle never stops on a heldout.json change: require_fresh draws the stale set again with its own
+    run's parameters (redraw_argv), checks it once more, and refuses only a set still stale after it."""
+    work = tmp_path / "work"
+    run = work / "gen" / "runs" / "edges-s7-n300-exam"
+    run.mkdir(parents=True)
+    write = lambda: (run / "run.json").write_text(json.dumps({"heldoutSha256": gc.heldout_sha256(), "split": "exam",
+                                                              "params": {"model": "edges", "split": "exam", "count": 300, "seed": 7}}))
+    write()
+    heldout("moved")
+    calls = []
+    monkeypatch.setattr(es, "run_redraw", lambda argv: calls.append(argv) or write())
+    es.require_fresh({"e2": run}, work)
+    assert calls == [["-m", "gen", "build", "--model", "edges", "--count", "300", "--seed", "7", "--out", str(run), "--exam"]]
+    heldout("moved again")
+    monkeypatch.setattr(es, "run_redraw", lambda argv: calls.append(argv))   # the redraw leaves it stale
+    with pytest.raises(SystemExit, match="draw them again"):
+        es.require_fresh({"e2": run}, work)
+
+
+def test_the_cut_exam_is_drawn_again_with_its_own_shares():
+    import tempfile
+    with tempfile.TemporaryDirectory() as t:
+        run = pathlib.Path(t) / "cuts-s7-n300-exam"
+        run.mkdir()
+        (run / "run.json").write_text(json.dumps({"params": {"generator": "gen.phone_run", "models": ["doctype", "mrz", "he", "face"],
+                                                             "split": "exam", "count": 300, "seed": 7, "editorCap": 1, "badShare": 1}}))
+        assert es.redraw_argv(run) == ["-m", "gen", "build", "--model", "doctype,mrz,he,face", "--count", "300", "--seed", "7",
+                                       "--out", str(run), "--exam", "--editor-cap", "1", "--bad-share", "1"]
+        (run / "run.json").write_text(json.dumps({"params": {"model": "edges", "count": 9, "seed": 1, "real": [{"path": "x"}]}}))
+        assert es.redraw_argv(run) is None                     # a run that cut real photos: not drawn again by itself
+    assert es.redraw_argv("synth/docs-exam") == ["synth_docs.py", "--templates", "--exam"]

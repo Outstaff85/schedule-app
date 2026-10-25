@@ -45,6 +45,43 @@ def spare_cores(n):
     return keep, max(1, n - 2)
 
 
+RESERVE = 0.2   # the share of the free memory a drawing run leaves to the system and the owner's own work (owner, 2026-10-25)
+
+
+def memory():
+    """(free, total) bytes of the PC's memory; (None, None) when it cannot be read."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class Status(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            st = Status()
+            st.dwLength = ctypes.sizeof(Status)
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+                return None, None
+            return st.ullAvailPhys, st.ullTotalPhys
+        page = os.sysconf("SC_PAGE_SIZE")
+        return os.sysconf("SC_AVPHYS_PAGES") * page, os.sysconf("SC_PHYS_PAGES") * page
+    except (OSError, ValueError, AttributeError):
+        return None, None
+
+
+def memory_jobs(jobs, per_process_gb, reserve=RESERVE):
+    """The processes a drawing run starts, cut to what the free memory holds (owner, 2026-10-25: a cuts build of
+    15 processes, ~1.5 GB each, ran the PC out of memory): free × (1 − reserve) / per process, at least 1 and at
+    most jobs. Unknown memory: jobs as asked."""
+    free, _ = memory()
+    if not free or per_process_gb <= 0:
+        return jobs
+    fits = int(free * (1 - reserve) / (per_process_gb * 2 ** 30))
+    return max(1, min(jobs, fits))
+
+
 def gentle(spare_core=True):
     """The run gives way to the owner's own work (owner, 2026-10-22: with every core drawing the PC
     slowed down and could hang): below-normal priority and, with spare_core, the first core left free

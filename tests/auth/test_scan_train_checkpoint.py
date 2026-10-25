@@ -197,3 +197,44 @@ def test_exam_ids_are_the_records_and_page_copies_on_the_exam_side(tmp_path):
     (tmp_path / "doctypes.json").write_text(json.dumps([{"id": "d", "split": "exam", "exam": True}, {"id": "e"}]))
     assert manifest.exam_ids(tmp_path) == {manifest.short_id(i) for i in ("a", "c", "d")}
     assert manifest.exam_ids(tmp_path / "none") == set()
+
+
+def test_clean_sets_a_rejected_run_aside_and_puts_the_published_weights_back(tmp_path, monkeypatch):
+    """clean.py (the exam's no): a run not published goes to checkpoints/rejected/ and its model's published weights
+    come back in its place, so --more never goes on from a rejected model; a model never published keeps no progress;
+    a published run is left as it is."""
+    import json
+    monkeypatch.setattr(checkpoint, "DIR", tmp_path)
+    monkeypatch.setattr(checkpoint, "load", lambda name: json.loads((tmp_path / f"{name}.pt").read_text()))
+    put = lambda name, ck: (tmp_path / name).write_text(json.dumps(ck))
+    put("edges.onnx.pt", {"epoch": 1})                                    # the run the exam said no to
+    put("edges.onnx.published.pt", {"epoch": 9, "published": {"version": "v5"}})
+    put("he.pt", {"epoch": 1})                                            # never published
+    put("doctype-lite.onnx.pt", {"epoch": 6, "published": {"version": "v6"}})
+    out = dict(checkpoint.set_aside_rejected())
+    assert set(out) == {"edges.onnx", "he"} and out["edges.onnx"].startswith("back to") and "refuses" in out["he"]
+    assert json.loads((tmp_path / "edges.onnx.pt").read_text())["published"] == {"version": "v5"}
+    assert json.loads((tmp_path / "rejected" / "edges.onnx.pt").read_text()) == {"epoch": 1}
+    assert not (tmp_path / "he.pt").exists() and (tmp_path / "rejected" / "he.pt").exists()
+    assert json.loads((tmp_path / "doctype-lite.onnx.pt").read_text())["epoch"] == 6
+
+
+def test_publish_keeps_the_published_run_apart(tmp_path, monkeypatch):
+    pytest.importorskip("torch")
+    monkeypatch.setattr(checkpoint, "DIR", tmp_path)
+    f = tmp_path / "edges.onnx.pt"
+    checkpoint._write({"info": {}, "epoch": 3}, f)
+    checkpoint.stamp(f, {"version": "v6", "at": "2026-10-25"})
+    import torch
+    kept = torch.load(checkpoint.published_copy(f), map_location="cpu", weights_only=False)
+    assert kept["published"]["version"] == "v6" and kept["epoch"] == 3
+
+
+def test_clear_work_keeps_the_background_bank(tmp_path, monkeypatch):
+    import common
+    monkeypatch.setattr(common, "WORK", tmp_path)
+    for d in ("backgrounds", "backgrounds-own", "occluders", "checkpoints", "templates", "new", "gen"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "report.json").write_text("{}")
+    common.clear_work()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["backgrounds", "backgrounds-own", "checkpoints", "occluders"]

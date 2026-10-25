@@ -1,7 +1,9 @@
 """A training's progress kept on the PC (docs/scan-training.md → 4, "Stopped and picked up again"): after every
 epoch each model's state — its weights, the optimizer's and the schedule's, the epoch, the best weights so
 far — is written to ~/.scan-train/checkpoints/<model>.pt (written aside, then put in place: a crash or a
-cut-off power while writing leaves the last one whole). clean.py and publish.py keep the folder.
+cut-off power while writing leaves the last one whole). clean.py and publish.py keep the folder; publish.py also
+keeps each published run apart (<model>.published.pt), and clean.py moves a run not published to checkpoints/rejected/
+and puts the published one back (set_aside_rejected), so --more never goes on from a model the exam said no to.
 
   --resume       a run that stopped (Ctrl+C, a crash, the PC turned off) goes on where it stopped: the same
                  weights, optimizer, schedule and epochs — only with the very same data (its info, the data
@@ -21,7 +23,9 @@ the sizes. publish.py
 stamps the checkpoint of each model it publishes with the version ("published"), so --more says what it goes on from.
 What a run loses at most is the epoch it was in. torch is imported only where the weights are read or written."""
 import os
+import pathlib
 import random
+import shutil
 
 from gen.manifest import MOVED, NO_IDS, compare_data, exam_ids
 from home import WORK
@@ -72,6 +76,43 @@ def stamp(file, published):
     ck = torch.load(file, map_location="cpu", weights_only=False)
     ck["published"] = published
     _write(ck, file)
+    shutil.copy2(file, published_copy(file))
+
+
+def published_copy(file):
+    """Where the weights a version was published from are kept apart (<model>.published.pt): a later run that the
+    exam says no to overwrites <model>.pt, never this."""
+    file = pathlib.Path(file)
+    return file.with_name(file.stem + ".published.pt")
+
+
+def set_aside_rejected():
+    """clean.py (the owner's no, or the automatic cycle's): each run that was not published is moved to
+    checkpoints/rejected/ (the last one of each model, for a look), and the weights its model was last published from
+    are put back in its place — so --more goes on from the published model, never from one the exam said no to; a
+    model never published has no saved progress after it (--more then refuses: train fresh). → [(name, what)]."""
+    out = []
+    if not DIR.is_dir():
+        return out
+    for p in sorted(DIR.glob("*.pt")):
+        if p.name.endswith(".published.pt"):
+            continue
+        try:
+            ck = load(p.stem)
+        except Exception:   # unreadable: no run to go on from either
+            ck = None
+        if ck is not None and ck.get("published"):
+            continue
+        aside = DIR / "rejected" / p.name
+        aside.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(p, aside)
+        kept = published_copy(p)
+        if kept.exists():
+            shutil.copy2(kept, p)
+            out.append((p.stem, "back to its published weights"))
+        else:
+            out.append((p.stem, "no published weights: --more refuses until a fresh run"))
+    return out
 
 
 def _differ(old, new):
