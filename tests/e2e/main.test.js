@@ -1415,26 +1415,26 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(fh.marked && fh.busy && fh.ended && fh.timeNote && fh.errEnded && fh.rowBusy && fh.rowEnded,
     'field search: a search with no answer in its time, or a failed one, ends — the field (and the card\'s row) can be searched again, with a note ' + JSON.stringify(fh));
-  // Documents: a newer contract (visa, work permit) replaces the older one — its expiry no longer warns.
+  // Documents: a newer visa (work permit) replaces the older one — its expiry no longer warns; a contract has no expiry,
+  // so an old contract entry's `expiry` (from before 2026-10-25) is never a document reminder.
   const dx = await p.evaluate(() => {
     const w = workers[1], keepDocs = w.docs;
     const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return localYMD(d); };
-    w.docs = [{id: 'dx1', type: 'contract', name: 'old.pdf', fileId: 'f1', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-5)},
-      {id: 'dx2', type: 'other', name: 'note.pdf', fileId: 'f2', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-3)}];
-    // a contract's date is the contract term (workerExpiryStatus: "Contract ended"), not a document reminder
-    const expired = () => workerNotices(w).filter(n => (n.icon === 'ti-id-badge-2' && /expired/.test(n.word)) || n.icon === 'ti-file-certificate').map(n => n.title);
+    w.docs = [{id: 'dx1', type: 'visa', name: 'old.pdf', fileId: 'f1', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-5)},
+      {id: 'dx2', type: 'other', name: 'note.pdf', fileId: 'f2', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-3)},
+      {id: 'dx4', type: 'contract', name: 'c.pdf', fileId: 'f4', url: 'u', mediaType: 'application/pdf', uploadedAt: '2026-01-01T00:00:00.000Z', expiry: day(-4)}];
+    const expired = () => workerNotices(w).filter(n => n.icon === 'ti-id-badge-2' && /expired/.test(n.word)).map(n => n.title);
     const r = {before: expired().join()};
-    ManagerBridge.addDocs(w.id, [{id: 'dx3', type: 'contract', name: 'new.pdf', fileId: 'f3', url: 'u', mediaType: 'application/pdf', uploadedAt: new Date().toISOString(), expiry: day(300)}]);
+    ManagerBridge.addDocs(w.id, [{id: 'dx3', type: 'visa', name: 'new.pdf', fileId: 'f3', url: 'u', mediaType: 'application/pdf', uploadedAt: new Date().toISOString(), expiry: day(300)}]);
     r.after = expired().join();
     r.level = workerDocStatus(w).level;
     w.docs = keepDocs; render();
     return r;
   });
-  ok(dx.before === 'Other,Contract ended' && dx.after === 'Other' && dx.level === 'error',
-    'documents: a new contract uploaded replaces the old one — the old contract\'s date no longer warns; another document still does ' + JSON.stringify(dx));
-  // The contract term restarts with a new contract (owner, 2026-10-25): the date set in Add document (its Date Picker:
-  // the year from the caption's field, then the day) is the contract's new end — the card's "Contract: Expired" goes,
-  // the document is saved with that date; a date inside the warning time warns again; the window opens clean again.
+  ok(dx.before === 'Visa,Other' && dx.after === 'Other' && dx.level === 'error',
+    'documents: a new visa uploaded replaces the old one — the old one\'s expiry no longer warns; another document still does; a contract\'s old expiry never warns ' + JSON.stringify(dx));
+  // The contract term (owner, 2026-10-25): a contract has no end date; the worker's term option (months, warn ahead)
+  // counts from the latest contract's date — a new contract restarts it — or from the start date with no contract.
   const ct0 = await p.evaluate(() => {
     const w = workers[1]; window.__termKeep = JSON.stringify(w);
     const d = new Date(); d.setMonth(d.getMonth() - 14);
@@ -1449,45 +1449,73 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('#workerCardModal [data-testid="card-more"]');
   await p.click('[role="menuitem"]:has-text("Add document")');
   await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
-  const ctNext = await p.evaluate(() => { const d = new Date(); window.__ctYmd = (d.getFullYear() + 1) + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-15'; return {y: d.getFullYear() + 1, m: d.getMonth()}; });
-  const ctWant = '15/' + String(ctNext.m + 1).padStart(2, '0') + '/' + ctNext.y;
-  ct0.label = await p.evaluate(() => document.getElementById('wdExpiry').closest('.grid').innerText);
-  ct0.empty = await p.evaluate(() => document.getElementById('wdExpiry').innerText.trim());
-  await p.click('#wdExpiry');
-  await p.waitForSelector('[data-slot="popover-content"] select.rdp-years_dropdown');
-  ct0.onTop = await p.evaluate(() => T.onTop('[data-slot="popover-content"]'));
-  await p.selectOption('[data-slot="popover-content"] select.rdp-years_dropdown', String(ctNext.y));
-  await p.click('[data-slot="popover-content"] button:text-is("15")');
-  await waitFor(p, () => !document.querySelector('[data-slot="popover-content"]'), 3000);
-  ct0.shown = await p.evaluate(() => document.getElementById('wdExpiry').innerText.trim());
+  const ctToday = await p.evaluate(() => { const d = new Date(); window.__ctYmd = localYMD(d); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); });
+  ct0.label = await p.evaluate(() => document.getElementById('wdContractDate').closest('.grid').innerText);
+  ct0.shown = await p.evaluate(() => document.getElementById('wdContractDate').innerText.trim());
+  ct0.noExpiry = await p.evaluate(() => !document.getElementById('wdExpiry'));
   await p.setInputFiles('#wdFiles', {name: 'new-contract.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')});
   await p.click('#wdSubmit');
-  ct0.saved = await waitFor(p, () => (workers[1].docs || []).some(d => d.type === 'contract' && d.expiry === window.__ctYmd) && !document.getElementById('workerDocOverlay').classList.contains('open'), 20000);
+  ct0.saved = await waitFor(p, () => (workers[1].docs || []).some(d => d.type === 'contract' && d.contractDate === window.__ctYmd && !d.expiry) && !document.getElementById('workerDocOverlay').classList.contains('open'), 20000);
   await p.waitForSelector('#workerCardModal [data-testid="worker-doc"]', {timeout: 10000}).catch(() => {});
   const ct1 = await p.evaluate(want => {
     const w = workers[1], card = document.querySelector('#workerCardModal [data-testid="worker-card"]');
     const r = {status: workerExpiryStatus(w), cardTerm: !!card && /Contract\s*(Expired|Expiring soon) —/.test(card.innerText),
-      docRow: [...document.querySelectorAll('#workerCardModal [data-testid="worker-doc"]')].map(x => x.innerText).join('|').includes('Expires ' + want),
+      docRow: [...document.querySelectorAll('#workerCardModal [data-testid="worker-doc"]')].map(x => x.innerText).join('|').includes('Contract date ' + want),
       notices: workerNotices(w).filter(n => n.icon === 'ti-file-certificate' || n.icon === 'ti-id-badge-2').length};
     const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return localYMD(d); };
-    const add = (n, at) => ManagerBridge.addDocs(w.id, [{id: 'ct' + n, type: 'contract', name: 'c.pdf', fileId: 'f', url: 'u', mediaType: 'application/pdf', uploadedAt: at, expiry: day(n)}]);
-    add(20, '2999-01-01T00:00:00.000Z'); const s20 = workerExpiryStatus(w);
-    r.warn20 = !!s20 && s20.level === 'warning' && localYMD(s20.deadline) === day(20);
-    r.notice20 = workerNotices(w).filter(n => n.icon === 'ti-file-certificate').map(n => n.title + ':' + (n.act || {}).label).join();
-    add(45, '2999-01-02T00:00:00.000Z'); r.quiet45 = workerExpiryStatus(w);          // the term's own warning: a month ahead
-    w.expiryEnabled = false; r.docDays45 = workerExpiryStatus(w);                       // the term off: 30 days ahead
-    add(-1, '2999-01-03T00:00:00.000Z'); const so = workerExpiryStatus(w); r.over = so && so.level;
+    const add = (id, at, more) => ManagerBridge.addDocs(w.id, [{id, type: 'contract', name: 'c.pdf', fileId: 'f', url: 'u', mediaType: 'application/pdf', uploadedAt: at, ...more}]);
+    // an old entry with an expiry (before contracts lost theirs): the term counts from its upload, it is no document reminder
+    add('cold', new Date(Date.now() + 1000).toISOString(), {expiry: day(-5)});
+    r.oldExpiry = workerExpiryStatus(w); r.oldNotes = workerDocExpiries(w).length;
+    // a contract dated 11.5 months ago, warn 1 month ahead: the term ends in about two weeks — warning
+    add('c350', '2999-01-01T00:00:00.000Z', {contractDate: day(-350)}); const s = workerExpiryStatus(w);
+    const want350 = new Date(day(-350) + 'T00:00:00'); want350.setMonth(want350.getMonth() + 12);
+    r.warn = !!s && s.level === 'warning' && localYMD(s.deadline) === localYMD(want350);
+    r.notice = workerNotices(w).filter(n => n.icon === 'ti-file-certificate').map(n => n.title + ':' + (n.act || {}).label).join();
+    add('c400', '2999-01-02T00:00:00.000Z', {contractDate: day(-400)}); const so = workerExpiryStatus(w); r.over = so && so.level;
+    // a signed contract counts from its signing day
+    const keepSign = w.signDate, sd = new Date(day(-400) + 'T00:00:00');
+    w.signDate = String(sd.getDate()).padStart(2, '0') + '/' + String(sd.getMonth() + 1).padStart(2, '0') + '/' + sd.getFullYear();
+    add('csig', '2999-01-03T00:00:00.000Z', {signed: true}); const ss = workerExpiryStatus(w); r.signedOver = ss && ss.level;
+    w.signDate = keepSign;
+    // the term option off: no warning whatever the contract
+    w.expiryEnabled = false; r.off = workerExpiryStatus(w);
     return r;
-  }, ctWant);
+  }, ctToday);
+  // The worker window's contract-expiry section says where the term counts from.
+  const ct3 = await p.evaluate(async () => {
+    const w = workers[1];
+    w.docs = (w.docs || []).filter(d => !['cold', 'c350', 'c400', 'csig'].includes(d.id)); w.expiryEnabled = true;
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openEditWorker(1);
+    await T.until(() => !!document.querySelector('#workerModal [data-testid="editor-expiry-btn"]'), 5000);
+    const btn = document.querySelector('#workerModal [data-testid="editor-expiry-btn"]');
+    if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+    await T.until(() => /Counted from/.test(btn.parentElement.textContent), 3000);
+    const t = btn.parentElement.textContent;
+    closeModal('workerOverlay');
+    return t;
+  });
+  // A fresh window: today as the contract date; its picker shows the month and the year as fields, above the window.
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); ManagerBridge.openDocUpload(workers[1].id); });
   await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
-  const ct2 = await p.evaluate(() => ({date: document.getElementById('wdExpiry').innerText.trim(), type: document.getElementById('wdType').innerText.trim()}));
+  const ct2 = await p.evaluate(() => ({date: document.getElementById('wdContractDate').innerText.trim(), type: document.getElementById('wdType').innerText.trim()}));
+  const ctY = new Date().getFullYear() - 1;
+  await p.click('#wdContractDate');
+  await p.waitForSelector('[data-slot="popover-content"] select.rdp-years_dropdown');
+  ct2.onTop = await p.evaluate(() => T.onTop('[data-slot="popover-content"]'));
+  await p.selectOption('[data-slot="popover-content"] select.rdp-years_dropdown', String(ctY));
+  await p.click('[data-slot="popover-content"] button:text-is("15")');
+  await waitFor(p, () => !document.querySelector('[data-slot="popover-content"]'), 3000);
+  ct2.picked = await p.evaluate(() => document.getElementById('wdContractDate').innerText.trim());
+  ct2.pickedWant = '15/' + ctToday.slice(3, 5) + '/' + ctY;
   await p.evaluate(() => { closeModal('workerDocOverlay'); const w = workers[1], k = JSON.parse(window.__termKeep); Object.keys(w).forEach(x => delete w[x]); Object.assign(w, k); render(); autoSave(); });
-  ok(ct0.level === 'overdue' && ct0.notice === 'Contract ended:Extend' && ct0.card && /Contract end date/.test(ct0.label) && ct0.empty === 'Pick a date' && ct0.onTop && ct0.shown === ctWant && ct0.saved
-    && ct1.status === null && !ct1.cardTerm && ct1.docRow && ct1.notices === 0 && ct1.warn20 && ct1.notice20 === 'Contract ending:Renew' && ct1.quiet45 === null && ct1.docDays45 === null && ct1.over === 'overdue'
-    && ct2.date === 'Pick a date' && ct2.type === 'Contract',
-    'contract term: a new contract with its date set in Add document (picked in the calendar) restarts the term — the overdue warning goes, the date is saved on the document and shown on the card; '
-    + 'inside the warning time it warns again; the window opens clean ' + JSON.stringify({ct0, ct1, ct2, ctWant}));
+  ok(ct0.level === 'overdue' && ct0.notice === 'Contract ended:Extend' && ct0.card && /Contract date/.test(ct0.label) && !/optional/i.test(ct0.label) && ct0.shown === ctToday && ct0.noExpiry && ct0.saved
+    && ct1.status === null && !ct1.cardTerm && ct1.docRow && ct1.notices === 0 && ct1.oldExpiry === null && ct1.oldNotes === 0
+    && ct1.warn && ct1.notice === 'Contract ending:Extend' && ct1.over === 'overdue' && ct1.signedOver === 'overdue' && ct1.off === null
+    && ct3.includes('Counted from the latest contract (' + ctToday + ')')
+    && ct2.date === ctToday && ct2.type === 'Contract' && ct2.onTop && ct2.picked === ct2.pickedWant,
+    'contract term: counted from the latest contract (Add document\'s Contract date, today by default; a signed one\'s signing day; an old one\'s upload), else the start date — '
+    + 'a new contract ends the overdue warning, 11.5 months into a 12-month term warns, the option off never warns; the window opens with today again ' + JSON.stringify({ct0, ct1, ct2, ct3, ctToday}));
   // A worker whose only missing document is the signature: its notice's action opens the worker window (the signature pad), not the camera.
   const so = await p.evaluate(async () => {
     const w = workers[1], keep = JSON.stringify(w);

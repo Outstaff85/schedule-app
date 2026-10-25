@@ -52,11 +52,14 @@ export function NoticesSheet({ wid, head, api }: { wid: string; head: WorkerHead
   );
 }
 
-// ── Add document: type, an optional expiry, several files, uploaded in parallel ──
+const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// ── Add document: type, a contract's date or another document's optional expiry, several files, uploaded in parallel ──
 export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
   const w = api.record(wid);
   const [type, setType] = React.useState('contract');
   const [expiry, setExpiry] = React.useState('');
+  // a contract has no expiry: its date (today unless changed) is the day the contract term counts from (workerExpiryStatus)
+  const [contractDate, setContractDate] = React.useState(todayYmd);
   const [files, setFiles] = React.useState<File[]>([]);
   const [status, setStatus] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -75,7 +78,8 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
       const failed = results.filter(r => !r || r.error);
       const now = new Date().toISOString();
       const added = results.map((r, i) => (r && r.ok ? { id: 'd' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6), type, name: prepared[i].fileName,
-        fileId: r.id, url: r.url, mediaType: prepared[i].mediaType, uploadedAt: now, expiry } : null)).filter(Boolean) as NonNullable<Parameters<ManagerBridge['addDocs']>[1]>;
+        fileId: r.id, url: r.url, mediaType: prepared[i].mediaType, uploadedAt: now,
+        ...(type === 'contract' ? { contractDate: contractDate || todayYmd() } : { expiry }) } : null)).filter(Boolean) as NonNullable<Parameters<ManagerBridge['addDocs']>[1]>;
       if (added.length) api.addDocs(wid, added);
       if (failed.length) {
         const msg = tr('{0} file(s) failed: {1}', { 0: failed.length, 1: (failed[0] && failed[0].error) || 'network error' });
@@ -100,8 +104,10 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
           <SelectContent>{Object.entries(WORKER_DOC_TYPES).map(([k, l]) => <SelectItem key={k} value={k}>{tr(l)}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
-      {/* a contract's date is its end: the contract warning counts to it from now on (workerExpiryStatus) */}
-      <Field label={type === 'contract' ? tr('Contract end date (optional — the contract warning counts to it)') : tr('Expiry date (optional — reminder before it expires)')}><DatePicker id="wdExpiry" value={expiry} onChange={setExpiry} /></Field>
+      {/* a contract has no end date: its date restarts the contract term (workerExpiryStatus); the others may expire */}
+      {type === 'contract'
+        ? <Field label={tr('Contract date (the contract term counts from it)')}><DatePicker id="wdContractDate" value={contractDate} onChange={setContractDate} /></Field>
+        : <Field label={tr('Expiry date (optional — reminder before it expires)')}><DatePicker id="wdExpiry" value={expiry} onChange={setExpiry} /></Field>}
       <Field label={tr('Files (several at once is fine — PDF or photos)')}>
         <Input type="file" id="wdFiles" multiple accept="application/pdf,.pdf,image/*,.doc,.docx" className="h-auto py-2" onChange={e => setFiles([...(e.target.files || [])])} />
       </Field>

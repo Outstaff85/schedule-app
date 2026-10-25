@@ -39,7 +39,7 @@ import {
   WORKER_DOC_TYPES, contractTerms, fmtDMY, formOf, type FormKey, type WorkerForm,
 } from './worker';
 import { ContractSection } from './WorkerContract';
-import { currentContractDoc } from './logic/workers';
+import { contractDocDate, currentContractDoc } from './logic/workers';
 import { saveWorker, type EditorState } from './worker-save';
 
 /** A scan field's mark: empty and searchable, searching, not found, "check" (two reads differ), found (green for a moment). */
@@ -461,7 +461,9 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
                     <Field label={tr('Months until the deadline')}><Input type="number" min={1} step={1} id="wExpiryMonths" {...form.register('expiryMonths')} /></Field>
                     <Field label={tr('Warn how many months ahead')}><Input type="number" min={0} step={1} id="wExpiryWarnMonths" {...form.register('expiryWarnMonths')} /></Field>
                   </FieldRow>
-                  {termDoc && <Hint tone="muted">{tr('The latest contract sets the term: it ends {0} (Add document → its date).', { 0: termDoc.date.toLocaleDateString('en-GB') })}</Hint>}
+                  {/* the term counts from the latest contract (a new one restarts it), else from the start date (workerExpiryStatus) */}
+                  {termDoc ? <Hint tone="muted">{tr('Counted from the latest contract ({0})', { 0: termDoc.date.toLocaleDateString('en-GB') })}</Hint>
+                    : v.startDate ? <Hint tone="muted">{tr('Counted from the start date ({0})', { 0: fmtDMY(v.startDate) })}</Hint> : null}
                   {!termDoc && v.expiryEnabled && !v.startDate && <Hint tone="bad"><IconAlertTriangle className="inline size-3" /> {tr('No start date — the warning does not work without it.')}</Hint>}
                 </div>
               )}
@@ -480,9 +482,10 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               <DocLine color={info.docMissing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconId />} title={tr('ID / Passport')} sub={info.docExpiryText || v.docId}
                 act={info.docMissing.length || info.docFailed ? <Button size="sm" onClick={() => api.rescan()}>{tr('Upload')}</Button> : null} />
               <DocLine color={w.docUrl ? 'var(--ok)' : 'var(--warn)'} icon={<IconFileText />} title={tr('Form 101')} sub={w.docUrl ? tr('Saved') : tr('Not saved yet')} />
-              {docs.map(d => { const x = info.docExpiry[String(d.id)];
+              {docs.map(d => { const x = info.docExpiry[String(d.id)], cd = d.type === 'contract' ? contractDocDate(w, d) : null;
                 return <DocLine key={d.id} color={x ? (x.level === 'error' ? 'var(--bad)' : 'var(--warn)') : 'var(--ok)'} icon={d.type === 'contract' ? <IconFileCertificate /> : <IconIdBadge2 />}
-                  title={tr(WORKER_DOC_TYPES[d.type] || 'Document')} sub={x ? x.text : d.expiry ? tr('Expires {0}', { 0: fmtDMY(d.expiry) }) : d.name || ''}
+                  title={tr(WORKER_DOC_TYPES[d.type] || 'Document')} sub={x ? x.text : d.type === 'contract' ? (cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : d.name || '')
+                    : d.expiry ? tr('Expires {0}', { 0: fmtDMY(d.expiry) }) : d.name || ''}
                   act={x ? <Button size="sm" onClick={() => api.openDocUpload(w.id)}>{tr('Renew')}</Button> : null} />; })}
               <Button className="mt-1 justify-self-start" onClick={() => api.openDocUpload(w.id)}><IconUpload className="size-4" />{tr('Add document')}</Button>
             </> : <div className="text-[13px] text-ink-2">{tr('Documents are added on the worker card after the worker is saved.')}</div>}
