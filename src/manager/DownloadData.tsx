@@ -12,7 +12,8 @@ import { Window } from '@/components/shared/window';
 import type { ManagerBridge, WorkerRecord } from './bridge';
 import { DOWNLOAD_PARTS, storeInclude, storedInclude, type DownloadInclude, type DownloadPart } from './logic/workerdocs';
 
-const LABELS: Record<DownloadPart, string> = { form101: 'Form 101', contract: 'Contract', scans: 'ID and scans', docs: 'Other documents' };
+// each label a literal tr() call, so the dictionary check (tests/i18n/check.js) finds it
+const labels = (): Record<DownloadPart, string> => ({ form101: tr('Form 101'), contract: tr('Contract'), scans: tr('ID and scans'), docs: tr('Other documents') });
 
 /** What stands behind each tile for this worker. */
 export function downloadAvailable(w: WorkerRecord): Record<DownloadPart, boolean> {
@@ -31,6 +32,7 @@ export function DownloadData({ w, api, onClose }: { w: WorkerRecord; api: Manage
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const has = downloadAvailable(w);
+  const label = labels();
   const signed = !!w.signedAt;
   const include = Object.fromEntries(DOWNLOAD_PARTS.map(k => [k, !!picks[k] && has[k]])) as DownloadInclude;
   const hint: Record<DownloadPart, string> = {
@@ -59,7 +61,7 @@ export function DownloadData({ w, api, onClose }: { w: WorkerRecord; api: Manage
         <p className="text-[13px] text-ink-2">{tr('One PDF: a summary page first, then the parts ticked below.')}</p>
         <CheckGrid>
           {DOWNLOAD_PARTS.map(k => (
-            <CheckTile key={k} wide data-testid={'download-' + k} data-part={k} label={tr(LABELS[k])} hint={hint[k]}
+            <CheckTile key={k} wide data-testid={'download-' + k} data-part={k} label={label[k]} hint={hint[k]}
               disabled={!has[k] || busy} checked={include[k]} onCheckedChange={v => set(k, v === true)} />
           ))}
         </CheckGrid>

@@ -213,6 +213,20 @@ def test_a_legacy_signed_worker_gets_the_stored_form101_whole():
     assert "01/09/2026" in texts[0]
     out = call(db, bucket, OWNER, {"scans": True})  # only the scans: the ID sheet
     assert out["parts"] == ["summary", "id-sheet,scan"]
+    # signed on the worker's page, not taken onto the worker yet: the signed request's Form 101 part, whole, not a preview
+    db, bucket = setup()
+    bucket.store[P + "form101/2-signed.pdf"] = stored.tobytes()
+    db.collection("tenants").document("t1").collection("signRequests").document("r1").set(
+        {"workerId": "w1", "status": "signed", "signedAtIso": "2026-09-02", "parts": {"form101": {"path": P + "form101/2-signed.pdf"}}})
+    out = call(db, bucket, OWNER, {"form101": True, "scans": True})
+    texts, doc = text(out)
+    assert out["parts"] == ["summary", "form101-stored"] and doc.page_count == 4 and "STORED101 page 0" in texts[1]
+    # another worker's signed request is never taken for this one
+    db, bucket = setup()
+    bucket.store["tenants/t1/workers/w2/form101/x.pdf"] = stored.tobytes()
+    db.collection("tenants").document("t1").collection("signRequests").document("r2").set(
+        {"workerId": "w2", "status": "signed", "parts": {"form101": {"path": "tenants/t1/workers/w2/form101/x.pdf"}}})
+    assert call(db, bucket, OWNER, {"form101": True})["parts"] == ["summary", "form101-preview"]
     # signed, but its copy is not found: never a preview in its place
     db, bucket = setup(signedAt="2026-09-01T10:00:00Z")
     out = call(db, bucket, OWNER, {"form101": True})
