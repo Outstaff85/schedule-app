@@ -334,8 +334,14 @@ const READS = {
   // Done → the pages read in the window (src/scan-process/) → the worker window with what was read; the scan's
   // attempts go with it — the camera shot's with the corners fixed by hand (edgesFixed)
   const done = await p.evaluate(async () => {
+    // the reading screen may come and go between two polls (the stubbed reads answer at once): watched from
+    // before the click, so a short one is seen too
+    let sawReading = false;
+    const seen = new MutationObserver(() => { if (T.q('[data-testid="scan-reading"]')) sawReading = true; });
+    seen.observe(document.body, {childList: true, subtree: true});
     T.q('[data-testid="scan-done"]').click();
-    const r = {reading: await T.until(() => T.q('[data-testid="scan-reading"]'), 5000)};
+    const r = {reading: await T.until(() => sawReading || T.q('[data-testid="scan-reading"]'), 5000)};
+    seen.disconnect();
     await window.__scanGoing;
     r.closed = await T.until(() => !T.q('[data-testid="scanner"]'), 5000);
     r.worker = document.getElementById('workerOverlay').classList.contains('open');
