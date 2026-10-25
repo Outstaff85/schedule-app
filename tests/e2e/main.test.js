@@ -1828,6 +1828,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
   await p.click('[role="menuitem"]:has-text("Download data")');
   await p.waitForSelector('[data-testid="download-window"]', {timeout: 10000});
+  // the window slides in: measured once it stands still over the card
+  await waitFor(p, () => T.onTop('[data-testid="download-window"]'), 5000);
   const d5w = await p.evaluate(() => {
     const st = k => { const el = document.querySelector('[data-testid="download-' + k + '"]'); return el ? (el.disabled ? 'off' : el.dataset.state) : 'none'; };
     return {form101: st('form101'), contract: st('contract'), scans: st('scans'), docs: st('docs'), top: T.onTop('[data-testid="download-window"]')};
