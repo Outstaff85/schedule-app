@@ -178,7 +178,7 @@ Keeping the files is the safe default, so this does not wait for Q2.
   - A new React window `src/manager/DownloadData.tsx`, opened from the worker card (`WorkerCard.tsx:189`), replaces the direct `signing.bundle` call.
   - Built from `Window` + `CheckGrid` / `CheckTile`: Form 101, Contract, ID and scans, Other documents.
   - A tile is greyed out when nothing stands behind it.
-  - The default selection is Q8. The last choice is remembered in localStorage, wrapped in try/catch.
+  - The default selection (Q8, answered): Form 101 and the ID sheet ticked, the contract and the other documents not; the summary page always first, with no tick. The last choice is remembered in localStorage, wrapped in try/catch.
   - A bridge action fetches the PDF as a blob → `openPdf`.
   - `WORKER_DOCS_FN_URL` in `src/manager/logic/functions.ts`, warmed with `{ping}` when the worker card opens.
 - **The e2e mock** `tests/e2e/server.py` gets a `worker_docs` route.
@@ -493,7 +493,7 @@ Each signing send also stops adding a template copy, and each firm profile edit 
 - **Q5 — revoke the download links** already saved in Firestore (`docUrl`, `docs[].url`) once every download goes through the server?
 - **Q6 — scanned contracts.** Should the scanned contract photos (`saveScanContract`) become `scanPages` of kind `contract` in S6, or stay a PDF in `docs[]`?
 - **Q7 — the ID sheet layout — answered (owner, 2026-10-25):** the worker's document and the ספח on one A4 sheet — the ID card (front, and its back when scanned) or the passport, with the ספח on the same sheet. The exact placement (side by side or stacked) follows the pictures' shapes so each stays readable; a missing ספח leaves its box empty with a Hebrew caption.
-- **Q8 — the bundle's default ticks.** Everything, or only Form 101 + contract?
+- **Q8 — the bundle's default ticks — answered (owner, 2026-10-25):** ticked by default: Form 101 and the ID sheet (the ID card or passport with the ספח); the contract and the other documents unticked. The summary page is always the first page and has no tick of its own.
 - **Q9 — deleting a firm.** What happens to its signed documents and template versions: the archive download then deletion (S3), or kept for Q4's period?
 - **Q10 — the safety net** (needs the owner's hands in the cloud console): turn on bucket soft delete (or object versioning) and Firestore point-in-time recovery or a scheduled export? Before S3b.
 
