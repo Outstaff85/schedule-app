@@ -125,7 +125,7 @@ Minting custom tokens needs the runtime service account to hold "Service Account
 `users_admin` actions `loadWorkerPages` with `{fileIds: [<storage path>, …]}`, `loadWorkerAssets` and `deleteWorkerDoc` with `{fileId: <storage path>}`:
 - manager roles (and `hr`) only; the path must be under `tenants/<caller's firm>/workers/` (no `..`, no `//`);
 - an own-workers HR only for a worker whose `hrId` is its uid (`worker_hr(wid)` reads the worker in `main.py`);
-- delete needs superadmin, `tenant_admin`, or staff / hr with `workers`;
+- delete needs superadmin, `tenant_admin`, or staff / hr with `workers`, and never deletes a signed file (`signed_file`, fed by `signed_lookup(wid)` in `main.py`: the worker record, its `signRequests` and the `transferRequests` that made it) — [contracts.md](contracts.md) → Signed files are kept;
 - `loadWorkerPages` returns `{ok, pages: [{fileId, b64, mediaType}], missing: [<path>]}`: a worker's scanned pages and signature in one call, at most 20 (`MAX_PAGES`), each path only under `pages/` or `signature/` of a worker of the firm — one path that is not refuses the whole call ([contracts.md](contracts.md) → Scanned pages);
 - `loadWorkerAssets` returns `{ok, scanB64, scanMediaType, sigPng, extraPages}` — the old sidecar, read until the worker's is split into pages.
 
@@ -149,7 +149,7 @@ See [punch.md](punch.md) and [portals.md](portals.md) for the pages.
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Supplier role only".
   - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate` and `supplierDayRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `commission` (this supplier's own rate list from its document, `[{from, mode, rate}]`), `suppliers: []`;
   - `loadPunchLog` → own workers' punches of the last 13 months with `id, workerId, workerName, type, time, date, site, clientId, ts` (`workerId in` queries of 30, each bounded by `ts >=` 13 months back — the `workerId` + `ts` index — so the older history is never read);
-  - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list (a new worker also gets `createdAt`);
+  - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list (a new worker also gets `createdAt`; a signed worker is never deleted);
   - `supplierSubmitHours` (a pending hours batch for an own worker) and `supplierListHours` (its batches with their status) ([portals.md](portals.md)).
 
 ### `ai.py` — `ai_read`

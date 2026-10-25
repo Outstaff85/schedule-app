@@ -396,7 +396,11 @@ provideBridge({
   // Delete never asks (the card's Undo snack): when its time is up the entries go, saved, and their files are deleted.
   removeDocs(wid?: any,ids?: any){
     const w=workers.find((x?: any)=>x.id===wid); if(!w) return;
-    const gone=(w.docs||[]).filter((d?: any)=>ids.includes(String(d.id))); if(!gone.length) return;
+    const picked=(w.docs||[]).filter((d?: any)=>ids.includes(String(d.id)));
+    // a signed document is never removed (docs/contracts.md → Signed files are kept)
+    const gone=picked.filter((d?: any)=>!d.signed);
+    if(gone.length<picked.length) showToast(tr('Signed documents are kept'));
+    if(!gone.length) return;
     w.docs=(w.docs||[]).filter((d?: any)=>!gone.includes(d));
     autoSave(); render();
     gone.forEach((d?: any)=>{ if(d.fileId) gsDeleteWorkerDoc(d.fileId); });

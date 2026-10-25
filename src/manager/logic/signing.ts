@@ -3,11 +3,11 @@
 // login's ID token, the firm's requests kept in memory (Sent to sign / Signed on the worker),
 // and the signed PDFs taken onto the worker record once: Form 101 as the worker's document
 // (`docUrl`), the contract into `docs` (signed), the signature, the date — the replaced
-// signed documents deleted (docs/contracts.md → A new signature after a change). Never draws: it emits events.
+// signed documents' files kept (docs/contracts.md → Signed files are kept). Never draws: it emits events.
 import { state, type Rec } from '../data/state';
 import { emit } from '../data/events';
 import { autoSave } from '../data/store';
-import { gsDeleteWorkerDoc, loadFirestoreBackend } from '../data/api';
+import { loadFirestoreBackend } from '../data/api';
 import { gsAuth } from '../data/session';
 import { SIGN_FN_URL } from './functions';
 
@@ -17,6 +17,20 @@ export type SignRequest = {
   sentAt?: string; signedAt?: string; sigPath?: string; appliedAt?: string; printHash?: string; printPay?: boolean; printMarks?: string[];
   parts?: Record<'form101' | 'contract', { path: string; name: string; size: number }>;
 };
+
+/** A worker who signed (a request taken on, or an older signing / a move from another firm). */
+export function isSignedWorker(w: Rec | null | undefined): boolean {
+  return !!(w && (w.signedAt || w.signedRequestId));
+}
+
+/** The worker's files that are never deleted (docs/contracts.md → Signed files are kept): every
+ * docs[] entry marked signed, and for a signed worker its Form 101 (`docFileId`) and signature.
+ * The server refuses them too (users_admin deleteWorkerDoc, functions-auth/files.py signed_file). */
+export function keptSignedFiles(w: Rec): Set<string> {
+  const kept = new Set<string>((w.docs || []).filter((d: Rec) => d && d.signed && d.fileId).map((d: Rec) => String(d.fileId)));
+  if (isSignedWorker(w)) [w.docFileId, w.sigFileId].filter(Boolean).forEach(id => kept.add(String(id)));
+  return kept;
+}
 
 export async function signCall<T = Rec>(body: Rec): Promise<T> {
   const idToken = await (await loadFirestoreBackend()).idToken();
@@ -72,8 +86,6 @@ async function adoptSigned(): Promise<void> {
     if (!w) continue;
     if (w.signedRequestId !== r.id) {
       const [u101, uC] = await Promise.all([b.storageUrl(r.parts!.form101.path), b.storageUrl(r.parts!.contract.path)]);
-      const old101 = w.docFileId;
-      const oldSigned = (w.docs || []).filter((d: Rec) => d.signed);
       const now = new Date().toISOString();
       w.docUrl = u101; w.docFileId = r.parts!.form101.path; w.docSavedAt = now; w.docUploadFailed = false; w.docHasSignature = true;
       w.docs = [...(w.docs || []).filter((d: Rec) => !d.signed), {
@@ -84,9 +96,7 @@ async function adoptSigned(): Promise<void> {
       w.signedAt = r.signedAt || now; w.signDate = r.signDate || ''; w.signedRequestId = r.id;
       if (r.sigPath) { w.sigFileId = r.sigPath; w.sigSavedAt = w.signedAt; }
       w.signedPrint = r.printHash || ''; w.signedPrintPay = !!r.printPay; w.signedPrintMarks = r.printMarks || [];
-      // the replaced signed documents go (the new ones are on the worker now)
-      if (old101 && old101 !== w.docFileId) gsDeleteWorkerDoc(old101);
-      oldSigned.forEach((d: Rec) => d.fileId && d.fileId !== r.parts!.contract.path && gsDeleteWorkerDoc(d.fileId));
+      // the replaced documents' files are kept: an earlier signed set stays in Storage, named by its own request's parts
       changed = true;
     }
     r.appliedAt = new Date().toISOString();

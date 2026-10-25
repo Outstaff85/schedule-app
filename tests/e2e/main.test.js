@@ -1791,6 +1791,39 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sgTook.docFile && sgTook.url && sgTook.contract && sgTook.signedAt && sgTook.sig && sgTook.regen && sgTook.kept && /Signed/.test(sgTook.chip),
     'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
+  // Signed files are kept (documents plan S0b; docs/contracts.md → Signed files are kept).
+  const keep = await p.evaluate(async () => {
+    const w = workers.find(x => x.id === 'w1');
+    const sd = (w.docs || []).find(d => d.signed);
+    const call = async b => (await fetch(API_URL, {method: 'POST', body: JSON.stringify(b)})).json();
+    const r = {};
+    // Remove on a signed document leaves it on the worker
+    ManagerBridge.removeDocs('w1', [String(sd.id)]);
+    r.entry = (w.docs || []).some(d => d.id === sd.id);
+    // the server refuses to delete the signed Form 101, the signed contract and the signature
+    r.refused = [];
+    for (const f of [w.docFileId, sd.fileId, w.sigFileId]) r.refused.push((await call({action: 'deleteWorkerDoc', fileId: f})).error || 'deleted');
+    r.sigBack = ((await call({action: 'loadWorkerPages', fileIds: [w.sigFileId]})).pages || []).length;
+    // Delete worker on a signed worker asks to delete only its unsigned files
+    const f0 = window.fetch, asked = [];
+    window.fetch = (u, o) => { try { const b = JSON.parse((o && o.body) || '{}'); if (b.action === 'deleteWorkerDoc') asked.push(b.fileId); } catch (e) {} return f0(u, o); };
+    const P = 'tenants/tenant-one/workers/wS/';
+    workers.push({id: 'wS', name: 'Signed Test', status: 'active', clientIds: [], schedule: [], signedAt: '2026-10-20T10:00:00Z', signedRequestId: 'rS',
+      docFileId: P + 'form101/s.pdf', sigFileId: P + 'signature/s.png', scanPages: [{fileId: P + 'pages/1-0-id_front.jpg', kind: 'id_front', savedAt: ''}],
+      docs: [{id: 'dS', type: 'contract', fileId: P + 'docs/c.pdf', signed: true}, {id: 'dU', type: 'visa', fileId: P + 'docs/v.pdf'}]});
+    ManagerBridge.deleteWorkers(['wS']);
+    await T.tick(200);
+    window.fetch = f0;
+    r.gone = !workers.some(x => x.id === 'wS');
+    r.asked = asked.sort();
+    return r;
+  });
+  const keepF101 = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/form101', {method: 'POST'})).json();
+  const keepCtr = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/contract', {method: 'POST'})).json();
+  ok(keep.entry && keep.refused.every(e => /signed document is kept/.test(e)) && keep.sigBack === 1 && keepF101.pages > 0 && keepCtr.pages > 0,
+    'signed files are kept: Remove leaves a signed document, and the server refuses to delete the signed Form 101, contract and signature ' + JSON.stringify(keep));
+  ok(keep.gone && JSON.stringify(keep.asked) === JSON.stringify(['tenants/tenant-one/workers/wS/docs/v.pdf', 'tenants/tenant-one/workers/wS/pages/1-0-id_front.jpg']),
+    'signed files are kept: Delete worker leaves a signed worker\'s Form 101, signature and signed documents ' + JSON.stringify(keep));
   // D4: a change to what the signed documents print asks for a new signature; the firm's own details don't.
   const d4 = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w1');

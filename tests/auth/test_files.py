@@ -47,6 +47,8 @@ class Bucket:
 
 
 ADMIN = {"role": "tenant_admin", "tenantId": T1}
+# main.py's signed_lookup for a worker with no signing: no record kept, no requests
+UNSIGNED = lambda wid: (None, [])  # noqa: E731
 
 
 def test_load_assets_reply_shape():
@@ -81,10 +83,10 @@ def test_delete_needs_workers_right():
     # but may read (the rules let any manager login of the firm read)
     assert files.run(b, staff_ro, {"action": "loadWorkerAssets", "fileId": ASSETS})["ok"]
     staff = {"role": "staff", "tenantId": T1, "rights": {"workers", "editWorkers"}}
-    assert files.run(b, staff, {"action": "deleteWorkerDoc", "fileId": PDF}) == {"ok": True}
+    assert files.run(b, staff, {"action": "deleteWorkerDoc", "fileId": PDF}, None, UNSIGNED) == {"ok": True}
     assert PDF not in b.store
     # deleting again (already gone) is fine, like Drive's best-effort trash
-    assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": PDF}) == {"ok": True}
+    assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": PDF}, None, UNSIGNED) == {"ok": True}
 
 
 def test_delete_needs_the_workers_tab_and_edit_workers():
@@ -92,7 +94,7 @@ def test_delete_needs_the_workers_tab_and_edit_workers():
     b = Bucket()
     view = {"role": "staff", "tenantId": T1, "rights": {"workers"}}
     assert files.run(b, view, {"action": "deleteWorkerDoc", "fileId": PDF}) == {"error": files.E_NO_RIGHT}
-    assert files.run(b, dict(view, rights={"workers", "editWorkers"}), {"action": "deleteWorkerDoc", "fileId": PDF}) == {"ok": True}
+    assert files.run(b, dict(view, rights={"workers", "editWorkers"}), {"action": "deleteWorkerDoc", "fileId": PDF}, None, UNSIGNED) == {"ok": True}
 
 
 def test_supplier_and_missing_refused():
@@ -120,10 +122,10 @@ def test_hr_own_only_reaches_its_own_workers_files():
     assert files.run(b, hr, {"action": "loadWorkerAssets", "fileId": ASSETS}, theirs) == {"error": files.E_NOT_FIRM}
     assert files.run(b, hr, {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"error": files.E_NOT_FIRM}
     assert PDF in b.store
-    assert files.run(b, hr, {"action": "deleteWorkerDoc", "fileId": PDF}, mine) == {"ok": True}
+    assert files.run(b, hr, {"action": "deleteWorkerDoc", "fileId": PDF}, mine, UNSIGNED) == {"ok": True}
     # Without own-only, an HR with the workers right is a workers writer for the whole firm.
     hr_all = dict(hr, own=False)
-    assert files.run(Bucket(), hr_all, {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"ok": True}
+    assert files.run(Bucket(), hr_all, {"action": "deleteWorkerDoc", "fileId": PDF}, theirs, UNSIGNED) == {"ok": True}
     assert files.run(Bucket(), dict(hr_all, rights={"commission"}), {"action": "deleteWorkerDoc", "fileId": PDF}, theirs) == {"error": files.E_NO_RIGHT}
 
 
@@ -169,3 +171,78 @@ def test_load_pages_hr_own_only():
     assert files.run(_pages_bucket(), hr, {"action": "loadWorkerPages", "fileIds": [PAGE]}, lambda wid: "u-hr")["ok"]
     assert files.run(_pages_bucket(), hr, {"action": "loadWorkerPages", "fileIds": [PAGE]},
                      lambda wid: "other") == {"error": files.E_NOT_FIRM}
+
+
+# ── Signed files are kept (documents plan S0b; docs/contracts.md → Signed files are kept) ──
+W = f"tenants/{T1}/workers/w1"
+S101, SCTR, SSIG = W + "/form101/1-signed.pdf", W + "/docs/1-contract.pdf", W + "/signature/1-signature.png"
+UPL = W + "/docs/2-visa.pdf"
+REQ = {"workerId": "w1", "status": "signed", "sigPath": SSIG,
+       "parts": {"form101": {"path": S101, "name": "f.pdf"}, "contract": {"path": SCTR, "name": "c.pdf"}}}
+SIGNED_W = {"id": "w1", "signedAt": "2026-10-20T10:00:00Z", "signedRequestId": "r1", "docFileId": S101, "sigFileId": SSIG,
+            "docs": [{"id": "d1", "fileId": SCTR, "signed": True}, {"id": "d2", "fileId": UPL}]}
+
+
+def _signed_bucket():
+    b = Bucket()
+    b.store.update({S101: b"%PDF", SCTR: b"%PDF", SSIG: b"\x89PNG", UPL: b"%PDF"})
+    return b
+
+
+def _delete(b, path, lookup):
+    return files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": path}, None, lookup)
+
+
+def test_delete_refuses_a_signing_requests_parts_and_signature():
+    # even when the worker's record no longer names them (replaced, or the record already gone)
+    b = _signed_bucket()
+    only_req = lambda wid: ({"id": "w1"}, [REQ])  # noqa: E731
+    for p in (S101, SCTR, SSIG):
+        assert _delete(b, p, only_req) == {"error": files.E_SIGNED}
+        assert p in b.store
+    gone = lambda wid: (None, [REQ])  # noqa: E731
+    assert _delete(b, S101, gone) == {"error": files.E_SIGNED} and S101 in b.store
+
+
+def test_delete_refuses_a_signed_workers_form101_documents_and_signature():
+    b = _signed_bucket()
+    rec = lambda wid: (SIGNED_W, [])  # noqa: E731  (no request kept: an older signing, or a moved worker)
+    for p in (S101, SCTR, SSIG, UPL):
+        assert _delete(b, p, rec) == {"error": files.E_SIGNED}
+        assert p in b.store
+    # signedRequestId alone marks the worker signed too
+    rid_only = dict(SIGNED_W, signedAt=None)
+    assert _delete(b, S101, lambda wid: (rid_only, [])) == {"error": files.E_SIGNED}
+
+
+def test_delete_refuses_a_signed_document_entry_of_any_worker():
+    b = _signed_bucket()
+    w = {"id": "w1", "docs": [{"id": "d1", "fileId": SCTR, "signed": True}]}
+    assert _delete(b, SCTR, lambda wid: (w, [])) == {"error": files.E_SIGNED} and SCTR in b.store
+
+
+def test_delete_of_an_unsigned_file_still_works():
+    b = _signed_bucket()
+    unsigned_w = {"id": "w1", "docFileId": S101, "sigFileId": SSIG, "docs": [{"id": "d2", "fileId": UPL}]}
+    # an unsigned worker's Form 101, document and signature go; a request not yet signed protects nothing
+    sent = {"workerId": "w1", "status": "sent", "templatePath": W + "/sign/r2/contract-template.pdf"}
+    for p in (S101, UPL, SSIG):
+        assert _delete(b, p, lambda wid: (unsigned_w, [sent])) == {"ok": True}
+        assert p not in b.store
+    # a signed worker's other files (a scanned page, an old sidecar) are not signed files
+    b2 = _signed_bucket()
+    b2.store[PAGE] = b"\xff\xd8"
+    assert _delete(b2, PAGE, lambda wid: (SIGNED_W, [REQ])) == {"ok": True} and PAGE not in b2.store
+    assert _delete(b2, ASSETS, lambda wid: (SIGNED_W, [REQ])) == {"ok": True} and ASSETS not in b2.store
+
+
+def test_delete_looks_up_the_paths_worker():
+    seen = []
+    _delete(_signed_bucket(), UPL, lambda wid: seen.append(wid) or (None, []))
+    assert seen == ["w1"]
+
+
+def test_delete_without_a_lookup_deletes_nothing():
+    b = _signed_bucket()
+    assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": UPL}) == {"error": files.E_SIGNED}
+    assert UPL in b.store
