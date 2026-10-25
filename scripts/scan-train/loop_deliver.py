@@ -117,9 +117,13 @@ class Log:
         self.path = pathlib.Path(path) if path else WORK / "loop" / "deliver.log"
         self.secrets = []
 
-    def __call__(self, text):
+    def scrub(self, text):
         for s in self.secrets:
             text = text.replace(s, "***")
+        return text
+
+    def __call__(self, text):
+        text = self.scrub(text)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().isoformat(timespec="seconds")
         with open(self.path, "a", encoding="utf-8") as f:
@@ -130,7 +134,10 @@ class Log:
 def auth_env(token):
     """git's environment with the token as an http.extraheader for github.com (GIT_CONFIG_*: never on the command
     line, so never in a process listing or a logged command); no prompt ever waits at night."""
-    env = {k: v for k, v in os.environ.items() if not re.fullmatch(r"GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)", k)}
+    # the owner's own GIT_CONFIG_* would be overridden, and git's tracing (GIT_TRACE*, GIT_CURL_VERBOSE) could write
+    # the header into the output the log keeps: neither is passed on
+    env = {k: v for k, v in os.environ.items()
+           if not re.fullmatch(r"GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)|GIT_TRACE\w*|GIT_CURL_VERBOSE", k)}
     env["GIT_TERMINAL_PROMPT"] = "0"
     if token:
         basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
@@ -146,7 +153,7 @@ def git(log, cwd, *args, env=None, check=True):
     if r.stdout.strip() or r.stderr.strip():
         log((r.stdout + r.stderr).strip())
     if check and r.returncode:
-        raise DeliverError(f"git {args[0]} failed ({r.returncode}): {(r.stderr or r.stdout).strip()[:300]}")
+        raise DeliverError(log.scrub(f"git {args[0]} failed ({r.returncode}): {(r.stderr or r.stdout).strip()[:300]}"))
     return r.stdout
 
 
@@ -296,7 +303,7 @@ def run_publish(log, where, flags, dry_run):
     log((r.stdout + r.stderr).strip() or "(no output)")
     if r.returncode:
         tail = (r.stderr.strip() or r.stdout.strip()).splitlines()[-1:] or [""]
-        raise DeliverError(f"publish.py stopped ({r.returncode}): {tail[0][:300]}")
+        raise DeliverError(log.scrub(f"publish.py stopped ({r.returncode}): {tail[0][:300]}"))
     return r.stdout
 
 
@@ -325,8 +332,8 @@ def deliver(models, report, dry_run=False, *, owner=None, repo=None, token_reade
     token = (token_reader or read_token)()
     if not token:
         raise DeliverError(f"no GitHub token: the generic credential \"{CREDENTIAL}\" is not in Windows Credential Manager — nothing published")
-    log.secrets.append(token)
     env = auth_env(token)
+    log.secrets += [token, base64.b64encode(f"x-access-token:{token}".encode()).decode()]   # plain and as git's header
     slug = github_slug(git(log, owner, "remote", "get-url", "origin").strip())
     if not slug:
         raise DeliverError("the owner's clone has no GitHub origin — nothing published")
@@ -338,10 +345,22 @@ def deliver(models, report, dry_run=False, *, owner=None, repo=None, token_reade
         raise DeliverError(f"the lab's version on {BASE} is {on_main}, but this cycle trained and examined against {trained_from} "
                            f"(the owner's checkout) — nothing published; the next cycle examines against {on_main}")
 
-    run_publish(log, repo, flags, False)   # from here on the version is on Hugging Face
+    try:
+        run_publish(log, repo, flags, False)   # from here on the version is on Hugging Face
+    except DeliverError as e:
+        v = lab_version(repo)
+        if v and v != on_main:   # publish.py wrote the lab's version: the tag is out, only its last steps failed
+            raise DeliverError(f"{v} is on Hugging Face, but {e} — its last steps (counters, checkpoints' stamps, the "
+                               f"copies) and the PR are missing: finish by hand ({LAB} → {v}, a PR)",
+                               version=v, branch=f"scan-train/{v}", published=True) from None
+        # publish.py writes the lab's version only after the tag, the attempts' move and the counters: a stop in
+        # those steps leaves a tag no PR names — the owner checks the tags before the next cycle
+        raise DeliverError(f"{e} — nothing pointed the lab at a new version; if it stopped after the Hugging Face "
+                           f"tag (the attempts' move or the counters), a new tag of OutStaff/scanner-models has no PR",
+                           published=False) from None
     v = lab_version(repo)
     branch = f"scan-train/{v}"
-    fail = lambda msg: DeliverError(f"{v} is on Hugging Face, but {msg} — point the lab at it by hand ({LAB} → {v}, a PR)",
+    fail = lambda msg: DeliverError(log.scrub(f"{v} is on Hugging Face, but {msg} — point the lab at it by hand ({LAB} → {v}, a PR)"),
                                     version=v, branch=branch, published=True)
     if not v or not re.fullmatch(r"v\d+", v) or v == on_main:
         raise fail(f"publish.py did not name a new version in {LAB} (it reads {v!r})")
@@ -355,23 +374,24 @@ def deliver(models, report, dry_run=False, *, owner=None, repo=None, token_reade
     if LAB not in changed:
         raise fail(f"{LAB} is not in the diff")
     try:
-        git(log, repo, "checkout", "-B", branch)
-        git(log, repo, "add", "--", *changed)
-        staged = git(log, repo, "diff", "--cached", "--name-only").split()
-        if any(p in SITE for p in staged) or set(staged) - set(ALLOWED):
-            raise DeliverError(f"unexpected files staged: {', '.join(staged)}")
-        git(log, repo, "commit", "-m", commit_message(models, report, v))
-        assert branch.startswith("scan-train/") and branch != BASE
-        git(log, repo, "push", push_target(slug), f"refs/heads/{branch}:refs/heads/{branch}", env=env)   # never forced, never main
-    except DeliverError as e:
-        raise fail(f"the branch was not pushed ({e})")
-    others = [(n, b) for n, b in open_loop_prs(slug, token) if b != branch]
-    title = f"Scanner: the lab's models {v} — the training loop"
-    try:
-        url = open_pr(slug, token, branch, title, pr_body(models, report, v, others))
-    except DeliverError as e:
-        raise fail(f"{branch} is pushed and {e}")
-    finally:   # the owner's clone keeps no local branch of the loop's (the remote one is the PR's)
+        try:
+            git(log, repo, "checkout", "-B", branch)
+            git(log, repo, "add", "--", *changed)
+            staged = git(log, repo, "diff", "--cached", "--name-only").split()
+            if any(p in SITE for p in staged) or set(staged) - set(ALLOWED):
+                raise DeliverError(f"unexpected files staged: {', '.join(staged)}")
+            git(log, repo, "commit", "-m", commit_message(models, report, v))
+            assert branch.startswith("scan-train/") and branch != BASE
+            git(log, repo, "push", push_target(slug), f"refs/heads/{branch}:refs/heads/{branch}", env=env)   # never forced, never main
+        except DeliverError as e:
+            raise fail(f"the branch was not pushed ({e})")
+        others = [(n, b) for n, b in open_loop_prs(slug, token) if b != branch]
+        title = f"Scanner: the lab's models {v} — the training loop"
+        try:
+            url = open_pr(slug, token, branch, title, pr_body(models, report, v, others))
+        except DeliverError as e:
+            raise fail(f"{branch} is pushed and {e}")
+    finally:   # pushed or not, the owner's clone keeps no local branch of the loop's (the remote one is the PR's)
         git(log, repo, "checkout", "--detach", check=False)
         git(log, repo, "branch", "-D", branch, check=False)
     log(f"delivered {v}: {url}")

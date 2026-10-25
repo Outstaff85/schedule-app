@@ -35,6 +35,8 @@ if "--dry-run" in sys.argv:
     print(f"Dry run - the plan for {v} (the lab is on v5); nothing is written:")
     raise SystemExit(0)
 (root / "scripts" / "scan-lab" / "models-version").write_text(v + "\n")
+if mode == "late-fail":
+    raise SystemExit("checkpoints: stamp failed")
 if mode == "heldout":
     (root / "scripts" / "scan-train" / "heldout.json").write_text('{"versions": {"%s": {}}}\n' % v)
 if mode == "site":
@@ -274,3 +276,34 @@ def test_site_paths_never_allowed():
     assert not set(ld.SITE) & set(ld.ALLOWED)
     assert ld.SITE == ("scripts/scan/models-version", "functions/scan_models_version.txt")
     assert os.path.basename(ld.LAB) == "models-version" and "scan-lab" in ld.LAB
+
+
+def test_publish_failure_after_the_lab_version_is_published(world, monkeypatch):
+    """publish.py writes models-version only after the tag: a stop after it means the version is out."""
+    monkeypatch.setenv("FAKE_PUBLISH_MODE", "late-fail")
+    with pytest.raises(ld.DeliverError) as e:
+        go(world)
+    assert e.value.published and e.value.version == "v6" and "v6 is on Hugging Face" in str(e.value)
+    assert not world["prs"]
+
+
+def test_a_failed_push_leaves_no_local_branch(world, monkeypatch):
+    monkeypatch.setattr(ld, "push_target", lambda slug: str(world["tmp_path"] / "no-such-remote.git"))
+    with pytest.raises(ld.DeliverError) as e:
+        go(world)
+    assert e.value.published and "not pushed" in str(e.value)
+    assert "scan-train/v6" not in sh(world["owner"], "branch", "--list")
+    assert not world["prs"]
+
+
+def test_git_tracing_is_never_passed_on_and_errors_are_scrubbed(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_TRACE_CURL", "1")
+    monkeypatch.setenv("GIT_CURL_VERBOSE", "1")
+    env = ld.auth_env("tok")
+    assert "GIT_TRACE_CURL" not in env and "GIT_CURL_VERBOSE" not in env
+    log = ld.Log(tmp_path / "l.log")
+    log.secrets.append("s3cr3t")
+    monkeypatch.setattr(ld.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "fatal: bad s3cr3t"))
+    with pytest.raises(ld.DeliverError) as e:
+        ld.git(log, tmp_path, "push", "x")
+    assert "s3cr3t" not in str(e.value)

@@ -140,7 +140,7 @@ KEPT = ("midv", "midv-mrz", "smartdoc", "mrz-ckpt", "checkpoints",
 def clear_work():
     """Every copy on this PC deleted (the workers' documents, the new models, the made-up photos) —
     but the MIDV and SmartDoc sets, the passport zone reader's weights (mrz-ckpt), the other trainings' progress
-    (checkpoints) and the background bank (KEPT)."""
+    (checkpoints), the background bank and the automatic cycle's folder, loop/ (KEPT)."""
     if not WORK.exists():
         return
     for p in WORK.iterdir():
