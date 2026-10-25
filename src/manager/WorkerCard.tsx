@@ -24,6 +24,7 @@ import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
 import { SignWindow, takeSign } from './SignWindow';
 import { signCall } from './logic/signing';
+import { contractDocDate } from './logic/workers';
 import { openPdf } from './contracts';
 
 /** Download data (docs/contracts.md → Download data): one PDF of everything kept under the worker, put together on the server now. */
@@ -132,7 +133,10 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
   const plate = (d: WorkerDoc) => {
     const x = snap.docExpiry[String(d.id)];
     const c = x ? (x.level === 'error' ? 'var(--red)' : 'var(--amber)') : 'var(--green)';
-    const exText = d.expiry ? (x && x.level === 'error' ? tr('Expired {0}', { 0: fmtDMY(d.expiry) }) : tr('Expires {0}', { 0: fmtDMY(d.expiry) })) : tr('No expiry date');
+    // a contract has no expiry: its date is the day the contract term counts from (workerExpiryStatus)
+    const cd = d.type === 'contract' ? contractDocDate(w, d) : null;
+    const exText = d.type === 'contract' ? (cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : '')
+      : d.expiry ? (x && x.level === 'error' ? tr('Expired {0}', { 0: fmtDMY(d.expiry) }) : tr('Expires {0}', { 0: fmtDMY(d.expiry) })) : tr('No expiry date');
     const Icon = d.type === 'contract' ? IconFileCertificate : d.type === 'other' ? IconFile : IconIdBadge2;
     return (
       <Plate key={d.id} data-testid="worker-doc" data-doc={d.id} className="mb-1.5" size="sm" color={c} icon={<Icon />}

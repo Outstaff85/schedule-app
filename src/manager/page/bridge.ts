@@ -10,7 +10,7 @@ import { byId } from './dom';
 import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts, shiftOn, workerTotalHours } from '../logic/schedule';
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
-import { WORKER_DOC_TYPES, currentDocs, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
+import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
 import { docIdKey } from '../worker';
 import { canChange, hasEditPay, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
@@ -487,13 +487,8 @@ function workerHeadOf(w?: any){
     notices:ns.map((n?: any)=>({lvl:n.lvl, word:n.word, title:n.title, icon:n.icon||'', detail:n.detail||'',
       acts:(n.acts||(n.act?[n.act]:[])).map((a?: any)=>({label:a.label, icon:a.icon||'', wa:!!a.wa, run:a.fn}))}))};
 }
-function docExpiryMap(w?: any){ const m: any={}; workerDocExpiries(w).forEach((x?: any)=>{ m[String(x.doc.id)]={level:x.level, text:x.text}; });
-  // the current contract whose date sets the term: its files take the term's level (workerExpiryStatus)
-  const ex=workerExpiryStatus(w);
-  if(ex&&ex.doc){ const lvl=ex.level==='overdue'?'error':'warn', d=ex.deadline.toLocaleDateString('en-GB'), label=tr(WORKER_DOC_TYPES.contract);
-    const text=lvl==='error'?tr('{0} expired {1}',{0:label, 1:d}):tr('{0} expires {1}',{0:label, 1:d});
-    currentDocs(w).filter((d?: any)=>d.type==='contract'&&d.expiry).forEach((d?: any)=>{ m[String(d.id)]={level:lvl, text}; }); }
-  return m; }
+// a contract has no expiry (its date starts the contract term, shown on the card's contract line): no entry here
+function docExpiryMap(w?: any){ const m: any={}; workerDocExpiries(w).forEach((x?: any)=>{ m[String(x.doc.id)]={level:x.level, text:x.text}; }); return m; }
 
 // Per-client and per-supplier rate tables in Accounting: turned off for now
 // (user request 2026-10-11). Rates already set in them still count in pay
