@@ -189,6 +189,12 @@ const READS = {
   await p.evaluate(() => { localStorage.removeItem('scanFeedbackQueue'); window.__scanGoing = startNewScan(); });
   await p.waitForSelector('[data-testid="scanner"][data-mode="site"] [data-testid="scan-status"]', {timeout: 20000});
   const siteStart = await startCamera(p, true);
+  // the green frame on the canvas while the document is held still — read during the hold: after the shot the live frame
+  // goes on by itself (template 6, no Next) and is looking again, so the canvas is no longer the shot's green frame
+  const greenWhileHeld = (async () => {
+    for (let i = 0; i < 200; i++) { const g = await greenDrawn(p); if (g > 20) return g; await sleep(25); }
+    return 0;
+  })();
   // the Auto shot: the wide card found first (the largest), the tall page under it found on the same photo
   const shot = await p.evaluate(async () => {
     // the shot settled: its search for more documents over, both pages typed
@@ -207,7 +213,7 @@ const READS = {
     r.threads = {spawned: st.spawned, bitmaps: st.bitmaps, copied: st.copied, maxInFlight: st.maxInFlight, live: st.byModel[live] || {}, cap: st.byModel[cap] || {}};
     return r;
   });
-  const green = await greenDrawn(p);
+  const green = await greenWhileHeld;
   const look = await cameraScreen(p);
   const asked = await p.evaluate(() => window.__camAsked);
   await p.screenshot({path: SP + '/scanner-site-camera.png'});
