@@ -14,23 +14,22 @@
 // `app` — the manager app's frame, the V7 look (archive/docs/react-migration-plan.md →
 // Additions from the UI audit; the old manager page draws the same frame in its
 // own CSS until stage 6 moves it):
-//   title bar → brand · the breadcrumb plate (the active section's icon in its
-//               colour, its name and `crumb.count`, then `crumb.sub`, the open
-//               sub-tab) · in the middle `center` (the date, the greeting, the
-//               weather — ShellGreeting) · `tools` at the end;
+//   title bar → brand · in the middle `center` (the date, the greeting, the
+//               weather — ShellGreeting) · `tools` at the end; no breadcrumb
+//               (removed, owner 2026-10-26: the lit section in the menu says
+//               where you are);
 //   computer  → the sections in a side menu 210px wide (icon + name, the active
 //               one lit), `aside` (the Workers / Filter-by-client panel — only
 //               the screens that filter by it pass it) next to it, the page at
 //               most 1200px wide;
-//   phone     → two compact rows fixed at the top (brand · center · tools; the
-//               breadcrumb under them; the greeting's words hidden), the bottom
-//               bar as above;
-//   Hebrew    → the frame only is mirrored: the menu on the right, the brand and
-//               breadcrumb on the right, the tools on the left; the page itself
-//               stays left to right.
+//   phone     → one compact row fixed at the top (brand · center · tools; the
+//               greeting's words hidden), the bottom bar as above;
+//   Hebrew    → the frame only is mirrored: the menu on the right, the brand on
+//               the right, the tools on the left; the page itself stays left to
+//               right.
 // The portals keep the plain frame (their own headers).
 import * as React from 'react';
-import { IconChevronRight, IconDots, IconDotsVertical } from '@tabler/icons-react';
+import { IconDots, IconDotsVertical } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { tr, uiLocale, useI18n } from '@/lib/i18n';
 import { greetingHtml } from '@/lib/greeting';
@@ -48,17 +47,15 @@ function Count({ n, title }: { n?: number; title?: string }) {
   return <span data-testid="shell-count" title={title} className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none text-[#fff]">{n}</span>;
 }
 
-export function Shell({ brand, tools, sections = [], active = '', onSelect = () => {}, children, app, crumb, center, aside, steady }: {
+export function Shell({ brand, tools, sections = [], active = '', onSelect = () => {}, children, app, center, aside, steady }: {
   brand: React.ReactNode;
   tools?: React.ReactNode;
   sections?: ShellSection[];
   active?: string;
   onSelect?: (key: string) => void;
   children: React.ReactNode;
-  /** the manager app's frame (V7): side menu, breadcrumb, the middle of the title bar */
+  /** the manager app's frame (V7): side menu, the middle of the title bar */
   app?: boolean;
-  /** the breadcrumb after the active section: its count and the open sub-tab */
-  crumb?: { count?: number; sub?: string };
   /** the middle of the title bar (ShellGreeting) */
   center?: React.ReactNode;
   /** the panel next to the side menu (only the screens that filter by it) */
@@ -141,27 +138,16 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
 
   if (app) {
     const rtl = lang === 'he';
-    const cur = sections.find(s => s.key === active);
-    const crumbEl = cur && (
-      <div data-testid="shell-crumb" className={cn('flex h-[38px] min-w-0 shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-[14px] border border-white/18 bg-white/8 px-3.5 text-sm backdrop-blur-md max-[700px]:h-[34px] max-[700px]:justify-self-start [&_svg]:size-[17px]', !phone && 'max-w-[34vw]')} style={{ gridArea: phone ? 'crumb' : undefined }}>
-        <span className="shrink-0" style={{ color: cur.color }}>{cur.icon}</span>
-        <b className="font-semibold text-ink">{cur.label}</b>
-        {crumb?.count != null && <em dir="ltr" className="font-mono text-[12.5px] not-italic text-ink-2">{crumb.count}</em>}
-        {crumb?.sub && <><IconChevronRight className={cn('!size-[13px] shrink-0 text-faint', rtl && '-scale-x-100')} /><span className="truncate text-ink-2">{crumb.sub}</span></>}
-      </div>
-    );
     return (
       <div data-slot="shell" data-app="" className="flex min-h-dvh flex-col">
         <header
           dir={rtl ? 'rtl' : 'ltr'}
           className={cn('sticky top-0 z-30 shrink-0 border-b border-border bg-[rgba(var(--bar-rgb),.55)] backdrop-blur-xl',
-            phone ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-2 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+8px)]' : 'flex h-14 items-center gap-3.5 px-4')}
-          style={phone ? { gridTemplateAreas: '"brand center tools" "crumb crumb crumb"' } : undefined}
+            phone ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+8px)]' : 'flex h-14 items-center gap-3.5 px-4')}
         >
-          <div className="flex min-w-0 items-center gap-2.5" style={{ gridArea: phone ? 'brand' : undefined }}>{brand}</div>
-          {crumbEl}
-          <div className="mx-auto flex min-w-0 items-center justify-center" style={{ gridArea: phone ? 'center' : undefined }}>{center}</div>
-          <div dir="ltr" className="flex items-center gap-1.5" style={{ gridArea: phone ? 'tools' : undefined }}>{tools}</div>
+          <div className="flex min-w-0 shrink-0 items-center gap-2.5">{brand}</div>
+          <div className="mx-auto flex min-w-0 items-center justify-center">{center}</div>
+          <div dir="ltr" className="flex shrink-0 items-center gap-1.5">{tools}</div>
         </header>
         <div className={cn('flex min-h-0 flex-1', rtl && 'flex-row-reverse')}>
           {!phone && sections.length > 0 && (

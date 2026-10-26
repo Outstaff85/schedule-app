@@ -10,16 +10,12 @@ import { byId } from './dom';
 import { I18N_LANGS, loadI18n, onNewerDictionary, tr } from '../logic/i18n';
 import { getSession } from '../data/session';
 import { API_URL } from '../data/api';
-import { esc } from '../logic/util';
-import { workerExpiryStatus } from '../logic/workers';
-import { isAccTab, tabAllowed } from '../logic/access';
+import { isAccTab } from '../logic/access';
 import { setFrame } from '../frame';
 import { island } from '../bridge';
 Object.defineProperties(window, {
   "setLanguage": {get: () => setLanguage, configurable: true},
   "cardTables": {get: () => cardTables, configurable: true},
-  "showContractNotice": {get: () => showContractNotice, configurable: true},
-  "closeContractNotice": {get: () => closeContractNotice, configurable: true},
 });
 
 // ── Translations (docs/translations.md) ─────────────────────────────────────
@@ -104,23 +100,6 @@ function redrawForLanguage(){
 // shiftOn(), weekShifts(), workerTotalHours(), getVisible() — the Schedule's
 // shifts and who it shows — are src/manager/logic/schedule.ts.
 
-// The notice under the title bar when the app opens: how many contracts have
-// expired or expire soon (workerExpiryStatus, active workers only); "Show"
-// opens Today, where they are listed; ✕ hides it until the next app start.
-export function showContractNotice(){
-  const el=byId('contractNotice'); if(!el) return;
-  let closed=false; try{ closed=sessionStorage.getItem('contractNoticeClosed')==='1'; }catch(e: any){}
-  const st=workers.map(workerExpiryStatus).filter(Boolean);
-  const over=st.filter((x?: any)=>x.level==='overdue').length, soon=st.length-over;
-  if(closed||!st.length||!tabAllowed('dashboard')){ el.style.display='none'; return; }
-  const parts: any=[]; if(over) parts.push(tr('{n} expired',{n:over})); if(soon) parts.push(tr('{n} expiring soon',{n:soon}));
-  el.className='contract-notice'+(over?' over':'');
-  el.innerHTML=`<i class="ti ti-alert-triangle"></i><span>${esc(tr('Contracts: {list}',{list:parts.join(', ')}))}</span>
-    <button type="button" class="go" onclick="switchTab('dashboard')">${esc(tr('Show'))}</button>
-    <button type="button" aria-label="${esc(tr('Close'))}" onclick="closeContractNotice()">✕</button>`;
-  el.style.display='';
-}
-function closeContractNotice(){ try{ sessionStorage.setItem('contractNoticeClosed','1'); }catch(e: any){} showContractNotice(); }
 // A worker's status — active, contract expiry, documents (isActiveWorker,
 // workerExpiryStatus, workerDocStatus, workerDocId…) — and the pay wrappers
 // over payroll.js (shiftPay, effectiveRates, localYMD…) are

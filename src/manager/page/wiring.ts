@@ -19,7 +19,6 @@ import { setFrame } from '../frame';
 import { island } from '../bridge';
 import { isAccTab } from '../logic/access';
 import { clearPortalSessions } from './gate';
-import { showContractNotice } from './language';
 Object.defineProperties(window, {
   "backToFirmsList": {get: () => backToFirmsList, configurable: true},
 });
@@ -51,8 +50,7 @@ ManagerData.on('punches', ()=>{ if(currentTab==='dashboard') renderDashboard(); 
 ManagerData.on('hours', ()=>{ updateHoursBadge(); refreshBell(); if(island()) island()!.refreshWindows(); if(isAccTab(currentTab)) renderAccounting(); });
 ManagerData.on('save', (s?: any)=>setSaveStatus(s));
 ManagerData.on('notice', ({msg, ms}: any)=>showToast(typeof msg==='string'?msg:tr(msg.text, msg.vars), ms));
-// The contract notice is counted again on the server's data (the cache may be empty or stale).
-ManagerData.on('loaded', ()=>{ maybeRegenAfterFirmEdit(); showContractNotice(); });
+ManagerData.on('loaded', ()=>{ maybeRegenAfterFirmEdit(); });
 ManagerData.on('requests', ()=>{ if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(island()) island()!.refreshWindows(); });
 export function setSaveStatus(s?: any){ setFrame({save:s==='saving'?'saving':'saved'}); }
 // The count of hours batches waiting for a decision, on the Accounting tab.

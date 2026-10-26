@@ -43,14 +43,18 @@
 }
 
 /* Odinson Glass surfaces as utilities (values from docs/design/system: the
-   popover / menu glass, the sheet glass, the form field of a window). The
+   popover / menu glass — the same as the sheet's —, the sheet glass, the form field of a window). The
    components that og.css already draws (the glass button, plates, the ⋮,
    swipe actions, tick boxes, the Undo snack) use its classes instead. */
+/* every menu and popover (the row ⋮ menu, the account menu, a Select's list,
+   the date picker, a tooltip, a toast) in the windows' own glass — the same
+   fill and frame as og-glass-sheet (owner, 2026-10-26); its tail is PopTail */
 @utility og-glass-menu {
-  background: rgba(var(--pop-rgb),.82);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(var(--tint),.22);
+  background: var(--glass-sheet);
+  background-image: var(--sheet-grad);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-pop);
   border-radius: var(--radius-lg);
   color: var(--ink);

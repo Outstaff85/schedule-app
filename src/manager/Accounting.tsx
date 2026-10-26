@@ -1,7 +1,7 @@
 // The Accounting tab of the manager app (docs/accounting.md → Accounting tab),
 // drawn in React inside the old page (stage 6e): the period (‹ select ›), the
 // figures (hidden while Salary shows its own), the tabs Salary / Billing /
-// Approvals / Alerts (the breadcrumb "Accounting › <tab>"), and for an HR its
+// Approvals / Alerts, and for an HR its
 // reduced view (its own workers' Salary with its commission; Hours approval
 // with an hours tick). Every figure comes from accounting.ts over
 // src/lib/payroll.ts; the pay window, the worker card and the client window

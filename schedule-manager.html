@@ -254,11 +254,6 @@
   .t3-ib:hover{color:var(--text)}
   .t3-line.off{opacity:.6}
   .t3-line.sub{margin-left:24px;padding:5px 8px 5px 10px;font-size:12px}
-  .contract-notice{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:8px 12px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,166,35,0.35);color:var(--amber);font-size:13px;font-weight:600}
-  .contract-notice.over{background:var(--red-bg);border-color:rgba(248,113,113,0.35);color:var(--red)}
-  .contract-notice span{flex:1}
-  .contract-notice button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:2px 4px}
-  .contract-notice .go{text-decoration:underline}
   /* ── Phone (≤ 700 px): the tabs become a bar at the bottom of the screen,
      and the tables of Admin (Errors, Timings) become one card per row
      (cardTables() puts each column's header on its cells as data-label). ── */
@@ -317,10 +312,11 @@
   @keyframes gic-bolt{0%,40%,100%{opacity:.25}45%,55%{opacity:1}50%{opacity:.4}}
   .gic .fogl{animation:gic-fog 5s ease-in-out infinite}
   @keyframes gic-fog{0%,100%{transform:translateX(-2px)}50%{transform:translateX(2px)}}
-  .og-npop{position:fixed;z-index:4000;width:min(340px,calc(100vw - 16px));max-height:min(480px,70vh);overflow:auto;padding:8px;border-radius:18px;background:rgba(22,26,38,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(var(--tint),.2);box-shadow:0 18px 44px rgba(0,0,0,.55);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s}
+  /* the bell's list in the windows' glass, as every menu (og-glass-menu = og-glass-sheet, owner 2026-10-26); its tail in the same fill and frame */
+  .og-npop{position:fixed;z-index:4000;width:min(340px,calc(100vw - 16px));max-height:min(480px,70vh);overflow:auto;padding:8px;border-radius:18px;background:var(--glass-sheet);background-image:var(--sheet-grad);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid var(--glass-edge);box-shadow:var(--shadow-pop);opacity:0;transform:translateY(-6px) scale(.97);transition:opacity .18s,transform .18s}
   .og-npop.open{opacity:1;transform:none;overflow:visible}
   .og-npop-list{max-height:min(420px,62vh);overflow:auto}
-  .og-npop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:rgba(22,26,38,.95);border-left:1px solid rgba(var(--tint),.2);border-top:1px solid rgba(var(--tint),.2);transform:rotate(45deg)}
+  .og-npop::before{content:'';position:absolute;top:-7px;left:var(--px,14px);width:12px;height:12px;background:var(--plate-top);border-left:1px solid var(--glass-edge);border-top:1px solid var(--glass-edge);border-radius:2px 0 0 0;transform:rotate(45deg)}
   .og-npop h5{display:flex;align-items:center;font-size:13px;padding:6px 8px 8px}
   .og-npop-all{margin-left:auto;border:0;background:none;color:var(--fig);font:600 12px 'DM Sans','Heebo',Arial,sans-serif;cursor:pointer}
   .og-ni{display:flex;gap:10px;width:100%;padding:9px 8px;border:0;border-radius:12px;background:none;color:var(--text);align-items:flex-start;text-align:left;cursor:pointer;font-family:inherit}
@@ -393,7 +389,7 @@ body:has(.overlay.open){overflow:hidden}
   html[lang=he] .lang-btn{direction:ltr}
   /* ── The light theme (docs/redesign.md → Light theme; the tokens are in
      og.css): this page's own looks drawn for the dark ground — the sign-in
-     showcase, the bell's popover, the account menu. ── */
+     showcase. ── */
   :root[data-theme="light"] .login-screen{background:linear-gradient(135deg,#e6ebf5,#f3f5fa 60%,#eef1f7);}
   :root[data-theme="light"] .login-blob{opacity:.22;}
   :root[data-theme="light"] .login-blob.b3{opacity:.12;}
@@ -407,8 +403,6 @@ body:has(.overlay.open){overflow:hidden}
   :root[data-theme="light"] .pay-badge{background:rgba(255,255,255,.7);box-shadow:0 4px 14px rgba(20,24,40,.08);}
   :root[data-theme="light"] .login-card{background:rgba(255,255,255,.88) !important;box-shadow:0 14px 40px rgba(20,24,40,.16) !important;}
   :root[data-theme="light"] .login-card #loginBtn{background:var(--glass-strong);border:1px solid var(--glass-edge);box-shadow:var(--shadow-glass);}
-  :root[data-theme="light"] .og-npop{background:rgba(255,255,255,.96);box-shadow:var(--shadow-pop);}
-  :root[data-theme="light"] .og-npop::before{background:rgba(255,255,255,.98);}
   :root[data-theme="light"] .modal input[type=date]{color-scheme:light;}
   @media (max-width:820px){ .login-theme{grid-column:1/-1;} .login-theme .seg{margin:4px 0 0;} }
 </style>
@@ -421,8 +415,6 @@ body:has(.overlay.open){overflow:hidden}
      page area. -->
 <div id="frameRoot" data-island></div>
 <div class="main" id="appMain">
-    <!-- Contract warnings when the app opens: stays until shown or closed (per user request 2026-10-11). -->
-    <div id="contractNotice" class="contract-notice" style="display:none"></div>
     <!-- Dashboard Section -->
     <!-- Today (stage 6a): drawn in React (src/manager/Today.tsx) through
          window.ManagerIsland — renderDashboard() below. -->

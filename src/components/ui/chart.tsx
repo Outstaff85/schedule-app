@@ -55,7 +55,7 @@ function ChartTooltipContent({ active, payload, label, labelFormatter, formatter
   const { config } = useChart();
   if (!active || !payload || !payload.length) return null;
   return (
-    <div className={cn('og-glass-menu grid min-w-32 gap-1 rounded-[10px] border border-white/12 px-2.5 py-1.5 text-xs shadow-xl', className)}>
+    <div className={cn('og-glass-menu grid min-w-32 gap-1 rounded-[10px] px-2.5 py-1.5 text-xs shadow-xl', className)}>
       {!hideLabel && <div className="font-medium text-ink">{labelFormatter ? labelFormatter(label, payload) : label}</div>}
       {payload.map((item, i) => {
         const key = String(item.dataKey || item.name || 'value'), cfg = config[key];

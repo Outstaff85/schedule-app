@@ -182,11 +182,11 @@ async function computer(browser) {
   await p.screenshot({ path: path.join(OUT, 'next-computer-form-errors.png'), fullPage: true });
 
   // language: the sheet lists the dictionaries' languages; Hebrew switches the page, layout stays LTR
-  // The manager app's frame (V7, Shell `app`): the side menu, the breadcrumb, the greeting in the middle,
+  // The manager app's frame (V7, Shell `app`): the side menu (no breadcrumb), the greeting in the middle,
   // the panel only on Workers / Schedule, the figures as tiles, the sections as panels, plates in three columns.
   await open(p, 'frame');
   const fr = await p.evaluate(async () => {
-    const box = q => document.querySelector(q).getBoundingClientRect(), r = {}, crumb = () => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim();
+    const box = q => document.querySelector(q).getBoundingClientRect(), r = {}, crumb = () => document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim();
     r.menu = Math.abs(box('[data-testid=shell-menu]').width - 210) < 2 && box('[data-testid=shell-menu]').left < 2 && !document.querySelector('[data-testid=shell-tabs]');
     r.crumb = crumb();
     r.greet = /Good /.test(document.querySelector('[data-testid=shell-greeting]').textContent) && !!document.querySelector('[data-testid=shell-greeting] svg.gic');
@@ -199,8 +199,8 @@ async function computer(browser) {
     r.threeCols = tops[0] === tops[2] && tops[3] > tops[0];
     return r;
   });
-  ok(fr.menu && fr.crumb === 'Today' && fr.greet && fr.noAside && fr.tiles && fr.panels && fr.aside && fr.crumbW === 'Workers 12' && fr.threeCols,
-    'next: the app frame (V7) — side menu, breadcrumb, greeting in the middle, the panel only on Workers, tiles, panels, plates in three columns ' + JSON.stringify(fr));
+  ok(fr.menu && fr.crumb === 'Today' && fr.greet && fr.noAside && fr.tiles && fr.panels && fr.aside && fr.crumbW === 'Workers' && fr.threeCols,
+    'next: the app frame (V7) — side menu with the open section lit, no breadcrumb, greeting in the middle, the panel only on Workers, tiles, panels, plates in three columns ' + JSON.stringify(fr));
   await p.screenshot({ path: path.join(OUT, 'next-computer-frame.png') });
   // The title bar as the manager page draws it: the 11C mark with the name and its two lines, Saved, the bell with its count, the account with the firm.
   const bar = await p.evaluate(() => ({
@@ -229,10 +229,10 @@ async function computer(browser) {
   await open(p, 'frame');
   const frHe = await p.evaluate(() => {
     const box = q => document.querySelector(q).getBoundingClientRect();
-    return { menuRight: box('[data-testid=shell-menu]').right > innerWidth - 2, crumbRight: box('[data-testid=shell-crumb]').left > innerWidth / 2,
+    return { menuRight: box('[data-testid=shell-menu]').right > innerWidth - 2, brandRight: box('[data-testid=app-brand]').left > innerWidth / 2, noCrumb: !document.querySelector('[data-testid=shell-crumb]'),
       pageLtr: getComputedStyle(document.querySelector('[data-testid=page-frame]')).direction === 'ltr' };
   });
-  ok(frHe.menuRight && frHe.crumbRight && frHe.pageLtr, 'next: in Hebrew the app frame is mirrored (menu and breadcrumb on the right), the page stays left to right ' + JSON.stringify(frHe));
+  ok(frHe.menuRight && frHe.brandRight && frHe.noCrumb && frHe.pageLtr, 'next: in Hebrew the app frame is mirrored (menu and brand on the right, no breadcrumb), the page stays left to right ' + JSON.stringify(frHe));
   await p.screenshot({ path: path.join(OUT, 'next-computer-frame-hebrew.png') });
   await p.evaluate(() => localStorage.setItem('uiLang', 'en'));
 
@@ -258,12 +258,12 @@ async function phone(browser) {
 
   await open(p, 'frame');
   const frp = await p.evaluate(() => {
-    const box = q => document.querySelector(q).getBoundingClientRect(), c = box('[data-testid=shell-crumb]'), g = box('[data-testid=shell-greeting]');
-    return { rows: c.top >= g.bottom - 1, noMenu: !document.querySelector('[data-testid=shell-menu]'), bar: !!document.querySelector('[data-testid=shell-bar]'),
+    const box = q => document.querySelector(q).getBoundingClientRect(), g = box('[data-testid=shell-greeting]'), a = box('[data-testid=account-btn]'), hd = box('[data-slot=shell] > header');
+    return { rows: !document.querySelector('[data-testid=shell-crumb]') && Math.abs(g.top - a.top) < 12 && hd.height < 70, noMenu: !document.querySelector('[data-testid=shell-menu]'), bar: !!document.querySelector('[data-testid=shell-bar]'),
       noWords: getComputedStyle(document.querySelector('[data-testid=shell-greet-text]')).display === 'none', sticky: getComputedStyle(document.querySelector('[data-slot=shell] > header')).position === 'sticky',
       tilesRow: (() => { const t = [...document.querySelectorAll('[data-slot=figures] > button')].map(b => Math.round(b.getBoundingClientRect().top)); return t.length === 4 && t.every(x => x === t[0]); })() };
   });
-  ok(frp.rows && frp.noMenu && frp.bar && frp.noWords && frp.sticky && frp.tilesRow, 'next: the app frame on a phone — two header rows (the breadcrumb under them), no greeting words, the bottom bar, four tiles in a row ' + JSON.stringify(frp));
+  ok(frp.rows && frp.noMenu && frp.bar && frp.noWords && frp.sticky && frp.tilesRow, 'next: the app frame on a phone — one header row (no breadcrumb), no greeting words, the bottom bar, four tiles in a row ' + JSON.stringify(frp));
   await p.screenshot({ path: path.join(OUT, 'next-phone-frame.png') });
 
   await open(p, 'lists');

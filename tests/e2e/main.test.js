@@ -194,7 +194,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sc.h > 0 && sc.h < 60 && !sc.before && sc.after && sc.closedDet, 'salary: one compact line per worker (the Data Table), a tap opens its details in a window ' + JSON.stringify(sc));
   ok(sc.menu && sc.menu.open && sc.menu.lang && sc.menu.out && sc.menu.name && sc.closed, 'header: one account menu with my name and sign out; the Language button beside it ' + JSON.stringify(sc.menu));
-  // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning shows a notice at the top.
+  // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning is a bell notice
+  // only — no banner at the top (removed, owner 2026-10-26).
   const ia = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w2'), keep = JSON.parse(JSON.stringify(w)), r = {};
     const wait = ms => new Promise(res => setTimeout(res, ms));
@@ -207,53 +208,53 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w.status = 'active'; document.querySelector('#workersRoot [data-testid="workers-chips"] button[data-key="status"]').click(); render(); await wait(50); r.back = /Dana Levi/.test(names());
     const d = new Date(); d.setMonth(d.getMonth() - 2);
     Object.assign(w, {expiryEnabled: true, expiryMonths: 1, expiryWarnMonths: 1, startDate: localYMD(d)});
-    try{ sessionStorage.removeItem('contractNoticeClosed'); }catch(e){}
-    showContractNotice(); const n = document.getElementById('contractNotice');
-    r.notice = n.style.display !== 'none' && /Contracts: 1 expired/.test(n.innerText);
-    closeContractNotice(); r.closed = n.style.display === 'none';
+    render(); await wait(50);
+    r.bell = ManagerBridge.bellItems().some(x => x.title === 'Contract ended' && /Dana Levi/.test(x.detail));
+    r.noBanner = !document.getElementById('contractNotice') && !/Contracts:/.test(document.getElementById('appMain').innerText) && typeof window.showContractNotice === 'undefined';
     Object.keys(w).forEach(k => delete w[k]); Object.assign(w, keep); render();
     return r;
   });
   ok(ia.hidden && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
-  ok(ia.notice && ia.closed, 'contracts: an expired contract shows a notice at the top until closed ' + JSON.stringify(ia));
-  // V7 (stage 6a): the frame on a computer — the sections in a side menu, the breadcrumb plate (section,
-  // count, open sub-tab), the date / greeting / weather in the middle, no page titles, no side panel
-  // (removed, owner 2026-10-18) on any tab, the page at most 1200px; Today drawn in React.
+  ok(ia.bell && ia.noBanner, 'contracts: an expired contract is a bell notice; no banner at the top of the page ' + JSON.stringify(ia));
+  // V7 (stage 6a): the frame on a computer — the sections in a side menu, no breadcrumb (removed, owner
+  // 2026-10-26: the lit section says where you are), the date / greeting / weather in the middle, no page
+  // titles, no side panel (removed, owner 2026-10-18) on any tab, the page at most 1200px; Today drawn in React.
   const v7 = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const box = q => document.querySelector(q).getBoundingClientRect(), shown = q => { const el = document.querySelector(q); return !!el && getComputedStyle(el).display !== 'none'; };
-    const crumb = () => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim();
+    const noCrumb = () => !document.querySelector('[data-testid=shell-crumb]');
+    const lit = () => (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim();
     switchTab('dashboard'); await wait(300);
     const nav = box('[data-testid=shell-menu]'), t = box('[data-testid=shell-menu] button:nth-child(1)'), s2 = box('[data-testid=shell-menu] button:nth-child(2)');
     r.menu = nav.left < 2 && Math.abs(nav.width - 210) < 2 && s2.top > t.top && Math.abs(s2.left - t.left) < 2;
-    r.crumbToday = crumb();
+    r.crumbToday = noCrumb() && lit() === 'Today';
     r.noTitle = [...document.querySelectorAll('.page-title')].every(e => getComputedStyle(e).display === 'none');
     r.center = /\d/.test(document.querySelector('[data-testid=shell-date]').innerText) && /^Good /.test(document.querySelector('[data-testid=shell-greet-text]').textContent);
     r.noSidebarToday = !document.querySelector('.sidebar, #workerList, #sidebarClientList');
     r.react = !!document.querySelector('#todayRoot [data-testid=today]') && document.querySelectorAll('#todayRoot [data-slot=figures] > button').length === 4 && document.querySelectorAll('#todayRoot section[data-panel]').length >= 1;
     r.width = getComputedStyle(document.getElementById('sectionDashboard')).maxWidth === '1200px';
     switchTab('workers'); await wait(200);
-    r.sidebarWorkers = !document.querySelector('.sidebar'); r.crumbWorkers = crumb();
+    r.sidebarWorkers = !document.querySelector('.sidebar'); r.crumbWorkers = noCrumb() && lit() === 'Workers';
     switchTab('accounting'); setAccTab('salary'); await wait(200);
-    r.crumbAcc = crumb(); r.noRepeat = !shown('#accountingRoot [data-testid=acc-figs]') && shown('#accountingRoot [data-testid=sal-sum]');
+    r.crumbAcc = noCrumb() && lit() === 'Accounting'; r.noRepeat = !shown('#accountingRoot [data-testid=acc-figs]') && shown('#accountingRoot [data-testid=sal-sum]');
     setAccTab('billing'); document.body.click(); await wait(100);
-    r.crumbBill = crumb(); r.figsBack = shown('#accountingRoot [data-testid=acc-figs]');
+    r.crumbBill = noCrumb(); r.figsBack = shown('#accountingRoot [data-testid=acc-figs]');
     setAccTab('salary'); switchTab('dashboard'); await wait(200);
     return r;
   });
-  ok(v7.menu && v7.crumbToday === 'Today' && v7.noTitle && v7.center && v7.noSidebarToday && v7.react && v7.width && v7.sidebarWorkers && /^Workers \d+$/.test(v7.crumbWorkers)
-    && v7.crumbAcc === 'Accounting Salary' && v7.noRepeat && v7.crumbBill === 'Accounting Billing' && v7.figsBack,
-    'V7 frame: side menu, breadcrumb with count and sub-tab, date / greeting / weather in the middle, no page titles, no side panel, Accounting figures not repeated on Salary ' + JSON.stringify(v7));
+  ok(v7.menu && v7.crumbToday && v7.noTitle && v7.center && v7.noSidebarToday && v7.react && v7.width && v7.sidebarWorkers && v7.crumbWorkers
+    && v7.crumbAcc && v7.noRepeat && v7.crumbBill && v7.figsBack,
+    'V7 frame: side menu (the open section lit), no breadcrumb, date / greeting / weather in the middle, no page titles, no side panel, Accounting figures not repeated on Salary ' + JSON.stringify(v7));
   // Hebrew mirrors the frame only: the menu on the right, the account on the left, the page left to right.
   await p.evaluate(() => setLanguage('he', {save:false})); await waitFor(p, () => I18N_LANG === 'he' && document.documentElement.lang === 'he');
   await sleep(400);
   const v7he = await p.evaluate(() => {
     const box = q => document.querySelector(q).getBoundingClientRect();
-    return {menuRight: box('[data-testid=shell-menu]').right > innerWidth - 2, acctLeft: box('[data-testid=account-btn]').left < box('[data-testid=app-brand]').left, crumbRight: box('[data-testid=shell-crumb]').left > innerWidth / 2,
+    return {menuRight: box('[data-testid=shell-menu]').right > innerWidth - 2, acctLeft: box('[data-testid=account-btn]').left < box('[data-testid=app-brand]').left, brandRight: box('[data-testid=app-brand]').left > innerWidth / 2, noCrumb: !document.querySelector('[data-testid=shell-crumb]'),
       pageLtr: getComputedStyle(document.querySelector('#todayRoot')).direction === 'ltr', today: document.querySelector('#todayRoot [data-testid=today] p').textContent};
   });
   await p.evaluate(() => setLanguage('en', {save:false})); await waitFor(p, () => I18N_LANG === 'en');
-  ok(v7he.menuRight && v7he.acctLeft && v7he.crumbRight && v7he.pageLtr && v7he.today === 'נוכחות בזמן אמת', 'V7 Hebrew: the side menu on the right, brand and breadcrumb right, the account left; Today\'s content stays left to right, in Hebrew ' + JSON.stringify(v7he));
+  ok(v7he.menuRight && v7he.acctLeft && v7he.brandRight && v7he.noCrumb && v7he.pageLtr && v7he.today === 'נוכחות בזמן אמת', 'V7 Hebrew: the side menu on the right, the brand right (no breadcrumb), the account left; Today\'s content stays left to right, in Hebrew ' + JSON.stringify(v7he));
   // Today, drawn in React (stage 6a): the figures as glass tiles, the sections as panels; a figure filters
   // to its section ("Show all" brings the rest back), the arrow folds a section (kept on this device).
   const tf = await p.evaluate(async () => {
@@ -318,9 +319,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
     const box = q => document.querySelector(q).getBoundingClientRect(), figs = [...document.querySelectorAll('#todayRoot [data-slot=figures] > button')];
-    const cr = box('[data-testid=shell-crumb]'), c = box('[data-testid=shell-greeting]'), a = document.querySelector('[data-testid=account-btn]').parentElement.getBoundingClientRect(), tb = getComputedStyle(document.querySelector('[data-slot=shell] > header'));
+    const c = box('[data-testid=shell-greeting]'), hd = box('[data-slot=shell] > header'), br = box('[data-testid=app-brand]'), a = document.querySelector('[data-testid=account-btn]').parentElement.getBoundingClientRect(), tb = getComputedStyle(document.querySelector('[data-slot=shell] > header'));
     return {stats: figs.length, row: figs.every(f => Math.abs(f.getBoundingClientRect().top - figs[0].getBoundingClientRect().top) < 1), lines: document.querySelectorAll('#todayRoot .og-plate').length,
-      twoRows: cr.top >= c.bottom - 1 && cr.top >= a.bottom - 1 && Math.abs(c.top - a.top) < 12, fixed: tb.position === 'sticky' && tb.top === '0px',
+      oneRow: !document.querySelector('[data-testid=shell-crumb]') && Math.abs(c.top - a.top) < 12 && Math.abs(br.top - a.top) < 12 && hd.height < 70, fixed: tb.position === 'sticky' && tb.top === '0px',
       greetHidden: getComputedStyle(document.querySelector('[data-testid=shell-greet-text]')).display === 'none' && !!document.querySelector('[data-testid=shell-greeting] svg.gic'),
       shortDate: getComputedStyle(document.querySelector('[data-testid=shell-date] > span:last-child')).display !== 'none' && getComputedStyle(document.querySelector('[data-testid=shell-date] > span:first-child')).display === 'none',
       noMenu: !document.querySelector('[data-testid=shell-menu]') && box('[data-testid=shell-bar]').bottom > innerHeight - 2}; });
@@ -369,7 +370,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {sum: line ? line.querySelector('small').innerText : '', arrows: q('[data-testid="week-prev"]').length + q('[data-testid="week-next"]').length,
       marks: line ? line.querySelectorAll('[data-testid="daymarks"] i').length : 0, hrs: line ? (line.querySelector('[data-testid="week-hours"]') || {}).textContent : '',
       kinds: line ? [...line.querySelectorAll('[data-testid="daymarks"] i')].map(i => i.dataset.k).join('') : '',
-      week: (document.querySelector('#scheduleRoot [data-testid="week-range"]') || {}).innerText || '', crumb: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' '),
+      week: (document.querySelector('#scheduleRoot [data-testid="week-range"]') || {}).innerText || '', noCrumb: !document.querySelector('[data-testid=shell-crumb]'),
       old: !!document.getElementById('ganttBody')};
   }, schedPlate);
   await p.click(schedPlate, {position: {x: 30, y: 14}});
@@ -380,19 +381,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.keyboard.press('Escape'); await waitFor(p, () => !document.querySelector('[data-testid="shift-window"]'), 3000);
   await p.click(schedPlate, {position: {x: 30, y: 14}});
   sch.closedNow = await waitFor(p, () => document.querySelectorAll('#scheduleRoot [data-testid="sched-day"]').length === 0, 3000);
-  ok(/shift/.test(sch.sum) && sch.days && sch.editor && sch.closedNow && /–/.test(sch.week) && !sch.old, 'schedule: a plate per worker, a tap opens its 7 days, a day opens the shift window ' + JSON.stringify(sch));
+  ok(/shift/.test(sch.sum) && sch.days && sch.editor && sch.closedNow && /–/.test(sch.week) && !sch.old && sch.noCrumb, 'schedule: a plate per worker, a tap opens its 7 days, a day opens the shift window ' + JSON.stringify(sch));
   await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
-  // Glass week arrows, site tabs (the breadcrumb follows), 7 day marks per worker (green work, blue a night).
+  // Glass week arrows, site tabs (the lit one says which; no breadcrumb), 7 day marks per worker (green work, blue a night).
   const sc6 = await p.evaluate(async () => {
     const r = {}, tabs = [...document.querySelectorAll('#scheduleRoot [data-testid="site-tabs"] button')]; r.tabs = tabs.map(b => b.textContent);
-    r.crumbAll = document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ');
+    r.crumbAll = !document.querySelector('[data-testid=shell-crumb]') && (document.querySelector('#scheduleRoot [data-testid="site-tabs"] button.on') || {}).textContent === 'All sites';
     if(tabs[1]){ tabs[1].click(); await new Promise(res => setTimeout(res, 50));
       r.filtered = selectedClientId === clients[0].id && document.querySelector('#scheduleRoot [data-testid="site-tabs"] button.on').textContent === clients[0].name;
-      r.crumbSite = document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' '); filterByClient(null); }
+      r.crumbSite = !document.querySelector('[data-testid=shell-crumb]'); filterByClient(null); }
     return r;
   });
   ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.tabs[0] === 'All sites' && sc6.filtered
-    && /Schedule.*All sites/.test(sc6.crumbAll) && new RegExp('Schedule.*' + sc6.tabs[1]).test(sc6.crumbSite),
+    && sc6.crumbAll && sc6.crumbSite,
     'schedule: glass arrows, site tabs filter (breadcrumb "Schedule › <site>"), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
   await p.evaluate(() => { workers.find(w => isActiveWorker(w)).schedule = JSON.parse(window.__keepSched); render(); });
   await p.evaluate(async () => { localStorage.setItem('workersView', 'cards'); switchTab('workers'); await new Promise(r => setTimeout(r, 300)); });
@@ -410,7 +411,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.evaluate(async () => { await ManagerBridge.setPeriod('week'); });
   await p.setViewportSize({width: 1280, height: 720});
   ok(t3.stats === 4 && t3.row && t3.lines >= 1, 'today: four figure tiles in one row on a phone and colored plates ' + JSON.stringify(t3));
-  ok(t3.twoRows && t3.fixed && t3.greetHidden && t3.shortDate && t3.noMenu, 'V7 on a phone: two header rows fixed at the top (logo · short date and weather · buttons; the breadcrumb under them), the greeting\'s words hidden, the bottom bar stays ' + JSON.stringify(t3));
+  ok(t3.oneRow && t3.fixed && t3.greetHidden && t3.shortDate && t3.noMenu, 'V7 on a phone: one header row fixed at the top (logo · short date and weather · buttons; no breadcrumb), the greeting\'s words hidden, the bottom bar stays ' + JSON.stringify(t3));
   // On a phone a worker card is compact: one summary line instead of the detail rows.
   await p.setViewportSize({width: 390, height: 800});
   const wc = await p.evaluate(async () => { switchTab('workers'); await new Promise(r => setTimeout(r, 200));
@@ -524,6 +525,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
       const sw = () => document.querySelector('[data-testid=account-theme] [data-testid=theme-switch]');
       r.items = [...sw().querySelectorAll('[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
+      // the menu in the windows' glass (owner 2026-10-26): the sheet gradient and the glass edge, its tail in the same
+      // fill (never black) with the same edge; Dark / Light / System fit inside the menu, none cut off
+      { const m = document.querySelector('[data-testid=account-menu]'), cs = getComputedStyle(m), root = getComputedStyle(document.documentElement);
+        const rgb = v => { const d = document.createElement('i'); d.style.color = v; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; };
+        const tail = m.querySelector('[data-slot=pop-tail] polygon'), edge = m.querySelector('[data-slot=pop-tail] polyline');
+        r.menuGlass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim());
+        r.tail = !!tail && getComputedStyle(tail).fill === rgb(root.getPropertyValue('--plate-top').trim()) && getComputedStyle(tail).fill !== 'rgb(0, 0, 0)' && getComputedStyle(edge).stroke === cs.borderTopColor;
+        const mb = m.getBoundingClientRect();
+        r.fits = [...sw().querySelectorAll('[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
       sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
       r.on = (sw().querySelector('[data-state=on]') || {}).dataset?.testid?.slice(6);
@@ -533,6 +543,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       return r;
     });
     ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light,system/System' && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s switch (Dark / Light / System) turns the light theme on, on this device ' + JSON.stringify(th));
+    ok(th.menuGlass && th.tail && th.fits, 'menus: the account menu in the windows\' glass and edge, its tail in the same fill and edge (not black), Dark / Light / System fit its width ' + JSON.stringify(th));
     await sleep(1500);
     const c3 = await newCtx(); const p3 = await page(c3);
     await p3.goto(BASE + 'schedule-manager.html'); await p3.waitForSelector('#loginScreen', {state:'visible'});
@@ -2029,17 +2040,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await p.screenshot({path: SP + '/shot_admin_log_' + w + '.png'});
   }
   await p.setViewportSize({width:1280, height:720});
-  // The tiles while no section is chosen; a tile opens its section; the breadcrumb follows.
+  // The tiles while no section is chosen; a tile opens its section; Admin lit in the menu, no breadcrumb.
   const at = await p.evaluate(async () => {
     switchTab('admin'); switchAdminPane(null); await new Promise(r => setTimeout(r, 100));
-    return {tiles: [...document.querySelectorAll('#adminRoot [data-testid="admin-tile"]')].map(t => t.dataset.k).join(), crumb0: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim(),
+    return {tiles: [...document.querySelectorAll('#adminRoot [data-testid="admin-tile"]')].map(t => t.dataset.k).join(), crumb0: document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim(),
       noRows: !document.querySelector('#adminRoot [data-testid="punch-row"]'), oldBar: !!document.getElementById('adminPaneBar'),
       superadmin: !!document.querySelector('#adminTabs [data-k="timings"]')};
   });
   await p.click('#adminRoot [data-testid="admin-tile"][data-k="punchlog"] [role="button"]'); await sleep(250);
   Object.assign(at, await p.evaluate(() => ({
     opened: __adminPane === 'punchlog' && !!document.querySelector('#adminRoot [data-testid="punchlog"]') && !document.querySelector('#adminRoot [data-testid="admin-tiles"]'),
-    crumb: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim(),
+    crumb: !document.querySelector('[data-testid=shell-crumb]'),
     figs: [...document.querySelectorAll('#adminRoot [data-slot="figures"] button span:first-of-type')].map(x => x.textContent).join()})));
   // Entering the tab again (Admin in the menu) brings the tiles back: no section is kept from before.
   at.back = await p.evaluate(async () => { switchTab('dashboard'); switchTab('admin'); await new Promise(r => setTimeout(r, 100));
@@ -2047,8 +2058,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchAdminPane('punchlog'); await new Promise(r => setTimeout(r, 250)); // the checks below go on in the Punch Log
     return back; });
   // A super-admin also gets the Scanner lab tile (it opens /scan-lab/ in a new tab).
-  ok(at.tiles === 'punchlog,firms,users,contracts' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
-    'admin: four tiles while no section is chosen — Contract templates the fourth (and the Scanner and the Scanner lab for a super-admin), a tile opens its section, the breadcrumb "Admin › Punch Log", the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
+  ok(at.tiles === 'punchlog,firms,users,contracts' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
+    'admin: four tiles while no section is chosen — Contract templates the fourth (and the Scanner and the Scanner lab for a super-admin), a tile opens its section (no breadcrumb), the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
   // The filters: Radix selects — the date list is newest day first; the client filter uses the punch's own clientId.
   const pickFilter = async (k, label) => {
     await p.click(PL + ' [data-testid="punch-filter-' + k + '"]'); await p.waitForSelector('[role="option"]');
@@ -2573,7 +2584,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const wh = await p.evaluate(async () => {
     const wait = ms => new Promise(res => setTimeout(res, ms));
     switchTab('workers'); await wait(50);
-    const crumb = () => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim();
+    const crumb = () => document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim();
     const chips = () => [...document.querySelectorAll('#workersRoot [data-testid="workers-chips"] button')].map(b => b.dataset.key + ':' + b.innerText.trim()).join();
     const tabs = () => [...document.querySelectorAll('#workersRoot #workersTabs button')], r = {tabs: tabs().map(b => b.textContent).join(), count: crumb()};
     tabs()[1].click(); await wait(50); r.vac = chips() === 'status:On vacation' && tabs()[1].classList.contains('on'); r.crumbVac = crumb();
@@ -2589,8 +2600,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     fb.click(); await wait(50);
     return r;
   });
-  ok(wh.tabs === 'Active,Vacation,Pending' && /^Workers \d+$/.test(wh.count) && wh.vac && /^Workers \d+ Vacation$/.test(wh.crumbVac) && wh.cleared && wh.pending && wh.scan && wh.filtersHidden && wh.filtersOpen,
-    'workers: the breadcrumb "Workers N › <tab>", New and a glass Scan passport, tabs Active / Vacation / Pending set the filters (a chip each), the Filters open on their button ' + JSON.stringify(wh));
+  ok(wh.tabs === 'Active,Vacation,Pending' && wh.count === 'Workers' && wh.vac && wh.crumbVac === 'Workers' && wh.cleared && wh.pending && wh.scan && wh.filtersHidden && wh.filtersOpen,
+    'workers: Workers lit in the menu (no breadcrumb), New and a glass Scan passport, tabs Active / Vacation / Pending set the filters (a chip each), the Filters open on their button ' + JSON.stringify(wh));
   // Workers filters (stage 6c-1): a filter picked in its select shows as a chip; Group by client draws a section per
   // site; the list view is a table on a computer — a tap on a row opens the worker card.
   await p.evaluate(() => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-filters-btn"]').click(); });
@@ -2664,6 +2675,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     bell().click(); await wait(100);
     const items = [...document.querySelectorAll('#bellPanel .og-ni')];
     r.item = items.some(b => /ID \/ passport expired/.test(b.textContent) && /Dana/.test(b.textContent) && b.classList.contains('new'));
+    { const bp = document.getElementById('bellPanel'), cs = getComputedStyle(bp), tl = getComputedStyle(bp, '::before'), root = getComputedStyle(document.documentElement);
+      const rgb = v => { const d = document.createElement('i'); d.style.color = v; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; };
+      r.glass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim())
+        && tl.backgroundColor === rgb(root.getPropertyValue('--plate-top').trim()) && tl.borderTopColor === cs.borderTopColor; }
     document.querySelector('#bellPanel .og-npop-all').click(); await wait(800);
     r.after = count(); r.noNew = !document.querySelector('#bellPanel .og-ni.new');
     __notifRead = new Set(); __notifReadLoaded = false; await loadNotifReads(); r.kept = count();
@@ -2674,6 +2689,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(/^Good (morning|afternoon|evening|night)/.test(nt.greet) && nt.icon, 'today: the greeting by time of day with its icon ' + JSON.stringify(nt));
   ok(await waitFor(p, () => { const g = document.querySelector('[data-testid=shell-greeting]'); return !!g && /14°/.test(g.textContent) && !!g.querySelector('svg.gic .drop'); }), 'today: the greeting shows the weather at the firm\'s main site — the rain icon and 14°');
+  ok(nt.glass, 'notifications: the bell\'s list in the windows\' glass and edge, its tail in the same fill and edge ' + JSON.stringify(nt));
   ok(nt.bell && nt.before >= 1 && nt.item && nt.after === 0 && nt.noNew && nt.kept === 0 && nt.opens, 'notifications: the bell counts, the panel lists the expired ID as new, Mark all read is kept on the account, a tap opens the worker\'s notices ' + JSON.stringify(nt));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
@@ -2730,7 +2746,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(pay1.pay && !pay1.card && !pay2.pay && pay2.card, 'back: closing Pay opened from the worker card shows the card again ' + JSON.stringify({pay1, pay2}));
   await p.mouse.click(5, 450); await sleep(400);
   // The Clients and Suppliers tabs are React (stage 6d, src/manager/Clients.tsx): a client plate's single click
-  // or double click opens its window (no card to read first); the breadcrumb counts them; no side panel.
+  // or double click opens its window (no card to read first); no breadcrumb; no side panel.
   await p.evaluate(() => switchTab('clients')); await sleep(400);
   await p.click('#clientsRoot [data-testid="client-plate"] [data-testid="client-name"] >> nth=0'); await sleep(500);
   const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open') && !!document.querySelector('#clientModal [data-testid="client-editor"]'));
@@ -2740,7 +2756,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(cl1 && cl2, 'clients: a single click or a double click opens the editor ' + JSON.stringify({cl1, cl2}));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
   // Plates: notices, ⋮ (Edit, Manual punch, Delete), Delete → Undo, Select → Delete after 5 s; supplier plates.
-  const crumbNow = () => p.evaluate(() => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim());
+  const crumbNow = () => p.evaluate(() => document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim());
   await p.evaluate(() => { clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); });
   const ctmp = '#clientsRoot [data-testid="client-plate"][data-cid="ctmp"]';
   await p.waitForSelector(ctmp);
@@ -2770,9 +2786,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('#suppliersRoot [data-testid="supplier-plate"] [data-testid="supplier-name"] >> nth=0'); await sleep(400);
   cpl.supWindow = await p.evaluate(() => document.getElementById('supplierOverlay').classList.contains('open') && !!document.querySelector('#supplierModal [data-testid="supplier-editor"]'));
   await p.evaluate(() => { closeModal('supplierOverlay'); switchTab('clients'); }); await sleep(200);
-  ok(cpl.noRate && /^Clients \d+$/.test(cpl.crumb) && /^Suppliers \d+$/.test(cpl.crumbS) && cpl.sidebar && cpl.old && cpl.menu === 'Edit,Manual punch,Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.noWindow && cpl.notYet && cpl.deleted
+  ok(cpl.noRate && cpl.crumb === 'Clients' && cpl.crumbS === 'Suppliers' && cpl.sidebar && cpl.old && cpl.menu === 'Edit,Manual punch,Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.noWindow && cpl.notYet && cpl.deleted
     && cpl.supplier && cpl.supMenu === 'Edit,Delete' && cpl.supWindow,
-    'clients / suppliers (React): plates with notices, the breadcrumb count, no side panel, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates open the supplier window ' + JSON.stringify(cpl));
+    'clients / suppliers (React): plates with notices, the section lit in the menu (no breadcrumb), no side panel, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates open the supplier window ' + JSON.stringify(cpl));
   // The client window: a tap outside saves it; an empty new client is not created; the rates block; manual punch from the window and back.
   const cs = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));

@@ -587,7 +587,7 @@ function Layout() {
 }
 
 /* ───────── The manager app's frame (V7) ───────── */
-// The Shell with `app`: the side menu, the breadcrumb, the date / greeting /
+// The Shell with `app`: the side menu, the date / greeting /
 // weather in the middle, the Workers / Filter-by-client panel only on Workers
 // and Schedule, a Today-like page (tiles, panels in two columns, pull to refresh).
 const FRAME_SECTIONS: ShellSection[] = [
@@ -599,9 +599,6 @@ const FRAME_SECTIONS: ShellSection[] = [
   { key: 'admin', label: 'Admin', icon: <IconLock />, color: '#ff8a95' },
   { key: 'accounting', label: 'Accounting', icon: <IconCash />, color: '#f7c062', count: 2 },
 ];
-const FRAME_CRUMB: Record<string, { count?: number; sub?: string }> = {
-  schedule: { sub: tr('All sites') }, workers: { count: 12 }, clients: { count: 4 }, accounting: { sub: tr('Salary') }, admin: { sub: tr('Users') },
-};
 function Frame({ onBack }: { onBack: () => void }) {
   const [tab, setTab] = React.useState('dashboard');
   const [pick, setPick] = React.useState<string | null>(null);
@@ -626,7 +623,6 @@ function Frame({ onBack }: { onBack: () => void }) {
       sections={sections}
       active={tab}
       onSelect={setTab}
-      crumb={FRAME_CRUMB[tab]}
       center={<ShellGreeting name="Owner" wx={{ kind: 'rain', temp: 14 }} />}
       aside={aside}
     >

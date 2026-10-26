@@ -51,7 +51,6 @@ declare global {
   var renderAccounting: any;
   var renderAdmin: any;
   var renderClientsPage: any;
-  var renderCrumb: any;
   var renderDashboard: any;
   var renderPagedList: any;
   var renderSchedulePage: any;

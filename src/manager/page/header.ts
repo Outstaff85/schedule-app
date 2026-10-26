@@ -1,4 +1,4 @@
-// The manager page's own script, part "header": the title bar: the greeting and weather, the breadcrumb, the bell and its notifications, the WhatsApp reminder.
+// The manager page's own script, part "header": the title bar: the greeting and weather, the bell and its notifications, the WhatsApp reminder.
 // One of the modules of src/manager/page/ (React migration stage 8c-3; the
 // former inline script of schedule-manager.html, split by section, the same
 // code in the same order — page/entry.ts imports them in that order), typed
@@ -6,7 +6,6 @@
 // reachable under their old global names through the window accessors below
 // (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
-import { byId } from './dom';
 import { tr } from '../logic/i18n';
 import { fsTenantId, getSession } from '../data/session';
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocStatus, workerExpiryStatus } from '../logic/workers';
@@ -18,7 +17,6 @@ import { showToast } from '../toast';
 import { frameState, setFrame } from '../frame';
 import { trainingStats } from '../../scan/server';
 Object.defineProperties(window, {
-  "renderCrumb": {get: () => renderCrumb, configurable: true},
   "__notifRead": {get: () => __notifRead, set: (v?: any) => { __notifRead = v; }, configurable: true},
   "__notifReadLoaded": {get: () => __notifReadLoaded, set: (v?: any) => { __notifReadLoaded = v; }, configurable: true},
   "notifList": {get: () => notifList, configurable: true},
@@ -41,20 +39,6 @@ export function renderGreeting(){
   const s=getSession(); if(!s) return;
   setFrame({greet:{name:String(s.fullName||s.username||''), wx:__wx&&__wxTid===fsTenantId()?__wx:null}}); loadWeather();
 }
-// The breadcrumb plate (V7): the section's icon in its colour, its name and
-// count, then the open sub-tab (Accounting › Salary, Admin › Users, Schedule ›
-// All sites); the page itself shows no title.
-const CRUMB_COUNT: Record<string, () => number>={workers:()=>workers.filter(isActiveWorker).length, clients:()=>clients.length, suppliers:()=>suppliers.length};
-export function renderCrumb(){
-  const sec=byId('section'+currentTab.charAt(0).toUpperCase()+currentTab.slice(1));
-  const on=sec&&[...sec.querySelectorAll('.og-tabs button.on')].find((b?: any)=>b.offsetParent!==null);
-  let sub='';
-  if(on){ const c=on.cloneNode(true); c.querySelectorAll('i, svg, .tab-n, .tab-badge').forEach((x?: any)=>x.remove()); sub=c.textContent.trim(); }
-  const n=CRUMB_COUNT[currentTab]?CRUMB_COUNT[currentTab]():undefined;
-  setFrame({crumb:{count:n, sub:sub||undefined}});
-}
-// A sub-tab changes without render(): the crumb follows any tap in the page.
-document.addEventListener('click', () => setTimeout(renderCrumb, 0));
 // The weather for the greeting: the firm's main site, read again after 30 minutes
 // or when the super-admin opens another firm; a failure keeps the time-of-day icon.
 const WEATHER_FN_URL='https://europe-west3-schedule-odinson.cloudfunctions.net/weather';

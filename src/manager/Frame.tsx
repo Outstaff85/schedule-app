@@ -1,6 +1,6 @@
 // The manager app's frame in React (React migration stage 8e-1): the Shell
 // with `app` — the title bar (the 11C logo and its name, Saved, the
-// breadcrumb plate, the date / greeting / weather in the middle, the bell,
+// date / greeting / weather in the middle, the bell,
 // the Language button, the account menu), the side menu on a computer and
 // the bottom bar with More on a phone; Hebrew mirrors the frame only. It
 // draws `frame.ts`'s state, which the page's modules write; its actions run
@@ -61,7 +61,6 @@ export function Frame({ api }: { api: ManagerBridge }) {
       sections={sections}
       active={f.tab}
       onSelect={k => api.switchTab(k)}
-      crumb={f.crumb}
       center={f.greet && <ShellGreeting name={f.greet.name} wx={f.greet.wx} />}
       tools={<>
         {f.bell.shown && <ShellBell count={f.bell.count} onClick={e => api.toggleBell(e.nativeEvent)} />}

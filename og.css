@@ -109,13 +109,13 @@
 /* Derived looks for both themes: the soft status texts (badges, chips, error
    lines), the see-through bars over the ground (--bar-rgb: the title bar, the
    side menu) and the glass of popovers and their tails. */
-:root{--red-text:#ff8a95;--amber-text:#f7c062;--blue-text:#8fb4ff;--cyan-text:#67e8f9;--bar-rgb:16,20,31;--pop-rgb:30,35,51;--pop-tail:var(--pop-tail);}
+:root{--red-text:#ff8a95;--amber-text:#f7c062;--blue-text:#8fb4ff;--cyan-text:#67e8f9;--bar-rgb:16,20,31;--pop-rgb:30,35,51;}
 /* ── The light theme for outdoors (docs/redesign.md → Light theme): the token
    values are in the tokens block above (from tokens.json); here the values
    og.css and the pages derive from them, and the few looks a token cannot
    carry. <html data-theme="light"> is set by the theme switch (the account
    menu: Dark / Light / System) before the page draws. ── */
-:root[data-theme="light"]{color-scheme:light;--tint:20,24,40;--red-text:#a8182b;--amber-text:#7f4300;--blue-text:#1d4fb8;--cyan-text:#0b6b80;--bar-rgb:248,250,253;--pop-rgb:255,255,255;--pop-tail:rgba(255,255,255,.97);--blue:var(--accent);--green2:var(--green);--glass-dark:rgba(250,251,253,.96);--fig:var(--green);--neutral:#7a8199;--text:var(--ink);--text2:var(--ink-2);--text3:#5c6378;}
+:root[data-theme="light"]{color-scheme:light;--tint:20,24,40;--red-text:#a8182b;--amber-text:#7f4300;--blue-text:#1d4fb8;--cyan-text:#0b6b80;--bar-rgb:248,250,253;--pop-rgb:255,255,255;--blue:var(--accent);--green2:var(--green);--glass-dark:rgba(250,251,253,.96);--fig:var(--green);--neutral:#7a8199;--text:var(--ink);--text2:var(--ink-2);--text3:#5c6378;}
 :root[data-theme="light"] body::before,:root[data-theme="light"] .og-cover{background:radial-gradient(circle at 15% 10%,rgba(165,180,252,.55) 0,transparent 56%),radial-gradient(circle at 92% 62%,rgba(103,232,249,.40) 0,transparent 54%),radial-gradient(circle at 40% 108%,rgba(249,168,212,.42) 0,transparent 56%),var(--ground);}
 :root[data-theme="light"] .og-cover{background-attachment:fixed;}
 :root[data-theme="light"] .gbtn::before{box-shadow:var(--shadow-uline);}

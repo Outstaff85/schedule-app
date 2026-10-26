@@ -26,7 +26,7 @@ import { exportExcel, exportJSON, exportPDF, exportShiftsDetail } from '../logic
 import { genToken } from '../data/ids';
 import { fileForStorage, fileToUploadPages } from '../logic/uploads';
 import { reportError } from '../data/telemetry';
-import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
+import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
 import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNotices, openWorkerCard, openWorkerDocUpload, parseHoursExcelFile, parseHoursImagePage, renderClientsPage, renderSuppliersPage, renderWorkersPage, rescanFromWorkerCard, setWorkersStatus, todayPunchLog, workerBarColor, workerNotices, workerSiteName, workerToday } from './workers';
 import { portalInfo, switchTab } from './nav';
 import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
@@ -89,7 +89,7 @@ function renderSchedulePage(){
   loadShiftRequests();
   if(island()) island()!.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(isAccTab(currentTab)) renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') island()!.renderFirmsScreen(); renderCrumb(); });
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(isAccTab(currentTab)) renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') island()!.renderFirmsScreen(); });
 provideBridge({
   lang:()=>currentLang(),
   dict:()=>currentDict(),
@@ -266,7 +266,7 @@ provideBridge({
     };
   },
   accData:()=>accData(),
-  setPeriod:async (p?: any)=>{ await ensurePunchesSince(periodPunchStart(p)); accPeriod=p; renderAccounting(); renderCrumb(); },
+  setPeriod:async (p?: any)=>{ await ensurePunchesSince(periodPunchStart(p)); accPeriod=p; renderAccounting(); },
   ensurePeriod:async (p?: any)=>{ await ensurePunchesSince(periodPunchStart(p)); },
   openClientWindow:(id?: any)=>openEditClient(id),
   hourApprovals:async(month?: any,fresh?: any)=>{ const docs=await hourApprovalsOf(month,fresh); if(__punchSynced) await __punchSynced.catch(()=>{}); return docs; },
@@ -526,7 +526,7 @@ export function renderAccounting(){
   const i=island(); if(!i || portalInfo()) return; // a supplier's or client's tabs are its portal screens (nav.ts)
   if(currentTab==='commission') i.renderCommission(); else if(currentTab==='hours') i.renderHours(); else i.renderAccounting();
 }
-function setAccTab(k?: any){ if(island()) island()!.setAccTab(k); renderCrumb(); }
+function setAccTab(k?: any){ if(island()) island()!.setAccTab(k); }
 
 // The hours function (the HR's Hours approval, the owner's approvals list and fixes).
 const HOURS_REVIEW_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';
