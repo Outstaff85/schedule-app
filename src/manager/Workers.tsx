@@ -1,6 +1,6 @@
 // The Workers tab of the manager app (docs/workers.md → Workers tab), drawn in
-// React inside the old page (stage 6c-1): New and Scan passport, the tabs
-// Active / Vacation / Pending, the search, the Filters (status, documents,
+// React inside the old page (stage 6c-1): one create button (New worker: a scan,
+// its menu also adds by hand), the search, the Filters (status, documents,
 // client, supplier, group by — each set one a chip under the search), the
 // cards / list toggle, "Inactive: N — show", Select (Vacation / Active /
 // Delete) and the workers as plates (or a table on a computer's list view).
@@ -9,12 +9,14 @@
 import * as React from 'react';
 import {
   IconBeach, IconCash, IconChevronDown, IconChevronUp, IconCircleCheck, IconDownload, IconFilter, IconId, IconLayoutGrid, IconLink, IconList,
-  IconPlus, IconScan, IconTransfer, IconTrash, IconUserPlus, IconUsers, IconX,
+  IconScan, IconTransfer, IconTrash, IconUserPlus, IconUsers, IconX,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,8 +35,8 @@ import { isFirmAdminSession } from './logic/access';
 import { Line, MoreChip, NoticeChip, TodayPin } from './pieces';
 import { hoursShort } from './today';
 import {
-  NO_FILTERS, barColor, filterWorkers, groupWorkers, isActive, pickTab, tabOn,
-  type DocsFilter, type Filters, type GroupBy, type StatusFilter, type WorkersTab,
+  NO_FILTERS, barColor, filterWorkers, groupWorkers, isActive,
+  type DocsFilter, type Filters, type GroupBy, type StatusFilter,
 } from './workers';
 
 // The filters stay while the app is open (the tab is drawn again on every
@@ -52,7 +54,6 @@ const STATUS_OPTS: [StatusFilter, string][] = [['', 'Active and on vacation'], [
 const DOCS_OPTS: [DocsFilter, string][] = [['', 'All documents'], ['incomplete', 'Documents incomplete'], ['expiring', 'ID expired / expiring']];
 const GROUP_OPTS: [GroupBy, string][] = [['', 'No grouping'], ['client', 'Group by client'], ['supplier', 'Group by supplier']];
 const STATUS_BADGE = { active: ['ok', 'Active'], vacation: ['warn', 'On vacation'], fired: ['bad', 'Inactive'] } as const;
-const TABS: [WorkersTab, string][] = [['active', 'Active'], ['vacation', 'Vacation'], ['pending', 'Pending']];
 
 function Loading() {
   return (
@@ -189,15 +190,25 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
   return (
     <div data-testid="workers">
       <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="workers-head">
-        {can && <Button variant="primary" className="og-new" data-testid="workers-new" onClick={api.addWorker}><IconPlus />{tr('New')}</Button>}
-        {can && <Button data-testid="workers-scan" onClick={api.scanNew}><IconScan />{tr('Scan passport')}</Button>}
+        {can && (
+          // One create button (owner, 2026-10-26): its main part scans a new worker's passport / ID,
+          // its menu also adds a worker by hand, without a scan.
+          <ButtonGroup attached data-testid="workers-create">
+            <Button variant="primary" className="og-new" data-testid="workers-new" title={tr('Scan a passport / ID')} onClick={api.scanNew}><IconScan />{tr('New worker')}</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="primary" className="og-new" size="icon" data-testid="workers-new-more" aria-label={tr('More ways to add a worker')}><IconChevronDown /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem data-testid="workers-new-scan" onSelect={api.scanNew}><IconScan />{tr('Scan passport')}</DropdownMenuItem>
+                <DropdownMenuItem data-testid="workers-new-hand" onSelect={api.addWorker}><IconUserPlus />{tr('Enter by hand')}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ButtonGroup>
+        )}
         {can && isFirmAdminSession() && <Button data-testid="workers-transfer" onClick={() => setTransfer(true)}><IconTransfer />{tr('From another firm')}</Button>}
       </div>
       {transfer && <TransferAskWindow onClose={() => setTransfer(false)} toast={(m, ms) => api.toast(m, ms)} />}
-
-      <div className="og-tabs" id="workersTabs" data-testid="workers-tabs">
-        {TABS.map(([k, l]) => <button key={k} type="button" className={cn(tabOn(k, f) && 'on')} onClick={() => set(pickTab(k, f))}>{tr(l)}</button>)}
-      </div>
 
       <div className="mb-3.5 grid gap-2">
         <div className="flex items-stretch gap-2">

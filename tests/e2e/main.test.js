@@ -387,18 +387,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   sch.closedNow = await waitFor(p, () => document.querySelectorAll('#scheduleRoot [data-testid="sched-day"]').length === 0, 3000);
   ok(/shift/.test(sch.sum) && sch.days && sch.editor && sch.closedNow && /–/.test(sch.week) && !sch.old && sch.noCrumb, 'schedule: a plate per worker, a tap opens its 7 days, a day opens the shift window ' + JSON.stringify(sch));
   await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
-  // Glass week arrows, site tabs (the lit one says which; no breadcrumb), 7 day marks per worker (green work, blue a night).
-  const sc6 = await p.evaluate(async () => {
-    const r = {}, tabs = [...document.querySelectorAll('#scheduleRoot [data-testid="site-tabs"] button')]; r.tabs = tabs.map(b => b.textContent);
-    r.crumbAll = !document.querySelector('[data-testid=shell-crumb]') && (document.querySelector('#scheduleRoot [data-testid="site-tabs"] button.on') || {}).textContent === 'All sites';
-    if(tabs[1]){ tabs[1].click(); await new Promise(res => setTimeout(res, 50));
-      r.filtered = selectedClientId === clients[0].id && document.querySelector('#scheduleRoot [data-testid="site-tabs"] button.on').textContent === clients[0].name;
-      r.crumbSite = !document.querySelector('[data-testid=shell-crumb]'); filterByClient(null); }
-    return r;
-  });
-  ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.tabs[0] === 'All sites' && sc6.filtered
-    && sc6.crumbAll && sc6.crumbSite,
-    'schedule: glass arrows, site tabs filter (the chosen one lit, no breadcrumb), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
+  // Glass week arrows, one site select (owner, 2026-10-26: no row of tabs; no breadcrumb — the select shows the pick), 7 day marks per worker (green work, blue a night).
+  const sc6 = await p.evaluate(() => ({
+    noTabs: !document.querySelector('#scheduleRoot [data-testid="site-tabs"]') && !document.querySelector('#scheduleRoot .og-tabs'),
+    shown: document.querySelector('#scheduleRoot [data-testid="site-select"]').innerText.trim(),
+    crumbAll: !document.querySelector('[data-testid=shell-crumb]'),
+    site: [...clients].sort((a, b) => (a.name || '').localeCompare(b.name || ''))[0],
+    names: [...clients].map(c => c.name).sort((a, b) => (a || '').localeCompare(b || '')),
+  }));
+  await p.click('#scheduleRoot [data-testid="site-select"]'); await p.waitForSelector('[role="option"]');
+  sc6.opts = await p.evaluate(() => [...document.querySelectorAll('[role="option"]')].map(o => o.innerText.trim()));
+  await p.click('[role="option"]:has-text("' + sc6.site.name + '")'); await sleep(150);
+  Object.assign(sc6, await p.evaluate(id => ({
+    filtered: selectedClientId === id,
+    crumbSite: !document.querySelector('[data-testid=shell-crumb]') && document.querySelector('#scheduleRoot [data-testid="site-select"]').innerText.trim(),
+  }), sc6.site.id));
+  await p.click('#scheduleRoot [data-testid="site-select"]'); await p.click('[role="option"]:has-text("All sites")'); await sleep(150);
+  sc6.back = await p.evaluate(() => selectedClientId === null && document.querySelector('#scheduleRoot [data-testid="site-select"]').innerText.trim() === 'All sites');
+  ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.noTabs && sc6.shown === 'All sites'
+    && sc6.opts.join() === ['All sites', ...sc6.names].join() && sc6.filtered && sc6.back
+    && sc6.crumbAll && sc6.crumbSite === sc6.site.name,
+    'schedule: glass arrows, one site select (All sites, then the sites by name) filters (the pick shown in the select, no breadcrumb), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
   await p.evaluate(() => { workers.find(w => isActiveWorker(w)).schedule = JSON.parse(window.__keepSched); render(); });
   await p.evaluate(async () => { localStorage.setItem('workersView', 'cards'); switchTab('workers'); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
@@ -1922,6 +1931,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });
   await p.click('[data-testid="workers-transfer"]');
+  await p.waitForSelector('#transferNo');
+  ok(await p.evaluate(() => !document.querySelector('[data-testid="transfer-pick"]')), 'transfer: a firm\'s own admin gets no list of the other firms\' workers — only the number field');
   await p.fill('#transferNo', '039337423');
   await p.click('[data-testid="transfer-send"]');
   await p.waitForSelector('[data-testid="transfer-sent"]', {timeout: 20000});
@@ -2596,18 +2607,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wa.phones === '972501234567,972501234567,972501234567,' && /^https:\/\/wa\.me\/972527654321\?text=Hi .+, you have not punched in today \(shift 00:01 · /.test(wa.defLink), 'WhatsApp: the phone in international form, the default message ' + JSON.stringify(wa));
   ok(wa.field && wa.saved === 'Hello {first name}, shift at {start} · {site}' && wa.bellActs === 'Call,WhatsApp' && wa.sheetBtn && /^https:\/\/wa\.me\/972527654321\?text=Hello \S+, shift at 00:01 · /.test(wa.link),
     'WhatsApp: the firm template saved in the firm form; Call + WhatsApp on a no-punch notice (bell and notices sheet) open wa.me with it ' + JSON.stringify(wa));
-  // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
+  // Worker list header (owner, 2026-10-26): Workers lit in the menu (no breadcrumb), no Active / Vacation / Pending tabs (the filters do that),
+  // one create button — its main part scans a new worker, its menu also adds one by hand.
   const wh = await p.evaluate(async () => {
     const wait = ms => new Promise(res => setTimeout(res, ms));
     switchTab('workers'); await wait(50);
     const crumb = () => document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim();
-    const chips = () => [...document.querySelectorAll('#workersRoot [data-testid="workers-chips"] button')].map(b => b.dataset.key + ':' + b.innerText.trim()).join();
-    const tabs = () => [...document.querySelectorAll('#workersRoot #workersTabs button')], r = {tabs: tabs().map(b => b.textContent).join(), count: crumb()};
-    tabs()[1].click(); await wait(50); r.vac = chips() === 'status:On vacation' && tabs()[1].classList.contains('on'); r.crumbVac = crumb();
-    tabs()[1].click(); await wait(50); r.cleared = chips() === '' && !tabs().some(b => b.classList.contains('on'));
-    tabs()[2].click(); await wait(50); r.pending = chips() === 'docs:Documents incomplete'; tabs()[2].click(); await wait(50);
-    const scan = document.querySelector('#workersRoot [data-testid="workers-scan"]');
-    r.scan = !!scan && /Scan passport/.test(scan.textContent) && scan.classList.contains('og-btn') && !!document.querySelector('#workersRoot [data-testid="workers-new"].og-new');
+    const r = {count: crumb(), noTabs: !document.querySelector('#workersRoot #workersTabs') && !document.querySelector('#workersRoot .og-tabs')};
+    const main = document.querySelector('#workersRoot [data-testid="workers-create"] [data-testid="workers-new"]');
+    r.create = !!main && main.classList.contains('og-new') && main.innerText.trim() === 'New worker'
+      && !!document.querySelector('#workersRoot [data-testid="workers-create"] [data-testid="workers-new-more"]')
+      && !document.querySelector('#workersRoot [data-testid="workers-scan"]')
+      && document.querySelectorAll('#workersRoot [data-testid="workers-head"] .og-new').length === 2; // the button and its menu arrow, one button
+    // The main part runs the scan (startNewScan, stubbed here so no camera opens).
+    const keep = Object.getOwnPropertyDescriptor(window, 'startNewScan'); let scans = 0;
+    Object.defineProperty(window, 'startNewScan', {value: () => { scans++; }, configurable: true, writable: true});
+    main.click(); await wait(50);
+    Object.defineProperty(window, 'startNewScan', keep);
+    r.scan = scans === 1 && !document.getElementById('workerOverlay').classList.contains('open');
     // Filters: hidden until the button, its count, the open state kept on this device
     const fb = document.querySelector('#workersRoot [data-testid="workers-filters-btn"]');
     r.filtersHidden = !document.querySelector('#workersRoot [data-testid="workers-filters"]');
@@ -2616,8 +2633,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     fb.click(); await wait(50);
     return r;
   });
-  ok(wh.tabs === 'Active,Vacation,Pending' && wh.count === 'Workers' && wh.vac && wh.crumbVac === 'Workers' && wh.cleared && wh.pending && wh.scan && wh.filtersHidden && wh.filtersOpen,
-    'workers: Workers lit in the menu (no breadcrumb), New and a glass Scan passport, tabs Active / Vacation / Pending set the filters (a chip each), the Filters open on their button ' + JSON.stringify(wh));
+  // The menu: Scan passport and Enter by hand — the second opens the worker window, empty.
+  await p.click('#workersRoot [data-testid="workers-new-more"]'); await p.waitForSelector('[role="menuitem"]');
+  wh.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Enter by hand")');
+  wh.byHand = await waitFor(p, () => document.getElementById('workerOverlay').classList.contains('open'), 3000);
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); }); await sleep(200);
+  ok(wh.count === 'Workers' && wh.noTabs && wh.create && wh.scan && wh.menu === 'Scan passport,Enter by hand' && wh.byHand && wh.filtersHidden && wh.filtersOpen,
+    'workers: Workers lit in the menu (no breadcrumb), no status tabs, one create button (New worker scans; its menu: Scan passport, Enter by hand — the worker window), the Filters open on their button ' + JSON.stringify(wh));
   // Workers filters (stage 6c-1): a filter picked in its select shows as a chip; Group by client draws a section per
   // site; the list view is a table on a computer — a tap on a row opens the worker card.
   await p.evaluate(() => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-filters-btn"]').click(); });
@@ -2974,6 +2997,30 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sum = await p.evaluate(() => [...document.querySelectorAll('#adminRoot [data-testid="payable-row"]')].map(r => r.innerText.replace(/\s+/g, ' ')).join(' | '));
   ok(/Firm Two Hours \(this week\): 2\.0h ₪200/.test(sum), 'summary: Firm Two pays 2h × its own client rate 100 = ₪200 ' + sum);
   ok(await p.evaluate(() => clients.length === 2 && clients[0].id === 'c1'), 'summary: the loaded firm\'s clients are back');
+  // From another firm, as a super-admin (owner, 2026-10-26): the worker is picked from a list — the other firms' workers
+  // with an ID / passport, a search on top (name or ID), five in view at a time — and fills the number sent.
+  await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
+  await p.evaluate(() => { switchTab('workers'); });
+  await p.click('#workersRoot [data-testid="workers-transfer"]');
+  await p.waitForSelector('[data-testid="transfer-pick"] #transferPick:not([disabled])', {timeout: 20000});
+  await p.click('#transferPick'); await p.waitForSelector('[cmdk-item]');
+  const tp = await p.evaluate(() => {
+    const list = document.querySelector('[cmdk-list]');
+    return {items: [...document.querySelectorAll('[cmdk-item]')].map(i => i.innerText.replace(/\s+/g, ' ').trim()).join('|'),
+      rows: list.style.maxHeight, search: !!document.querySelector('[cmdk-input]')};
+  });
+  await p.fill('[cmdk-input]', '0393'); await sleep(150);
+  tp.found = await p.evaluate(() => [...document.querySelectorAll('[cmdk-item]')].map(i => i.innerText.replace(/\s+/g, ' ').trim()).join('|'));
+  await p.fill('[cmdk-input]', 'nobody-here'); await sleep(150);
+  tp.none = await p.evaluate(() => document.querySelectorAll('[cmdk-item]').length === 0);
+  await p.fill('[cmdk-input]', 'Other'); await sleep(150);
+  await p.click('[cmdk-item]:has-text("Other")'); await sleep(150);
+  tp.number = await p.evaluate(() => document.getElementById('transferNo').value);
+  await p.keyboard.press('Escape'); await sleep(300);
+  await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
+  await fetch('http://127.0.0.1:5055/transferCleanup', {method: 'POST'});
+  ok(/^Other Firm Two · 039337423$/.test(tp.items) && tp.rows === '190px' && tp.search && tp.found === tp.items && tp.none && tp.number === '039337423',
+    'transfer (super-admin): the other firms\' workers in a list with a search (name / ID), five rows in view, a pick fills the number ' + JSON.stringify(tp));
   // Permission templates: the super-admin's Users section lists the one set of every firm; it creates and edits them.
   await p.evaluate(() => { switchTab('admin'); switchAdminPane('users'); });
   await p.waitForSelector('#adminRoot [data-testid="template-row"][data-tid="client"]');

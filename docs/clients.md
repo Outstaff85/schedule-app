@@ -60,7 +60,7 @@ React since stage 8e-3, drawn into the page's `#mapPickModal`; the page opens th
 - Save Punch (a worker and a time are required) builds the punch `{id: Date.now(), workerId, workerName, type, time, date (DD/MM/YYYY from the date field's own parts, so the same day as `ts` in any time zone), ts, site, clientId, dist:null, gpsVerified:false, manual:true, notes, gpsWarnings:['Manual entry by manager']}` and hands it to `ManagerBridge.addPunch` → `addManualPunch`: added to the local punch log and sent to Firestore with `gsSavePunch()` (see [app-core.md](app-core.md)), the window closes with a toast, Today / Admin redraw.
 ## Where clients are used elsewhere
 
-- **Schedule site filter:** the Schedule tab's site tabs filter the roster by client (`selectedClientId`, `ManagerBridge.setClient` → `filterByClient`).
+- **Schedule site filter:** the Schedule tab's site select filters the roster by client (`selectedClientId`, `ManagerBridge.setClient` → `filterByClient`).
 - **Workers:** assigned with the chip picker in the worker modal ([workers.md](workers.md)).
 - **Pay and billing:** `effectiveRates()` and `clientBillPay()`, and the Accounting rate matrix and "Billable by client" table ([accounting.md](accounting.md)).
 - **Punch page:** the geofence ([punch.md](punch.md)).

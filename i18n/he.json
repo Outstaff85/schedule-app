@@ -1668,7 +1668,7 @@
   "The scan search failed — tap the field to try again": "החיפוש בסריקה נכשל — הקישו על השדה כדי לנסות שוב",
   "ID and scans": "תעודה וסריקות",
   "Other documents": "מסמכים נוספים",
-  "The signed copy, as stored":"העותק החתום, כפי שנשמר",
+  "The signed copy, as stored": "העותק החתום, כפי שנשמר",
   "A preview, marked as not signed": "טיוטה, מסומנת כלא חתומה",
   "Nothing to add": "אין מה לצרף",
   "Left out for this login: it may hold pay": "לא נכלל בכניסה זו: ייתכן שיש בו שכר",
@@ -1679,5 +1679,9 @@
   "Download data: {0} pages": "הורדת הנתונים: {0} עמודים",
   "the contract was left out: it may hold pay": "החוזה לא נכלל: ייתכן שיש בו שכר",
   "{0} files could not be added": "לא ניתן היה לצרף {0} קבצים",
-  "One PDF: a summary page first, then the parts ticked below.": "קובץ PDF אחד: קודם עמוד סיכום, ואחריו החלקים המסומנים למטה."
+  "One PDF: a summary page first, then the parts ticked below.": "קובץ PDF אחד: קודם עמוד סיכום, ואחריו החלקים המסומנים למטה.",
+  "Scan a passport / ID": "סריקת דרכון / תעודת זהות",
+  "More ways to add a worker": "דרכים נוספות להוספת עובד",
+  "Choose a worker": "בחירת עובד",
+  "Search: name or ID / passport": "חיפוש: שם או ת.ז. / דרכון"
 }

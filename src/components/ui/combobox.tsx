@@ -1,5 +1,5 @@
 // Combobox: a select with a search (a worker, a client, a supplier): Popover +
-// Command. The chosen item has a green tick and the gradient line on its left,
+// Command; `rows` caps how many items show at once (the rest scroll). The chosen item has a green tick and the gradient line on its left,
 // like the language sheet.
 import * as React from 'react';
 import { IconCheck, IconSelector } from '@tabler/icons-react';
@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@
 
 export type ComboboxOption = { value: string; label: string; hint?: string };
 
-function Combobox({ options, value, onChange, placeholder, searchPlaceholder, emptyText, className, id, disabled }: {
+function Combobox({ options, value, onChange, placeholder, searchPlaceholder, emptyText, className, id, disabled, rows }: {
   options: ComboboxOption[];
   value?: string;
   onChange: (v: string) => void;
@@ -20,6 +20,8 @@ function Combobox({ options, value, onChange, placeholder, searchPlaceholder, em
   className?: string;
   id?: string;
   disabled?: boolean;
+  /** at most this many items in view at once, the rest by scrolling (default: the list's 280px) */
+  rows?: number;
 }) {
   const [open, setOpen] = React.useState(false);
   const chosen = options.find(o => o.value === value);
@@ -34,7 +36,7 @@ function Combobox({ options, value, onChange, placeholder, searchPlaceholder, em
       <PopoverContent className="w-(--radix-popover-trigger-width) min-w-60 p-2" align="start" tail={false}>
         <Command filter={(value, search) => (value.toLowerCase().includes(search.trim().toLowerCase()) ? 1 : 0)}>
           <CommandInput placeholder={searchPlaceholder || tr('Search')} />
-          <CommandList>
+          <CommandList style={rows ? { maxHeight: rows * 38 } : undefined}>
             <CommandEmpty>{emptyText || tr('Nothing found')}</CommandEmpty>
             {options.map(o => (
               <CommandItem
