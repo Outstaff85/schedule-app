@@ -388,7 +388,7 @@ async function scanner(browser) {
   // the still screens: a page opened large, the corner editor
   ok(await visible(p, '[data-testid=scanner-page] [data-testid=page-view]') && await p.locator('[data-testid=scanner-page] [data-testid=kind-chip]').count() === 6, 'scanner: the gallery\'s second screen is a page opened large');
   ok(await visible(p, '[data-testid=scanner-fix] [data-testid=corner-editor]'), 'scanner: the gallery\'s third screen is the corner editor');
-  // a whole side moves (owner's template pair 6): the bottom side by its middle bar, the right side by its line
+  // a whole side moves (owner's template pair 6): the right side by its middle bar, the bottom side by its line
   // itself away from its handles — both corners of each side together, along the side's normal; the others stay
   const sides = await p.evaluate(() => {
     const c = document.querySelector('[data-testid=scanner-fix] [data-testid=corner-canvas]'), b = c.getBoundingClientRect();
