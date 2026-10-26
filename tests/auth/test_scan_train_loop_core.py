@@ -25,7 +25,11 @@ T = datetime.datetime
 
 
 def test_imports_without_parts_two_and_three():
-    assert "loop_deliver" not in sys.modules and "loop_report" not in sys.modules
+    # in a fresh interpreter: another test file of the suite may have imported loop_deliver already
+    import subprocess
+    code = "import sys; sys.path.insert(0, sys.argv[1]); import loop; print('loop_deliver' in sys.modules, 'loop_report' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code, str(HERE)], cwd=str(HERE), capture_output=True, text=True, check=True).stdout
+    assert out.split() == ["False", "False"]
     src = (HERE / "loop.py").read_text(encoding="utf-8")
     head = src.split("\ndef ", 1)[0]
     assert "import loop_deliver" not in head and "import loop_report" not in head
@@ -570,3 +574,13 @@ def test_no_russian():
     import re
     for p in (HERE / "loop.py", pathlib.Path(__file__)):
         assert not re.search("[\u0400-\u04FF]", p.read_text(encoding="utf-8"))
+
+
+def test_a_smoke_run_draws_small_trains_one_epoch_and_keeps_its_own_state(monkeypatch):
+    assert loop.size("edges") == loop.EDGES_COUNT and loop.epochs() == []
+    assert loop.state_path().name == "state.json"
+    monkeypatch.setattr(loop, "SMOKE", True)
+    assert loop.size("edges") == loop.SMOKE_SIZES["edges"] and loop.size("mrz") == loop.SMOKE_SIZES["mrz"]
+    assert loop.epochs() == ["--epochs", "1"]
+    assert loop.state_path().name == "state-smoke.json"   # the calendar's state.json is never touched by a smoke run
+    assert loop.state_path(True).name == "state-dry-run.json"

@@ -357,6 +357,8 @@ Once the automatic cycle is installed (→ 7), steps 1–3 run by themselves at 
 python loop.py run              # what the task runs every night at 02:00
 python loop.py run --now        # a manual run, any time: no calendar, no night window
 python loop.py run --dry-run    # every step printed, none run (state-dry-run.json; no report sent)
+python loop.py run --smoke      # the whole cycle for real on minimal data (SMOKE_SIZES, 1 epoch): publish.py --dry-run only,
+                                # no report sent, its own state-smoke.json (the calendar untouched) — a check of the cycle itself
 python loop.py status           # the cycle in progress (or the last one) and the next night a new one may start
 python loop.py stop             # the running step stops at its next safe point; the cycle is paused
 python loop.py install          # the scheduled task; uninstall removes it

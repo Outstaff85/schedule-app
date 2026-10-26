@@ -5,6 +5,8 @@ run by itself on the owner's PC, at night only, from "is it due?" to a version g
                                   # allows and something is due, else the unfinished one goes on; stops at 08:00
   python loop.py run --now        # a manual run, any time: no calendar, no night window
   python loop.py run --dry-run    # the plan only: every step printed, nothing run, state.json and the report untouched
+  python loop.py run --smoke      # the whole cycle for real on minimal data (small sets, 1 epoch): publish.py only --dry-run,
+                                  # no report sent, its own state-smoke.json (the calendar untouched) — a check of the cycle
   python loop.py status           # the cycle in progress (or the last one) and the next night a new one may start
   python loop.py stop             # the running step stops at its next safe point; the cycle is "paused"
   python loop.py install          # the Windows scheduled task "OutStaff scan-train loop" (02:00 daily, wakes the PC)
@@ -63,6 +65,17 @@ TRIES = 2                              # a step that failed this many times in a
 POLL_S = 5
 EDGES_COUNT, CUTS_COUNT = 8000, 2000   # the made-up sets of a cycle (the skill's sizes)
 MRZ_LINES, HE_FIELDS, HE_CHECK = 100000, 3000, 300
+SMOKE = False   # run --smoke: the cycle's sizes and epochs cut to a check of the cycle itself (SMOKE_SIZES, 1 epoch)
+SMOKE_SIZES = {"edges": 200, "cuts": 100, "mrz": 1200, "he": 50, "he_check": 20}
+
+
+def size(kind):
+    return SMOKE_SIZES[kind] if SMOKE else {"edges": EDGES_COUNT, "cuts": CUTS_COUNT, "mrz": MRZ_LINES, "he": HE_FIELDS,
+                                            "he_check": HE_CHECK}[kind]
+
+
+def epochs():
+    return ["--epochs", "1"] if SMOKE else []
 OPTIONAL = {"bg_fetch", "tune", "ablate"}   # part 4's: skipped when this gen does not have the command
 CREATE_NO_WINDOW, BELOW_NORMAL = 0x08000000, 0x00004000
 
@@ -229,10 +242,10 @@ STEPS = [
     ("bg_fetch", None, lambda c: _gen("bg", "fetch"), None),
     ("bg_pull", None, lambda c: _gen("bg", "pull"), None),
     ("tune", None, lambda c: _gen("tune"), None),
-    ("build_edges", "edges", lambda c: _gen("build", "--model", "edges", "--count", str(EDGES_COUNT), "--seed", str(c["seed"]),
+    ("build_edges", "edges", lambda c: _gen("build", "--model", "edges", "--count", str(size("edges")), "--seed", str(c["seed"]),
                                             "--out", str(run_dir(c, "edges")), *focus_args()), None),
     ("qa_edges", "edges", lambda c: _gen("qa", "--run", str(run_dir(c, "edges"))), None),
-    ("build_cuts", None, lambda c: _gen("build", "--model", "doctype,mrz,he,face", "--count", str(CUTS_COUNT), "--seed", str(c["seed"]),
+    ("build_cuts", None, lambda c: _gen("build", "--model", "doctype,mrz,he,face", "--count", str(size("cuts")), "--seed", str(c["seed"]),
                                         "--out", str(run_dir(c, "cuts")), *focus_args()), None),
     ("qa_cuts", None, lambda c: _gen("qa", "--run", str(run_dir(c, "cuts"))), None),
     ("exam_e2", "edges", lambda c: None if _newest("gen/runs/edges-*-exam") else _gen("build", "--model", "edges", "--exam"), None),
@@ -241,25 +254,25 @@ STEPS = [
     ("exam_cuts", None, lambda c: None if _exam_cuts() else _gen("build", "--model", "doctype,mrz,he,face", "--exam",
                                                                 "--editor-cap", "1", "--bad-share", "1"), None),
     ("mrz_lines", "mrz", lambda c: None if _exists(work() / "synth" / "mrz" / "labels.tsv")
-     else ["synth_lines.py", "mrz", "--count", str(MRZ_LINES)], None),
+     else ["synth_lines.py", "mrz", "--count", str(size("mrz"))], None),
     ("he_fields", "he", lambda c: None if _exists(work() / "synth" / "he-fields" / "train" / "labels.tsv")
-     else ["synth_fields.py", "--count", str(HE_FIELDS)], None),
+     else ["synth_fields.py", "--count", str(size("he"))], None),
     ("he_check", "he", lambda c: None if _exists(work() / "synth" / "he-fields" / "check" / "labels.tsv")
-     else ["synth_fields.py", "--count", str(HE_CHECK), "--check"], None),
+     else ["synth_fields.py", "--count", str(size("he_check")), "--check"], None),
     ("mix_edges", "edges", lambda c: _gen("mix", "--model", "edges", "--synth-run", str(run_dir(c, "edges")), *hard_args()), None),
     ("mix_doctype", "doctype", lambda c: _gen("mix", "--model", "doctype", "--synth-run", str(run_dir(c, "cuts")), *hard_args()), None),
     # the two edges models a step each: train.py --resume resumes every model it is given, and one not started yet
     # would be "resumed" from an older run's checkpoint (refused: other data) — so each goes on alone
-    ("train_edges_lite", "edges", lambda c: ["train.py", "--from-mix", str(work() / "models" / "edges"), "--models", "edges-lite.onnx"],
+    ("train_edges_lite", "edges", lambda c: ["train.py", "--from-mix", str(work() / "models" / "edges"), "--models", "edges-lite.onnx", *epochs()],
      ("checkpoints/edges-lite.onnx.pt",)),
-    ("train_edges", "edges", lambda c: ["train.py", "--from-mix", str(work() / "models" / "edges"), "--models", "edges.onnx"],
+    ("train_edges", "edges", lambda c: ["train.py", "--from-mix", str(work() / "models" / "edges"), "--models", "edges.onnx", *epochs()],
      ("checkpoints/edges.onnx.pt",)),
-    ("train_doctype", "doctype", lambda c: ["train_doctypes.py", "--from-mix", str(work() / "models" / "doctype")],
+    ("train_doctype", "doctype", lambda c: ["train_doctypes.py", "--from-mix", str(work() / "models" / "doctype"), *epochs()],
      ("checkpoints/doctype-lite.onnx.pt",)),
-    ("train_mrz", "mrz", lambda c: ["train_mrz.py", *(["--midv"] if _midv("train") else []), "--phone-run", str(run_dir(c, "cuts"))],
+    ("train_mrz", "mrz", lambda c: ["train_mrz.py", *(["--midv"] if _midv("train") else []), "--phone-run", str(run_dir(c, "cuts")), *epochs()],
      ("mrz-ckpt/last.pt",)),
     ("train_he", "he", lambda c: ["train_he.py", "--phone-run", str(run_dir(c, "cuts")),
-                                  *(["--phone-exam", str(_exam_cuts())] if _exam_cuts() else [])], ("checkpoints/he.pt",)),
+                                  *(["--phone-exam", str(_exam_cuts())] if _exam_cuts() else []), *epochs()], ("checkpoints/he.pt",)),
     ("exam_edges", "edges", lambda c: ["exam.py", "--no-browser"], None),
     ("exam_doctype", "doctype", lambda c: ["exam_doctypes.py"], None),
     ("exam_mrz", "mrz", lambda c: ["exam_mrz.py", *([] if _midv("exam") else ["--no-midv"])], None),
@@ -408,7 +421,7 @@ def child(argv):
 # ---------- state, lock ----------
 
 def state_path(dry=False):
-    return loop_dir() / ("state-dry-run.json" if dry else "state.json")
+    return loop_dir() / ("state-dry-run.json" if dry else "state-smoke.json" if SMOKE else "state.json")
 
 
 def read_state(dry=False):
@@ -516,13 +529,13 @@ class Loop:
     # parts 2 and 3, imported only when used (loop.py imports without them)
     def deliver(self, models, report):
         if self._deliver:
-            return self._deliver(models, report, self.dry)
+            return self._deliver(models, report, self.dry or SMOKE)
         import loop_deliver
-        return loop_deliver.deliver(models, report, self.dry)
+        return loop_deliver.deliver(models, report, self.dry or SMOKE)   # a smoke run never publishes
 
     def send(self, report):
-        if self.dry:
-            self.out("report (dry run, not sent): " + json.dumps(report, default=str))
+        if self.dry or SMOKE:
+            self.out("report (" + ("smoke run" if SMOKE else "dry run") + ", not sent): " + json.dumps(report, default=str))
             return
         try:
             if self._send:
@@ -852,6 +865,8 @@ def main(argv=None):
     r = sub.add_parser("run", help="a night's run (the scheduled task): a new cycle when due, else the unfinished one goes on")
     r.add_argument("--now", action="store_true", help="a manual run: no calendar, no night window")
     r.add_argument("--dry-run", action="store_true", help="print every step, run none (state-dry-run.json; no report sent)")
+    r.add_argument("--smoke", action="store_true", help="the whole cycle for real on minimal data (a check of the cycle): "
+                   "small sets, 1 epoch, publish.py --dry-run only, no report sent, state-smoke.json; implies --now")
     sub.add_parser("status", help="the cycle in progress or the last one, and the next night a new one may start")
     sub.add_parser("stop", help="stop the running step at its next safe point (the cycle is paused)")
     sub.add_parser("install", help=f"register the Windows scheduled task \"{TASK}\"")
@@ -866,6 +881,10 @@ def main(argv=None):
     if a.command == "uninstall":
         return uninstall()
     home.gentle()
+    global SMOKE
+    SMOKE = bool(getattr(a, "smoke", False))
+    if SMOKE:
+        a.now = True
     lock = Lock(loop_dir() / ("loop-dry-run.lock" if a.dry_run else "loop.lock"))
     if not lock.acquire():
         print("another loop is running — nothing done")
