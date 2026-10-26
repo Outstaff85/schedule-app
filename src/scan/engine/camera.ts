@@ -1,10 +1,12 @@
-// The scanner's engine (docs/scan-plan.md → S9): the camera — the back camera at up to 1920×1080 and 30
-// frames a second (owner, 2026-10-24: thirty and no faster choice; the lab asked the same), shown in the
-// screen's video. Ported from the lab's former plain page (startCam, stop).
+// The scanner's engine (docs/scan-plan.md → S9): the camera — the back camera at up to 1280×720 and 30
+// frames a second (owner, 2026-10-24: thirty and no faster choice; owner, 2026-10-26: 1280×720, not
+// 1920×1080 — the full size lagged and lowered the frame rate, and the frame is enough), shown in the screen's
+// video. The shot is cut from this same video frame (shot.ts freeze), so a page is cut at this size too.
+// Ported from the lab's former plain page (startCam, stop).
 
-/** What the camera is asked for: the back camera, 1920×1080 and 30 frames a second when it can. */
+/** What the camera is asked for: the back camera, 1280×720 and 30 frames a second when it can. */
 export const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
-  video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+  video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
   audio: false,
 };
 
@@ -74,7 +76,7 @@ export class Camera {
 
   get on(): boolean { return !!this.stream; }
 
-  /** The camera's picture size, "1920×1080" (the lab's figure), or '' before it plays. */
+  /** The camera's picture size, "1280×720" (the lab's figure), or '' before it plays. */
   resolution(): string {
     const v = this.video;
     return v && v.videoWidth ? v.videoWidth + '×' + v.videoHeight : '';

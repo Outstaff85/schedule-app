@@ -8,7 +8,7 @@
 //   s.on('status', st => …); s.on('frame', (quad, ok) => …); s.on('page', p => …); s.on('figures', f => …);
 //   await s.startCamera(video); … s.snap(); s.setAuto(false); s.wake(); s.sleep(); s.stop();
 //   await s.pick(files); s.keep(pageId); s.retake(pageId); s.remove(pageId); await s.fix(pageId, pts);
-//   s.hold(); s.resume();  // a page opened large over the camera: the live frame paused under it
+//   s.hold(); s.resume();  // a page opened large over the camera (or the corner editor): the live frame paused under it
 //   s.inject(page);  // a page given back from outside (the site's page turned upright); inject(page, true): a new one (the browser tests)
 //   s.done();  // or s.discard(): the window closed without Done
 //
@@ -33,11 +33,15 @@
 // the scan: a shot or pick in work stops, the pages are let go (the session outlives a closed window on the
 // site); discard() sends nothing (the site's window closed without Done).
 //
-// After a shot the live frame waits (as the lab's did until Looks good / Retake): wake() starts it again from a
-// fresh frame — so Auto does not take the same document again; not while a pick is in work (its pictures are
-// on the screen and the models busy with them). hold() pauses a running live frame (its follow, Auto) while a
-// page is opened large over the camera — a shot or a pick in work goes on — and resume() starts it again from
-// a fresh frame; a wake, a sleep or a pick in between leaves it to them.
+// After a shot the live frame goes on by itself once the shot has settled (owner, 2026-10-26: no Next to tap) —
+// from a fresh frame, and Auto does not take the same document again: the documents the shot took are kept
+// (steady.ts Taken, carried by the follow) and Auto waits until they have left the frame or the scene changed
+// enough (another document found away from them); the status line says `taken` meanwhile. The shutter is never
+// held by it (a person may take the same document again on purpose). After a pick the picked picture stays on
+// the screen PICK_SHOWN_MS, then the live frame goes on too. hold() pauses the live frame (its follow, Auto)
+// while a page is opened large over the camera or its corners are being fixed — a shot or a pick in work goes
+// on, and the live frame does not go on after it while held — and resume() lets it go on again from a fresh
+// frame. wake() starts it at once and forgets the documents taken (Retake: the same document again).
 //
 // keepCanvases (the lab, which has no Done and keeps its session for the page's life): only the newest that
 // many pages read keep their full-size pixels; an older one is given again `released` (a 1×1 canvas: its
@@ -57,6 +61,8 @@ import type { ScanSurface } from './surface';
 import type { Corners, Pt, Quad } from './types';
 
 const copy = (q: Quad): Quad => q.map(p => p.slice() as Pt);
+/** How long a picked picture stays on the screen after its pick, before the live frame goes on (ms). */
+export const PICK_SHOWN_MS = 1500;
 const errText = (e: unknown): string => String((e as Error)?.message || e);
 
 /** The picked picture being worked on: its pick (batch), its place in the pick (n, 1-based), its url, which file
@@ -97,9 +103,11 @@ export function defaultSessionEnv(): SessionEnv {
   };
 }
 
-/** The status line for a live answer: the steady frame's hint as the session's key. */
-export function liveStatus(raw: Corners, res: SteadyAnswer): SessionStatus {
+/** The status line for a live answer: the steady frame's hint as the session's key — `taken` in place of the
+ *  countdown and found while a document the last shot took is still in front of the camera (Auto waits). */
+export function liveStatus(raw: Corners, res: SteadyAnswer, waiting = false): SessionStatus {
   const h = hintOf(raw, res);
+  if (waiting && (h.key === 'hold' || h.key === 'found')) return { key: 'taken' };
   switch (h.key) {
     case 'no_document': return { key: 'finding' };
     case 'corners_out': return { key: 'corners_out', n: h.n };
@@ -151,7 +159,7 @@ export class ScanSession {
   private relive = false;
   /** The pages Looks good was tapped on, by attempt: the attempt is kept once every page of it still shown is. */
   private looked = new Map<string, Set<string>>();
-  /** hold() paused a running live frame: resume() starts it again. */
+  /** The screen holds the live frame (a page opened large over it): it does not go on until resume(). */
   private held = false;
   /** Picks in work (wake waits for them). */
   private picking = 0;
@@ -260,8 +268,20 @@ export class ScanSession {
   }
 
   private answer(raw: Corners, res: SteadyAnswer): void {
-    this.emit('status', liveStatus(raw, res));
-    if (this.auto && autoShot(res)) void this.snap();
+    // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
+    // it on does not take it again)
+    const waiting = this.live.taken.still(raw);
+    this.emit('status', liveStatus(raw, res, waiting && this.auto));
+    if (this.auto && !waiting && autoShot(res)) void this.snap();
+  }
+
+  /** The live frame goes on by itself (after a shot settled, a pick, a page closed) from a fresh frame — unless
+   *  something still holds it: a page opened over it, a shot or a pick in work, the camera off or put away, or it
+   *  runs already. */
+  private goOn(): void {
+    if (this.held || this.picking || this.shotInWork || this.live.running || !this.camera.on || !this.live.video) return;
+    this.live.clearFrame();
+    this.live.start();
   }
 
   /** Take the shot (Capture, or Auto): the number of documents it held, 0 when nothing was taken — and 0 with
@@ -269,9 +289,10 @@ export class ScanSession {
   async snap(): Promise<number> {
     if (this.shotInWork) return 0;
     this.shotInWork = true;
-    let id = -1;
+    let id = -1, got = 0;
+    let rec = null as ShotRecord | null;
     try {
-      return await takeShot({
+      got = await takeShot({
         engine: () => this.engines.engine,
         live: this.live,
         readers: this.readers,
@@ -282,7 +303,7 @@ export class ScanSession {
         modelVersion: () => this.modelVersion(),
         begin: () => (id = ++this.shotId),
         batch: () => ++this.batchSeq,
-        recorded: (r, frame) => { this.attempts.newAttempt(frame, r.w, r.h, r.input, { id: r.attempt, way: r.way, model: r.model, src: r }); },
+        recorded: (r, frame) => { rec = r; this.attempts.newAttempt(frame, r.w, r.h, r.input, { id: r.attempt, way: r.way, model: r.model, src: r }); },
         current: () => this.shotId,
         has: pageId => this.pages.has(pageId),
         status: s => this.emit('status', s),
@@ -290,6 +311,7 @@ export class ScanSession {
         captured: ms => { this.captureMs = ms; this.emitFigures(); },
         log: this.log,
       });
+      return got;
     } catch (e) {
       this.log.err('Shot failed: ' + ((e as Error)?.message || e));
       this.emit('status', { key: 'shot_failed' });
@@ -305,6 +327,12 @@ export class ScanSession {
       // every page it had so far deleted while it looked for more: retaken unless it found another since
       const gone = [...this.retakeAfterShot].filter(([, shot]) => shot === id).map(([a]) => a);
       for (const a of gone) { this.retakeAfterShot.delete(a); this.retakeIfEmpty(a); }
+      // settled and not taken over: Auto waits for the documents it took to go, and the live frame goes on
+      if (id >= 0 && id === this.shotId) {
+        const r = rec as ShotRecord | null;
+        if (got && r && r.edgesModel) this.live.taken.set([r.edgesModel, ...r.edgesMore]);
+        this.goOn();
+      }
     }
   }
 
@@ -329,7 +357,7 @@ export class ScanSession {
   private async runSwitch(patch: Partial<EngineSettings>, seq: number): Promise<void> {
     const was = this.live.running || this.relive;
     this.relive = was;
-    this.live.running = false; this.held = false;
+    this.live.running = false;
     this.shotId++; this.shotInWork = false;
     while (this.live.inFlight) await this.sleepMs(30);
     this.live.forget();
@@ -343,17 +371,19 @@ export class ScanSession {
     if (stale && seq === this.switchSeq) await this.engines.ensureSession().catch(e => this.log.log('Model: ' + errText(e)));
     if (seq !== this.switchSeq) return;
     this.relive = false;
-    if (was && this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
+    if (was && !this.held && this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
   }
 
-  /** The live frame starts again from a fresh frame (after a shot: the lab's Looks good / Retake); with the
-   *  camera put away by sleep(), it starts again on the video it was shown in. */
+  /** The live frame starts again at once from a fresh frame, the documents taken forgotten (the lab's Retake: the
+   *  same document may be taken again; a shot in work is dropped); with the camera put away by sleep(), it starts
+   *  again on the video it was shown in. */
   wake(video?: VideoLike): void {
     if (this.picking) return;  // a pick in work: its pictures are on the screen, the models busy with them
     this.held = false;
     this.shotId++;
     this.shotInWork = false;
     this.live.clearFrame();
+    this.live.taken.clear();
     const v = video || this.camera.video;
     if (this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
     else if (v) void this.startCamera(v);
@@ -367,25 +397,23 @@ export class ScanSession {
     this.shotInWork = false;
     this.camGen++;
     this.live.running = false;
+    this.live.taken.clear();
     this.camera.stop();
     this.live.hide();
   }
 
   /** The live frame paused while a page is opened large over the camera (its follow and Auto with it); a shot
-   *  or a pick in work goes on. Nothing when the live frame is not running (it waits after a shot already). */
+   *  or a pick in work goes on, and the live frame does not go on after it until resume(). */
   hold(): void {
-    if (!this.live.running) return;
-    this.live.running = false;
     this.held = true;
+    this.live.running = false;
   }
-  /** The live frame started again (from a fresh frame) after hold() — unless a wake, a sleep or a pick took
-   *  over meanwhile, or the camera is off. */
+  /** The live frame goes on again (from a fresh frame) after hold() — once no shot or pick is in work (it goes
+   *  on when they settle), and only with the camera on. */
   resume(): void {
     if (!this.held) return;
     this.held = false;
-    if (!this.camera.on || !this.live.video || this.picking) return;
-    this.live.clearFrame();
-    this.live.start();
+    this.goOn();
   }
 
   /** Looks good on a page: its attempt kept (sent at once in the lab, held for Done on the site) once every page
@@ -527,13 +555,14 @@ export class ScanSession {
   }
 
   /** Picked photos and PDFs (files.ts): a batch of its own, worked on the lanes, its pages given in the files'
-   *  order; the pages before it are left as they are (nothing is marked looked at). The live frame waits for
-   *  wake() after it, as after a shot. Returns how many pages it gave. */
+   *  order; the pages before it are left as they are (nothing is marked looked at). The live frame goes on by
+   *  itself PICK_SHOWN_MS after the last pick in work settled (the picked picture shown that long). Returns how
+   *  many pages it gave. */
   pick(files: PickFile[]): Promise<number> {
     this.picking++;
     const run = this.pickChain.then(() => this.runPick(files));
     this.pickChain = run.catch(() => 0);
-    const settled = (): void => { this.picking--; };
+    const settled = (): void => { if (!--this.picking) this.env.setTimeout(() => this.goOn(), PICK_SHOWN_MS); };
     run.then(settled, settled);
     return run;
   }
@@ -542,7 +571,7 @@ export class ScanSession {
     if (!files.length) return 0;
     const batch = ++this.batchSeq, t0 = this.env.now(), log = this.log, gen = this.scanGen;
     this.shotId++; this.shotInWork = false;  // a shot in work is dropped (the lab's pick bumped it too)
-    this.live.running = false; this.held = false;
+    this.live.running = false;
     while (this.live.inFlight) await this.sleepMs(10);
     try { await this.engines.ensureCap(); }
     catch (e) { log.err('Accurate model: ' + errText(e)); this.emit('status', { key: 'pick_failed' }); return 0; }

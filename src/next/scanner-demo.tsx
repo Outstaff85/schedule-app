@@ -1,9 +1,11 @@
 // /next — the full-screen scanner (docs/scan-plan.md → S9, src/scan/ui/) on a fake session (no camera, no
-// models): the three screens at a phone's size (390×844) — the camera with the status line, the pages' strip,
-// the bar and Done; a page opened large with its type chips; the corner editor — and the scanner in a full
-// Window (with a page its host kept from before, first in the strip). The first screen plays: the status
-// changes, the shutter takes a page, a thumbnail opens it, Fix corners / Delete / Looks good work; what it asked
-// the session for is listed under it.
+// models): the screens at a phone's size (390×844), the owner's template "6 · Camera — selected photo grows" —
+// the camera with the status line on top, Auto at the top right, the hint under the frame, the photos' strip with
+// their % and the bar (Photos/PDF, the shutter, Done); a photo grown in the strip (its type and %, Edit corners,
+// Delete); a page opened large with its type chips; the corner editor — and the scanner in a full Window (with a
+// page its host kept from before, first in the strip). The first screen plays: the status changes, the shutter
+// takes a page, a tap grows a photo, its type opens it, Fix corners / Delete / Looks good work; what it asked the
+// session for is listed under it.
 import * as React from 'react';
 import { toast } from 'sonner';
 import { IconScan } from '@tabler/icons-react';
@@ -38,6 +40,7 @@ export function ScannerDemo() {
   const live = React.useMemo(() => new FakeScanSession(3), []);
   const pageSession = React.useMemo(() => new FakeScanSession(3), []);
   const fixSession = React.useMemo(() => new FakeScanSession(3), []);
+  const growSession = React.useMemo(() => new FakeScanSession(3), []);
   const [full, setFull] = React.useState(false);
   const fullSession = React.useMemo(() => (full ? new FakeScanSession(2) : null), [full]);
   // the full window's host keeps a page from before (a contract on the phone): first in the strip, counted in Done
@@ -48,10 +51,13 @@ export function ScannerDemo() {
   const done = (n: number) => toast(tr('{n} pages done', { n }));
   return (
     <section data-testid="demo-scanner" className="grid gap-4">
-      <p className="text-[13px] text-muted-foreground">{tr('The scanner on a fake session: no camera and no models. The first screen plays — the shutter takes a page, a thumbnail opens it.')}</p>
+      <p className="text-[13px] text-muted-foreground">{tr('The scanner on a fake session: no camera and no models. The first screen plays — the shutter takes a page, a tap on a photo makes it grow, its type opens it.')}</p>
       <div className="flex flex-wrap gap-5">
         <PhoneFrame id="scanner-camera" label={tr('Camera')}>
           <ScannerScreen mode="site" session={live} onDone={p => { done(p.length); }} />
+        </PhoneFrame>
+        <PhoneFrame id="scanner-grow" label={tr('A photo grown in the strip')}>
+          <ScannerScreen mode="site" session={growSession} camera={false} initial={{ page: 'p1', grow: true }} />
         </PhoneFrame>
         <PhoneFrame id="scanner-page" label={tr('A page opened large')}>
           <ScannerScreen mode="site" session={pageSession} camera={false} initial={{ page: 'p1' }} />

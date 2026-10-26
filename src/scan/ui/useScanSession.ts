@@ -27,11 +27,10 @@
 // the two, and ends the scan only once they are read; while it waits for their types it reads them as they are
 // then (current(): a type picked or given meanwhile counts).
 //
-// After a shot or a pick the live frame waits (the session's rule: Auto does not take the same document
-// twice): `paused` is on, the shutter then starts the live frame again (session.wake), and so does Looks good —
-// but not while a shot is still in work (refining, looking for more documents: `busy`) or a pick is (`picking`):
-// the shutter is off then, and Looks good leaves the live frame waiting, so the shot finishes and gives its
-// other documents.
+// After a shot or a pick the live frame goes on by itself (the session's rule, owner 2026-10-26: no Next to tap;
+// Auto does not take the same document twice — it waits until the document taken has left the frame). The
+// shutter is off while a shot is still in work (refining, looking for more documents: `busy`) or a pick is
+// (`picking`), so the shot finishes and gives its other documents.
 import * as React from 'react';
 import { finishUndo, undoDelete } from '@/components/shared/undo';
 import { tr } from '@/lib/i18n';
@@ -107,10 +106,8 @@ export interface UiPage {
  *  model's. */
 export const kindOf = (p: UiPage): Doctype | null => p.chosen || (p.typed !== undefined ? p.typed : p.model);
 
-/** The statuses after which the live frame waits for wake() (a shot taken, a pick in work or over). */
-const PAUSING = new Set<SessionStatus['key']>(['captured', 'picture_finding', 'picture_cutting', 'picked', 'pick_failed', 'pick_open_failed']);
-/** The statuses of a live frame running again. */
-const LIVE = new Set<SessionStatus['key']>(['finding', 'corners_out', 'edges_unclear', 'hold', 'shot_failed', 'camera_failed', 'stopped']);
+/** The statuses of a live frame running again (the picked picture shown gives way to the camera). */
+const LIVE = new Set<SessionStatus['key']>(['finding', 'corners_out', 'edges_unclear', 'hold', 'taken', 'shot_failed', 'camera_failed', 'stopped']);
 /** The statuses of a shot still in work (cut, being refined, looking for more documents); any other ends it. */
 const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
 
@@ -119,14 +116,12 @@ export interface ScanScreenState {
   /** The picked picture being worked on (shown in place of the camera), null on the camera. */
   preview: PreviewEvent | null;
   auto: boolean;
-  paused: boolean;
   /** A shot is still in work (refining, looking for more documents). */
   busy: boolean;
   /** A pick is in work. */
   picking: boolean;
   setAuto(on: boolean): void;
-  /** The shutter: the shot — or, while the live frame waits after one, the live frame again; nothing while a
-   *  shot or a pick is in work. */
+  /** The shutter: the shot; nothing while a shot or a pick is in work. */
   shutter(): void;
   pick(files: PickFile[]): void;
   choose(id: string, kind: Doctype): void;
@@ -158,7 +153,7 @@ function without<T>(m: Record<string, T>, id: string): Record<string, T> {
   return n;
 }
 
-export function useScanSession(session: ScanSessionLike, video: React.RefObject<HTMLVideoElement | null>, opts: {
+export function useScanSession(session: ScanSessionLike, opts: {
   /** the pages the host keeps already, shown before this session's */
   kept?: KeptPage[];
   /** a kept page deleted (its Undo over) */
@@ -179,11 +174,10 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
   const [hidden, setHidden] = React.useState<Record<string, true>>({});
   const [preview, setPreview] = React.useState<PreviewEvent | null>(null);
   const [auto, setAutoState] = React.useState(session.auto);
-  const [paused, setPaused] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [picking, setPicking] = React.useState(0);
   // what is drawn now, so a status event that changes nothing draws nothing
-  const now = React.useRef({ paused: false, busy: false, preview: false });
+  const now = React.useRef({ busy: false, preview: false });
   // the pages deleted whose Undo is still offered (told when the snack ends, or at Done, or when the screen goes)
   const pendingDeletes = React.useRef(new Set<string>());
   // each page's canvas its URL was made from, and the URLs to let go
@@ -194,7 +188,6 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
   const keptIds = React.useRef(new Set<string>());
   keptIds.current = new Set((kept || []).map(k => k.id));
 
-  const putPaused = React.useCallback((v: boolean) => { if (now.current.paused !== v) { now.current.paused = v; setPaused(v); } }, []);
   const putBusy = React.useCallback((v: boolean) => { if (now.current.busy !== v) { now.current.busy = v; setBusy(v); } }, []);
   const clearPreview = React.useCallback(() => { if (now.current.preview) { now.current.preview = false; setPreview(null); } }, []);
 
@@ -231,10 +224,9 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
       session.on('status', s => {
         if (s.key === 'captured') playShutter();   // the shot's click and buzz (shutter.ts)
         putBusy(SHOT_WORK.has(s.key));
-        if (PAUSING.has(s.key)) putPaused(true);
-        else if (LIVE.has(s.key)) { putPaused(false); clearPreview(); }
+        if (LIVE.has(s.key)) clearPreview();
       }),
-      session.on('preview', p => { now.current.preview = true; setPreview(p); putPaused(true); }),
+      session.on('preview', p => { now.current.preview = true; setPreview(p); }),
       session.on('page', p => {
         setShots(m => ({ ...m, [p.id]: p }));
         setOrder(o => (o.includes(p.id) ? o : [...o, p.id]));
@@ -260,7 +252,7 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
       urls.current.clear();
       madeFrom.current.clear();
     };
-  }, [session, putBusy, putPaused, clearPreview]);
+  }, [session, putBusy, clearPreview]);
 
   const pages = React.useMemo(() => {
     const before = (kept || []).filter(k => !hidden[k.id]).map((k): UiPage => (
@@ -277,20 +269,14 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
   const pagesNow = React.useRef(pages);
   pagesNow.current = pages;
 
-  const wake = React.useCallback(() => {
-    putPaused(false);
-    clearPreview();
-    session.wake(video.current || undefined);
-  }, [session, video, putPaused, clearPreview]);
-
   const working = busy || picking > 0;
 
   return {
-    pages, preview, auto, paused, busy, picking: picking > 0,
+    pages, preview, auto, busy, picking: picking > 0,
     setAuto: on => { session.setAuto(on); setAutoState(on); },
     shutter: () => {
       if (working) return;  // the shot finishes first (its other documents), the pick too
-      if (paused) wake(); else void session.snap();
+      void session.snap();
     },
     pick: files => {
       if (!files.length) return;
@@ -303,7 +289,6 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
       if (keptIds.current.has(id)) return;
       session.keep(id);
       setLooked(m => ({ ...m, [id]: true }));
-      if (paused && !working) wake();
     },
     remove: id => {
       pendingDeletes.current.add(id);

@@ -79,3 +79,47 @@ export function hintOf(raw: Corners, res: SteadyAnswer): SteadyHint {
   if (res.steady != null && res.steady < STEADY_MS) return { key: 'hold', seconds: (STEADY_MS - res.steady) / 1000 };
   return { key: 'found' };
 }
+
+/** After a shot Auto does not take the same document again (owner, 2026-10-26: the live frame goes on by itself
+ *  after a shot, with no Next to tap): the frames of the documents the shot took are kept, carried along by the
+ *  follow as the phone moves, and Auto waits while the model still finds one of them. It takes again once they
+ *  have left the frame — no document found for AWAY_MS (longer than the sticky frame outlives a miss, MISS_MS, so
+ *  the next document starts a fresh countdown; a missed frame or a glare is shorter) — or the scene
+ *  changed enough: the document found lies AWAY_MOVE (a share of the picture, its farthest corner) from every
+ *  one taken (another document, or the same moved well away). A document only partly in the frame (a corner
+ *  out) has not left it. The shutter is never held by this. */
+export const AWAY_MS = MISS_MS + 100, AWAY_MOVE = 0.12;
+
+export class Taken {
+  /** The frames of the documents of the last shot (empty: nothing to wait for). */
+  quads: Quad[] = [];
+  private missSince = 0;
+  private readonly now: () => number;
+
+  constructor(now: () => number = () => performance.now()) { this.now = now; }
+
+  /** A shot settled: these are the documents it took. */
+  set(quads: Quad[]): void { this.quads = quads.map(q => q.map(p => p.slice() as Pt)); this.missSince = 0; }
+  clear(): void { this.quads = []; this.missSince = 0; }
+  get waiting(): boolean { return this.quads.length > 0; }
+
+  /** The follow moved the picture by apply on one camera frame: the documents taken move with it. */
+  follow(apply: (q: Quad) => Quad): void { if (this.quads.length) this.quads = this.quads.map(apply); }
+
+  /** One model answer (raw, carried to now): whether a document taken is still in front of the camera — Auto
+   *  waits while it is. */
+  still(raw: Corners): boolean {
+    if (!this.quads.length) return false;
+    const now = this.now(), missing = raw.pts.filter(p => !p).length;
+    if (missing === 4) {
+      if (!this.missSince) this.missSince = now;
+      if (now - this.missSince >= AWAY_MS) { this.clear(); return false; }
+      return true;
+    }
+    this.missSince = 0;
+    if (missing) return true;  // partly out of the frame: not gone
+    const pts = raw.pts as Quad;
+    if (this.quads.every(q => farthest(pts, q) > AWAY_MOVE)) { this.clear(); return false; }
+    return true;
+  }
+}
