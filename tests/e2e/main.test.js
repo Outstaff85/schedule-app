@@ -1923,7 +1923,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const closed = !document.querySelector('[data-testid="download-window"]');
     let kept = null; try { kept = JSON.parse(localStorage.getItem('downloadDataPicks')); } catch (e) {}
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
-    return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /50/.test(first), closed, kept};
+    return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /(?<![\d:./])50(?![\d:./])/.test(first), closed, kept};   // the rate 50 alone — not part of a phone number (050…), a date or a time
   });
   ok(d5.pages === d5h.pages && d5h.type === 'application/pdf' && /^summary,form101-(signed|stored|preview)/.test(d5h.parts) && /contract/.test(d5h.parts)
     && d5h.body.include.form101 === true && d5h.body.include.contract === true && d5h.body.include.docs === false && d5h.body.form101 && 'employer' in d5h.body.form101
