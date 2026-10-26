@@ -146,7 +146,7 @@ provideBridge({
     };
   },
   setWeek:(ymd?: any)=>{ weekStart=getSundayOfWeek(new Date(ymd+'T00:00')); render(); },
-  setClient:(id?: any)=>filterByClient(id||null),
+  setClient:(id?: any)=>{ filterByClient(id||null); setTimeout(renderCrumb, 0); },
   // "Every <weekday>" writes the roster and drops a change of that date; "Only <date>" writes w.dateShifts.
   setShift(wid?: any,ymd?: any,scope?: any,sh?: any){
     const w=workers.find((x?: any)=>x.id===wid); if(!w) return;

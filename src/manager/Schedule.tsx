@@ -43,6 +43,8 @@ const fmtDate = (d: Date) => d.toLocaleDateString(uiLocale(), { day: '2-digit', 
 const fmtReqDate = (ymd: string) => ymdDate(ymd).toLocaleDateString(uiLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
 const shiftsText = (n: number) => (n === 1 ? tr('1 shift') : tr('{n} shifts', { n }));
 const REPEAT_WEEKS = [1, 2, 3, 4, 6, 8];
+/** The site select's "All sites" (a Select item cannot have an empty value). */
+const ALL_SITES = '*';
 // The open workers stay open while the app is open (the page's __schedOpen).
 const opened = new Set<string>();
 
@@ -339,9 +341,15 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
       </div>
 
       {snap.clients.length > 0 && (
-        <div className="og-tabs" data-testid="site-tabs">
-          <button type="button" className={cn(!snap.clientId && 'on')} onClick={() => api.setClient(null)}>{tr('All sites')}</button>
-          {snap.clients.map(c => <button key={c.id} type="button" className={cn(snap.clientId === c.id && 'on')} onClick={() => api.setClient(c.id)}>{c.name}</button>)}
+        // One select for the sites (owner, 2026-10-26: a row of tabs breaks with many clients); the breadcrumb reads data-crumb.
+        <div className="mb-3 max-w-xs" data-testid="site-pick" data-crumb={snap.clients.find(c => c.id === snap.clientId)?.name || tr('All sites')}>
+          <Select value={snap.clientId || ALL_SITES} onValueChange={v => api.setClient(v === ALL_SITES ? null : v)}>
+            <SelectTrigger data-testid="site-select" aria-label={tr('Site')} className={cn('w-full', snap.clientId && 'border-info text-info')}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SITES}>{tr('All sites')}</SelectItem>
+              {[...snap.clients].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       )}
 

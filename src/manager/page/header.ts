@@ -42,14 +42,16 @@ export function renderGreeting(){
   setFrame({greet:{name:String(s.fullName||s.username||''), wx:__wx&&__wxTid===fsTenantId()?__wx:null}}); loadWeather();
 }
 // The breadcrumb plate (V7): the section's icon in its colour, its name and
-// count, then the open sub-tab (Accounting › Salary, Admin › Users, Schedule ›
-// All sites); the page itself shows no title.
+// count, then the open sub-tab (Accounting › Salary, Admin › Users) or the
+// picked item of a select marked data-crumb (Schedule › All sites); the page
+// itself shows no title.
 const CRUMB_COUNT: Record<string, () => number>={workers:()=>workers.filter(isActiveWorker).length, clients:()=>clients.length, suppliers:()=>suppliers.length};
 export function renderCrumb(){
   const sec=byId('section'+currentTab.charAt(0).toUpperCase()+currentTab.slice(1));
   const on=sec&&[...sec.querySelectorAll('.og-tabs button.on')].find((b?: any)=>b.offsetParent!==null);
   let sub='';
   if(on){ const c=on.cloneNode(true); c.querySelectorAll('i, svg, .tab-n, .tab-badge').forEach((x?: any)=>x.remove()); sub=c.textContent.trim(); }
+  else { const pick: any=sec&&[...sec.querySelectorAll('[data-crumb]')].find((b?: any)=>b.offsetParent!==null); if(pick) sub=String(pick.dataset.crumb||''); }
   const n=CRUMB_COUNT[currentTab]?CRUMB_COUNT[currentTab]():undefined;
   setFrame({crumb:{count:n, sub:sub||undefined}});
 }

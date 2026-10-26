@@ -1,6 +1,6 @@
 // The Workers tab's list rules (docs/workers.md → Workers tab), as the old
 // renderWorkersPage had them: the filters (all combine), the search, the
-// tabs, the grouping and a plate's bar colour.
+// grouping and a plate's bar colour.
 import type { WorkerRow, WorkersSnapshot } from './bridge';
 
 export type StatusFilter = '' | 'active' | 'vacation' | 'fired' | 'all';
@@ -32,15 +32,6 @@ export function filterWorkers(list: WorkerRow[], f: Filters, clients: WorkersSna
     if (f.docs === 'expiring' && !w.docExpiring) return false;
     return matches(w, f.q, clients);
   });
-}
-
-/** The tabs over the list: Active, Vacation, Pending (documents incomplete); a tap on the open one clears it. */
-export type WorkersTab = 'active' | 'vacation' | 'pending';
-export const tabOn = (k: WorkersTab, f: Filters) =>
-  k === 'pending' ? !f.status && f.docs === 'incomplete' : f.status === k && !f.docs;
-export function pickTab(k: WorkersTab, f: Filters): Filters {
-  if (tabOn(k, f)) return { ...f, status: '', docs: '' };
-  return k === 'pending' ? { ...f, status: '', docs: 'incomplete' } : { ...f, status: k, docs: '' };
 }
 
 export type Group = { key: string; name: string; color?: string; items: WorkerRow[] };
