@@ -48,10 +48,11 @@ export function CornerEditor({ frame, start, onApply, onCancel }: {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, r.width, r.height);
     g.drawImage(frame, ox, oy, iw, ih);
-    // the photo outside the quad dimmed
+    // the photo outside the quad dimmed — half the sheet's strength, so the document's real edge, often outside
+    // the quad the model found, still shows through
     g.beginPath(); g.rect(ox, oy, iw, ih);
     q.forEach((p, i) => (i ? g.lineTo(...S(p)) : g.moveTo(...S(p))));
-    g.closePath(); g.fillStyle = dim; g.fill('evenodd');
+    g.closePath(); g.fillStyle = dim; g.globalAlpha = 0.5; g.fill('evenodd'); g.globalAlpha = 1;
     // the 3×3 grid
     g.strokeStyle = line; g.lineWidth = 1; g.globalAlpha = 0.6;
     g.beginPath();
