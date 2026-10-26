@@ -416,6 +416,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.screenshot({path: SP + '/t3-accounting.png'}).catch(()=>{});
   ok(salPhone.kind === 'cards' && salPhone.open, 'salary on a phone: plates, a tap opens the details under the plate ' + JSON.stringify(salPhone));
   ok(salPhone.tabsFit && salPhone.navCentred, 'accounting on a phone: Salary / Billing / Approvals / Alerts fit whole on one line, the period centred ' + JSON.stringify(salPhone));
+  // A narrow phone (360px): the tabs still fit whole, Alerts not cut.
+  await p.setViewportSize({width: 360, height: 800}); await sleep(300);
+  const tabs360 = await p.evaluate(() => { const tabs = document.getElementById('accTabs'), tb = tabs.getBoundingClientRect(), btns = [...tabs.querySelectorAll('button')];
+    return {fit: tabs.scrollWidth <= tabs.clientWidth + 1 && btns.every(b => { const x = b.getBoundingClientRect(); return x.left >= tb.left - 1 && x.right <= tb.right + 1 && Math.abs(x.top - btns[0].getBoundingClientRect().top) < 1; }),
+      sw: tabs.scrollWidth, cw: tabs.clientWidth}; });
+  ok(tabs360.fit, 'accounting at 360px: every tab fits whole on one line ' + JSON.stringify(tabs360));
+  await p.setViewportSize({width: 390, height: 844}); await sleep(300);
   await p.evaluate(async () => { await ManagerBridge.setPeriod('week'); });
   await p.setViewportSize({width: 1280, height: 720});
   ok(t3.stats === 4 && t3.row && t3.lines >= 1, 'today: four figure tiles in one row on a phone and colored plates ' + JSON.stringify(t3));

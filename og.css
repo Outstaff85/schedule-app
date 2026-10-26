@@ -279,13 +279,17 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
   .og-tabs button.on{background:var(--glass-hi);border-color:rgba(var(--tint),.35);color:var(--ink);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
   .og-tabs button.on::after{content:'';position:absolute;left:14px;right:14px;bottom:-1px;height:3px;border-radius:2px;background:var(--uline);background-size:300% 100%;box-shadow:0 0 10px rgba(34,211,238,.55);animation:og-flow 2.4s linear infinite,og-pop .5s cubic-bezier(.34,1.56,.64,1)}
   .og-tabs .tab-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:700}
-  /* .og-tabs.og-fit: the tabs centred on one line and, on a phone, tighter so every tab fits whole (the line still scrolls if a language is longer). */
+  /* .og-tabs.og-fit: the tabs centred on one line and, on a phone, tighter (tighter still up to 400px, e.g. 360px phones) so every tab fits whole (the line still scrolls if a language is longer). */
   .og-tabs.og-fit{justify-content:safe center}
   @media (max-width:700px){
     .og-tabs.og-fit{gap:2px}
     .og-tabs.og-fit button{padding:0 9px}
     .og-tabs.og-fit button.on::after{left:9px;right:9px}
     .og-tabs.og-fit .tab-n{margin-left:2px}
+  }
+  @media (max-width:400px){
+    .og-tabs.og-fit button{padding:0 7px}
+    .og-tabs.og-fit button.on::after{left:7px;right:7px}
   }
 
 /* ── Part 7: the light theme's looks that no token carries (docs/redesign.md →
