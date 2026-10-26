@@ -1,7 +1,8 @@
 // The Accounting tab of the manager app (docs/accounting.md → Accounting tab),
-// drawn in React inside the old page (stage 6e): the period (‹ select ›), the
-// figures (hidden while Salary shows its own), the tabs Salary / Billing /
-// Approvals / Alerts, and for an HR its
+// drawn in React inside the old page (stage 6e). One layout for every section,
+// so nothing moves when the tab changes: the period (‹ select ›, centred), the
+// tabs Salary / Billing / Approvals / Alerts on one line, then the same figures (Pay, Travel ₪, Total Pay, To
+// approve — or an HR's My commission) over every row, and for an HR its
 // reduced view (its own workers' Salary with its commission; Hours approval
 // with an hours tick). Every figure comes from accounting.ts over
 // src/lib/payroll.ts; the pay window, the worker card and the client window
@@ -30,7 +31,7 @@ import { Window } from '@/components/shared/window';
 import { HoursReview } from '@/hours-review/HoursReview';
 import type { AccountingSnapshot, ManagerBridge, PendingBatch } from './bridge';
 import {
-  accAlerts, accFigures, approvalDocsShown, clientBillable, clientBillDetail, daysByHand, hourApprovalSummary, hrCommission, hrPayable,
+  accAlerts, approvalDocsShown, clientBillable, clientBillDetail, daysByHand, hourApprovalSummary, hrCommission, hrPayable,
   HOUR_KINDS, HOUR_STATES, periodOptions, rateShown, salaryEntriesFor, salaryMonthOf, salaryTotals, searchRows, supplierPayable, supplierPayDetail,
   type AccAlert, type AccData, type ApprovalDoc, type SalaryEntry,
 } from './accounting';
@@ -124,14 +125,14 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
   if (!snap.ready) return <Loading />;
   const simple = snap.payOnly;
   const shown: AccTab = simple ? 'salary' : tab;
-  const figs = accFigures(calc.entries);
+  const tot = salaryTotals(calc.entries);
   const opts = periodOptions(tr, snap.locale);
   const idx = opts.findIndex(o => o[0] === snap.period);
   const step = (dir: number) => { const i = Math.max(0, Math.min(opts.length - 1, idx + (dir < 0 ? 1 : -1))); if (i !== idx) void api.setPeriod(opts[i][0]); };
 
   return (
     <div data-testid="accounting" data-tab={shown} data-view={simple ? 'pay' : 'full'}>
-      <div className="mb-3 flex items-center gap-1.5" data-testid="acc-period-nav">
+      <div className="mb-3 flex items-center justify-center gap-1.5" data-testid="acc-period-nav">
         <Button size="icon" aria-label={tr('Earlier')} title={tr('Earlier')} data-testid="acc-earlier" onClick={() => step(-1)}><IconChevronLeft /></Button>
         <Select value={snap.period} onValueChange={p => void api.setPeriod(p)}>
           <SelectTrigger data-testid="acc-period" className="w-auto min-w-[150px] font-semibold text-info"><SelectValue /></SelectTrigger>
@@ -139,15 +140,8 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
         </Select>
         <Button size="icon" aria-label={tr('Later')} title={tr('Later')} data-testid="acc-later" onClick={() => step(1)}><IconChevronRight /></Button>
       </div>
-      {shown !== 'salary' && (
-        <div data-testid="acc-figs"><Figures className="min-[701px]:max-w-[520px]" onPick={k => { if (k === 'wait') setTab('approvals'); }} items={[
-          { key: 'hours', label: tr('Hours'), value: String(Math.round(figs.hours)), color: 'var(--info)' },
-          { key: 'pay', label: tr('Payroll'), value: '₪' + Math.round(Number(figs.payroll) || 0).toLocaleString('en-US') },
-          ...(simple ? [] : [{ key: 'wait', label: tr('To approve'), value: String(snap.waiting), color: snap.waiting ? 'var(--warn)' : 'var(--ink)' }]),
-        ]} /></div>
-      )}
       {!simple && (
-        <div className="og-tabs" id="accTabs" data-testid="acc-tabs">
+        <div className="og-tabs og-fit" id="accTabs" data-testid="acc-tabs">
           {TABS.map(([k, l]) => (
             <button key={k} type="button" data-k={k} className={cn(shown === k && 'on')} onClick={() => setTab(k)}>
               {tr(l)}
@@ -157,6 +151,14 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
           ))}
         </div>
       )}
+      <div data-testid="acc-figs"><Figures onPick={simple ? undefined : k => { if (k === 'wait') setTab('approvals'); }} items={[
+        { key: 'pay', label: tr('Pay'), value: money2(tot.pay) },
+        { key: 'travel', label: tr('Travel ₪'), value: tot.travel > 0 ? money2(tot.travel) : '—' },
+        { key: 'total', label: tr('Total Pay'), value: money2(tot.total) },
+        ...(simple
+          ? [{ key: 'com', label: tr('My commission'), value: '₪' + calc.entries.reduce((t, e) => t + hrCommission(calc.d, e, snap.me.commissionRate, snap.me.commissionDayRate), 0).toFixed(0) }]
+          : [{ key: 'wait', label: tr('To approve'), value: String(snap.waiting), color: snap.waiting ? 'var(--warn)' : 'var(--ink)' }]),
+      ]} /></div>
       {shown === 'salary' && <SalaryTab snap={snap} api={api} d={calc.d} entries={calc.entries} onHelp={setHelp} onExport={() => setExporting(true)} />}
       {shown === 'billing' && <BillingTab snap={snap} api={api} d={calc.d} entries={calc.entries} byClient={calc.res.byClient} onHelp={setHelp} onDetail={setDetail} />}
       {shown === 'approvals' && <ApprovalsTab snap={snap} api={api} d={calc.d} onHelp={setHelp} />}
@@ -291,13 +293,6 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
         {!entries.length ? (
           <div data-testid="sal-empty" className="rounded-[14px] border border-dashed border-white/20 px-3 py-4 text-center text-[13px] text-ink-2">{tr('No punch data for this period')}</div>
         ) : <>
-          <div data-testid="sal-sum"><Figures items={[
-            { key: 'h', label: tr('Hours'), value: hrs1(tot.hours), color: 'var(--info)' },
-            { key: 'p', label: tr('Pay'), value: money2(tot.pay) },
-            { key: 't', label: tr('Travel ₪'), value: tot.travel > 0 ? money2(tot.travel) : '—' },
-            { key: 'g', label: tr('Total Pay'), value: money2(tot.total) },
-            ...(payOnly ? [{ key: 'c', label: tr('My commission'), value: '₪' + rows.reduce((t, e) => t + myCom(e), 0).toFixed(0) }] : []),
-          ]} /></div>
           {!payOnly && <div className="mb-2 flex" data-testid="sal-select"><SelectHead sel={sel} /></div>}
           <DataTable data-testid="sal-table" columns={columns} data={rows} rowId={e => String(e.workerId)} footer={footer} card={plate}
             empty={<div className="py-4 text-center text-[13px] text-ink-2">{tr('No workers found')}</div>}
