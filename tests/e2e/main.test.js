@@ -2484,6 +2484,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.offShown = sw2.getAttribute('aria-checked') === 'false' && /Inactive/.test(document.querySelector('#workerCardModal [data-testid="card-status-word"]').textContent);
     sw2.click(); await wait(400);
     r.flipOn = w.status === 'active';
+    // an HR whose name this login does not know reads "Assigned", never "—"; without a city the street takes the first line
+    w.hrId = 'e2e-unknown-hr'; w.city = ''; closeModal('workerCardOverlay'); openWorkerCard(0); await wait(400);
+    const kv2 = k => document.querySelector('#workerCardModal [data-kv="' + k + '"]').innerText.split('\n').map(x => x.trim()).filter(Boolean).join('|');
+    r.hrUnknown = kv2('hr'); r.noCity = kv2('address');
     Object.keys(w).forEach(k => { if(!(k in keep)) delete w[k]; }); Object.assign(w, keep); render(); autoSave();
     openWorkerCard(0); await wait(300);
     return r;
@@ -2497,8 +2501,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wcd.topRight && wcd.vacationOn && wcd.pills && wcd.flipOff && wcd.offShown && wcd.flipOn,
     'worker card: one Active ↔ Inactive switch at the top right — a stored vacation shows on and stays, a flip sets Inactive, again Active ' + JSON.stringify(wcd));
   ok(wcd.noMonth && wcd.supplier === 'Supplier —' && wcd.hr === 'HR —' && wcd.address.join('|') === 'Address|Haifa|Herzl 5'
-    && wcd.order === 'id,clients,hr,supplier,start,shift,address,income,docs-status,hours-sent' && wcd.equal && wcd.pairs && wcd.docsWide && wcd.saved,
-    'worker card: no month\'s hours at the top; the boxes in equal pairs (ID | Clients, HR | Supplier — "—" when none, Start date | Shift today, Address city over street | Income, Documents | Hours sent); the documents box across both with + Add; Saved at the bottom left, Edit and ⋮ at the right ' + JSON.stringify(wcd));
+    && wcd.order === 'id,clients,hr,supplier,start,shift,address,income,docs-status,hours-sent' && wcd.equal && wcd.pairs && wcd.docsWide && wcd.saved
+    && wcd.hrUnknown === 'HR|Assigned' && wcd.noCity === 'Address|Herzl 5',
+    'worker card: no month\'s hours at the top; the boxes in equal pairs (ID | Clients, HR | Supplier — "—" when none, an HR not known to the login "Assigned", Start date | Shift today, Address city over street, the street alone on the first line without a city | Income, Documents | Hours sent); the documents box across both with + Add; Saved at the bottom left, Edit and ⋮ at the right ' + JSON.stringify(wcd));
   ok(/Upload hours/.test(wcd.menu) && /Export hours/.test(wcd.menu) && /Download data/.test(wcd.menu) && !/Add document/.test(wcd.menu) && wcd.add,
     'worker card: the hours actions under ⋮; + Add in the documents box opens Add document ' + JSON.stringify({menu: wcd.menu, add: wcd.add}));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.

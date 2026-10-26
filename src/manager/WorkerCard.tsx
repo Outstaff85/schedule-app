@@ -248,11 +248,15 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
         <div className="grid grid-cols-2 gap-2 min-[701px]:gap-2.5" data-testid="card-info">
           <Kv label={tr('ID / Passport')} testid="id">{docId && <span className="font-mono">{docId}</span>}</Kv>
           <Kv label={tr('Clients')} testid="clients">{snap.clients.length ? snap.clients.map((o, i) => <React.Fragment key={o.id}>{i > 0 && ', '}<span style={{ color: o.color }}>{o.name}</span></React.Fragment>) : <span className="text-ink-2">{tr('Not assigned to any object')}</span>}</Kv>
-          <Kv label={tr('HR')} testid="hr">{snap.hr && snap.hr.name && <span style={{ color: snap.hr.color }}>{snap.hr.name}</span>}</Kv>
+          <Kv label={tr('HR')} testid="hr">{snap.hr && (snap.hr.name
+            ? <span style={{ color: snap.hr.color }}>{snap.hr.name}</span>
+            // an HR is set but its name is not known to this login (only the owner / super-admin loads the HR logins)
+            : <span className="text-ink-2">{tr('Assigned')}</span>)}</Kv>
           <Kv label={tr('Supplier')} testid="supplier">{snap.supplier && <span style={{ color: snap.supplier.color }}>{snap.supplier.name}</span>}</Kv>
           <Kv label={tr('Start date')} testid="start">{w.startDate && <span className="font-mono">{fmtDMY(w.startDate)}</span>}</Kv>
           <Kv label={tr('Shift today')} testid="shift">{snap.shiftToday ? <span className="font-mono text-fig">{snap.shiftToday.start}–{snap.shiftToday.end}</span> : <span className="text-warn">{tr('Day off')}</span>}</Kv>
-          <Kv label={tr('Address')} testid="address" sub={street && <span dir="rtl">{street}</span>}>{w.city && <span dir="rtl">{w.city}</span>}</Kv>
+          {/* the city on the first line, the street under it; without a city the street takes the first line */}
+          <Kv label={tr('Address')} testid="address" sub={w.city && street && <span dir="rtl">{street}</span>}>{(w.city || street) && <span dir="rtl">{w.city || street}</span>}</Kv>
           <Kv label={tr('Income')} testid="income">{w.incomeType && INCOME_LABELS[w.incomeType] && <span dir="rtl">{INCOME_LABELS[w.incomeType]}</span>}</Kv>
           <Kv label={tr('Documents')} testid="docs-status">
             {snap.docLevel === 'ok'
