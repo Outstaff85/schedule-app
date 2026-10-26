@@ -34,6 +34,8 @@ import numpy as np
 
 MODEL, CHUNK = "edges", 20
 GENERATOR = "gen.outputs.edges"
+PROCESS_GB = 1.5   # one drawing process at its peak (gen/build.py draw): the background photos decoded and kept (up to 6, ~8 MP
+                   # each) with their mip pyramids, the frame and its pages — a full-size bank ran 14 processes out of memory (2026-10-26)
 SELECT_SEEDS = 100000   # a select run's seeds are SELECT_SEEDS and up, a training or exam run's below: never the same scene
 
 
