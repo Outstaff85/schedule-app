@@ -394,7 +394,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.tabs[0] === 'All sites' && sc6.filtered
     && sc6.crumbAll && sc6.crumbSite,
-    'schedule: glass arrows, site tabs filter (breadcrumb "Schedule › <site>"), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
+    'schedule: glass arrows, site tabs filter (the chosen one lit, no breadcrumb), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
   await p.evaluate(() => { workers.find(w => isActiveWorker(w)).schedule = JSON.parse(window.__keepSched); render(); });
   await p.evaluate(async () => { localStorage.setItem('workersView', 'cards'); switchTab('workers'); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});

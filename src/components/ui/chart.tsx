@@ -2,7 +2,7 @@
 // series its colour as a CSS variable (`--color-<key>`, from `config`), plus a
 // tooltip in the glass menu look (written from the shadcn source; the registry
 // is not reachable from the cloud sessions). Restyled to Odinson Glass: the
-// grid and axes in the hairline / ink-2 tokens, the tooltip on `bg-popover`.
+// grid and axes in the hairline / ink-2 tokens, the tooltip in the menus' glass (`og-glass-menu`).
 import * as React from 'react';
 import * as RechartsPrimitive from 'recharts';
 import { cn } from '@/lib/utils';
