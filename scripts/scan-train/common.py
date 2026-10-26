@@ -134,13 +134,13 @@ def data_file(path, dest):
 
 
 KEPT = ("midv", "midv-mrz", "smartdoc", "mrz-ckpt", "checkpoints",
-        "backgrounds", "backgrounds-own", "occluders", "loop")  # public datasets (midv.py, smartdoc.py), the passport zone reader's weights (train_mrz.py), the other trainings' progress (checkpoint.py) and the background bank with its catalog and cut-outs (gen/backgrounds.py; owner, 2026-10-25: the automatic cycle must not pull and check it again after every no) and the automatic cycle's state, logs and gen mine's kept focus (loop.py: loop/), no worker's data: kept between trainings
+        "backgrounds", "backgrounds-own", "occluders", "loop")  # public datasets (midv.py, smartdoc.py), the passport zone reader's weights (train_mrz.py), the other trainings' progress (checkpoint.py) and the background bank with its catalog and cut-outs (gen/backgrounds.py; owner, 2026-10-25: the automatic cycle must not pull and check it again after every no) and the automatic cycle's own folder (loop/: its state, logs, gen mine's kept focus — loop.py — and the delivery checkout publish.py runs from — loop_deliver.py), no worker's data: kept between trainings
 
 
 def clear_work():
     """Every copy on this PC deleted (the workers' documents, the new models, the made-up photos) —
     but the MIDV and SmartDoc sets, the passport zone reader's weights (mrz-ckpt), the other trainings' progress
-    (checkpoints) and the background bank (KEPT)."""
+    (checkpoints), the background bank and the automatic cycle's folder, loop/ (KEPT)."""
     if not WORK.exists():
         return
     for p in WORK.iterdir():
