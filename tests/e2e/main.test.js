@@ -235,15 +235,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('workers'); await wait(200);
     r.sidebarWorkers = !document.querySelector('.sidebar'); r.crumbWorkers = crumb();
     switchTab('accounting'); setAccTab('salary'); await wait(200);
-    r.crumbAcc = crumb(); r.noRepeat = !shown('#accountingRoot [data-testid=acc-figs]') && shown('#accountingRoot [data-testid=sal-sum]');
+    const accLayout = () => ({tabs: Math.round(box('#accTabs').top), figs: Math.round(box('#accountingRoot [data-testid=acc-figs]').top),
+      labels: [...document.querySelectorAll('#accountingRoot [data-testid=acc-figs] [data-slot=figures] span.truncate')].map(x => x.textContent).join()});
+    r.crumbAcc = crumb(); const lSal = accLayout(); r.noRepeat = !shown('#accountingRoot [data-testid=sal-sum]') && lSal.figs > lSal.tabs;
     setAccTab('billing'); document.body.click(); await wait(100);
-    r.crumbBill = crumb(); r.figsBack = shown('#accountingRoot [data-testid=acc-figs]');
+    r.crumbBill = crumb(); const lBill = accLayout(); r.figsBack = JSON.stringify(lSal) === JSON.stringify(lBill);
+    const pnav = box('[data-testid=acc-period-nav]'), first = box('[data-testid=acc-earlier]'), last = box('[data-testid=acc-later]');
+    r.navCentred = Math.abs((first.left - pnav.left) - (pnav.right - last.right)) < 3;
     setAccTab('salary'); switchTab('dashboard'); await wait(200);
     return r;
   });
   ok(v7.menu && v7.crumbToday === 'Today' && v7.noTitle && v7.center && v7.noSidebarToday && v7.react && v7.width && v7.sidebarWorkers && /^Workers \d+$/.test(v7.crumbWorkers)
-    && v7.crumbAcc === 'Accounting Salary' && v7.noRepeat && v7.crumbBill === 'Accounting Billing' && v7.figsBack,
-    'V7 frame: side menu, breadcrumb with count and sub-tab, date / greeting / weather in the middle, no page titles, no side panel, Accounting figures not repeated on Salary ' + JSON.stringify(v7));
+    && v7.crumbAcc === 'Accounting Salary' && v7.noRepeat && v7.crumbBill === 'Accounting Billing' && v7.figsBack && v7.navCentred,
+    'V7 frame: side menu, breadcrumb with count and sub-tab, date / greeting / weather in the middle, no page titles, no side panel; Accounting: one layout on every section (the tabs, then the same figures, in the same place), the period centred ' + JSON.stringify(v7));
   // Hebrew mirrors the frame only: the menu on the right, the account on the left, the page left to right.
   await p.evaluate(() => setLanguage('he', {save:false})); await waitFor(p, () => I18N_LANG === 'he' && document.documentElement.lang === 'he');
   await sleep(400);
@@ -400,6 +404,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Salary on a phone: the Data Table becomes plates; a tap opens a plate's details under it.
   const salPhone = await p.evaluate(async () => { switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod('all'); await new Promise(res => setTimeout(res, 200));
     const r = {kind: (document.querySelector('#accountingRoot [data-slot=data-table]') || {dataset: {}}).dataset.kind};
+    const tabs = document.getElementById('accTabs'), tb = tabs.getBoundingClientRect(), btns = [...tabs.querySelectorAll('button')];
+    r.tabsFit = tabs.scrollWidth <= tabs.clientWidth + 1 && btns.every(b => { const x = b.getBoundingClientRect(); return x.left >= tb.left - 1 && x.right <= tb.right + 1 && Math.abs(x.top - btns[0].getBoundingClientRect().top) < 1; });
+    const nav = document.querySelector('#accountingRoot [data-testid=acc-period-nav]').getBoundingClientRect(), e0 = document.querySelector('#accountingRoot [data-testid=acc-earlier]').getBoundingClientRect(), e1 = document.querySelector('#accountingRoot [data-testid=acc-later]').getBoundingClientRect();
+    r.navCentred = Math.abs((e0.left - nav.left) - (nav.right - e1.right)) < 3;
     const plate = document.querySelector('#accountingRoot [data-testid=sal-row] .og-plate');
     if (plate) { plate.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, pointerType: 'touch', isPrimary: true})); plate.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, pointerType: 'touch', isPrimary: true})); }
     await new Promise(res => setTimeout(res, 450));
@@ -407,6 +415,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     window.scrollTo(0, 0); document.querySelector('#sectionAccounting').scrollIntoView(); await new Promise(res => setTimeout(res, 300)); return r; });
   await p.screenshot({path: SP + '/t3-accounting.png'}).catch(()=>{});
   ok(salPhone.kind === 'cards' && salPhone.open, 'salary on a phone: plates, a tap opens the details under the plate ' + JSON.stringify(salPhone));
+  ok(salPhone.tabsFit && salPhone.navCentred, 'accounting on a phone: Salary / Billing / Approvals / Alerts fit whole on one line, the period centred ' + JSON.stringify(salPhone));
   await p.evaluate(async () => { await ManagerBridge.setPeriod('week'); });
   await p.setViewportSize({width: 1280, height: 720});
   ok(t3.stats === 4 && t3.row && t3.lines >= 1, 'today: four figure tiles in one row on a phone and colored plates ' + JSON.stringify(t3));
@@ -2273,13 +2282,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       eq(rows.map(r => r.id), F.rows.map(r => r.workerId), period + ' salary rows');
       F.rows.forEach((r, i) => { const d = rows[i] || {};
         eq([d.worker, d.hours, d.days, d.pay, d.travel, d.total], [r.worker, hrs1(r.hours), String(r.days), r.pay > 0 ? money2(r.pay) : '—', r.travel > 0 ? money2(r.travel) : '—', r.total > 0 ? money2(r.total) : '—'], period + ' row ' + r.workerId); });
-      const sum = [...root.querySelectorAll('[data-testid=sal-sum] [data-slot=figures] b')].map(b => b.innerText.trim());
-      if (F.rows.length) eq(sum, [hrs1(F.totals.hours), money2(F.totals.pay), F.totals.travel > 0 ? money2(F.totals.travel) : '—', money2(F.totals.total)], period + ' salary totals');
+      const sum = [...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] b')].slice(0, 3).map(b => b.innerText.trim());
+      eq(sum, [money2(F.totals.pay), F.totals.travel > 0 ? money2(F.totals.travel) : '—', money2(F.totals.total)], period + ' salary figures');
       const foot = [...root.querySelectorAll('[data-testid=sal-table] tfoot td')].map(x => x.innerText.trim());
       if (F.rows.length) eq([foot[1], foot[5], foot[7]], [hrs1(F.totals.hours), money2(F.totals.pay), money2(F.totals.total)], period + ' table totals');
       // The figures on top (shown on the other tabs) and the alerts.
       setAccTab('alerts'); await wait(50);
-      eq([...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] b')].slice(0, 2).map(b => b.innerText.trim()), [String(F.figs.hours), '₪' + F.figs.payroll.toLocaleString('en-US')], period + ' figures');
+      eq([...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] b')].slice(0, 3).map(b => b.innerText.trim()), sum, period + ' figures (the same on every section)');
       eq([...root.querySelectorAll('[data-testid=alert-row]')].map(a => a.innerText.replace(/\s+/g, ' ').trim()), F.alerts.map(a => (a.title + ' ' + a.sub).replace(/\s+/g, ' ').trim()), period + ' alerts');
       // Billing: Payable by supplier (and its detail windows), by HR, Billable by client (and its details).
       setAccTab('billing'); await wait(50);
@@ -2648,7 +2657,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     root.querySelector('[data-testid=acc-later]').click(); await wait(400); r.back = period() === p0 && accPeriod === 'week';
     return r;
   });
-  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.salSelect && ac.salBar && ac.salRows && ac.selOff && ac.stepped && ac.back, 'accounting: period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window; Select exports the ticked worker ' + JSON.stringify(ac));
+  ok(ac.inNav && ac.figs === 'Pay,Travel ₪,Total Pay,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.salSelect && ac.salBar && ac.salRows && ac.selOff && ac.stepped && ac.back, 'accounting: period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window; Select exports the ticked worker ' + JSON.stringify(ac));
   // Worker photos are gone (owner 2026-10-13): an old avatarB64 is dropped after a load and never saved again.
   const ph = await p.evaluate(() => { const w = workers[0]; w.avatarB64 = 'AAAA'; const r = {dropped: dropWorkerPhotos(), gone: !('avatarB64' in w), again: dropWorkerPhotos()}; return r; });
   ok(ph.dropped && ph.gone && !ph.again, 'workers: an old photo is dropped from the record (dropWorkerPhotos) ' + JSON.stringify(ph));
