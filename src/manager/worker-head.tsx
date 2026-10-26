@@ -61,7 +61,7 @@ export function NoticeChipsAll({ notices, onOpen }: { notices: NoticeFull[]; onO
   );
 }
 
-const HOURS_STATUS = {
+export const HOURS_STATUS = {
   pending: ['Sent for review', 'warn', IconClock],
   approved: ['Approved', 'ok', IconCircleCheck],
   rejected: ['Rejected', 'bad', IconCircleX],

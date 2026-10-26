@@ -365,7 +365,7 @@ provideBridge({
     const head=workerHeadOf(w), st=workerDocStatus(w), ex=workerExpiryStatus(w), sh=shiftOn(w,new Date()), b=latestHoursBatch(w.id);
     const sup=suppliers.find((s?: any)=>s.id===w.supplierId);
     return {...head, w:JSON.parse(JSON.stringify(w)), canEdit:hasPermission('workers')&&canChange('editWorkers'), canPay:!!canEditPay(w), canExport:hasPermission('exports'),
-      isFirmAdmin:isFirmAdminSession(), hr:w.hrId?{name:hrNameOf(w.hrId), color:hrColor(w.hrId)}:null,
+      isFirmAdmin:isFirmAdminSession(), hr:w.hrId?{name:hrNameOf(w.hrId)||(w.hrId===(getSession()||{} as any).uid?String((getSession() as any).fullName||(getSession() as any).username||''):''), color:hrColor(w.hrId)}:null,
       clients:(w.clientIds||[]).map((cid?: any)=>clients.find((x?: any)=>x.id===cid)).filter(Boolean).map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||''})),
       supplier:sup?{name:sup.name||'', color:sup.color||''}:null,
       shiftToday:sh&&sh.type==='work'&&sh.start?{start:sh.start, end:sh.end||''}:null,

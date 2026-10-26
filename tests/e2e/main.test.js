@@ -1491,8 +1491,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   await p.waitForSelector('#workerCardModal [data-testid="worker-card"]');
   ct0.card = await p.evaluate(() => /Contract\s*Expired —/.test(document.querySelector('#workerCardModal [data-testid="worker-card"]').innerText));
-  await p.click('#workerCardModal [data-testid="card-more"]');
-  await p.click('[role="menuitem"]:has-text("Add document")');
+  await p.click('#workerCardModal [data-testid="card-docs-add"]');
   await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
   const ctToday = await p.evaluate(() => { const d = new Date(); window.__ctYmd = localYMD(d); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); });
   ct0.label = await p.evaluate(() => document.getElementById('wdContractDate').closest('.grid').innerText);
@@ -2420,11 +2419,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.head = document.querySelector('#noticesModal [data-testid="worker-head-name"]').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
     document.querySelector('#noticesModal [data-testid="notices-open-card"]').click(); await wait(300);
     r.card = document.getElementById('workerCardOverlay').classList.contains('open') && !document.getElementById('noticesOverlay').classList.contains('open');
-    const panes = () => [...document.querySelectorAll('#workerCardModal [data-p]')].filter(x => x.tagName === 'DIV' && !x.hidden).map(x => x.dataset.p).join();
-    const pane = async k => { document.querySelector('#workerCardModal [data-testid="card-panes"] [data-p="' + k + '"]').click(); await wait(50); };
-    r.panes = [panes()]; await pane('docs'); r.panes.push(panes()); await pane('hours'); r.panes.push(panes());
-    r.hoursStatus = !!document.querySelector('#workerCardModal [data-testid="card-hours"]');
-    r.edit = !!document.getElementById('workerCardEdit'); await pane('info');
+    const card = document.querySelector('#workerCardModal [data-testid="worker-card"]'), shown = el => !!el && el.getClientRects().length > 0;
+    r.onePage = !card.querySelector('[data-testid="card-panes"]') && !card.querySelector('[data-p]')
+      && ['card-info', 'card-docs'].every(t => shown(card.querySelector('[data-testid="' + t + '"]')));
+    r.hoursStatus = shown(card.querySelector('[data-kv="hours-sent"]')) && shown(card.querySelector('[data-kv="docs-status"]'));
+    r.edit = !!document.getElementById('workerCardEdit');
     // closing the card brings the notices sheet back; on a slow runner that takes longer than a fixed 200 ms, so up to 3 s
     closeModal('workerCardOverlay');
     for (let i = 0; i < 20 && !document.getElementById('noticesOverlay').classList.contains('open'); i++) await wait(150);
@@ -2455,17 +2454,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   wp.vac = await p.evaluate(sel => workers.find(w => w.id === 'w1').status === 'vacation' && !document.querySelector('[data-testid="select-bar"]') && /^Select$/.test(document.querySelector(sel).innerText.trim()), wsel);
   await p.evaluate(() => { workers.find(w => w.id === 'w1').status = window.__wpKeep.status; render(); autoSave(); });
   ok(wp.chip === 'red' && wp.more && wp.bar === 'var(--red)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
-  ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
+  ok(wp.onePage && wp.hoursStatus && wp.edit, 'worker card: one page — no Info / Docs / Hours switch; the facts, the Documents and Hours sent boxes and the documents box all on it; one Edit button ' + JSON.stringify({onePage: wp.onePage, hoursStatus: wp.hoursStatus, edit: wp.edit}));
   ok(wp.menu === 'Edit,Open card,Pay,Punch link,Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));
-  // Worker documents (stage 13): plates with Select in the card's Docs pane; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
+  // Worker documents (stage 13): plates with Select in the card's documents box; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
   const wd = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const w = workers[0]; window.__wdKeep = w.docs;
     w.docs = [{id:'d1', type:'contract', name:'contract.pdf', url:'#', uploadedAt:'2026-01-02'}, {id:'d2', type:'other', name:'visa.jpg', url:'#', uploadedAt:'2026-01-01'}];
     switchTab('workers'); await wait(100);
     openWorkerCard(0); await wait(300);
-    document.querySelector('#workerCardModal [data-testid="card-panes"] [data-p="docs"]').click(); await wait(100);
     const docs = () => [...document.querySelectorAll('#workerCardModal [data-testid="worker-doc"]')];
     r.plates = docs().length; r.boxes0 = !document.querySelector('#workerCardModal .og-box');
     const head = () => document.querySelector('#workerCardModal [data-testid="card-docs"]');
@@ -2494,6 +2492,61 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }));
   ok(wd.plates === 2 && wd.boxes0 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd1' && wd.barOn && wd.back, 'worker documents: plates with Select, bulk Delete through Undo, ⋮ Delete after 5 s, Select ends when the card closes and the workers list keeps its Select ' + JSON.stringify(wd));
+  // The worker card is one page (owner's mock, 2026-10-26): one Active ↔ Inactive switch at the top right (a stored
+  // vacation shows on and stays stored until the switch is flipped), no month's hours at the top, HR and Supplier always
+  // shown ("—" when none), the address as city over street, the boxes in pairs of one width, the documents box across
+  // both columns with + Add, "Saved:" at the bottom left with Edit and ⋮ at the bottom right; the hours actions under ⋮.
+  const wcd = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    document.querySelectorAll('.overlay.open').forEach(o => { o.__returnTo = null; closeModal(o.id); }); await wait(200);
+    const w = workers[0], keep = JSON.parse(JSON.stringify(w));
+    w.status = 'vacation'; w.supplierId = ''; w.hrId = ''; w.city = 'Haifa'; w.address = 'Herzl'; w.houseNumber = '5';
+    switchTab('workers'); openWorkerCard(0); await wait(400);
+    const m = document.getElementById('workerCardModal'), q = s => m.querySelector(s), kv = k => q('[data-kv="' + k + '"]');
+    const sw = q('[data-testid="card-status-switch"]'), head = q('[data-testid="worker-head"]'), mr = m.getBoundingClientRect(), sr = sw.getBoundingClientRect();
+    r.topRight = head.contains(sw) && sr.right > mr.right - 90 && sr.top < mr.top + 110;
+    r.vacationOn = sw.getAttribute('aria-checked') === 'true' && /On vacation/.test(q('[data-testid="card-status-word"]').textContent) && w.status === 'vacation';
+    r.pills = !q('[data-testid="status-pills"]'); r.noMonth = !/this month/.test(head.innerText);
+    r.supplier = kv('supplier').innerText.replace(/\s+/g, ' ').trim(); r.hr = kv('hr').innerText.replace(/\s+/g, ' ').trim();
+    r.address = kv('address').innerText.split('\n').map(x => x.trim()).filter(Boolean);
+    const boxes = [...m.querySelectorAll('[data-testid="card-info"] > [data-kv]')];
+    r.order = boxes.slice(0, 10).map(x => x.dataset.kv).join();
+    const ws = boxes.map(x => Math.round(x.getBoundingClientRect().width)); r.equal = ws.every(x => x === ws[0]);
+    r.pairs = Math.abs(boxes[0].getBoundingClientRect().top - boxes[1].getBoundingClientRect().top) < 2;
+    const docs = q('[data-testid="card-docs"]'), info = q('[data-testid="card-info"]');
+    r.docsWide = Math.abs(docs.getBoundingClientRect().width - info.getBoundingClientRect().width) < 2 && !!docs.querySelector('[data-testid="card-docs-add"]');
+    const saved = q('[data-testid="card-saved"]'), bar = q('[data-testid="card-actions"]'), edit = document.getElementById('workerCardEdit'), more = q('[data-testid="card-more"]');
+    const br = bar.getBoundingClientRect(), svr = saved.getBoundingClientRect();
+    r.saved = /^Saved: /.test(saved.textContent.trim()) && svr.left < br.left + 8 && edit.getBoundingClientRect().left > svr.right
+      && more.getBoundingClientRect().right > br.right - 8 && br.bottom > mr.bottom - 40;
+    sw.click(); await wait(400);
+    r.flipOff = w.status === 'fired';
+    const sw2 = document.querySelector('#workerCardModal [data-testid="card-status-switch"]');
+    r.offShown = sw2.getAttribute('aria-checked') === 'false' && /Inactive/.test(document.querySelector('#workerCardModal [data-testid="card-status-word"]').textContent);
+    sw2.click(); await wait(400);
+    r.flipOn = w.status === 'active';
+    // an HR whose name this login does not know reads "Assigned", never "—"; without a city the street takes the first line
+    w.hrId = 'e2e-unknown-hr'; w.city = ''; closeModal('workerCardOverlay'); openWorkerCard(0); await wait(400);
+    const kv2 = k => document.querySelector('#workerCardModal [data-kv="' + k + '"]').innerText.split('\n').map(x => x.trim()).filter(Boolean).join('|');
+    r.hrUnknown = kv2('hr'); r.noCity = kv2('address');
+    Object.keys(w).forEach(k => { if(!(k in keep)) delete w[k]; }); Object.assign(w, keep); render(); autoSave();
+    openWorkerCard(0); await wait(300);
+    return r;
+  });
+  await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
+  wcd.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.keyboard.press('Escape'); await sleep(200);
+  await p.click('#workerCardModal [data-testid="card-docs-add"]');
+  wcd.add = await waitFor(p, () => document.getElementById('workerDocOverlay').classList.contains('open') && !!document.querySelector('#workerDocModal [data-testid="doc-upload"]'), 5000);
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => { o.__returnTo = null; closeModal(o.id); }); }); await sleep(300);
+  ok(wcd.topRight && wcd.vacationOn && wcd.pills && wcd.flipOff && wcd.offShown && wcd.flipOn,
+    'worker card: one Active ↔ Inactive switch at the top right — a stored vacation shows on and stays, a flip sets Inactive, again Active ' + JSON.stringify(wcd));
+  ok(wcd.noMonth && wcd.supplier === 'Supplier —' && wcd.hr === 'HR —' && wcd.address.join('|') === 'Address|Haifa|Herzl 5'
+    && wcd.order === 'id,clients,hr,supplier,start,shift,address,income,docs-status,hours-sent' && wcd.equal && wcd.pairs && wcd.docsWide && wcd.saved
+    && wcd.hrUnknown === 'HR|Assigned' && wcd.noCity === 'Address|Herzl 5',
+    'worker card: no month\'s hours at the top; the boxes in equal pairs (ID | Clients, HR | Supplier — "—" when none, an HR not known to the login "Assigned", Start date | Shift today, Address city over street, the street alone on the first line without a city | Income, Documents | Hours sent); the documents box across both with + Add; Saved at the bottom left, Edit and ⋮ at the right ' + JSON.stringify(wcd));
+  ok(/Upload hours/.test(wcd.menu) && /Export hours/.test(wcd.menu) && /Download data/.test(wcd.menu) && !/Add document/.test(wcd.menu) && wcd.add,
+    'worker card: the hours actions under ⋮; + Add in the documents box opens Add document ' + JSON.stringify({menu: wcd.menu, add: wcd.add}));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -2777,6 +2830,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {short, long, locked: getComputedStyle(document.body).overflow};
   });
   ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  const phc = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), w = workers[1], keep = w.notes;
+    w.notes = Array(40).fill('a long note line').join('\n');
+    openWorkerCard(1); await wait(500);
+    const m = document.getElementById('workerCardModal'), body = m.querySelector('[data-testid="card-body"]'), bar = m.querySelector('[data-testid="card-actions"]');
+    const k = [...m.querySelectorAll('[data-testid="card-info"] > [data-kv]')].map(x => x.getBoundingClientRect());
+    const mr = m.getBoundingClientRect(), b0 = bar.getBoundingClientRect();
+    const r = {pairs: k.length >= 2 && Math.abs(k[0].top - k[1].top) < 2 && k[1].left >= k[0].right, sheet: Math.abs(mr.bottom - innerHeight) < 2 && mr.width > innerWidth - 2,
+      scrolls: body.scrollHeight > body.clientHeight, barAtBottom: b0.bottom <= mr.bottom + 1 && b0.bottom > mr.bottom - 30,
+      sign: m.querySelector('[data-testid="card-sign"]').innerText.trim(), saved: /^Saved: /.test(m.querySelector('[data-testid="card-saved"]').textContent.trim())};
+    body.scrollTop = 100000; await wait(100);
+    r.barStays = Math.abs(bar.getBoundingClientRect().top - b0.top) < 1 && body.scrollTop > 0;
+    closeModal('workerCardOverlay'); w.notes = keep; render(); await wait(200);
+    return r;
+  });
+  ok(phc.pairs && phc.sheet && phc.scrolls && phc.barAtBottom && phc.barStays && phc.sign === 'To sign' && phc.saved,
+    'phone: the worker card is the bottom sheet, its fields still in pairs, "To sign"; the bottom bar (Saved, Edit, ⋮) stays at the bottom while the middle scrolls ' + JSON.stringify(phc));
   await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);

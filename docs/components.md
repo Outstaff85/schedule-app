@@ -34,7 +34,7 @@ The React components every new page is built from (archive/docs/react-migration-
 | `combobox.tsx`, `command.tsx` | `Combobox` (`options`, `value`, `onChange`, `rows`); `Command*` | a select with a search (substring of the label and hint); the chosen line ticked like the language list; `rows` caps the lines in view (38px each), the rest scroll |
 | `date-picker.tsx`, `calendar.tsx` | `DatePicker` (`value` / `onChange` as `YYYY-MM-DD`), `Calendar` | replaces every `type="date"` field; shows `dd/mm/yyyy`; month and weekday names in the chosen language; the week starts on Sunday; the Date Picker's caption picks the month and the year (`captionLayout="dropdown"`: two small fields, each a native select laid unseen over its label — 1920 to 30 years ahead), its arrows step a month |
 | `tabs.tsx` | `Tabs`, `TabsList`, `TabsTrigger` (`count` → red pill), `TabsContent` | glass pills, the underline under the active one; up to 4 |
-| `toggle-group.tsx` | `ToggleGroup`, `ToggleGroupItem` | the segmented switch of a window (Info / Docs / Hours, ₪/h or ₪/day) |
+| `toggle-group.tsx` | `ToggleGroup`, `ToggleGroupItem` | the segmented switch of a window (₪/h or ₪/day) |
 | `button-group.tsx` | `ButtonGroup` (`attached`) | buttons that belong together |
 | `accordion.tsx`, `collapsible.tsx` | `Accordion*` (`AccordionItem color`, `AccordionTrigger icon summary badge`), `Collapsible*` | the accordion is the editor's section plates (Editors.md); its root is `min-w-0`, so a long summary line truncates instead of widening a window on a phone |
 | `tooltip.tsx`, `scroll-area.tsx` | `Tooltip*`, `TooltipProvider`, `ScrollArea`, `ScrollBar` | |
