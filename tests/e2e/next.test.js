@@ -388,6 +388,33 @@ async function scanner(browser) {
   // the still screens: a page opened large, the corner editor
   ok(await visible(p, '[data-testid=scanner-page] [data-testid=page-view]') && await p.locator('[data-testid=scanner-page] [data-testid=kind-chip]').count() === 6, 'scanner: the gallery\'s second screen is a page opened large');
   ok(await visible(p, '[data-testid=scanner-fix] [data-testid=corner-editor]'), 'scanner: the gallery\'s third screen is the corner editor');
+  // a whole side moves (owner's template pair 6): the right side by its middle bar, the bottom side by its line
+  // itself away from its handles — both corners of each side together, along the side's normal; the others stay
+  const sides = await p.evaluate(() => {
+    const c = document.querySelector('[data-testid=scanner-fix] [data-testid=corner-canvas]'), b = c.getBoundingClientRect();
+    const [ox, oy, iw, ih] = c.dataset.fit.split(',').map(Number), q0 = JSON.parse(c.dataset.pts);
+    const S = ([x, y]) => [b.left + ox + x * iw, b.top + oy + y * ih];
+    const fire = (type, [x, y]) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 11, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y }));
+    const drag = (from, dx, dy) => { fire('pointerdown', from); const grab = c.dataset.grab; fire('pointermove', [from[0] + dx / 2, from[1] + dy / 2]); fire('pointermove', [from[0] + dx, from[1] + dy]); fire('pointerup', [from[0] + dx, from[1] + dy]); return grab; };
+    const mid = (a, b2, t) => [a[0] + (b2[0] - a[0]) * t, a[1] + (b2[1] - a[1]) * t];
+    const r = { q0 };
+    r.bar = drag(S(mid(q0[1], q0[2], 0.5)), 25, 0);
+    r.q1 = JSON.parse(c.dataset.pts);
+    const p = S(mid(r.q1[2], r.q1[3], 0.25)); r.line = drag([p[0], p[1] + 12], 0, 30);  // > 48 px from corner 2 and the bar
+    r.q2 = JSON.parse(c.dataset.pts);
+    r.released = c.dataset.grab;
+    r.px = ([a, b2], [c2, d]) => [Math.round((c2[0] - a[0]) * iw), Math.round((c2[1] - a[1]) * ih), Math.round((d[0] - b2[0]) * iw), Math.round((d[1] - b2[1]) * ih)];
+    r.right = r.px([q0[1], q0[2]], [r.q1[1], r.q1[2]]); r.bottom = r.px([r.q1[2], r.q1[3]], [r.q2[2], r.q2[3]]);
+    delete r.px;
+    return r;
+  });
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const close = (a, b) => Math.abs(a - b) <= 1;
+  ok(sides.bar === 'side1' && sides.line === 'side2' && sides.released === ''
+    && close(sides.right[0], sides.right[2]) && close(sides.right[1], sides.right[3]) && sides.right[0] > 15
+    && close(sides.bottom[0], sides.bottom[2]) && close(sides.bottom[1], sides.bottom[3]) && sides.bottom[1] > 20
+    && same(sides.q1[0], sides.q0[0]) && same(sides.q1[3], sides.q0[3]) && same(sides.q2[0], sides.q0[0]) && same(sides.q2[1], sides.q1[1]),
+    'scanner: a side moves whole — by its middle bar and by its line — both its corners together, the others stay ' + JSON.stringify(sides));
   await p.locator('[data-testid=scanner-page]').screenshot({ path: path.join(OUT, 'scanner-screen-page.png') });
   await p.locator('[data-testid=scanner-fix]').screenshot({ path: path.join(OUT, 'scanner-screen-fix.png') });
 
