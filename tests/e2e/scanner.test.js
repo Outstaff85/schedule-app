@@ -192,6 +192,7 @@ const READS = {
     r.kinds = T.all('[data-testid="scan-thumb"]').map(e => e.dataset.kind).join();
     r.keys = window.__keys.join(); r.said = window.__said.slice(); r.green = window.__green; r.red = window.__red;
     r.done = T.q('[data-testid="scan-done"]').textContent;
+    r.shutters = document.documentElement.dataset.shutters || '0';   // the shutter's click (src/scan/ui/shutter.ts)
     const H = await ManagerScan.hooks(), s = H.session(), pages = [...s.pages.values()];
     r.camera = pages.map(x => x.record.input + ':' + x.record.shot).join();
     r.attempt = pages[0] && pages[0].record.attempt;
@@ -215,6 +216,7 @@ const READS = {
     && /finding.*hold.*found:1.*captured.*refining.*looking_more:1.*looking_more:2.*found:2/.test(shot.keys) && shot.green > 0 && green > 20,
     'site, the camera: the live frame on the camera stream (the models\' stand-in), the status line "Finding the document…" → "Hold still · 0.x s" → "2 documents found", the frame drawn green once still, the Auto shot, and the second document on the same photo — two thumbnails with their types '
     + JSON.stringify({siteStart, ...shot, greenPixels: green}));
+  ok(shot.shutters === '1', 'site: the Auto shot sounds the shutter once (a click and a buzz at "captured") ' + JSON.stringify({shutters: shot.shutters}));
   const eng = shot.engine || {}, th = shot.threads || {};
   ok(eng.worker === true && /^bg-(pool|gpulive)$/.test(eng.way || '') && eng.size > 1 && eng.shared === true && th.spawned >= eng.size + 1
     && th.bitmaps > 0 && th.copied === 0 && th.maxInFlight >= 2 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,

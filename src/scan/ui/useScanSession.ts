@@ -42,6 +42,7 @@ import type { PreviewEvent, SessionEvents } from '../engine/session';
 import type { ShotPage } from '../engine/shot';
 import type { SessionStatus } from '../engine/status';
 import type { Quad } from '../engine/types';
+import { playShutter, unlockShutter } from './shutter';
 
 /** What the corner editor gets for a page: its photo and the corners to start from. */
 export interface Fixable { frame: CanvasImageSource & { width: number; height: number }; w: number; h: number; pts: Quad }
@@ -218,10 +219,17 @@ export function useScanSession(session: ScanSessionLike, video: React.RefObject<
     setHidden(m => without(m, id));
   }, [session, letGo]);
 
+  // the first tap on the scanner's screen starts the audio, so a shot's click (Auto's too) is heard
+  React.useEffect(() => {
+    window.addEventListener('pointerdown', unlockShutter, { capture: true, passive: true });
+    return () => window.removeEventListener('pointerdown', unlockShutter, { capture: true });
+  }, []);
+
   React.useEffect(() => {
     let alive = true;
     const offs = [
       session.on('status', s => {
+        if (s.key === 'captured') playShutter();   // the shot's click and buzz (shutter.ts)
         putBusy(SHOT_WORK.has(s.key));
         if (PAUSING.has(s.key)) putPaused(true);
         else if (LIVE.has(s.key)) { putPaused(false); clearPreview(); }
