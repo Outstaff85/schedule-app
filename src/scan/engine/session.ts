@@ -153,10 +153,11 @@ export class ScanSession {
   /** Pages being cut again by fix() (their pixels are not released meanwhile). */
   private fixing = new Set<string>();
   private readonly keepCanvases: number | null;
-  /** switchWay one at a time, the newest settings winning; relive: the live frame ran before the first of them. */
+  /** switchWay one at a time, the newest settings winning; switching: one is at work (the live frame does not go
+   *  on meanwhile — the switch starts it on the new way when it is over). */
   private switchSeq = 0;
   private switchChain: Promise<void> = Promise.resolve();
-  private relive = false;
+  private switching = 0;
   /** The pages Looks good was tapped on, by attempt: the attempt is kept once every page of it still shown is. */
   private looked = new Map<string, Set<string>>();
   /** The screen holds the live frame (a page opened large over it): it does not go on until resume(). */
@@ -279,8 +280,9 @@ export class ScanSession {
    *  something still holds it: a page opened over it, a shot or a pick in work, the camera off or put away, or it
    *  runs already. */
   private goOn(): void {
-    if (this.held || this.picking || this.shotInWork || this.live.running || !this.camera.on || !this.live.video) return;
+    if (this.held || this.picking || this.switching || this.shotInWork || this.live.running || !this.camera.on || !this.live.video) return;
     this.live.clearFrame();
+    this.live.lastRes = null;  // a shutter tap before the first new answer takes nothing from an old frame
     this.live.start();
   }
 
@@ -315,9 +317,7 @@ export class ScanSession {
     } catch (e) {
       this.log.err('Shot failed: ' + ((e as Error)?.message || e));
       this.emit('status', { key: 'shot_failed' });
-      // the camera goes on (not when it was put away, or a newer shot took over)
-      if (this.camera.on && this.live.video && (id < 0 || id === this.shotId)) { this.live.clearFrame(); this.live.start(); }
-      return 0;
+      return 0;  // the camera goes on as the shot settles (below)
     } finally {
       // settled: a snap may take a shot again (not when a wake / sleep already freed it for a newer one)
       if (id < 0 || id === this.shotId) this.shotInWork = false;
@@ -327,8 +327,10 @@ export class ScanSession {
       // every page it had so far deleted while it looked for more: retaken unless it found another since
       const gone = [...this.retakeAfterShot].filter(([, shot]) => shot === id).map(([a]) => a);
       for (const a of gone) { this.retakeAfterShot.delete(a); this.retakeIfEmpty(a); }
-      // settled and not taken over: Auto waits for the documents it took to go, and the live frame goes on
-      if (id >= 0 && id === this.shotId) {
+      // settled and not taken over (a wake, a sleep, a pick or a switch): Auto waits for the documents it took to
+      // go, and the live frame goes on — after a failed shot too, and after a tap with no frame while the live frame
+      // was not running (a picked picture still shown: the camera comes back)
+      if (id < 0 || id === this.shotId) {
         const r = rec as ShotRecord | null;
         if (got && r && r.edgesModel) this.live.taken.set([r.edgesModel, ...r.edgesMore]);
         this.goOn();
@@ -355,8 +357,10 @@ export class ScanSession {
     return run;
   }
   private async runSwitch(patch: Partial<EngineSettings>, seq: number): Promise<void> {
-    const was = this.live.running || this.relive;
-    this.relive = was;
+    this.switching++;
+    try { await this.switchTo(patch, seq); } finally { this.switching--; }
+  }
+  private async switchTo(patch: Partial<EngineSettings>, seq: number): Promise<void> {
     this.live.running = false;
     this.shotId++; this.shotInWork = false;
     while (this.live.inFlight) await this.sleepMs(30);
@@ -370,8 +374,9 @@ export class ScanSession {
     await this.engines.ensureSession().catch(e => this.log.log('Model: ' + errText(e)));
     if (stale && seq === this.switchSeq) await this.engines.ensureSession().catch(e => this.log.log('Model: ' + errText(e)));
     if (seq !== this.switchSeq) return;
-    this.relive = false;
-    if (was && !this.held && this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
+    // the live frame goes on, on the new way — unless the screen holds it (resume() lets it go on) or a pick is in
+    // work (it goes on after it), or the camera is off
+    if (!this.held && !this.picking && this.camera.on && this.live.video) { this.emit('status', { key: 'finding' }); this.live.start(); }
   }
 
   /** The live frame starts again at once from a fresh frame, the documents taken forgotten (the lab's Retake: the
@@ -572,6 +577,7 @@ export class ScanSession {
     const batch = ++this.batchSeq, t0 = this.env.now(), log = this.log, gen = this.scanGen;
     this.shotId++; this.shotInWork = false;  // a shot in work is dropped (the lab's pick bumped it too)
     this.live.running = false;
+    this.live.lastRes = null;  // the picked picture replaces the camera: no shot from the frame found before it
     while (this.live.inFlight) await this.sleepMs(10);
     try { await this.engines.ensureCap(); }
     catch (e) { log.err('Accurate model: ' + errText(e)); this.emit('status', { key: 'pick_failed' }); return 0; }

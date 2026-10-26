@@ -708,6 +708,39 @@ await run('a corner out of the frame is not gone; Auto turned on later does not 
   s.stop();
 });
 
+await run('the live frame goes on with no frame from before it (a shutter tap takes nothing old); a lab switch during a shot or a pick lets it go on, on the new way', async () => {
+  // the shutter tapped on the very frame the live frame goes on: the frame of the shot before is not cut again
+  let slow = false;  // the live answers after the shot come late: the tap is before the first new one
+  const a = setup(steadyLive(Q), { auto: false, delay: call => (slow && call.which === 'live' ? 1000 : 0) });
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(600);
+  a.s.on('status', st => { if (st.key === 'found') slow = true; });
+  let n = null; a.s.snap().then(x => { n = x; });
+  await a.clock.runFor(2000, () => n !== null);
+  assert.equal(n, 1);
+  assert.equal(a.s.live.running, true, 'the live frame went on');
+  assert.equal(a.s.live.lastRes, null, 'nothing kept from the frame before the shot');
+  n = null; a.s.snap().then(x => { n = x; });
+  await flush();
+  assert.equal(n, 0, 'a tap before the first new answer takes nothing');
+  assert.equal(a.log.status[a.log.status.length - 1].key, 'no_frame');
+  a.s.stop();
+  // a switch while the shot is in work (it is dropped): the live frame goes on once the switch is over
+  const b = setup(steadyLive(Q), { auto: false, delay: call => (call.which === 'cap' ? 800 : 0) });
+  b.engines.setSettings = () => {};
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(600);
+  void b.s.snap();
+  await b.clock.runFor(100);
+  assert.equal(b.s.live.running, false, 'the shot is in work');
+  let switched = false; b.s.switchWay({}).then(() => { switched = true; });
+  await b.clock.runFor(2000, () => switched);
+  assert.ok(switched, 'the switch is over');
+  await b.clock.runFor(1000);
+  assert.equal(b.s.live.running, true, 'the live frame went on after the switch');
+  b.s.stop();
+});
+
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

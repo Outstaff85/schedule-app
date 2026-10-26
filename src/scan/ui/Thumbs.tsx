@@ -97,7 +97,8 @@ export function Thumbs({ pages, selected, onSelect, onOpen, onFix, onDelete, not
                 <>
                   <button type="button" data-testid="scan-thumb-open" aria-label={tr('Open the page')}
                     onClick={e => { e.stopPropagation(); if (!locked) onOpen(p.id); }}
-                    className="absolute inset-x-0 top-1.5 mx-auto w-max max-w-[calc(100%-12px)] truncate rounded-[var(--radius-sm)] bg-background/85 px-2 py-0.5 font-mono text-[11px] text-ok">
+                    className={cn('absolute inset-x-0 top-1.5 mx-auto w-max max-w-[calc(100%-12px)] truncate rounded-[var(--radius-sm)] bg-background/85 px-2 py-0.5 font-mono text-[11px]',
+                      kindOf(p) && kindOf(p) === p.model && p.conf != null && p.conf < SURE ? 'text-warn' : 'text-ok')}>
                     <KindChip page={p} />
                   </button>
                   {!p.kept && (
