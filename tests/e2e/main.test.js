@@ -68,6 +68,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         tap(sel){ const el = (T.el(sel) || {}).classList && T.el(sel).classList.contains('og-plate') ? T.el(sel) : T.el(sel) && T.el(sel).querySelector('.og-plate'); if(!el) return false;
           for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new PointerEvent(t, {bubbles: true, pointerType: 'touch', isPrimary: true})); return true; },
         esc: () => document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})),
+        // a photo in the scanner's strip opened large (template 6): a tap grows it, a tap on its type and % opens it
+        async openThumb(el){ if (!el.dataset.selected) el.click(); await T.until(() => el.querySelector('[data-testid="scan-thumb-open"]'), 3000); el.querySelector('[data-testid="scan-thumb-open"]').click(); },
         fill(sel, v){ const el = T.el(sel); const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); },
         val: id => { const el = document.getElementById(id); return el ? (el.dataset.value != null ? el.dataset.value : el.value) : undefined; },
@@ -877,11 +879,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.attempt = s.attempt;
     return r;
   }, [JPG, JPG2, sure, zones, hes]);
-  // A thumbnail opens the page large: one set to Other is not saved (Done counts one); set to Contract it is again.
+  // A photo in the strip opens the page large (grown, then its type tapped): one set to Other is not saved (Done counts one); set to Contract it is again.
   // Looks good on both pages keeps the shot's attempt — held until Done (owner, 2026-10-21).
   const view = await p.evaluate(async () => {
     const H = await ManagerScan.hooks(), r = {};
-    const open = async i => { document.querySelectorAll('[data-testid="scan-thumb"]')[i].click(); return T.until(() => document.querySelector('[data-testid="page-view"]'), 3000); };
+    const open = async i => { await T.openThumb(document.querySelectorAll('[data-testid="scan-thumb"]')[i]); return T.until(() => document.querySelector('[data-testid="page-view"]'), 3000); };
     r.opened = await open(1);
     document.querySelector('[data-testid="kind-chip"][data-kind="other"]').click(); await T.tick(200);
     document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);  // a tap on the dimmed ground: back to the camera
@@ -939,7 +941,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await H.inject({pics: [{b64: b}], camera: false});  // a picked picture (f<n>)
     r.typed = await T.until(() => thumbs('[data-kind]') === 2, 15000);
     // a type picked by hand is kept on the phone with its page (Haiku said ספח: set to Passport)
-    document.querySelectorAll('[data-testid="scan-thumb"]')[0].click();
+    await T.openThumb(document.querySelectorAll('[data-testid="scan-thumb"]')[0]);
     await T.until(() => document.querySelector('[data-testid="page-view"]'), 3000);
     document.querySelector('[data-testid="kind-chip"][data-kind="passport"]').click(); await T.tick(200);
     document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);
@@ -1132,9 +1134,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const a = await H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
     // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
     await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length === 1, 15000);
+    // its Edit corners button on the photo grown in the strip (template 6)
     document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
-    const r = {button: await T.until(() => document.querySelector('[data-testid="page-fix"]'), 4000)};
-    document.querySelector('[data-testid="page-fix"]').click();
+    const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
+    document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]').click();
     r.editor = await T.until(() => document.querySelector('[data-testid="corner-canvas"][data-fit]'), 4000);
     const c = document.querySelector('[data-testid="corner-canvas"]'), b = c.getBoundingClientRect(), [ox, oy, iw, ih] = c.dataset.fit.split(',').map(Number);
     const ev = (type, x, y) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: b.left + ox + x * iw, clientY: b.top + oy + y * ih}));
@@ -1218,7 +1221,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const a = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), b = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]});
     const quiet = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), none = await ScanLab.inject({pics: [{b64: jpg}]});
     const r = {thumbs: await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind="sefach"]').length === 3 && document.querySelectorAll('[data-testid="scan-thumb"]').length === 4, 8000)};
-    const open = id => { document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"]').click(); return T.until(() => document.querySelector('[data-testid="page-view"][data-id="' + id + '"]'), 3000); };
+    const open = async id => { await T.openThumb(document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"]')); return T.until(() => document.querySelector('[data-testid="page-view"][data-id="' + id + '"]'), 3000); };
     const close = async () => { const v = document.querySelector('[data-testid="page-view"]'); if (v) v.click(); await T.until(() => !document.querySelector('[data-testid="page-view"]'), 3000); };
     await open(a.ids[0]);
     r.chosen = (document.querySelector('[data-testid="kind-chip"][data-state="on"]') || {dataset: {}}).dataset.kind;

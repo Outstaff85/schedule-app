@@ -292,10 +292,15 @@ async function scanner(browser) {
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', e => errors.push(e.message));
-  // the status line as it changes, from the first draw (the fake's camera: finding → a corner out → hold → found)
+  // the status line and the hint under the frame as they change, from the first draw (the fake's camera: finding →
+  // a corner out → hold → found)
   await p.addInitScript(() => {
-    window.__seen = [];
-    const look = () => { const el = document.querySelector('[data-testid=scanner-camera] [data-testid=scan-status]'); const t = el && el.textContent; if (t && window.__seen[window.__seen.length - 1] !== t) window.__seen.push(t); };
+    window.__seen = []; window.__tips = [];
+    const look = () => {
+      const el = document.querySelector('[data-testid=scanner-camera] [data-testid=scan-status]'); const t = el && el.textContent; if (t && window.__seen[window.__seen.length - 1] !== t) window.__seen.push(t);
+      const tip = document.querySelector('[data-testid=scanner-camera] [data-testid=scan-tip]'), h = tip && tip.dataset.hint ? tip.textContent : '';
+      if (h && window.__tips[window.__tips.length - 1] !== h) window.__tips.push(h);
+    };
     setInterval(look, 50);
   });
   await open(p, 'scanner');
@@ -307,36 +312,62 @@ async function scanner(browser) {
   await p.waitForSelector(cam + ' [data-testid=scan-thumb]');
   const shape = await p.evaluate(cam => {
     const root = document.querySelector(cam), q = s => root.querySelector(s), box = el => el.getBoundingClientRect();
-    const r = box(root), bar = box(q('[data-testid=scan-bar]')), st = box(q('[data-testid=scan-status]')), strip = box(q('[data-testid=scan-thumbs]')), done = box(q('[data-testid=scan-done]'));
+    const r = box(root), bar = box(q('[data-testid=scan-bar]')), st = box(q('[data-testid=scan-status]')), strip = box(q('[data-testid=scan-thumbs]')), done = box(q('[data-testid=scan-done]')), auto = box(q('[data-testid=scan-auto]'));
     const files = q('[data-testid=scan-files]');
-    return { h: Math.round(r.height), statusTop: st.top - r.top < 90, barBottom: r.bottom - bar.bottom < 30, stripAboveBar: strip.bottom <= bar.top + 1, doneTopRight: done.top - r.top < 90 && r.right - done.right < 30,
+    return { h: Math.round(r.height), statusTop: st.top - r.top < 90 && Math.abs((st.left + st.right) / 2 - (r.left + r.right) / 2) < 3, barBottom: r.bottom - bar.bottom < 30, stripAboveBar: strip.bottom <= bar.top + 1,
+      autoTopRight: auto.top - r.top < 90 && r.right - auto.right < 30, doneInBar: !!q('[data-testid=scan-bar] [data-testid=scan-done]') && r.right - done.right < 30 && done.top >= bar.top,
       thumbs: root.querySelectorAll('[data-testid=scan-thumb]').length, files: !!files && files.type === 'file' && !files.hasAttribute('accept') && files.multiple,
       shutter: !!q('[data-testid=scan-shutter]'), auto: q('[data-testid=scan-auto]').getAttribute('aria-pressed'), done: q('[data-testid=scan-done]').textContent };
   }, cam);
-  ok(shape.h >= 840 && shape.statusTop && shape.barBottom && shape.stripAboveBar && shape.doneTopRight && shape.thumbs === 3 && shape.files && shape.shutter && shape.auto === 'true' && /Done · 3/.test(shape.done),
-    'scanner: the camera screen — the status line on top, Done at the top right, the pages\' strip above the bottom bar (Photos/PDF with no type filter, the shutter, Auto) ' + JSON.stringify(shape));
+  ok(shape.h >= 840 && shape.statusTop && shape.barBottom && shape.stripAboveBar && shape.autoTopRight && shape.doneInBar && shape.thumbs === 3 && shape.files && shape.shutter && shape.auto === 'true' && /Done · 3/.test(shape.done),
+    'scanner: the camera screen (template 6) — the status line at the top centre, Auto at the top right, the photos\' strip above the bottom bar (Photos/PDF with no type filter, the shutter, Done at the bottom right) ' + JSON.stringify(shape));
   await sleep(2600);
   const seen = await p.evaluate(() => window.__seen);
   ok(seen.some(t => /corner is outside the frame/.test(t)) && seen.some(t => /Hold still · 0\.6 s/.test(t)) && /1 document found/.test(seen[seen.length - 1]),
     'scanner: the status line follows the session — a corner out, Hold still · 0.6 s, 1 document found ' + JSON.stringify(seen));
   const drawn = await p.evaluate(cam => { const c = document.querySelector(cam + ' [data-testid=scan-overlay]'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; }, cam);
   ok(drawn > 1000, 'scanner: the live frame is drawn over the camera ' + drawn);
-  const kinds = await p.locator(cam + ' [data-testid=scan-thumb-kind]').allInnerTexts();
-  ok(/^ID card$/.test(kinds[0]) && /ID card back/.test(kinds[1]) && /Passport/.test(kinds[2]), 'scanner: each thumbnail carries its document type (the third once read) ' + JSON.stringify(kinds));
+  const tips = await p.evaluate(() => window.__tips);
+  ok(tips.includes('Move the phone back a little'), 'scanner: the hint under the frame tells the person what to do (a corner out: move back) ' + JSON.stringify(tips));
+  const kinds = await p.evaluate(cam => [...document.querySelectorAll(cam + ' [data-testid=scan-thumb]')].map(e => e.dataset.kind).join(), cam);
+  const pcts = await p.locator(cam + ' [data-testid=scan-thumb-pct]').allInnerTexts();
+  ok(kinds === 'id_front,id_back,passport' && pcts.join() === '97%,88%,81%', 'scanner: each photo in the strip has its type, and the model\'s % under it (the third once read) ' + JSON.stringify({ kinds, pcts }));
   await p.screenshot({ path: path.join(OUT, 'scanner-camera.png') });
 
-  // the shutter takes a page (read a moment later); then it starts the live frame again
+  // the shutter takes a page (read a moment later); there is no Next: the live frame goes on by itself
   await p.locator(cam + ' [data-testid=scan-shutter]').tap(); await sleep(150);
-  const shot = { n: await thumbs(), reading: await p.locator(cam + ' [data-testid=scan-thumb]').last().locator('[data-reading]').count(), paused: await p.locator(cam + ' [data-testid=scan-shutter]').getAttribute('data-paused'), status: await p.locator(cam + ' [data-testid=scan-status]').innerText() };
-  ok(shot.n === 4 && shot.reading === 1 && shot.paused === 'true' && /Captured in 180 ms/.test(shot.status) && /snap/.test(await calls()), 'scanner: the shutter takes a page, shown at once with a spinner while it is read ' + JSON.stringify(shot));
-  // while the shot is still in work the shutter is off (Next would drop the shot's other documents)
-  ok(await p.locator(cam + ' [data-testid=scan-shutter]').isDisabled() && !/wake/.test(await calls()), 'scanner: the shutter is off while the shot is still in work');
+  const shot = { n: await thumbs(), reading: await p.locator(cam + ' [data-testid=scan-thumb]').last().locator('[data-reading]').count(), status: await p.locator(cam + ' [data-testid=scan-status]').innerText() };
+  ok(shot.n === 4 && shot.reading === 1 && /Captured in 180 ms/.test(shot.status) && /snap/.test(await calls()), 'scanner: the shutter takes a page, shown at once with a spinner while it is read ' + JSON.stringify(shot));
+  // while the shot is still in work the shutter is off (a second cut would drop the shot's other documents)
+  ok(await p.locator(cam + ' [data-testid=scan-shutter]').isDisabled(), 'scanner: the shutter is off while the shot is still in work');
   await p.waitForFunction(cam => !document.querySelector(cam + ' [data-testid=scan-shutter]').disabled, cam, { timeout: 3000 });
-  await p.locator(cam + ' [data-testid=scan-shutter]').tap(); await sleep(150);
-  ok(/wake/.test(await calls()) && !(await p.locator(cam + ' [data-testid=scan-shutter]').getAttribute('data-paused')), 'scanner: after a shot the shutter starts the live frame again');
+  await p.waitForFunction(cam => /Taken/.test(document.querySelector(cam + ' [data-testid=scan-status]').textContent), cam, { timeout: 3000 });
+  const after = { label: await p.locator(cam + ' [data-testid=scan-shutter]').getAttribute('aria-label'), text: await p.locator(cam + ' [data-testid=scan-shutter]').innerText(),
+    tip: await p.locator(cam + ' [data-testid=scan-tip]').innerText(), wake: /wake/.test(await calls()) };
+  ok(after.label === 'Take the shot' && !after.text.trim() && /next document/.test(after.tip) && !after.wake,
+    'scanner: no Next after a shot — the shutter stays the shutter, the status says taken and the hint asks for the next document ' + JSON.stringify(after));
 
-  // a thumbnail opens the page large: the type chips with the model's %, Fix corners, Delete, Looks good
-  await p.locator(cam + ' [data-testid=scan-thumb]').first().tap(); await sleep(200);
+  // a tap on a photo makes it grow in place: its type and % on top, Edit corners on its left, Delete on its right
+  await p.locator(cam + ' [data-testid=scan-thumb]').first().tap(); await sleep(350);
+  const grown = await p.evaluate(cam => {
+    const t = document.querySelector(cam + ' [data-testid=scan-thumb][data-selected]');
+    if (!t) return null;
+    const pic = t.firstElementChild.getBoundingClientRect(), b = s => t.querySelector(s) && t.querySelector(s).getBoundingClientRect(), fix = b('[data-testid=scan-thumb-fix]'), del = b('[data-testid=scan-thumb-delete]');
+    return { id: t.dataset.id, size: Math.round(pic.width) + 'x' + Math.round(pic.height), kind: t.querySelector('[data-testid=scan-thumb-kind]').textContent,
+      fixLeft: !!fix && fix.right < (pic.left + pic.right) / 2, delRight: !!del && del.left > (pic.left + pic.right) / 2, n: document.querySelectorAll(cam + ' [data-testid=scan-thumb][data-selected]').length };
+  }, cam);
+  ok(!!grown && grown.id === 'p1' && grown.size === '190x124' && grown.kind === 'ID card 97%' && grown.fixLeft && grown.delRight && grown.n === 1, 'scanner: a tap makes a photo grow to 190×124 with its type and %, Edit corners and Delete ' + JSON.stringify(grown));
+  await p.screenshot({ path: path.join(OUT, 'scanner-grown.png') });
+  // a tap on it again shrinks it; a tap on another grows that one instead
+  await p.locator(cam + ' [data-testid=scan-thumb]').first().tap(); await sleep(150);
+  const shrunk = await p.locator(cam + ' [data-testid=scan-thumb][data-selected]').count();
+  await p.locator(cam + ' [data-testid=scan-thumb]').nth(1).tap(); await sleep(150);
+  await p.locator(cam + ' [data-testid=scan-thumb]').first().tap(); await sleep(150);
+  const moved = await p.evaluate(cam => [...document.querySelectorAll(cam + ' [data-testid=scan-thumb][data-selected]')].map(e => e.dataset.id).join(), cam);
+  ok(shrunk === 0 && moved === 'p1', 'scanner: a tap on the grown photo shrinks it, a tap on another grows that one ' + JSON.stringify({ shrunk, moved }));
+
+  // its type and % open the page large: the type chips with the model's %, Fix corners, Delete, Looks good
+  await press(cam + ' [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-open]'); await sleep(200);
   const view = await p.evaluate(cam => {
     const v = document.querySelector(cam + ' [data-testid=page-view]');
     if (!v) return null;
@@ -344,10 +375,10 @@ async function scanner(browser) {
     return { chips: v.querySelectorAll('[data-testid=kind-chip]').length, on: on && on.dataset.kind, model: model && model.textContent,
       modelOn: !!v.querySelector('[data-testid=kind-chip][data-kind=id_front] [data-testid=kind-model]'), fix: !!v.querySelector('[data-testid=page-fix]'), del: !!v.querySelector('[data-testid=page-delete]'), keep: !!v.querySelector('[data-testid=page-keep]'), img: !!v.querySelector('img[data-testid=page-view-img]') };
   }, cam);
-  ok(view && view.chips === 6 && view.on === 'id_front' && view.model === '97%' && view.modelOn && view.fix && view.del && view.keep && view.img, 'scanner: a thumbnail opens the page large — six type chips, the model\'s answer marked 97%, Fix corners, Delete, Looks good ' + JSON.stringify(view));
+  ok(view && view.chips === 6 && view.on === 'id_front' && view.model === '97%' && view.modelOn && view.fix && view.del && view.keep && view.img, 'scanner: a photo\'s type opens the page large — six type chips, the model\'s answer marked 97%, Fix corners, Delete, Looks good ' + JSON.stringify(view));
   await p.screenshot({ path: path.join(OUT, 'scanner-page.png') });
   await press(cam + ' [data-testid=kind-chip][data-kind=sefach]'); await sleep(100);
-  ok(await p.locator(cam + ' [data-testid=kind-chip][data-kind=sefach]').getAttribute('data-state') === 'on' && /Appendix/.test(await p.locator(cam + ' [data-testid=scan-thumb-kind]').first().innerText()), 'scanner: a chip picks another type, and the thumbnail says it');
+  ok(await p.locator(cam + ' [data-testid=kind-chip][data-kind=sefach]').getAttribute('data-state') === 'on' && /Appendix/.test(await p.locator(cam + ' [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-kind]').innerText()), 'scanner: a chip picks another type, and the photo in the strip says it');
 
   // Fix corners: the corner editor; a corner dragged, Apply gives the moved corners (5 decimals) to the session
   await press(cam + ' [data-testid=page-fix]'); await sleep(250);
@@ -372,20 +403,29 @@ async function scanner(browser) {
   const looked = await p.locator(cam + ' [data-testid=scan-thumb][data-looked]').count();
   ok(looked === 1 && /keep p1/.test(await calls()) && !(await visible(p, cam + ' [data-testid=page-view]')), 'scanner: Looks good marks that one page and goes back to the camera ' + looked);
 
-  // Delete: no question, the page goes, the Undo snack; Undo brings it back; Done makes the delete
+  // Edit corners on the grown photo: the corner editor straight from the strip; Cancel goes back to the camera
+  await p.locator(cam + ' [data-testid=scan-thumb]').nth(2).tap(); await sleep(200);
+  await press(cam + ' [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-fix]'); await sleep(250);
+  const stripFix = await visible(p, cam + ' [data-testid=corner-editor]') && !(await visible(p, cam + ' [data-testid=page-view]'));
+  await press(cam + ' [data-testid=corner-cancel]'); await sleep(200);
+  ok(stripFix && !(await visible(p, cam + ' [data-testid=corner-editor]')), 'scanner: Edit corners on a grown photo opens the corner editor straight from the strip');
+
+  // Delete on the grown photo: no question, the page goes, the Undo snack; Undo brings it back; Done makes the delete
   await p.locator(cam + ' [data-testid=scan-thumb]').nth(1).tap(); await sleep(200);
-  await press(cam + ' [data-testid=page-delete]'); await sleep(400);
-  ok(await thumbs() === 3 && /Page deleted/.test(await p.locator('[data-testid=undo-snack]').innerText()) && !/remove/.test(await calls()), 'scanner: Delete never asks — the page goes and the Undo snack shows');
+  await press(cam + ' [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-delete]'); await sleep(400);
+  ok(await thumbs() === 3 && /Page deleted/.test(await p.locator('[data-testid=undo-snack]').innerText()) && !/remove/.test(await calls()), 'scanner: Delete on a grown photo never asks — the page goes and the Undo snack shows');
   await p.locator('[data-testid=undo-snack] button').tap(); await sleep(200);
   ok(await thumbs() === 4, 'scanner: Undo brings the page back');
   await p.locator(cam + ' [data-testid=scan-thumb]').nth(1).tap(); await sleep(200);
-  await press(cam + ' [data-testid=page-delete]'); await sleep(300);
+  await press(cam + ' [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-delete]'); await sleep(300);
   await press(cam + ' [data-testid=scan-done]'); await sleep(300);
   ok(/remove p2 · done/.test(await calls()), 'scanner: Done makes a delete still offering Undo, then ends the scan ' + await calls());
   ok(!(await visible(p, '[data-testid=undo-snack]')) && await thumbs() === 0 && await p.locator(cam + ' [data-testid=scan-done]').isDisabled(),
     'scanner: Done ends the Undo snack and the screen starts empty (its pages let go)');
 
-  // the still screens: a page opened large, the corner editor
+  // the still screens: a photo grown in the strip, a page opened large, the corner editor
+  ok(await visible(p, '[data-testid=scanner-grow] [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-delete]') && await visible(p, '[data-testid=scanner-grow] [data-testid=scan-thumb-fix]'), 'scanner: the gallery\'s photo grown in the strip');
+  await p.locator('[data-testid=scanner-grow]').screenshot({ path: path.join(OUT, 'scanner-screen-grow.png') });
   ok(await visible(p, '[data-testid=scanner-page] [data-testid=page-view]') && await p.locator('[data-testid=scanner-page] [data-testid=kind-chip]').count() === 6, 'scanner: the gallery\'s second screen is a page opened large');
   ok(await visible(p, '[data-testid=scanner-fix] [data-testid=corner-editor]'), 'scanner: the gallery\'s third screen is the corner editor');
   // a whole side moves (owner's template pair 6): the right side by its middle bar, the bottom side by its line
@@ -428,8 +468,10 @@ async function scanner(browser) {
   const fw = '[data-testid=window][data-kind=full] [data-testid=scanner]';
   const keptShape = { first: await p.locator(fw + ' [data-testid=scan-thumb]').first().getAttribute('data-id'), n: await p.locator(fw + ' [data-testid=scan-thumb]').count(), done: await p.locator(fw + ' [data-testid=scan-done]').innerText() };
   await p.locator(fw + ' [data-testid=scan-thumb]').first().dispatchEvent('click'); await sleep(200);
+  keptShape.stripFix = await p.locator(fw + ' [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-fix]').count();
+  await p.locator(fw + ' [data-testid=scan-thumb][data-selected] [data-testid=scan-thumb-open]').dispatchEvent('click'); await sleep(200);
   Object.assign(keptShape, { kept: await p.locator(fw + ' [data-testid=page-view]').getAttribute('data-kept'), fix: await p.locator(fw + ' [data-testid=page-fix]').count(), keep: await p.locator(fw + ' [data-testid=page-keep]').count(), del: await p.locator(fw + ' [data-testid=page-delete]').count() });
-  ok(keptShape.first === 'kept1' && keptShape.n === 3 && /Done · 3/.test(keptShape.done) && keptShape.kept === 'true' && keptShape.fix === 0 && keptShape.keep === 0 && keptShape.del === 1,
+  ok(keptShape.first === 'kept1' && keptShape.n === 3 && /Done · 3/.test(keptShape.done) && keptShape.stripFix === 0 && keptShape.kept === 'true' && keptShape.fix === 0 && keptShape.keep === 0 && keptShape.del === 1,
     'scanner: the pages the host kept show first, count in Done and can be deleted (not fixed) ' + JSON.stringify(keptShape));
   await p.keyboard.press('Escape'); await sleep(200);
   await p.screenshot({ path: path.join(OUT, 'scanner-full.png') });

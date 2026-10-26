@@ -104,7 +104,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     ];
     for(const [n, fn] of M){ await step(p, w, 'manager-' + n, fn); }
     // The scan window (src/scan/Scanner.tsx): the full-screen scanner with a shot's pages in its strip (given to the
-    // session with no camera: ManagerScan.hooks().inject), then a page opened large
+    // session with no camera: ManagerScan.hooks().inject), a photo grown in the strip, then a page opened large
     try {
       await p.evaluate(async () => {
         window.__scanGoing = startNewScan();
@@ -117,6 +117,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       });
       await sleep(2500); await shoot(p, 'manager-scanner-camera-' + w);
       await p.evaluate(() => { const t = document.querySelector('[data-testid="scan-thumb"]'); if (t) t.click(); });
+      await sleep(800); await shoot(p, 'manager-scanner-grown-' + w);
+      await p.evaluate(() => { const o = document.querySelector('[data-testid="scan-thumb-open"]'); if (o) o.click(); });
       await sleep(800); await shoot(p, 'manager-scanner-page-' + w);
       await p.keyboard.press('Escape'); await sleep(300); await p.keyboard.press('Escape'); await sleep(500);
     } catch (e) { console.log('skip manager-scanner-' + w + ': ' + e.message.split('\n')[0]); }

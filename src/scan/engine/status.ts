@@ -48,6 +48,8 @@ export function statusEnglish(s: EngineStatus): string {
  *  - edges_unclear: the edges are not clear — more light, a darker background;
  *  - hold: still for seconds more before the shot (the lab's "Hold still… 0.6 s");
  *  - found: count documents found (1 on the live frame once it is steady; after a shot, how many it held);
+ *  - taken: the live frame went on after a shot and a document it took is still in front of the camera — Auto
+ *    waits until it has left the frame (or another document comes);
  *  - no_frame: Capture tapped with no frame to take yet;
  *  - captured: the shot is cut by the live frame's corners (ms after the tap);
  *  - refining: the accurate model is refining the corners;
@@ -66,6 +68,7 @@ export type SessionStatus =
   | { key: 'edges_unclear' }
   | { key: 'hold'; seconds: number }
   | { key: 'found'; count: number }
+  | { key: 'taken' }
   | { key: 'no_frame' }
   | { key: 'captured'; ms: number }
   | { key: 'refining' }

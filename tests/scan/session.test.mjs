@@ -14,11 +14,14 @@
 //    once every page still shown was looked at (a page deleted does not count);
 //  - a newer shot (a wake) while a shot is in work: the pages it already gave are still read;
 //  - hold() pauses the live frame (no frames, no Auto shot) and resume() starts it again from a fresh frame;
+//  - after a shot the live frame goes on by itself (no Next), and Auto does not take the same document again:
+//    a nudge keeps it waiting (taken), the document gone for AWAY_MS or another one away from it lets it shoot;
+//    the shutter is never held by it, and a held live frame does not go on after a shot until resume();
 //  - the status keys come out in order (finding, hold with the seconds, found with the count, then the shot's);
 //  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
 //  - the refined page is read again on its own cut; a page's pixels are kept once;
-//  - the camera asks for 30 frames a second and nothing else about the rate.
+//  - the camera asks for 1280×720 at 30 frames a second and nothing else about the rate.
 //
 //   node tests/scan/session.test.mjs
 import assert from 'node:assert/strict';
@@ -243,6 +246,9 @@ for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
     // readers that tell which cut they read
     const readers = { info: { version: 't' }, load: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
     const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false, readers, delay: call => call.which === 'live' ? 30 : 0 });
+    // the frame shown when the shot says what it found (the live frame goes on by itself once it settled)
+    let shownAtFound = null;
+    s.on('status', st => { if (st.key === 'found' && engine.shooting && !shownAtFound) shownAtFound = s.live.target && s.live.target.pts; });
     await s.startCamera(video);
     await clock.runFor(600);
     await clock.runFor(200, () => engine.pendingLive > 0);
@@ -271,7 +277,8 @@ for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
       near(log.pages[log.pages.length - 1].quad, Q, 'the live cut stays');
       near(log.pages[0].record.edgesModel, Q, 'the model corners are the live ones');
     }
-    assert.deepEqual(s.live.target.pts, exact, 'the frame shows the accurate corners');
+    assert.deepEqual(shownAtFound, exact, 'the frame shows the accurate corners');
+    near(s.live.taken.quads[0], replaced ? exact : Q, 'the document taken (Auto waits for it to go) is where the shot cut it');
     assert.equal(engine.calls.find(c => c.which === 'cap').pendingLive, 0, 'the accurate model waited for the live frames in work');
     return log.pages.length + ' page events';
   });
@@ -285,7 +292,7 @@ for (const inside of [false, true]) {
   await run(inside ? 'findInside stops at MAX_DOCS (5 documents)' : 'findNext stops at 4 documents in all', async () => {
     let next = 1;
     const script = (call, e) => {
-      if (call.which === 'live' && !e.shooting) return { pts: Q, conf: 0.9 };
+      if (call.which === 'live') return e.shooting ? NONE : { pts: Q, conf: 0.9 };  // after the shot: an empty table
       if (call.afterFlat) { e.inside = (e.inside || 0) + 1; return inside ? { pts: INNER, conf: 0.9 } : NONE; }
       if (call.which === 'cap' && !e.capped) { e.capped = true; return { pts: Q, conf: 0.9 }; }
       if (call.which === 'cap') { e.nexts = (e.nexts || 0) + 1; return { pts: next < 4 ? QS[next++] : EXTRA, conf: 0.9 }; }
@@ -305,7 +312,8 @@ for (const inside of [false, true]) {
     assert.deepEqual(pgs, [...Array(want).keys()]);
     const last = log.pages[log.pages.length - 1].record;
     assert.equal(last.pages, want); assert.equal(last.edgesMore.length, want - 1);
-    assert.equal(log.status[log.status.length - 1].key, 'found'); assert.equal(log.status[log.status.length - 1].count, want);
+    const found = log.status.filter(x => x.key === 'found').pop();
+    assert.equal(found.count, want, 'the shot says how many it found');
     if (inside) { const p4 = log.pages.find(p => p.pg === 4); assert.ok(p4.quad.every(([x, y]) => x > 0.05 && x < 0.45 && y > 0.05 && y < 0.45), 'the inner document lies on the first'); }
     return log.pages.length + ' page events';
   });
@@ -387,14 +395,18 @@ await run('the status keys come out in order (finding, hold with the seconds, fo
   await clock.runFor(3000, () => log.status.some(x => x.key === 'found' && log.pages.length));
   await clock.runFor(1000);
   const keys = log.status.map(x => x.key).filter((k, i, a) => k !== a[i - 1]);
-  assert.deepEqual(keys, ['finding', 'hold', 'found', 'captured', 'refining', 'looking_more', 'found']);
+  // … then the live frame goes on by itself (nothing on the table any more: finding)
+  assert.deepEqual(keys, ['finding', 'hold', 'found', 'captured', 'refining', 'looking_more', 'found', 'finding']);
   const holds = log.status.filter(x => x.key === 'hold').map(x => x.seconds);
   assert.ok(holds[0] <= 1 && holds[0] > 0.9, 'the first hold says 1 s');
   assert.ok(holds.every((v, i) => !i || v < holds[i - 1]), 'the seconds go down');
   assert.ok(holds.every(v => v > 0), 'never 0');
   const founds = log.status.filter(x => x.key === 'found');
   assert.equal(founds[0].count, 1); assert.equal(founds[founds.length - 1].count, 1);
-  // the hints for a missing corner and unclear edges
+  // the hints for a missing corner and unclear edges; the countdown and found say taken while Auto waits
+  assert.deepEqual(Sess.liveStatus({ pts: Q, conf: 0.9 }, { pts: Q, conf: 0.9, steady: 300 }, true), { key: 'taken' });
+  assert.deepEqual(Sess.liveStatus({ pts: Q, conf: 0.9 }, { pts: Q, conf: 0.9, steady: 1300 }, true), { key: 'taken' });
+  assert.deepEqual(Sess.liveStatus(NONE, NONE, true), { key: 'finding' });
   assert.deepEqual(Sess.liveStatus({ pts: [Q[0], null, Q[2], Q[3]], conf: 0.9 }, { pts: [Q[0], null, Q[2], Q[3]], conf: 0.9 }), { key: 'corners_out', n: 1 });
   assert.deepEqual(Sess.liveStatus(NONE, NONE), { key: 'finding' });
   assert.deepEqual(Sess.liveStatus({ pts: Q, conf: 0.3 }, { pts: Q, conf: 0.3 }), { key: 'edges_unclear' });
@@ -486,9 +498,10 @@ await run('a shutter tap while a shot is in work does nothing (no second cut of 
   assert.equal(second, 0, 'the second tap took nothing'); assert.equal(first, 1);
   assert.equal(new Set(log.pages.map(p => p.record.attempt)).size, 1, 'one attempt');
   assert.equal(engine.warps.filter(w => w.upright).length, 1, 'cut once');
-  // settled: the shutter works again (after a wake)
+  // settled: the live frame went on by itself, and the shutter works again (no wake: there is no Next)
   engine.shooting = false; engine.capped = false;
-  s.wake(); await clock.runFor(600);
+  await clock.runFor(600);
+  assert.equal(s.live.running, true, 'the live frame went on by itself');
   engine.shooting = true;
   let third = null; s.snap().then(n => { third = n; });
   await clock.runFor(2000, () => third !== null);
@@ -496,11 +509,11 @@ await run('a shutter tap while a shot is in work does nothing (no second cut of 
   s.stop();
 });
 
-await run('the camera asks for 30 frames a second and nothing else about the rate', async () => {
+await run('the camera asks for 1280×720 at 30 frames a second and nothing else about the rate', async () => {
   const { s, video, asked } = setup(steadyLive(Q), { auto: false });
   await s.startCamera(video);
   assert.equal(asked.length, 1);
-  assert.deepEqual(asked[0], { video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false });
+  assert.deepEqual(asked[0], { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false });
   assert.equal(asked[0], Cam.CAMERA_CONSTRAINTS);
   assert.equal(video.srcObject !== null && video.played, 1);
   const src = fs.readFileSync(path.join(ROOT, 'src/scan/engine/camera.ts'), 'utf8');
@@ -601,12 +614,131 @@ await run('hold() pauses the live frame (no frames sent, no Auto shot); resume()
   await clock.runFor(1600, () => log.pages.length > 0);
   assert.ok(log.pages.length, 'Auto shoots again once resumed');
   assert.ok(log.pages[0].t - t >= 1000, 'from a fresh countdown (' + (log.pages[0].t - t) + ' ms)');
-  // a hold when the live frame waits after a shot does nothing, and its resume starts nothing
+  // held while the shot is in work: the live frame does not go on after it until resume()
+  s.hold();
   await clock.runFor(1500);
-  assert.equal(s.live.running, false, 'waiting after the shot');
-  s.hold(); s.resume();
-  assert.equal(s.live.running, false, 'still waiting for wake()');
+  assert.equal(s.live.running, false, 'still held after the shot settled');
+  s.resume();
+  assert.equal(s.live.running, true, 'goes on once resumed');
   s.stop();
+});
+
+/** A table the test changes: the document Q, nothing, Q nudged, another document away from Q. */
+const sceneLive = scene => call => {
+  if (call.which !== 'live') return NONE;
+  const sc = scene.now;
+  return sc === 'doc' ? { pts: Q, conf: 0.9 } : sc === 'nudge' ? { pts: shift(Q, 0.03), conf: 0.9 } : sc === 'other' ? { pts: shift(Q, 0.3, 0.2), conf: 0.9 } : NONE;
+};
+const attemptsOf = log => new Set(log.pages.map(p => p.record.attempt)).size;
+
+await run('after a shot the live frame goes on by itself; Auto does not take the same document again until it has left the frame', async () => {
+  const scene = { now: 'doc' };
+  const { s, clock, log, video } = setup(sceneLive(scene), { auto: true });
+  await s.startCamera(video);
+  await clock.runFor(2500, () => log.pages.length > 0);
+  assert.equal(attemptsOf(log), 1, 'the first shot');
+  await clock.runFor(400);
+  assert.equal(s.live.running, true, 'the live frame went on by itself (no Next)');
+  assert.ok(s.live.taken.waiting, 'the document taken is kept');
+  // the same document still on the table, nudged a little: no second shot, the status says taken
+  await clock.runFor(1500);
+  scene.now = 'nudge';
+  await clock.runFor(2500);
+  assert.equal(attemptsOf(log), 1, 'Auto did not take the same document again');
+  assert.equal(log.status[log.status.length - 1].key, 'taken', 'the status line says it was taken');
+  assert.ok(!log.status.slice(-20).some(x => x.key === 'hold'), 'no countdown while it waits');
+  // taken away (nothing found for AWAY_MS), then put back: taken again after a fresh countdown
+  scene.now = 'none';
+  await clock.runFor(St.AWAY_MS + 200);
+  assert.ok(!s.live.taken.waiting, 'gone from the frame: Auto may shoot again');
+  scene.now = 'doc';
+  const back = clock.t;
+  await clock.runFor(2500, () => attemptsOf(log) > 1);
+  assert.equal(attemptsOf(log), 2, 'the next document (put in the same place) is taken');
+  assert.ok(log.pages[log.pages.length - 1].t - back >= 1000, 'after a fresh countdown');
+  // another document away from the one taken, with no gap between them: taken too (the scene changed enough)
+  await clock.runFor(400);
+  scene.now = 'other';
+  await clock.runFor(2500, () => attemptsOf(log) > 2);
+  assert.equal(attemptsOf(log), 3, 'another document in the frame is taken');
+  // the shutter is never held by it: the same document again, by hand
+  await clock.runFor(400);
+  assert.ok(s.live.taken.waiting, 'waiting for the third document to go');
+  let n = null; s.snap().then(x => { n = x; });
+  await clock.runFor(2000, () => n !== null);
+  assert.equal(n, 1, 'the shutter takes it again');
+  assert.equal(attemptsOf(log), 4);
+  s.stop();
+  return attemptsOf(log) + ' shots';
+});
+
+await run('a corner out of the frame is not gone; Auto turned on later does not take the document taken; wake forgets it', async () => {
+  const T = new St.Taken(() => clock.t), clock = { t: 0 };
+  assert.equal(T.still({ pts: Q, conf: 0.9 }), false, 'nothing taken: nothing to wait for');
+  T.set([Q, shift(Q, 0.5)]);
+  assert.equal(T.still({ pts: [Q[0], null, Q[2], Q[3]], conf: 0.9 }), true, 'a corner out');
+  clock.t += 1000;
+  assert.equal(T.still({ pts: [Q[0], null, Q[2], Q[3]], conf: 0.9 }), true, 'still not gone a second later');
+  assert.equal(T.still({ pts: shift(Q, 0.5), conf: 0.9 }), true, 'the shot\'s other document is taken too');
+  assert.equal(T.still(NONE), true, 'a missed frame');
+  clock.t += St.AWAY_MS - 1;
+  assert.equal(T.still(NONE), true, 'gone for less than AWAY_MS');
+  clock.t += 1;
+  assert.equal(T.still(NONE), false, 'gone for AWAY_MS');
+  assert.equal(T.waiting, false);
+  T.set([Q]);
+  T.follow(q => shift(q, 0.2));
+  assert.equal(T.still({ pts: shift(Q, 0.2), conf: 0.9 }), true, 'the follow carries it as the phone moves');
+  assert.equal(T.still({ pts: shift(Q, 0.2 + St.AWAY_MOVE + 0.01), conf: 0.9 }), false, 'away from it: another scene');
+  // Auto off while the shot settles, turned on with the document still there: not taken again; wake forgets it
+  const scene = { now: 'doc' };
+  const { s, clock: c, log, video } = setup(sceneLive(scene), { auto: false });
+  await s.startCamera(video);
+  await c.runFor(600);
+  let n = null; s.snap().then(x => { n = x; });
+  await c.runFor(2000, () => n !== null);
+  await c.runFor(300);
+  s.setAuto(true);
+  await c.runFor(2500);
+  assert.equal(attemptsOf(log), 1, 'Auto turned on does not take the document already taken');
+  s.wake(video);
+  assert.equal(s.live.taken.waiting, false, 'wake forgets the documents taken (Retake)');
+  await c.runFor(2500, () => attemptsOf(log) > 1);
+  assert.equal(attemptsOf(log), 2, 'after wake the same document is taken again');
+  s.stop();
+});
+
+await run('the live frame goes on with no frame from before it (a shutter tap takes nothing old); a lab switch during a shot or a pick lets it go on, on the new way', async () => {
+  // the shutter tapped on the very frame the live frame goes on: the frame of the shot before is not cut again
+  let slow = false;  // the live answers after the shot come late: the tap is before the first new one
+  const a = setup(steadyLive(Q), { auto: false, delay: call => (slow && call.which === 'live' ? 1000 : 0) });
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(600);
+  a.s.on('status', st => { if (st.key === 'found') slow = true; });
+  let n = null; a.s.snap().then(x => { n = x; });
+  await a.clock.runFor(2000, () => n !== null);
+  assert.equal(n, 1);
+  assert.equal(a.s.live.running, true, 'the live frame went on');
+  assert.equal(a.s.live.lastRes, null, 'nothing kept from the frame before the shot');
+  n = null; a.s.snap().then(x => { n = x; });
+  await flush();
+  assert.equal(n, 0, 'a tap before the first new answer takes nothing');
+  assert.equal(a.log.status[a.log.status.length - 1].key, 'no_frame');
+  a.s.stop();
+  // a switch while the shot is in work (it is dropped): the live frame goes on once the switch is over
+  const b = setup(steadyLive(Q), { auto: false, delay: call => (call.which === 'cap' ? 800 : 0) });
+  b.engines.setSettings = () => {};
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(600);
+  void b.s.snap();
+  await b.clock.runFor(100);
+  assert.equal(b.s.live.running, false, 'the shot is in work');
+  let switched = false; b.s.switchWay({}).then(() => { switched = true; });
+  await b.clock.runFor(2000, () => switched);
+  assert.ok(switched, 'the switch is over');
+  await b.clock.runFor(1000);
+  assert.equal(b.s.live.running, true, 'the live frame went on after the switch');
+  b.s.stop();
 });
 
 fs.rmSync(TMP, { recursive: true, force: true });
