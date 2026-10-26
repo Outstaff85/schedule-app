@@ -27,9 +27,11 @@ The whole process (what is collected, where it is kept, why each step): docs/sca
 
 ## 4. Backgrounds
 `python -m gen bg pull` (the bank from the private bucket, made ready by itself: catalogued, checked, split — `gen build` refuses a bank that is not). When the owner adds photos by hand: `python -m gen bg add ~/.scan-train/backgrounds --category auto` (the owner's own shots with `--owner`), `python -m gen bg check` (tell the owner the counts by category and the rejected photos: under 1600 px, near-duplicates, one the edges model sees a document in) and `python -m gen bg split`.
+- A category the bank is short of: `python -m gen bg fetch` (CC0 / public-domain photos from Openverse, at most 40 a run, catalogued, checked and split by itself; never pushed — tell the owner how many wait for `python -m gen bg push`). The automatic cycle runs it every cycle (docs/scan-training.md → The generator tunes itself).
 
 ## 5. A made-up set per model
 - **Edges:** `python -m gen build --model edges --count 8000` (scenes: one camera for the table and the documents) — with gen mine's focus once there is one: add `--focus ~/.scan-train/mine/focus.json` (step 10).
+- **The capture settings**: a training run takes `~/.scan-train/gen/tune.json` (`python -m gen tune`: the camera moved toward the real photos by the last realism panel) and `gen/ablation.json` (`python -m gen ablate`: the effects that help the real exam) by itself when they are there; `--no-tune` draws today's way. Tell the owner what `gen build` printed as the capture settings, and the needs in `gen/needs.json` (a new effect, a new document type, photos no free source gives).
 - **Document type, passport zone, Hebrew fields, face** (the phone's own cuts, by the lab's edges model): `python -m gen build --model doctype,mrz,he,face --count 2000` (`--focus` the same way; a new edges version in the lab: draw it again — the cache is per edges model).
 - **Passport zone lines:** `python synth_lines.py mrz --count 100000`; with MIDV on the PC also `python midv_mrz.py` (training lines 00–69, select 70–79, exam 80–99; MIDV gives zone lines of four passports only: Azerbaijan, Greece, Latvia, Serbia).
 - **Hebrew fields:** `python synth_fields.py --count 3000` and `python synth_fields.py --count 300 --check`.

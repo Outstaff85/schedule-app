@@ -135,16 +135,26 @@ def data_file(path, dest):
 
 KEPT = ("midv", "midv-mrz", "smartdoc", "mrz-ckpt", "checkpoints",
         "backgrounds", "backgrounds-own", "occluders", "loop")  # public datasets (midv.py, smartdoc.py), the passport zone reader's weights (train_mrz.py), the other trainings' progress (checkpoint.py) and the background bank with its catalog and cut-outs (gen/backgrounds.py; owner, 2026-10-25: the automatic cycle must not pull and check it again after every no) and the automatic cycle's own folder (loop/: its state, logs, gen mine's kept focus — loop.py — and the delivery checkout publish.py runs from — loop_deliver.py), no worker's data: kept between trainings
+KEPT_GEN = ("tune.json", "ablation.json", "needs.json", "bg-fetch.json", "notes")   # in gen/: the generator's own state (gen/capture.py, gen/needs.py, gen/bgfetch.py)
 
 
 def clear_work():
     """Every copy on this PC deleted (the workers' documents, the new models, the made-up photos) —
     but the MIDV and SmartDoc sets, the passport zone reader's weights (mrz-ckpt), the other trainings' progress
-    (checkpoints), the background bank and the automatic cycle's folder, loop/ (KEPT)."""
+    (checkpoints), the background bank, the automatic cycle's folder, loop/ (KEPT), and what the generator learned about
+    itself (KEPT_GEN in gen/: gen tune's and gen ablate's settings, the needs for the owner, the fetched photos' record —
+    no picture, no worker's data)."""
     if not WORK.exists():
         return
     for p in WORK.iterdir():
         if p.name in KEPT:
+            continue
+        if p.name == "gen" and p.is_dir():
+            for q in p.iterdir():
+                if q.name not in KEPT_GEN:
+                    shutil.rmtree(q, ignore_errors=True) if q.is_dir() else q.unlink(missing_ok=True)
+            if not any(p.iterdir()):
+                p.rmdir()
             continue
         shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
 
