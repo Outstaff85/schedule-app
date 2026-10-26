@@ -239,6 +239,10 @@ service cloud.firestore {
     match /usernames/{name} { allow read, write: if false; }
     match /weatherCache/{area} { allow read, write: if false; }  // the weather function only (stage 12)
     match /permTemplates/{id} { allow read, write: if false; }  // the users_admin function only (permission templates)
+    // The scanner's automatic training cycle's reports (docs/scan-training.md → The automatic cycle → Reports):
+    // written by the owner's PC with its Admin credentials, read by a super-admin only. The rest of
+    // scanTrainingStats (the counters, `current`) stays function-only (not matched: denied).
+    match /scanTrainingStats/loop { allow read: if isSuper(); allow write: if false; }
 
     // Telemetry: any signed-in caller may append, only a superadmin may read.
     // The super-admin reads them and may wipe them (Admin → Reset).

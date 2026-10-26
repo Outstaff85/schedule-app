@@ -137,7 +137,19 @@ export type TrainingStats = { due: boolean; edgesSince: number; doctypesDue: boo
   /** every scan attempt (docs/scan-plan.md → S8): new since the last training, the threshold, whether it is reached */
   attemptsSince?: number; attemptsAt?: number; attemptsDue?: boolean;
   /** the readers (functions/feedback.py reader_counts): real passports / ID cards saved since each one's last training */
-  passportsSince?: number; idCardsSince?: number; realNeeded?: number; passportsDue?: boolean; idCardsDue?: boolean };
+  passportsSince?: number; idCardsSince?: number; realNeeded?: number; passportsDue?: boolean; idCardsDue?: boolean;
+  /** the automatic training cycle on the owner's PC (scripts/scan-train/loop_report.py → scanTrainingStats/loop) */
+  loop?: { latest: LoopReport | null; history: LoopReport[] } };
+/** One report of the automatic training cycle (docs/scan-training.md → The automatic cycle → Reports). */
+export type LoopState = 'not-due' | 'running' | 'paused' | 'published' | 'rejected' | 'waiting-golden' | 'failed';
+export type LoopModel = { trained: boolean; verdict: 'yes' | 'no' | null; failed: string[]; examReport: string | null };
+export type LoopReport = { id: string; startedAt: string | null; finishedAt: string | null; state: LoopState; due: Record<string, any>;
+  models: Partial<Record<'edges' | 'doctype' | 'mrz' | 'he', LoopModel>>; version: string | null; branch: string | null; prUrl: string | null;
+  notes: string[]; needsOwner: string[]; log: string | null };
+const loopOf = (r: any): LoopReport | null => (r && typeof r === 'object' && typeof r.id === 'string' ? {
+  id: r.id, startedAt: r.startedAt ?? null, finishedAt: r.finishedAt ?? null, state: r.state, due: r.due || {}, models: r.models || {},
+  version: r.version ?? null, branch: r.branch ?? null, prUrl: typeof r.prUrl === 'string' && /^https:\/\//.test(r.prUrl) ? r.prUrl : null,
+  notes: Array.isArray(r.notes) ? r.notes : [], needsOwner: Array.isArray(r.needsOwner) ? r.needsOwner : [], log: r.log ?? null } : null);
 export async function trainingStats(): Promise<TrainingStats | null> {
   try {
     const j = await post(SCAN_FEEDBACK_FN_URL, { action: 'stats' });
@@ -151,7 +163,8 @@ export async function trainingStats(): Promise<TrainingStats | null> {
       attemptsSince, attemptsAt, attemptsDue: due != null ? !!due : attemptsAt != null && attemptsSince >= attemptsAt,
       passportsSince, idCardsSince, realNeeded,
       passportsDue: j.passportsDue != null ? !!j.passportsDue : realNeeded != null && passportsSince >= realNeeded,
-      idCardsDue: j.idCardsDue != null ? !!j.idCardsDue : realNeeded != null && idCardsSince >= realNeeded };
+      idCardsDue: j.idCardsDue != null ? !!j.idCardsDue : realNeeded != null && idCardsSince >= realNeeded,
+      loop: { latest: loopOf(j.loop?.latest), history: (Array.isArray(j.loop?.history) ? j.loop.history : []).map(loopOf).filter(Boolean) as LoopReport[] } };
   }
   catch { return null; }
 }

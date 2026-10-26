@@ -1841,20 +1841,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const sd = (w.docs || []).find(d => d.signed);
     const call = async b => (await fetch(API_URL, {method: 'POST', body: JSON.stringify(b)})).json();
     const r = {};
-    // Remove on a signed document leaves it on the worker
-    ManagerBridge.removeDocs('w1', [String(sd.id)]);
-    r.entry = (w.docs || []).some(d => d.id === sd.id);
-    // the server refuses to delete the signed Form 101, the signed contract and the signature
+    // a delete on its own (a file replaced, a rescan: no manual) never removes a signed Form 101, contract or signature
     r.refused = [];
     for (const f of [w.docFileId, sd.fileId, w.sigFileId]) r.refused.push((await call({action: 'deleteWorkerDoc', fileId: f})).error || 'deleted');
     r.sigBack = ((await call({action: 'loadWorkerPages', fileIds: [w.sigFileId]})).pages || []).length;
-    // Delete worker on a signed worker asks to delete only its unsigned files
+    // a person's own delete removes signed files too (owner, 2026-10-25): Remove on a signed document, then Delete worker
     const f0 = window.fetch, asked = [];
-    window.fetch = (u, o) => { try { const b = JSON.parse((o && o.body) || '{}'); if (b.action === 'deleteWorkerDoc') asked.push(b.fileId); } catch (e) {} return f0(u, o); };
+    window.fetch = (u, o) => { try { const b = JSON.parse((o && o.body) || '{}'); if (b.action === 'deleteWorkerDoc') asked.push(b.fileId + (b.manual === true ? ' manual' : '')); } catch (e) {} return f0(u, o); };
     const P = 'tenants/tenant-one/workers/wS/';
     workers.push({id: 'wS', name: 'Signed Test', status: 'active', clientIds: [], schedule: [], signedAt: '2026-10-20T10:00:00Z', signedRequestId: 'rS',
       docFileId: P + 'form101/s.pdf', sigFileId: P + 'signature/s.png', scanPages: [{fileId: P + 'pages/1-0-id_front.jpg', kind: 'id_front', savedAt: ''}],
       docs: [{id: 'dS', type: 'contract', fileId: P + 'docs/c.pdf', signed: true}, {id: 'dU', type: 'visa', fileId: P + 'docs/v.pdf'}]});
+    ManagerBridge.removeDocs('wS', ['dS']);
+    r.entry = !workers.find(x => x.id === 'wS').docs.some(d => d.id === 'dS');
     ManagerBridge.deleteWorkers(['wS']);
     await T.tick(200);
     window.fetch = f0;
@@ -1864,10 +1863,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   const keepF101 = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/form101', {method: 'POST'})).json();
   const keepCtr = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/contract', {method: 'POST'})).json();
-  ok(keep.entry && keep.refused.every(e => /signed document is kept/.test(e)) && keep.sigBack === 1 && keepF101.pages > 0 && keepCtr.pages > 0,
-    'signed files are kept: Remove leaves a signed document, and the server refuses to delete the signed Form 101, contract and signature ' + JSON.stringify(keep));
-  ok(keep.gone && JSON.stringify(keep.asked) === JSON.stringify(['tenants/tenant-one/workers/wS/docs/v.pdf', 'tenants/tenant-one/workers/wS/pages/1-0-id_front.jpg']),
-    'signed files are kept: Delete worker leaves a signed worker\'s Form 101, signature and signed documents ' + JSON.stringify(keep));
+  ok(keep.refused.every(e => /signed document is kept/.test(e)) && keep.sigBack === 1 && keepF101.pages > 0 && keepCtr.pages > 0,
+    'signed files are kept: a delete on its own (no manual) is refused for the signed Form 101, contract and signature ' + JSON.stringify(keep));
+  const kP = 'tenants/tenant-one/workers/wS/';
+  ok(keep.entry && keep.gone && JSON.stringify(keep.asked) === JSON.stringify(['docs/c.pdf', 'docs/v.pdf', 'form101/s.pdf', 'pages/1-0-id_front.jpg', 'signature/s.png'].map(f => kP + f + ' manual')),
+    "a person's own delete: Remove takes a signed document off, Delete worker deletes every file of a signed worker, each sent as manual " + JSON.stringify(keep));
   // D4: a change to what the signed documents print asks for a new signature; the firm's own details don't.
   const d4 = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w1');
@@ -2992,7 +2992,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (JSON.parse(r.request().postData() || '{}').action !== 'stats') return r.fallback();
     return r.fulfill({status:200, contentType:'application/json', headers:h, body: JSON.stringify({ok: true, due: false, edgesSince: 3, doctypesDue: false, doctypes: {},
       stats: {attemptsSince: 18}, attemptsSince: 18, attemptsAt: 15, attemptsDue: true,
-      passportsSince: 31, idCardsSince: 4, realNeeded: 30, passportsDue: true, idCardsDue: false})});
+      passportsSince: 31, idCardsSince: 4, realNeeded: 30, passportsDue: true, idCardsDue: false,
+      loop: {latest: {id: 'cyc-1', startedAt: new Date(Date.now() - 6 * 3600e3).toISOString(), finishedAt: new Date(Date.now() - 3600e3).toISOString(), state: 'published',
+        due: {edgesSince: 22}, models: {edges: {trained: true, verdict: 'yes', failed: [], examReport: null}}, version: 'v9', branch: 'scan-train/v9',
+        prUrl: 'https://github.com/Outstaff85/schedule-app/pull/400', notes: [], needsOwner: [], log: 'C:/w/loop/cyc-1.log'}, history: []}})});
   });
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
@@ -3002,6 +3005,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const readersBell = await p.evaluate(() => ({passports: notifList().some(n => /^scan-passports:/.test(n.id) && /31 real passports/.test(n.detail)),
     cards: notifList().some(n => /^scan-idcards:/.test(n.id))}));
   ok(readersBell.passports && !readersBell.cards, 'boss: the bell says "Enough real passports to train the passport zone reader" at 30 (passportsDue), and nothing for the ID cards under 30 ' + JSON.stringify(readersBell));
+  const loopBell = await p.evaluate(() => notifList().filter(n => /^scan-loop:/.test(n.id)).map(n => ({id: n.id, title: n.title, lvl: n.lvl})));
+  ok(loopBell.length === 1 && loopBell[0].id === 'scan-loop:cyc-1:published' && /New lab version v9 from the training loop — PR to merge/.test(loopBell[0].title) && loopBell[0].lvl === 'green',
+    'boss: the bell shows the training loop\'s latest report (scan_feedback stats "loop"): a new lab version with its PR to merge ' + JSON.stringify(loopBell));
   // The firms list (React, stage 6f-2): ✎ and a bare ⋮ (Edit, Disable, Delete last via Undo); Select; a tap opens the firm (below).
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -3158,7 +3164,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:SFCORS});
     const b = JSON.parse(r.request().postData() || '{}'); sfCalls.push(b);
     if (b.action === 'stats') return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, due: false, edgesSince: 42, doctypesDue: false,
-      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8, mrzShadowPassports: 4, mrzShadowRight: 3, mrzAiRight: 2, heShadowCards: 5, heShadowRight: 4, heAiRight: 3}})});
+      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8, mrzShadowPassports: 4, mrzShadowRight: 3, mrzAiRight: 2, heShadowCards: 5, heShadowRight: 4, heAiRight: 3},
+      loop: {latest: null, history: [
+        {id: 'cyc-2', startedAt: '2026-10-28T02:00:00Z', finishedAt: '2026-10-28T05:00:00Z', state: 'rejected', due: {}, version: null, branch: null, prUrl: null, notes: [], needsOwner: [], log: null,
+          models: {doctype: {trained: true, verdict: 'no', failed: ['turn exam under 98%'], examReport: null}}},
+        {id: 'cyc-1', startedAt: '2026-10-25T02:00:00Z', finishedAt: '2026-10-25T06:00:00Z', state: 'published', due: {}, version: 'v9', branch: 'scan-train/v9',
+          prUrl: 'https://github.com/Outstaff85/schedule-app/pull/400', notes: [], needsOwner: [], log: null,
+          models: {edges: {trained: true, verdict: 'yes', failed: [], examReport: null}}}]}})});
     if (b.action === 'setSettings') { if (b.doctypeMode) sfSet.doctypeMode = b.doctypeMode; Object.assign(sfSet.collect, b.collect || {}); }
     return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, ...sfSet})});
   });
@@ -3171,7 +3183,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       shadow: root.querySelector('[data-testid="scan-shadow"]').textContent,
       mrz: root.querySelector('[data-testid="scan-mrz"]').textContent,
       he: root.querySelector('[data-testid="scan-he"]').textContent,
-      on: root.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state')};
+      on: root.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state'),
+      loop: [...root.querySelectorAll('[data-testid="scan-loop-row"]')].map(r => r.dataset.state + '|' + r.textContent + '|' + ((r.querySelector('[data-testid="scan-loop-pr"]') || {}).href || '')).join(' / ')};
   }));
   await p.screenshot({path: SP + '/scan-admin.png'});
   await p.click('#adminRoot [data-testid="scan-doctype-mode"] [data-v="mixed"]');
@@ -3184,6 +3197,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(sa.shown && sa.figs === '42/20,5/20,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && /5 ID cards/.test(sa.he) && /80%/.test(sa.he) && /60%/.test(sa.he) && sa.on === 'checked'
     && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
     'Admin → Scanner: the figures, the shadow, the passport zone reader\'s and the Hebrew field reader\'s shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
+  ok(/^rejected\|Not better — nothing published.*Document type: not better.*Document type: turn exam under 98% \/ published\|Published to the lab · v9.*Document edges: better.*Merge the pull request.*\|https:\/\/github\.com\/Outstaff85\/schedule-app\/pull\/400$/.test(sa.loop || ''),
+    'Admin → Scanner → Automatic training: the last cycles newest first — the state, the version, each model\'s verdict, the reason and the PR link ' + JSON.stringify(sa.loop));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
     const items = [];

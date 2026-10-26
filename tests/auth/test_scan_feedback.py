@@ -563,3 +563,31 @@ def test_the_server_counts_a_saved_passport_and_a_lab_tick(monkeypatch, function
                 doctypeConfirmed=True)
     code, j = _body(main._scan_add({"examples": [tick]}, {"tenantId": "t1"}, db, stats, None))
     assert code == 200 and j["kept"] == 1 and db.records[-1][1]["doctypeConfirmed"] is True
+
+
+def test_the_loop_reports_come_with_the_stats(functions_main):
+    """The stats answer carries the automatic training cycle's reports (scanTrainingStats/loop, written by the PC's
+    loop_report.py): the latest and the last 20, nothing when the PC never sent one."""
+    main = functions_main
+    snap = lambda d: types.SimpleNamespace(to_dict=lambda: d)
+    reports = [{"id": f"c{i}", "state": "rejected"} for i in range(25)]
+
+    class Db:
+        def __init__(self, loop):
+            self.loop, self.asked = loop, []
+
+        def collection(self, name):
+            assert name == "scanTrainingStats"
+            return self
+
+        def document(self, name):
+            self.asked.append(name)
+            return types.SimpleNamespace(get=lambda: snap(self.loop))
+
+    current = types.SimpleNamespace(get=lambda: snap({"edgesSince": 21}))
+    db = Db({"latest": reports[0], "history": reports})
+    j = main._scan_stats(db, current)
+    assert db.asked == ["loop"] and j["due"] is True and j["edgesSince"] == 21
+    assert j["loop"]["latest"] == {"id": "c0", "state": "rejected"} and len(j["loop"]["history"]) == 20
+    assert main._scan_stats(Db(None), current)["loop"] == {"latest": None, "history": []}
+    assert feedback.loop_reports({"latest": "x", "history": ["y", {"id": "a"}]}) == {"latest": None, "history": [{"id": "a"}]}

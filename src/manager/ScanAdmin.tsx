@@ -3,7 +3,8 @@
 // the site (Hugging Face) —, how the document type model is used (Off / Shadow: it reads beside
 // Haiku, only compared / Mixed: a page it is sure of needs no Haiku), the shadow's figures, the
 // passport zone reader's figures in shadow (H8b: right on how many saved passports, against the AI), and
-// which firms' full documents are collected for the field reader model (on unless turned off).
+// which firms' full documents are collected for the field reader model (on unless turned off), and the
+// automatic training cycle on the owner's PC: its last cycles (docs/scan-training.md → The automatic cycle → Reports).
 // The figures and the settings come from scan_feedback (src/scan/server.ts).
 import * as React from 'react';
 import { IconExternalLink } from '@tabler/icons-react';
@@ -12,7 +13,11 @@ import { CheckGrid, CheckTile } from '@/components/ui/checkbox';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Figures, Section } from '@/components/shared/section';
-import { scanSettings, trainingStats, type DoctypeMode, type ScanSettings, type TrainingStats } from '@/scan/server';
+import { PagedList } from '@/components/shared/paged-list';
+import { Plate } from '@/components/shared/plate';
+import { scanSettings, trainingStats, type DoctypeMode, type LoopReport, type ScanSettings, type TrainingStats } from '@/scan/server';
+import { LOOP_MODELS, loopModelName, loopReason, loopStateName } from './logic/scanloop';
+import { shortWhen } from './adminlogs';
 import type { AdminSnapshot, ManagerBridge } from './bridge';
 
 const RETRAIN_AT = 20, DOCTYPE_AT = 20; // functions/feedback.py RETRAIN_AT, DOCTYPE_AT
@@ -69,6 +74,8 @@ export function ScanAdmin({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
         </div>
       </Section>
 
+      <AutoTraining history={stats ? stats.loop?.history || [] : null} locale={snap.locale} />
+
       <Section label={tr('Document type model')} panel>
         <p className="mb-2 text-sm text-muted-foreground">{tr('Off: Haiku gives every page its type. Shadow: the model reads beside Haiku and is only compared. Mixed: a page the model is sure of needs no Haiku.')}</p>
         {!set ? <Skeleton className="h-9 w-64" /> : (
@@ -116,5 +123,33 @@ export function ScanAdmin({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
         )}
       </Section>
     </div>
+  );
+}
+
+// The automatic training cycle (docs/scan-training.md → The automatic cycle): the last cycles the owner's PC reported,
+// newest first — the date, the state, the version and its pull request, each model's verdict, and why.
+const LOOP_COLOR: Record<string, string> = { published: 'var(--ok)', rejected: 'var(--warn)', failed: 'var(--bad)', 'waiting-golden': 'var(--accent)', running: 'var(--accent)', paused: 'var(--neutral)', 'not-due': 'var(--neutral)' };
+
+function AutoTraining({ history, locale }: { history: LoopReport[] | null; locale: string }) {
+  return (
+    <Section label={tr('Automatic training')} count={history?.length || undefined} panel data-testid="scan-loop">
+      <p className="mb-2 text-sm text-muted-foreground">{tr('The PC trains by itself at night, 02:00–08:00, when a model is due: a new cycle on a Sunday or Wednesday night, at least 3 days after the last. It gives the lab a new version only when every exam says it is not worse anywhere and better somewhere and the golden set is there — as a pull request to merge. The site is never changed by it.')}</p>
+      {!history ? <Skeleton className="h-12 w-full" /> : (
+        <PagedList items={history} empty={<p className="text-sm text-muted-foreground" data-testid="scan-loop-empty">{tr('No cycle reported yet.')}</p>} render={r => {
+          const verdicts = LOOP_MODELS.filter(m => r.models[m]?.trained).map(m => loopModelName(m) + ': ' + (r.models[m]?.verdict === 'yes' ? tr('better') : r.models[m]?.verdict === 'no' ? tr('not better') : '—'));
+          const reason = loopReason(r);
+          return (
+            <Plate key={r.id} data-testid="scan-loop-row" data-state={r.state} className="mb-1.5" color={LOOP_COLOR[r.state] || 'var(--neutral)'}
+              title={<span>{loopStateName(r.state)}{r.version ? <span className="font-normal text-ink-3"> · {r.version}</span> : null}</span>}
+              sub={<span className="grid whitespace-normal">
+                <span><span className="font-mono">{shortWhen(r.startedAt || undefined, locale)}</span>{verdicts.length ? ' · ' + verdicts.join(' · ') : ''}</span>
+                {reason && <span data-testid="scan-loop-reason">{reason}</span>}
+              </span>}
+              right={r.prUrl ? <a className="inline-flex items-center gap-1 text-sm text-[var(--accent)]" href={r.prUrl} target="_blank" rel="noopener" data-testid="scan-loop-pr">
+                {tr('Pull request')} <IconExternalLink className="size-3.5" /></a> : undefined} />
+          );
+        }} />
+      )}
+    </Section>
   );
 }

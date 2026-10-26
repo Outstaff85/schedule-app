@@ -134,10 +134,11 @@ def _tilt(rng, tilt, weights):
     return rng.uniform(max(lo, tilt[0]), min(hi, tilt[1]))
 
 
-def sample(rng, pts, partial=False, fov=FOV, distance=DISTANCE, tilt=TILT, tries=40, tilt_weights=None):
+def sample(rng, pts, partial=False, fov=FOV, distance=DISTANCE, tilt=TILT, tries=40, tilt_weights=None, near_power=2):
     """A camera shooting the plane points pts (N × 2 mm, the documents' corners): every point inside the frame — or,
     partial, at least one outside and at least one inside. None when no try fits (the documents too big for 55 cm).
-    tilt_weights: the tilt buckets' weights (gen mine's focus; None: uniform)."""
+    tilt_weights: the tilt buckets' weights (gen mine's focus; None: uniform); near_power: how much more often the
+    camera stands near its nearest pose (the capture settings' nearPower, gen/capture.py; 2 today)."""
     pts = np.asarray(pts, np.float64)
     lo, hi = pts.min(0), pts.max(0)
     centre, extent = (lo + hi) / 2, float(np.linalg.norm(hi - lo))
@@ -169,7 +170,7 @@ def sample(rng, pts, partial=False, fov=FOV, distance=DISTANCE, tilt=TILT, tries
                 a, b = (a, m) if inside(cam(m), pts) else (m, b)
             dmin = b
         dmax = min(distance[1], max(dmin * 1.7, dmin + 30))
-        d = dmin + (dmax - dmin) * rng.random() ** 2   # nearer shots (the documents filling the frame) more often
+        d = dmin + (dmax - dmin) * rng.random() ** near_power   # nearer shots (the documents filling the frame) more often
         c = cam(d)
         if inside(c, pts):
             return c

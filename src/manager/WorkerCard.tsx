@@ -114,10 +114,8 @@ function DocsBox({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
   const ids = React.useMemo(() => docs.map(d => String(d.id)), [docs]);
   const sel = useSelection(ids);
   const remove = (which: string[]) => {
-    // a signed document is never removed (docs/contracts.md → Signed files are kept)
-    const picked = docs.filter(d => which.includes(String(d.id)));
-    const gone = picked.filter(d => !d.signed);
-    if (gone.length < picked.length) api.toast(tr('Signed documents are kept'));
+    // a person's own delete: a signed document goes too (docs/contracts.md → Signed files are kept)
+    const gone = docs.filter(d => which.includes(String(d.id)));
     if (!gone.length) return;
     gone.forEach(d => hiddenDocs.add(String(d.id))); redraw();
     const one = gone.length === 1 ? gone[0] : null;
@@ -140,7 +138,7 @@ function DocsBox({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
         sub={<>{d.name || 'file'} · <span style={{ color: x ? c : undefined }}>{exText}</span></>}
         actions={[{ label: tr('Open'), icon: <IconDownload />, onSelect: () => open(d) }]}
         onOpen={() => open(d)}
-        onDelete={can && !d.signed ? () => remove([String(d.id)]) : undefined}
+        onDelete={can ? () => remove([String(d.id)]) : undefined}
         selecting={sel.on} selected={sel.picked.has(String(d.id))} onToggle={() => sel.toggle(String(d.id))} />
     );
   };
