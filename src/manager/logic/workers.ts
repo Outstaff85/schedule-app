@@ -14,6 +14,11 @@ export const DOC_STORE = 'Firebase Storage';
 // contract warnings — and come back when set Active again on their card
 // (per user request 2026-10-11). Accounting still counts their hours.
 export function isActiveWorker(w: Rec | null | undefined): boolean { return !!w && w.status !== 'fired'; }
+// The worker card's one Active ↔ Inactive switch (owner, 2026-10-26): on unless
+// Inactive. A worker stored as 'vacation' shows on and keeps that status until
+// someone flips the switch — the card never rewrites it by itself.
+export function statusSwitchOn(status: unknown): boolean { return (status || 'active') !== 'fired'; }
+export function statusFromSwitch(on: boolean): 'active' | 'fired' { return on ? 'active' : 'fired'; }
 
 // ── Contract-expiry warning (per-worker, opt-in) ──
 // A contract has no end date (owner, 2026-10-25): the term is the worker's own
