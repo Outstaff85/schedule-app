@@ -586,3 +586,5 @@ def test_a_smoke_run_draws_small_trains_one_epoch_and_keeps_its_own_state(monkey
     assert loop.epochs() == ["--epochs", "1"]
     assert loop.state_path().name == "state-smoke.json"   # the calendar's state.json is never touched by a smoke run
     assert loop.state_path(True).name == "state-dry-run.json"
+    # train_he.py refuses fewer than 1000 fields (synth_fields.py: about 20 a page; 50 pages gave 998)
+    assert loop.SMOKE_SIZES["he"] * 15 >= 1000

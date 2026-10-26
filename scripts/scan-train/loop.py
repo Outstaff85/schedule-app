@@ -66,7 +66,8 @@ POLL_S = 5
 EDGES_COUNT, CUTS_COUNT = 8000, 2000   # the made-up sets of a cycle (the skill's sizes)
 MRZ_LINES, HE_FIELDS, HE_CHECK = 100000, 3000, 300
 SMOKE = False   # run --smoke: the cycle's sizes and epochs cut to a check of the cycle itself (SMOKE_SIZES, 1 epoch)
-SMOKE_SIZES = {"edges": 200, "cuts": 100, "mrz": 1200, "he": 50, "he_check": 20}
+# "he": train_he.py refuses fewer than 1000 fields, and a page gives about 20 (50 pages fell just short)
+SMOKE_SIZES = {"edges": 200, "cuts": 100, "mrz": 1200, "he": 80, "he_check": 20}
 
 
 def size(kind):
