@@ -3089,10 +3089,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.fill('[cmdk-input]', 'Other'); await sleep(150);
   await p.click('[cmdk-item]:has-text("Other")'); await sleep(150);
   tp.number = await p.evaluate(() => document.getElementById('transferNo').value);
-  await p.keyboard.press('Escape'); await sleep(300);
+  // the picker's list closes on the first Escape, the transfer window (a React Dialog) on the next ones
+  for (let i = 0; i < 4 && await p.evaluate(() => !!document.querySelector('[data-slot="dialog-overlay"], [cmdk-list]')); i++) {
+    await p.keyboard.press('Escape'); await sleep(300);
+  }
   await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
+  tp.closed = await p.evaluate(() => !document.querySelector('[data-slot="dialog-overlay"]'));
   await fetch('http://127.0.0.1:5055/transferCleanup', {method: 'POST'});
-  ok(/^Other Firm Two · 039337423$/.test(tp.items) && tp.rows === '190px' && tp.search && tp.found === tp.items && tp.none && tp.number === '039337423',
+  ok(/^Other Firm Two · 039337423$/.test(tp.items) && tp.rows === '190px' && tp.search && tp.found === tp.items && tp.none && tp.number === '039337423' && tp.closed,
     'transfer (super-admin): the other firms\' workers in a list with a search (name / ID), five rows in view, a pick fills the number ' + JSON.stringify(tp));
   // Permission templates: the super-admin's Users section lists the one set of every firm; it creates and edits them.
   await p.evaluate(() => { switchTab('admin'); switchAdminPane('users'); });
