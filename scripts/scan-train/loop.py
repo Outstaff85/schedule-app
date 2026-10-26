@@ -257,6 +257,8 @@ STEPS = [
      else ["synth_lines.py", "mrz", "--count", str(size("mrz"))], None),
     ("he_fields", "he", lambda c: None if _exists(work() / "synth" / "he-fields" / "train" / "labels.tsv")
      else ["synth_fields.py", "--count", str(size("he"))], None),
+    # train_he.py refuses a fields set without a passed QA sheet of this very drawing (gen.qa.require_qa)
+    ("qa_he_fields", "he", lambda c: _gen("qa", "--run", str(work() / "synth" / "he-fields" / "train")), None),
     ("he_check", "he", lambda c: None if _exists(work() / "synth" / "he-fields" / "check" / "labels.tsv")
      else ["synth_fields.py", "--count", str(size("he_check")), "--check"], None),
     ("mix_edges", "edges", lambda c: _gen("mix", "--model", "edges", "--synth-run", str(run_dir(c, "edges")), *hard_args()), None),

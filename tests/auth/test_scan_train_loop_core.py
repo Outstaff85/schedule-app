@@ -247,9 +247,11 @@ def test_a_whole_cycle_published(work):
     order = names(r.calls)
     assert order[:4] == ["pull.py", "pull_doctypes.py", "pull_templates.py", "gen real"]
     want = ["gen bg", "gen bg", "gen tune", "gen build", "gen qa", "gen build", "gen qa", "gen build", "synth_docs.py", "gen build",
-            "synth_lines.py", "synth_fields.py", "synth_fields.py", "gen mix", "gen mix", "train.py", "train.py", "train_doctypes.py",
+            "synth_lines.py", "synth_fields.py", "gen qa", "synth_fields.py", "gen mix", "gen mix", "train.py", "train.py", "train_doctypes.py",
             "train_mrz.py", "train_he.py", "exam.py", "exam_doctypes.py", "exam_mrz.py", "gen mine", "gen ablate"]
     assert order[4:] == want
+    # the fields set's QA sheet comes before train_he.py, which refuses a set without one
+    assert r.calls[order.index("synth_fields.py") + 1] == ["-m", "gen", "qa", "--run", str(work / "synth" / "he-fields" / "train")]
     assert "clean.py" not in order   # the delivery's publish.py clears the copies itself
     assert delivered == [(["edges"], False)]
     rep = sent[-1]
