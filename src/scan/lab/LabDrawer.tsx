@@ -25,6 +25,7 @@ import type { ShotPage } from '../engine/shot';
 import type { Want } from '../engine/models';
 import type { OrtDir } from '../engine/surface';
 import { useFigures } from '../ui/useFigures';
+import { useBack } from '../ui/back';
 import type { ScanSessionLike } from '../ui/useScanSession';
 import { PageReadouts } from './Readouts';
 
@@ -96,6 +97,7 @@ export function LabDrawer({ session, figuresNow, errors, lines, settings, onSett
   onProbe?: (files: File[]) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  useBack(open, () => setOpen(false));  // the phone's back closes it (ui/back.ts)
   const live = useFigures(session, open);
   const figures = live || (open ? figuresNow() : null);
   return (
