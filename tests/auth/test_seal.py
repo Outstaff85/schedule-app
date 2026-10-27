@@ -167,7 +167,9 @@ def test_freeze_copies_and_read_frozen():
     db, bucket = Db(), Bucket()
     _run(db, bucket, OWNER, {"action": "sealSave", "kind": "stamp", "imageBase64": _b64(photo())})
     f = seal.freeze(db, bucket, "t1", "tenants/t1/workers/w1/sign/r1/")
-    assert f == {"signature": None, "stamp": "tenants/t1/workers/w1/sign/r1/stamp.png"}
+    # under firmSeal/ (storage.rules: no browser reads it), never in the send's own folder, which managers read
+    assert f == {"signature": None, "stamp": "tenants/t1/firmSeal/frozen/workers/w1/sign/r1/stamp.png"}
+    assert seal.frozen_prefix("t1", "tenants/t1/transfers/r2/") == "tenants/t1/firmSeal/frozen/transfers/r2"
     got = seal.read_frozen(bucket, dict(f, everyPage=True))
     assert got["stamp"] == bucket.store[f["stamp"]] and got["signature"] is None and got["every_page"]
     assert seal.read_frozen(bucket, None) is None

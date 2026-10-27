@@ -3522,7 +3522,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await (await p.$('#adminRoot [data-testid="templates"]')).screenshot({path: SP + '/templates.png'}).catch(()=>{});
   await (await p.$('[data-testid="window"]')).screenshot({path: SP + '/template-window.png'}).catch(()=>{});
   const capd = await p.evaluate(() => { const t = k => document.querySelector('[data-testid="template-window"] [data-k="' + k + '"]');
-    return {clients: t('clients').disabled && t('clients').dataset.cap === 'no', pay: t('seePay').disabled, hours: !t('hours').disabled}; });
+    return {clients: t('clients').disabled && t('clients').dataset.cap === 'no', pay: t('seePay').disabled, hours: !t('hours').disabled,
+      // the firm's signature and stamp: a tile among the actions, greyed on a client's template
+      firm: !!document.querySelector('[data-testid="template-window"] [data-testid="rights-actions"] [data-k="firmSign"]')
+        && t('firmSign').disabled && t('firmSign').dataset.cap === 'no'}; });
   await p.click('[data-testid="template-window"] [data-testid="rights-tabs"] [data-k="schedule"]');
   await p.click('[data-testid="template-save"]');
   const tpB = await p.evaluate(async () => {
@@ -3543,9 +3546,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const row = l => rows.find(x => x.dataset.label === l), col = n => head.findIndex(h => h.includes(n));
     const cell = (l, n) => row(l).children[col(n)].textContent.trim();
     return {n: rows.length, shifts: cell('Edit shifts', 'Dispatcher'), sup: cell('Edit shifts', 'Supplier'), ownHr: cell('Only own workers', 'HR with pay'), today: cell('Today', 'Supplier'),
-      hrToday: cell('Today', 'HR with pay'), com: cell('Commission', 'HR with pay'), pay: cell('Edit pay', 'Accountant'), payD: cell('Edit pay', 'Dispatcher')};
+      hrToday: cell('Today', 'HR with pay'), com: cell('Commission', 'HR with pay'), pay: cell('Edit pay', 'Accountant'), payD: cell('Edit pay', 'Dispatcher'),
+      // the firm's signature and stamp: off by default on a staff / HR template, never on a supplier's
+      firm: ['Dispatcher', 'Accountant', 'HR with pay', 'Supplier'].map(n => cell("Firm's signature and stamp; client contracts", n)).join('|')};
   });
-  ok(rmx.n === 20 && rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.today === "✓" && rmx.hrToday === "" && rmx.com === "✓" && rmx.pay === "✓" && rmx.payD === "—",
+  ok(rmx.n === 21 && rmx.firm === '—|—|—|' &&rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.today === "✓" && rmx.hrToday === "" && rmx.com === "✓" && rmx.pay === "✓" && rmx.payD === "—",
     "boss: Who gets what — the flat ticks by template (blank: never for that role) " + JSON.stringify(rmx));
   // A staff login on a template without its edit ticks: the Schedule, Workers, card and punch log only read.
   const vo = await p.evaluate(() => {
@@ -3561,8 +3566,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.all, 'edit ticks: without them Schedule, Workers and punches only read; with all three it changes all ' + JSON.stringify(vo));
-  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.old === '' && /schedule,hours/.test(tpB.rights) && capd.clients && capd.pay && capd.hours,
-    'boss: Users lists the permission templates with New template and Put them on templates; a client template greys Clients and pay; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB, capd}));
+  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.old === '' && /schedule,hours/.test(tpB.rights) && capd.clients && capd.pay && capd.hours && capd.firm,
+    'boss: Users lists the permission templates with New template and Put them on templates; a client template greys Clients, pay and the firm\'s signature and stamp; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB, capd}));
   // Admin → Scanner (docs/hf-plan.md): the training figures, the versions, the document type model's mode
   // (Off / Shadow / Mixed) and the per-firm switch of the full-document collection — all through scan_feedback.
   const sfCalls = [];

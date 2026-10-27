@@ -18,7 +18,7 @@ Who may upload, replace or delete them (may_firm_sign — the UI's canFirmSign i
 src/manager/logic/access.ts is the same rule): the firm's owner and the super-admin;
 a staff or HR login with the right "Firm's signature and stamp; client contracts"
 (firmSign). A contract sent to sign carries a frozen copy of both (freeze, at the send:
-signing.py), so a later change never changes what was sent; contracts.fill draws them —
+signing.py; under tenants/<t>/firmSeal/frozen/, as closed to browsers as the originals), so a later change never changes what was sent; contracts.fill draws them —
 the signature first, the stamp over it.
 """
 
@@ -190,14 +190,23 @@ def load(db, bucket, tenant):
 FROZEN = {"signature": "company-signature.png", "stamp": "stamp.png"}
 
 
+def frozen_prefix(tenant, prefix):
+    """Where a send's copies go: its folder tenants/<t>/<rest>/ moved under tenants/<t>/firmSeal/frozen/<rest>/, so that
+    storage.rules keep every browser out of them as out of the originals."""
+    base = f"tenants/{tenant}/"
+    rest = prefix[len(base):] if prefix.startswith(base) else prefix
+    return base + "firmSeal/frozen/" + rest.strip("/")
+
+
 def freeze(db, bucket, tenant, prefix):
-    """The firm's current pictures copied under prefix (a send's folder) → {"signature": path | None, "stamp": path | None}:
-    what the send draws, whatever the firm changes later."""
+    """The firm's current pictures copied for a send (prefix: the send's folder) → {"signature": path | None, "stamp": path | None}:
+    what the send draws, whatever the firm changes later. The copies sit under tenants/<t>/firmSeal/frozen/ (frozen_prefix),
+    never in the send's own folder, which the firm's managers may read."""
     cur = load(db, bucket, tenant)
     out = {}
     for k, name in FROZEN.items():
         if cur.get(k):
-            path = prefix.rstrip("/") + "/" + name
+            path = frozen_prefix(tenant, prefix) + "/" + name
             bucket.blob(path).upload_from_string(cur[k], content_type="image/png")
             out[k] = path
         else:

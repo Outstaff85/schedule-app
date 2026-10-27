@@ -167,6 +167,15 @@ def test_send_needs_the_right_and_billing_needs_billing():
     # the list needs the Clients right
     assert client_signing.run(db, bucket, {"uid": "x", "role": "staff", "tenantId": "t1", "rt": ["firmSign"]}, {"action": "clientList"}, "t1") \
         == {"error": client_signing.E_NO_CLIENTS}
+    # …and so does every other client action: firmSign alone (a template for the seal only) never reaches a client
+    rid = _send(db, bucket, OWNER, t)["id"]
+    for who in ({"uid": "x", "role": "staff", "tenantId": "t1", "rt": ["firmSign"]},
+                {"uid": "y", "role": "hr", "tenantId": "t1", "rt": ["firmSign", "workers"]}):
+        assert _send(db, bucket, who, t) == {"error": client_signing.E_NO_CLIENTS}
+        for action in ("clientView", "clientSign", "clientBuild", "clientWithdraw"):
+            assert signing.run(db, bucket, who, {"action": action, "id": rid, "signaturePng": base64.b64encode(PNG).decode()},
+                               build101) == {"error": client_signing.E_NO_CLIENTS}
+    assert _reqs(db)[rid]["status"] == "sent"
 
 
 def test_the_token_only_its_hash_kept_and_the_link_is_the_apps_own():
@@ -179,7 +188,7 @@ def test_the_token_only_its_hash_kept_and_the_link_is_the_apps_own():
     assert db.data[("clientSignTokens", req["tokenHash"])] == {"tenantId": "t1", "requestId": r["id"], "expiresAt": req["expiresAt"]}
     # the frozen template and seal under the client's sign folder
     assert req["templatePath"] == f"tenants/t1/clients/c1/sign/{r['id']}/contract-template.pdf"
-    assert req["seal"]["signature"].startswith(f"tenants/t1/clients/c1/sign/{r['id']}/") and req["seal"]["everyPage"] is True
+    assert req["seal"]["signature"].startswith(f"tenants/t1/firmSeal/frozen/clients/c1/sign/{r['id']}/") and req["seal"]["everyPage"] is True
     # the prefill: the client record, then what the window sent
     assert req["details"]["name"] == "Site A" and req["details"]["contactPhone"] == "0501234567" and req["details"]["email"] == "a@b.co"
     # another origin is not trusted: the site's own
@@ -306,3 +315,66 @@ def test_sign_here_in_the_client_window():
     assert signing.run(db, bucket, STAFF_NO_SEAL, {"action": "clientView", "id": r["id"]}, build101) == {"error": client_signing.E_NO_RIGHT}
     # no seal uploaded: only the client's signature
     assert [len(p.get_image_info()) for p in pymupdf.open(stream=bucket.store[b["part"]["path"]])] == [1, 1]
+
+
+# ---- two calls at once ------------------------------------------------------------------------------
+
+def test_a_status_moves_only_while_it_still_holds():
+    db, bucket, t = _setup()
+    r = _send(db, bucket, OWNER, t)
+    ref = db.collection("tenants").document("t1").collection("clientSignRequests").document(r["id"])
+    assert client_signing._move(db, ref, lambda x: x.get("status") == "signed", {"status": "replaced"}) is None
+    assert _reqs(db)[r["id"]]["status"] == "sent"
+    assert client_signing._move(db, ref, lambda x: x.get("status") == "sent", {"status": "withdrawn"})["status"] == "sent"
+    assert _reqs(db)[r["id"]]["status"] == "withdrawn"
+
+
+def test_a_signature_racing_another_loses_without_a_trace():
+    """Each call read the request as 'sent'; the other one has signed (or a new send replaced it) since: the late one is
+    refused, its uploaded signature removed, the first one's kept."""
+    db, bucket, t = _setup()
+    r = _send(db, bucket, OWNER, t)
+    tok = _token(r["link"])
+    _, rid, stale = client_signing._by_token(db, tok)
+    assert _pub(db, bucket, tok, action="sign", signaturePng=base64.b64encode(PNG).decode(), details={"signerName": "First"})["ok"]
+    first = _reqs(db)[rid]["sigPath"]
+    late = client_signing._documents(db, bucket, "t1", rid, stale, {"action": "sign", "signaturePng": base64.b64encode(PNG).decode(),
+                                                                     "details": {"signerName": "Late"}}, None)
+    assert late == {"error": signing.E_SIGNED}
+    assert _reqs(db)[rid]["sigPath"] == first and _reqs(db)[rid]["clientDetails"]["signerName"] == "First"
+    assert [k for k in bucket.store if "/signature/" in k] == [first]
+    # a new send while the client signs: the signing request is never turned into 'replaced'
+    _send(db, bucket, OWNER, t)
+    assert _reqs(db)[rid]["status"] == "signing" and _pub(db, bucket, tok, action="mine")["ok"]
+    # a stale 'sent' read of a request a send has replaced since: refused as no request
+    r3 = _send(db, bucket, OWNER, t)
+    _, rid3, stale3 = client_signing._by_token(db, _token(r3["link"]))
+    _send(db, bucket, OWNER, t)
+    assert client_signing._documents(db, bucket, "t1", rid3, stale3, {"action": "sign", "signaturePng": base64.b64encode(PNG).decode()},
+                                     None) == {"error": signing.E_NO_REQUEST}
+    assert len([k for k in bucket.store if "/signature/" in k]) == 1
+
+
+def test_two_builds_at_once_keep_one_signed_contract():
+    db, bucket, t = _setup()
+    r = _send(db, bucket, OWNER, t)
+    tok = _token(r["link"])
+    _pub(db, bucket, tok, action="sign", signaturePng=base64.b64encode(PNG).decode())
+    _, rid, stale = client_signing._by_token(db, tok)  # read as 'signing', no part yet
+    b = _pub(db, bucket, tok, action="build")
+    late = client_signing._documents(db, bucket, "t1", rid, stale, {"action": "build"}, None)
+    assert late["ok"] and late["part"] == b["part"]
+    assert [k for k in bucket.store if "/documents/" in k] == [b["part"]["path"]]
+
+
+def test_a_signed_contract_waiting_for_its_pdf_keeps_its_link():
+    """Signed, its PDF not built (the build failed): the link still opens after the 30 days, so the page builds it."""
+    db, bucket, t = _setup()
+    tok = _token(_send(db, bucket, OWNER, t)["link"])
+    _pub(db, bucket, tok, action="sign", signaturePng=base64.b64encode(PNG).decode())
+    old = client_signing._now
+    try:
+        client_signing._now = lambda: old() + datetime.timedelta(days=45)
+        assert _pub(db, bucket, tok, action="build")["status"] == "signed"
+    finally:
+        client_signing._now = old

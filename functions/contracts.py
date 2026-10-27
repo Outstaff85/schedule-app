@@ -519,13 +519,16 @@ def sample_stamp():
     return out.getvalue()
 
 
-def sample_seal(db, bucket, tenant, every_page):
-    """The seal of a sample: the firm's real signature and stamp when uploaded, else made-up ones — the admin sees the placement."""
+def sample_seal(db, bucket, tenant, every_page, real_ok=True):
+    """The seal of a sample: the firm's real signature and stamp when uploaded, else made-up ones — the admin sees the placement.
+    real_ok False (a caller that may not handle them: seal.may_firm_sign) → always the made-up ones."""
     import seal as seal_mod
-    try:
-        real = seal_mod.load(db, bucket, tenant)
-    except Exception:
-        real = {}
+    real = {}
+    if real_ok:
+        try:
+            real = seal_mod.load(db, bucket, tenant)
+        except Exception:
+            real = {}
     return {"signature": real.get("signature") or sample_company_signature(), "stamp": real.get("stamp") or sample_stamp(),
             "every_page": bool(every_page)}
 
@@ -667,7 +670,8 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         data = bucket.blob(d["fileId"]).download_as_bytes()
         if body.get("sample"):
             data = fill(data, SAMPLE_VALUES, d.get("placed"), sample_signature(),
-                        seal=sample_seal(db, bucket, tenant, d.get("sealEveryPage")), sign_mark=sign_mark_of(kind_of(d)))
+                        seal=sample_seal(db, bucket, tenant, d.get("sealEveryPage"), real_ok=manage or seal_mod.may_firm_sign(claims)),
+                        sign_mark=sign_mark_of(kind_of(d)))
         return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": d.get("name")}
 
     if not manage:

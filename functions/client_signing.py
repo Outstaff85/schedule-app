@@ -19,8 +19,8 @@ the manager's phone (way `person`, no link).
       expiresAt (the send + 30 days), sentAt, sentBy, signedAt (server time),
       signedAtIso, sigPath, part {path, name, size}, appliedAt
   clientSignTokens/<sha256(token)>: {tenantId, requestId, expiresAt} — the link's index
-  Storage: tenants/<t>/clients/<c>/sign/<id>/ (the frozen template and seal),
-      …/clients/<c>/signature/<ms>-signature.png, …/clients/<c>/documents/<ms>-contract-<name>.pdf
+  Storage: tenants/<t>/clients/<c>/sign/<id>/ (the frozen template; its seal under tenants/<t>/firmSeal/frozen/clients/<c>/sign/<id>/),
+      …/clients/<c>/signature/<ms>-<random>-signature.png, …/clients/<c>/documents/<ms>-contract-<name>.pdf
 
 No browser reads or writes either collection (firestore.rules grant nothing);
 the page sees nothing of the firm but its own request — no workers, hours, other
@@ -131,6 +131,27 @@ def _drop_token(db, req):
         _tokens(db).document(req["tokenHash"]).delete()
 
 
+def _move(db, ref, check, fields):
+    """ref updated with fields only while check(its data) still holds, read and written in one transaction (two calls at
+    once — a double tap, two tabs, a send while the client signs — never both pass) → the data as it was, or None.
+    A store without transactions (the tests' stand-in) does the same check and write in a row."""
+    def step(get, put):
+        snap = get()
+        cur = snap.to_dict() if snap.exists else None
+        if not cur or not check(cur):
+            return None
+        put(fields)
+        return cur
+    if not hasattr(db, "transaction"):
+        return step(ref.get, ref.update)
+    from firebase_admin import firestore
+
+    @firestore.transactional
+    def go(tx):
+        return step(lambda: ref.get(transaction=tx), lambda f: tx.update(ref, f))
+    return go(db.transaction())
+
+
 def _summary(rid, x):
     """What the manager app gets: never the token's hash or the values."""
     keys = ("clientId", "status", "way", "templateId", "templateName", "templateVersion", "signDate", "dateFixed", "sentAt", "sentBy",
@@ -151,8 +172,9 @@ def withdraw_on_template(db, tenant, template_id):
     for r in col.stream():
         x = r.to_dict() or {}
         if x.get("templateId") == template_id and x.get("status") == "sent":
-            col.document(r.id).update({"status": "withdrawn", "withdrawnWhy": "template deleted"})
-            _drop_token(db, x)
+            was = _move(db, col.document(r.id), lambda y: y.get("status") == "sent", {"status": "withdrawn", "withdrawnWhy": "template deleted"})
+            if was:
+                _drop_token(db, was)
 
 
 def _name(req, details):
@@ -201,11 +223,17 @@ def _documents(db, bucket, tenant, rid, req, body, server_time):
         if not sig:
             return {"error": signing.E_SIG}
         details = dict(req.get("details") or {}, **clean_details(body.get("details")))
-        path = f"tenants/{tenant}/clients/{req['clientId']}/signature/{int(time.time() * 1000)}-signature.png"
+        path = f"tenants/{tenant}/clients/{req['clientId']}/signature/{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}-signature.png"  # two at once never share a file
         bucket.blob(path).upload_from_string(sig, content_type="image/png")
         date = req.get("signDate") or signing.today_il()
-        ref.update({"status": "signing", "signedAt": server_time if server_time is not None else signing._now_iso(),
-                    "signedAtIso": signing._now_iso(), "signDate": date, "sigPath": path, "clientDetails": details})
+        # sent → signing only while it is still sent: a second signature or a send replacing it at the same moment loses
+        if not _move(db, ref, lambda x: x.get("status") == "sent",
+                     {"status": "signing", "signedAt": server_time if server_time is not None else signing._now_iso(),
+                      "signedAtIso": signing._now_iso(), "signDate": date, "sigPath": path, "clientDetails": details}):
+            bucket.blob(path).delete()
+            now = ref.get()
+            cur = (now.to_dict() or {}) if now.exists else {}
+            return {"error": signing.E_SIGNED if cur.get("status") in ("signing", "signed") else signing.E_NO_REQUEST}
         return {"ok": True, "id": rid, "signDate": date}
 
     if action == "build":
@@ -219,7 +247,15 @@ def _documents(db, bucket, tenant, rid, req, body, server_time):
         path = f"tenants/{tenant}/clients/{req['clientId']}/documents/{int(time.time() * 1000)}-contract-{re.sub(r'[/#?]', '_', name)}"
         bucket.blob(path).upload_from_string(data, content_type="application/pdf")
         part = {"path": path, "name": name, "size": len(data)}
-        ref.update({"part": part, "status": "signed"})
+        # kept only while no other build has kept one: built once — a second build at the same moment removes its own file
+        if not _move(db, ref, lambda x: x.get("status") in ("signing", "signed") and not x.get("part"), {"part": part, "status": "signed"}):
+            snap = ref.get()
+            kept = (snap.to_dict() or {}) if snap.exists else {}
+            if path != (kept.get("part") or {}).get("path"):  # the same millisecond: the same file name, the same contract
+                bucket.blob(path).delete()
+            if not kept.get("part"):
+                return {"error": signing.E_NO_REQUEST}
+            return {"ok": True, "part": kept["part"], "status": kept.get("status")}
         return {"ok": True, "part": part, "status": "signed"}
 
     return {"error": "Unknown action"}
@@ -253,6 +289,8 @@ def run(db, bucket, claims, body, tenant, server_time=None):
 
     if not seal_mod.may_firm_sign(claims):
         return {"error": E_NO_RIGHT}
+    if not sees_clients:  # firmSign alone (a template for the seal only) never reaches a client
+        return {"error": E_NO_CLIENTS}
 
     if action == "clientSend":
         return _send(db, bucket, claims, body, tenant)
@@ -264,9 +302,9 @@ def run(db, bucket, claims, body, tenant, server_time=None):
         return {"error": signing.E_NO_REQUEST}
 
     if action == "clientWithdraw":
-        if req.get("status") == "sent":
-            col.document(rid).update({"status": "withdrawn"})
-            _drop_token(db, req)
+        was = _move(db, col.document(rid), lambda x: x.get("status") == "sent", {"status": "withdrawn"})
+        if was:
+            _drop_token(db, was)
         return {"ok": True}
 
     if action in ("clientView", "clientSign", "clientBuild"):
@@ -311,8 +349,10 @@ def _send(db, bucket, claims, body, tenant):
     for r in col.stream():
         x = r.to_dict() or {}
         if x.get("clientId") == cid and x.get("status") == "sent":
-            col.document(r.id).update({"status": "replaced"})
-            _drop_token(db, x)
+            # only while it still waits: a signature made at this moment is never overwritten
+            was = _move(db, col.document(r.id), lambda y: y.get("status") == "sent", {"status": "replaced"})
+            if was:
+                _drop_token(db, was)
     remote = body.get("way") != "person"
     token = secrets.token_urlsafe(32) if remote else None
     now = _now()
@@ -352,9 +392,9 @@ def _by_token(db, token):
     status = req.get("status")
     if exp is None:
         return None, None, None
-    if status == "signed":
+    if status in ("signed", "signing"):  # signing: signed, its PDF not built yet — the page builds it when opened
         exp = exp + datetime.timedelta(days=KEEP_DAYS)
-    elif status not in ("sent", "signing"):
+    elif status != "sent":
         return None, None, None
     if _now() > exp:
         return None, None, None

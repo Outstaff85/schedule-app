@@ -357,8 +357,8 @@ def test_the_sample_shows_the_firms_real_seal_or_made_up_ones():
     assert len(pymupdf.open(stream=base64.b64decode(p["sampleBase64"]))[0].get_images()) == 3
     t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "name": "A"})["template"]
 
-    def widths():
-        doc = pymupdf.open(stream=base64.b64decode(contracts.run(db, bucket, STAFF, {"action": "file", "id": t["id"], "sample": True})["pdfBase64"]))
+    def widths(claims=OWNER):
+        doc = pymupdf.open(stream=base64.b64decode(contracts.run(db, bucket, claims, {"action": "file", "id": t["id"], "sample": True})["pdfBase64"]))
         return sorted(i[2] for i in doc[0].get_images())
 
     made_up = widths()
@@ -369,6 +369,9 @@ def test_the_sample_shows_the_firms_real_seal_or_made_up_ones():
     bucket.store["tenants/t1/firmSeal/stamp-1.png"] = stamp
     real = widths()
     assert 200 in real and 200 not in made_up  # the firm's own stamp (200 px wide)
+    # a login with the right firmSign sees the real one; a login without it (staff, HR) only the made-up ones
+    assert widths(dict(STAFF, rt=["firmSign"])) == real
+    assert widths(STAFF) == made_up and widths({"uid": "u5", "role": "hr", "tenantId": "t1", "rt": ["workers"]}) == made_up
     # unticked: only the worker's made-up signature at its mark
     contracts.run(db, bucket, OWNER, {"action": "update", "id": t["id"], "sealEveryPage": False})
     assert len(widths()) == 1

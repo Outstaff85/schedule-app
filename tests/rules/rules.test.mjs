@@ -411,12 +411,16 @@ test('storage: firm files readable by its managers, written by owner/workers sta
 
 test('storage: the firm\'s signature and stamp are server-only — no login reads or writes them, other firm files still read', async () => {
   const pSeal = 'tenants/' + A + '/firmSeal/stamp-1.png';
+  // a send's frozen copies (seal.freeze) sit under firmSeal/frozen/, never in the send's own folder
+  const pFrozen = 'tenants/' + A + '/firmSeal/frozen/workers/w1/sign/r1/company-signature.png';
   await env.withSecurityRulesDisabled(async ctx => {
     await uploadString(ref(ctx.storage(), pSeal), 'png');
+    await uploadString(ref(ctx.storage(), pFrozen), 'png');
     await uploadString(ref(ctx.storage(), 'tenants/' + A + '/contracts/t1/1.pdf'), 'pdf');
   });
   for (const name of ['ownerA', 'staffAll', 'hrAll', 'hrOwn', 'superadmin', 'ownerB', 'supplierA', 'clientA', 'anon']) {
     await assertFails(getBytes(ref(st(name), pSeal)));
+    await assertFails(getBytes(ref(st(name), pFrozen)));
   }
   for (const name of ['ownerA', 'staffAll', 'superadmin']) {
     await assertFails(uploadString(ref(st(name), 'tenants/' + A + '/firmSeal/stamp-2.png'), 'png'));

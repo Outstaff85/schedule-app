@@ -33,8 +33,9 @@ service firebase.storage {
     }
 
     // The firm's signature and stamp (tenants/{t}/firmSeal/, docs/contracts.md → The firm's
-    // signature and stamp) are read and written only by the contract_templates function: no
-    // browser login of any firm reads them, even the firm's own managers.
+    // signature and stamp, and every send's frozen copy of them under firmSeal/frozen/) are read
+    // and written only by the functions: no browser login of any firm reads them, even the firm's
+    // own managers.
     match /tenants/{t}/{top}/{rest=**} {
       allow read: if top != 'firmSeal' && (manager(t)
         || (hrMine(t) && resource.metadata != null && resource.metadata.hrId == request.auth.uid));

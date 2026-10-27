@@ -71,6 +71,17 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
   }, [clientId]);
   React.useEffect(() => { if (opened && list === null) loadTemplates(); }, [opened, list, loadTemplates]);
   React.useEffect(() => { if (opened && reqs === null) loadReqs(); }, [opened, reqs, loadReqs]);
+  // signed but its PDF not built (the build failed after the signature): built now, once per opening — the server keeps one
+  const building = React.useRef(new Set<string>());
+  React.useEffect(() => {
+    if (!may) return;
+    for (const r of reqs || []) {
+      if (r.status !== 'signing' || r.part || building.current.has(r.id)) continue;
+      building.current.add(r.id);
+      clientCall<{ part: ClientSignRequest['part']; status: ClientSignRequest['status'] }>({ action: 'clientBuild', id: r.id })
+        .then(b => setReqs(cur => (cur || []).map(x => (x.id === r.id ? { ...x, part: b.part, status: b.status } : x))), () => {});
+    }
+  }, [reqs, may]);
   // a signing's details: the client's empty contact fields filled from them, once
   React.useEffect(() => {
     for (const r of toTakeOn(reqs || [])) {

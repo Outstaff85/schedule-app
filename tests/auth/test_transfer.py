@@ -194,7 +194,7 @@ def test_the_new_firms_seal_is_frozen_when_it_asks():
     db.collection("tenants").document("t2").collection("firmSeal").document("current").set({"stamp": {"path": "tenants/t2/firmSeal/stamp-1.png"}, "signature": None})
     signing.run(db, bucket, ADMIN2, {"action": "transferAsk", "docNumber": "123456782"}, build101)
     (rid, req), = [(p[1], d) for p, d in db.data.items() if p[0] == "transferRequests"]
-    assert req["seal"] == {"signature": None, "stamp": f"tenants/t2/transfers/{rid}/stamp.png"}
+    assert req["seal"] == {"signature": None, "stamp": f"tenants/t2/firmSeal/frozen/transfers/{rid}/stamp.png"}
     del bucket.store["tenants/t2/firmSeal/stamp-1.png"]  # the firm deletes its stamp: the request keeps its copy
     v = w(db, bucket, {"action": "view", "which": "contract"})
     widths = [i[2] for i in pymupdf.open(stream=base64.b64decode(v["pdfBase64"]))[0].get_images()]

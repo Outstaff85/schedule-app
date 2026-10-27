@@ -190,8 +190,8 @@ def test_the_send_freezes_the_firms_seal():
     _seal_firm(db, bucket, 200)
     rid = _send(db, bucket, OWNER, t)["id"]
     req = db.data[("tenants", "t1", "signRequests", rid)]
-    assert req["seal"] == {"signature": f"tenants/t1/workers/w1/sign/{rid}/company-signature.png",
-                           "stamp": f"tenants/t1/workers/w1/sign/{rid}/stamp.png", "everyPage": True}
+    assert req["seal"] == {"signature": f"tenants/t1/firmSeal/frozen/workers/w1/sign/{rid}/company-signature.png",
+                           "stamp": f"tenants/t1/firmSeal/frozen/workers/w1/sign/{rid}/stamp.png", "everyPage": True}
     f = finder(db)
     view = lambda: signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "contract"}, build101, finder=f)
     assert _widths(view()["pdfBase64"]) == [[200, 300]]
