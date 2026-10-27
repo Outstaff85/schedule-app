@@ -54,15 +54,21 @@ export function NoticesSheet({ wid, head, api }: { wid: string; head: WorkerHead
 
 const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 // ── Add document: type, a contract's date or another document's optional expiry, several files, uploaded in parallel ──
-export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
+// `initialType`: Renew's document type (Contract otherwise); `fromEditor`: opened from the worker window, which stays
+// open under it — a finished upload only closes this window (the worker window, unsaved edits and all, shows again);
+// from the card or a notice it opens the worker card.
+export function DocUpload({ wid, api, initialType, fromEditor }: { wid: string; api: ManagerBridge; initialType?: string; fromEditor?: boolean }) {
   const w = api.record(wid);
-  const [type, setType] = React.useState('contract');
+  const [type, setType] = React.useState(initialType && initialType in WORKER_DOC_TYPES ? initialType : 'contract');
   const [expiry, setExpiry] = React.useState('');
   // a contract has no expiry: its date (today unless changed) is the day the contract term counts from (workerExpiryStatus)
   const [contractDate, setContractDate] = React.useState(todayYmd);
   const [files, setFiles] = React.useState<File[]>([]);
   const [status, setStatus] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  // one upload time for the whole window: the files of a retried upload (Upload again) belong to the same document
+  // (currentDocs keeps a type's latest upload time — files with an earlier one count as replaced)
+  const uploadedAt = React.useRef('');
   if (!w) return null;
   const submit = async () => {
     if (!files.length) { setStatus(tr('Choose at least one file')); return; }
@@ -76,7 +82,7 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
         { action: 'saveWorkerFile', workerId: wid, fileBase64: f.b64, fileName: f.fileName, mimeType: f.mediaType },
         (l, t) => { loaded[i] = l; totals[i] = t; tick(); })));
       const failed = results.filter(r => !r || r.error);
-      const now = new Date().toISOString();
+      const now = uploadedAt.current || (uploadedAt.current = new Date().toISOString());
       const added = results.map((r, i) => (r && r.ok ? { id: 'd' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6), type, name: prepared[i].fileName,
         fileId: r.id, url: r.url, mediaType: prepared[i].mediaType, uploadedAt: now,
         ...(type === 'contract' ? { contractDate: contractDate || todayYmd() } : { expiry }) } : null)).filter(Boolean) as NonNullable<Parameters<ManagerBridge['addDocs']>[1]>;
@@ -90,7 +96,7 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
       }
       api.closeModal('workerDocOverlay');
       api.toast(tr('{0} document{1} uploaded', { 0: added.length, 1: added.length > 1 ? 's' : '' }));
-      api.openCard(wid);
+      if (!fromEditor) api.openCard(wid);
     } catch (e) {
       setStatus(tr('Upload failed: {0}', { 0: (e as Error)?.message || String(e) })); setBusy(false);
     }

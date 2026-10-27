@@ -10,7 +10,7 @@ import { byId } from './dom';
 import { decideShiftRequest, filterByClient, loadShiftRequests, pruneDateShifts, shiftOn, workerTotalHours } from '../logic/schedule';
 import { currentDict, currentLang, tr, uiLocale } from '../logic/i18n';
 import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, periodPunchStart, punchWindowStart, savePunchLog, syncPunchesFromGS } from '../data/punches';
-import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiries, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
+import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiryMap, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
 import { docIdKey } from '../worker';
 import { canChange, hasEditPay, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
 import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
@@ -173,7 +173,8 @@ provideBridge({
     workers.splice(to<0?workers.length:to,0,moved);
     render(); autoSave(); showToast(tr('Order updated'));
   },
-  editWorker:(id?: any)=>{ const i=workers.findIndex((w?: any)=>w.id===id); if(i>=0) openEditWorker(i); },
+  // the worker window edits: only with the Workers tab and editWorkers (as the card's ✎ and the Workers list)
+  editWorker:(id?: any)=>{ if(!(hasPermission('workers')&&canChange('editWorkers'))) return; const i=workers.findIndex((w?: any)=>w.id===id); if(i>=0) openEditWorker(i); },
   // The Workers tab's snapshot (stage 6c-1): every worker's list fields, with
   // today's punch, its notices, the month's hours and the document status
   // worked out here (the card and the window that use them are still here).
@@ -370,7 +371,7 @@ provideBridge({
       supplier:sup?{name:sup.name||'', color:sup.color||''}:null,
       shiftToday:sh&&sh.type==='work'&&sh.start?{start:sh.start, end:sh.end||''}:null,
       contract:ex?{overdue:ex.level==='overdue', deadline:ex.deadline.toLocaleDateString('en-GB')}:null,
-      weekHours:workerTotalHours(w), docLevel:st.level, docLines:st.lines, docExpiry:docExpiryMap(w),
+      weekHours:workerTotalHours(w), docLevel:st.level, docLines:st.lines, docExpiry:workerDocExpiryMap(w),
       hoursBatch:b?{status:b.status, when:(b.status==='pending'?b.uploadedAt:b.decidedAt)||''}:null};
   },
   notices:(id?: any)=>{ const w=workers.find((x?: any)=>x.id===id); return w?workerHeadOf(w):null; },
@@ -382,8 +383,9 @@ provideBridge({
       isFirmAdmin:isFirmAdminSession(), hrUsers:isFirmAdminSession()?hrUsers().map((u?: any)=>({id:u.id, name:u.fullName||u.username})):[],
       hasScan:workerHasScanPages(rec||null),
       liveOthers:workerScanLive(rec||null)?(window.__aiPacketOtherPages||[]).filter((x?: any)=>x&&x.b64).length:null,
-      docLevel:st.level, docLines:st.lines, docMissing:st.missing, docFailed:st.failed, docExpiryText:st.expiry?st.expiry.text:'',
-      docProblems:st.missing.length+(st.expiry?1:0)+st.docExpiries.length+(st.failed?1:0), docExpiry:docExpiryMap(rec||w),
+      docLevel:st.level, docLines:st.lines, docMissing:st.missing, docIdMissing:st.idMissing, docF101Missing:st.f101Missing, docFailed:st.failed,
+      docExpiryText:st.expiry?st.expiry.text:'', docExpiryLevel:st.expiry?st.expiry.level:null,
+      docProblems:st.missing.length+(st.expiry?1:0)+st.docExpiries.length+(st.failed?1:0), docExpiry:workerDocExpiryMap(rec||w),
       punchLink:buildPunchLink({token:(rec||w).token||''})};
   },
   closeModal:(id?: any)=>closeModal(id),
@@ -391,7 +393,7 @@ provideBridge({
   editFromCard:(id?: any)=>editFromWorkerCard(id),
   rescanFromCard:(id?: any)=>{ const i=workers.findIndex((x?: any)=>x.id===id); if(i>=0) rescanFromWorkerCard(i); },
   payFromCard:(id?: any)=>{ closeModal('workerCardOverlay'); openPayModal(id); },
-  openDocUpload:(id?: any)=>openWorkerDocUpload(id),
+  openDocUpload:(id?: any,type?: any,fromEditor?: any)=>openWorkerDocUpload(id,type,fromEditor),
   openHoursImport:(id?: any)=>openHoursImportModal(id),
   openHoursExport:(id?: any)=>openHoursExportModal(id),
   openCard:(id?: any)=>openWorkerCardById(id),
@@ -501,7 +503,6 @@ function workerHeadOf(w?: any){
       acts:(n.acts||(n.act?[n.act]:[])).map((a?: any)=>({label:a.label, icon:a.icon||'', wa:!!a.wa, run:a.fn}))}))};
 }
 // a contract has no expiry (its date starts the contract term, shown on the card's contract line): no entry here
-function docExpiryMap(w?: any){ const m: any={}; workerDocExpiries(w).forEach((x?: any)=>{ m[String(x.doc.id)]={level:x.level, text:x.text}; }); return m; }
 
 // Per-client and per-supplier rate tables in Accounting: turned off for now
 // (user request 2026-10-11). Rates already set in them still count in pay

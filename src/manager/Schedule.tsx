@@ -276,7 +276,7 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
           sub={<><span>{sum}</span><DayMarks w={w} start={start} today={today} /></>}
           right={<span className="flex items-center gap-1.5" data-testid="week-hours">{hoursShort(weekHours(w, start))}<IconChevronDown className={cn('size-4 text-ink-3 transition-transform duration-150', open && 'rotate-180')} /></span>}
           selecting={sel.on} selected={sel.picked.has(w.id)} onToggle={() => sel.toggle(w.id)}
-          onOpen={() => toggle(w.id)} onEdit={() => api.editWorker(w.id)}
+          onOpen={() => toggle(w.id)} onEdit={snap.canAddWorker ? () => api.editWorker(w.id) : undefined}
           expanded={open && !sel.on}
         >
           {open && !sel.on && (

@@ -276,8 +276,13 @@ export type EditorInfo = WorkerHead & {
   docLevel: 'ok' | 'warn' | 'error';
   docLines: string[];
   docMissing: string[];
+  /** what a new scan supplies (the ID / Passport line): the ID number, the scan, the ספח */
+  docIdMissing: string[];
+  /** the Form 101 line's gaps: the PDF, the signature */
+  docF101Missing: string[];
   docFailed: boolean;
   docExpiryText: string;
+  docExpiryLevel: 'error' | 'warn' | null;
   docProblems: number;
   docExpiry: Record<string, { level: 'error' | 'warn'; text: string }>;
   punchLink: string;
@@ -302,7 +307,8 @@ export type WorkerBridge = {
   rescanFromCard(id: string): void;
   /** closes the card and opens the pay window (back to the card on close) */
   payFromCard(id: string): void;
-  openDocUpload(id: string): void;
+  /** Add document: `type` its first type (Renew: the row's), `fromEditor` opened from the worker window — the upload goes back to it, not to the card */
+  openDocUpload(id: string, type?: string, fromEditor?: boolean): void;
   openHoursImport(id: string): void;
   openHoursExport(id: string): void;
   openCard(id: string): void;
@@ -827,7 +833,7 @@ export type ManagerIsland = {
   applyDraft(): void;
   findMissing(): Promise<void>;
   uploadProgress(label: string, pct: number): void;
-  openDocUpload(id: string): void;
+  openDocUpload(id: string, type?: string, fromEditor?: boolean): void;
   openHoursImport(id: string): void;
   openHoursExport(id: string): void;
   /** the open windows read their data again (render(), a live hours batch, the HR list) */
