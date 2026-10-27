@@ -55,8 +55,7 @@ function signMessage(w?: any,link?: any){
   return [String(w.name||'').trim(),
     id?(w.docType==='passport'?tr('Passport: {0}',{0:id}):tr('ID: {0}',{0:id})):'',
     tr('You have documents to sign. Open your personal account at the link, read them and sign at the bottom.'),
-    link].filter(Boolean).join('
-');
+    link].filter(Boolean).join('\n');
 }
 import { refreshTenantProfile } from './admin';
 Object.defineProperties(window, {
