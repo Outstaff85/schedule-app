@@ -1903,9 +1903,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await waitFor(p, () => T.onTop('[data-testid="download-window"]'), 5000);
   const d5w = await p.evaluate(() => {
     const st = k => { const el = document.querySelector('[data-testid="download-' + k + '"]'); return el ? (el.disabled ? 'off' : el.dataset.state) : 'none'; };
-    return {form101: st('form101'), contract: st('contract'), scans: st('scans'), docs: st('docs'), top: T.onTop('[data-testid="download-window"]')};
+    // the tick is an L, not a diamond: only its right and bottom borders (the manager page has no Tailwind preflight)
+    const tick = getComputedStyle(document.querySelector('[data-testid="download-form101"]'), '::after');
+    return {form101: st('form101'), contract: st('contract'), scans: st('scans'), docs: st('docs'), top: T.onTop('[data-testid="download-window"]'),
+      tickL: tick.borderTopWidth === '0px' && tick.borderLeftWidth === '0px' && tick.borderRightWidth === '3px' && tick.borderBottomWidth === '3px'};
   });
-  ok(d5w.form101 === 'checked' && d5w.contract === 'unchecked' && ['checked', 'off'].includes(d5w.scans) && ['unchecked', 'off'].includes(d5w.docs) && d5w.top,
+  ok(d5w.form101 === 'checked' && d5w.contract === 'unchecked' && ['checked', 'off'].includes(d5w.scans) && ['unchecked', 'off'].includes(d5w.docs) && d5w.top && d5w.tickL,
     'download data: the picker opens over the card — Form 101 and the ID sheet ticked, the contract and the other documents not ' + JSON.stringify(d5w));
   await p.click('[data-testid="download-contract"]');
   const d5resp = p.waitForResponse(r => /cloudfunctions\.net\/worker_docs$/.test(r.url()) && r.request().method() === 'POST' && /"bundle"/.test(r.request().postData() || ''), {timeout: 30000});

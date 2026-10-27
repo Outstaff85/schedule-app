@@ -13,8 +13,9 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
         'peer relative size-6 shrink-0 rounded-[7px] border-2 border-faint outline-none transition-colors duration-250',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--uline-2)]',
         'data-[state=checked]:border-ok data-[state=checked]:bg-ok disabled:cursor-not-allowed disabled:opacity-50',
-        // the mark: a rotated L that draws in (clip-path) when checked
-        "after:absolute after:left-[6px] after:top-[2px] after:h-[10px] after:w-[5px] after:rotate-45 after:border-solid after:border-[var(--tick-mark)] after:border-r-[3px] after:border-b-[3px] after:content-[''] after:[clip-path:inset(100%_0_0_0)] after:transition-[clip-path] after:duration-350 after:delay-50",
+        // the mark: a rotated L that draws in (clip-path) when checked; its top and left borders set to 0 here, not
+        // left to Tailwind's preflight — the manager page has none, and the mark was drawn as a diamond there
+        "after:absolute after:left-[6px] after:top-[2px] after:h-[10px] after:w-[5px] after:rotate-45 after:border-solid after:border-[var(--tick-mark)] after:border-t-0 after:border-l-0 after:border-r-[3px] after:border-b-[3px] after:content-[''] after:[clip-path:inset(100%_0_0_0)] after:transition-[clip-path] after:duration-350 after:delay-50",
         'data-[state=checked]:after:[clip-path:inset(0)]',
         className,
       )}
