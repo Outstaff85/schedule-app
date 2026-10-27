@@ -163,7 +163,13 @@ export class Attempts {
   stop(): void { if (this.offOnline) { this.offOnline(); this.offOnline = null; } }
 
   /** Listen to the queue's figures; returns the unsubscribe. */
-  on(fn: (f: TrainFigures) => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
+  // a new listener is told the queue as it is now (a window opened, or subscribed a moment late, over attempts already
+  // waiting showed nothing until the next change)
+  on(fn: (f: TrainFigures) => void): () => void {
+    this.listeners.add(fn);
+    void this.waiting().then(n => { if (this.listeners.has(fn)) { try { fn({ waiting: n, fresh: this.surface.source === 'lab' ? this.fresh : null }); } catch { /* the listener's own */ } } }, () => {});
+    return () => { this.listeners.delete(fn); };
+  }
   private show(waiting: number): void {
     const f: TrainFigures = { waiting, fresh: this.surface.source === 'lab' ? this.fresh : null };
     for (const fn of this.listeners) { try { fn(f); } catch { /* the listener's own */ } }
