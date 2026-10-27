@@ -1,18 +1,24 @@
 // The contract templates' server calls (functions/contracts.py, the `contract_templates`
 // function; docs/contracts.md → Contract templates): the firm's list, a template's file or its
 // sample filled with made-up data, the upload made light (prepare → save), rename / category /
-// default (update), delete. Each call carries the login's ID token; a super-admin works in the
-// firm it is viewing (asTenantId).
+// default (update), delete. A template is for a worker (every one saved before the kind) or for a
+// client (`kind`); a worker's or a client's own template is listed only with its id. Each call
+// carries the login's ID token; a super-admin works in the firm it is viewing (asTenantId).
 import { CONTRACTS_FN_URL } from './logic/functions';
 import { loadFirestoreBackend } from './data/api';
 import { gsAuth } from './data/session';
 
 /** A mark placed by hand on a page (a page that is a picture, or a mark the search missed): PDF points from the page's top left. */
 export type Placed = { mark: string; page: number; x: number; y: number; w: number; h: number; rtl?: boolean };
+/** For a worker (the default; every template saved before the kind) or for a client. */
+export type TemplateKind = 'worker' | 'client';
 export type ContractTemplate = {
   id: string; name: string; category?: string; isDefault?: boolean; size?: number; origSize?: number; pages?: number;
   createdAt?: string; updatedAt?: string; version?: number; marks?: string[]; unknown?: string[]; placed?: Placed[];
   workerId?: string | null; signedCount?: number; pictures?: number[];
+  kind?: TemplateKind;
+  /** a client's own template (listed only with that client) */
+  clientId?: string | null;
   /** the firm's signature and stamp at the bottom right of every page (absent: a template saved before it — off) */
   sealEveryPage?: boolean;
 };
@@ -25,11 +31,25 @@ export type Prepared = {
 export const MARKS = ['given', 'surname', 'full_name', 'id', 'id_type', 'id_expiry', 'dob', 'sex', 'marital', 'phone', 'address', 'city',
   'full_address', 'health_fund', 'start_date', 'end_date', 'contract_months', 'site', 'supplier', 'schedule', 'rate', 'pay_mode', 'ot_rate',
   'shabbat_rate', 'travel', 'bank', 'company', 'company_address', 'company_phone', 'deductions_file', 'company_signature', 'stamp',
-  'terms_1', 'terms_2', 'terms_3', 'terms_4', 'terms_5', 'signature', 'sign_date', 'today'] as const;
+  'terms_1', 'terms_2', 'terms_3', 'terms_4', 'terms_5', 'signature', 'sign_date', 'today',
+  'client_name', 'client_company_no', 'client_address', 'client_phone', 'client_email', 'client_signer', 'client_signer_role',
+  'client_signature', 'client_sign_date', 'client_rate', 'client_pay_mode', 'client_ot_rate', 'client_shabbat_rate'] as const;
 /** The firm's signature and stamp (functions/seal.py): pictures drawn at their marks — the signature first, the stamp over it. */
 export const SEAL_MARKS = ['company_signature', 'stamp'];
 /** The marks filled from the worker's pay (only for a login that may see pay — D3). */
 export const PAY_MARKS = ['rate', 'pay_mode', 'ot_rate', 'shabbat_rate', 'travel', 'bank'];
+/** A client's contract (functions/client_signing.py): the client's details, its signature and signing date… */
+export const CLIENT_MARKS = ['client_name', 'client_company_no', 'client_address', 'client_phone', 'client_email', 'client_signer',
+  'client_signer_role', 'client_signature', 'client_sign_date'];
+/** …and what the client pays: filled only for a login that sees client billing (canSeeBilling). */
+export const CLIENT_BILL_MARKS = ['client_rate', 'client_pay_mode', 'client_ot_rate', 'client_shabbat_rate'];
+/** The marks a template of this kind leaves empty: a worker's marks in a client's contract, a client's in a worker's. */
+export function marksNotFilled(kind: TemplateKind, marks: string[]): string[] {
+  const client = new Set([...CLIENT_MARKS, ...CLIENT_BILL_MARKS]);
+  const workerOnly = (m: string) => !client.has(m) && !['company', 'company_address', 'company_phone', 'deductions_file', 'company_signature', 'stamp',
+    'today', 'sign_date'].includes(m);
+  return marks.filter(m => (kind === 'client' ? workerOnly(m) : client.has(m)));
+}
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   const idToken = await (await loadFirestoreBackend()).idToken();
@@ -44,18 +64,22 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 }
 
 export type SealFlags = { hasStamp: boolean; hasSignature: boolean };
-export const listTemplates = (workerId?: string) =>
-  call<{ templates: ContractTemplate[]; canManage: boolean; canFirmSign?: boolean; seal?: SealFlags }>({ action: 'list', ...(workerId ? { workerId } : {}) });
+/** The firm's templates of a kind (a worker's when none is given; 'all' for Admin → Contract templates), with a worker's
+ * or a client's own when its id is given. */
+export const listTemplates = (workerId?: string, opts: { clientId?: string; kind?: TemplateKind | 'all' } = {}) =>
+  call<{ templates: ContractTemplate[]; canManage: boolean; canFirmSign?: boolean; seal?: SealFlags }>({ action: 'list',
+    ...(workerId ? { workerId } : {}), ...(opts.clientId ? { clientId: opts.clientId } : {}), ...(opts.kind ? { kind: opts.kind } : {}) });
 export const templateFile = (id: string, sample = false) => call<{ pdfBase64: string; name: string }>({ action: 'file', id, sample });
 /** A PDF, or a Word file (.docx — the server has it turned into a PDF first, D7). */
-export const prepareTemplate = (b64: string, name: string, word = false, sealEveryPage = true) =>
-  call<Prepared>({ action: 'prepare', [word ? 'docxBase64' : 'pdfBase64']: b64, name, sealEveryPage });
+export const prepareTemplate = (b64: string, name: string, word = false, sealEveryPage = true, kind: TemplateKind = 'worker') =>
+  call<Prepared>({ action: 'prepare', [word ? 'docxBase64' : 'pdfBase64']: b64, name, sealEveryPage, kind });
 export const isWordFile = (f: File) => /\.docx$/i.test(f.name) || f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export const TEMPLATE_ACCEPT = 'application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-export const sampleTemplate = (pdfBase64: string, placed: Placed[], sealEveryPage = true) =>
-  call<{ sampleBase64: string }>({ action: 'sample', pdfBase64, placed, sealEveryPage });
+export const sampleTemplate = (pdfBase64: string, placed: Placed[], sealEveryPage = true, kind: TemplateKind = 'worker') =>
+  call<{ sampleBase64: string }>({ action: 'sample', pdfBase64, placed, sealEveryPage, kind });
 export const saveTemplate = (b: {
   pdfBase64: string; name: string; category?: string; placed?: Placed[]; origSize?: number; workerId?: string; replaceId?: string; sealEveryPage?: boolean;
+  kind?: TemplateKind; clientId?: string;
 }) => call<{ template: ContractTemplate }>({ action: 'save', ...b });
 export const updateTemplate = (id: string, ch: { name?: string; category?: string; isDefault?: boolean; sealEveryPage?: boolean }) =>
   call<{ template: ContractTemplate }>({ action: 'update', id, ...ch });
@@ -92,8 +116,10 @@ export function sizeText(n?: number): string {
   const v = Number(n || 0);
   return v >= 1024 * 1024 ? (Math.round(v / 1024 / 102.4) / 10) + ' MB' : Math.max(1, Math.round(v / 1024)) + ' KB';
 }
-/** The default template of a category (or of the firm's templates, when the category has none). */
-export function defaultFor(list: ContractTemplate[], category?: string): ContractTemplate | null {
-  const firm = list.filter(t => !t.workerId);
+/** A template's kind: a client's, or a worker's (also one saved before the kind). */
+export const kindOf = (t: Pick<ContractTemplate, 'kind'>): TemplateKind => (t.kind === 'client' ? 'client' : 'worker');
+/** The default template of a category among the firm's templates of a kind (a worker's unless said). */
+export function defaultFor(list: ContractTemplate[], category?: string, kind: TemplateKind = 'worker'): ContractTemplate | null {
+  const firm = list.filter(t => !t.workerId && !t.clientId && kindOf(t) === kind);
   return firm.find(t => t.isDefault && (t.category || '') === (category || '')) || null;
 }

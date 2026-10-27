@@ -23,8 +23,8 @@ function walk(dir, base = '') {
   const old = staticFiles(ROOT);
   for (const f of ['service-worker.js', 'og.css', 'manifest.json', 'payroll.js', 'firestore-backend.js', 'icon-192.png', 'icon-512.png'])
     if (!old.includes(f)) errs.push(`${f} is not in the list of served files (scripts/static-files.mjs)`);
-  // The new pages are built by Vite, never copied: /next, the punch page, the manager app and the scanner lab.
-  for (const [f, src] of [['worker-punch.html', 'src/punch/'], ['schedule-manager.html', 'src/manager/page/'], ['scan-lab/index.html', 'src/scan/lab/']])
+  // The new pages are built by Vite, never copied: /next, the punch page, the manager app, the scanner lab and a client's sign page.
+  for (const [f, src] of [['worker-punch.html', 'src/punch/'], ['schedule-manager.html', 'src/manager/page/'], ['scan-lab/index.html', 'src/scan/lab/'], ['client-sign.html', 'src/client-sign/']])
     if (old.includes(f)) errs.push(`${f} is a Vite entry (${src}): it must not be in the copied list`);
   // /supplier and /client (permissions plan, stage 4): small static pages that only send to the manager app.
   for (const f of ['client-portal.html', 'supplier-portal.html']) {
@@ -40,7 +40,7 @@ function walk(dir, base = '') {
   const built = walk(DIST);
   const never = /^(functions|functions-auth|services|tests|docs|src|scripts|node_modules|Tokens)\/|(^|\/)\.|\.(md|rules|py|ts|tsx|mts)$|^(firebase|package|package-lock|tsconfig|components|firestore\.indexes)\.json$/;
   for (const f of built) if (never.test(f)) errs.push(`dist/${f} must never be served`);
-  for (const [page, what] of [['next/index.html', 'the /next page'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app'], ['scan-lab/index.html', 'the scanner lab (/scan-lab/)']]) {
+  for (const [page, what] of [['next/index.html', 'the /next page'], ['worker-punch.html', 'the punch page'], ['schedule-manager.html', 'the manager app'], ['scan-lab/index.html', 'the scanner lab (/scan-lab/)'], ['client-sign.html', "a client's sign page (/client-sign)"]]) {
     const file = path.join(DIST, page);
     if (!fs.existsSync(file)) { errs.push(`dist/${page} missing (${what})`); continue; }
     const html = fs.readFileSync(file, 'utf8');

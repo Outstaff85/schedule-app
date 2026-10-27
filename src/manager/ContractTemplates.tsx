@@ -7,9 +7,11 @@
 // uploads a worker's own template from the worker window (`workerId`). A template may have the
 // firm's signature and stamp drawn at the bottom right of every page (its tick, on for a new one;
 // the plate's Stamp chip; ⋮ turns it on or off); "Signature and stamp" opens the firm's (FirmSeal.tsx).
+// The templates are in two sections, For workers and For clients (a template's kind: picked on upload, fixed
+// on a replace); the client window uploads a client's own template through the same window (`clientId`).
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX, IconRubberStamp,
+  IconAlertTriangle, IconBuilding, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX, IconRubberStamp,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -21,6 +23,7 @@ import { FieldRow } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { CheckGrid, CheckTile } from '@/components/ui/checkbox';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Window } from '@/components/shared/window';
 import { Plate } from '@/components/shared/plate';
 import { Section } from '@/components/shared/section';
@@ -30,20 +33,20 @@ import { Field } from './ClientEditor';
 import { readFileB64 } from './logic/uploads';
 import { FirmSealWindow } from './FirmSeal';
 import {
-  MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, listTemplates, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sizeText, templateFile, updateTemplate,
-  type ContractTemplate, type Placed, type Prepared,
+  MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, kindOf, listTemplates, marksNotFilled, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sizeText,
+  templateFile, updateTemplate, type ContractTemplate, type Placed, type Prepared, type TemplateKind,
 } from './contracts';
 
 type Api = { toast: (msg: string, ms?: number) => void };
 const hidden = new Set<string>();
 
-/** The firm's templates, loaded once per pane (and again after a change). */
-function useTemplates(workerId?: string) {
+/** The firm's templates of both kinds, loaded once per pane (and again after a change). */
+function useTemplates() {
   const [list, setList] = React.useState<ContractTemplate[] | null>(null);
   const [error, setError] = React.useState('');
   const load = React.useCallback(() => {
-    listTemplates(workerId).then(r => { setList(r.templates); setError(''); }, e => setError(String(e?.message || e)));
-  }, [workerId]);
+    listTemplates(undefined, { kind: 'all' }).then(r => { setList(r.templates); setError(''); }, e => setError(String(e?.message || e)));
+  }, []);
   React.useEffect(load, [load]);
   return { list, error, load, setList };
 }
@@ -53,13 +56,13 @@ const dateText = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(uiLoc
 type Pending = { key: string; name: string; error?: string };
 /** Several files at once (D7): each is its own call, all sent at once; a ready one is saved as it is and the list
  * read again (a toast says so); a failed one stays as a red line with its reason (the server writes Admin → Errors). */
-function prepareInBackground(files: File[], api: Api, setPending: React.Dispatch<React.SetStateAction<Pending[]>>, load: () => void) {
+function prepareInBackground(files: File[], api: Api, setPending: React.Dispatch<React.SetStateAction<Pending[]>>, load: () => void, kind: TemplateKind) {
   const items = files.map(f => ({ key: f.name + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 6), name: f.name.replace(/\.(pdf|docx)$/i, ''), file: f }));
   setPending(list => [...list, ...items.map(({ key, name }) => ({ key, name }))]);
   void Promise.all(items.map(async it => {
     try {
-      const p = await prepareTemplate(await readFileB64(it.file), it.file.name, isWordFile(it.file));
-      await saveTemplate({ pdfBase64: p.lightBase64, name: it.name, origSize: p.origSize });
+      const p = await prepareTemplate(await readFileB64(it.file), it.file.name, isWordFile(it.file), true, kind);
+      await saveTemplate({ pdfBase64: p.lightBase64, name: it.name, origSize: p.origSize, kind });
       setPending(list => list.filter(x => x.key !== it.key));
       api.toast(tr('Template ready: {0} ({1} → {2})', { 0: it.name, 1: sizeText(p.origSize), 2: sizeText(p.lightSize) }));
       load();
@@ -72,16 +75,19 @@ function prepareInBackground(files: File[], api: Api, setPending: React.Dispatch
 export function ContractTemplatesPane({ api }: { api: Api }) {
   const { list, error, load } = useTemplates();
   const [, redraw] = React.useReducer((n: number) => n + 1, 0);
-  const [upload, setUpload] = React.useState<{ file: File; replace?: ContractTemplate } | null>(null);
+  const [upload, setUpload] = React.useState<{ file: File; replace?: ContractTemplate; kind: TemplateKind } | null>(null);
   const [edit, setEdit] = React.useState<{ t: ContractTemplate; what: 'name' | 'category' } | null>(null);
   const pick = React.useRef<HTMLInputElement>(null);
   const replaceFor = React.useRef<ContractTemplate | null>(null);
+  const kindFor = React.useRef<TemplateKind>('worker');
   const [pending, setPending] = React.useState<Pending[]>([]);
   const [seal, setSeal] = React.useState(false);
   if (error && !list) return <p className="text-[13px] text-bad" data-testid="contracts-error">{tr(error)}</p>;
   if (!list) return <div className="grid gap-2" aria-busy="true" data-testid="contracts-loading">{[0, 1].map(i => <Skeleton key={i} className="h-[62px]" />)}</div>;
-  const firm = list.filter(t => !t.workerId && !hidden.has(t.id));
+  const firm = list.filter(t => !t.workerId && !t.clientId && !hidden.has(t.id));
+  const forWorkers = firm.filter(t => kindOf(t) === 'worker'), forClients = firm.filter(t => kindOf(t) === 'client');
   const categories = [...new Set(firm.map(t => t.category || ''))].filter(Boolean).sort();
+  const pickFile = (kind: TemplateKind) => { replaceFor.current = null; kindFor.current = kind; pick.current?.click(); };
 
   const remove = (t: ContractTemplate) => {
     hidden.add(t.id); redraw();
@@ -102,6 +108,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
       title={<span>{t.name}{t.version && t.version > 1 ? <span className="text-[11px] font-normal text-ink-2"> v{t.version}</span> : null}</span>}
       chips={<>{t.category && <Badge variant="default" data-testid="contract-category">{t.category}</Badge>}
         {t.isDefault && <Badge variant="ok" data-testid="contract-default">{tr('Default')}</Badge>}
+        <Badge variant={kindOf(t) === 'client' ? 'info' : 'default'} data-testid="contract-kind" data-kind={kindOf(t)}>{kindOf(t) === 'client' ? tr('For a client') : tr('For a worker')}</Badge>
         {t.sealEveryPage && <Badge variant="default" data-testid="contract-seal">{tr('Stamp')}</Badge>}</>}
       sub={<span className="grid whitespace-normal">
         <span>{[sizeText(t.size), dateText(t.createdAt), tr('{0} signed', { 0: t.signedCount || 0 })].join(' · ')}</span>
@@ -112,24 +119,25 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
       actions={[
         { label: tr('Category'), icon: <IconTag />, onSelect: () => setEdit({ t, what: 'category' }) },
         ...(t.isDefault ? [] : [{ label: tr('Make default'), icon: <IconStar />, onSelect: () => void makeDefault(t) }]),
-        { label: tr('Replace file'), icon: <IconRefresh />, onSelect: () => { replaceFor.current = t; pick.current?.click(); } },
+        { label: tr('Replace file'), icon: <IconRefresh />, onSelect: () => { replaceFor.current = t; kindFor.current = kindOf(t); pick.current?.click(); } },
         { label: t.sealEveryPage ? tr('Stamp on every page: turn off') : tr('Stamp on every page: turn on'), icon: <IconRubberStamp />, onSelect: () => void toggleSeal(t) },
       ]}
       onDelete={() => remove(t)} />
   );
   return (
     <div data-testid="contracts">
-      <Section label={<span className="inline-flex items-center gap-1.5"><IconFileText className="size-4" />{tr('Contract templates')}</span>} count={firm.length}
+      <Section label={<span className="inline-flex items-center gap-1.5"><IconFileText className="size-4" />{tr('For workers')}</span>} count={forWorkers.length}
+        data-testid="contracts-workers"
         tools={<>
           <Button size="sm" data-testid="contract-seal-open" onClick={() => setSeal(true)}><IconRubberStamp className="size-4" />{tr('Signature and stamp')}</Button>
-          <Button variant="primary" size="sm" className="og-new" data-testid="contract-new" onClick={() => { replaceFor.current = null; pick.current?.click(); }}>
+          <Button variant="primary" size="sm" className="og-new" data-testid="contract-new" onClick={() => pickFile('worker')}>
             <IconPlus className="size-4" />{tr('New template')}</Button></>}>
         <input ref={pick} type="file" accept={TEMPLATE_ACCEPT} multiple className="hidden" data-testid="contract-file"
           onChange={e => {
             const files = [...(e.target.files || [])]; e.target.value = '';
             // one file: the upload window; several: each prepared and saved in the background (D7)
-            if (files.length === 1) setUpload({ file: files[0], replace: replaceFor.current || undefined });
-            else if (files.length > 1) prepareInBackground(files, api, setPending, load);
+            if (files.length === 1) setUpload({ file: files[0], replace: replaceFor.current || undefined, kind: kindFor.current });
+            else if (files.length > 1) prepareInBackground(files, api, setPending, load, kindFor.current);
           }} />
         {pending.map(p => (
           <Plate key={p.key} data-testid="contract-pending" data-state={p.error ? 'error' : 'busy'} className="mb-1.5" color={p.error ? 'var(--bad)' : 'var(--neutral)'}
@@ -137,10 +145,17 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
             sub={p.error ? <span className="whitespace-normal text-bad">{tr(p.error)}</span> : tr('Preparing…')}
             onDelete={p.error ? () => setPending(list => list.filter(x => x.key !== p.key)) : undefined} />
         ))}
-        <PagedList items={firm} render={row}
+        <PagedList items={forWorkers} render={row}
           empty={<Empty data-testid="contracts-empty"><EmptyMedia><IconFileText /></EmptyMedia><EmptyTitle>{tr('No contract templates yet. Save the contract from Word as PDF, with marks like {{given}}, and add it here.')}</EmptyTitle></Empty>} />
       </Section>
-      {upload && <UploadWindow file={upload.file} replace={upload.replace} categories={categories} api={api}
+      <Section label={<span className="inline-flex items-center gap-1.5"><IconBuilding className="size-4" />{tr('For clients')}</span>} count={forClients.length}
+        data-testid="contracts-clients"
+        tools={<Button variant="primary" size="sm" className="og-new" data-testid="contract-new-client" onClick={() => pickFile('client')}>
+          <IconPlus className="size-4" />{tr('New template')}</Button>}>
+        <PagedList items={forClients} render={row}
+          empty={<Empty data-testid="contracts-clients-empty"><EmptyMedia><IconBuilding /></EmptyMedia><EmptyTitle>{tr('No client contract templates yet. Marks like {{client_name}} are filled from the client, {{client_signature}} is where the client signs.')}</EmptyTitle></Empty>} />
+      </Section>
+      {upload && <UploadWindow file={upload.file} replace={upload.replace} kind={upload.kind} categories={categories} api={api}
         onClose={() => setUpload(null)} onSaved={() => { setUpload(null); load(); }} />}
       {seal && <FirmSealWindow toast={api.toast} onClose={() => setSeal(false)} />}
       {edit && <EditWindow t={edit.t} what={edit.what} categories={categories} api={api} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
@@ -171,11 +186,15 @@ function EditWindow({ t, what, categories, api, onClose, onSaved }: {
   );
 }
 
-/** A new template (or a new version of one): made light on the server, its marks, the sample, the hand placing, Save. */
-export function UploadWindow({ file, replace, categories, api, workerId, onClose, onSaved }: {
-  file: File; replace?: ContractTemplate; categories: string[]; api: Api; workerId?: string;
+/** A new template (or a new version of one): made light on the server, its marks, the sample, the hand placing, Save.
+ * Its kind (for a worker / for a client) is picked here; a replace keeps its template's, a worker's or a client's own is theirs. */
+export function UploadWindow({ file, replace, categories, api, workerId, clientId, kind: kind0, onClose, onSaved }: {
+  file: File; replace?: ContractTemplate; categories: string[]; api: Api; workerId?: string; clientId?: string; kind?: TemplateKind;
   onClose: () => void; onSaved: (t: ContractTemplate) => void;
 }) {
+  const [kind, setKind] = React.useState<TemplateKind>(replace ? kindOf(replace) : clientId ? 'client' : workerId ? 'worker' : kind0 || 'worker');
+  const kindFirst = React.useRef(kind);
+  const fixedKind = !!(replace || workerId || clientId);
   const [prep, setPrep] = React.useState<Prepared | null>(null);
   const [err, setErr] = React.useState('');
   const [name, setName] = React.useState(replace ? replace.name : file.name.replace(/\.(pdf|docx)$/i, ''));
@@ -188,26 +207,27 @@ export function UploadWindow({ file, replace, categories, api, workerId, onClose
   const sealFirst = React.useRef(sealOn);
   React.useEffect(() => {
     let live = true;
-    readFileB64(file).then(b64 => prepareTemplate(b64, file.name, isWordFile(file), sealFirst.current))
+    readFileB64(file).then(b64 => prepareTemplate(b64, file.name, isWordFile(file), sealFirst.current, kindFirst.current))
       .then(p => { if (live) { setPrep(p); setSample(p.sampleBase64); } },
         e => { if (live) setErr(String(e?.message || e)); });
     return () => { live = false; };
   }, [file]);
-  const resample = (next: Placed[], seal = sealOn) => {
+  const resample = (next: Placed[], seal = sealOn, k = kind) => {
     setPlaced(next);
-    if (prep) sampleTemplate(prep.lightBase64, next, seal).then(r => setSample(r.sampleBase64), () => {});
+    if (prep) sampleTemplate(prep.lightBase64, next, seal, k).then(r => setSample(r.sampleBase64), () => {});
   };
   const save = async () => {
     if (!prep || busy) return;
     setBusy(true);
     try {
       const r = await saveTemplate({ pdfBase64: prep.lightBase64, name: name.trim() || file.name, category: category.trim(), placed, origSize: prep.origSize,
-        sealEveryPage: sealOn, ...(workerId ? { workerId } : {}), ...(replace ? { replaceId: replace.id } : {}) });
+        sealEveryPage: sealOn, ...(replace ? { replaceId: replace.id } : { kind }), ...(workerId ? { workerId } : {}), ...(clientId ? { clientId } : {}) });
       api.toast(tr('Template saved'));
       onSaved(r.template);
     } catch (e: any) { api.toast(tr(String(e?.message || e))); setBusy(false); }
   };
   const marks = [...new Set([...(prep?.marks || []), ...placed.map(p => p.mark)])];
+  const notFilled = marksNotFilled(kind, marks);
   return (
     <Window open wide onOpenChange={o => { if (!o) onClose(); }} title={replace ? tr('Replace file') : tr('New template')}
       description={file.name}
@@ -218,9 +238,14 @@ export function UploadWindow({ file, replace, categories, api, workerId, onClose
         {prep && <>
           <p className="text-sm" data-testid="contract-sizes">{tr('Made light: {0} → {1}', { 0: sizeText(prep.origSize), 1: sizeText(prep.lightSize) })}
             {prep.heavy && <span className="text-warn"> · {tr('still heavy')}</span>}</p>
+          {!fixedKind && <ToggleGroup type="single" value={kind} data-testid="contract-kind-pick"
+            onValueChange={v => { if (v) { setKind(v as TemplateKind); resample(placed, sealOn, v as TemplateKind); } }}>
+            <ToggleGroupItem value="worker" data-kind="worker" className="flex-1">{tr('For a worker')}</ToggleGroupItem>
+            <ToggleGroupItem value="client" data-kind="client" className="flex-1">{tr('For a client')}</ToggleGroupItem>
+          </ToggleGroup>}
           <FieldRow>
             <Field label={tr('Name')}><Input value={name} data-testid="contract-name" onChange={e => setName(e.target.value)} /></Field>
-            {!workerId && <Field label={tr('Category')}>
+            {!workerId && !clientId && <Field label={tr('Category')}>
               <Input value={category} list="contractUploadCategories" placeholder={tr('e.g. hourly')} data-testid="contract-category-input" onChange={e => setCategory(e.target.value)} />
               <datalist id="contractUploadCategories">{categories.map(c => <option key={c} value={c} />)}</datalist>
             </Field>}
@@ -229,6 +254,9 @@ export function UploadWindow({ file, replace, categories, api, workerId, onClose
             <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-2">{tr('Marks found')}</p>
             <div className="flex flex-wrap gap-1">{marks.length ? marks.map(m => <Badge key={m} variant="default" data-mark={m}>{'{{' + m + '}}'}</Badge>)
               : <span className="text-sm text-warn">{tr('No marks found — place them by hand below, or type them in the file and save it as PDF from Word again.')}</span>}</div>
+            {!!notFilled.length && <p className="text-sm text-warn" data-testid="contract-not-filled">
+              <IconAlertTriangle className="me-1 inline size-4" />{kind === 'client' ? tr('Not filled for a client: {0}', { 0: notFilled.map(m => '{{' + m + '}}').join(', ') })
+                : tr('Not filled for a worker: {0}', { 0: notFilled.map(m => '{{' + m + '}}').join(', ') })}</p>}
             {!!prep.unknown.length && <p className="text-sm text-warn" data-testid="contract-unknown">
               <IconAlertTriangle className="me-1 inline size-4" />{tr('Unknown marks (a typo?): {0}', { 0: prep.unknown.map(u => '{{' + u + '}}').join(', ') })}</p>}
           </div>

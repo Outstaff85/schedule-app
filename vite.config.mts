@@ -24,12 +24,14 @@ export default defineConfig({
   // The scanner's background thread (src/scan/engine/worker.ts) is a module worker: it imports ONNX Runtime
   // from the surface's own copy at run time (docs/scan-plan.md → S9).
   worker: { format: 'es' },
-  optimizeDeps: { entries: ['next/index.html', 'worker-punch.html', 'schedule-manager.html', 'scan-lab/index.html'] },
+  optimizeDeps: { entries: ['next/index.html', 'worker-punch.html', 'schedule-manager.html', 'scan-lab/index.html', 'client-sign.html'] },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     rolldownOptions: {
-      input: { next: r('next/index.html'), punch: r('worker-punch.html'), manager: r('schedule-manager.html'), scanLab: r('scan-lab/index.html') },
+      input: { next: r('next/index.html'), punch: r('worker-punch.html'), manager: r('schedule-manager.html'), scanLab: r('scan-lab/index.html'),
+        // a client's contract to sign (/client-sign, src/client-sign/; docs/contracts.md → Client contracts)
+        clientSign: r('client-sign.html') },
     },
   },
 });

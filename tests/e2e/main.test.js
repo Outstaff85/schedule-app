@@ -2193,6 +2193,116 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const word = d7.find(t => t.name === 'Word contract') || {};
   ok(d7busy === 2 && (word.marks || []).includes('full_name') && (word.marks || []).includes('signature') && /\.pdf$/.test(word.fileId || ''),
     'word templates: a .docx is turned into a PDF (LibreOffice), made light and its marks found — the Hebrew line too ' + JSON.stringify(d7.map(t => ({n: t.name, m: t.marks}))));
+  // Client contracts (docs/contracts.md → Client contracts): a template For a client; the client window's contact fields
+  // saved; Send to sign → a wa.me/972… link with the text and the link, Copy; the client's own page (/client-sign, no
+  // login) — its details prefilled, one changed, the end of the contract, one signature → the signed PDF on the client and
+  // its empty contact fields filled (never what the firm typed); Sign here in the window; a login without the right: no Send.
+  const ccPdf = Buffer.from(await (await fetch('http://127.0.0.1:5055/clientContractPdf', {method: 'POST'})).arrayBuffer());
+  const [ccChooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-testid="contract-new-client"]')]);
+  await ccChooser.setFiles({name: 'Service agreement.pdf', mimeType: 'application/pdf', buffer: ccPdf});
+  await p.waitForSelector('[data-testid="contract-upload"][data-state="ready"]', {timeout: 60000});
+  const ccUp = await p.evaluate(() => ({kind: (document.querySelector('[data-testid="contract-kind-pick"] [data-state="on"]') || {}).dataset?.kind,
+    notFilled: (document.querySelector('[data-testid="contract-not-filled"]') || {}).innerText || ''}));
+  await p.click('[data-testid="contract-save"]');
+  ok(await waitFor(p, () => !!document.querySelector('[data-testid="contracts-clients"] [data-testid="contract-row"] [data-testid="contract-kind"][data-kind="client"]'), 30000),
+    'client contracts: a template uploaded For a client is listed under For clients');
+  const ccTpl = (await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json()).find(t => t.kind === 'client') || {};
+  ok(ccUp.kind === 'client' && /\{\{given\}\}/.test(ccUp.notFilled) && ccTpl.isDefault && (ccTpl.marks || []).includes('client_signature') && (ccTpl.marks || []).includes('client_name'),
+    'client contracts: the upload window has the kind picked (For a client), names the worker marks it leaves empty; the first client template is their default ' + JSON.stringify({ccUp, kind: ccTpl.kind, d: ccTpl.isDefault, m: ccTpl.marks}));
+  // the client window: contact phone and email typed, the signer left empty; Send to sign
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchAdminPane(null); switchTab('clients'); openEditClient('c1'); });
+  await p.waitForSelector('#clientModal [data-testid="client-editor"]');
+  await p.evaluate(() => { T.fill('cContactPhone', '050-1234567'); T.fill('cEmail', 'office@site-a.co.il'); document.querySelector('#clientModal [data-sec="contract"] button').click(); });
+  await p.waitForSelector('#clientModal [data-testid="client-contract-send"]:not([disabled])', {timeout: 30000});
+  const ccTrigger = await p.evaluate(() => document.querySelector('[data-testid="client-contract-template"]').innerText);
+  await p.click('#clientModal [data-testid="client-contract-send"]');
+  await p.waitForSelector('#clientModal [data-testid="client-contract-sent"]', {timeout: 30000});
+  const ccSent = await p.evaluate(() => ({link: document.querySelector('[data-testid="client-contract-link"]').innerText.trim(),
+    wa: (document.querySelector('[data-testid="client-contract-whatsapp"]') || {}).href || '', copy: !!document.querySelector('[data-testid="client-contract-copy"]')}));
+  const ccWa = decodeURIComponent(ccSent.wa);
+  ok(/The default: Service agreement/.test(ccTrigger) && /^http:\/\/127\.0\.0\.1:8765\/client-sign\?t=[\w-]{30,}$/.test(ccSent.link) && /^https:\/\/wa\.me\/972501234567\?text=/.test(ccSent.wa)
+    && ccWa.includes('Site A') && ccWa.includes('You have a contract to sign') && ccWa.includes(ccSent.link) && ccSent.copy,
+    'client contracts: Send to sign — the firm\'s default client template, the link to /client-sign, Send on WhatsApp to the contact phone (972…) with the name, what to do and the link, Copy ' + JSON.stringify({ccTrigger, ccSent}));
+  await p.click('#clientModal [data-testid="client-save"]');
+  ok(await waitFor(p, () => { const c = clients.find(x => x.id === 'c1'); return !!c && c.contactPhone === '050-1234567' && c.email === 'office@site-a.co.il' && !c.signerRole; }, 10000),
+    'client contracts: the client window saves the contact phone and email');
+  const ccReqs1 = await (await fetch('http://127.0.0.1:5055/clientSignRequests', {method: 'POST'})).json();
+  const ccTok = ccSent.link.split('?t=')[1];
+  ok(ccReqs1.length === 1 && ccReqs1[0].status === 'sent' && ccReqs1[0].tokenHash && !JSON.stringify(ccReqs1).includes(ccTok) && /\/clients\/c1\/sign\//.test(ccReqs1[0].templatePath)
+    && ccReqs1[0].details.contactPhone === '050-1234567' && ccReqs1[0].values.company === 'Firm One' && ccReqs1[0].values.client_rate !== undefined,
+    'client contracts: the send keeps only the token\'s hash, the template frozen under the client, the prefill and the firm\'s values (billing for the owner) ' + JSON.stringify(ccReqs1.map(r => ({s: r.status, t: r.templatePath, d: r.details}))));
+  // the client's own page: no login, only its request
+  const cctx = await newCtx();
+  const cpg = await page(cctx);
+  await cpg.goto(BASE + 'client-sign.html?t=' + ccTok);
+  await cpg.waitForSelector('[data-testid="client-sign"][data-state="sent"]', {timeout: 30000});
+  const ccPre = await cpg.evaluate(() => ({name: T.val('csName'), phone: T.val('csPhone'), email: T.val('csEmail'), no: T.val('csCompanyNo'),
+    firm: document.querySelector('[data-testid="client-sign-brand"]').innerText, lang: !!document.querySelector('[data-testid="lang-btn"]')}));
+  await cpg.evaluate(() => { T.fill('csSigner', 'Moshe Levi'); T.fill('csSignerRole', 'CEO'); T.fill('csPhone', '050-9999999'); });
+  await cpg.click('[data-testid="client-sign-show"]');
+  ok(await waitFor(cpg, () => { const d = document.querySelectorAll('[data-testid="pdf-doc"]'); return d.length === 1 && Number(d[0].dataset.pages) === 2; }, 40000),
+    'client contracts: the client\'s page shows the contract filled, both pages');
+  const ccLocked = await cpg.evaluate(() => (document.querySelector('[data-testid="sign-locked"]') || {}).innerText || 'open');
+  await cpg.evaluate(() => document.querySelector('[data-testid="pdf-end"]').scrollIntoView());
+  await cpg.waitForSelector('[data-testid="sign-button"]', {timeout: 10000});
+  const ccPad = await (await cpg.$('[data-testid="sign-documents"] canvas:not([data-page])')).boundingBox();
+  await cpg.mouse.move(ccPad.x + 20, ccPad.y + 30); await cpg.mouse.down();
+  for (let i = 1; i <= 10; i++) await cpg.mouse.move(ccPad.x + 20 + i * 15, ccPad.y + 30 + (i % 2 ? 15 : -10));
+  await cpg.mouse.up();
+  await cpg.click('[data-testid="sign-button"]');
+  await cpg.waitForSelector('[data-testid="client-sign-done"]', {timeout: 60000});
+  const ccErrs = cpg.errs.slice();
+  const ccBad = await page(cctx);
+  await ccBad.goto(BASE + 'client-sign.html?t=not-a-token');
+  ok(await waitFor(ccBad, () => !!document.querySelector('[data-testid="client-sign-invalid"]') && !document.querySelector('[data-testid="client-sign-flow"]'), 20000),
+    'client contracts: a wrong link shows that it is no longer valid, nothing of the firm');
+  await cctx.close();
+  const ccReqs2 = await (await fetch('http://127.0.0.1:5055/clientSignRequests', {method: 'POST'})).json();
+  const ccR = ccReqs2[0] || {};
+  const ccPdfOut = ccR.part ? await (await fetch('http://127.0.0.1:5055/clientSignedPdf/' + ccR.id, {method: 'POST'})).json() : {};
+  ok(ccPre.name === 'Site A' && ccPre.phone === '050-1234567' && ccPre.email === 'office@site-a.co.il' && /Firm One/.test(ccPre.firm) && ccPre.lang && /end of the document/.test(ccLocked)
+    && ccR.status === 'signed' && /^tenants\/tenant-one\/clients\/c1\/documents\/\d+-contract-/.test((ccR.part || {}).path || '') && ccR.clientDetails.signerName === 'Moshe Levi'
+    && ccPdfOut.pages === 2 && /Moshe Levi/.test(ccPdfOut.text) && /050-9999999/.test(ccPdfOut.text) && ccPdfOut.images >= 2 && !/\{\{/.test(ccPdfOut.text) && !ccErrs.length,
+    'client contracts: the client\'s page — its details prefilled, changed and signed once; the signed PDF built and kept on the client with them ' + JSON.stringify({ccPre, ccLocked, s: ccR.status, part: ccR.part, cd: ccR.clientDetails, ccPdfOut: {p: ccPdfOut.pages, i: ccPdfOut.images}, ccErrs}));
+  // back in the manager: the signed contract listed on the client, its empty contact fields filled, the typed phone kept
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openEditClient('c1'); });
+  await p.waitForSelector('#clientModal [data-testid="client-editor"]');
+  await p.evaluate(() => document.querySelector('#clientModal [data-sec="contract"] button').click());
+  await p.waitForSelector('#clientModal [data-testid="client-contract-signed"]', {timeout: 30000});
+  ok(await waitFor(p, () => T.val('cSignerName') === 'Moshe Levi' && T.val('cSignerRole') === 'CEO', 10000)
+    && await p.evaluate(() => T.val('cContactPhone') === '050-1234567' && document.querySelector('[data-testid="client-contract-status"]').dataset.state === 'signed'),
+    'client contracts: the signed contract is listed on the client; the signing fills its empty signer fields and keeps the phone the firm typed');
+  // Sign here: the client signs in the window
+  await p.click('#clientModal [data-testid="client-contract-here"]');
+  await p.waitForSelector('[data-testid="client-contract-here-window"] [data-testid="client-sign-show"]', {timeout: 30000});
+  await p.click('[data-testid="client-contract-here-window"] [data-testid="client-sign-show"]');
+  ok(await waitFor(p, () => Number((document.querySelector('[data-testid="client-contract-here-window"] [data-testid="pdf-doc"]') || {dataset: {}}).dataset.pages) === 2, 40000),
+    'client contracts: Sign here shows the contract in the window');
+  await p.evaluate(() => document.querySelector('[data-testid="client-contract-here-window"] [data-testid="pdf-end"]').scrollIntoView());
+  await p.waitForSelector('[data-testid="client-contract-here-window"] [data-testid="sign-button"]', {timeout: 10000});
+  const ccPad2 = await (await p.$('[data-testid="client-contract-here-window"] [data-testid="sign-documents"] canvas:not([data-page])')).boundingBox();
+  await p.mouse.move(ccPad2.x + 20, ccPad2.y + 30); await p.mouse.down();
+  for (let i = 1; i <= 10; i++) await p.mouse.move(ccPad2.x + 20 + i * 15, ccPad2.y + 30 + (i % 2 ? 15 : -10));
+  await p.mouse.up();
+  await p.click('[data-testid="client-contract-here-window"] [data-testid="sign-button"]');
+  ok(await waitFor(p, () => !document.querySelector('[data-testid="client-contract-here-window"]') && document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]').length === 2, 40000),
+    'client contracts: Sign here — signed in the window, the second signed contract listed');
+  // a staff login without the right "Firm's signature and stamp; client contracts" sees the status, not Send
+  const ccStaff = await p.evaluate(async () => {
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(200);
+    const key = 'schedMgr_session', raw = localStorage.getItem(key), s = JSON.parse(raw);
+    localStorage.setItem(key, JSON.stringify(Object.assign({}, s, {role: 'staff', rights: ['clients', 'workers']})));
+    openEditClient('c1'); await T.tick(200);
+    document.querySelector('#clientModal [data-sec="contract"] button').click();
+    await T.until(() => document.querySelector('#clientModal [data-testid="client-contract-status"]'), 20000);
+    const r = {status: !!document.querySelector('#clientModal [data-testid="client-contract-status"]'), send: !!document.querySelector('#clientModal [data-testid="client-contract-send"]'),
+      here: !!document.querySelector('#clientModal [data-testid="client-contract-here"]'), seal: !!document.querySelector('#clientModal [data-testid="client-contract-seal"]')};
+    localStorage.setItem(key, raw);
+    closeModal('clientOverlay'); await T.tick(200);
+    return r;
+  });
+  ok(ccStaff.status && !ccStaff.send && !ccStaff.here && !ccStaff.seal, 'client contracts: a login without the right sees the status, no Send to sign, Sign here or seal ' + JSON.stringify(ccStaff));
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('contracts'); });
   await p.evaluate(() => { window.open = window.__origOpen; window.__opened = undefined; switchAdminPane(null); switchTab('schedule'); });
   // Admin pane: users through the dispatcher
   ok(await p.evaluate(async () => { const j = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'listUsers'})})).json(); return (j.users||[]).some(u=>u.username==='sup1'); }), 'owner: listUsers via the dispatcher');

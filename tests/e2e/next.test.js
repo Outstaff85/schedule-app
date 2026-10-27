@@ -41,7 +41,7 @@ const server = http.createServer((req, res) => {
 const DEMOS = {
   controls: ['button', 'input', 'select', 'dates', 'checkbox', 'toggle-group', 'form'],
   lists: ['plate', 'select-button', 'plate-sizes', 'empty'],
-  windows: ['window', 'signature', 'sign-documents', 'menu', 'account', 'theme', 'sheet'],
+  windows: ['window', 'signature', 'sign-documents', 'sign-document', 'menu', 'account', 'theme', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
   data: ['table', 'data-table', 'chart', 'calendar', 'card'],
   layout: ['tabs', 'accordion', 'collapsible'],
@@ -83,6 +83,12 @@ async function computer(browser) {
     await p.screenshot({ path: path.join(OUT, `next-computer-${section}.png`), fullPage: true });
   }
   ok(!missing.length, 'next: the gallery draws every component ' + JSON.stringify({ missing }));
+  // SignDocuments with one document (a client's contract): "the end of the document", never "both documents"
+  await open(p, 'windows');
+  const signOne = await p.evaluate(() => ({ one: document.querySelector('[data-testid=demo-sign-document]').innerText,
+    two: document.querySelector('[data-testid=demo-sign-documents]').innerText }));
+  ok(!/both documents/.test(signOne.one) && /both documents/.test(signOne.two) && (/end of the document/.test(signOne.one) || /Sign/.test(signOne.one)),
+    'next: SignDocuments with one document speaks of the document, with two of both ' + JSON.stringify(signOne));
   ok(await visible(p, '[data-testid=shell-tabs]') && !(await visible(p, '[data-testid=shell-bar]')), 'next: a computer gets the section tabs, no bottom bar');
 
   // tokens through Tailwind

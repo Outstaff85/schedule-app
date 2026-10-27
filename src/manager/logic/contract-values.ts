@@ -71,6 +71,35 @@ export function contractValues(w: Rec, ctx: ValuesCtx): Record<string, string> {
   return out;
 }
 
+/**
+ * The values of a client contract's marks (docs/contracts.md → Client contracts), from the client window's live form:
+ * the client's details, the firm's marks (as a worker's contract has them), and — only for a login that sees client
+ * billing (`seeBilling`, canSeeBilling) — what the client pays: by law / fixed / by the day, its rate, and by law its
+ * overtime and Shabbat rates when set. An empty value stays empty. {{client_signature}}, {{client_sign_date}} and
+ * {{today}} are the server's.
+ */
+export function clientContractValues(c: Rec, ctx: { profile: Rec | null; seeBilling: boolean }): Record<string, string> {
+  const s = (v: unknown) => String(v ?? '').trim();
+  const p = ctx.profile || {};
+  const out: Record<string, string> = {
+    client_name: s(c.name), client_company_no: s(c.companyNumber), client_address: s(c.address), client_phone: s(c.contactPhone),
+    client_email: s(c.email), client_signer: s(c.signerName), client_signer_role: s(c.signerRole),
+    company: s(p.companyName), company_address: [((p.street || '') + ' ' + (p.streetNumber || '')).trim(), p.city].filter(Boolean).join(', '),
+    company_phone: s(p.phone), deductions_file: s(p.deductionsFileNumber),
+  };
+  if (ctx.seeBilling) {
+    const mode = c.rateMode === 'fixed' ? 'fixed' : c.rateMode === 'daily' ? 'daily' : 'tiered';
+    // a client saved before billRate existed: the worker default (as the client window shows it)
+    const bill = c.billRate != null && c.billRate !== '' ? c.billRate : c.defaultHourlyRate;
+    out.client_rate = mode === 'daily' ? (money(c.dailyBillRate) ? money(c.dailyBillRate) + ' ליום' : '') : money(mode === 'fixed' ? c.fixedBillRate : bill);
+    // the mode only with a rate: a client with no billing set prints none
+    out.client_pay_mode = !out.client_rate ? '' : mode === 'daily' ? 'יומי' : mode === 'fixed' ? 'שעתי קבוע' : 'שעתי לפי חוק';
+    out.client_ot_rate = mode === 'tiered' ? money(c.billOtRate) : '';
+    out.client_shabbat_rate = mode === 'tiered' ? money(c.billShabbatRate) : '';
+  }
+  return out;
+}
+
 // ── What the signed documents print about the worker (D4: data changed → a new signature) ──
 // The firm's details, signature and stamp: a change of them asks no worker to sign again.
 const FIRM_MARKS = ['company', 'company_address', 'company_phone', 'deductions_file', 'company_signature', 'stamp'];

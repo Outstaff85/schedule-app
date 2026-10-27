@@ -432,6 +432,7 @@ provideBridge({
       values:contractValues(w,{profile,clients,suppliers,seePay}), canSeePay:seePay, canSetDate:canSetSignDate(), punchLink:link,
       whatsapp:link?'https://wa.me/'+String(w.phone||'').replace(/\D/g,'').replace(/^0/,'972')+'?text='+encodeURIComponent(signMessage(w,link)):''};
   },
+  firmProfile:()=>refreshTenantProfile(5*60*1000),
   async downloadData(workerId?: any,include?: any){
     const w=workers.find((x?: any)=>x.id===workerId); if(!w) throw new Error(tr('Worker not found'));
     const profile=include&&include.form101?await refreshTenantProfile(5*60*1000):null;

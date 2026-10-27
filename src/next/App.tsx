@@ -399,6 +399,11 @@ function Windows() {
           docs={[{ key: 'a', title: tr('Form 101'), b64: SAMPLE_PDF }, { key: 'b', title: tr('Contract'), b64: SAMPLE_PDF }]} />
       </Demo>
 
+      <Demo id="sign-document" title={tr('Contract to sign')}>
+        <SignDocuments signDate="01/01/2026" onSign={async () => { toast(tr('Signed')); }}
+          docs={[{ key: 'c', title: tr('Contract'), b64: SAMPLE_PDF }]} />
+      </Demo>
+
       <Demo id="menu" title={tr('Dropdown Menu (⋮), Popover, Tooltip')}>
         <Row>
           <DropdownMenu>
