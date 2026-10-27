@@ -314,7 +314,8 @@ async function scanner(browser) {
     const root = document.querySelector(cam), q = s => root.querySelector(s), box = el => el.getBoundingClientRect();
     const r = box(root), bar = box(q('[data-testid=scan-bar]')), st = box(q('[data-testid=scan-status]')), strip = box(q('[data-testid=scan-thumbs]')), done = box(q('[data-testid=scan-done]')), auto = box(q('[data-testid=scan-auto]'));
     const files = q('[data-testid=scan-files]');
-    return { h: Math.round(r.height), statusTop: st.top - r.top < 90 && Math.abs((st.left + st.right) / 2 - (r.left + r.right) / 2) < 3, barBottom: r.bottom - bar.bottom < 30, stripAboveBar: strip.bottom <= bar.top + 1,
+    return { h: Math.round(r.height), statusTop: st.top - r.top < 90 && st.left >= r.left + 12 && st.right <= auto.left
+        && (Math.abs((st.left + st.right) / 2 - (r.left + r.right) / 2) < 3 || q('[data-testid=scan-status]').scrollWidth > st.width - 1),   // a short status centred, a long one beside Auto (wrapping) barBottom: r.bottom - bar.bottom < 30, stripAboveBar: strip.bottom <= bar.top + 1,
       autoTopRight: auto.top - r.top < 90 && r.right - auto.right < 30, doneInBar: !!q('[data-testid=scan-bar] [data-testid=scan-done]') && r.right - done.right < 30 && done.top >= bar.top,
       thumbs: root.querySelectorAll('[data-testid=scan-thumb]').length, files: !!files && files.type === 'file' && !files.hasAttribute('accept') && files.multiple,
       shutter: !!q('[data-testid=scan-shutter]'), auto: q('[data-testid=scan-auto]').getAttribute('aria-pressed'), done: q('[data-testid=scan-done]').textContent };
