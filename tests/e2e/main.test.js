@@ -575,7 +575,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         r.fits = [...sw().querySelectorAll('button[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
       sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
-      r.on = (sw().querySelector('button[data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'checked';
+      r.on = (sw().querySelector('button[data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'unchecked'; // on = Dark, off once Light is picked
       r.open = !!document.querySelector('[data-testid=account-menu]');
       r.ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
       document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await wait(200);

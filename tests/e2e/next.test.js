@@ -618,6 +618,7 @@ async function theme(browser) {
       await p.waitForSelector('[data-testid=account-menu] [data-testid=account-theme]');
       ok(await p.locator('[data-testid=account-menu] [data-testid=theme-system]').count() === 0, `theme ${w}: the switch has no System choice`);
       await p.click('[data-testid=account-menu] [data-testid=theme-dark]'); // the earlier checks left it light
+      ok(await p.getAttribute('[data-testid=account-menu] [data-testid=theme-toggle]', 'data-state') === 'checked', `theme ${w}: on Dark the switch stands on`);
       await p.click('[data-testid=account-menu] [data-testid=theme-toggle]');
       ok(await visible(p, '[data-testid=account-menu]'), `theme ${w}: switching the theme leaves the account menu open`);
       await p.keyboard.press('Escape');

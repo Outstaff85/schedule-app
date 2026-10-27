@@ -28,7 +28,7 @@ export function ThemeSwitch({ onSave, className }: { onSave?: (c: ThemeChoice) =
   return (
     <div role="group" aria-label={tr('Theme')} data-testid="theme-switch" className={cn('flex items-center justify-between gap-2', className)}>
       {side('dark', 'Dark', IconMoon)}
-      <Switch data-testid="theme-toggle" aria-label={tr('Light')} checked={look === 'light'} onCheckedChange={on => setTheme(on ? 'light' : 'dark', onSave)} />
+      <Switch data-testid="theme-toggle" aria-label={tr('Dark')} checked={look === 'dark'} onCheckedChange={on => setTheme(on ? 'dark' : 'light', onSave)} />
       {side('light', 'Light', IconSun)}
     </div>
   );
