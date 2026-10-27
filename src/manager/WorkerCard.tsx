@@ -150,8 +150,8 @@ function DocsBox({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
           {!docs.length && <div className="mt-0.5 text-[13px] text-ink-2 min-[701px]:text-sm">{tr('No documents yet — contract, visa, work permit…')}</div>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {can && docs.length > 0 && <SelectHead sel={sel} />}
           {can && <Button size="sm" data-testid="card-docs-add" onClick={() => api.openDocUpload(w.id)}><IconPlus className="size-4" />{tr('Add')}</Button>}
+          {can && docs.length > 0 && <SelectHead sel={sel} testid="docs-select" />}
         </div>
       </div>
       {docs.length > 0 && <div className="mt-2" data-testid="worker-docs"><PagedList items={docs} render={plate} /></div>}

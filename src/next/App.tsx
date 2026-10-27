@@ -23,7 +23,7 @@ import { Figures, Section } from '@/components/shared/section';
 import { Plate } from '@/components/shared/plate';
 import { PagedList } from '@/components/shared/paged-list';
 import { undoDelete } from '@/components/shared/undo';
-import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
+import { SelectBar, SelectHead, SelectRow, useSelection } from '@/components/shared/select-mode';
 import { Window } from '@/components/shared/window';
 import { SignaturePad } from '@/components/shared/signature-pad';
 import { SignDocuments } from '@/components/shared/sign-documents';
@@ -229,6 +229,18 @@ function WorkerForm() {
   );
 }
 
+/* The Select button in its two states: off ("Select") and selecting ("Select all"). */
+function SelectStates() {
+  const ids = React.useMemo(() => ['a', 'b', 'c'], []);
+  const off = useSelection(ids), on = useSelection(ids);
+  const start = on.start;
+  React.useEffect(() => { start(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <>
+    <SelectRow sel={off} testid="select-state-off"><span className="text-[13px] text-ink-2">{tr('Off: a tap starts selecting')}</span></SelectRow>
+    <SelectRow sel={on} testid="select-state-on"><span className="text-[13px] text-ink-2">{tr('Selecting: a tap ticks every item')}</span></SelectRow>
+  </>;
+}
+
 /* ───────── Lists ───────── */
 function Lists() {
   const [list, setList] = React.useState(WORKERS);
@@ -255,8 +267,7 @@ function Lists() {
           active={filter}
           onPick={k => setFilter(f => (f === k || k !== 'notes' ? null : k))}
         />
-        <div className="flex items-center gap-2"><SelectHead sel={sel} /></div>
-        <Section label={tr('Active')} count={shown.length} folded={folded} onFold={() => setFolded(f => !f)}>
+        <Section label={tr('Active')} count={shown.length} folded={folded} onFold={() => setFolded(f => !f)} tools={<SelectHead sel={sel} testid="plate-select" />}>
           <AnimatePresence initial={false}>
             <PagedList
               items={shown}
@@ -290,6 +301,10 @@ function Lists() {
         <SelectBar sel={sel} onDelete={remove}>
           <Button size="icon-sm" aria-label={tr('Export')} disabled={!sel.picked.size}><IconDownload className="size-4" /></Button>
         </SelectBar>
+      </Demo>
+
+      <Demo id="select-button" title={tr('Select button (both states)')}>
+        <SelectStates />
       </Demo>
 
       <Demo id="plate-sizes" title={tr('Plate sizes and states')}>

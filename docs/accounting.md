@@ -77,7 +77,7 @@ The rows come from `salaryEntriesFor(d, period)` → `{byWorker, byClient, byDay
 - **Rows: only the workers with shifts in the period.** The search icon opens a field (focused); it narrows the rows and the table's totals row with them (`searchRows`); the figures on top, Billing and Alerts always use every row.
 - **Totals:** the figures on top of the tab (above) and the table's totals row.
 - **Table** (`DataTable`): Worker (⚠ with the warnings when there are punches to check; the name opens the worker card), Hours, Regular / OT / Shabbat, Days, Rate (the own rate ₪/h or ₪/day; grey "client ₪x/h" when the client's applies — the client the worker had most hours at, `rateShown`; amber "set a daily rate" / "no rate"), Pay, Travel ₪, Total Pay (an HR's My commission), and the totals row; a column head sorts; 10 rows and Show more. A tap opens the row's details in a window (the hours split, Days with "punches: N" when set by hand, Rate, Pay, Travel, Bank — amber "no bank details" — an HR's commission, **Open card** and **Pay**); a double click opens the pay window. On a phone the rows are plates: a tap opens the details under the plate, a long press the pay window.
-- **Select** (not for an HR): a Select button over the table, a tick column, the bulk bar's **Excel** / **PDF** export only the ticked workers' shifts.
+- **Select** (not for an HR): the Select button last in the Salary section's line (after the search and export icons), a tick column, the bulk bar's **Excel** / **PDF** export only the ticked workers' shifts.
 
 ### Pay window (`openPayModal(wid)`, `#payOverlay`, `PayWindow.tsx`)
 

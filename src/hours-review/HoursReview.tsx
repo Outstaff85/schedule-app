@@ -190,7 +190,7 @@ function HoursTab({ data }: { data: HoursData }) {
       </div>
       <div className="mb-2.5 flex items-center gap-2">
         <span className="flex-1 text-xs text-ink-2">{tr('Total: {h}h', { h: total.toFixed(1) })}</span>
-        {can(data, 'approve') && pickable.length > 0 && <SelectHead sel={sel} />}
+        {can(data, 'approve') && pickable.length > 0 && <SelectHead sel={sel} testid="hours-select" />}
       </div>
       <PagedList items={wids} render={wid => {
         const list = byW[wid];

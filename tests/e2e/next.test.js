@@ -40,7 +40,7 @@ const server = http.createServer((req, res) => {
 
 const DEMOS = {
   controls: ['button', 'input', 'select', 'checkbox', 'toggle-group', 'form'],
-  lists: ['plate', 'plate-sizes', 'empty'],
+  lists: ['plate', 'select-button', 'plate-sizes', 'empty'],
   windows: ['window', 'signature', 'sign-documents', 'menu', 'account', 'theme', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
   data: ['table', 'data-table', 'chart', 'calendar', 'card'],
@@ -128,7 +128,7 @@ async function computer(browser) {
   ok(await p.locator('[data-testid=plate-w2]').count() === 1 && !(await visible(p, '[data-testid=undo-snack]')), 'next: Undo brings the plate back');
 
   // Select mode
-  await p.getByRole('button', { name: 'Select', exact: true }).click(); await sleep(200);
+  await p.locator('[data-testid=plate-select] button').click(); await sleep(200);
   await p.click('[data-testid=plate-w3] .og-plate', { position: { x: 80, y: 20 } });
   await p.click('[data-testid=plate-w4] .og-plate', { position: { x: 80, y: 20 } }); await sleep(200);
   const selText = await p.locator('[data-testid=select-bar]').innerText();
@@ -255,6 +255,28 @@ async function phone(browser) {
   await p.getByRole('button', { name: 'Layout' }).tap(); await sleep(600);
   ok(await p.locator('[data-testid=page-layout]').count() === 1, 'next: a section from More opens');
   for (const s of Object.keys(DEMOS)) { await open(p, s); await p.screenshot({ path: path.join(OUT, `next-phone-${s}.png`), fullPage: true }); }
+
+  // The Select template on a phone (owner, 2026-10-27): the one Select button is the last thing at the right of
+  // the line above its list; a tap turns selecting on and the same button reads "Select all"; a tap ticks every
+  // item — all 14, not only the 10 drawn — and it reads "Select none"; the gallery shows both states.
+  await open(p, 'lists');
+  const rightOf = tid => p.evaluate(t => {
+    const head = document.querySelector(`[data-testid=${t}]`), btn = head.querySelector('button'), row = head.parentElement;
+    const b = btn.getBoundingClientRect(), r = row.getBoundingClientRect();
+    return Math.abs(b.right - r.right) <= 1.5 && [...row.children].every(c => c === head || c.getBoundingClientRect().right <= b.left + 1);
+  }, tid);
+  const label = tid => p.locator(`[data-testid=${tid}] button`).innerText().then(s => s.trim());
+  const st = { right: await rightOf('plate-select'), states: (await label('select-state-off')) + '|' + (await label('select-state-on')), drawn: await p.locator('[data-testid^=plate-w]').count() };
+  await p.locator('[data-testid=plate-select] button').tap(); await sleep(250);
+  st.on = await label('plate-select'); st.rightOn = await rightOf('plate-select');
+  await p.locator('[data-testid=plate-select] button').tap(); await sleep(250);
+  st.all = (await p.locator('[data-testid=select-bar] b').innerText()).trim(); st.none = await label('plate-select');
+  await p.locator('[data-testid=plate-select] button').tap(); await sleep(250);
+  st.cleared = (await p.locator('[data-testid=select-bar] b').innerText()).trim();
+  await p.locator('[data-testid=select-bar] button[aria-label=Done]').tap(); await sleep(250);
+  st.ended = !(await visible(p, '[data-testid=select-bar]')) && (await label('plate-select')) === 'Select';
+  ok(st.right && st.rightOn && st.states === 'Select|Select all' && st.drawn === 10 && st.on === 'Select all' && st.all === '14 selected' && st.none === 'Select none' && st.cleared === '0 selected' && st.ended,
+    'next (phone): the Select button sits at the right of its line; a tap → "Select all", which ticks all 14 (10 drawn) → "Select none"; ✕ ends; the gallery shows both states ' + JSON.stringify(st));
 
   await open(p, 'frame');
   const frp = await p.evaluate(() => {

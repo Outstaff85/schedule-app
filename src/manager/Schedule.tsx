@@ -362,7 +362,7 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
               <Button size="sm" data-testid="copy-last" onClick={() => askCopy('last', ids)}><IconCopy className="size-4" />{tr('Copy last week')}</Button>
               <Button size="sm" data-testid="copy-repeat" onClick={() => askCopy('repeat', ids)}><IconCalendarRepeat className="size-4" />{tr('Repeat for N weeks')}</Button>
             </>}
-            <span className={cn('flex', !sel.on && 'ml-auto')}><SelectHead sel={sel} /></span>
+            <SelectHead sel={sel} testid="sched-select" />
           </div>
         )}
         <PagedList items={vis} columns render={row}

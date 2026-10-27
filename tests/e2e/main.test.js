@@ -2446,11 +2446,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await delTmp();
   Object.assign(wp, await p.evaluate(sel => { render(); return {leftOut: !document.querySelector(sel), notYet: workers.some(w => w.id === 'wtmp')}; }, tmpSel));
   await sleep(5400); wp.deleted = await p.evaluate(() => !workers.some(w => w.id === 'wtmp'));
-  // Select: a Select button above the plates and no boxes; after it "0 selected · Select all", a tick → Vacation.
+  // Select: a Select button above the plates and no boxes; after it the same button reads "Select all" and the bar "0 selected", a tick → Vacation.
   const wsel = '#workersRoot [data-testid="workers-select"]';
   wp.selHead = await p.evaluate(sel => { const h = document.querySelector(sel); return !!h && /^Select$/.test(h.innerText.trim()) && !document.querySelector('#workersRoot .og-box') && !document.querySelector('[data-testid="select-bar"]'); }, wsel);
   await p.click(wsel + ' button:has-text("Select")'); await sleep(100);
-  wp.selOn = await p.evaluate(sel => /0 selected/.test(document.querySelector(sel).innerText) && /Select all/.test(document.querySelector(sel).innerText), wsel);
+  wp.selOn = await p.evaluate(sel => document.querySelector(sel).innerText.trim() === 'Select all' && /0 selected/.test((document.querySelector('[data-testid="select-bar"] b') || {}).textContent), wsel);
   await p.click('#workersRoot [data-testid="worker-plate"][data-wid="w1"] [role="button"]', {position: {x: 30, y: 14}}); await sleep(100);
   wp.sel = await p.evaluate(() => (document.querySelector('[data-testid="select-bar"] b') || {}).textContent);
   await p.click('[data-testid="sel-vacation"]'); await sleep(150);
@@ -2494,8 +2494,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.plates = docs().length; r.boxes0 = !document.querySelector('#workerCardModal .og-box');
     const head = () => document.querySelector('#workerCardModal [data-testid="card-docs"]');
     [...head().querySelectorAll('button')].find(b => b.textContent.trim() === 'Select').click(); await wait(100);
-    r.head = /0 selected/.test(head().textContent) && document.querySelectorAll('#workerCardModal .og-box').length === 2;
-    [...head().querySelectorAll('.sel-head button')].find(b => /Select all/.test(b.textContent)).click(); await wait(100);
+    const docSel = () => head().querySelector('[data-testid="docs-select"] button');
+    r.head = docSel().textContent.trim() === 'Select all' && /0 selected/.test(document.querySelector('[data-testid="select-bar"]').textContent) && document.querySelectorAll('#workerCardModal .og-box').length === 2;
+    docSel().click(); await wait(100);
     r.bar = (document.querySelector('[data-testid="select-bar"] b') || {}).textContent;
     [...document.querySelectorAll('[data-testid="select-bar"] button')].find(b => /Delete/.test(b.textContent)).click(); await wait(400);
     r.pending = w.docs.length === 2 && !docs().length && /2 documents/.test(document.querySelector('[data-testid="undo-snack"]').textContent);
@@ -2927,6 +2928,33 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(cpl.noRate && cpl.crumb === 'Clients' && cpl.crumbS === 'Suppliers' && cpl.sidebar && cpl.old && cpl.menu === 'Edit,Manual punch,Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.noWindow && cpl.notYet && cpl.deleted
     && cpl.supplier && cpl.supMenu === 'Edit,Delete' && cpl.supWindow,
     'clients / suppliers (React): plates with notices, the section lit in the menu (no breadcrumb), no side panel, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates open the supplier window ' + JSON.stringify(cpl));
+  // The Select template (owner, 2026-10-27) on two lists — Clients (its head row, after New) and Workers (its own row):
+  // one Select button, the same glass pill, the last thing at the right of its row; a tap turns selecting on and the
+  // same button reads "Select all"; a tap ticks every item of the list and it reads "Select none"; ✕ ends.
+  const stpl = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+    for (const [tab, root, tid, plate] of [['clients', '#clientsRoot', 'clients-select', 'client-plate'], ['workers', '#workersRoot', 'workers-select', 'worker-plate']]) {
+      switchTab(tab); await wait(250);
+      const head = () => document.querySelector(root + ' [data-testid="' + tid + '"]'), btn = () => head().querySelector('button');
+      const right = () => { const b = btn().getBoundingClientRect(), row = head().parentElement, r = row.getBoundingClientRect();
+        return Math.abs(b.right - r.right) <= 1.5 && [...row.children].every(c => c === head() || c.getBoundingClientRect().right <= b.left + 1); };
+      const r = {right: right(), label: btn().textContent.trim(), pill: /og-btn/.test(btn().className)};
+      btn().click(); await wait(120);
+      r.on = btn().textContent.trim(); r.rightOn = right();
+      btn().click(); await wait(120);
+      const plates = document.querySelectorAll(root + ' [data-testid="' + plate + '"]').length;
+      r.allTicked = plates > 0 && document.querySelectorAll(root + ' [data-testid="' + plate + '"] .og-plate.on').length === plates;
+      r.count = parseInt((document.querySelector('[data-testid="select-bar"] b') || {}).textContent, 10) >= plates;
+      r.none = btn().textContent.trim();
+      [...document.querySelectorAll('[data-testid="select-bar"] button')].pop().click(); await wait(120);
+      r.ended = !document.querySelector('[data-testid="select-bar"]') && btn().textContent.trim() === 'Select';
+      out[tab] = r;
+    }
+    return out;
+  });
+  ok(['clients', 'workers'].every(k => { const r = stpl[k]; return r.right && r.rightOn && r.pill && r.label === 'Select' && r.on === 'Select all' && r.allTicked && r.count && r.none === 'Select none' && r.ended; }),
+    'Select template: on Clients and Workers the Select button sits at the right of its row; a tap → "Select all" ticks every item → "Select none"; ✕ ends ' + JSON.stringify(stpl));
+  await p.evaluate(() => switchTab('clients')); await sleep(200);
   // The client window: a tap outside saves it; an empty new client is not created; the rates block; manual punch from the window and back.
   const cs = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -3631,8 +3659,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('#adminRoot [data-testid="users-select"] button').click(); await T.tick(50);
     const rows = [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')];
     r.n = rows.length; r.ownerNoBox = !rows[0].querySelector('.og-box') && rows.slice(1).every(x => !!x.querySelector('.og-box'));
-    [...document.querySelectorAll('#adminRoot [data-testid="select-head"] button')].pop().click(); await T.tick(50);
+    const selBtn = document.querySelector('#adminRoot [data-testid="users-select"] button');
+    r.allLabel = selBtn.textContent.trim();
+    selBtn.click(); await T.tick(50);
     r.all = document.querySelector('[data-testid="select-bar"] b').innerText.trim();
+    r.noneLabel = selBtn.textContent.trim();
     T.tap(document.querySelector(sel)); await T.tick(50);
     r.unpicked = document.querySelector('[data-testid="select-bar"] b').innerText.trim() === (r.n - 2) + ' selected' && !document.getElementById('userFormOverlay').classList.contains('open');
     [...document.querySelectorAll('[data-testid="select-bar"] button')].pop().click(); await T.tick(50);
@@ -3640,7 +3671,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }, {sel: clientRow, uid: lsA.uid});
   ok(lsA.plate && lsPop === 'Edit,Delete' && ls.gone && ls.snack && ls.back && delCalls === 0, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete takes it behind the Undo snack, Undo brings it back ' + JSON.stringify({lsPop, ls, delCalls}));
-  ok(ls.ownerNoBox && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), Select all, a tap unticks, ✕ ends ' + JSON.stringify(ls));
+  ok(ls.ownerNoBox && ls.allLabel === 'Select all' && ls.all === (ls.n - 1) + ' selected' && ls.noneLabel === 'Select none' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), the same button reads Select all and ticks them all, a tap unticks, ✕ ends ' + JSON.stringify(ls));
   // The user form: the template picked says the role and shows its flat ticks read-only; "Only own workers" locked on for a supplier and a client.
   await q.evaluate(async () => { openCreateUserForm(); await T.tick(100); document.querySelector('#userFormModal [data-sec="sections"] [data-slot="accordion-trigger"]').click(); await T.tick(50); });
   const uf = {};
