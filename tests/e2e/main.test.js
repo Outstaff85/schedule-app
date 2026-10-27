@@ -1684,9 +1684,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const keep = JSON.stringify(getSession()), s = JSON.parse(keep), w = workers[1], keepW = JSON.stringify(w);
     const d = new Date(); d.setDate(d.getDate() - 2);
     w.docs = [{id: 'vperm', type: 'visa', name: 'v.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: new Date().toISOString(), expiry: localYMD(d)}];
+    // Schedule lists only the workers with a shift this week: give this one a week of work (put back below)
+    w.schedule = Array.from({length: 7}, () => ({type: 'work', start: '08:00', end: '16:00'})); render();
     const dbl = async () => {
       document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('schedule'); await T.tick(400);
-      const pl = document.querySelector('#scheduleRoot [data-testid="sched-worker"] > [data-slot="plate"] > [role="button"]');
+      const pl = document.querySelector(`#scheduleRoot [data-testid="sched-worker"][data-id="${w.id}"] > [data-slot="plate"] > [role="button"]`);
       if (!pl) return 'no plate';
       pl.dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); await T.tick(300);
       return document.getElementById('workerOverlay').classList.contains('open');
