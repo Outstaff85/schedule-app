@@ -13,6 +13,8 @@ export type ContractTemplate = {
   id: string; name: string; category?: string; isDefault?: boolean; size?: number; origSize?: number; pages?: number;
   createdAt?: string; updatedAt?: string; version?: number; marks?: string[]; unknown?: string[]; placed?: Placed[];
   workerId?: string | null; signedCount?: number; pictures?: number[];
+  /** the firm's signature and stamp at the bottom right of every page (absent: a template saved before it — off) */
+  sealEveryPage?: boolean;
 };
 export type Prepared = {
   lightBase64: string; sampleBase64: string; origSize: number; lightSize: number; pictures: number[];
@@ -22,8 +24,10 @@ export type Prepared = {
 /** The marks a template may carry, in the order docs/contracts.md → The marks lists them (functions/contracts.py MARKS). */
 export const MARKS = ['given', 'surname', 'full_name', 'id', 'id_type', 'id_expiry', 'dob', 'sex', 'marital', 'phone', 'address', 'city',
   'full_address', 'health_fund', 'start_date', 'end_date', 'contract_months', 'site', 'supplier', 'schedule', 'rate', 'pay_mode', 'ot_rate',
-  'shabbat_rate', 'travel', 'bank', 'company', 'company_address', 'company_phone', 'deductions_file', 'terms_1', 'terms_2', 'terms_3',
-  'terms_4', 'terms_5', 'signature', 'sign_date', 'today'] as const;
+  'shabbat_rate', 'travel', 'bank', 'company', 'company_address', 'company_phone', 'deductions_file', 'company_signature', 'stamp',
+  'terms_1', 'terms_2', 'terms_3', 'terms_4', 'terms_5', 'signature', 'sign_date', 'today'] as const;
+/** The firm's signature and stamp (functions/seal.py): pictures drawn at their marks — the signature first, the stamp over it. */
+export const SEAL_MARKS = ['company_signature', 'stamp'];
 /** The marks filled from the worker's pay (only for a login that may see pay — D3). */
 export const PAY_MARKS = ['rate', 'pay_mode', 'ot_rate', 'shabbat_rate', 'travel', 'bank'];
 
@@ -39,19 +43,36 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   return json as T;
 }
 
+export type SealFlags = { hasStamp: boolean; hasSignature: boolean };
 export const listTemplates = (workerId?: string) =>
-  call<{ templates: ContractTemplate[]; canManage: boolean }>({ action: 'list', ...(workerId ? { workerId } : {}) });
+  call<{ templates: ContractTemplate[]; canManage: boolean; canFirmSign?: boolean; seal?: SealFlags }>({ action: 'list', ...(workerId ? { workerId } : {}) });
 export const templateFile = (id: string, sample = false) => call<{ pdfBase64: string; name: string }>({ action: 'file', id, sample });
 /** A PDF, or a Word file (.docx — the server has it turned into a PDF first, D7). */
-export const prepareTemplate = (b64: string, name: string, word = false) => call<Prepared>({ action: 'prepare', [word ? 'docxBase64' : 'pdfBase64']: b64, name });
+export const prepareTemplate = (b64: string, name: string, word = false, sealEveryPage = true) =>
+  call<Prepared>({ action: 'prepare', [word ? 'docxBase64' : 'pdfBase64']: b64, name, sealEveryPage });
 export const isWordFile = (f: File) => /\.docx$/i.test(f.name) || f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export const TEMPLATE_ACCEPT = 'application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-export const sampleTemplate = (pdfBase64: string, placed: Placed[]) => call<{ sampleBase64: string }>({ action: 'sample', pdfBase64, placed });
-export const saveTemplate = (b: { pdfBase64: string; name: string; category?: string; placed?: Placed[]; origSize?: number; workerId?: string; replaceId?: string }) =>
-  call<{ template: ContractTemplate }>({ action: 'save', ...b });
-export const updateTemplate = (id: string, ch: { name?: string; category?: string; isDefault?: boolean }) =>
+export const sampleTemplate = (pdfBase64: string, placed: Placed[], sealEveryPage = true) =>
+  call<{ sampleBase64: string }>({ action: 'sample', pdfBase64, placed, sealEveryPage });
+export const saveTemplate = (b: {
+  pdfBase64: string; name: string; category?: string; placed?: Placed[]; origSize?: number; workerId?: string; replaceId?: string; sealEveryPage?: boolean;
+}) => call<{ template: ContractTemplate }>({ action: 'save', ...b });
+export const updateTemplate = (id: string, ch: { name?: string; category?: string; isDefault?: boolean; sealEveryPage?: boolean }) =>
   call<{ template: ContractTemplate }>({ action: 'update', id, ...ch });
 export const deleteTemplate = (id: string) => call<{ ok: true }>({ action: 'delete', id });
+
+/** The firm's signature and stamp (functions/seal.py; docs/contracts.md → The firm's signature and stamp): whether each
+ * is set and, for a login that may change them, small previews (base64 PNG). `tenantId`: the firm a super-admin edits. */
+export type SealKind = 'stamp' | 'signature';
+export type SealInfo = SealFlags & {
+  canFirmSign: boolean; previews?: { stamp: string | null; signature: string | null }; signatureWay?: 'drawn' | 'upload' | null; preview?: string;
+};
+const firm = (tenantId?: string | null) => (tenantId ? { asTenantId: tenantId } : {});
+export const sealInfo = (tenantId?: string | null) => call<SealInfo>({ action: 'seal', ...firm(tenantId) });
+/** A picture (any image, its paper made transparent on the server) or the signature drawn on the pad (`drawn`). */
+export const saveSeal = (kind: SealKind, imageBase64: string, drawn = false, tenantId?: string | null) =>
+  call<SealInfo>({ action: 'sealSave', kind, imageBase64, drawn, ...firm(tenantId) });
+export const deleteSeal = (kind: SealKind, tenantId?: string | null) => call<SealInfo>({ action: 'sealDelete', kind, ...firm(tenantId) });
 
 /** A PDF in base64 opened in a new tab (a template, its sample). */
 export function openPdf(b64: string, name = 'contract.pdf'): void {

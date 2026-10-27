@@ -72,7 +72,8 @@ export function contractValues(w: Rec, ctx: ValuesCtx): Record<string, string> {
 }
 
 // ── What the signed documents print about the worker (D4: data changed → a new signature) ──
-const FIRM_MARKS = ['company', 'company_address', 'company_phone', 'deductions_file'];
+// The firm's details, signature and stamp: a change of them asks no worker to sign again.
+const FIRM_MARKS = ['company', 'company_address', 'company_phone', 'deductions_file', 'company_signature', 'stamp'];
 const PAY_MARKS = ['rate', 'pay_mode', 'ot_rate', 'shabbat_rate', 'travel', 'bank'];
 function hash(s: string): string {
   let h = 5381;

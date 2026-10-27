@@ -6,10 +6,11 @@
 // and Delete (the Undo snack, then `deleteTenant`), Select (Disable / Enable /
 // Delete); above the list, in Admin, the Payable summary (all firms) and New
 // firm. The firm window (create / edit / the own firm) is drawn into the page's
-// #firmModal; its Form 101 labels stay Hebrew.
+// #firmModal; its Form 101 labels stay Hebrew. Editing a firm (its own, or a super-admin's) also
+// shows its signature and stamp (FirmSeal.tsx), saved on their own.
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconCash, IconCheck, IconLogout, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlus,
+  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconRubberStamp, IconCash, IconCheck, IconLogout, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlus,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ import { Field } from './ClientEditor';
 import { useTapOpen } from './Clients';
 import { Line } from './pieces';
 import { island } from './bridge';
+import { FirmSealSection } from './FirmSeal';
 
 // Firms deleted here and still inside their Undo time: left out of the list.
 const hiddenFirms = new Set<string>();
@@ -264,6 +266,12 @@ export function FirmWindow({ api }: { api: ManagerBridge }) {
         <Field label="מספר בית" htmlFor="fStreetNumber"><Input id="fStreetNumber" value={f.streetNumber} onChange={e => set('streetNumber', e.target.value)} /></Field>
       </FieldRow>
       <Field label="עיר" htmlFor="fCity"><Input id="fCity" value={f.city} onChange={e => set('city', e.target.value)} /></Field>
+      {mode !== 'create' && info.tenantId && (
+        <div data-testid="firm-seal-section">
+          <FormSection className="mb-2 flex items-center gap-1.5 [&_svg]:size-4"><IconRubberStamp />{tr('Signature and stamp')}</FormSection>
+          <FirmSealSection tenantId={info.tenantId} toast={(m, ms) => api.toast(m, ms)} />
+        </div>
+      )}
       {info.wa && (
         <div data-testid="firm-wa">
           <FormSection className="mb-2 flex items-center gap-1.5 [&_svg]:size-4"><IconBrandWhatsapp />{tr('WhatsApp reminder')}</FormSection>

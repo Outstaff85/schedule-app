@@ -2062,6 +2062,59 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && d5h.body.include.form101 === true && d5h.body.include.contract === true && d5h.body.include.docs === false && d5h.body.form101 && 'employer' in d5h.body.form101
     && d5.name && d5.sign && !d5.pay && d5.closed && d5.kept && d5.kept.contract === true,
     'download data: one raw PDF — the summary (names, the signing date, never pay) then Form 101 and the contract, its page count in X-Pages; Form 101\'s values sent; the choice kept ' + JSON.stringify({d5, d5h: {pages: d5h.pages, parts: d5h.parts, type: d5h.type}}));
+  // The firm's signature and stamp (docs/contracts.md → The firm's signature and stamp): the owner opens Firm details,
+  // uploads a photo of the stamp (its paper made transparent on the server) and draws the firm's signature — a preview each;
+  // a template with the every-page tick (on for a new one) shows both at the bottom right of its sample, the stamp drawn
+  // over the signature; ⋮ turns the tick off and the sample has neither.
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); ManagerBridge.openFirmWindow('mine'); });
+  await p.waitForSelector('#firmModal [data-testid="firm-seal"][data-can="1"]', {timeout: 30000});
+  const stampPhoto = Buffer.from(await (await fetch('http://127.0.0.1:5055/stampPhoto', {method: 'POST'})).arrayBuffer());
+  await p.setInputFiles('#firmModal [data-testid="firm-seal-file-stamp"]', {name: 'stamp.jpg', mimeType: 'image/jpeg', buffer: stampPhoto});
+  await p.waitForSelector('#firmModal [data-testid="firm-seal-preview-stamp"]', {timeout: 30000});
+  await p.click('#firmModal [data-testid="firm-seal-draw"]');
+  await p.waitForSelector('[data-testid="firm-seal-draw-window"] [data-testid="signature-pad"]', {timeout: 10000});
+  await sleep(500);  // the window slides in
+  const fsPad = await (await p.$('[data-testid="firm-seal-draw-window"] [data-testid="signature-pad"]')).boundingBox();
+  await p.mouse.move(fsPad.x + 30, fsPad.y + 40); await p.mouse.down();
+  for (let i = 1; i <= 12; i++) await p.mouse.move(fsPad.x + 30 + i * 18, fsPad.y + 40 + (i % 2 ? 30 : -5));
+  await p.mouse.up();
+  await p.click('[data-testid="firm-seal-draw-save"]');
+  await p.waitForSelector('#firmModal [data-testid="firm-seal-preview-signature"]', {timeout: 30000});
+  const fsUi = await p.evaluate(() => ({sig: document.querySelector('#firmModal [data-testid="firm-seal-signature"]').dataset.set,
+    stamp: document.querySelector('#firmModal [data-testid="firm-seal-stamp"]').dataset.set,
+    section: !!document.querySelector('#firmModal [data-testid="firm-seal-section"]')}));
+  const fsRec = await (await fetch('http://127.0.0.1:5055/firmSeal', {method: 'POST'})).json();
+  ok(fsUi.section && fsUi.sig === '1' && fsUi.stamp === '1' && fsRec.stamp && fsRec.stamp.exists && /^tenants\/tenant-one\/firmSeal\/stamp-/.test(fsRec.stamp.path)
+    && fsRec.signature && fsRec.signature.exists && fsRec.signature.way === 'drawn' && fsRec.stamp.w <= 800,
+    'firm\'s signature and stamp: Firm details has the section; a stamp photo uploaded and the signature drawn, each shown, stored under the firm (firmSeal) ' + JSON.stringify({fsUi, fsRec}));
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); window.__sealOpened = []; window.__sealOrigOpen = window.open;
+    window.open = u => { window.__sealOpened.push(String(u)); return {}; }; switchTab('admin'); switchAdminPane('contracts'); });
+  await p.waitForSelector('[data-testid="contract-row"]', {timeout: 30000});
+  const sealSample = async () => {
+    const b64 = await p.evaluate(async () => {
+      const n = window.__sealOpened.length;
+      T.tap('[data-testid="contract-row"]');
+      await T.until(() => window.__sealOpened.length > n, 20000);
+      const buf = new Uint8Array(await (await fetch(window.__sealOpened[window.__sealOpened.length - 1])).arrayBuffer());
+      let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      return btoa(s);
+    });
+    return (await fetch('http://127.0.0.1:5055/pdfInfo', {method: 'POST', body: Buffer.from(b64, 'base64')})).json();
+  };
+  const fsChip = await p.evaluate(() => !!document.querySelector('[data-testid="contract-row"] [data-testid="contract-seal"]') && !!document.querySelector('[data-testid="contract-seal-open"]'));
+  const fsOn = await sealSample();
+  const fsPage = fsOn[0], fsBottom = fsPage.images.filter(i => i.bbox[0] > fsPage.w / 2 && i.bbox[1] > fsPage.h / 2);
+  ok(fsChip && fsOn.length === 1 && fsBottom.length === 2 && fsBottom[1].width === fsRec.stamp.w && fsBottom[0].width === fsRec.signature.w
+    && fsBottom[1].bbox[0] < fsBottom[0].bbox[2] && fsBottom[1].bbox[2] > fsBottom[0].bbox[2],
+    'firm\'s signature and stamp: a new template has the tick (its Stamp chip); its sample shows the firm\'s own signature and then its stamp over it, bottom right ' + JSON.stringify({fsChip, fsOn}));
+  await p.click('[data-testid="contract-row"] button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  await p.click('[role="menuitem"]:has-text("Stamp on every page: turn off")');
+  ok(await waitFor(p, () => !document.querySelector('[data-testid="contract-row"] [data-testid="contract-seal"]'), 15000), 'firm\'s signature and stamp: ⋮ turns the every-page tick off');
+  const fsOff = await sealSample();
+  ok(fsOff[0].images.filter(i => i.bbox[0] > fsOff[0].w / 2 && i.bbox[1] > fsOff[0].h / 2).length === 0,
+    'firm\'s signature and stamp: without the tick the sample has no seal at the bottom ' + JSON.stringify(fsOff));
+  await p.evaluate(() => { window.open = window.__sealOrigOpen; });
+  await fetch('http://127.0.0.1:5055/firmSealClear', {method: 'POST'});
   // D6: a worker of firm two moves to this firm — the request, the worker's consent and signing in their own page, the copy.
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });
@@ -2127,7 +2180,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('[role="menuitem"]:has-text("Delete")');
   await p.waitForTimeout(6500);
   const ctAfter = await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json();
-  ok(ctMenu === 'Edit,Category,Replace file,Delete' && ctAfter.length === 0, 'contract templates: ⋮ holds Edit (the name), Category, Replace file, Delete; Delete goes through the Undo snack ' + JSON.stringify({ctMenu, after: ctAfter.length}));
+  ok(ctMenu === 'Edit,Category,Replace file,Stamp on every page: turn on,Delete' && ctAfter.length === 0, 'contract templates: ⋮ holds Edit (the name), Category, Replace file, the every-page stamp (turned off above), Delete; Delete goes through the Undo snack ' + JSON.stringify({ctMenu, after: ctAfter.length}));
   // D7: several files at once — a PDF and a Word file — each prepared and saved in the background.
   const docxBuf = Buffer.from(await (await fetch('http://127.0.0.1:5055/contractDocx', {method: 'POST'})).arrayBuffer());
   await p.setInputFiles('[data-testid="contract-file"]', [

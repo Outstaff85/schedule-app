@@ -4,10 +4,12 @@
 // it the category's default, replaces its file (a new version) or deletes it (the Undo snack).
 // New template: a PDF is made light on the server, its marks listed, a page that is a picture
 // gets its marks placed by hand, and the admin saves it after seeing the sample. The same window
-// uploads a worker's own template from the worker window (`workerId`).
+// uploads a worker's own template from the worker window (`workerId`). A template may have the
+// firm's signature and stamp drawn at the bottom right of every page (its tick, on for a new one;
+// the plate's Stamp chip; ⋮ turns it on or off); "Signature and stamp" opens the firm's (FirmSeal.tsx).
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX,
+  IconAlertTriangle, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX, IconRubberStamp,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -18,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FieldRow } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { CheckGrid, CheckTile } from '@/components/ui/checkbox';
 import { Window } from '@/components/shared/window';
 import { Plate } from '@/components/shared/plate';
 import { Section } from '@/components/shared/section';
@@ -25,6 +28,7 @@ import { PagedList } from '@/components/shared/paged-list';
 import { undoDelete } from '@/components/shared/undo';
 import { Field } from './ClientEditor';
 import { readFileB64 } from './logic/uploads';
+import { FirmSealWindow } from './FirmSeal';
 import {
   MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, listTemplates, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sizeText, templateFile, updateTemplate,
   type ContractTemplate, type Placed, type Prepared,
@@ -73,6 +77,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   const pick = React.useRef<HTMLInputElement>(null);
   const replaceFor = React.useRef<ContractTemplate | null>(null);
   const [pending, setPending] = React.useState<Pending[]>([]);
+  const [seal, setSeal] = React.useState(false);
   if (error && !list) return <p className="text-[13px] text-bad" data-testid="contracts-error">{tr(error)}</p>;
   if (!list) return <div className="grid gap-2" aria-busy="true" data-testid="contracts-loading">{[0, 1].map(i => <Skeleton key={i} className="h-[62px]" />)}</div>;
   const firm = list.filter(t => !t.workerId && !hidden.has(t.id));
@@ -86,6 +91,9 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   };
   const makeDefault = (t: ContractTemplate) => updateTemplate(t.id, { isDefault: true }).then(() => { load(); api.toast(tr('Default for its category')); },
     e => api.toast(tr(String(e?.message || e))));
+  const toggleSeal = (t: ContractTemplate) => updateTemplate(t.id, { sealEveryPage: !t.sealEveryPage }).then(() => {
+    load(); api.toast(t.sealEveryPage ? tr('Stamp on every page: off') : tr('Stamp on every page: on'));
+  }, e => api.toast(tr(String(e?.message || e))));
   const sample = (t: ContractTemplate) => templateFile(t.id, true).then(r => openPdf(r.pdfBase64, t.name + '.pdf'), e => api.toast(tr(String(e?.message || e))));
 
   const row = (t: ContractTemplate) => (
@@ -93,7 +101,8 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
       icon={<IconFileText />}
       title={<span>{t.name}{t.version && t.version > 1 ? <span className="text-[11px] font-normal text-ink-2"> v{t.version}</span> : null}</span>}
       chips={<>{t.category && <Badge variant="default" data-testid="contract-category">{t.category}</Badge>}
-        {t.isDefault && <Badge variant="ok" data-testid="contract-default">{tr('Default')}</Badge>}</>}
+        {t.isDefault && <Badge variant="ok" data-testid="contract-default">{tr('Default')}</Badge>}
+        {t.sealEveryPage && <Badge variant="default" data-testid="contract-seal">{tr('Stamp')}</Badge>}</>}
       sub={<span className="grid whitespace-normal">
         <span>{[sizeText(t.size), dateText(t.createdAt), tr('{0} signed', { 0: t.signedCount || 0 })].join(' · ')}</span>
         {!!t.unknown?.length && <span className="inline-flex items-center gap-1 text-warn"><IconAlertTriangle className="size-3.5" />{tr('Unknown marks: {0}', { 0: t.unknown.join(', ') })}</span>}
@@ -104,14 +113,17 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
         { label: tr('Category'), icon: <IconTag />, onSelect: () => setEdit({ t, what: 'category' }) },
         ...(t.isDefault ? [] : [{ label: tr('Make default'), icon: <IconStar />, onSelect: () => void makeDefault(t) }]),
         { label: tr('Replace file'), icon: <IconRefresh />, onSelect: () => { replaceFor.current = t; pick.current?.click(); } },
+        { label: t.sealEveryPage ? tr('Stamp on every page: turn off') : tr('Stamp on every page: turn on'), icon: <IconRubberStamp />, onSelect: () => void toggleSeal(t) },
       ]}
       onDelete={() => remove(t)} />
   );
   return (
     <div data-testid="contracts">
       <Section label={<span className="inline-flex items-center gap-1.5"><IconFileText className="size-4" />{tr('Contract templates')}</span>} count={firm.length}
-        tools={<Button variant="primary" size="sm" className="og-new" data-testid="contract-new" onClick={() => { replaceFor.current = null; pick.current?.click(); }}>
-          <IconPlus className="size-4" />{tr('New template')}</Button>}>
+        tools={<>
+          <Button size="sm" data-testid="contract-seal-open" onClick={() => setSeal(true)}><IconRubberStamp className="size-4" />{tr('Signature and stamp')}</Button>
+          <Button variant="primary" size="sm" className="og-new" data-testid="contract-new" onClick={() => { replaceFor.current = null; pick.current?.click(); }}>
+            <IconPlus className="size-4" />{tr('New template')}</Button></>}>
         <input ref={pick} type="file" accept={TEMPLATE_ACCEPT} multiple className="hidden" data-testid="contract-file"
           onChange={e => {
             const files = [...(e.target.files || [])]; e.target.value = '';
@@ -130,6 +142,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
       </Section>
       {upload && <UploadWindow file={upload.file} replace={upload.replace} categories={categories} api={api}
         onClose={() => setUpload(null)} onSaved={() => { setUpload(null); load(); }} />}
+      {seal && <FirmSealWindow toast={api.toast} onClose={() => setSeal(false)} />}
       {edit && <EditWindow t={edit.t} what={edit.what} categories={categories} api={api} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
     </div>
   );
@@ -170,22 +183,26 @@ export function UploadWindow({ file, replace, categories, api, workerId, onClose
   const [placed, setPlaced] = React.useState<Placed[]>(replace?.placed || []);
   const [sample, setSample] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  // the firm's signature and stamp on every page: on for a new template, a replaced one's own value
+  const [sealOn, setSealOn] = React.useState(replace ? !!replace.sealEveryPage : true);
+  const sealFirst = React.useRef(sealOn);
   React.useEffect(() => {
     let live = true;
-    readFileB64(file).then(b64 => prepareTemplate(b64, file.name, isWordFile(file))).then(p => { if (live) { setPrep(p); setSample(p.sampleBase64); } },
-      e => { if (live) setErr(String(e?.message || e)); });
+    readFileB64(file).then(b64 => prepareTemplate(b64, file.name, isWordFile(file), sealFirst.current))
+      .then(p => { if (live) { setPrep(p); setSample(p.sampleBase64); } },
+        e => { if (live) setErr(String(e?.message || e)); });
     return () => { live = false; };
   }, [file]);
-  const resample = (next: Placed[]) => {
+  const resample = (next: Placed[], seal = sealOn) => {
     setPlaced(next);
-    if (prep) sampleTemplate(prep.lightBase64, next).then(r => setSample(r.sampleBase64), () => {});
+    if (prep) sampleTemplate(prep.lightBase64, next, seal).then(r => setSample(r.sampleBase64), () => {});
   };
   const save = async () => {
     if (!prep || busy) return;
     setBusy(true);
     try {
       const r = await saveTemplate({ pdfBase64: prep.lightBase64, name: name.trim() || file.name, category: category.trim(), placed, origSize: prep.origSize,
-        ...(workerId ? { workerId } : {}), ...(replace ? { replaceId: replace.id } : {}) });
+        sealEveryPage: sealOn, ...(workerId ? { workerId } : {}), ...(replace ? { replaceId: replace.id } : {}) });
       api.toast(tr('Template saved'));
       onSaved(r.template);
     } catch (e: any) { api.toast(tr(String(e?.message || e))); setBusy(false); }
@@ -215,9 +232,14 @@ export function UploadWindow({ file, replace, categories, api, workerId, onClose
             {!!prep.unknown.length && <p className="text-sm text-warn" data-testid="contract-unknown">
               <IconAlertTriangle className="me-1 inline size-4" />{tr('Unknown marks (a typo?): {0}', { 0: prep.unknown.map(u => '{{' + u + '}}').join(', ') })}</p>}
           </div>
+          <CheckGrid>
+            <CheckTile wide data-testid="contract-seal-every-page" checked={sealOn} label={tr("Firm's signature and stamp on every page")}
+              hint={tr('Bottom right of every page: the signature first, the stamp over it')}
+              onCheckedChange={c => { const on = c === true; setSealOn(on); resample(placed, on); }} />
+          </CheckGrid>
           {!!prep.pictures.length && <p className="text-sm text-warn" data-testid="contract-pictures">
             {tr('Pages {0} are pictures (a scan): their text can\'t be searched — tap where each value goes.', { 0: prep.pictures.map(i => i + 1).join(', ') })}</p>}
-          <PlaceMarks pages={prep.pages} pictures={prep.pictures} placed={placed} onChange={resample} />
+          <PlaceMarks pages={prep.pages} pictures={prep.pictures} placed={placed} onChange={next => resample(next)} />
           <Button size="sm" className="self-start" data-testid="contract-sample" onClick={() => openPdf(sample, name + ' - sample.pdf')}>
             <IconEye className="size-4" />{tr('Open the sample')}</Button>
         </>}

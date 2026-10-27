@@ -186,6 +186,34 @@ class H(BaseHTTPRequestHandler):
             sys.path.insert(0, os.path.join(_HERE, '..', 'auth'))
             from test_docx2pdf import docx as _docx
             status, data = 200, _docx()
+        elif self.path == '/stampPhoto':
+            # a phone photo of a stamp: grey paper lit unevenly, a blue ring (the firm's signature and stamp, functions/seal.py)
+            from PIL import Image, ImageDraw
+            import io as _io
+            im = Image.linear_gradient('L').rotate(90).resize((700, 500)).point(lambda v: 150 + v * 80 // 255).convert('RGB')
+            ImageDraw.Draw(im).ellipse((150, 50, 550, 450), outline=(30, 60, 180), width=14)
+            buf = _io.BytesIO(); im.save(buf, 'JPEG', quality=90)
+            status, data = 200, buf.getvalue()
+        elif self.path == '/firmSeal':
+            # firm one's signature and stamp as stored: the record and whether each file is there
+            rec = DB.collection('tenants').document(T1).collection('firmSeal').document('current').get().to_dict() or {}
+            bk = _orig_bucket('demo-schedule.appspot.com')
+            status, data = 200, json.dumps({k: (dict(v, exists=bk.blob(v['path']).exists()) if v else None) for k, v in rec.items()}, default=str).encode()
+        elif self.path == '/firmSealClear':
+            # the checks after it see a firm with no signature and stamp, as seeded
+            ref = DB.collection('tenants').document(T1).collection('firmSeal').document('current')
+            bk = _orig_bucket('demo-schedule.appspot.com')
+            for v in (ref.get().to_dict() or {}).values():
+                if v and bk.blob(v['path']).exists():
+                    bk.blob(v['path']).delete()
+            ref.delete()
+            status, data = 200, b'{"ok":true}'
+        elif self.path == '/pdfInfo':
+            # a PDF sent as the body: each page's size and its pictures in drawing order (box, pixel width, xref)
+            import pymupdf
+            d = pymupdf.open(stream=raw)
+            status, data = 200, json.dumps([{'w': pg.rect.width, 'h': pg.rect.height,
+                'images': [{'xref': i['xref'], 'bbox': list(i['bbox']), 'width': i['width']} for i in pg.get_image_info(xrefs=True)]} for pg in d]).encode()
         elif self.path == '/contractTemplates':
             rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream()]
             status, data = 200, json.dumps(rows, default=str).encode()

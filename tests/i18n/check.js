@@ -30,7 +30,7 @@ for (const page of PAGES) {
 }
 // Messages the server and the data layer return are shown through tr() too
 // (showToast, form error lines): their texts count as used.
-for (const f of ['firestore-backend.js', ...fs.readdirSync(path.join(ROOT, 'functions-auth')).filter(f => f.endsWith('.py')).map(f => 'functions-auth/' + f)]) {
+for (const f of ['firestore-backend.js', ...['functions-auth', 'functions'].flatMap(d => fs.readdirSync(path.join(ROOT, d)).filter(f => f.endsWith('.py')).map(f => d + '/' + f))]) {
   source += fs.readFileSync(path.join(ROOT, f), 'utf8');
 }
 const langs = process.argv[2] ? [process.argv[2]] : fs.readdirSync(path.join(ROOT, 'i18n')).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5));
