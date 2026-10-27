@@ -398,7 +398,7 @@ function Windows() {
         </Row>
       </Demo>
 
-      <Demo id="theme" title={tr('Theme switch (Dark / Light / System)')}>
+      <Demo id="theme" title={tr('Theme switch (Dark / Light)')}>
         <Row>
           <ThemeSwitch className="w-full max-w-[340px]" />
           <ThemeButton />

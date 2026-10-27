@@ -43,7 +43,7 @@ export function AccountMenu({ name, firm, sub, onSignOut, onThemeSave, children 
         {children}
         <div className="px-1 pb-1.5 pt-1" data-testid="account-theme">
           <div className="og-label mb-1 px-1">{tr('Theme')}</div>
-          <ThemeSwitch stacked onSave={onThemeSave} />
+          <ThemeSwitch onSave={onThemeSave} />
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem destructive onSelect={onSignOut}><IconLogout />{tr('Sign out')}</DropdownMenuItem>

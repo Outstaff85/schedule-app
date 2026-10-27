@@ -13,12 +13,12 @@
 import * as React from 'react';
 import {
   IconActivityHeartbeat, IconBread, IconBuildingBank, IconBuildingCommunity, IconBuildingFactory2, IconCalculator, IconCalendarUser,
-  IconChefHat, IconDeviceDesktop, IconFileCertificate, IconFingerprint, IconMoon, IconReceipt, IconSpray, IconSun, IconToolsKitchen2,
+  IconChefHat, IconFileCertificate, IconFingerprint, IconReceipt, IconSpray, IconToolsKitchen2,
   IconUsersGroup, IconWallet,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { type ThemeChoice, useTheme } from '@/lib/theme';
+import { ThemeSwitch } from '@/components/shared/theme-switch';
 import { LanguageButton } from '@/components/shared/language';
 import { LogoMark } from '@/components/shared/app-brand';
 import type { ManagerBridge } from './bridge';
@@ -39,9 +39,6 @@ const FEATURES: { Icon: typeof IconChefHat; title: string; text: string }[] = [
   { Icon: IconCalendarUser, title: 'A schedule for every worker', text: 'You can build a personal schedule for each worker, and the worker can then follow it on their phone. Track hours and any other details you need, as you choose.' },
 ];
 const FLOATERS = [IconChefHat, IconBuildingFactory2, IconBread, IconToolsKitchen2, IconBuildingCommunity, IconSpray];
-const THEMES: { v: ThemeChoice; label: string; Icon: typeof IconMoon }[] = [
-  { v: 'dark', label: 'Dark', Icon: IconMoon }, { v: 'light', label: 'Light', Icon: IconSun }, { v: 'system', label: 'System', Icon: IconDeviceDesktop },
-];
 const still = () => typeof window.matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Whether the page shows the screen (its container's style.display, set by gateApp). */
@@ -153,7 +150,6 @@ export function SignIn({ api, screen }: { api: ManagerBridge; screen: HTMLElemen
     setBusy(true);
     try { const e = await api.signIn(user.trim(), pass); if (e) setErr(e); } finally { setBusy(false); }
   };
-  const [theme, setTheme] = useTheme();
 
   const s = SECTORS[sector];
   if (!shown) return null; // hidden: nothing drawn (one Language button per page)
@@ -216,11 +212,7 @@ export function SignIn({ api, screen }: { api: ManagerBridge; screen: HTMLElemen
         <button type="button" className="gbtn primary" style={{ width: '100%' }} id="loginBtn" disabled={busy} onClick={() => void submit()}>{busy ? tr('Signing in…') : tr('Sign in')}</button>
         {/* The theme before signing in (outdoors): the same choice as the account menu. */}
         <div className="login-theme" id="loginTheme" data-testid="login-theme">
-          <div className="seg theme-seg">
-            {THEMES.map(({ v, label, Icon }) => (
-              <button key={v} type="button" data-theme-v={v} className={theme === v ? 'on' : undefined} onClick={() => setTheme(v)}><Icon stroke={1.75} /><span>{tr(label)}</span></button>
-            ))}
-          </div>
+          <ThemeSwitch />
         </div>
       </div>
     </>

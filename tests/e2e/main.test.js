@@ -445,6 +445,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const c = document.querySelector('#workersRoot [data-testid="worker-plate"]'); return c ? {h: c.getBoundingClientRect().height, name: c.querySelector('[data-testid="worker-name"]').textContent, full: c.querySelector('[data-testid="worker-name"]').title, hrs: (c.querySelector('[data-testid="worker-hours"]') || {}).textContent, kb: !!c.querySelector('button[aria-label="Actions"]'), sw: c.classList.contains('og-sw')} : {}; });
   await p.setViewportSize({width: 1280, height: 720});
   ok(wc.h > 0 && wc.h < 100 && wc.name && wc.name === wc.full && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — the full name (… when it does not fit), the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
+  // On a phone the worker, client and supplier windows open at one size, the full sheet (owner).
+  await p.setViewportSize({width: 390, height: 800});
+  const wsz = await p.evaluate(async () => { const w8 = () => new Promise(r => setTimeout(r, 200)); const h = id => Math.round(document.getElementById(id).getBoundingClientRect().height);
+    openEditWorker(0); await w8(); const worker = h('workerModal'); closeModal('workerOverlay');
+    openEditClient(clients[0].id); await w8(); const client = h('clientModal'); closeModal('clientOverlay');
+    openEditSupplier(suppliers[0].id); await w8(); const supplier = h('supplierModal'); closeModal('supplierOverlay'); await w8();
+    return {worker, client, supplier}; });
+  await p.setViewportSize({width: 1280, height: 720});
+  ok(wsz.worker > 600 && wsz.client === wsz.worker && wsz.supplier === wsz.worker, 'windows: on a phone the worker, client and supplier windows are one size ' + JSON.stringify(wsz));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -551,7 +560,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       const wait = ms => new Promise(res => setTimeout(res, ms));
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
       const sw = () => document.querySelector('[data-testid=account-theme] [data-testid=theme-switch]');
-      r.items = [...sw().querySelectorAll('[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
+      r.items = [...sw().querySelectorAll('button[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
       // the menu in the windows' glass (owner 2026-10-26): the sheet gradient and the glass edge, its tail in the same
       // fill (never black) with the same edge; Dark / Light / System fit inside the menu, none cut off
       { const m = document.querySelector('[data-testid=account-menu]'), cs = getComputedStyle(m), root = getComputedStyle(document.documentElement);
@@ -560,25 +569,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         r.menuGlass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim());
         r.tail = !!tail && getComputedStyle(tail).fill === rgb(root.getPropertyValue('--plate-top').trim()) && getComputedStyle(tail).fill !== 'rgb(0, 0, 0)' && getComputedStyle(edge).stroke === cs.borderTopColor;
         const mb = m.getBoundingClientRect();
-        r.fits = [...sw().querySelectorAll('[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
+        r.fits = [...sw().querySelectorAll('button[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
       sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
-      r.on = (sw().querySelector('[data-state=on]') || {}).dataset?.testid?.slice(6);
+      r.on = (sw().querySelector('button[data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'checked';
       r.open = !!document.querySelector('[data-testid=account-menu]');
       r.ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
       document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await wait(200);
       return r;
     });
-    ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light,system/System' && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s switch (Dark / Light / System) turns the light theme on, on this device ' + JSON.stringify(th));
-    ok(th.menuGlass && th.tail && th.fits, 'menus: the account menu in the windows\' glass and edge, its tail in the same fill and edge (not black), Dark / Light / System fit its width ' + JSON.stringify(th));
+    ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light' && th.toggle && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s one switch (Dark / Light) turns the light theme on, on this device ' + JSON.stringify(th));
+    ok(th.menuGlass && th.tail && th.fits, 'menus: the account menu in the windows\' glass and edge, its tail in the same fill and edge (not black), Dark and Light fit its width ' + JSON.stringify(th));
     await sleep(1500);
     const c3 = await newCtx(); const p3 = await page(c3);
     await p3.goto(BASE + 'schedule-manager.html'); await p3.waitForSelector('#loginScreen', {state:'visible'});
-    const before = await p3.evaluate(() => ({look: document.documentElement.dataset.theme, sw: document.querySelectorAll('#loginTheme [data-theme-v]').length, on: (document.querySelector('#loginTheme .on') || {}).dataset?.themeV}));
+    const before = await p3.evaluate(() => ({look: document.documentElement.dataset.theme, sw: document.querySelectorAll('#loginTheme [data-theme-v]').length, on: (document.querySelector('#loginTheme button.on') || {}).dataset?.themeV}));
     await p3.fill('#loginUsername', 'owner1'); await p3.fill('#loginPassword', 'owner-pass-1'); await p3.click('#loginBtn');
     const back = await waitFor(p3, () => !!document.querySelector('header [data-testid=lang-btn]') && document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 15000);
     await p3.screenshot({path: SP + '/theme-light-manager.png'});
-    ok(before.look === 'dark' && before.sw === 3 && before.on === 'dark' && back, 'theme: the sign-in screen has the same switch (Dark on a new device); the user\'s light theme comes back with the login ' + JSON.stringify(before));
+    ok(before.look === 'dark' && before.sw === 2 && before.on === 'dark' && back, 'theme: the sign-in screen has the same switch (Dark on a new device); the user\'s light theme comes back with the login ' + JSON.stringify(before));
     // and back: Dark again, on the account too
     await p3.evaluate(async () => { const wait = ms => new Promise(res => setTimeout(res, ms));
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
