@@ -29,7 +29,7 @@
 //               right.
 // The portals keep the plain frame (their own headers).
 import * as React from 'react';
-import { IconDots, IconDotsVertical } from '@tabler/icons-react';
+import { IconChevronRight, IconDots, IconDotsVertical } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { tr, uiLocale, useI18n } from '@/lib/i18n';
 import { greetingHtml } from '@/lib/greeting';
@@ -118,18 +118,23 @@ export function Shell({ brand, tools, sections = [], active = '', onSelect = () 
   );
   const more = inMore.length > 0 && (
     <Window open={moreOpen} onOpenChange={setMoreOpen} title={tr('More')}>
-      <div className="grid gap-1.5">
+      <div className="grid gap-2">
         {inMore.map(s => (
+          // a plate of the list template (og.css .og-plate: the bar in the section's colour, its icon in a tinted
+          // square, a chevron); border-0 and font-inherit: the manager page has no Tailwind preflight, and a bare
+          // button there drew the browser's own light border (owner 2026-10-27)
           <button
             key={s.key}
             type="button"
+            data-testid="more-item"
             onClick={() => { setMoreOpen(false); pick(s.key); }}
-            className="relative flex h-12 items-center gap-3 rounded-lg bg-plate px-4 text-left text-[15px] font-semibold [&_svg]:size-5"
-            style={{ boxShadow: `inset 4px 0 0 ${s.color}, var(--shadow-plate)` }}
+            className={cn('og-plate w-full appearance-none border-0 text-left font-[inherit] text-ink !py-[11px] !pl-[14px] !pr-3 active:scale-[.99]', s.key === active && 'on')}
+            style={{ ['--bar' as string]: s.color }}
           >
-            <span style={{ color: s.color }}>{s.icon}</span>
-            <span className="flex-1">{s.label}</span>
+            <span className="grid size-[34px] shrink-0 place-items-center rounded-[10px] [&_svg]:size-[19px]" style={{ color: s.color, background: `color-mix(in srgb, ${s.color} 16%, transparent)` }}>{s.icon}</span>
+            <span className="flex-1 text-base font-semibold">{s.label}</span>
             {s.count ? <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-[#fff]">{s.count}</span> : null}
+            <IconChevronRight className="size-[18px] shrink-0 text-muted-foreground" />
           </button>
         ))}
       </div>

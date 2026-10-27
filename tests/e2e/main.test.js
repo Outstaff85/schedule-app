@@ -351,18 +351,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     more().click(); await new Promise(r => setTimeout(r, 400));
     const win = () => document.querySelector('[data-testid=window]');
     const sheet = !!win(), items = win() ? [...win().querySelectorAll('button span.flex-1')].map(b => b.textContent.trim()) : [];
+    // the items are plates of the list template: the bar, no browser border (the page has no preflight)
+    const it0 = win() && win().querySelector('[data-testid=more-item]'), ics = it0 && getComputedStyle(it0);
+    const plate = !!it0 && it0.classList.contains('og-plate') && ics.borderTopWidth === '0px' && /inset 4px 0px 0px/.test(ics.boxShadow);
     // the sheet lies over the bottom bar (the bar never covers its last item): at the bar's middle the sheet is on top
     // (the open sheet turns the page's pointer events off; turned back on for the look, the topmost element is hit)
     const pe = document.body.style.pointerEvents; document.body.style.pointerEvents = 'auto';
     const barHit = document.elementFromPoint(innerWidth / 2, innerHeight - 20); document.body.style.pointerEvents = pe;
     const onTop = !!win() && !!barHit && win().contains(barHit);
     if(win()) win().querySelectorAll('button span.flex-1')[0].closest('button').click(); await new Promise(r => setTimeout(r, 400));
-    const r = {shown, fixed, todayColor, sheet, items, onTop, tab: currentTab, moreOn: more().getAttribute('aria-current') === 'page', closed: !win() || win().dataset.state === 'closed'};
+    const r = {shown, fixed, todayColor, sheet, items, plate, onTop, tab: currentTab, moreOn: more().getAttribute('aria-current') === 'page', closed: !win() || win().dataset.state === 'closed'};
     switchTab('dashboard'); await new Promise(r => setTimeout(r, 200)); r.moreOff = more().getAttribute('aria-current') !== 'page';
     return r;
   });
-  ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.onTop && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
-    'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin, all of them above the bar ' + JSON.stringify(bb));
+  ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.plate && bb.onTop && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
+    'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin as plates of the list template, all of them above the bar ' + JSON.stringify(bb));
   // Schedule (stage 6b: React, src/manager/Schedule.tsx): a plate per worker with its week; a tap opens its 7 days, a day opens the shift window.
   const W0 = await p.evaluate(async () => {
     const w0 = workers.find(w => isActiveWorker(w)); window.__keepSched = JSON.stringify(w0.schedule || []);
