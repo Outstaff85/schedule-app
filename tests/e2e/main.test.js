@@ -353,7 +353,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const sheet = !!win(), items = win() ? [...win().querySelectorAll('button span.flex-1')].map(b => b.textContent.trim()) : [];
     // the items are plates of the list template: the bar, no browser border (the page has no preflight)
     const it0 = win() && win().querySelector('[data-testid=more-item]'), ics = it0 && getComputedStyle(it0);
-    const plate = !!it0 && it0.classList.contains('og-plate') && ics.borderTopWidth === '0px' && /inset 4px 0px 0px/.test(ics.boxShadow);
+    const plate = !!it0 && it0.classList.contains('og-plate') && ics.borderTopWidth === '0px' && /4px 0px 0px( 0px)? inset/.test(ics.boxShadow);
     // the sheet lies over the bottom bar (the bar never covers its last item): at the bar's middle the sheet is on top
     // (the open sheet turns the page's pointer events off; turned back on for the look, the topmost element is hit)
     const pe = document.body.style.pointerEvents; document.body.style.pointerEvents = 'auto';
@@ -451,12 +451,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // On a phone the worker, client and supplier windows open at one size, the full sheet (owner).
   await p.setViewportSize({width: 390, height: 800});
   const wsz = await p.evaluate(async () => { const w8 = () => new Promise(r => setTimeout(r, 200)); const h = id => Math.round(document.getElementById(id).getBoundingClientRect().height);
-    openEditWorker(0); await w8(); const worker = h('workerModal'); closeModal('workerOverlay');
-    openEditClient(clients[0].id); await w8(); const client = h('clientModal'); closeModal('clientOverlay');
-    openEditSupplier(suppliers[0].id); await w8(); const supplier = h('supplierModal'); closeModal('supplierOverlay'); await w8();
-    return {worker, client, supplier}; });
+    // each window closed and gone before the next opens: one opened over a closing one would go back to it (__returnTo)
+    openEditWorker(0); await w8(); const worker = h('workerModal'); closeModal('workerOverlay'); await w8(); await w8();
+    openEditClient(clients[0].id); await w8(); const client = h('clientModal'); closeModal('clientOverlay'); await w8(); await w8();
+    openEditSupplier(suppliers[0].id); await w8(); const supplier = h('supplierModal'); closeModal('supplierOverlay'); await w8(); await w8();
+    return {worker, client, supplier, left: [...document.querySelectorAll('.overlay.open')].map(o => o.id)}; });
   await p.setViewportSize({width: 1280, height: 720});
-  ok(wsz.worker > 600 && wsz.client === wsz.worker && wsz.supplier === wsz.worker, 'windows: on a phone the worker, client and supplier windows are one size ' + JSON.stringify(wsz));
+  ok(wsz.worker > 600 && wsz.client === wsz.worker && wsz.supplier === wsz.worker && !wsz.left.length, 'windows: on a phone the worker, client and supplier windows are one size ' + JSON.stringify(wsz));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
