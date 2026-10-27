@@ -369,6 +369,9 @@ def test_set_tenant_active():
 def test_delete_tenant():
     rv = Revokes()
     DB.collection("tenants").document(T1).collection("workers").document("w1").set({"name": "A"})
+    # a client's sign link of the firm (functions/client_signing.py): its token's index entry goes with the firm
+    DB.collection("clientSignTokens").document("h1").set({"tenantId": T1, "requestId": "r1"})
+    DB.collection("clientSignTokens").document("h2").set({"tenantId": T2, "requestId": "r2"})
     assert core.delete_tenant(DB, ADMIN1, {"tenantId": T1}, rv)["error"]
     r = core.delete_tenant(DB, SUPER, {"tenantId": T1}, rv)
     assert r == {"ok": True, "removed": {"tenant": True, "users": 3}}
@@ -377,6 +380,7 @@ def test_delete_tenant():
     assert not DB.collection("usernames").document("owner1").get().exists
     assert not DB.collection("authSecrets").document("u-staff1").get().exists
     assert DB.collection("users").document("u-admin2").get().exists and len(rv) == 3
+    assert not DB.collection("clientSignTokens").document("h1").get().exists and DB.collection("clientSignTokens").document("h2").get().exists
 
 
 def test_update_and_load_tenant_profile():

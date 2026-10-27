@@ -437,6 +437,19 @@ test('firestore: the firm\'s seal record is server-only', async () => {
   }
 });
 
+test('firestore: a client\'s contract to sign and its link\'s token are server-only', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'tenants/' + A + '/clientSignRequests/r1'), { clientId: 'c1', status: 'sent', tokenHash: 'h1' });
+    await setDoc(doc(ctx.firestore(), 'clientSignTokens/h1'), { tenantId: A, requestId: 'r1' });
+  });
+  for (const name of ['ownerA', 'staffAll', 'hrAll', 'superadmin', 'ownerB', 'supplierA', 'clientA', 'anon']) {
+    await assertFails(getDoc(doc(db(name), 'tenants/' + A + '/clientSignRequests/r1')));
+    await assertFails(getDoc(doc(db(name), 'clientSignTokens/h1')));
+    await assertFails(setDoc(doc(db(name), 'tenants/' + A + '/clientSignRequests/r2'), { clientId: 'c1', status: 'signed' }));
+    await assertFails(setDoc(doc(db(name), 'clientSignTokens/h2'), { tenantId: A, requestId: 'r2' }));
+  }
+});
+
 test('storage: a client\'s signed month PDF is server-only — managers read it, no browser login writes or deletes it', async () => {
   const pSigned = 'tenants/' + A + '/clients/c1/documents/hours-2026-10-signed.pdf';
   await env.withSecurityRulesDisabled(async ctx => { await uploadString(ref(ctx.storage(), pSigned), 'signed'); });

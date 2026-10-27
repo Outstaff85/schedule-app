@@ -1011,6 +1011,9 @@ def delete_tenant(db, caller, body, revoke):
     db.recursive_delete(ref)
     users = _tenant_users(db, tid)
     batch = db.batch()
+    # a client's sign link of the firm (functions/client_signing.py): its token's index entry goes too
+    for t in db.collection("clientSignTokens").where(filter=FieldFilter("tenantId", "==", tid)).stream():
+        batch.delete(t.reference)
     for u in users:
         batch.delete(u.reference)
         batch.delete(db.collection("authSecrets").document(u.id))

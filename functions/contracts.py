@@ -12,6 +12,9 @@ stamp (seal.py) at their marks and, when the template has it ticked, at the bott
 right of every page — the signature first, the stamp over it. A page that is only a
 picture (a scan) has no text: its marks are placed by hand (`placed`: page,
 x, y, w, h in PDF points from the page's top left) and filled the same way.
+A template is for a worker (`kind` absent or 'worker') or for a client ('client',
+client_signing.py — signed at {{client_signature}}); a worker's or a client's own
+template carries its id and is listed only with it.
 
 The server side of Admin → Contract templates is run(): every action of the
 `contracts` function (functions/main.py), with the Firestore client, the
@@ -39,7 +42,14 @@ FIRM_MARKS = ("company", "company_address", "company_phone", "deductions_file")
 SEAL_MARKS = ("company_signature", "stamp")
 TERMS_MARKS = ("terms_1", "terms_2", "terms_3", "terms_4", "terms_5")
 SIGN_MARKS = ("signature", "sign_date", "today")
-MARKS = WORKER_MARKS + WORK_MARKS + PAY_MARKS + FIRM_MARKS + SEAL_MARKS + TERMS_MARKS + SIGN_MARKS
+# A client's contract (client_signing.py): the client's own details, its signature and signing date…
+CLIENT_MARKS = ("client_name", "client_company_no", "client_address", "client_phone", "client_email", "client_signer",
+                "client_signer_role", "client_signature", "client_sign_date")
+# …and what the client pays — filled only from a login that sees client billing (signing.may_see_billing).
+CLIENT_BILL_MARKS = ("client_rate", "client_pay_mode", "client_ot_rate", "client_shabbat_rate")
+MARKS = WORKER_MARKS + WORK_MARKS + PAY_MARKS + FIRM_MARKS + SEAL_MARKS + TERMS_MARKS + SIGN_MARKS + CLIENT_MARKS + CLIENT_BILL_MARKS
+# A template is for a worker (absent: every template saved before the kind) or for a client.
+KINDS = ("worker", "client")
 MARK_RE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 # In a Hebrew line a PDF may keep its text in visual order: the braces come out mirrored.
 MIRROR_RE = re.compile(r"\}\}([A-Za-z0-9_]+)\{\{")
@@ -56,7 +66,21 @@ SAMPLE_VALUES = {
     "company": "חברה לדוגמה בע״מ", "company_address": "הנמל 5, חיפה", "company_phone": "04-1234567",
     "deductions_file": "912345678", "terms_1": "תנאי מיוחד 1", "terms_2": "תנאי מיוחד 2", "terms_3": "תנאי מיוחד 3",
     "terms_4": "תנאי מיוחד 4", "terms_5": "תנאי מיוחד 5", "sign_date": "01/01/2026", "today": "01/01/2026",
+    "client_name": "לקוח לדוגמה בע״מ", "client_company_no": "512345678", "client_address": "התעשייה 3, חיפה",
+    "client_phone": "04-7654321", "client_email": "office@example.co.il", "client_signer": "משה כהן",
+    "client_signer_role": "מנכ״ל", "client_sign_date": "01/01/2026", "client_rate": "55 ₪", "client_pay_mode": "שעתי לפי חוק",
+    "client_ot_rate": "70 ₪", "client_shabbat_rate": "85 ₪",
 }
+
+
+def kind_of(t):
+    """A template's kind: 'client', or 'worker' (also a template saved before the kind)."""
+    return "client" if (t or {}).get("kind") == "client" else "worker"
+
+
+def sign_mark_of(kind):
+    """The signer's own signature mark: {{client_signature}} in a client's contract, {{signature}} in a worker's."""
+    return "client_signature" if kind == "client" else "signature"
 
 FONT_NAME = "Heebo"
 MIN_SHRINK = 0.7        # a long value is shrunk to fit its place, to 70 % of the text's size at most
@@ -512,6 +536,7 @@ MANAGE_ROLES = ("superadmin", "tenant_admin")
 E_NO_RIGHT = "Only the firm's admin manages contract templates"
 E_NO_FIRM = "No firm"
 E_NOT_FOUND = "Template not found"
+E_KIND = "A template is for a worker or for a client"
 
 
 def _now():
@@ -542,8 +567,14 @@ def _placed(lst):
 
 def _public(doc_id, d):
     keys = ("name", "category", "isDefault", "size", "origSize", "pages", "createdAt", "updatedAt", "version",
-            "marks", "unknown", "placed", "workerId", "signedCount", "pictures", "sealEveryPage")
-    return dict({k: d.get(k) for k in keys if k in d}, id=doc_id)
+            "marks", "unknown", "placed", "workerId", "clientId", "signedCount", "pictures", "sealEveryPage")
+    return dict({k: d.get(k) for k in keys if k in d}, id=doc_id, kind=kind_of(d))
+
+
+def _firm_of_kind(x, kind):
+    """A firm template (not a worker's or a client's own, not deleted) of this kind."""
+    x = x or {}
+    return not x.get("deletedAt") and not x.get("workerId") and not x.get("clientId") and kind_of(x) == kind
 
 
 def log_error(db, tenant_id, message, source):
@@ -607,13 +638,20 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         return seal_mod.run(db, bucket, claims, body, tenant)
 
     if action == "list":
+        # {kind?: 'worker' (the default: a caller that sends none never sees a client's template) | 'client' | 'all',
+        #  workerId?, clientId?} — a worker's or a client's own template is listed only with its id
+        want = str(body.get("kind") or "worker")
         rows = []
         for d in col.stream():
             x = d.to_dict() or {}
             if x.get("deletedAt"):
                 continue
+            if want != "all" and kind_of(x) != want:
+                continue
             wid = body.get("workerId")
             if x.get("workerId") and x.get("workerId") != wid:
+                continue
+            if x.get("clientId") and x.get("clientId") != body.get("clientId"):
                 continue
             rows.append(_public(d.id, x))
         rows.sort(key=lambda r: (str(r.get("category") or ""), str(r.get("name") or "")))
@@ -629,7 +667,7 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         data = bucket.blob(d["fileId"]).download_as_bytes()
         if body.get("sample"):
             data = fill(data, SAMPLE_VALUES, d.get("placed"), sample_signature(),
-                        seal=sample_seal(db, bucket, tenant, d.get("sealEveryPage")))
+                        seal=sample_seal(db, bucket, tenant, d.get("sealEveryPage")), sign_mark=sign_mark_of(kind_of(d)))
         return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": d.get("name")}
 
     if not manage:
@@ -652,7 +690,8 @@ def run(db, bucket, claims, body, authorization="", docx=None):
                       + (" — " + ", ".join(info["heavyReasons"]) if info["heavyReasons"] else ""), "contracts.prepare")
         doc = _open(out)
         placed = _placed(body.get("placed"))
-        sample = fill(out, SAMPLE_VALUES, placed, sample_signature(), seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)))
+        sample = fill(out, SAMPLE_VALUES, placed, sample_signature(), seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)),
+                      sign_mark=sign_mark_of(kind_of(body)))
         return {"ok": True, "lightBase64": base64.b64encode(out).decode(), "sampleBase64": base64.b64encode(sample).decode(),
                 "origSize": info["origSize"], "lightSize": info["lightSize"], "pictures": info["pictures"],
                 "marks": sorted({f["mark"] for f in info["found"]}, key=MARKS.index), "unknown": info["unknown"],
@@ -662,7 +701,7 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         data = _b64(body.get("pdfBase64"))
         _open(data)
         sample = fill(data, SAMPLE_VALUES, _placed(body.get("placed")), sample_signature(),
-                      seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)))
+                      seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)), sign_mark=sign_mark_of(kind_of(body)))
         return {"ok": True, "sampleBase64": base64.b64encode(sample).decode()}
 
     if action == "save":
@@ -678,6 +717,10 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         name = _clean(body.get("name"), 120) or "contract"
         category = _clean(body.get("category"), 60)
         worker_id = _clean(body.get("workerId"), 80) or None
+        client_id = _clean(body.get("clientId"), 80) or None
+        kind = str(body.get("kind") or ("client" if client_id else "worker"))
+        if kind not in KINDS or (kind == "client" and worker_id) or (kind == "worker" and client_id):
+            return {"error": E_KIND}
         replace = str(body.get("replaceId") or "")
         now = _now()
         if replace:
@@ -708,10 +751,10 @@ def run(db, bucket, claims, body, authorization="", docx=None):
                 if b.exists():
                     b.delete()
         else:
-            same = [d for d in col.stream() if not (d.to_dict() or {}).get("deletedAt")
-                    and not (d.to_dict() or {}).get("workerId") and (d.to_dict() or {}).get("category", "") == category]
-            rec.update({"category": category, "isDefault": not worker_id and not same, "createdAt": now, "version": 1,
-                        "workerId": worker_id, "signedCount": 0, "createdBy": claims.get("uid", ""),
+            # the first firm template of a category is its default — within its kind (a worker's and a client's are apart)
+            same = [d for d in col.stream() if _firm_of_kind(d.to_dict(), kind) and (d.to_dict() or {}).get("category", "") == category]
+            rec.update({"category": category, "isDefault": not worker_id and not client_id and not same, "createdAt": now, "version": 1,
+                        "workerId": worker_id, "clientId": client_id, "kind": kind, "signedCount": 0, "createdBy": claims.get("uid", ""),
                         # the firm's signature and stamp on every page: on unless the upload unticked it
                         "sealEveryPage": bool(body.get("sealEveryPage", True))})
             ref.set(rec)
@@ -733,11 +776,11 @@ def run(db, bucket, claims, body, authorization="", docx=None):
                 ch["isDefault"] = False
         if "sealEveryPage" in body:
             ch["sealEveryPage"] = bool(body.get("sealEveryPage"))
-        if body.get("isDefault") is True and not d.get("workerId"):
+        if body.get("isDefault") is True and not d.get("workerId") and not d.get("clientId"):
             cat = ch.get("category", d.get("category", ""))
             for o in col.stream():
                 x = o.to_dict() or {}
-                if o.id != snap.id and x.get("isDefault") and x.get("category", "") == cat and not x.get("workerId"):
+                if o.id != snap.id and x.get("isDefault") and x.get("category", "") == cat and _firm_of_kind(x, kind_of(d)):
                     col.document(o.id).update({"isDefault": False})
             ch["isDefault"] = True
         ref.update(ch)
@@ -751,15 +794,17 @@ def run(db, bucket, claims, body, authorization="", docx=None):
             if b.exists():
                 b.delete()
         ref.delete()
-        # Sends still waiting for a signature on it are withdrawn (the worker needs sending again).
+        # Sends still waiting for a signature on it are withdrawn (the worker or the client needs sending again).
         for r in db.collection("tenants").document(tenant).collection("signRequests").stream():
             x = r.to_dict() or {}
             if x.get("templateId") == snap.id and x.get("status") == "sent":
                 db.collection("tenants").document(tenant).collection("signRequests").document(r.id).update({"status": "withdrawn", "withdrawnWhy": "template deleted"})
-        if d.get("isDefault") and not d.get("workerId"):
+        import client_signing
+        client_signing.withdraw_on_template(db, tenant, snap.id)
+        if d.get("isDefault") and not d.get("workerId") and not d.get("clientId"):
             for o in col.stream():
                 x = o.to_dict() or {}
-                if not x.get("workerId") and x.get("category", "") == d.get("category", ""):
+                if _firm_of_kind(x, kind_of(d)) and x.get("category", "") == d.get("category", ""):
                     col.document(o.id).update({"isDefault": True})
                     break
         return {"ok": True}

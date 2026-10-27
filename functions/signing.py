@@ -44,6 +44,7 @@ E_NO_REQUEST = "Nothing to sign"
 E_SIGNED = "Already signed"
 E_SIG = "No signature"
 E_LINK = "Unknown worker link"
+E_CLIENT_TEMPLATE = "This template is for clients"
 
 
 def today_il():
@@ -86,6 +87,13 @@ def may_see_pay(claims):
     if role == "staff":
         return "accounting" in rt or "editPay" in rt
     return role == "hr" and "seePay" in rt
+
+
+def may_see_billing(claims):
+    """Sees what clients pay (a client contract's billing marks): the owner and the super-admin; a staff login with
+    Accounting — an HR never (it never gets Accounting). canSeeBilling in src/manager/logic/access.ts is the same rule."""
+    role = claims.get("role")
+    return role in ADMIN_ROLES or (role == "staff" and "accounting" in rights_of(claims))
 
 
 def may_set_date(claims):
@@ -234,6 +242,10 @@ def run(db, bucket, claims, body, build101, server_time=None):
         rows.sort(key=lambda r: str(r.get("sentAt") or ""), reverse=True)
         return {"ok": True, "requests": rows[:300]}
 
+    if action.startswith("client"):  # a client's contract (client_signing.py)
+        import client_signing
+        return client_signing.run(db, bucket, claims, body, tenant, server_time)
+
     if action == "transferAsk":  # D6: add a worker from another firm (transfer.py)
         import transfer
         return transfer.ask(db, claims, tenant, body, bucket)
@@ -264,6 +276,8 @@ def run(db, bucket, claims, body, build101, server_time=None):
         tpl = tsnap.to_dict() if tsnap.exists else None
         if not tpl or tpl.get("deletedAt") or (tpl.get("workerId") and tpl.get("workerId") != wid):
             return {"error": E_NO_TEMPLATE}
+        if contracts.kind_of(tpl) == "client":
+            return {"error": E_CLIENT_TEMPLATE}
         rid = uuid.uuid4().hex[:20]
         frozen = f"tenants/{tenant}/workers/{wid}/sign/{rid}/contract-template.pdf"
         bucket.blob(frozen).upload_from_string(bucket.blob(tpl["fileId"]).download_as_bytes(), content_type="application/pdf")

@@ -45,7 +45,10 @@ def sign_documents(request):
         return app.response_class(json.dumps({'ok': True, 'warm': True}), mimetype='application/json')
     bucket = _orig_bucket('demo-schedule.appspot.com')
     try:
-        if body.get('token') and not (request.headers.get('Authorization') or '').startswith('Bearer '):
+        if body.get('clientToken') and not (request.headers.get('Authorization') or '').startswith('Bearer '):
+            import client_signing as _client_signing
+            out = _client_signing.run_public(DB, bucket, body)
+        elif body.get('token') and not (request.headers.get('Authorization') or '').startswith('Bearer '):
             out = _signing.run_worker(DB, bucket, body, _fmain.build_form101_pdf)
         else:
             status, error, claims = _gate.claims_of(request.headers, lambda t: main.auth.verify_id_token(t, check_revoked=True))
@@ -181,6 +184,33 @@ class H(BaseHTTPRequestHandler):
             pg.insert_htmlbox(pymupdf.Rect(40, 60, 550, 160), '<p dir="rtl" style="font-size:12pt">אני {{full_name}} ת.ז. {{id}}' + '&nbsp;' * 12 + 'מסכים. {{tpyo}}</p>')
             pg.insert_text((50, 250), 'Name: {{given}} {{surname}}   Signature: {{signature}}   Date: {{sign_date}}', fontsize=12)
             status, data = 200, doc.tobytes()
+        elif self.path == '/clientContractPdf':
+            # a client's contract template (docs/contracts.md → Client contracts): the client's marks, the firm's, a billing
+            # mark, a worker's mark it leaves empty, and the client's signature on both pages
+            import pymupdf
+            doc = pymupdf.open()
+            for i in range(2):
+                pg = doc.new_page()
+                if i == 0:
+                    pg.insert_text((50, 100), 'Client: {{client_name}}   No: {{client_company_no}}   Firm: {{company}}', fontsize=12)
+                    pg.insert_text((50, 130), 'Phone: {{client_phone}}   Mail: {{client_email}}   Rate: {{client_rate}}   Worker: {{given}}', fontsize=11)
+                pg.insert_text((50, 400), 'Signer: {{client_signer}} {{client_signer_role}}   Sign: {{client_signature}}   Date: {{client_sign_date}}', fontsize=11)
+            status, data = 200, doc.tobytes()
+        elif self.path == '/clientSignRequests':
+            rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('clientSignRequests').stream()]
+            rows.sort(key=lambda r: str(r.get('sentAt') or ''))
+            status, data = 200, json.dumps(rows, default=str).encode()
+        elif self.path.startswith('/clientSignedPdf/'):
+            # the text of a client's signed contract in Storage: what was printed
+            import pymupdf
+            rid = self.path.split('/')[2]
+            r = DB.collection('tenants').document(T1).collection('clientSignRequests').document(rid).get().to_dict() or {}
+            pdf = _orig_bucket('demo-schedule.appspot.com').blob(r['part']['path']).download_as_bytes()
+            d = pymupdf.open(stream=pdf)
+            out = os.environ.get('E2E_OUT') or os.path.join(_HERE, 'out')
+            os.makedirs(out, exist_ok=True)
+            open(os.path.join(out, 'client-signed-contract.pdf'), 'wb').write(pdf)
+            status, data = 200, json.dumps({'text': ''.join(pg.get_text() for pg in d), 'pages': d.page_count, 'images': sum(len(pg.get_images()) for pg in d)}).encode()
         elif self.path == '/contractDocx':
             # a Word contract template with marks (D7)
             sys.path.insert(0, os.path.join(_HERE, '..', 'auth'))
