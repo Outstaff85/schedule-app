@@ -118,6 +118,8 @@ service cloud.firestore {
         .hasOnly(['companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city']);
     }
 
+    // tenants/{t}/firmSeal/current (the firm's signature and stamp) has no match below: no browser
+    // login reads or writes it — only the contract_templates function (functions/seal.py).
     match /tenants/{t} {
       allow read: if manager(t) || isHr(t);
       allow update: if isSuper() || (isTenantAdmin(t) && onlyProfileFields());

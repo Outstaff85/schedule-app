@@ -12,8 +12,10 @@ record (`list` → the signed requests it has not taken yet, `applied`).
 
 tenants/<t>/signRequests/<id>: workerId, hrId, status (sent → signing → signed; replaced,
 withdrawn), way, templateId / templateName / templateVersion / templatePath (the frozen
-copy) / placed, values, form101, signDate (fixed, or None = the day of signing), sentAt,
-sentBy, signedAt (server time), sigPath, parts {form101, contract: {path, name, size}}.
+copy) / placed, values, form101, signDate (fixed, or None = the day of signing), seal
+{signature, stamp: the firm's pictures frozen at the send (seal.py) | None, everyPage: the
+template's tick} (a send made before it has none and draws no seal), sentAt, sentBy,
+signedAt (server time), sigPath, parts {form101, contract: {path, name, size}}.
 No client reads or writes it (firestore.rules grant nothing); a firm sees only its own.
 """
 
@@ -24,6 +26,7 @@ import time
 import uuid
 
 import contracts
+import seal as seal_mod
 
 PAY_MARKS = contracts.PAY_MARKS
 MANAGER_ROLES = ("superadmin", "tenant_admin", "staff", "hr")
@@ -110,7 +113,7 @@ def find_worker(db, token):
 def _clean_values(values):
     out = {}
     for k, v in (values or {}).items() if isinstance(values, dict) else []:
-        if k in contracts.MARKS and k not in ("signature", "sign_date", "today"):
+        if k in contracts.MARKS and k not in ("signature", "sign_date", "today") + contracts.SEAL_MARKS:
             out[k] = re.sub(r"[\u0000-\u001f]", " ", str(v if v is not None else ""))[:300]
     return out
 
@@ -174,7 +177,7 @@ def _pdf(req, which, worker, bucket, build101, signature=None, date=None):
     if which == "contract":
         tpl = bucket.blob(req["templatePath"]).download_as_bytes()
         values = dict(req.get("values") or {}, sign_date=date, today=today_il())
-        data = contracts.fill(tpl, values, req.get("placed"), signature)
+        data = contracts.fill(tpl, values, req.get("placed"), signature, seal=seal_mod.read_frozen(bucket, req.get("seal")))
         name = (req.get("templateName") or "Contract") + " - " + (worker.get("name") or "").strip()
         return data, re.sub(r"[\\/:*?\"<>|]", " ", name).strip() + ".pdf"
     p = dict(req.get("form101") or {}, signDate=date, extraPages=_stored_pages(bucket, worker))
@@ -233,7 +236,7 @@ def run(db, bucket, claims, body, build101, server_time=None):
 
     if action == "transferAsk":  # D6: add a worker from another firm (transfer.py)
         import transfer
-        return transfer.ask(db, claims, tenant, body)
+        return transfer.ask(db, claims, tenant, body, bucket)
 
     if action == "bundle":
         if role in ("staff", "hr") and "workers" not in rights_of(claims):
@@ -264,13 +267,16 @@ def run(db, bucket, claims, body, build101, server_time=None):
         rid = uuid.uuid4().hex[:20]
         frozen = f"tenants/{tenant}/workers/{wid}/sign/{rid}/contract-template.pdf"
         bucket.blob(frozen).upload_from_string(bucket.blob(tpl["fileId"]).download_as_bytes(), content_type="application/pdf")
+        # the firm's signature and stamp as they are now: a later change never changes this send
+        seal = dict(seal_mod.freeze(db, bucket, tenant, f"tenants/{tenant}/workers/{wid}/sign/{rid}/"),
+                    everyPage=bool(tpl.get("sealEveryPage")))
         prev_id, prev = _current(db, tenant, wid)
         if prev_id and prev.get("status") == "sent":
             col.document(prev_id).update({"status": "replaced"})
         req = {"workerId": wid, "hrId": worker.get("hrId") or None, "status": "sent",
                "way": "person" if body.get("way") == "person" else "remote",
                "templateId": tsnap.id, "templateName": tpl.get("name") or "", "templateVersion": int(tpl.get("version") or 1),
-               "templatePath": frozen, "placed": tpl.get("placed") or [], "values": values,
+               "templatePath": frozen, "placed": tpl.get("placed") or [], "values": values, "seal": seal,
                "form101": _clean_form101(body.get("form101")), "signDate": sign_date or None, "dateFixed": bool(sign_date),
                # what the documents print about the worker (the app's printHash): a later change asks for a new signature (D4)
                "printHash": str(body.get("printHash") or "")[:40], "printPay": bool(body.get("printPay")) and may_see_pay(claims),

@@ -161,3 +161,71 @@ def test_the_print_hash_is_kept_with_the_send():
     lst = signing.run(db, bucket, OWNER, {"action": "list"}, build101)["requests"]
     assert lst[0]["printHash"] == "abc123" and lst[0]["printMarks"] == req["printMarks"]
 
+
+
+# ---- the firm's signature and stamp, frozen at the send (seal.py) ----------------------------
+
+def _seal_firm(db, bucket, n):
+    """The firm's signature and stamp, the stamp n px wide (a later change is another width)."""
+    from PIL import Image, ImageDraw
+    import io
+    paths = {}
+    for kind, size in (("signature", (300, 120)), ("stamp", (n, n))):
+        im = Image.new("RGBA", size, (0, 0, 0, 0))
+        ImageDraw.Draw(im).ellipse((4, 4, size[0] - 4, size[1] - 4), outline=(30, 60, 170, 255), width=6)
+        b = io.BytesIO()
+        im.save(b, "PNG")
+        paths[kind] = {"path": f"tenants/t1/firmSeal/{kind}-{n}.png"}
+        bucket.store[paths[kind]["path"]] = b.getvalue()
+    db.collection("tenants").document("t1").collection("firmSeal").document("current").set(paths)
+
+
+def _widths(b64):
+    doc = pymupdf.open(stream=base64.b64decode(b64))
+    return [sorted(i[2] for i in p.get_images()) for p in doc]
+
+
+def test_the_send_freezes_the_firms_seal():
+    db, bucket, t = _setup()  # a template saved now: the every-page tick on
+    _seal_firm(db, bucket, 200)
+    rid = _send(db, bucket, OWNER, t)["id"]
+    req = db.data[("tenants", "t1", "signRequests", rid)]
+    assert req["seal"] == {"signature": f"tenants/t1/workers/w1/sign/{rid}/company-signature.png",
+                           "stamp": f"tenants/t1/workers/w1/sign/{rid}/stamp.png", "everyPage": True}
+    f = finder(db)
+    view = lambda: signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "contract"}, build101, finder=f)
+    assert _widths(view()["pdfBase64"]) == [[200, 300]]
+    # the firm changes its stamp after the send: this send still shows the one it was sent with
+    _seal_firm(db, bucket, 180)
+    assert _widths(view()["pdfBase64"]) == [[200, 300]]
+    signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": base64.b64encode(PNG).decode()}, build101, finder=f)
+    b = signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)
+    signed = bucket.store[b["part"]["path"]]
+    assert [x for x in _widths(base64.b64encode(signed))[0] if x != 1] == [200, 300]  # the worker's 1 px signature too
+    # never built again, whatever the firm changes
+    _seal_firm(db, bucket, 150)
+    again = signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)
+    assert again["part"] == b["part"] and bucket.store[b["part"]["path"]] == signed
+    # Form 101 never gets the seal
+    a = signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)
+    assert _widths(base64.b64encode(bucket.store[a["part"]["path"]])) == [[]]
+
+
+def test_a_send_made_before_the_seal_draws_none():
+    db, bucket, t = _setup()
+    _seal_firm(db, bucket, 200)
+    rid = _send(db, bucket, OWNER, t)["id"]
+    db.data[("tenants", "t1", "signRequests", rid)].pop("seal")  # as an old send
+    v = signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "contract"}, build101, finder=finder(db))
+    assert _widths(v["pdfBase64"]) == [[]]
+
+
+def test_a_template_without_the_tick_draws_no_seal_and_values_never_carry_it():
+    db, bucket, t = _setup()
+    db.data[("tenants", "t1", "contractTemplates", t["id"])]["sealEveryPage"] = False
+    _seal_firm(db, bucket, 200)
+    rid = _send(db, bucket, OWNER, t, values={"given": "Avi", "stamp": "x", "company_signature": "y"})["id"]
+    req = db.data[("tenants", "t1", "signRequests", rid)]
+    assert req["seal"]["everyPage"] is False and "stamp" not in req["values"] and "company_signature" not in req["values"]
+    v = signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "contract"}, build101, finder=finder(db))
+    assert _widths(v["pdfBase64"]) == [[]]

@@ -622,7 +622,12 @@ def test_templates_seeded_and_listed():
     # The flat rights only (and an HR's ownOnly).
     assert by["dispatcher"]["rights"] == ["today", "schedule", "workers", "punchlog", "editSchedule", "editWorkers", "editPunches"]
     assert by["dispatcher"]["count"] == 0 and not set(core.OLD_RIGHT_FIELDS) & set(by["dispatcher"])
-    assert by["full"]["rights"] == [r for r in core.RIGHT_CAPS["staff"] if r != "setSignDate"]  # Set the signing date: off by default
+    # Set the signing date and the firm's signature and stamp: off by default
+    assert by["full"]["rights"] == [r for r in core.RIGHT_CAPS["staff"] if r not in ("setSignDate", "firmSign")]
+    # The firm's signature and stamp: an action for staff and HR, never for a supplier or a client
+    assert "firmSign" in core.RIGHTS and "firmSign" in core.RIGHT_ACTIONS
+    assert "firmSign" in core.RIGHT_CAPS["staff"] and "firmSign" in core.RIGHT_CAPS["hr"]
+    assert "firmSign" not in core.RIGHT_CAPS["supplier"] and "firmSign" not in core.RIGHT_CAPS["client"]
     assert by["hr"]["ownOnly"] is True and "ownOnly" not in by["supplier"]
     assert by["client"]["rights"] == ["hours", "approveHours", "disputeHours", "fixHours"]
     # Read again: no second seed.
@@ -772,7 +777,7 @@ def test_link_every_login_to_a_template():
     seed_legacy("u-st2", "st2", "st-pass-22", role="staff", tenantId=T2,
                 rights=["today", "workers", "accounting", "punchlog", "editSchedule", "editWorkers", "editPunches", "editPay"])
     seed_legacy("u-cl1", "cl1", "cl-pass-11", role="client", tenantId=T2, clientId="c1", rights=["hours", "approveHours", "disputeHours", "fixHours"])
-    seed_legacy("u-all", "all1", "all-pass-11", role="staff", tenantId=T2, rights=[r for r in core.RIGHT_CAPS["staff"] if r != "setSignDate"])
+    seed_legacy("u-all", "all1", "all-pass-11", role="staff", tenantId=T2, rights=[r for r in core.RIGHT_CAPS["staff"] if r not in ("setSignDate", "firmSign")])
     assert core.list_templates(DB, SUPER)["unlinked"] == 6
     assert core.list_templates(DB, ADMIN2)["unlinked"] == 3
     assert core.link_to_templates(DB, ADMIN1, {}, Revokes())["error"] == core.E_NO_RIGHTS
@@ -790,7 +795,7 @@ def test_link_every_login_to_a_template():
     # The supplier is the Supplier template exactly.
     assert get("u-sup1")["templateId"] == "supplier" and "u-sup1" not in [u for u, _ in rv]
     # A staff login with everything goes on Full access, nothing lost.
-    assert get("u-all")["templateId"] == "full" and get("u-all")["rights"] == [r for r in core.RIGHT_CAPS["staff"] if r != "setSignDate"]
+    assert get("u-all")["templateId"] == "full" and get("u-all")["rights"] == [r for r in core.RIGHT_CAPS["staff"] if r not in ("setSignDate", "firmSign")]
     assert sorted(u for u, _ in rv) == sorted(["u-st2", "u-hr1"]) and out["changed"] == 2
     # Owners and the superadmin are left alone; a second run finds nothing.
     assert "templateId" not in get("u-admin1") and "templateId" not in get("u-super")

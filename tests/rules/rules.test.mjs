@@ -409,6 +409,34 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
 });
 
+test('storage: the firm\'s signature and stamp are server-only — no login reads or writes them, other firm files still read', async () => {
+  const pSeal = 'tenants/' + A + '/firmSeal/stamp-1.png';
+  await env.withSecurityRulesDisabled(async ctx => {
+    await uploadString(ref(ctx.storage(), pSeal), 'png');
+    await uploadString(ref(ctx.storage(), 'tenants/' + A + '/contracts/t1/1.pdf'), 'pdf');
+  });
+  for (const name of ['ownerA', 'staffAll', 'hrAll', 'hrOwn', 'superadmin', 'ownerB', 'supplierA', 'clientA', 'anon']) {
+    await assertFails(getBytes(ref(st(name), pSeal)));
+  }
+  for (const name of ['ownerA', 'staffAll', 'superadmin']) {
+    await assertFails(uploadString(ref(st(name), 'tenants/' + A + '/firmSeal/stamp-2.png'), 'png'));
+    await assertFails(deleteObject(ref(st(name), pSeal)));
+  }
+  await assertSucceeds(getBytes(ref(st('ownerA'), 'tenants/' + A + '/contracts/t1/1.pdf')));
+  await assertSucceeds(getBytes(ref(st('staffAll'), 'tenants/' + A + '/contracts/t1/1.pdf')));
+  await assertFails(getBytes(ref(st('ownerB'), 'tenants/' + A + '/contracts/t1/1.pdf')));
+});
+
+test('firestore: the firm\'s seal record is server-only', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'tenants/' + A + '/firmSeal/current'), { stamp: { path: 'x' } });
+  });
+  for (const name of ['ownerA', 'staffAll', 'hrAll', 'superadmin', 'supplierA', 'clientA']) {
+    await assertFails(getDoc(doc(db(name), 'tenants/' + A + '/firmSeal/current')));
+    await assertFails(setDoc(doc(db(name), 'tenants/' + A + '/firmSeal/current'), { stamp: null }));
+  }
+});
+
 test('storage: a client\'s signed month PDF is server-only — managers read it, no browser login writes or deletes it', async () => {
   const pSigned = 'tenants/' + A + '/clients/c1/documents/hours-2026-10-signed.pdf';
   await env.withSecurityRulesDisabled(async ctx => { await uploadString(ref(ctx.storage(), pSigned), 'signed'); });

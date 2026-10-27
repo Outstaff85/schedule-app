@@ -7,7 +7,9 @@ unused dropped) and checked against the original (every page looks the same
 at 100 dpi, every mark is still found); only the light one is kept. Filling
 (fill()) whites out each mark and writes its value in its place — Hebrew right
 to left (python-bidi, the Heebo font, as Form 101), shrunk to fit the mark's
-width —, the signature a picture fitted above the mark. A page that is only a
+width —, the signature a picture fitted above the mark; the firm's signature and
+stamp (seal.py) at their marks and, when the template has it ticked, at the bottom
+right of every page — the signature first, the stamp over it. A page that is only a
 picture (a scan) has no text: its marks are placed by hand (`placed`: page,
 x, y, w, h in PDF points from the page's top left) and filled the same way.
 
@@ -33,9 +35,11 @@ WORKER_MARKS = ("given", "surname", "full_name", "id", "id_type", "id_expiry", "
 WORK_MARKS = ("start_date", "end_date", "contract_months", "site", "supplier", "schedule")
 PAY_MARKS = ("rate", "pay_mode", "ot_rate", "shabbat_rate", "travel", "bank")
 FIRM_MARKS = ("company", "company_address", "company_phone", "deductions_file")
+# The firm's signature and stamp (seal.py): pictures, drawn at their marks — the signature first, the stamp over it.
+SEAL_MARKS = ("company_signature", "stamp")
 TERMS_MARKS = ("terms_1", "terms_2", "terms_3", "terms_4", "terms_5")
 SIGN_MARKS = ("signature", "sign_date", "today")
-MARKS = WORKER_MARKS + WORK_MARKS + PAY_MARKS + FIRM_MARKS + TERMS_MARKS + SIGN_MARKS
+MARKS = WORKER_MARKS + WORK_MARKS + PAY_MARKS + FIRM_MARKS + SEAL_MARKS + TERMS_MARKS + SIGN_MARKS
 MARK_RE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 # In a Hebrew line a PDF may keep its text in visual order: the braces come out mirrored.
 MIRROR_RE = re.compile(r"\}\}([A-Za-z0-9_]+)\{\{")
@@ -305,16 +309,94 @@ def _draw_value(page, font, rect, value, size, rtl, room=None):
     page.insert_text((x, y), disp, fontname=FONT_NAME, fontsize=size, color=(0, 0, 0))
 
 
-def _draw_signature(page, rect, png, rtl):
+def _put(page, rect, png, cache, key, keep=True, rotate=0):
+    """A picture drawn in rect; the file keeps each picture once (cache: key → its xref, reused on every page)."""
+    if cache.get(key):
+        page.insert_image(rect, xref=cache[key], keep_proportion=keep, rotate=rotate)
+    else:
+        cache[key] = page.insert_image(rect, stream=png, keep_proportion=keep, rotate=rotate)
+
+
+def _sign_box(rect, rtl):
+    """The box a signature fills above its mark: three lines high, at least 2.5 times as wide; anchored right in a Hebrew line."""
     h = max(rect.height * 3, 30)
     w = max(rect.width, h * 2.5)
-    box = pymupdf.Rect(rect.x1 - w, rect.y1 - h, rect.x1, rect.y1) if rtl else pymupdf.Rect(rect.x0, rect.y1 - h, rect.x0 + w, rect.y1)
-    page.insert_image(box, stream=png, keep_proportion=True)
+    return pymupdf.Rect(rect.x1 - w, rect.y1 - h, rect.x1, rect.y1) if rtl else pymupdf.Rect(rect.x0, rect.y1 - h, rect.x0 + w, rect.y1)
 
 
-def fill(template, values, placed=None, signature=None):
-    """The template filled → PDF bytes. values: {mark: text}; signature: PNG bytes or None
-    (the {{signature}} place is left blank); placed: the marks placed by hand."""
+def _draw_signature(page, rect, png, rtl, cache=None, key="signer"):
+    _put(page, _sign_box(rect, rtl), png, cache if cache is not None else {}, key)
+
+
+def _draw_stamp(page, rect, png, cache):
+    """{{stamp}}: a square of 56–110 pt (five times the mark's height) centred on the mark."""
+    side = min(110.0, max(56.0, rect.height * 5))
+    cx, cy = (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+    _put(page, pymupdf.Rect(cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2), png, cache, "stamp")
+
+
+def _png_size(png):
+    from PIL import Image
+    with Image.open(io.BytesIO(png)) as im:
+        return im.size
+
+
+def _fit_bottom_right(box, size):
+    """The picture fitted into box keeping its proportion, aligned to the box's bottom right."""
+    w, h = size
+    if not w or not h:
+        return box
+    k = min(box.width / w, box.height / h)
+    return pymupdf.Rect(box.x1 - w * k, box.y1 - h * k, box.x1, box.y1)
+
+
+def seal_boxes(page):
+    """Where the every-page seal goes, in what the reader sees (page.rect: rotation taken into account) →
+    (the firm's signature box, the stamp box): bottom right, 120 × 48 pt and 80 × 80 pt on an A4, the stamp
+    over the signature's right 60 pt; scaled with the page (k = its short side / 595, 0.6–1.6)."""
+    W, H = page.rect.width, page.rect.height
+    k = min(1.6, max(0.6, min(W, H) / 595))
+    R, B = W - 28 * k, H - 22 * k
+    return (pymupdf.Rect(R - 150 * k, B - 48 * k, R - 30 * k, B),
+            pymupdf.Rect(R - 90 * k, B - 70 * k, R - 10 * k, B + 10 * k))
+
+
+def _seal_page(page, seal, cache, sizes):
+    """The firm's signature and then its stamp over it, bottom right of the page as the reader sees it."""
+    sig_box, stamp_box = seal_boxes(page)
+    for key, box in (("company_signature", sig_box), ("stamp", stamp_box)):
+        png = seal.get("signature" if key == "company_signature" else "stamp")
+        if not png:
+            continue
+        if key not in sizes:
+            sizes[key] = _png_size(png)
+        fitted = _fit_bottom_right(box, sizes[key]) if key == "company_signature" else _fit_centre(box, sizes[key])
+        # page.rect is what the reader sees; the picture goes in the page's own (unrotated) space, turned with the page
+        _put(page, fitted * page.derotation_matrix, png, cache, key, keep=False, rotate=page.rotation)
+
+
+def _fit_centre(box, size):
+    w, h = size
+    if not w or not h:
+        return box
+    k = min(box.width / w, box.height / h)
+    cx, cy = (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2
+    return pymupdf.Rect(cx - w * k / 2, cy - h * k / 2, cx + w * k / 2, cy + h * k / 2)
+
+
+# Marks that are pictures, never text.
+PICTURE_MARKS = ("signature", "company_signature", "stamp")
+
+
+def fill(template, values, placed=None, signature=None, seal=None, sign_mark="signature"):
+    """The template filled → PDF bytes. values: {mark: text}; signature: the signer's PNG or None
+    (its mark, sign_mark, is left blank); placed: the marks placed by hand; seal: the firm's pictures
+    {"signature": PNG | None, "stamp": PNG | None, "every_page": bool} or None. A missing picture draws
+    nothing and its mark is left blank, like an empty value. On each page, after the values: the signer's
+    signature, every {{company_signature}}, every {{stamp}}, then (every_page) the bottom-right seal —
+    so a stamp always lies over a signature."""
+    seal = seal or {}
+    cache, sizes = {}, {}
     doc = _open(template)
     found, _ = find_marks(doc)
     font = pymupdf.Font(fontfile=str(_font()))
@@ -345,13 +427,25 @@ def fill(template, values, placed=None, signature=None):
         if typed:
             page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE, graphics=pymupdf.PDF_REDACT_LINE_ART_NONE)
         page.insert_font(fontfile=str(_font()), fontname=FONT_NAME)
+        pictures = set(PICTURE_MARKS) | {sign_mark}
         for it in items:
-            r = pymupdf.Rect(it["rect"])
-            if it["mark"] == "signature":
-                if signature:
-                    _draw_signature(page, r, signature, it["rtl"])
-                continue
-            _draw_value(page, font, r, values.get(it["mark"], ""), it["size"], it["rtl"], it["room"])
+            if it["mark"] not in pictures:
+                _draw_value(page, font, pymupdf.Rect(it["rect"]), values.get(it["mark"], ""), it["size"], it["rtl"], it["room"])
+        if signature:
+            for it in items:
+                if it["mark"] == sign_mark:
+                    _draw_signature(page, pymupdf.Rect(it["rect"]), signature, it["rtl"], cache)
+        if seal.get("signature"):
+            for it in items:
+                if it["mark"] == "company_signature":
+                    _put(page, _sign_box(pymupdf.Rect(it["rect"]), it["rtl"]), seal["signature"], cache, "company_signature")
+        if seal.get("stamp"):
+            for it in items:
+                if it["mark"] == "stamp":
+                    _draw_stamp(page, pymupdf.Rect(it["rect"]), seal["stamp"], cache)
+    if seal.get("every_page") and (seal.get("signature") or seal.get("stamp")):
+        for page in doc:
+            _seal_page(page, seal, cache, sizes)
     doc.subset_fonts()
     return _save(doc)
 
@@ -365,6 +459,51 @@ def sample_signature():
     out = io.BytesIO()
     im.save(out, "PNG")
     return out.getvalue()
+
+
+def sample_company_signature():
+    """A made-up firm's signature for the sample: a dark loop and stroke."""
+    import math
+    from PIL import Image, ImageDraw
+    im = Image.new("RGBA", (360, 140), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.line([(20 + t * 3.2, 80 - 40 * math.sin(t / 9) * math.exp(-t / 120)) for t in range(0, 100)], fill=(25, 25, 45, 255), width=5)
+    d.line([(60, 110), (330, 95)], fill=(25, 25, 45, 255), width=4)
+    out = io.BytesIO()
+    im.save(out, "PNG")
+    return out.getvalue()
+
+
+def sample_stamp():
+    """A made-up stamp for the sample: a blue double ring with "חותמת לדוגמה"."""
+    from PIL import Image, ImageDraw, ImageFont
+    im = Image.new("RGBA", (300, 300), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    blue = (30, 60, 170, 230)
+    d.ellipse((8, 8, 292, 292), outline=blue, width=8)
+    d.ellipse((34, 34, 266, 266), outline=blue, width=4)
+    try:
+        font = ImageFont.truetype(str(_font()), 34)
+    except Exception:
+        font = ImageFont.load_default()
+    for text, y in (("חותמת", 120), ("לדוגמה", 165)):
+        disp = get_display(text)
+        w = d.textlength(disp, font=font)
+        d.text((150 - w / 2, y - 20), disp, fill=blue, font=font)
+    out = io.BytesIO()
+    im.save(out, "PNG")
+    return out.getvalue()
+
+
+def sample_seal(db, bucket, tenant, every_page):
+    """The seal of a sample: the firm's real signature and stamp when uploaded, else made-up ones — the admin sees the placement."""
+    import seal as seal_mod
+    try:
+        real = seal_mod.load(db, bucket, tenant)
+    except Exception:
+        real = {}
+    return {"signature": real.get("signature") or sample_company_signature(), "stamp": real.get("stamp") or sample_stamp(),
+            "every_page": bool(every_page)}
 
 
 # ---- the function's actions (Admin → Contract templates) ---------------------
@@ -403,7 +542,7 @@ def _placed(lst):
 
 def _public(doc_id, d):
     keys = ("name", "category", "isDefault", "size", "origSize", "pages", "createdAt", "updatedAt", "version",
-            "marks", "unknown", "placed", "workerId", "signedCount", "pictures")
+            "marks", "unknown", "placed", "workerId", "signedCount", "pictures", "sealEveryPage")
     return dict({k: d.get(k) for k in keys if k in d}, id=doc_id)
 
 
@@ -463,6 +602,10 @@ def run(db, bucket, claims, body, authorization="", docx=None):
     col = db.collection("tenants").document(tenant).collection("contractTemplates")
     manage = role in MANAGE_ROLES
 
+    import seal as seal_mod
+    if action in seal_mod.ACTIONS:  # the firm's signature and stamp (seal.py)
+        return seal_mod.run(db, bucket, claims, body, tenant)
+
     if action == "list":
         rows = []
         for d in col.stream():
@@ -474,7 +617,9 @@ def run(db, bucket, claims, body, authorization="", docx=None):
                 continue
             rows.append(_public(d.id, x))
         rows.sort(key=lambda r: (str(r.get("category") or ""), str(r.get("name") or "")))
-        return {"ok": True, "templates": rows, "canManage": manage}
+        rec = seal_mod.record(db, tenant)
+        return {"ok": True, "templates": rows, "canManage": manage, "canFirmSign": seal_mod.may_firm_sign(claims),
+                "seal": {"hasStamp": bool(rec.get("stamp")), "hasSignature": bool(rec.get("signature"))}}
 
     if action == "file":
         snap = col.document(str(body.get("id") or "")).get()
@@ -483,7 +628,8 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         d = snap.to_dict()
         data = bucket.blob(d["fileId"]).download_as_bytes()
         if body.get("sample"):
-            data = fill(data, SAMPLE_VALUES, d.get("placed"), sample_signature())
+            data = fill(data, SAMPLE_VALUES, d.get("placed"), sample_signature(),
+                        seal=sample_seal(db, bucket, tenant, d.get("sealEveryPage")))
         return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": d.get("name")}
 
     if not manage:
@@ -506,7 +652,7 @@ def run(db, bucket, claims, body, authorization="", docx=None):
                       + (" — " + ", ".join(info["heavyReasons"]) if info["heavyReasons"] else ""), "contracts.prepare")
         doc = _open(out)
         placed = _placed(body.get("placed"))
-        sample = fill(out, SAMPLE_VALUES, placed, sample_signature())
+        sample = fill(out, SAMPLE_VALUES, placed, sample_signature(), seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)))
         return {"ok": True, "lightBase64": base64.b64encode(out).decode(), "sampleBase64": base64.b64encode(sample).decode(),
                 "origSize": info["origSize"], "lightSize": info["lightSize"], "pictures": info["pictures"],
                 "marks": sorted({f["mark"] for f in info["found"]}, key=MARKS.index), "unknown": info["unknown"],
@@ -515,7 +661,8 @@ def run(db, bucket, claims, body, authorization="", docx=None):
     if action == "sample":
         data = _b64(body.get("pdfBase64"))
         _open(data)
-        sample = fill(data, SAMPLE_VALUES, _placed(body.get("placed")), sample_signature())
+        sample = fill(data, SAMPLE_VALUES, _placed(body.get("placed")), sample_signature(),
+                      seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)))
         return {"ok": True, "sampleBase64": base64.b64encode(sample).decode()}
 
     if action == "save":
@@ -553,6 +700,8 @@ def run(db, bucket, claims, body, authorization="", docx=None):
                "unknown": unknown, "placed": placed, "pictures": picture_pages(doc), "updatedAt": now}
         if old:
             rec["version"] = int(old.get("version") or 1) + 1
+            if "sealEveryPage" in body:  # a new version keeps the old one's tick unless it sends its own
+                rec["sealEveryPage"] = bool(body.get("sealEveryPage"))
             ref.update(rec)
             if old.get("fileId") and old["fileId"] != path:
                 b = bucket.blob(old["fileId"])
@@ -562,7 +711,9 @@ def run(db, bucket, claims, body, authorization="", docx=None):
             same = [d for d in col.stream() if not (d.to_dict() or {}).get("deletedAt")
                     and not (d.to_dict() or {}).get("workerId") and (d.to_dict() or {}).get("category", "") == category]
             rec.update({"category": category, "isDefault": not worker_id and not same, "createdAt": now, "version": 1,
-                        "workerId": worker_id, "signedCount": 0, "createdBy": claims.get("uid", "")})
+                        "workerId": worker_id, "signedCount": 0, "createdBy": claims.get("uid", ""),
+                        # the firm's signature and stamp on every page: on unless the upload unticked it
+                        "sealEveryPage": bool(body.get("sealEveryPage", True))})
             ref.set(rec)
         return {"ok": True, "template": _public(tid, ref.get().to_dict())}
 
@@ -580,6 +731,8 @@ def run(db, bucket, claims, body, authorization="", docx=None):
             ch["category"] = _clean(body.get("category"), 60)
             if ch["category"] != d.get("category", ""):
                 ch["isDefault"] = False
+        if "sealEveryPage" in body:
+            ch["sealEveryPage"] = bool(body.get("sealEveryPage"))
         if body.get("isDefault") is True and not d.get("workerId"):
             cat = ch.get("category", d.get("category", ""))
             for o in col.stream():

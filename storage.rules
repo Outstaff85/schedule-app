@@ -32,9 +32,12 @@ service firebase.storage {
         || (member(t) && role() in ['staff', 'hr'] && workersPerm());
     }
 
-    match /tenants/{t}/{path=**} {
-      allow read: if manager(t)
-        || (hrMine(t) && resource.metadata != null && resource.metadata.hrId == request.auth.uid);
+    // The firm's signature and stamp (tenants/{t}/firmSeal/, docs/contracts.md → The firm's
+    // signature and stamp) are read and written only by the contract_templates function: no
+    // browser login of any firm reads them, even the firm's own managers.
+    match /tenants/{t}/{top}/{rest=**} {
+      allow read: if top != 'firmSeal' && (manager(t)
+        || (hrMine(t) && resource.metadata != null && resource.metadata.hrId == request.auth.uid));
     }
     // Browsers write only worker files. Everything else under a tenant (the
     // client's signed month PDFs, written by the hours function) is

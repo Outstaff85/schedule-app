@@ -17,7 +17,9 @@ Moving to another firm, D6).
 
 transferRequests/<id> (top level — it joins two firms; no client rule opens it): fromTenant,
 fromWorker, toTenant, toName, status (asked → signing → done; declined, expired, replaced),
-askedAt, askedBy, expiresAt, newWorkerId, signDate, signedAt, sigPath, parts.
+askedAt, askedBy, expiresAt, seal {signature, stamp} (the new firm's signature and stamp frozen
+when it asks, under tenants/<new firm>/transfers/<id>/ — seal.py; drawn when the new firm's
+contract template has its every-page tick or marks), newWorkerId, signDate, signedAt, sigPath, parts.
 """
 
 import base64
@@ -27,6 +29,7 @@ import time
 import uuid
 
 import contracts
+import seal as seal_mod
 import signing
 
 EXPIRE_DAYS = 14
@@ -115,7 +118,14 @@ def _template(db, tenant):
     return rows[0] if rows else (None, None)
 
 
-def ask(db, claims, tenant, body):
+def _freeze_seal(db, bucket, tenant, rid):
+    """The new firm's signature and stamp as they are when it asks (seal.py), or None when there is no bucket."""
+    if bucket is None:
+        return None
+    return seal_mod.freeze(db, bucket, tenant, f"tenants/{tenant}/transfers/{rid}/")
+
+
+def ask(db, claims, tenant, body, bucket=None):
     """The new firm's admin asks for a worker by their ID or passport number. Always "Request sent"."""
     if claims.get("role") not in ("superadmin", "tenant_admin"):
         return {"error": "Only the firm's admin adds a worker from another firm"}
@@ -139,9 +149,11 @@ def ask(db, claims, tenant, body):
             x = d.to_dict() or {}
             if x.get("fromWorker") == h.id and x.get("fromTenant") == from_t and x.get("toTenant") == tenant and x.get("status") == "asked":
                 col.document(d.id).update({"status": "replaced"})
-        col.document(uuid.uuid4().hex[:20]).set({
+        rid = uuid.uuid4().hex[:20]
+        col.document(rid).set({
             "fromTenant": from_t, "fromWorker": h.id, "toTenant": tenant, "toName": to_name, "status": "asked",
-            "askedAt": _iso(now), "askedBy": claims.get("uid", ""), "expiresAt": _iso(now + datetime.timedelta(days=EXPIRE_DAYS))})
+            "askedAt": _iso(now), "askedBy": claims.get("uid", ""), "expiresAt": _iso(now + datetime.timedelta(days=EXPIRE_DAYS)),
+            "seal": _freeze_seal(db, bucket, tenant, rid)})
     return {"ok": True, "message": E_SENT}
 
 
@@ -170,7 +182,9 @@ def _pdf(db, bucket, req, worker, which, build101, signature=None):
         if not tpl:
             return None, None
         values = dict(contract_values(worker, profile, start), sign_date=date, today=signing.today_il())
-        data = contracts.fill(bucket.blob(tpl["fileId"]).download_as_bytes(), values, tpl.get("placed"), signature)
+        frozen = req.get("seal")
+        seal = seal_mod.read_frozen(bucket, dict(frozen, everyPage=bool(tpl.get("sealEveryPage")))) if isinstance(frozen, dict) else None
+        data = contracts.fill(bucket.blob(tpl["fileId"]).download_as_bytes(), values, tpl.get("placed"), signature, seal=seal)
         return data, (tpl.get("name") or "Contract") + " - " + (worker.get("name") or "").strip() + ".pdf"
     p = dict(form101_payload(worker, profile, date, start), extraPages=signing._stored_pages(bucket, worker))
     if signature:
