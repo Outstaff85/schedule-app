@@ -519,6 +519,12 @@ def sample_stamp():
     return out.getvalue()
 
 
+def seal_every_page(d):
+    """A template's (or a request body's) every-page seal: on unless its `sealEveryPage` is an explicit false — a template
+    saved before the tick, with no field, is on too (owner, 2026-10-27)."""
+    return (d or {}).get("sealEveryPage") is not False
+
+
 def sample_seal(db, bucket, tenant, every_page, real_ok=True):
     """The seal of a sample: the firm's real signature and stamp when uploaded, else made-up ones — the admin sees the placement.
     real_ok False (a caller that may not handle them: seal.may_firm_sign) → always the made-up ones."""
@@ -570,8 +576,8 @@ def _placed(lst):
 
 def _public(doc_id, d):
     keys = ("name", "category", "isDefault", "size", "origSize", "pages", "createdAt", "updatedAt", "version",
-            "marks", "unknown", "placed", "workerId", "clientId", "signedCount", "pictures", "sealEveryPage")
-    return dict({k: d.get(k) for k in keys if k in d}, id=doc_id, kind=kind_of(d))
+            "marks", "unknown", "placed", "workerId", "clientId", "signedCount", "pictures")
+    return dict({k: d.get(k) for k in keys if k in d}, id=doc_id, kind=kind_of(d), sealEveryPage=seal_every_page(d))
 
 
 def _firm_of_kind(x, kind):
@@ -670,7 +676,7 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         data = bucket.blob(d["fileId"]).download_as_bytes()
         if body.get("sample"):
             data = fill(data, SAMPLE_VALUES, d.get("placed"), sample_signature(),
-                        seal=sample_seal(db, bucket, tenant, d.get("sealEveryPage"), real_ok=manage or seal_mod.may_firm_sign(claims)),
+                        seal=sample_seal(db, bucket, tenant, seal_every_page(d), real_ok=manage or seal_mod.may_firm_sign(claims)),
                         sign_mark=sign_mark_of(kind_of(d)))
         return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": d.get("name")}
 
@@ -694,7 +700,7 @@ def run(db, bucket, claims, body, authorization="", docx=None):
                       + (" — " + ", ".join(info["heavyReasons"]) if info["heavyReasons"] else ""), "contracts.prepare")
         doc = _open(out)
         placed = _placed(body.get("placed"))
-        sample = fill(out, SAMPLE_VALUES, placed, sample_signature(), seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)),
+        sample = fill(out, SAMPLE_VALUES, placed, sample_signature(), seal=sample_seal(db, bucket, tenant, seal_every_page(body)),
                       sign_mark=sign_mark_of(kind_of(body)))
         return {"ok": True, "lightBase64": base64.b64encode(out).decode(), "sampleBase64": base64.b64encode(sample).decode(),
                 "origSize": info["origSize"], "lightSize": info["lightSize"], "pictures": info["pictures"],
@@ -705,7 +711,7 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         data = _b64(body.get("pdfBase64"))
         _open(data)
         sample = fill(data, SAMPLE_VALUES, _placed(body.get("placed")), sample_signature(),
-                      seal=sample_seal(db, bucket, tenant, body.get("sealEveryPage", True)), sign_mark=sign_mark_of(kind_of(body)))
+                      seal=sample_seal(db, bucket, tenant, seal_every_page(body)), sign_mark=sign_mark_of(kind_of(body)))
         return {"ok": True, "sampleBase64": base64.b64encode(sample).decode()}
 
     if action == "save":
@@ -760,7 +766,7 @@ def run(db, bucket, claims, body, authorization="", docx=None):
             rec.update({"category": category, "isDefault": not worker_id and not client_id and not same, "createdAt": now, "version": 1,
                         "workerId": worker_id, "clientId": client_id, "kind": kind, "signedCount": 0, "createdBy": claims.get("uid", ""),
                         # the firm's signature and stamp on every page: on unless the upload unticked it
-                        "sealEveryPage": bool(body.get("sealEveryPage", True))})
+                        "sealEveryPage": seal_every_page(body)})
             ref.set(rec)
         return {"ok": True, "template": _public(tid, ref.get().to_dict())}
 

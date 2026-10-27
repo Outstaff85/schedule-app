@@ -317,6 +317,89 @@ def test_sign_here_in_the_client_window():
     assert [len(p.get_image_info()) for p in pymupdf.open(stream=bucket.store[b["part"]["path"]])] == [1, 1]
 
 
+# ---- the client's documents -------------------------------------------------------------------------
+
+SUPPLIER = {"uid": "u7", "role": "supplier", "tenantId": "t1", "supplierId": "s1"}
+CLIENT_LOGIN = {"uid": "u8", "role": "client", "tenantId": "t1", "clientId": "c1"}
+
+
+def _docs(db, tenant="t1", cid="c1"):
+    return {p[-1]: d for p, d in db.data.items() if p[:5] == ("tenants", tenant, "clients", cid, "docs")}
+
+
+def test_a_signed_contract_is_kept_once_in_the_clients_documents_the_page_way():
+    db, bucket, t = _setup()
+    r = _send(db, bucket, OWNER, t)
+    tok = _token(r["link"])
+    _pub(db, bucket, tok, action="sign", signaturePng=base64.b64encode(PNG).decode(), details={"signerName": "Moshe"})
+    assert _docs(db) == {}  # signed, no PDF yet: no entry
+    b = _pub(db, bucket, tok, action="build")
+    d = _docs(db)
+    assert list(d) == [r["id"]]
+    e = d[r["id"]]
+    assert e["type"] == "contract" and e["signed"] is True and e["signRequestId"] == r["id"] and e["path"] == b["part"]["path"] == e["fileId"]
+    assert e["name"] == b["part"]["name"] and e["mediaType"] == "application/pdf" and e["signDate"] and e["signedAt"] and e["uploadedAt"]
+    # built again (the page opened again, the window's build): never a second entry, never overwritten
+    db.data[("tenants", "t1", "clients", "c1", "docs", r["id"])]["mark"] = "kept"
+    _pub(db, bucket, tok, action="build")
+    signing.run(db, bucket, OWNER, {"action": "clientBuild", "id": r["id"]}, build101)
+    assert list(_docs(db)) == [r["id"]] and _docs(db)[r["id"]]["mark"] == "kept"
+    # the client record itself is untouched (the app's save writes it whole)
+    assert "docs" not in db.data[("tenants", "t1", "clients", "c1")]
+    # listed for a login with the Clients section
+    got = signing.run(db, bucket, STAFF_SEAL, {"action": "clientDocs", "clientId": "c1"}, build101)
+    assert [x["id"] for x in got["docs"]] == [r["id"]] and got["docs"][0]["path"] == b["part"]["path"]
+    assert signing.run(db, bucket, OWNER, {"action": "clientDocs", "clientId": "c2"}, build101)["docs"] == []
+
+
+def test_a_signed_contract_is_kept_once_in_the_clients_documents_sign_here():
+    db, bucket, t = _setup(seal=False)
+    r = _send(db, bucket, STAFF_SEAL, t, way="person")
+    signing.run(db, bucket, STAFF_SEAL, {"action": "clientSign", "id": r["id"], "signaturePng": base64.b64encode(PNG).decode()}, build101)
+    b = signing.run(db, bucket, STAFF_SEAL, {"action": "clientBuild", "id": r["id"]}, build101)
+    b2 = signing.run(db, bucket, STAFF_SEAL, {"action": "clientBuild", "id": r["id"]}, build101)
+    assert b2["part"] == b["part"] and list(_docs(db)) == [r["id"]] and _docs(db)[r["id"]]["path"] == b["part"]["path"]
+    # two builds at once: the late one (a stale read, no part) keeps the first's PDF and its one entry
+    r2 = _send(db, bucket, STAFF_SEAL, t, way="person")
+    signing.run(db, bucket, STAFF_SEAL, {"action": "clientSign", "id": r2["id"], "signaturePng": base64.b64encode(PNG).decode()}, build101)
+    stale = dict(_reqs(db)[r2["id"]])
+    first = signing.run(db, bucket, STAFF_SEAL, {"action": "clientBuild", "id": r2["id"]}, build101)
+    late = client_signing._documents(db, bucket, "t1", r2["id"], stale, {"action": "build"}, None)
+    assert late["part"] == first["part"] and sorted(_docs(db)) == sorted([r["id"], r2["id"]])
+    assert _docs(db)[r2["id"]]["path"] == first["part"]["path"]
+
+
+def test_the_clients_documents_backfill_and_who_sees_them():
+    db, bucket, t = _setup()
+    r = _send(db, bucket, OWNER, t)
+    tok = _token(r["link"])
+    _pub(db, bucket, tok, action="sign", signaturePng=base64.b64encode(PNG).decode())
+    _pub(db, bucket, tok, action="build")
+    # a contract signed before the documents were kept: no entry — clientDocs adds it, once
+    db.data.pop(("tenants", "t1", "clients", "c1", "docs", r["id"]))
+    assert [x["id"] for x in signing.run(db, bucket, OWNER, {"action": "clientDocs", "clientId": "c1"}, build101)["docs"]] == [r["id"]]
+    assert [x["id"] for x in signing.run(db, bucket, OWNER, {"action": "clientDocs", "clientId": "c1"}, build101)["docs"]] == [r["id"]]
+    # an entry failing to write never fails the build: the signed PDF is kept
+    r2 = _send(db, bucket, OWNER, t)
+    tok2 = _token(r2["link"])
+    _pub(db, bucket, tok2, action="sign", signaturePng=base64.b64encode(PNG).decode())
+    old = client_signing.doc_once
+    try:
+        client_signing.doc_once = lambda *a: (_ for _ in ()).throw(RuntimeError("down"))
+        assert _pub(db, bucket, tok2, action="build")["status"] == "signed"
+    finally:
+        client_signing.doc_once = old
+    assert r2["id"] not in _docs(db)
+    assert r2["id"] in [x["id"] for x in signing.run(db, bucket, OWNER, {"action": "clientDocs", "clientId": "c1"}, build101)["docs"]]
+    # a supplier, a client login, a login without the Clients section and another firm: nothing
+    assert signing.run(db, bucket, SUPPLIER, {"action": "clientDocs", "clientId": "c1"}, build101) == {"error": signing.E_NO_RIGHT}
+    assert signing.run(db, bucket, CLIENT_LOGIN, {"action": "clientDocs", "clientId": "c1"}, build101) == {"error": signing.E_NO_RIGHT}
+    no_clients = {"uid": "u6", "role": "staff", "tenantId": "t1", "rt": ["workers", "firmSign"]}
+    assert signing.run(db, bucket, no_clients, {"action": "clientDocs", "clientId": "c1"}, build101) == {"error": client_signing.E_NO_CLIENTS}
+    assert signing.run(db, bucket, OTHER, {"action": "clientDocs", "clientId": "c1"}, build101)["docs"] == []
+    assert signing.run(db, bucket, OWNER, {"action": "clientDocs", "clientId": "../c1"}, build101) == {"error": client_signing.E_NO_CLIENT}
+
+
 # ---- two calls at once ------------------------------------------------------------------------------
 
 def test_a_status_moves_only_while_it_still_holds():

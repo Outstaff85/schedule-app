@@ -33,7 +33,7 @@ import { Field } from './ClientEditor';
 import { readFileB64 } from './logic/uploads';
 import { FirmSealWindow } from './FirmSeal';
 import {
-  MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, kindOf, listTemplates, marksNotFilled, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sizeText,
+  MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, kindOf, listTemplates, marksNotFilled, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sealOn, sizeText,
   templateFile, updateTemplate, type ContractTemplate, type Placed, type Prepared, type TemplateKind,
 } from './contracts';
 
@@ -97,8 +97,8 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   };
   const makeDefault = (t: ContractTemplate) => updateTemplate(t.id, { isDefault: true }).then(() => { load(); api.toast(tr('Default for its category')); },
     e => api.toast(tr(String(e?.message || e))));
-  const toggleSeal = (t: ContractTemplate) => updateTemplate(t.id, { sealEveryPage: !t.sealEveryPage }).then(() => {
-    load(); api.toast(t.sealEveryPage ? tr('Stamp on every page: off') : tr('Stamp on every page: on'));
+  const toggleSeal = (t: ContractTemplate) => updateTemplate(t.id, { sealEveryPage: !sealOn(t) }).then(() => {
+    load(); api.toast(sealOn(t) ? tr('Stamp on every page: off') : tr('Stamp on every page: on'));
   }, e => api.toast(tr(String(e?.message || e))));
   const sample = (t: ContractTemplate) => templateFile(t.id, true).then(r => openPdf(r.pdfBase64, t.name + '.pdf'), e => api.toast(tr(String(e?.message || e))));
 
@@ -109,7 +109,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
       chips={<>{t.category && <Badge variant="default" data-testid="contract-category">{t.category}</Badge>}
         {t.isDefault && <Badge variant="ok" data-testid="contract-default">{tr('Default')}</Badge>}
         <Badge variant={kindOf(t) === 'client' ? 'info' : 'default'} data-testid="contract-kind" data-kind={kindOf(t)}>{kindOf(t) === 'client' ? tr('For a client') : tr('For a worker')}</Badge>
-        {t.sealEveryPage && <Badge variant="default" data-testid="contract-seal">{tr('Stamp')}</Badge>}</>}
+        {sealOn(t) && <Badge variant="default" data-testid="contract-seal">{tr('Stamp')}</Badge>}</>}
       sub={<span className="grid whitespace-normal">
         <span>{[sizeText(t.size), dateText(t.createdAt), tr('{0} signed', { 0: t.signedCount || 0 })].join(' · ')}</span>
         {!!t.unknown?.length && <span className="inline-flex items-center gap-1 text-warn"><IconAlertTriangle className="size-3.5" />{tr('Unknown marks: {0}', { 0: t.unknown.join(', ') })}</span>}
@@ -120,7 +120,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
         { label: tr('Category'), icon: <IconTag />, onSelect: () => setEdit({ t, what: 'category' }) },
         ...(t.isDefault ? [] : [{ label: tr('Make default'), icon: <IconStar />, onSelect: () => void makeDefault(t) }]),
         { label: tr('Replace file'), icon: <IconRefresh />, onSelect: () => { replaceFor.current = t; kindFor.current = kindOf(t); pick.current?.click(); } },
-        { label: t.sealEveryPage ? tr('Stamp on every page: turn off') : tr('Stamp on every page: turn on'), icon: <IconRubberStamp />, onSelect: () => void toggleSeal(t) },
+        { label: sealOn(t) ? tr('Stamp on every page: turn off') : tr('Stamp on every page: turn on'), icon: <IconRubberStamp />, onSelect: () => void toggleSeal(t) },
       ]}
       onDelete={() => remove(t)} />
   );
@@ -203,7 +203,7 @@ export function UploadWindow({ file, replace, categories, api, workerId, clientI
   const [sample, setSample] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   // the firm's signature and stamp on every page: on for a new template, a replaced one's own value
-  const [sealOn, setSealOn] = React.useState(replace ? !!replace.sealEveryPage : true);
+  const [sealOn, setSealOn] = React.useState(replace ? sealOn(replace) : true);
   const sealFirst = React.useRef(sealOn);
   React.useEffect(() => {
     let live = true;

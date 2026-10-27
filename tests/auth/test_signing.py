@@ -220,6 +220,21 @@ def test_a_send_made_before_the_seal_draws_none():
     assert _widths(v["pdfBase64"]) == [[]]
 
 
+def test_a_template_saved_before_the_tick_freezes_every_page_on():
+    """No sealEveryPage field (a template saved before the tick) reads as on; a send already made keeps what it froze."""
+    db, bucket, t = _setup()
+    db.data[("tenants", "t1", "contractTemplates", t["id"])].pop("sealEveryPage", None)
+    _seal_firm(db, bucket, 200)
+    rid = _send(db, bucket, OWNER, t)["id"]
+    assert db.data[("tenants", "t1", "signRequests", rid)]["seal"]["everyPage"] is True
+    v = signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "contract"}, build101, finder=finder(db))
+    assert _widths(v["pdfBase64"]) == [[200, 300]]
+    # the template turned off later: the send keeps its frozen tick
+    db.data[("tenants", "t1", "contractTemplates", t["id"])]["sealEveryPage"] = False
+    v = signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "contract"}, build101, finder=finder(db))
+    assert _widths(v["pdfBase64"]) == [[200, 300]]
+
+
 def test_a_template_without_the_tick_draws_no_seal_and_values_never_carry_it():
     db, bucket, t = _setup()
     db.data[("tenants", "t1", "contractTemplates", t["id"])]["sealEveryPage"] = False

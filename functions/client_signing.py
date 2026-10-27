@@ -18,11 +18,16 @@ the manager's phone (way `person`, no link).
       signed), seal {signature, stamp, everyPage}, signDate, dateFixed, tokenHash,
       expiresAt (the send + 30 days), sentAt, sentBy, signedAt (server time),
       signedAtIso, sigPath, part {path, name, size}, appliedAt
+  tenants/<t>/clients/<c>/docs/<request id>: the client's documents — one entry per signed contract, written once when its
+      PDF is built (both ways of signing; doc_once), never overwritten: {id, type: 'contract', name, fileId, path,
+      mediaType, size, uploadedAt, signed, signedAt, signDate, signRequestId, templateId, templateName, templateVersion}.
+      Under the client and not a field of it: the client record is written whole by the manager app's save, which
+      would drop a field the server added; no rule opens it — read through `clientDocs`.
   clientSignTokens/<sha256(token)>: {tenantId, requestId, expiresAt} — the link's index
   Storage: tenants/<t>/clients/<c>/sign/<id>/ (the frozen template; its seal under tenants/<t>/firmSeal/frozen/clients/<c>/sign/<id>/),
       …/clients/<c>/signature/<ms>-<random>-signature.png, …/clients/<c>/documents/<ms>-contract-<name>.pdf
 
-No browser reads or writes either collection (firestore.rules grant nothing);
+No browser reads or writes any of them (firestore.rules grant nothing);
 the page sees nothing of the firm but its own request — no workers, hours, other
 requests or files. The function keeps no state per request.
 """
@@ -196,6 +201,44 @@ def _pdf(req, bucket, details, signature=None, date=None):
     return data, _name(req, details)
 
 
+def _docs(db, tenant, cid):
+    return db.collection("tenants").document(tenant).collection("clients").document(cid).collection("docs")
+
+
+def doc_once(db, tenant, rid, req, part):
+    """The signed contract's entry in the client's documents: added once per request (its id is the request's), never
+    overwritten; True when added now."""
+    cid = str(req.get("clientId") or "")
+    if not cid or "/" in cid or not part or not part.get("path"):
+        return False
+    ref = _docs(db, tenant, cid).document(rid)
+    if ref.get().exists:
+        return False
+    signed_at = req.get("signedAtIso") or req.get("signedAt")
+    if signed_at is not None and not isinstance(signed_at, str):
+        signed_at = signed_at.isoformat() if hasattr(signed_at, "isoformat") else str(signed_at)
+    entry = {"id": rid, "type": "contract", "name": part.get("name") or "", "fileId": part["path"], "path": part["path"],
+             "mediaType": "application/pdf", "size": int(part.get("size") or 0), "uploadedAt": signing._now_iso(),
+             "signed": True, "signedAt": signed_at or None, "signDate": req.get("signDate") or None, "signRequestId": rid,
+             "templateId": req.get("templateId") or "", "templateName": req.get("templateName") or "",
+             "templateVersion": int(req.get("templateVersion") or 1)}
+    try:
+        ref.create(entry)  # create, not set: a second build at the same moment never writes over the first
+    except Exception:
+        if not ref.get().exists:
+            raise
+        return False
+    return True
+
+
+def _doc_safe(db, tenant, rid, req, part):
+    """doc_once after a build: the signed PDF is kept whatever happens here — clientDocs adds a missing entry later."""
+    try:
+        doc_once(db, tenant, rid, req, part)
+    except Exception:
+        pass
+
+
 def _documents(db, bucket, tenant, rid, req, body, server_time):
     """view / sign / build — the same for the client's page and Sign here in the client window."""
     action = str(body.get("action") or "")
@@ -240,6 +283,7 @@ def _documents(db, bucket, tenant, rid, req, body, server_time):
         if status not in ("signing", "signed"):
             return {"error": signing.E_NO_REQUEST}
         if req.get("part"):  # built once, never again
+            _doc_safe(db, tenant, rid, req, req["part"])
             return {"ok": True, "part": req["part"], "status": status}
         sig = bucket.blob(req["sigPath"]).download_as_bytes()
         details = req.get("clientDetails") or req.get("details") or {}
@@ -255,7 +299,9 @@ def _documents(db, bucket, tenant, rid, req, body, server_time):
                 bucket.blob(path).delete()
             if not kept.get("part"):
                 return {"error": signing.E_NO_REQUEST}
+            _doc_safe(db, tenant, rid, kept, kept["part"])
             return {"ok": True, "part": kept["part"], "status": kept.get("status")}
+        _doc_safe(db, tenant, rid, req, part)
         return {"ok": True, "part": part, "status": "signed"}
 
     return {"error": "Unknown action"}
@@ -276,6 +322,22 @@ def run(db, bucket, claims, body, tenant, server_time=None):
         rows.sort(key=lambda r: str(r.get("sentAt") or ""), reverse=True)
         return {"ok": True, "requests": rows[:300], "canFirmSign": seal_mod.may_firm_sign(claims),
                 "canSeeBilling": signing.may_see_billing(claims)}
+
+    if action == "clientDocs":
+        # the client's documents (its signed contracts); a signed request whose entry is missing (signed before the
+        # documents were kept, or its entry failed) gets it now, once
+        if not sees_clients:
+            return {"error": E_NO_CLIENTS}
+        cid = str(body.get("clientId") or "")
+        if not cid or "/" in cid:
+            return {"error": E_NO_CLIENT}
+        for d in col.stream():
+            x = d.to_dict() or {}
+            if x.get("clientId") == cid and x.get("status") == "signed" and x.get("part"):
+                doc_once(db, tenant, d.id, x, x["part"])
+        docs = [dict(d.to_dict() or {}, id=d.id) for d in _docs(db, tenant, cid).stream()]
+        docs.sort(key=lambda r: str(r.get("signedAt") or r.get("uploadedAt") or ""), reverse=True)
+        return {"ok": True, "docs": docs[:300]}
 
     if action == "clientApplied":
         if not sees_clients:
@@ -343,7 +405,7 @@ def _send(db, bucket, claims, body, tenant):
     frozen = prefix + "contract-template.pdf"
     bucket.blob(frozen).upload_from_string(bucket.blob(tpl["fileId"]).download_as_bytes(), content_type="application/pdf")
     # the firm's signature and stamp as they are now: a later change never changes this send
-    seal = dict(seal_mod.freeze(db, bucket, tenant, prefix), everyPage=bool(tpl.get("sealEveryPage")))
+    seal = dict(seal_mod.freeze(db, bucket, tenant, prefix), everyPage=contracts.seal_every_page(tpl))
     # a waiting send of the same client is replaced, and its link stops working
     col = _col(db, tenant)
     for r in col.stream():

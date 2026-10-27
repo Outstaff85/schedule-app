@@ -5,7 +5,8 @@
 // (canFirmSign): Send to sign — the link with Send on WhatsApp (to the client's contact phone) and Copy — and Sign
 // here (the client signs in this window: ClientSignFlow), and the firm's signature and stamp. The values come from
 // the window's live form (clientContractValues): what the client pays only for a login that sees client billing.
-// The signed contracts are listed (a tap opens the PDF); a signing's details fill the client's EMPTY contact fields
+// The signed contracts are the client's documents (clientDocs: an entry the server adds once per signed contract), with a
+// signed request not among them yet as a fallback (signedLines); a tap opens the PDF; a signing's details fill the client's EMPTY contact fields
 // (never what the firm typed), then the request is marked taken on (clientApplied).
 import * as React from 'react';
 import { IconBrandWhatsapp, IconClipboardText, IconFileCheck, IconLoader2, IconRubberStamp, IconSend, IconSignature, IconUpload } from '@tabler/icons-react';
@@ -24,7 +25,8 @@ import { FirmSealWindow } from './FirmSeal';
 import { canFirmSign, canSeeBilling, isFirmAdminSession } from './logic/access';
 import { clientContractValues } from './logic/contract-values';
 import {
-  clientCall, clientWhatsapp, detailsOf, latestRequest, takeOnPatch, toTakeOn, type ClientDetails, type ClientSignRequest,
+  clientCall, clientWhatsapp, detailsOf, latestRequest, signedLines, takeOnPatch, toTakeOn, type ClientDetails, type ClientDoc, type ClientSignRequest,
+  type SignedLine,
 } from './logic/client-contract';
 import { loadFirestoreBackend } from './data/api';
 
@@ -52,6 +54,7 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
 }) {
   const [list, setList] = React.useState<ContractTemplate[] | null>(null);
   const [reqs, setReqs] = React.useState<ClientSignRequest[] | null>(null);
+  const [docs, setDocs] = React.useState<ClientDoc[] | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const [sent, setSent] = React.useState<{ link: string; wa: string } | null>(null);
@@ -68,6 +71,7 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
   const loadReqs = React.useCallback(() => {
     if (!clientId) return;
     clientCall<{ requests: ClientSignRequest[] }>({ action: 'clientList', clientId }).then(r => setReqs(r.requests || []), () => setReqs([]));
+    clientCall<{ docs: ClientDoc[] }>({ action: 'clientDocs', clientId }).then(r => setDocs(r.docs || []), () => setDocs([]));
   }, [clientId]);
   React.useEffect(() => { if (opened && list === null) loadTemplates(); }, [opened, list, loadTemplates]);
   React.useEffect(() => { if (opened && reqs === null) loadReqs(); }, [opened, reqs, loadReqs]);
@@ -79,9 +83,12 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
       if (r.status !== 'signing' || r.part || building.current.has(r.id)) continue;
       building.current.add(r.id);
       clientCall<{ part: ClientSignRequest['part']; status: ClientSignRequest['status'] }>({ action: 'clientBuild', id: r.id })
-        .then(b => setReqs(cur => (cur || []).map(x => (x.id === r.id ? { ...x, part: b.part, status: b.status } : x))), () => {});
+        .then(b => {
+          setReqs(cur => (cur || []).map(x => (x.id === r.id ? { ...x, part: b.part, status: b.status } : x)));
+          clientCall<{ docs: ClientDoc[] }>({ action: 'clientDocs', clientId }).then(d => setDocs(d.docs || []), () => {});
+        }, () => {});
     }
-  }, [reqs, may]);
+  }, [reqs, may]); // eslint-disable-line react-hooks/exhaustive-deps
   // a signing's details: the client's empty contact fields filled from them, once
   React.useEffect(() => {
     for (const r of toTakeOn(reqs || [])) {
@@ -101,7 +108,7 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
   const tpl = chosen || def;
   const latest = latestRequest(reqs || []);
   const status = clientContractStatus(latest);
-  const signed = (reqs || []).filter(r => r.part);
+  const signed = signedLines(docs, reqs);
 
   const send = async (way: 'remote' | 'person') => {
     if (!tpl || busy) return;
@@ -123,8 +130,8 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
   const call = (id: string): ClientSignCall => (action, body) =>
     clientCall({ action: 'client' + action[0].toUpperCase() + action.slice(1), id, ...body }) as any;
   const copy = () => { if (sent) navigator.clipboard?.writeText(sent.link).then(() => api.toast(tr('Link copied!')), () => {}); };
-  const openSigned = async (r: ClientSignRequest) => {
-    try { window.open(await (await loadFirestoreBackend()).storageUrl(r.part!.path), '_blank', 'noopener'); }
+  const openSigned = async (l: SignedLine) => {
+    try { window.open(await (await loadFirestoreBackend()).storageUrl(l.path), '_blank', 'noopener'); }
     catch (e: any) { api.toast(tr(String(e?.message || e))); }
   };
   const label = (t: ContractTemplate) => t.name + (t.clientId ? ' · ' + tr('this client only') : '');
@@ -164,9 +171,9 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
       </>}
       {signed.length > 0 && <>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-2">{tr('Signed contracts')}</p>
-        <PagedList items={signed} render={r => (
-          <Plate key={r.id} data-testid="client-contract-signed" data-id={r.id} className="mb-1.5" color="var(--ok)" icon={<IconFileCheck />}
-            title={r.part!.name} sub={tr('Signed {0}', { 0: r.signDate || dateText(r.signedAtIso) })} onOpen={() => void openSigned(r)} />
+        <PagedList items={signed} render={l => (
+          <Plate key={l.id} data-testid="client-contract-signed" data-id={l.id} data-from={l.from} className="mb-1.5" color="var(--ok)" icon={<IconFileCheck />}
+            title={l.name} sub={tr('Signed {0}', { 0: l.signDate || dateText(l.signedAt) })} onOpen={() => void openSigned(l)} />
         )} />
       </>}
       <div className="flex flex-wrap gap-2">

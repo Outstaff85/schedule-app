@@ -283,7 +283,7 @@ def run(db, bucket, claims, body, build101, server_time=None):
         bucket.blob(frozen).upload_from_string(bucket.blob(tpl["fileId"]).download_as_bytes(), content_type="application/pdf")
         # the firm's signature and stamp as they are now: a later change never changes this send
         seal = dict(seal_mod.freeze(db, bucket, tenant, f"tenants/{tenant}/workers/{wid}/sign/{rid}/"),
-                    everyPage=bool(tpl.get("sealEveryPage")))
+                    everyPage=contracts.seal_every_page(tpl))
         prev_id, prev = _current(db, tenant, wid)
         if prev_id and prev.get("status") == "sent":
             col.document(prev_id).update({"status": "replaced"})

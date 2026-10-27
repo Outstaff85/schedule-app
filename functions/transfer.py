@@ -183,7 +183,7 @@ def _pdf(db, bucket, req, worker, which, build101, signature=None):
             return None, None
         values = dict(contract_values(worker, profile, start), sign_date=date, today=signing.today_il())
         frozen = req.get("seal")
-        seal = seal_mod.read_frozen(bucket, dict(frozen, everyPage=bool(tpl.get("sealEveryPage")))) if isinstance(frozen, dict) else None
+        seal = seal_mod.read_frozen(bucket, dict(frozen, everyPage=contracts.seal_every_page(tpl))) if isinstance(frozen, dict) else None
         data = contracts.fill(bucket.blob(tpl["fileId"]).download_as_bytes(), values, tpl.get("placed"), signature, seal=seal)
         return data, (tpl.get("name") or "Contract") + " - " + (worker.get("name") or "").strip() + ".pdf"
     p = dict(form101_payload(worker, profile, date, start), extraPages=signing._stored_pages(bucket, worker))

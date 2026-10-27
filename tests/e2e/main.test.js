@@ -2116,6 +2116,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const fsOff = await sealSample();
   ok(fsOff[0].images.filter(i => i.bbox[0] > fsOff[0].w / 2 && i.bbox[1] > fsOff[0].h / 2).length === 0,
     'firm\'s signature and stamp: without the tick the sample has no seal at the bottom ' + JSON.stringify(fsOff));
+  // a template saved before the tick (no field) reads as on: its chip, ⋮ offers to turn it off, its sample has the seal
+  await fetch('http://127.0.0.1:5055/contractSealFieldDrop', {method: 'POST'});
+  await p.evaluate(() => { switchAdminPane(null); switchAdminPane('contracts'); });
+  await p.waitForSelector('[data-testid="contract-row"] [data-testid="contract-seal"]', {timeout: 30000});
+  const fsOld = await sealSample();
+  await p.click('[data-testid="contract-row"] button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  const fsOldMenu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Stamp on every page: turn off")');
+  ok(/Stamp on every page: turn off/.test(fsOldMenu) && fsOld[0].images.filter(i => i.bbox[0] > fsOld[0].w / 2 && i.bbox[1] > fsOld[0].h / 2).length === 2
+    && await waitFor(p, () => !document.querySelector('[data-testid="contract-row"] [data-testid="contract-seal"]'), 15000),
+    'firm\'s signature and stamp: a template without the field reads as on (chip, ⋮ turn off, the seal in its sample); turned off again ' + JSON.stringify({fsOldMenu, fsOld}));
   await p.evaluate(() => { window.open = window.__sealOrigOpen; });
   await fetch('http://127.0.0.1:5055/firmSealClear', {method: 'POST'});
   // D6: a worker of firm two moves to this firm — the request, the worker's consent and signing in their own page, the copy.
@@ -2275,6 +2286,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(await waitFor(p, () => T.val('cSignerName') === 'Moshe Levi' && T.val('cSignerRole') === 'CEO', 10000)
     && await p.evaluate(() => T.val('cContactPhone') === '050-1234567' && document.querySelector('[data-testid="client-contract-status"]').dataset.state === 'signed'),
     'client contracts: the signed contract is listed on the client; the signing fills its empty signer fields and keeps the phone the firm typed');
+  // the signed contract is one of the client's documents (written once by the server), and the window lists it from there
+  const ccDocs1 = await (await fetch('http://127.0.0.1:5055/clientDocs', {method: 'POST'})).json();
+  await waitFor(p, () => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].every(e => e.dataset.from === 'doc'), 15000);
+  const ccListed1 = await p.evaluate(() => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].map(e => ({id: e.dataset.id, from: e.dataset.from})));
+  ok(ccDocs1.length === 1 && ccDocs1[0].id === ccR.id && ccDocs1[0].type === 'contract' && ccDocs1[0].signed === true && ccDocs1[0].signRequestId === ccR.id
+    && ccDocs1[0].path === ccR.part.path && ccListed1.length === 1 && ccListed1[0].id === ccR.id && ccListed1[0].from === 'doc',
+    'client contracts: the signed contract is in the client\'s documents, once, and listed from them ' + JSON.stringify({ccDocs1, ccListed1}));
   // Sign here: the client signs in the window
   await p.click('#clientModal [data-testid="client-contract-here"]');
   await p.waitForSelector('[data-testid="client-contract-here-window"] [data-testid="client-sign-show"]', {timeout: 30000});
@@ -2290,6 +2308,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('[data-testid="client-contract-here-window"] [data-testid="sign-button"]');
   ok(await waitFor(p, () => !document.querySelector('[data-testid="client-contract-here-window"]') && document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]').length === 2, 40000),
     'client contracts: Sign here — signed in the window, the second signed contract listed');
+  const ccDocs2 = await (await fetch('http://127.0.0.1:5055/clientDocs', {method: 'POST'})).json();
+  await waitFor(p, () => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].every(e => e.dataset.from === 'doc'), 15000);
+  const ccListed2 = await p.evaluate(() => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].map(e => e.dataset.from));
+  ok(ccDocs2.length === 2 && new Set(ccDocs2.map(d => d.id)).size === 2 && ccDocs2.every(d => d.type === 'contract' && d.signed === true && d.id === d.signRequestId)
+    && ccListed2.length === 2 && ccListed2.every(f => f === 'doc'),
+    'client contracts: Sign here adds its own entry to the client\'s documents (one per signed contract) ' + JSON.stringify({ccDocs2, ccListed2}));
   // a staff login without the right "Firm's signature and stamp; client contracts" sees the status, not Send
   const ccStaff = await p.evaluate(async () => {
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(200);

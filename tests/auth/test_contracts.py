@@ -341,9 +341,15 @@ def test_the_every_page_tick_on_templates():
     on = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "name": "A"})["template"]
     off = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "name": "B", "sealEveryPage": False})["template"]
     assert on["sealEveryPage"] is True and off["sealEveryPage"] is False
-    # a template saved before the tick: no field, which is off
+    # a template saved before the tick: no field, which is on too (owner, 2026-10-27) — only an explicit false is off
     db.data[("tenants", "t1", "contractTemplates", on["id"])].pop("sealEveryPage")
-    assert "sealEveryPage" not in contracts.run(db, bucket, OWNER, {"action": "list"})["templates"][0]
+    assert contracts.run(db, bucket, OWNER, {"action": "list"})["templates"][0]["sealEveryPage"] is True
+    assert contracts.seal_every_page({}) and contracts.seal_every_page({"sealEveryPage": None}) and not contracts.seal_every_page({"sealEveryPage": False})
+    # its sample draws the seal (the made-up signature and stamp + the worker's signature at its mark)
+    smp = contracts.run(db, bucket, OWNER, {"action": "file", "id": on["id"], "sample": True})
+    assert len(pymupdf.open(stream=base64.b64decode(smp["pdfBase64"]))[0].get_images()) == 3
+    # the ⋮ toggle of such a template turns it off
+    assert contracts.run(db, bucket, OWNER, {"action": "update", "id": on["id"], "sealEveryPage": False})["template"]["sealEveryPage"] is False
     # a new version keeps the old value unless it sends one; update toggles it
     assert contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "replaceId": off["id"]})["template"]["sealEveryPage"] is False
     assert contracts.run(db, bucket, OWNER, {"action": "update", "id": off["id"], "sealEveryPage": True})["template"]["sealEveryPage"] is True

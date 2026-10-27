@@ -200,6 +200,11 @@ class H(BaseHTTPRequestHandler):
             rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('clientSignRequests').stream()]
             rows.sort(key=lambda r: str(r.get('sentAt') or ''))
             status, data = 200, json.dumps(rows, default=str).encode()
+        elif self.path == '/clientDocs':
+            # the client c1's documents (tenants/<t>/clients/c1/docs, written by sign_documents once per signed contract)
+            rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('clients').document('c1').collection('docs').stream()]
+            rows.sort(key=lambda r: str(r.get('signedAt') or ''))
+            status, data = 200, json.dumps(rows, default=str).encode()
         elif self.path.startswith('/clientSignedPdf/'):
             # the text of a client's signed contract in Storage: what was printed
             import pymupdf
@@ -229,6 +234,12 @@ class H(BaseHTTPRequestHandler):
             rec = DB.collection('tenants').document(T1).collection('firmSeal').document('current').get().to_dict() or {}
             bk = _orig_bucket('demo-schedule.appspot.com')
             status, data = 200, json.dumps({k: (dict(v, exists=bk.blob(v['path']).exists()) if v else None) for k, v in rec.items()}, default=str).encode()
+        elif self.path == '/contractSealFieldDrop':
+            # firm one's templates as saved before the every-page tick: no sealEveryPage field (read as on)
+            from google.cloud import firestore as _fs
+            for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream():
+                d.reference.update({'sealEveryPage': _fs.DELETE_FIELD})
+            status, data = 200, b'{}'
         elif self.path == '/firmSealClear':
             # the checks after it see a firm with no signature and stamp, as seeded
             ref = DB.collection('tenants').document(T1).collection('firmSeal').document('current')

@@ -19,9 +19,11 @@ export type ContractTemplate = {
   kind?: TemplateKind;
   /** a client's own template (listed only with that client) */
   clientId?: string | null;
-  /** the firm's signature and stamp at the bottom right of every page (absent: a template saved before it — off) */
+  /** the firm's signature and stamp at the bottom right of every page (absent: a template saved before it — on too; only false is off) */
   sealEveryPage?: boolean;
 };
+/** The every-page seal of a template: on unless explicitly off (functions/contracts.py seal_every_page — the same rule). */
+export const sealOn = (t: Pick<ContractTemplate, 'sealEveryPage'> | null | undefined) => t?.sealEveryPage !== false;
 export type Prepared = {
   lightBase64: string; sampleBase64: string; origSize: number; lightSize: number; pictures: number[];
   marks: string[]; unknown: string[]; pages: { w: number; h: number; png: string }[]; heavy: boolean;
