@@ -564,7 +564,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       const wait = ms => new Promise(res => setTimeout(res, ms));
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
       const sw = () => document.querySelector('[data-testid=account-theme] [data-testid=theme-switch]');
-      r.items = [...sw().querySelectorAll('button[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
+      r.items = [...sw().querySelectorAll('button[data-theme-v]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
       // the menu in the windows' glass (owner 2026-10-26): the sheet gradient and the glass edge, its tail in the same
       // fill (never black) with the same edge; Dark / Light / System fit inside the menu, none cut off
       { const m = document.querySelector('[data-testid=account-menu]'), cs = getComputedStyle(m), root = getComputedStyle(document.documentElement);
@@ -573,10 +573,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         r.menuGlass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim());
         r.tail = !!tail && getComputedStyle(tail).fill === rgb(root.getPropertyValue('--plate-top').trim()) && getComputedStyle(tail).fill !== 'rgb(0, 0, 0)' && getComputedStyle(edge).stroke === cs.borderTopColor;
         const mb = m.getBoundingClientRect();
-        r.fits = [...sw().querySelectorAll('button[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
+        r.fits = [...sw().querySelectorAll('button[data-theme-v]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
       sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
-      r.on = (sw().querySelector('button[data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'unchecked'; // on = Dark, off once Light is picked
+      r.on = (sw().querySelector('button[data-theme-v][data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'unchecked'; // on = Dark, off once Light is picked
       r.open = !!document.querySelector('[data-testid=account-menu]');
       r.ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
       document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await wait(200);
@@ -1686,7 +1686,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w.docs = [{id: 'vperm', type: 'visa', name: 'v.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: new Date().toISOString(), expiry: localYMD(d)}];
     const dbl = async () => {
       document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('schedule'); await T.tick(400);
-      const pl = document.querySelector('#scheduleRoot [data-testid="sched-worker"] .og-plate, [data-testid="sched-worker"] .og-plate');
+      const pl = document.querySelector('#scheduleRoot [data-testid="sched-worker"] > [data-slot="plate"] > [role="button"]');
       if (!pl) return 'no plate';
       pl.dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); await T.tick(300);
       return document.getElementById('workerOverlay').classList.contains('open');
@@ -1918,7 +1918,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="sign-sent"]', {timeout: 30000});
   sg.sent = await p.evaluate(() => ({wa: (document.querySelector('[data-testid="sign-whatsapp"]') || {}).href || '', chip: (document.querySelector('[data-testid="card-sign-state"]') || {}).dataset?.state}));
   const sgReqs1 = await (await fetch('http://127.0.0.1:5055/signRequests', {method: 'POST'})).json();
-  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/.*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && /documents to sign\. Open your personal account/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
+  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/[\s\S]*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && /documents to sign\. Open your personal account/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
     && sgReqs1.length === 1 && sgReqs1[0].status === 'sent' && sgReqs1[0].workerId === 'w1' && sgReqs1[0].values.full_name !== undefined && /\/sign\//.test(sgReqs1[0].templatePath),
     'signing: Documents to sign — the category\'s default picked, the date for a login with the right; Send to sign keeps the template frozen, offers the link for WhatsApp, the card says Sent to sign ' + JSON.stringify({sg, sgReqs1: sgReqs1.map(r => ({s: r.status, w: r.workerId, t: r.templatePath}))}));
   await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
@@ -2626,9 +2626,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const plateH = await p.evaluate(async () => {
     switchTab('workers'); await T.tick(100);
     const hs = [...document.querySelectorAll('#workersRoot [data-testid="worker-plate"]')].map(e => Math.round(e.getBoundingClientRect().height));
-    return {hs, chip: !!document.querySelector('#workersRoot [data-testid="worker-chip1"]'), space: !!document.querySelector('#workersRoot [data-testid="worker-chip-space"]')};
+    return {hs, chip: !!document.querySelector('#workersRoot [data-testid="worker-chip1"]'), chips: document.querySelectorAll('#workersRoot [data-testid="worker-chip1"]').length, space: !!document.querySelector('#workersRoot [data-testid="worker-chip-space"]')};
   });
-  ok(plateH.hs.length > 1 && Math.max(...plateH.hs) - Math.min(...plateH.hs) <= 1 && (plateH.chip ? plateH.space : true),
+  ok(plateH.hs.length > 1 && Math.max(...plateH.hs) - Math.min(...plateH.hs) <= 1 && (plateH.chip && plateH.chips < plateH.hs.length ? plateH.space : true),
     'workers: every plate the same height, a notice chip or not ' + JSON.stringify(plateH));
   // Worker documents (stage 13): plates with Select in the card's documents box; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
   const wd = await p.evaluate(async () => {
