@@ -74,7 +74,7 @@ type KeptStored = Stored & { batch: string; source: Batch['source'] };
 type Typed = Omit<Stored, 'id' | 'turn' | 'blurry'> & { kind?: Doctype };
 
 /** The statuses of a shot still in work: its pages are typed once it settles (a refined cut would be typed again). */
-const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
+const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'preparing_accurate', 'refining', 'looking_more']);
 /** How long Done waits for the pages' types before it goes on without the ones still missing. */
 const WAIT_MS = 30e3;
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)

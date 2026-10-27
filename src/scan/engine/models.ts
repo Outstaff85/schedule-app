@@ -110,7 +110,33 @@ export async function cpuSession(ort: Ort, s: SurfaceRef, name: string, bytes?: 
   return ort.InferenceSession.create(await (bytes || fetchModel(s, name, () => {}, opts)), { executionProviders: ['wasm'] });
 }
 
-export interface Opened { sess: OrtSession; ep: Ep; layout: GpuLayout | null }
+/** checked: on the GPU, whether its self-test ran and passed now ('ran') or was skipped — passed before on this
+ *  device with the same model, ONNX Runtime and browser ('skipped'); null on the CPU. */
+export interface Opened { sess: OrtSession; ep: Ep; layout: GpuLayout | null; checked: 'ran' | 'skipped' | null }
+
+// The GPU self-test remembered on success only (owner, 2026-10-27 — an exception to "nothing remembered between
+// opens", which stays for failures): a model whose check passed on a GPU layout is kept on the device (the page's
+// localStorage, the surface's own key — engines.ts) with what it passed under: the model file's stamp (models.json,
+// modelStamp), the ONNX Runtime version and the browser (navigator.userAgent). A later open with all three the same
+// skips the check (the session is still started and warmed up) and uses that layout; any of them different → the
+// full check. A failed check is never kept; a run-time failure of the GPU session removes the pass (engines.ts).
+export interface GpuPass { stamp: string; ort: string; ua: string; layout: GpuLayout }
+export type GpuPasses = Record<string, GpuPass>;
+/** The ONNX Runtime build's version (its env.versions.web), else the build's folder. */
+export const ortVersion = (ort: Ort, dir = ''): string => (ort.env.versions && ort.env.versions.web) || dir;
+/** The browser and its version, as this page or thread sees it. */
+export const userAgent = (): string => (((globalThis as { navigator?: { userAgent?: string } }).navigator || {}).userAgent) || '';
+/** The layout a remembered pass gives when its key is the same (the stamp, the ONNX Runtime version, the browser);
+ *  null — the full check — when anything differs, the stamp is unknown or there is no pass. */
+export function gpuPassed(rec: GpuPass | null | undefined, stamp: string | null, ort: string, ua: string): GpuLayout | null {
+  if (!rec || !stamp || !ort) return null;
+  if (rec.stamp !== stamp || rec.ort !== ort || rec.ua !== ua) return null;
+  return rec.layout === 'NHWC' || rec.layout === 'NCHW' ? rec.layout : null;
+}
+/** The pass to remember for a session just opened: only when its GPU check ran and passed now and the stamp is known. */
+export function newGpuPass(o: Opened, stamp: string | null, ort: string, ua: string): GpuPass | null {
+  return o.ep === 'webgpu' && o.checked === 'ran' && o.layout && stamp && ort ? { stamp, ort, ua, layout: o.layout } : null;
+}
 
 // GPU first when asked, else CPU; the warm-up run compiles the GPU shaders now
 // rather than at the first camera frame or the capture.
@@ -119,14 +145,17 @@ export interface Opened { sess: OrtSession; ep: Ep; layout: GpuLayout | null }
 // opts (the engine's threads and the page way): the model's bytes fetched already (beside ONNX Runtime's load —
 // started with downloadProgress, so the status line is the same), its stamp for the kept copy, and `time`: the
 // "Time: …" line of each step for the lab's loading log (none without it).
-export interface OpenOpts { bytes?: Promise<Uint8Array>; stamp?: string | null; time?: OnLog }
+// passed: the GPU layout whose check passed before on this device with the same key (gpuPassed): it is tried first
+// and its check skipped — "Time: GPU check skipped — passed before on this device (<layout>)".
+export interface OpenOpts { bytes?: Promise<Uint8Array>; stamp?: string | null; time?: OnLog; passed?: GpuLayout | null }
 export const downloadProgress = (model: string, onStatus: OnStatus) => (got: number, total: number): void => onStatus({ key: 'downloading', model, got, total }, total ? got / total : 0);
 
 export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: Want, onStatus: OnStatus, onLog: OnLog, gpuLayout?: string | null, opts: OpenOpts = {}): Promise<Opened> {
   const bytes = await (opts.bytes || fetchModel(s, model, downloadProgress(model, onStatus), { stamp: opts.stamp, said: opts.time }));
   const time = (step: string, t0: number): void => { if (opts.time) opts.time('Time: ' + model + ' ' + step + ' — ' + Math.round(now() - t0) + ' ms'); };
   // On the GPU both memory layouts are tried: some phone GPUs return zeros with one of them.
-  const layouts: GpuLayout[] = gpuLayout === 'NCHW' ? ['NCHW', 'NHWC'] : ['NHWC', 'NCHW'];
+  const first = opts.passed || gpuLayout;
+  const layouts: GpuLayout[] = first === 'NCHW' ? ['NCHW', 'NHWC'] : ['NHWC', 'NCHW'];
   const order = (want === 'auto' ? ['webgpu', 'wasm'] as Ep[] : [want]).flatMap((ep): [Ep, GpuLayout?][] => ep === 'webgpu' ? layouts.map(l => ['webgpu', l]) : [[ep]]);
   let gpuWrong = false;
   for (const [ep, layout] of order) {
@@ -145,8 +174,14 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
       t0 = now();
       await limit(sess.run({ [sess.inputNames[0]]: tensor(ort, new Float32Array(3 * S * S), [1, 3, S, S]) }), 'warm-up');
       time('warm-up on ' + name, t0);
-      // Each model is checked on its own: a GPU may run one right and the other wrong.
-      if (ep === 'webgpu') {
+      // Each model is checked on its own: a GPU may run one right and the other wrong — unless this very check
+      // passed before on this device (the same model file, ONNX Runtime and browser).
+      let checked: Opened['checked'] = null;
+      if (ep === 'webgpu' && opts.passed && layout === opts.passed) {
+        checked = 'skipped';
+        (opts.time || onLog)('Time: GPU check skipped — passed before on this device (' + layout + ')');
+      } else if (ep === 'webgpu') {
+        checked = 'ran';
         onStatus({ key: 'checking', model, ...on }, 1);
         t0 = now();
         const t = await limit(selfTest(ort, sess), 'self-test');
@@ -154,7 +189,7 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
         onLog('GPU check, ' + model + ', layout ' + layout + ': ' + (t.ok ? 'right — used' : 'wrong on this GPU — not used') + ' (error ' + (t.err * 100).toFixed(1) + '%, confidence ' + t.conf.toFixed(2) + ')');
         if (!t.ok) { try { sess.release().catch(() => {}); } catch { /* gone already */ } gpuWrong = true; continue; }
       }
-      return { sess, ep, layout: ep === 'webgpu' ? layout as GpuLayout : null };
+      return { sess, ep, layout: ep === 'webgpu' ? layout as GpuLayout : null, checked };
     } catch (e) {
       onLog('Could not start ' + model + ' on ' + name + ': ' + errText(e));
       if (want !== 'auto' && !(ep === 'webgpu' && layout === 'NHWC')) throw e;
@@ -166,13 +201,24 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
 
 export const errText = (e: unknown): string => String((e && (e as { message?: string }).message) || e);
 
-// rgba: the frame already scaled to S×S.
-export async function detectRGBA(ort: Ort, sess: OrtSession, rgba: ArrayLike<number>): Promise<Corners> {
+// rgba: the frame already scaled to S×S. check (a GPU session whose self-test was skipped — passed before on this
+// device): an answer no right model gives — a heatmap all zeros, or with a NaN, as a GPU that gets a layout wrong
+// returns — fails the call ('wrong output on the GPU'), so the remembered pass is removed and the way left.
+export async function detectRGBA(ort: Ort, sess: OrtSession, rgba: ArrayLike<number>, check = false): Promise<Corners> {
   const n = S * S, f = new Float32Array(3 * n);
   for (let i = 0; i < n; i++) { f[i] = rgba[i * 4] / 255; f[n + i] = rgba[i * 4 + 1] / 255; f[2 * n + i] = rgba[i * 4 + 2] / 255; }
   const out = await sess.run({ [sess.inputNames[0]]: tensor(ort, f, [1, 3, S, S]) });
   const hm = out[sess.outputNames[0]].data;
+  if (check && wrongHeatmap(hm)) throw new Error(WRONG_GPU + ' (a heatmap ' + (Array.prototype.some.call(hm, (v: number) => v !== v) ? 'with NaN' : 'all zeros') + ')');
   return corners(hm instanceof Float32Array ? hm : Float32Array.from(hm));
+}
+/** The error a GPU session whose check was skipped gives on an answer no right model gives (detectRGBA check). */
+export const WRONG_GPU = 'wrong output on the GPU';
+/** A heatmap no right corners model gives: all zeros, or a NaN in it. */
+export function wrongHeatmap(hm: ArrayLike<number>): boolean {
+  let any = false;
+  for (let i = 0; i < hm.length; i++) { const v = hm[i]; if (v !== v) return true; if (v !== 0) any = true; }
+  return !any;
 }
 
 // A drawn card with known corners: a GPU that gets it wrong is not trusted.

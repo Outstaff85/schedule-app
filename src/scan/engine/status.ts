@@ -52,6 +52,8 @@ export function statusEnglish(s: EngineStatus): string {
  *    waits until it has left the frame (or another document comes);
  *  - no_frame: Capture tapped with no frame to take yet;
  *  - captured: the shot is cut by the live frame's corners (ms after the tap);
+ *  - preparing_accurate: a shot or a pick waits for the accurate model, which starts right after the live
+ *    frame's (the light model first); a shot is shown by the live frame's corners meanwhile;
  *  - refining: the accurate model is refining the corners;
  *  - looking_more: count documents so far, looking for more on the photo;
  *  - shot_failed: the shot failed (the log says why), the camera goes on;
@@ -71,6 +73,7 @@ export type SessionStatus =
   | { key: 'taken' }
   | { key: 'no_frame' }
   | { key: 'captured'; ms: number }
+  | { key: 'preparing_accurate' }
   | { key: 'refining' }
   | { key: 'looking_more'; count: number }
   | { key: 'shot_failed' }

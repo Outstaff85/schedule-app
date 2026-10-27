@@ -7,6 +7,9 @@
 //  - a tremble under JERK does not start the countdown again, a drift over DRIFT does;
 //  - a weak (missed) answer is held for 600 ms, then the frame goes;
 //  - the accurate model's corners replace the live page (the same page id) only when they moved over 0.002;
+//  - the light model first: prepare (and the early start) starts the accurate model only once the live frame's
+//    models are up; a shot before the accurate model is up is shown by the live frame's corners at once and
+//    refined once it is up (kept as it is when it cannot start);
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
 //  - Looks good while the shot still looks for more documents: the attempt goes once the search is over, with
 //    every document the shot gave;
@@ -285,6 +288,62 @@ for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
     return log.pages.length + ' page events';
   });
 }
+
+await run('the light model first: prepare (and the early start) starts the live frame\'s models, then the accurate model only once they are up — never both loading at once', async () => {
+  for (const early of [false, true]) {
+    const { s, engines } = setup(steadyLive(Q), { auto: false });
+    const order = [];
+    let liveUp = null;
+    engines.ensureSession = () => { order.push('live start'); return new Promise(r => { liveUp = () => { order.push('live up'); r(); }; }); };
+    engines.ensureCap = async () => { order.push('accurate start'); };
+    const p = s.prepare(early);
+    await flush();
+    assert.deepEqual(order, ['live start'], 'the accurate model waits for the live frame\'s (early ' + early + ')');
+    liveUp(); await p;
+    assert.deepEqual(order, ['live start', 'live up', 'accurate start']);
+    // a live start that fails still lets the accurate model start after it (photos and PDFs)
+    const b = setup(steadyLive(Q), { auto: false }), bo = [];
+    b.engines.ensureSession = async () => { bo.push('live'); throw new Error('no way'); };
+    b.engines.ensureCap = async () => { bo.push('accurate'); };
+    await b.s.prepare(early);
+    assert.deepEqual(bo, ['live', 'accurate']);
+  }
+});
+
+await run('a shot before the accurate model is up: shown at once by the live frame\'s corners ("Preparing the accurate model…"), refined once it is up', async () => {
+  const exact = shift(Q, 0.01);
+  const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false });
+  let up = false, release = null;
+  engine.capUp = () => up;
+  engine.capWait = () => new Promise(r => { release = () => { up = true; r(true); }; });
+  await s.startCamera(video);
+  await clock.runFor(600);
+  engine.shooting = true;
+  let done = null; s.snap().then(n => { done = n; });
+  await clock.runFor(300, () => !!release);
+  assert.equal(log.pages.length >= 1, true, 'the page is out at once');
+  near(log.pages[0].quad, Q, 'cut by the live frame\'s corners');
+  assert.ok(log.status.some(x => x.key === 'preparing_accurate'), 'the status line says it waits: ' + log.status.map(x => x.key).join());
+  assert.ok(!engine.calls.some(c => c.which === 'cap'), 'the accurate model is not asked before it is up');
+  assert.equal(done, null, 'the shot waits for it');
+  release();
+  await clock.runFor(2000, () => done !== null);
+  assert.equal(done, 1);
+  const refined = log.pages.filter(p => p.refined);
+  assert.ok(refined.length >= 1, 'refined once the accurate model is up');
+  assert.deepEqual(refined.at(-1).quad, exact);
+  assert.equal(log.pages.filter(p => p.refined).every(p => p.id === log.pages[0].id), true, 'under the same page id');
+  // the accurate model that could not start: the shot keeps the live frame's corners (no error)
+  const b = setup(call => call.which === 'live' && !call.shooting ? { pts: Q, conf: 0.9 } : NONE, { auto: false });
+  b.engine.capUp = () => false; b.engine.capWait = async () => false;
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(600);
+  let bd = null; b.s.snap().then(n => { bd = n; });
+  await b.clock.runFor(1000, () => bd !== null);
+  assert.equal(bd, 1); assert.ok(!b.engine.calls.some(c => c.which === 'cap'));
+  assert.ok(!b.log.pages.some(p => p.refined)); assert.ok(!b.log.status.some(x => x.key === 'shot_failed'));
+  assert.deepEqual(b.log.status.filter(x => x.key === 'found').at(-1).count, 1);
+});
 
 // the other documents: Q, then the three other quarters; a fifth answer is there for findNext if it asked again
 const QS = [Q, shift(Q, 0.5), shift(Q, 0, 0.5), shift(Q, 0.5, 0.5)];

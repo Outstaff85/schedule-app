@@ -9,7 +9,9 @@
 //  - pickedPictures goes in the files' order, a PDF page by page, a file neither a photo nor a PDF left out;
 //  - session.pick: the pages come out in the files' order when a later picture finishes first (lane 1, the
 //    file thread); the preview switches to the picture being worked on at once; a second pick leaves the first
-//    pick's pages untouched and undecided; a failed lane's picture is worked again on the main engine; a
+//    pick's pages untouched and undecided; a pick before the accurate model is up waits for it ("Preparing the
+//    accurate model…") and is then worked by it only, never by the live frame's engine; a failed lane's picture
+//    is worked again on the main engine; a
 //    picture's pages are not held up by the readouts of the one before; workPictures opens no more pictures
 //    ahead of the list than there are lanes; a page's record holds no photo;
 //  - session.fix: the corners set by hand go to the attempt and the page is cut again under the same id;
@@ -370,12 +372,16 @@ function fakeEngine(label, delay, log) {
     detect: async (which, input) => { assert.equal(input.rgba.length, 256 * 256 * 4); await new Promise(r => setTimeout(r, delay)); return { res: NONE, ms: delay }; },
     async warp(rgba, w, h, pts, upright) { this.warps.push({ w, h, pts, upright }); if (log && upright) log.push(label + ' warp ' + w + 'x' + h); return { data: new Uint8ClampedArray(6 * 4 * 4), width: 6, height: 4, turn: upright ? 0 : -1 }; } };
 }
-function pickSession({ main, file, grow = true, source = 'site', readers = null, getUserMedia = undefined, ensureSession = async () => {} } = {}) {
+// capLater: the accurate model not up yet — ensureCap waits until engines.capUpNow() is called (the light model first)
+function pickSession({ main, file, grow = true, source = 'site', readers = null, getUserMedia = undefined, ensureSession = async () => {}, capLater = false } = {}) {
   const server = fakeServer();
+  let up = !capLater, upNow = null;
+  const capP = new Promise(r => { upNow = r; });
   const engines = {
     engine: null, engineWay: 'bg-pool', state: { phase: 'ready', label: 'x', worker: true, loadSeconds: 1 }, settings: { cpuDir: 'ort' },
-    log: new Log.ScanLog(null, () => null), fileThreads: [], grown: 0,
-    ensureSession, ensureCap: async () => main, onChange: () => () => {}, stopAll() {},
+    log: new Log.ScanLog(null, () => null), fileThreads: [], grown: 0, capAsked: 0,
+    capReady: () => up, capUpNow() { up = true; upNow(); },
+    ensureSession, ensureCap: async () => { engines.capAsked++; if (!up) await capP; return main; }, onChange: () => () => {}, stopAll() {},
     growFiles(addLane) { this.grown++; if (grow && file) { this.fileThreads = [file]; setImmediate(() => addLane(1)); } },
   };
   const pics = new Map();
@@ -417,6 +423,32 @@ await run('session.pick: pages in the files\' order though a later picture finis
   assert.deepEqual(log.status.at(-1), { key: 'picked', pages: 3, files: 3 });
   assert.ok(log.status.some(x => x.key === 'picture_finding' && x.file === 1 && x.files === 3 && x.page === 1 && x.pages === 1));
   return 'cut order ' + order.map(x => x.split(' ')[0] + ' ' + x.split(' ')[2]).join(', ');
+});
+
+await run('session.pick before the accurate model is up (the light model first): it waits — "Preparing the accurate model…" —, nothing lost, then only the accurate model works it (never the live frame\'s engine, even a shared pool)', async () => {
+  const order = [];
+  const main = fakeEngine('main', 5, order);
+  const { s, engines, log, file1 } = pickSession({ main, file: null, capLater: true });
+  // the live frame's pool is up (its accurate model still starting): a picked picture must not go to it
+  const liveCalls = [];
+  s.engines.engine = { size: 2, shared: true, hasCap: () => true, capUp: () => false, capWait: async () => true, stop() {},
+    detect: async which => { liveCalls.push('detect ' + which); return { res: NONE, ms: 1 }; }, warp: async () => { liveCalls.push('warp'); return { data: new Uint8ClampedArray(4), width: 1, height: 1, turn: -1 }; } };
+  const picked = s.pick([file1('early.jpg', 40, 30, 1), file1('early2.jpg', 44, 30, 2)]);
+  await new Promise(r => setTimeout(r, 40));
+  assert.deepEqual(log.status.map(x => x.key), ['preparing_accurate'], 'the status line says it waits for the accurate model: ' + JSON.stringify(log.status));
+  assert.equal(log.pages.length, 0, 'nothing worked before the accurate model is up');
+  assert.ok(log.lines.includes('Picked files wait for the accurate model'));
+  engines.capUpNow();
+  const n = await picked;
+  assert.equal(n, 2, 'both pictures given once it is up (nothing lost)');
+  assert.deepEqual(order, ['main warp 40x30', 'main warp 44x30'], 'worked by the accurate model');
+  assert.deepEqual(liveCalls, [], 'never by the live frame\'s engine');
+  assert.deepEqual(log.status.at(-1), { key: 'picked', pages: 2, files: 2 });
+  assert.ok(!log.lines.some(t => t.startsWith('ERR ')), log.lines.join(' | '));
+  // the accurate model up: the next pick does not wait nor say so
+  log.status.length = 0;
+  await s.pick([file1('later.jpg', 40, 30, 3)]);
+  assert.ok(!log.status.some(x => x.key === 'preparing_accurate'));
 });
 
 await run('session.pick: the camera getting ready during a pick does not start the live frame over the picked picture; it goes on PICK_SHOWN_MS after the pick', async () => {
@@ -916,7 +948,7 @@ await run('session.switchWay: a change while the models still load starts them a
   let release, running = null;
   const engines = {
     engine: null, engineWay: 'bg-pool', engineKey: '', state: { phase: 'loading', label: 'x', worker: true, loadSeconds: null }, settings: { cpuDir: 'ort', model: 'old', backend: 'auto' },
-    log: new Log.ScanLog(null, () => null), fileThreads: [], onChange: () => () => {}, stopAll() {}, ensureCap: async () => null, growFiles() {},
+    log: new Log.ScanLog(null, () => null), fileThreads: [], onChange: () => () => {}, stopAll() {}, ensureCap: async () => null, capReady: () => true, growFiles() {},
     get starting() { return !!running; },
     setSettings(p) { this.settings = { ...this.settings, ...p }; },
     ensureSession() {

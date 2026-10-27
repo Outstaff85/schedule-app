@@ -4,6 +4,12 @@
 //  - the ways to run the models are tried in the lab's order for auto / webgpu / wasm, with and without
 //    WebGPU, and minus the ways stuck on the page; a way that fails falls to the next, the GPU live way uses
 //    the shared capture thread, the GPU layout that worked is kept;
+//  - the light model first (owner, 2026-10-27): the live frame's threads load, then the accurate model's capture
+//    thread right after them — never both loading at once; the live frame is ready before it is up;
+//  - the GPU check remembered on success only: a pass kept with the model's stamp, the ONNX Runtime version and the
+//    browser, the same three skip it (the session still started and warmed up), any one changed checks again, a
+//    failure is never kept, a run-time failure (an error, a hang, a wrong answer, a failed GPU way) removes it, the
+//    site's and the lab's kept apart — through the engine's threads and the page way;
 //  - a silent background thread is failed after 25 s only while a call waits on it, and an idle one is not
 //    failed on its first call — the same answers as the lab's workerEngine (its former plain page, frozen in tests/scan/legacy-lab.js, run in vm);
 //  - a failed way is logged through noteFail with its kind (GPU / memory / hang / error), the store capped at 8;
@@ -73,15 +79,19 @@ function fakeClock() {
 }
 
 const workers = [];
+// the threads' loads in time: 'load <model>' when sent, 'up <model>' when answered — so a check sees which models
+// were loading at once
+const timeline = [];
 let policy = () => ({});
 class FakeWorker {
   constructor(url, opts) { this.url = String(url); this.opts = opts; this.sent = []; this.dead = false; this.onmessage = null; this.onerror = null; workers.push(this); }
   postMessage(m) {
     this.sent.push(m);
+    if (m.type === 'load') timeline.push('load ' + m.live);
     const r = policy(this, m);
-    if (r) setImmediate(() => { if (!this.dead && this.onmessage) this.onmessage({ data: { type: 'reply', id: m.id, ...r } }); });
+    if (r) setImmediate(() => { if (!this.dead && this.onmessage) { if (m.type === 'load') timeline.push('up ' + m.live); this.onmessage({ data: { type: 'reply', id: m.id, ...r } }); } });
   }
-  reply(m, r) { if (this.onmessage) this.onmessage({ data: { type: 'reply', id: m.id, ...r } }); }
+  reply(m, r) { if (m.type === 'load') timeline.push('up ' + m.live); if (this.onmessage) this.onmessage({ data: { type: 'reply', id: m.id, ...r } }); }
   terminate() { this.dead = true; }
 }
 globalThis.Worker = FakeWorker;
@@ -156,7 +166,7 @@ await run('the ways in the lab\'s order: auto / webgpu / wasm, with and without 
   return 'POOL ' + eng.POOL + ', THREADS ' + eng.THREADS;
 });
 
-await run('a start tries every way in turn (the capture thread first), each failure noted, then fails', async () => {
+await run('a start tries every way in turn (the light model first: no capture thread while they load), each failure noted, then fails; the capture thread after it', async () => {
   workers.length = 0; imports.length = 0;
   policy = (w, m) => (m.type === 'load' ? { error: 'it broke on ' + m.ort } : undefined);
   const { eng, said, failStore } = newEngines(SU.siteSurface());
@@ -164,27 +174,39 @@ await run('a start tries every way in turn (the capture thread first), each fail
   assert.deepEqual(said.status.filter(t => t.startsWith('Trying ')), eng.WAYS.map(w => 'Trying ' + w.label + '…'));
   assert.equal(eng.state.phase, 'failed'); assert.equal(eng.engine, null);
   for (const w of eng.WAYS) assert.ok(said.err.some(t => t.startsWith('Failed — ' + w.label + ': ')), 'no failure noted for ' + w.label);
-  assert.ok(said.err.some(t => t.startsWith('Failed — Capture thread: error (it broke on ort)')));
+  assert.ok(!said.err.some(t => t.startsWith('Failed — Capture thread')), 'the accurate model is not started beside the live frame\'s ways');
   assert.deepEqual(imports, ['/scan/ort/ort.all.min.mjs'], 'the page way loads the site\'s own ONNX Runtime');
   assert.equal(said.status.at(-1), 'The model could not start — see the log below');
+  // then the accurate model (prepare: right after the live frame's) — its own failure noted
+  said.status.length = 0;
+  await assert.rejects(eng.ensureCap(), /it broke on ort/);
+  assert.ok(said.err.some(t => t.startsWith('Failed — Capture thread: error (it broke on ort)')));
+  assert.deepEqual(said.status, ['Preparing the accurate model…'], 'no live frame: the status line says the accurate model loads');
   const kept = JSON.parse(failStore.getItem('scanWayFails'));
   assert.ok(kept.length <= 8 && kept.every(f => f.mem === 4));
   assert.ok(workers.every(w => w.dead), 'every thread of a failed way is stopped');
   return workers.length + ' threads tried';
 });
 
-await run('the GPU live way: two live threads on ONNX Runtime 1.30 beside the shared CPU capture thread; the GPU layout kept', async () => {
-  workers.length = 0;
+await run('the GPU live way, the light model first: two live threads on ONNX Runtime 1.30, then the shared CPU capture thread right after them (never both loading); the GPU layout kept', async () => {
+  workers.length = 0; timeline.length = 0;
   policy = loadOk;
   const { eng, store, said } = newEngines(SU.siteSurface());
   await eng.ensureSession();
   assert.equal(eng.engineWay, 'bg-gpulive'); assert.equal(eng.state.phase, 'ready'); assert.equal(eng.state.label, 'GPU live + CPU capture · bg');
+  // ready (the camera may start) before the accurate model is up; it comes by itself right after
+  assert.ok(!eng.engine.capUp(), 'the live frame is ready without waiting for the accurate model');
+  assert.ok(eng.engine.hasCap(), 'the shot will be refined');
+  assert.equal(await eng.engine.capWait(), true);
+  assert.ok(eng.engine.capUp() && eng.capReady());
+  assert.equal(await eng.ensureCap(), eng.capThread, 'one capture thread, the pool\'s and the files\'');
+  assert.deepEqual(timeline, ['load lite.onnx', 'load lite.onnx', 'up lite.onnx', 'up lite.onnx', 'load sa24_w16.onnx', 'up sa24_w16.onnx'], 'the light model first, the accurate one after it');
   const loads = workers.map(w => w.sent.find(m => m.type === 'load'));
   assert.equal(workers.length, 3);
   assert.deepEqual(loads.map(m => [m.ort, m.want, m.live, m.cap, m.face]), [
+    ['ort130', 'webgpu', 'lite.onnx', null, true],
+    ['ort130', 'webgpu', 'lite.onnx', null, false],
     ['ort', 'wasm', 'sa24_w16.onnx', null, true],
-    ['ort130', 'webgpu', 'lite.onnx', null, false],
-    ['ort130', 'webgpu', 'lite.onnx', null, false],
   ]);
   assert.ok(workers.every(w => w.opts && w.opts.type === 'module'), 'a module worker');
   assert.ok(workers.every(w => /worker/i.test(w.url)), 'the worker built by Vite: ' + workers[0].url);
@@ -194,7 +216,7 @@ await run('the GPU live way: two live threads on ONNX Runtime 1.30 beside the sh
   assert.ok(said.log.some(t => t === 'Live lite.onnx, capture sa24_w16.onnx running as GPU live + CPU capture · bg'));
   // the remembered layout goes to the next threads
   const again = newEngines(SU.siteSurface(), { store }); workers.length = 0;
-  await again.eng.ensureSession();
+  await again.eng.ensureSession(); await again.eng.ensureCap();
   assert.ok(workers.every(w => w.sent[0].layout === 'NHWC'));
   // the same settings: nothing started again
   const n = workers.length; await again.eng.ensureSession(); assert.equal(workers.length, n);
@@ -244,8 +266,8 @@ await run('stopAll while a start loads: every thread it made stops at once, the 
   const states = []; eng.onChange(s => states.push(s.phase));
   let why = null; eng.ensureSession().catch(e => { why = e.message; });
   await flush(10);
-  assert.equal(held.length, 2, 'the GPU live threads are loading beside the loaded capture thread');
-  assert.ok(eng.capThread, 'the capture thread is loaded first');
+  assert.equal(held.length, 2, 'the GPU live threads are loading');
+  assert.ok(!eng.capThread && workers.length === 2, 'no capture thread loading beside them (the light model first)');
   eng.stopAll();
   assert.ok(workers.every(w => w.dead), 'every thread stopped at once: ' + workers.map(w => w.dead).join(','));
   for (const [w, m] of held) w.reply(m, loadOk(w, m));  // a late answer changes nothing
@@ -256,7 +278,7 @@ await run('stopAll while a start loads: every thread it made stops at once, the 
   assert.ok(!said.err.length, 'the close is not a failure: ' + said.err.join(' | '));
   // the next open: fresh threads, the shot goes to a live capture thread
   policy = detectOk; const before = workers.length;
-  await eng.ensureSession();
+  await eng.ensureSession(); await eng.ensureCap();
   assert.equal(eng.state.phase, 'ready'); assert.equal(eng.engineWay, 'bg-gpulive');
   assert.ok(workers.slice(before).every(w => !w.dead) && workers.length - before === 3);
   const shot = await eng.engine.detect('cap', { rgba: new Uint8ClampedArray(4) });
@@ -568,8 +590,9 @@ await run('every URL from the surface\'s base: the site never asks for /scan-lab
     await eng.ensureSession();
     eng.settings = { ...eng.settings, inWorker: true };
     await eng.ensureSession();
+    await eng.ensureCap();  // the accurate model right after the live frame's (as prepare does)
     const loads = workers.map(w => w.sent.find(m => m.type === 'load'));
-    assert.ok(loads.length && loads.every(m => m.surface.base === base && m.surface.cache === cache));
+    assert.ok(loads.length && loads.every(m => m.surface.base === base && m.surface.cache === cache), JSON.stringify(loads.map(m => m && m.surface)));
     const urls = [...fetched.map(f => f.split(' ')[1]), ...imports];
     assert.ok(urls.length >= 8, 'urls: ' + urls.join(', '));
     assert.ok(urls.every(u => u.startsWith(base)), 'every URL under ' + base + ': ' + urls.join(', '));
@@ -691,16 +714,16 @@ await run('one models.json read per open: its stamps go to every thread\'s load 
   try {
     const { eng, said } = newEngines(SU.siteSurface());
     const rd = new RD.Readers(SU.siteSurface(), () => {}, 'ort', () => eng.modelsInfo());
-    await Promise.all([rd.load(), eng.ensureCap(), eng.ensureSession()]);
+    await Promise.all([rd.load(), eng.ensureSession().then(() => eng.ensureCap())]);
     assert.equal(fetched.filter(f => f === 'GET /scan/models.json').length, 1, 'models.json read once: ' + fetched.join(', '));
     assert.ok(!fetched.some(f => f.startsWith('HEAD ')), 'no HEAD per model: ' + fetched.join(', '));
     await flush();
     const loads = workers.map(w => w.sent.find(m => m.type === 'load'));
     assert.ok(loads.every(m => m.stamps === undefined), 'the load is sent before models.json is read');
     assert.deepEqual(workers.map(w => w.sent.find(m => m.type === 'stamps').stamps), [
+      { 'lite.onnx': 'sha:l1', 'yunet.onnx': 'sha:y1' },
+      { 'lite.onnx': 'sha:l1' },
       { 'sa24_w16.onnx': 'sha:s1', 'yunet.onnx': 'sha:y1' },
-      { 'lite.onnx': 'sha:l1' },
-      { 'lite.onnx': 'sha:l1' },
     ]);
     assert.ok(!!rd.doctype && rd.info.version === 'base-v1');
     assert.ok(said.log.some(t => /^Time: models\.json read \(version base-v1\) — \d+ ms$/.test(t)), said.log.join(' | '));
@@ -748,6 +771,187 @@ await run('a thread\'s load is sent before models.json is read (ONNX Runtime sta
     w2.stop();
   } finally { globalThis.fetch = realFetch; }
 });
+
+// ── the GPU check remembered on success only (owner, 2026-10-27) ──
+// A fake GPU: a session on a layout in `good` answers the drawn card's corners (selfTest passes), any other answers a
+// heatmap of zeros (as a phone GPU that gets a layout wrong); the drawn card needs a canvas (a no-op stand-in).
+const TRUTH = [[0.18, 0.24], [0.84, 0.2], [0.8, 0.74], [0.14, 0.78]];
+function gpuOrt(created, good, version = '1.30.0') {
+  const H = 128;
+  const card = () => { const hm = new Float32Array(4 * H * H); TRUTH.forEach(([x, y], k) => { hm[k * H * H + Math.round(y * H) * H + Math.round(x * H)] = 1; }); return hm; };
+  function Tensor(type, data, dims) { this.type = type; this.data = data; this.dims = dims; }
+  return {
+    env: { wasm: {}, versions: { web: version } }, Tensor,
+    InferenceSession: {
+      create: async (bytes, opts = {}) => {
+        const p = (opts.executionProviders || ['wasm'])[0], name = typeof p === 'string' ? p : p.name + ':' + p.preferredLayout;
+        created.push(name);
+        const right = () => name === 'wasm' || good.has(name);  // asked at each run: a GPU may go wrong later
+        return { inputNames: ['img'], outputNames: ['heatmap'], run: async () => ({ heatmap: { data: right() ? card() : new Float32Array(4 * H * H), dims: [1, 4, H, H] } }), release: async () => {} };
+      },
+    },
+  };
+}
+class NoCanvas { constructor(w, h) { this.width = w; this.height = h; } getContext() { const w = this.width, h = this.height; return new Proxy({}, { get: (_, k) => (k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(w * h * 4) }) : () => {}) }); } }
+async function withGpu(fn) {
+  const nav = globalThis.navigator, oc = globalThis.OffscreenCanvas;
+  setNav({ hardwareConcurrency: 8, deviceMemory: 8, gpu: {}, userAgent: 'Phone/1.0 Chrome/140' });
+  globalThis.OffscreenCanvas = NoCanvas;
+  try { return await fn(); } finally { setNav(nav); if (oc) globalThis.OffscreenCanvas = oc; else delete globalThis.OffscreenCanvas; }
+}
+
+await run('the GPU check: a pass kept with its stamp, ONNX Runtime and browser; the same three skip it next time (the session still started and warmed up), any one changed checks again; a failure never kept', () => withGpu(async () => {
+  const S = SU.siteSurface(), bytes = Promise.resolve(new Uint8Array(4)), ua = MO.userAgent();
+  assert.equal(ua, 'Phone/1.0 Chrome/140');
+  const open = async (good, passed) => {
+    const created = [], said = [], statuses = [];
+    const ort = gpuOrt(created, new Set(good));
+    const r = await MO.openSession(ort, S, 'lite.onnx', 'auto', st => statuses.push(st.key), t => said.push(t), null, { bytes, time: t => said.push(t), passed });
+    return { r, created, said, statuses, ort };
+  };
+  // the first open: the check runs on NHWC, passes — the pass to keep
+  const a = await open(['webgpu:NHWC'], null);
+  assert.equal(a.r.ep, 'webgpu'); assert.equal(a.r.layout, 'NHWC'); assert.equal(a.r.checked, 'ran');
+  assert.ok(a.statuses.includes('checking'), 'the self-test ran');
+  const pass = MO.newGpuPass(a.r, 'sha:l1', MO.ortVersion(a.ort, 'ort130'), ua);
+  assert.deepEqual(pass, { stamp: 'sha:l1', ort: '1.30.0', ua, layout: 'NHWC' });
+  // the same key: skipped — the session started and warmed up on that layout first, no check
+  const same = MO.gpuPassed(pass, 'sha:l1', '1.30.0', ua);
+  assert.equal(same, 'NHWC');
+  const b = await open(['webgpu:NHWC'], same);
+  assert.equal(b.r.checked, 'skipped'); assert.equal(b.r.layout, 'NHWC');
+  assert.deepEqual(b.created, ['webgpu:NHWC'], 'started on that layout');
+  assert.ok(b.statuses.includes('warming') && !b.statuses.includes('checking'), 'warmed up, not checked: ' + b.statuses.join());
+  assert.ok(b.said.includes('Time: GPU check skipped — passed before on this device (NHWC)'), b.said.join(' | '));
+  assert.equal(MO.newGpuPass(b.r, 'sha:l1', '1.30.0', ua), null, 'a skipped check is not stored again');
+  // a pass on NCHW starts that layout first
+  const c = await open(['webgpu:NCHW'], 'NCHW');
+  assert.deepEqual(c.created, ['webgpu:NCHW']); assert.equal(c.r.checked, 'skipped');
+  // any part of the key changed: no skip (the full check)
+  assert.equal(MO.gpuPassed(pass, 'sha:l2', '1.30.0', ua), null, 'a new model file');
+  assert.equal(MO.gpuPassed(pass, 'sha:l1', '1.31.0', ua), null, 'another ONNX Runtime');
+  assert.equal(MO.gpuPassed(pass, 'sha:l1', '1.30.0', ua.replace('140', '141')), null, 'another browser version');
+  assert.equal(MO.gpuPassed(pass, null, '1.30.0', ua), null, 'no stamp known');
+  assert.equal(MO.gpuPassed(null, 'sha:l1', '1.30.0', ua), null);
+  assert.equal(MO.gpuPassed({ ...pass, layout: 'XYZ' }, 'sha:l1', '1.30.0', ua), null);
+  // a check that fails on both layouts: the CPU, nothing to keep
+  const d = await open([], null);
+  assert.equal(d.r.ep, 'wasm'); assert.equal(d.r.checked, null);
+  assert.ok(d.said.some(t => /layout NHWC: wrong on this GPU/.test(t)) && d.said.some(t => /layout NCHW: wrong on this GPU/.test(t)));
+  assert.equal(MO.newGpuPass(d.r, 'sha:l1', '1.30.0', ua), null, 'a failure is never kept');
+  // no stamp known (models.json not read): nothing kept
+  assert.equal(MO.newGpuPass(a.r, null, '1.30.0', ua), null);
+  // a skipped check's session that answers what no right model does: the call fails (wrong output on the GPU)
+  const zeros = { inputNames: ['img'], outputNames: ['heatmap'], run: async () => ({ heatmap: { data: new Float32Array(4 * 128 * 128) } }) };
+  await assert.rejects(MO.detectRGBA(a.ort, zeros, new Uint8ClampedArray(256 * 256 * 4), true), /^Error: wrong output on the GPU/);
+  assert.equal((await MO.detectRGBA(a.ort, zeros, new Uint8ClampedArray(256 * 256 * 4))).conf, 0, 'not checked when the check ran');
+  assert.ok(MO.wrongHeatmap([0, NaN, 1]) && MO.wrongHeatmap([0, 0]) && !MO.wrongHeatmap([0, 0.2]));
+}));
+
+await run('the GPU check kept by the engine: stored when a thread says it passed, sent to the next threads, the site\'s and the lab\'s apart; removed by a run-time failure (an error, a hang, a wrong answer — the way left —, a failed GPU way); never stored from a failure', async () => {
+  const ua = 'Phone/1.0 Chrome/140', PASS = { stamp: 'sha:l1', ort: '1.30.0', ua, layout: 'NCHW' };
+  // a thread on the GPU answers its load with the passes it checked now, and which models run on the GPU
+  const gpuLoad = (passes = { 'lite.onnx': PASS }) => (w, m) => (m.type === 'load' ? (m.want === 'webgpu' ? { ep: 'webgpu', layout: 'NCHW', gpu: ['lite.onnx'], passes } : { ep: 'wasm', layout: null, gpu: [], passes: {} }) : undefined);
+  workers.length = 0; policy = gpuLoad();
+  const { eng, store, said } = newEngines(SU.siteSurface());
+  await eng.ensureSession(); await eng.ensureCap();
+  assert.deepEqual(JSON.parse(store.getItem('scanGpuPassed:scan-models')), { 'lite.onnx': PASS }, 'stored under the site\'s key');
+  assert.deepEqual(eng.gpuPasses(), { 'lite.onnx': PASS });
+  assert.ok(said.log.includes('GPU check passed for lite.onnx (NCHW) — remembered on this device'));
+  // the next open's threads are given it (each thread compares its own key: models.ts gpuPassed)
+  const next = newEngines(SU.siteSurface(), { store }); workers.length = 0; policy = gpuLoad({});
+  await next.eng.ensureSession(); await next.eng.ensureCap();
+  assert.ok(workers.every(w => JSON.stringify(w.sent[0].passes) === JSON.stringify({ 'lite.onnx': PASS })), 'the passes go with every load');
+  // the lab's own key: the site's pass is not the lab's
+  const lab = newEngines(SU.labSurface(), { store }); workers.length = 0;
+  await lab.eng.ensureSession(); await lab.eng.ensureCap();
+  assert.ok(workers.every(w => JSON.stringify(w.sent[0].passes) === '{}'), 'the lab does not see the site\'s pass');
+  policy = gpuLoad({ 'lite.onnx': { ...PASS, stamp: 'sha:lab' } }); const lab2 = newEngines(SU.labSurface(), { store }); await lab2.eng.ensureSession();
+  assert.equal(JSON.parse(store.getItem('scanGpuPassed:scan-lab-models'))['lite.onnx'].stamp, 'sha:lab');
+  assert.equal(JSON.parse(store.getItem('scanGpuPassed:scan-models'))['lite.onnx'].stamp, 'sha:l1', 'the site\'s stays its own');
+  // a load that passed no check (skipped, or failed): nothing stored
+  const none = newEngines(SU.siteSurface()); policy = gpuLoad({}); await none.eng.ensureSession();
+  assert.equal(none.store.getItem('scanGpuPassed:scan-models'), null, 'nothing kept without a pass');
+
+  // run-time failures remove it: an error on a GPU detect
+  const failing = async (answer, expectWay) => {
+    const e = newEngines(SU.siteSurface()); workers.length = 0; policy = gpuLoad();
+    await e.eng.ensureSession(); await e.eng.ensureCap();
+    assert.ok(e.eng.gpuPasses()['lite.onnx']);
+    const live = workers.filter(w => w.sent[0].want === 'webgpu');
+    policy = (w, m) => (m.type === 'detect' ? answer : undefined);
+    const p = e.eng.engine.detect('live', { rgba: new Uint8ClampedArray(4) }); let why = null; p.catch(x => { why = x.message; });
+    if (!answer) await e.clock.advance(26000); else await flush(5);
+    assert.ok(why, 'the call failed');
+    assert.equal(e.store.getItem('scanGpuPassed:scan-models'), '{}', 'the pass removed');
+    assert.ok(e.said.log.some(t => /^GPU check of lite\.onnx forgotten \(.+\) — the next open checks the GPU again$/.test(t)), e.said.log.join(' | '));
+    if (expectWay) assert.ok(e.eng.stuckWays.has('bg-gpulive') && !e.eng.engine, 'the way is left');
+    assert.ok(live.length === 2);
+    return e;
+  };
+  await failing({ error: 'device lost' }, false);
+  const wrong = await failing({ error: 'wrong output on the GPU (a heatmap all zeros)' }, true);
+  assert.ok(wrong.said.err.some(t => t === 'The model gave a wrong answer on the GPU on "GPU live + CPU capture · bg" — it starts again on the next way'), wrong.said.err.join(' | '));
+  await failing(undefined, true);  // a hang: 25 s with no answer
+  // a GPU way that fails to start: its models' passes removed; a CPU thread's error never touches them
+  const f = newEngines(SU.siteSurface()); f.store.setItem('scanGpuPassed:scan-models', JSON.stringify({ 'lite.onnx': PASS }));
+  policy = (w, m) => (m.type === 'load' ? (m.want === 'webgpu' ? { error: 'WebGPU adapter not found' } : { ep: 'wasm', layout: null }) : undefined);
+  await f.eng.ensureSession();
+  assert.equal(f.eng.engineWay, 'bg-pool'); assert.deepEqual(f.eng.gpuPasses(), {});
+  const c = newEngines(SU.siteSurface()); c.store.setItem('scanGpuPassed:scan-models', JSON.stringify({ 'lite.onnx': PASS }));
+  policy = (w, m) => (m.type === 'load' ? { ep: 'wasm', layout: null, gpu: [] } : m.type === 'detect' ? { error: 'boom' } : undefined);
+  const cw = c.eng.workerEngine(1, 'ort', () => {}); await cw.load('sa24_w16.onnx', null, 'wasm', true);
+  await assert.rejects(cw.detect('live', { rgba: new Uint8ClampedArray(4) }), /boom/);
+  assert.deepEqual(c.eng.gpuPasses(), { 'lite.onnx': PASS }, 'a CPU thread\'s error leaves the GPU pass');
+  // storage that throws: nothing breaks
+  const broken = newEngines(SU.siteSurface(), { store: { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } } });
+  policy = gpuLoad(); await broken.eng.ensureSession();
+  assert.deepEqual(broken.eng.gpuPasses(), {});
+});
+
+await run('the GPU check through the page way (the same code as a thread): the first open checks and keeps the pass, the next skips it, a wrong answer then removes it', () => withGpu(async () => {
+  const created = [], good = new Set(['webgpu:NHWC']);
+  ortFor = async () => gpuOrt(created, good); OR.setOrtImport(url => { imports.push(url); return ortFor(url); });  // nothing kept from an earlier check
+  files = { '/scan/models.json': JSON.stringify({ version: 'v', doctype: false, mrz: false, he: false, files: { 'lite.onnx': 'l1', 'sa24_w16.onnx': 's1', 'yunet.onnx': 'y1' } }),
+    '/scan/lite.onnx': new Uint8Array(10), '/scan/sa24_w16.onnx': new Uint8Array(10), '/scan/yunet.onnx': new Uint8Array(10) };
+  try {
+    const first = newEngines(SU.siteSurface());
+    first.eng.setSettings({ backend: 'webgpu', inWorker: false });
+    await first.eng.ensureSession().catch(e => { throw new Error(e.message + first.said.err.join(" / ")); });
+    assert.equal(first.eng.engineWay, 'page-gpu');
+    const kept = first.eng.gpuPasses();
+    assert.deepEqual(Object.keys(kept).sort(), ['lite.onnx', 'sa24_w16.onnx']);
+    assert.deepEqual(kept['lite.onnx'], { stamp: 'sha:l1', ort: '1.30.0', ua: 'Phone/1.0 Chrome/140', layout: 'NHWC' });
+    assert.equal(first.said.status.filter(t => t.startsWith('Checking ')).length, 2, 'both models checked');
+    // the next open, the same model files, ONNX Runtime and browser: no check
+    const second = newEngines(SU.siteSurface(), { store: first.store });
+    second.eng.setSettings({ backend: 'webgpu', inWorker: false });
+    await second.eng.ensureSession();
+    assert.equal(second.said.status.filter(t => t.startsWith('Checking ')).length, 0, second.said.status.join(' | '));
+    assert.equal(second.said.log.filter(t => t.startsWith('Time: GPU check skipped — passed before on this device (NHWC)')).length, 2);
+    // a new model file (its stamp changed in models.json): checked again
+    files['/scan/models.json'] = JSON.stringify({ version: 'v', doctype: false, mrz: false, he: false, files: { 'lite.onnx': 'l2', 'sa24_w16.onnx': 's1', 'yunet.onnx': 'y1' } });
+    const third = newEngines(SU.siteSurface(), { store: first.store });
+    third.eng.setSettings({ backend: 'webgpu', inWorker: false });
+    await third.eng.ensureSession();
+    assert.equal(third.said.status.filter(t => t.startsWith('Checking ')).length, 1, 'only the changed model checked: ' + third.said.status.join(' | '));
+    assert.equal(third.eng.gpuPasses()['lite.onnx'].stamp, 'sha:l2');
+    // the GPU goes wrong later (the same browser, a driver changed): a skipped check's session answers zeros — the
+    // call fails, the passes removed, so the next open checks again
+    const fourth = newEngines(SU.siteSurface(), { store: first.store });
+    fourth.eng.setSettings({ backend: 'webgpu', inWorker: false });
+    await fourth.eng.ensureSession();
+    assert.equal(fourth.said.status.filter(t => t.startsWith('Checking ')).length, 0);
+    good.clear();
+    await assert.rejects(fourth.eng.engine.detect('live', { rgba: new Uint8ClampedArray(256 * 256 * 4) }), /wrong output on the GPU/);
+    assert.deepEqual(fourth.eng.gpuPasses(), {}, 'removed');
+    const fifth = newEngines(SU.siteSurface(), { store: first.store });
+    fifth.eng.setSettings({ backend: 'webgpu', inWorker: false });
+    await fifth.eng.ensureSession().catch(() => {});
+    assert.ok(fifth.said.status.filter(t => t.startsWith('Checking ')).length >= 1, 'checked again: ' + fifth.said.status.join(' | '));
+    assert.deepEqual(fifth.eng.gpuPasses(), {}, 'a failed check is not kept');
+  } finally { ortFor = () => Promise.reject(new Error('no ONNX Runtime here')); }
+}));
 
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);

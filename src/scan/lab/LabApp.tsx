@@ -16,9 +16,9 @@
 //  - the document types picked or ticked (kinds.ts), never an untouched answer — each with the face finder's turn
 //    (turnBy "face" when it set the page upright, else "model");
 //  - the resampling probe (probe.ts, Lab tools → Settings): its lines go to the Loading-and-work log.
-// The lab's start order is kept: the accurate model first (photos and PDFs can go in within seconds), then the
-// camera's models in the background once nothing is being worked on — the camera waits for both (startLab runs
-// before the camera's start: the screen's effect runs before this page's). The session lives as long as the
+// The lab's start order is the site's — the light model first (owner, 2026-10-27): the camera's models, then the
+// accurate model right after them (photos and PDFs picked meanwhile wait for it) — the camera waits for the camera's
+// models and any pick in work (startLab runs before the camera's start: the screen's effect runs before this page's). The session lives as long as the
 // page (the lab's page reloads to start again: the CPU engine choice does); the phone's back goes one step back
 // inside it and does not leave it when it is the first page of its tab (ui/back.ts); only its newest KEEP_CANVASES pages
 // keep their full-size pixels (session keepCanvases), so a long lab session does not fill the phone's memory.
@@ -85,7 +85,9 @@ interface Lab {
   records: LabRecords;
   kinds: Kinds;
   cpuDir: OrtDir;
-  /** The accurate model's start settled (the camera waits for it). */
+  /** The live frame's models' start settled (the camera waits for it — the light model first). */
+  liveReady: Promise<void>;
+  /** The accurate model's start settled (it starts right after the live frame's). */
   capReady: Promise<void>;
   started: boolean;
   /** Picks in work (the camera's models wait for them). */
@@ -117,13 +119,14 @@ function getLab(): Lab {
   engines.setSettings({ cpuDir });
   const session = new ScanSession(surface, { engines, log, keepCanvases: KEEP_CANVASES });
   const kinds = new Kinds(defaultKindsEnv((b, o) => session.attempts.post(b, o), () => session.readers?.info?.version || '', log.log, log.err));
-  const made: Lab = { session, engines, log, records, kinds, cpuDir, capReady: Promise.resolve(), started: false, picking: 0, removed: () => {}, lastStatus: null };
+  const made: Lab = { session, engines, log, records, kinds, cpuDir, liveReady: Promise.resolve(), capReady: Promise.resolve(), started: false, picking: 0, removed: () => {}, lastStatus: null };
   log.on('status', st => { made.lastStatus = st; });
   return (lab = made);
 }
 
-/** The lab opened (once): what this device has, the earlier failures, then the accurate model first and the
- *  camera's models once nothing is being worked on (the lab's page did the same on load). */
+/** The lab opened (once): what this device has, the earlier failures, then the light model first (owner,
+ *  2026-10-27): the live frame's models, so the camera and its frame come as soon as they are ready, and the
+ *  accurate model right after them (photos and PDFs picked meanwhile wait for it). */
 function startLab(l: Lab): void {
   if (l.started) return;
   l.started = true;
@@ -142,11 +145,8 @@ function startLab(l: Lab): void {
   addEventListener('pagehide', () => keepUndecided(l));
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void session.attempts.flush(); });
   if (session.readers) void session.readers.load();
-  l.capReady = engines.ensureCap().then(() => {}, e => log.log('Accurate model: ' + errText(e)));
-  void l.capReady.then(async () => {
-    while (l.picking) await sleep(300);
-    await engines.ensureSession().catch(e => log.log('Model: ' + errText(e)));
-  });
+  l.liveReady = engines.ensureSession().catch(e => log.log('Model: ' + errText(e)));
+  l.capReady = l.liveReady.then(() => engines.ensureCap()).then(() => {}, e => log.log('Accurate model: ' + errText(e)));
 }
 
 /** The attempts still undecided sent as kept (the lab has no Done; their pages are not marked looked at). */
@@ -155,7 +155,7 @@ function keepUndecided(l: Lab): void {
   if (ids.length) l.session.attempts.decide('kept', ids);
 }
 
-/** The session as the lab's screen drives it: the camera after the accurate model and any pick in work, picks
+/** The session as the lab's screen drives it: the camera after the live frame's models and any pick in work, picks
  *  counted (the attempts before a pick stay undecided, as on the site: fixable and deletable until Looks good,
  *  Delete or the page is left), a deleted page's type never sent. */
 function labView(l: Lab): ScanSessionLike {
@@ -167,7 +167,7 @@ function labView(l: Lab): ScanSessionLike {
     startCamera: async v => {
       const g = camGen;
       startLab(l);  // before the wait: the screen's effect runs before LabApp's, which would start it too late
-      await l.capReady;
+      await l.liveReady;
       while (l.picking) await sleep(300);
       if (g !== camGen) return;  // put away meanwhile
       await s.startCamera(v);

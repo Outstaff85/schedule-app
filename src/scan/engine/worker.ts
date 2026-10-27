@@ -6,7 +6,7 @@
 // 'status', 'log' and 'reply' (the call's id, or its error). Uses no DOM: it type-checks under the WebWorker
 // lib too.
 import { S, warpRGBA } from './geometry';
-import { cpuSession, detectRGBA, downloadProgress, fetchModel, openSession, errText, type Want } from './models';
+import { cpuSession, detectRGBA, downloadProgress, fetchModel, gpuPassed, newGpuPass, openSession, ortVersion, userAgent, errText, type GpuPasses, type Opened, type Want } from './models';
 import { loadOrt, type GpuLayout, type Ort, type OrtSession } from './ort';
 import type { EngineStatus } from './status';
 import type { OrtDir, SurfaceRef } from './surface';
@@ -19,7 +19,10 @@ export type WorkerIn =
       /** each model file's stamp from models.json (models.ts modelStamp): its kept copy is used with no request while it
        *  matches. Unset: they follow in a 'stamps' message (the load is sent before models.json is read, so ONNX
        *  Runtime starts loading at once; only the model files wait for the stamps). */
-      stamps?: Record<string, string> | null }
+      stamps?: Record<string, string> | null;
+      /** the GPU checks that passed before on this device (models.ts GpuPass, by model): a model whose pass has the
+       *  same stamp, ONNX Runtime version and browser skips its check. */
+      passes?: GpuPasses | null }
   | { type: 'stamps'; stamps: Record<string, string> | null }
   | { type: 'detect'; id: number; which: 'live' | 'cap'; bitmap?: ImageBitmap; rgba?: ArrayBuffer }
   | { type: 'warp'; id: number; rgba: ArrayBuffer; w: number; h: number; pts: Quad; upright: boolean };
@@ -37,6 +40,8 @@ interface Scope {
 const scope = self as unknown as Scope;
 
 let ort: Ort | null = null, live: OrtSession | null = null, cap: OrtSession | null = null, face: OrtSession | null = null;
+// a GPU session whose check was skipped (passed before on this device): its answers are checked (detectRGBA check)
+let liveCheck = false, capCheck = false;
 const say = (m: WorkerOut, transfer?: Transferable[]) => scope.postMessage(m, transfer || []);
 
 // The model files' stamps when they follow the load (a 'stamps' message): kept here until the load asks for them.
@@ -73,16 +78,27 @@ scope.onmessage = async ({ data: m }) => {
       const faceBytes = m.face ? fetchModel(m.surface, 'yunet.onnx', () => {}, { stamp: stamp('yunet.onnx'), said: onLog }) : null;
       firstBytes.catch(() => {}); if (faceBytes) faceBytes.catch(() => {});  // their failure is the session's, below
       ort = await ortP;
-      const a = await openSession(ort, m.surface, m.live, m.want, onStatus, onLog, m.layout, { bytes: firstBytes, time: onLog });
-      live = a.sess;
-      const b = m.cap ? await openSession(ort, m.surface, m.cap, m.want, onStatus, onLog, m.layout, { stamp: stamp(m.cap), time: onLog }) : a; cap = b.sess;
+      // the GPU check skipped for a model whose pass is remembered with the same key; a check that ran and passed
+      // now goes back in the reply (the page keeps it)
+      const ov = ortVersion(ort, m.ort), ua = userAgent(), passes: GpuPasses = {}, gpu: string[] = [];
+      const passed = (name: string) => gpuPassed(m.passes && m.passes[name], stamp(name), ov, ua);
+      const noted = (name: string, o: Opened): Opened => {
+        if (o.ep === 'webgpu') gpu.push(name);
+        const p = newGpuPass(o, stamp(name), ov, ua);
+        if (p) passes[name] = p;
+        return o;
+      };
+      const a = noted(m.live, await openSession(ort, m.surface, m.live, m.want, onStatus, onLog, m.layout, { bytes: firstBytes, time: onLog, passed: passed(m.live) }));
+      live = a.sess; liveCheck = a.checked === 'skipped';
+      const b = m.cap ? noted(m.cap, await openSession(ort, m.surface, m.cap, m.want, onStatus, onLog, m.layout, { stamp: stamp(m.cap), time: onLog, passed: passed(m.cap) })) : a;
+      cap = b.sess; capCheck = b.checked === 'skipped';
       if (m.face && faceBytes) {
         onStatus({ key: 'face' }, 1); t0 = performance.now();
         face = await cpuSession(ort, m.surface, 'yunet.onnx', faceBytes);
         onLog('Time: face finder ready — ' + Math.round(performance.now() - t0) + ' ms');
       }
       const layout: GpuLayout | null = a.layout || b.layout;
-      say({ type: 'reply', id: m.id, ep: a.ep + (b.ep !== a.ep ? '/' + b.ep : ''), layout });
+      say({ type: 'reply', id: m.id, ep: a.ep + (b.ep !== a.ep ? '/' + b.ep : ''), layout, gpu, passes });
     } else if (m.type === 'detect') {
       if (!ort || !live || !cap) throw new Error('the model is not loaded');
       const t = performance.now();
@@ -91,7 +107,7 @@ scope.onmessage = async ({ data: m }) => {
         const c = new OffscreenCanvas(S, S), g = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
         g.drawImage(m.bitmap, 0, 0); m.bitmap.close(); rgba = g.getImageData(0, 0, S, S).data;
       } else rgba = new Uint8ClampedArray(m.rgba as ArrayBuffer);
-      const res = await detectRGBA(ort, m.which === 'cap' ? cap : live, rgba);
+      const res = await detectRGBA(ort, m.which === 'cap' ? cap : live, rgba, m.which === 'cap' ? capCheck : liveCheck);
       say({ type: 'reply', id: m.id, res, ms: performance.now() - t });
     } else if (m.type === 'warp') {
       const out = await uprightRGBA(ort, m.upright ? face : null, warpRGBA(new Uint8ClampedArray(m.rgba), m.w, m.h, m.pts));

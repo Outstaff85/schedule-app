@@ -262,6 +262,11 @@ const READS = {
     const E = s.engines, st = window.__stub.stats, [live, cap] = E.settings.model.split('+');
     r.engine = {way: E.engineWay, label: E.state.label, worker: E.state.worker, size: E.engine && E.engine.size, shared: E.engine && E.engine.shared};
     r.threads = {spawned: st.spawned, bitmaps: st.bitmaps, copied: st.copied, maxInFlight: st.maxInFlight, live: st.byModel[live] || {}, cap: st.byModel[cap] || {}};
+    // the light model first (owner, 2026-10-27): the live threads' loads answered before the accurate model's load is
+    // sent — never both loading at once
+    r.loads = st.loads.slice(); r.models = [live, cap];
+    // the GPU check remembered on success only, under the surface's own key (the stand-in's GPU threads say they passed)
+    r.passes = {site: localStorage.getItem('scanGpuPassed:scan-models'), lab: localStorage.getItem('scanGpuPassed:scan-lab-models')};
     return r;
   });
   const green = await greenWhileHeld;
@@ -316,6 +321,16 @@ const READS = {
     && th.bitmaps > 0 && th.copied === 0 && th.maxInFlight >= 2 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,
     'site: the models run in background threads as on a phone — a pool of live threads (several frames at once) beside the shared capture thread, which found and cut the shot\'s pages; every frame handed over as a bitmap (none copied) '
     + JSON.stringify({engine: eng, threads: th}));
+  const lightFirst = (loads, [live, cap]) => {
+    const at = loads.indexOf('load ' + cap); if (at < 0) return false;
+    const before = loads.slice(0, at), pending = before.filter(x => x === 'load ' + live).length - before.filter(x => x === 'up ' + live).length;
+    return before.includes('up ' + live) && pending === 0;
+  };
+  ok(lightFirst(shot.loads || [], shot.models || []),
+    'site: the light model first — the live frame\'s threads loaded, then the accurate model\'s capture thread right after them, never both loading at once ' + JSON.stringify(shot.loads));
+  const ps = shot.passes || {};
+  ok(eng.way === 'bg-gpulive' ? !!ps.site && JSON.parse(ps.site)[(shot.models || [])[0]] && !ps.lab : !ps.site && !ps.lab,
+    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); none without the GPU way ' + JSON.stringify({way: eng.way, ...ps}));
   ok(look.w === 390 && look.h === 844 && look.statusTop && look.autoTopRight && look.doneBottomRight && look.stripAboveBar && look.barBottom && look.noScroll && look.bar === 'scan-pick,scan-shutter,scan-done' && look.video,
     'site, screen 1 at 390×844 (template 6): the camera fills the screen, the status line at the top centre, Auto at the top right, the photos\' strip above the bottom bar (Photos/PDF, the shutter, Done at the bottom right) ' + JSON.stringify(look));
   const fr = (asked[0] || {}).video || {};
