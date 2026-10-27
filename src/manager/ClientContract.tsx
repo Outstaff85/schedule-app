@@ -21,7 +21,7 @@ import type { ClientRecord, ManagerBridge } from './bridge';
 import { TEMPLATE_ACCEPT, defaultFor, listTemplates, type ContractTemplate } from './contracts';
 import { UploadWindow } from './ContractTemplates';
 import { FirmSealWindow } from './FirmSeal';
-import { canFirmSign, canSeeBilling } from './logic/access';
+import { canFirmSign, canSeeBilling, isFirmAdminSession } from './logic/access';
 import { clientContractValues } from './logic/contract-values';
 import {
   clientCall, clientWhatsapp, detailsOf, latestRequest, takeOnPatch, toTakeOn, type ClientDetails, type ClientSignRequest,
@@ -159,12 +159,13 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
         )} />
       </>}
       <div className="flex flex-wrap gap-2">
-        {may && <>
+        {/* a template is uploaded only by the firm's admin or the super-admin (contracts.run → save) */}
+        {isFirmAdminSession() && <>
           <input ref={pick} type="file" accept={TEMPLATE_ACCEPT} className="hidden" data-testid="client-contract-file"
             onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setUpload(f); }} />
           <Button size="sm" data-testid="client-contract-upload" onClick={() => pick.current?.click()}><IconUpload className="size-4" />{tr('A contract for this client only')}</Button>
-          <Button size="sm" data-testid="client-contract-seal" onClick={() => setSeal(true)}><IconRubberStamp className="size-4" />{tr("Firm's signature and stamp")}</Button>
         </>}
+        {may && <Button size="sm" data-testid="client-contract-seal" onClick={() => setSeal(true)}><IconRubberStamp className="size-4" />{tr("Firm's signature and stamp")}</Button>}
       </div>
       {seal && <FirmSealWindow toast={api.toast} onClose={() => setSeal(false)} />}
       {upload && <UploadWindow file={upload} categories={[]} api={{ toast: api.toast }} clientId={clientId} kind="client"
