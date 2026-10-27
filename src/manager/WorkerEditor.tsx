@@ -11,7 +11,7 @@
 import * as React from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import {
-  IconAlertCircle, IconAlertTriangle, IconBriefcase, IconCalendar, IconChevronDown, IconChevronUp, IconClipboardText, IconDeviceFloppy,
+  IconAlertCircle, IconAlertTriangle, IconBriefcase, IconCalendar, IconCheck, IconChevronDown, IconChevronUp, IconClipboardText, IconDeviceFloppy,
   IconFileCertificate, IconFileText, IconFiles, IconHeart, IconHome, IconId, IconIdBadge2, IconKey, IconLink, IconLoader2, IconMapPin,
   IconMoodKid, IconPlus, IconRefresh, IconScan, IconTrash, IconTruckDelivery, IconUpload, IconUser, IconUserShield, IconUsers, IconX,
 } from '@tabler/icons-react';
@@ -506,13 +506,13 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               <Field label="סוג הכנסה (טופס 101)"><Choice id="wIncomeType" value={v.incomeType} opts={Object.entries(INCOME_LABELS)} onChange={val => set('incomeType', val)} /></Field>
               <Field label="הכנסה נוספת (טופס 101)"><Choice id="wOtherIncomeType" value={v.otherIncomeType} opts={Object.entries(OTHER_INCOME_LABELS)} onChange={val => set('otherIncomeType', val)} /></Field>
             </div>
-            <Hint tone="muted">{w.docUrl ? tr('Changing these fields (or the address, city or income type above) updates the document saved in {0} by itself.', { 0: 'Firebase Storage' }) : tr('The Form 101 PDF is built by itself when the worker is saved.')}</Hint>
+            <Hint tone="muted">{w.docUrl ? tr('Changing these fields (or the address, city or income type above) updates the saved Form 101 by itself.') : tr('The Form 101 PDF is built by itself when the worker is saved.')}</Hint>
             <FieldRow>
               <Button size="sm" className="justify-between" aria-expanded={spouseOpen} data-testid="editor-spouse-btn" onClick={() => setSpouseOpen(!spouseOpen)}>
-                <span className="inline-flex items-center gap-1.5" dir="rtl"><IconHeart className="size-4" />בן/בת הזוג{spouseFilled ? ' ✓' : ''}</span>{spouseOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap" dir="rtl"><IconHeart className="size-4" />בן/בת הזוג{spouseFilled && <IconCheck className="size-4 text-ok" data-testid="editor-spouse-filled" />}</span>{spouseOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
               </Button>
               <Button size="sm" className="justify-between" aria-expanded={kidsOpen} data-testid="editor-kids-btn" onClick={() => setKidsOpen(!kidsOpen)}>
-                <span className="inline-flex items-center gap-1.5" dir="rtl"><IconMoodKid className="size-4" />ילדים{kidsN ? ` (${kidsN})` : ''}</span>{kidsOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap" dir="rtl"><IconMoodKid className="size-4" />ילדים{kidsN ? ` (${kidsN})` : ''}</span>{kidsOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
               </Button>
             </FieldRow>
             <div className={cn('grid gap-2.5 rounded-[12px] border border-white/12 p-3', !spouseOpen && 'hidden')} data-testid="editor-spouse">

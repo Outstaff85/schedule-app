@@ -1217,7 +1217,7 @@
   "Warn how many months ahead": "התראה כמה חודשים מראש",
   "No start date — the warning does not work without it.": "חסר תאריך תחילת עבודה — ההתראה לא תפעל בלעדיו.",
   "Notes about the worker": "הערות על העובד",
-  "Changing these fields (or the address, city or income type above) updates the document saved in {0} by itself.": "שינוי שדות אלו (או כתובת/עיר/סוג הכנסה למעלה) יעדכן אוטומטית את המסמך השמור ב-{0}.",
+  "Changing these fields (or the address, city or income type above) updates the saved Form 101 by itself.": "שינוי שדות אלו (או הכתובת, העיר או סוג ההכנסה למעלה) מעדכן את טופס 101 השמור מעצמו.",
   "The Form 101 PDF is built by itself when the worker is saved.": "קובץ ה-PDF של טופס 101 ייבנה אוטומטית בעת השמירה.",
   "Personal punch link": "קישור אישי להחתמה",
   "Geofence: {0} · {1}m": "גדר גיאוגרפית: {0} · {1} מ'",
