@@ -3081,6 +3081,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {off, on, gone: !__firmsCache.some(t => t.tenantId === t3) && !row(t3)};
   });
   ok(fd.off && fd.on && fd.gone, 'firms: Select → Disable, Enable, and delete (deleteTenant) ' + JSON.stringify(fd));
+  // the firms list in one column on a computer (owner, 2026-10-27: one firm stood in a narrow third of the screen), a
+  // name in its own direction so a Hebrew one is cut at its end, never its start
+  const fw = await p.evaluate(() => {
+    const row = document.querySelector('#firmsScreenRoot [data-testid="firm-row"]'), list = row && row.parentElement.closest('div');
+    const root = document.querySelector('#firmsScreenRoot');
+    return row ? {ratio: Math.round(row.getBoundingClientRect().width / root.getBoundingClientRect().width * 100) / 100,
+      dir: row.querySelector('b').getAttribute('dir'), vw: innerWidth} : {};
+  });
+  ok(fw.dir === 'auto' && (fw.vw < 700 || fw.ratio > 0.6), 'firms: one column on a computer, the name in its own direction ' + JSON.stringify(fw));
   await p.evaluate(() => { T.tap(document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-one"]')); });
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One (a tap on its plate)');

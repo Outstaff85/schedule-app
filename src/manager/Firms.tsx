@@ -98,7 +98,7 @@ function FirmsList({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
   return (
     <div data-testid="firms-list">
       {list.length > 0 && <div className="mb-2 flex" data-testid="firms-select"><SelectHead sel={sel} /></div>}
-      <PagedList items={list} columns render={t => {
+      <PagedList items={list} render={t => {
         const off = t.active === false, saved = when(t.savedAt, snap.locale);
         const counts = tr('{0} workers · {1} clients{2}', { 0: t.workerCount || 0, 1: t.clientCount || 0, 2: saved ? ' · ' + tr('saved {0}', { 0: saved }) : '' });
         const flags = [off && <span key="off" className="text-warn">{tr('disabled')}</span>,
