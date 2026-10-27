@@ -18,7 +18,8 @@
 // known worker's scan, and who set its turn (the face finder, or whoever typed it). The scan's attempts are kept
 // by server.ts (their ids from the pages, their folders as the server gives them back) and told the worker's id
 // when the worker window saves. A typing that ends after the window closed (or after
-// Done) gives nothing back to the session: its scan is over (gen).
+// Done) gives nothing back to the session: its scan is over (gen). The phone's back closes the step on top inside
+// it, then the window, as closing it by hand does (ui/back.ts).
 import * as React from 'react';
 import { tr } from '@/lib/i18n';
 import { Window } from '@/components/shared/window';
@@ -36,6 +37,7 @@ import { finalTurn, modelPick, type ModelPick } from './turn';
 import type { ShotPage } from './engine/shot';
 import type { SessionStatus } from './engine/status';
 import { ScannerScreen } from './ui/ScannerScreen';
+import { useBack } from './ui/back';
 import { kindOf, type KeptPage, type PageTyping, type ScanSessionLike, type UiPage } from './ui/useScanSession';
 
 /** The Hebrew field reader's fields on an ID card (docs/hf-plan.md → H8c; the readers' heRead): the card layout it
@@ -319,6 +321,9 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin, work
   }, [kept, typing, chosenTick]);
 
   const close = () => { gen.current++; session?.discard(); onClose(); };
+  // the phone's back with nothing open inside: the window closed as by hand (back to where it was opened from —
+  // never off the site; ui/back.ts)
+  useBack(open, close);
 
   // Done: the camera stops, the types waited for (the pages as they are while it waits: `current`), the attempts
   // sent, the pages read (src/scan-process/)

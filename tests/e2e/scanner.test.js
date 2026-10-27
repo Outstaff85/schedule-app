@@ -482,6 +482,53 @@ const READS = {
     && (camAttempt.edgesMore || []).length === 1 && pickAttempt.outcome === 'kept' && pickAttempt.input === 'photo',
     'site, Done: the attempts go for training — the camera shot\'s with its other document and the corners fixed by hand (edgesFixed 14,16), the picked picture\'s too '
     + JSON.stringify({cam: {outcome: camAttempt.outcome, source: camAttempt.source, input: camAttempt.input, edgesFixed: camAttempt.edgesFixed, more: (camAttempt.edgesMore || []).length}, pick: {outcome: pickAttempt.outcome, input: pickAttempt.input}}));
+  // The phone's back (src/scan/ui/back.ts): one step back inside the scanner, the innermost first — the corner
+  // editor, then the page opened large, then the scan window itself, closed as by hand (back to the worker window
+  // it was opened from) — never off the site; a step closed by hand takes its history entry back off
+  await p.evaluate(() => { openEditWorker(0); });
+  await p.waitForFunction(() => document.getElementById('workerOverlay').classList.contains('open'), null, {timeout: 5000});
+  const url0 = p.url();
+  await p.evaluate(() => { window.__scanGoing = rescanFromWorkerModal(); });
+  await p.waitForSelector('[data-testid="scanner"][data-mode="site"] [data-testid="scan-status"]', {timeout: 20000});
+  await p.setInputFiles('[data-testid="scan-files"]', {name: 'card.jpg', mimeType: 'image/jpeg', buffer: pick1});
+  const backOpen = await p.evaluate(async () => {
+    const depth = () => (history.state && history.state.scanBack) || 0;
+    const r = {page: await T.until(() => T.all('[data-testid="scan-thumb"][data-kind]').length >= 1 && !T.q('[data-testid="scan-preview"]'), 20000)};
+    r.workerUnder = document.getElementById('workerOverlay').classList.contains('open');
+    r.depthOpen = depth();
+    // opened large and closed by hand (a tap on the dimmed ground): its entry taken back off
+    await T.openThumb(T.q('[data-testid="scan-thumb"]'));
+    r.view = !!(await T.until(() => T.q('[data-testid="page-view"]'), 3000));
+    r.depthView = depth();
+    T.q('[data-testid="page-view"]').click();
+    r.closedByHand = await T.until(() => !T.q('[data-testid="page-view"]'), 3000);
+    r.depthAfterHand = await T.until(() => depth() === 1, 3000) && depth();
+    // opened large again, then its corner editor
+    await T.openThumb(T.q('[data-testid="scan-thumb"]'));
+    await T.until(() => T.q('[data-testid="page-view"]'), 3000);
+    T.q('[data-testid="page-fix"]').click();
+    r.editor = !!(await T.until(() => T.q('[data-testid="corner-editor"]'), 4000));
+    r.depthEditor = depth();
+    return r;
+  });
+  const backStep = async () => {
+    await p.goBack();
+    await sleep(500);
+    return p.evaluate(() => ({editor: !!T.q('[data-testid="corner-editor"]'), view: !!T.q('[data-testid="page-view"]'), scanner: !!T.q('[data-testid="scanner"]')}));
+  };
+  const back1 = await backStep(), back2 = await backStep(), back3 = await backStep();
+  const backEnd = await p.evaluate(async () => {
+    await window.__scanGoing;
+    return {app: typeof workers !== 'undefined' && workers.length === 2, worker: document.getElementById('workerOverlay').classList.contains('open'),
+      depth: (history.state && history.state.scanBack) || 0, scanner: !!T.q('[data-testid="scanner"]')};
+  });
+  const url1 = p.url();
+  ok(backOpen.page && backOpen.depthOpen === 1 && backOpen.view && backOpen.depthView === 2 && backOpen.closedByHand && backOpen.depthAfterHand === 1 && backOpen.editor && backOpen.depthEditor === 3,
+    'site, the phone\'s back: one history entry for the scan window and one per step open (the page opened large, its corner editor); a page closed by hand takes its entry back off ' + JSON.stringify(backOpen));
+  ok(back1.scanner && back1.view && !back1.editor && back2.scanner && !back2.view && !back2.editor && !back3.scanner
+    && url1 === url0 && backEnd.app && backEnd.worker === backOpen.workerUnder && backEnd.depth === 0 && !backEnd.scanner,
+    'site, the phone\'s back: back closes the corner editor, then the page opened large, then the scan window — the worker window it was opened from as it was, the URL still the app\'s ' + JSON.stringify({back1, back2, back3, backEnd, url0, url1}));
+  await p.evaluate(() => { if (document.getElementById('workerOverlay').classList.contains('open')) closeModal('workerOverlay'); });
   const siteLab = p.reqs.filter(u => u.includes('/scan-lab/')), siteOwn = p.reqs.filter(u => /\/scan\/(models\.json|ort(130)?\/)/.test(u));
   ok(siteLab.length === 0 && siteOwn.length > 0,
     'site: the scanner loads only its own files (/scan/) — no request to the lab\'s /scan-lab/ ' + JSON.stringify({lab: siteLab.slice(0, 5), own: [...new Set(siteOwn.map(u => u.replace(/^.*\/scan\//, '/scan/')))]}));
@@ -631,6 +678,21 @@ const READS = {
   ok(hang.ready && hang.hung >= 2 && hang.waiting && !hang.early && hang.logged && hang.stuck && hang.next && hang.nextWay === 'bg-cpu' && hang.nextWorker && hang.ended >= hang.hung && hang.again,
     'lab, the watchdog: the live threads stop answering — nothing given up before 25 s; then "stopped answering", the way marked stuck, its threads ended, the next way (one background thread) started and the live frame going on there '
     + JSON.stringify(hang));
+  // The phone's back in the lab (src/scan/ui/back.ts): the Lab tools drawer closed by back; with nothing open,
+  // the lab — the first page of its tab — is not left (its guard entry, armed on the first touch)
+  await p.evaluate(() => { window.__labMark = 1; });
+  if (!(await p.evaluate(() => !!T.q('[data-testid="lab-drawer"]')))) await p.locator('[data-testid="lab-tools"]').tap();
+  await p.waitForSelector('[data-testid="lab-drawer"]');
+  await sleep(400);
+  const labDepth = await p.evaluate(() => ({depth: (history.state && history.state.scanBack) || 0, len: history.length}));
+  await p.goBack();
+  const labBack1 = await p.evaluate(async () => ({closed: await T.until(() => !T.q('[data-testid="lab-drawer"]'), 4000),
+    scanner: !!T.q('[data-testid="scanner"][data-mode="lab"]'), depth: (history.state && history.state.scanBack) || 0}));
+  await p.goBack();
+  await sleep(800);
+  const labBack2 = await p.evaluate(() => ({lab: location.pathname, same: window.__labMark === 1, scanner: !!T.q('[data-testid="scanner"][data-mode="lab"]')}));
+  ok(labDepth.depth === 2 && labBack1.closed && labBack1.scanner && labBack1.depth === 1 && /^\/scan-lab\/?$/.test(labBack2.lab) && labBack2.same && labBack2.scanner,
+    'lab, the phone\'s back: back closes the Lab tools drawer; back again with nothing open does not leave the lab (the first page of its tab: its guard entry) ' + JSON.stringify({labDepth, labBack1, labBack2}));
   const labSite = p.reqs.filter(u => /\/scan\//.test(u)), labOwn = p.reqs.filter(u => /\/scan-lab\//.test(u));
   ok(labSite.length === 0 && labOwn.length > 0,
     'lab: it loads only its own files (/scan-lab/) — no request to the site\'s /scan/ ' + JSON.stringify({site: labSite.slice(0, 5), own: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));

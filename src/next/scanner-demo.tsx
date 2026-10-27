@@ -54,22 +54,22 @@ export function ScannerDemo() {
       <p className="text-[13px] text-muted-foreground">{tr('The scanner on a fake session: no camera and no models. The first screen plays — the shutter takes a page, a tap on a photo makes it grow, its type opens it.')}</p>
       <div className="flex flex-wrap gap-5">
         <PhoneFrame id="scanner-camera" label={tr('Camera')}>
-          <ScannerScreen mode="site" session={live} onDone={p => { done(p.length); }} />
+          <ScannerScreen back={false} mode="site" session={live} onDone={p => { done(p.length); }} />
         </PhoneFrame>
         <PhoneFrame id="scanner-grow" label={tr('A photo grown in the strip')}>
-          <ScannerScreen mode="site" session={growSession} camera={false} initial={{ page: 'p1', grow: true }} />
+          <ScannerScreen back={false} mode="site" session={growSession} camera={false} initial={{ page: 'p1', grow: true }} />
         </PhoneFrame>
         <PhoneFrame id="scanner-page" label={tr('A page opened large')}>
-          <ScannerScreen mode="site" session={pageSession} camera={false} initial={{ page: 'p1' }} />
+          <ScannerScreen back={false} mode="site" session={pageSession} camera={false} initial={{ page: 'p1' }} />
         </PhoneFrame>
         <PhoneFrame id="scanner-fix" label={tr('Fix corners')}>
-          <ScannerScreen mode="site" session={fixSession} camera={false} initial={{ page: 'p2', fix: true }} />
+          <ScannerScreen back={false} mode="site" session={fixSession} camera={false} initial={{ page: 'p2', fix: true }} />
         </PhoneFrame>
       </div>
       <p data-testid="scanner-calls" className="font-mono text-[12px] text-ink-2">{calls.length ? calls.join(' · ') : tr('Nothing asked yet')}</p>
       <div><Button variant="primary" onClick={() => setFull(true)} data-testid="open-scanner"><IconScan className="size-[18px]" />{tr('Open the scanner full screen')}</Button></div>
       <Window full open={full} onOpenChange={setFull} title={tr('Scanner')}>
-        {fullSession && <ScannerScreen mode="site" session={fullSession} kept={kept} onRemoveKept={id => setKept(k => k.filter(x => x.id !== id))}
+        {fullSession && <ScannerScreen back={false} mode="site" session={fullSession} kept={kept} onRemoveKept={id => setKept(k => k.filter(x => x.id !== id))}
           onDone={p => { setFull(false); done(p.length); }} />}
       </Window>
     </section>

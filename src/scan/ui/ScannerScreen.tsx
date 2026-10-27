@@ -24,7 +24,8 @@
 // for it — busy, the bar and the pages closed meanwhile (no new page, no change it would miss) — and the scan
 // ends (session.done, the screen emptied) only when it says true; false leaves the pages and the scan as they
 // are (the read failed: the host says why). A type picked by hand is told to the host (onChoose). Escape inside
-// it closes the step on top (the corner editor, then the page opened large) before the window.
+// it closes the step on top (the corner editor, then the page opened large) before the window; so does the phone's
+// back (back.ts: one history entry per step open — `back` off in the /next gallery, which keeps its own hash).
 import * as React from 'react';
 import { IconBolt, IconCheck, IconEye } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,7 @@ import { HintPill } from './HintPill';
 import { LiveOverlay } from './LiveOverlay';
 import { PageView, percent } from './PageView';
 import { StatusPill } from './StatusPill';
+import { useBack } from './back';
 import { Thumbs } from './Thumbs';
 import { kindOf, useScanSession, type Fixable, type KeptPage, type PageTyping, type ScanSessionLike, type UiPage } from './useScanSession';
 
@@ -46,7 +48,7 @@ export type ScannerMode = 'site' | 'lab';
 
 const cannotFix = (): string => tr('This page can no longer be fixed — delete it and take it again');
 
-export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, kindTick, children }: {
+export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, kindTick, back = true, children }: {
   mode: ScannerMode;
   session: ScanSessionLike;
   /** Done (the site) / Show what the models read (the lab): the pages shown at that moment, in order (the kept
@@ -73,6 +75,8 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   /** the lab's document type collection (src/scan/lab/kinds.ts): a page the model answered gets a tick beside its
    *  type chips, which sends the type shown */
   kindTick?: { offered: (id: string) => boolean; sent: (id: string) => boolean; sending?: (id: string) => boolean; onTick: (id: string, kind: Doctype | null) => void };
+  /** the phone's back closes the step on top (back.ts); off in the /next gallery */
+  back?: boolean;
   /** drawn over the screen (the lab's tools drawer) */
   children?: React.ReactNode;
 }) {
@@ -165,6 +169,10 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
   }, [open, fixing]);
+
+  // the phone's back: the page opened large, then its corner editor above it (opened later: its entry on top)
+  useBack(back && !!page, () => setOpen(null));
+  useBack(back && !!fixing, () => setFixing(null));
 
   const apply = (pts: Quad) => {
     const id = fixing?.id;
