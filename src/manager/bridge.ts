@@ -321,6 +321,8 @@ export type WorkerBridge = {
   /** what the sign window needs (docs/contracts.md → Signing): the saved worker, Form 101's values and the contract's marks
    * (the firm's profile refreshed first), whether this login sees pay and sets the signing date, the worker's punch link */
   signContext(workerId: string): Promise<SignContext | null>;
+  /** the firm's profile for a client's contract (its firm marks): refreshed at most every 5 minutes (`refreshTenantProfile`) */
+  firmProfile(): Promise<FirmProfile | null>;
   /** Download data (docs/workers.md → Download data): the parts picked, put together by `worker_docs` — Form 101's values
    * (`form101Payload`, the firm's profile refreshed first) sent when it is picked — and the PDF opened; what it holds */
   downloadData(workerId: string, include: DownloadInclude): Promise<Omit<WorkerPdf, 'blob'>>;
@@ -764,6 +766,13 @@ export type ClientRecord = {
   billShabbatRate?: number | null;
   fixedBillRate?: number | null;
   dailyBillRate?: number | null;
+  /** the client's contact phone (WhatsApp) and email, the signer's name and role — a client's contract (docs/clients.md) */
+  contactPhone?: string;
+  email?: string;
+  signerName?: string;
+  signerRole?: string;
+  /** the client's contract template ('' = the firm's default client template) */
+  contractTemplateId?: string;
   [k: string]: unknown;
 };
 

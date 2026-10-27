@@ -252,3 +252,132 @@ def test_heavy_or_broken_upload_goes_to_admin_errors():
     assert r["ok"] and r["heavy"]
     errs = [d for p, d in db.data.items() if p[0] == "errors"]
     assert len(errs) == 2 and "Heavy contract template: big" in errs[1]["message"]
+
+
+
+# ---- the firm's signature and stamp (seal.py) ----------------------------------------------
+
+def _seal_pngs():
+    from PIL import Image, ImageDraw
+    out = []
+    for size, colour in (((300, 120), (20, 20, 40, 255)), ((200, 200), (30, 60, 170, 255))):
+        im = Image.new("RGBA", size, (0, 0, 0, 0))
+        ImageDraw.Draw(im).ellipse((5, 5, size[0] - 5, size[1] - 5), outline=colour, width=8)
+        b = io.BytesIO()
+        im.save(b, "PNG")
+        out.append(b.getvalue())
+    return out
+
+
+def _pages(n=3, rotate=0, marks=False):
+    doc = pymupdf.open()
+    for i in range(n):
+        page = doc.new_page()
+        page.insert_text((50, 100), "Page " + str(i + 1) + " {{given}}", fontsize=12)
+        if marks and i == 0:
+            page.insert_text((50, 300), "Firm: {{company_signature}}   Stamp: {{stamp}}", fontsize=12)
+        if rotate:
+            page.set_rotation(rotate)
+    return doc.tobytes()
+
+
+def _infos(page):
+    return [(i["xref"], pymupdf.Rect(i["bbox"])) for i in page.get_image_info(xrefs=True)]
+
+
+def test_seal_on_every_page_bottom_right_the_stamp_over_the_signature():
+    sig, stamp = _seal_pngs()
+    out = contracts.fill(_pages(3), {"given": "Avi"}, seal={"signature": sig, "stamp": stamp, "every_page": True})
+    doc = pymupdf.open(stream=out)
+    xrefs = set()
+    for page in doc:
+        info = _infos(page)
+        assert len(info) == 2
+        W, H = page.rect.width, page.rect.height
+        assert all(r.x0 > W / 2 and r.y0 > H / 2 for _, r in info)  # bottom right
+        (x_sig, r_sig), (x_stamp, r_stamp) = info  # drawn in this order: the stamp lies over the signature
+        assert r_sig.width > r_sig.height and abs(r_stamp.width - r_stamp.height) < 1
+        assert r_stamp.intersects(r_sig) and r_stamp.x1 > r_sig.x1
+        xrefs |= {x_sig, x_stamp}
+    assert len(xrefs) == 2  # each picture kept once in the file
+    # a missing picture draws nothing
+    one = pymupdf.open(stream=contracts.fill(_pages(2), {}, seal={"signature": None, "stamp": stamp, "every_page": True}))
+    assert all(len(p.get_images()) == 1 for p in one)
+    # not ticked: nothing at the bottom
+    off = pymupdf.open(stream=contracts.fill(_pages(2), {}, seal={"signature": sig, "stamp": stamp, "every_page": False}))
+    assert all(not p.get_images() for p in off)
+
+
+def test_seal_marks_drawn_in_place_and_blank_without_a_picture():
+    sig, stamp = _seal_pngs()
+    doc = pymupdf.open(stream=contracts.fill(_pages(1, marks=True), {"given": "Avi"}, seal={"signature": sig, "stamp": stamp}))
+    t = doc[0].get_text()
+    assert "{{" not in t and "company_signature" not in t and "stamp}}" not in t and "Avi" in t
+    info = _infos(doc[0])
+    assert len(info) == 2 and all(r.y1 < 400 for _, r in info)  # at the marks, not at the bottom
+    assert info[0][1].width > info[0][1].height  # the signature first, then the stamp
+    # no seal at all: no pictures, the marks whited out and left blank
+    doc = pymupdf.open(stream=contracts.fill(_pages(1, marks=True), {"given": "Avi"}))
+    assert not doc[0].get_images() and "company_signature" not in doc[0].get_text() and "{{stamp}}" not in doc[0].get_text()
+
+
+def test_seal_lands_bottom_right_of_a_turned_page():
+    from PIL import Image
+    sig, stamp = _seal_pngs()
+    for rot in (90, 180, 270):
+        doc = pymupdf.open(stream=contracts.fill(_pages(1, rotate=rot), {}, seal={"signature": sig, "stamp": stamp, "every_page": True}))
+        pix = doc[0].get_pixmap(dpi=40)
+        im = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        # what is drawn in colour (the text is black, the pictures are dark blue / blue)
+        px = im.load()
+        pts = [(x, y) for y in range(pix.height) for x in range(pix.width) if px[x, y][2] > px[x, y][0] + 40]
+        assert pts, rot
+        assert min(x for x, _ in pts) > pix.width / 2 and min(y for _, y in pts) > pix.height / 2, (rot, pix.width, pix.height)
+
+
+def test_the_every_page_tick_on_templates():
+    db, bucket = Db(), Bucket()
+    p = contracts.run(db, bucket, OWNER, {"action": "prepare", "pdfBase64": _b64(_pdf()), "name": "A"})
+    on = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "name": "A"})["template"]
+    off = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "name": "B", "sealEveryPage": False})["template"]
+    assert on["sealEveryPage"] is True and off["sealEveryPage"] is False
+    # a template saved before the tick: no field, which is on too (owner, 2026-10-27) — only an explicit false is off
+    db.data[("tenants", "t1", "contractTemplates", on["id"])].pop("sealEveryPage")
+    assert contracts.run(db, bucket, OWNER, {"action": "list"})["templates"][0]["sealEveryPage"] is True
+    assert contracts.seal_every_page({}) and contracts.seal_every_page({"sealEveryPage": None}) and not contracts.seal_every_page({"sealEveryPage": False})
+    # its sample draws the seal (the made-up signature and stamp + the worker's signature at its mark)
+    smp = contracts.run(db, bucket, OWNER, {"action": "file", "id": on["id"], "sample": True})
+    assert len(pymupdf.open(stream=base64.b64decode(smp["pdfBase64"]))[0].get_images()) == 3
+    # the ⋮ toggle of such a template turns it off
+    assert contracts.run(db, bucket, OWNER, {"action": "update", "id": on["id"], "sealEveryPage": False})["template"]["sealEveryPage"] is False
+    # a new version keeps the old value unless it sends one; update toggles it
+    assert contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "replaceId": off["id"]})["template"]["sealEveryPage"] is False
+    assert contracts.run(db, bucket, OWNER, {"action": "update", "id": off["id"], "sealEveryPage": True})["template"]["sealEveryPage"] is True
+    assert contracts.run(db, bucket, STAFF, {"action": "update", "id": off["id"], "sealEveryPage": False}) == {"error": contracts.E_NO_RIGHT}
+
+
+def test_the_sample_shows_the_firms_real_seal_or_made_up_ones():
+    db, bucket = Db(), Bucket()
+    p = contracts.run(db, bucket, OWNER, {"action": "prepare", "pdfBase64": _b64(_pdf()), "name": "A"})
+    # prepare's sample: made-up signature and stamp at the bottom, and the worker's made-up signature at its mark
+    assert len(pymupdf.open(stream=base64.b64decode(p["sampleBase64"]))[0].get_images()) == 3
+    t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "name": "A"})["template"]
+
+    def widths(claims=OWNER):
+        doc = pymupdf.open(stream=base64.b64decode(contracts.run(db, bucket, claims, {"action": "file", "id": t["id"], "sample": True})["pdfBase64"]))
+        return sorted(i[2] for i in doc[0].get_images())
+
+    made_up = widths()
+    assert len(made_up) == 3
+    sig, stamp = _seal_pngs()
+    db.collection("tenants").document("t1").collection("firmSeal").document("current").set(
+        {"stamp": {"path": "tenants/t1/firmSeal/stamp-1.png"}, "signature": None})
+    bucket.store["tenants/t1/firmSeal/stamp-1.png"] = stamp
+    real = widths()
+    assert 200 in real and 200 not in made_up  # the firm's own stamp (200 px wide)
+    # a login with the right firmSign sees the real one; a login without it (staff, HR) only the made-up ones
+    assert widths(dict(STAFF, rt=["firmSign"])) == real
+    assert widths(STAFF) == made_up and widths({"uid": "u5", "role": "hr", "tenantId": "t1", "rt": ["workers"]}) == made_up
+    # unticked: only the worker's made-up signature at its mark
+    contracts.run(db, bucket, OWNER, {"action": "update", "id": t["id"], "sealEveryPage": False})
+    assert len(widths()) == 1

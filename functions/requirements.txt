@@ -4,3 +4,4 @@ pymupdf
 python-bidi
 Pillow
 huggingface_hub>=1.0  # the private training-data bucket (datastore.py), once the server has its token
+numpy  # the firm stamp's cleaning (seal.py)

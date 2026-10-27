@@ -118,6 +118,10 @@ service cloud.firestore {
         .hasOnly(['companyName', 'deductionsFileNumber', 'phone', 'street', 'streetNumber', 'city']);
     }
 
+    // tenants/{t}/firmSeal/current (the firm's signature and stamp) has no match below: no browser
+    // login reads or writes it — only the contract_templates function (functions/seal.py).
+    // tenants/{t}/clientSignRequests (a client's contract to sign) has none either: only the
+    // sign_documents function (functions/client_signing.py) reads and writes it.
     match /tenants/{t} {
       allow read: if manager(t) || isHr(t);
       allow update: if isSuper() || (isTenantAdmin(t) && onlyProfileFields());
@@ -239,6 +243,7 @@ service cloud.firestore {
     match /usernames/{name} { allow read, write: if false; }
     match /weatherCache/{area} { allow read, write: if false; }  // the weather function only (stage 12)
     match /permTemplates/{id} { allow read, write: if false; }  // the users_admin function only (permission templates)
+    match /clientSignTokens/{h} { allow read, write: if false; }  // a client's sign link: the sign_documents function only (functions/client_signing.py)
     // The scanner's automatic training cycle's reports (docs/scan-training.md → The automatic cycle → Reports):
     // written by the owner's PC with its Admin credentials, read by a super-admin only. The rest of
     // scanTrainingStats (the counters, `current`) stays function-only (not matched: denied).

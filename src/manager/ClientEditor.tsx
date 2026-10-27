@@ -3,14 +3,16 @@
 // · Xh this month", a ⋮ with Manual punch and Delete), then section plates in
 // the owner's fixed order — Client, Place (address, site, radius, the small map
 // that opens the map picker, a pasted Google Maps link), Rates (worker pay and
-// what the client pays, by the hour / by the day, by law / fixed, the margin).
+// what the client pays, by the hour / by the day, by law / fixed, the margin), Contract (the client's
+// contract template, Send to sign / Sign here, the signed contracts — ClientContract.tsx). The Client
+// section also holds the contact phone and email and the signer's name and role (a client's contract).
 // Its logins are made in Admin → Users only (owner, 2026-10-19); the head
 // shows the hours batches of this client waiting for review. A tap outside saves
 // it (the page's overlay → saveClient auto); the Save button too. Billing never
 // changes a worker's pay.
 import * as React from 'react';
 import {
-  IconBuilding, IconCircleCheck, IconCoin, IconDeviceFloppy, IconCheck, IconClock, IconDotsVertical, IconMap2, IconMapPin, IconTrash,
+  IconBuilding, IconCircleCheck, IconCoin, IconDeviceFloppy, IconCheck, IconClock, IconDotsVertical, IconFileText, IconMap2, IconMapPin, IconTrash,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -27,6 +29,8 @@ import { initials } from './worker-head';
 import { deleteLater } from './Clients';
 import { hoursShort } from './today';
 import { canChange } from './logic/access';
+import { ClientContractSection } from './ClientContract';
+import type { ClientDetails } from './logic/client-contract';
 import {
   billMain, billOf, clientFormOf, clientRadius, clientRecordOf, margin, moneyShort, parseMapsUrl, rateNum, setBillMain, setPayUnit, setRateMode,
   type Bill, type ClientForm,
@@ -107,6 +111,12 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
   const live = React.useRef({ f, bill });
   live.current = { f, bill };
   const set = (k: keyof ClientForm, v: string) => setF(cur => ({ ...cur, [k]: v }));
+  // a signing's details onto the client's EMPTY contact fields only (ClientContract)
+  const takeOn = (patch: Partial<ClientDetails>) => setF(cur => {
+    const next = { ...cur };
+    for (const [k, v] of Object.entries(patch)) if (v && k in next && !String(next[k as keyof ClientForm] || '').trim()) next[k as keyof ClientForm] = v;
+    return next;
+  });
 
   const save = (opts: { auto?: boolean }) => {
     const { f: form, bill: b } = live.current;
@@ -117,6 +127,9 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
       return;
     }
     const rec = clientRecordOf(form, b, c.color || '');
+    // a client saved before the contact and contract fields: an empty one is not added (nothing changed, nothing saved)
+    for (const k of ['contactPhone', 'email', 'signerName', 'signerRole', 'contractTemplateId'] as const)
+      if (rec[k] === '' && c[k] == null) delete rec[k];
     // Without Edit pay the worker pay stays as it was, older OT / Shabbat rates
     // too (firestore.rules → clients refuses any change to them).
     if (!info.canPay) Object.assign(rec, { defaultHourlyRate: c.defaultHourlyRate ?? null, defaultOtRate: c.defaultOtRate ?? null, defaultShabbatRate: c.defaultShabbatRate ?? null });
@@ -167,6 +180,22 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
               </Field>
               <Field label={tr('Company no. (optional)')} htmlFor="cCompanyNumber">
                 <Input id="cCompanyNumber" value={f.companyNumber} placeholder="512345678" onChange={e => set('companyNumber', e.target.value)} />
+              </Field>
+            </FieldRow>
+            <FieldRow className="mt-2.5">
+              <Field label={tr('Contact phone')} htmlFor="cContactPhone">
+                <Input id="cContactPhone" type="tel" dir="ltr" value={f.contactPhone} placeholder="050-1234567" onChange={e => set('contactPhone', e.target.value)} />
+              </Field>
+              <Field label={tr('Email')} htmlFor="cEmail">
+                <Input id="cEmail" type="email" dir="ltr" value={f.email} placeholder="office@example.co.il" onChange={e => set('email', e.target.value)} />
+              </Field>
+            </FieldRow>
+            <FieldRow className="mt-2.5">
+              <Field label={tr("Signer's name")} htmlFor="cSignerName">
+                <Input id="cSignerName" dir="auto" value={f.signerName} onChange={e => set('signerName', e.target.value)} />
+              </Field>
+              <Field label={tr("Signer's role")} htmlFor="cSignerRole">
+                <Input id="cSignerRole" dir="auto" value={f.signerRole} placeholder={tr('e.g. CEO')} onChange={e => set('signerRole', e.target.value)} />
               </Field>
             </FieldRow>
           </AccordionContent>
@@ -258,6 +287,15 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
                 )}
               </div>
             )}
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="contract" data-sec="contract" color="var(--neutral)">
+          <AccordionTrigger icon={<IconFileText />}>{tr('Contract')}</AccordionTrigger>
+          <AccordionContent forceMount hidden={!open.includes('contract')}>
+            <ClientContractSection clientId={editId} record={() => clientRecordOf(live.current.f, live.current.bill, c.color || '')}
+              contractTemplateId={f.contractTemplateId} setTemplate={id => set('contractTemplateId', id)} takeOn={takeOn} api={api}
+              opened={open.includes('contract')} />
           </AccordionContent>
         </AccordionItem>
 

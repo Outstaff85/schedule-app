@@ -57,12 +57,18 @@ export function setRateMode(b: Bill, mode: 'tiered' | 'fixed'): Bill {
 export type ClientForm = {
   name: string; companyNumber: string; address: string; object: string; radius: string;
   mapsUrl: string; lat: string; lng: string; defRate: string;
+  /** the client's contact and signer (a client's contract: its marks, the WhatsApp number) */
+  contactPhone: string; email: string; signerName: string; signerRole: string;
+  /** the client's contract template ('' = the firm's default client template) */
+  contractTemplateId: string;
 };
 export function clientFormOf(c: ClientRecord): ClientForm {
   return {
     name: c.name || '', companyNumber: c.companyNumber || '', address: c.address || '', object: c.object || '',
     radius: String(c.radius || 100), mapsUrl: c.mapsUrl || '', lat: c.lat ? String(c.lat) : '', lng: c.lng ? String(c.lng) : '',
     defRate: numOrEmpty(c.defaultHourlyRate),
+    contactPhone: c.contactPhone || '', email: c.email || '', signerName: c.signerName || '', signerRole: c.signerRole || '',
+    contractTemplateId: c.contractTemplateId || '',
   };
 }
 
@@ -78,6 +84,8 @@ export function clientRecordOf(f: ClientForm, b: Bill, color: string): ClientRec
     defaultHourlyRate: rateNum(f.defRate), defaultOtRate: null, defaultShabbatRate: null,
     rateMode: b.rateMode, fixedBillRate: b.fixedBillRate, billRate: b.billRate, billOtRate: b.billOtRate, billShabbatRate: b.billShabbatRate,
     dailyBillRate: b.dailyBillRate,
+    contactPhone: f.contactPhone.trim(), email: f.email.trim(), signerName: f.signerName.trim(), signerRole: f.signerRole.trim(),
+    contractTemplateId: f.contractTemplateId,
   };
 }
 

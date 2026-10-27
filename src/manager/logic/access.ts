@@ -123,3 +123,19 @@ export function canSetSignDate(): boolean {
   const s = getSession();
   return !!s && (s.role === 'superadmin' || s.role === 'tenant_admin' || rights().includes('setSignDate'));
 }
+/** Uploads, replaces and deletes the firm's signature and stamp, and sends a client contract to sign: the owner and the
+ * super-admin; a staff / HR login with the right "Firm's signature and stamp; client contracts". functions/seal.py may_firm_sign. */
+export function canFirmSign(): boolean {
+  const s = getSession();
+  if (!s) return false;
+  if (s.role === 'superadmin' || s.role === 'tenant_admin') return true;
+  return (s.role === 'staff' || s.role === 'hr') && rights().includes('firmSign');
+}
+/** Sees what clients pay (a client contract's billing marks): the owner and the super-admin; a staff login with Accounting —
+ * an HR never (it never gets Accounting). functions/signing.py may_see_billing is the same rule. */
+export function canSeeBilling(): boolean {
+  const s = getSession();
+  if (!s) return false;
+  if (s.role === 'superadmin' || s.role === 'tenant_admin') return true;
+  return s.role === 'staff' && rights().includes('accounting');
+}

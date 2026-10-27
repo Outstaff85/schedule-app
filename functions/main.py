@@ -893,7 +893,8 @@ def _scan_stats(db, stats_ref):
 )
 def contract_templates(req: https_fn.Request) -> https_fn.Response:
     """Admin → Contract templates: {"action": "list" | "file" | "prepare" | "sample" | "save" |
-    "update" | "delete", …} from a manager login of the firm (contracts.run). No shared state per
+    "update" | "delete" | "seal" | "sealSave" | "sealDelete", …} from a manager login of the firm (contracts.run;
+    the firm's signature and stamp: seal.py). No shared state per
     request: the uploads of several files are sent at once (CLAUDE.md → Parallel AI calls)."""
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
@@ -925,7 +926,8 @@ def contract_templates(req: https_fn.Request) -> https_fn.Response:
 def sign_documents(req: https_fn.Request) -> https_fn.Response:
     """The worker's page ({"token", "action": "mine" | "view" | "sign" | "build"}, the punch link's
     token) and a manager login ({"action": "send" | "list" | "view" | "sign" | "build" | "applied" |
-    "withdraw"}, its ID token). The two signed PDFs are built by two calls at once (build, which =
+    "withdraw" | "client…"}, its ID token), and a client's sign page ({"clientToken", "action": "mine" | "view" |
+    "sign" | "build"}, client_signing.py). The two signed PDFs are built by two calls at once (build, which =
     form101 / contract); no shared state per request."""
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
@@ -939,6 +941,10 @@ def sign_documents(req: https_fn.Request) -> https_fn.Response:
             firebase_admin.initialize_app()
         db, bucket = firestore.client(), _model_bucket(storage)
         build101 = lambda p: build_form101_pdf(p)
+        bearer = (req.headers.get("Authorization") or "").startswith("Bearer ")
+        if payload.get("clientToken") and not bearer:  # a client's sign page (client_signing.py): its link's token only
+            import client_signing
+            return _json(client_signing.run_public(db, bucket, payload, firestore.SERVER_TIMESTAMP))
         if payload.get("token") and not (req.headers.get("Authorization") or "").startswith("Bearer "):
             return _json(signing.run_worker(db, bucket, payload, build101, firestore.SERVER_TIMESTAMP))
         status, error, claims = gate.claims_of(req.headers, _verify_token)
