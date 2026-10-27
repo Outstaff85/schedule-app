@@ -353,7 +353,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const sheet = !!win(), items = win() ? [...win().querySelectorAll('button span.flex-1')].map(b => b.textContent.trim()) : [];
     // the items are plates of the list template: the bar, no browser border (the page has no preflight)
     const it0 = win() && win().querySelector('[data-testid=more-item]'), ics = it0 && getComputedStyle(it0);
-    const plate = !!it0 && it0.classList.contains('og-plate') && ics.borderTopWidth === '0px' && /inset 4px 0px 0px/.test(ics.boxShadow);
+    const plate = !!it0 && it0.classList.contains('og-plate') && ics.borderTopWidth === '0px' && /4px 0px 0px( 0px)? inset/.test(ics.boxShadow);
     // the sheet lies over the bottom bar (the bar never covers its last item): at the bar's middle the sheet is on top
     // (the open sheet turns the page's pointer events off; turned back on for the look, the topmost element is hit)
     const pe = document.body.style.pointerEvents; document.body.style.pointerEvents = 'auto';
@@ -451,12 +451,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // On a phone the worker, client and supplier windows open at one size, the full sheet (owner).
   await p.setViewportSize({width: 390, height: 800});
   const wsz = await p.evaluate(async () => { const w8 = () => new Promise(r => setTimeout(r, 200)); const h = id => Math.round(document.getElementById(id).getBoundingClientRect().height);
-    openEditWorker(0); await w8(); const worker = h('workerModal'); closeModal('workerOverlay');
-    openEditClient(clients[0].id); await w8(); const client = h('clientModal'); closeModal('clientOverlay');
-    openEditSupplier(suppliers[0].id); await w8(); const supplier = h('supplierModal'); closeModal('supplierOverlay'); await w8();
-    return {worker, client, supplier}; });
+    // each window closed and gone before the next opens: one opened over a closing one would go back to it (__returnTo)
+    openEditWorker(0); await w8(); const worker = h('workerModal'); closeModal('workerOverlay'); await w8(); await w8();
+    openEditClient(clients[0].id); await w8(); const client = h('clientModal'); closeModal('clientOverlay'); await w8(); await w8();
+    openEditSupplier(suppliers[0].id); await w8(); const supplier = h('supplierModal'); closeModal('supplierOverlay'); await w8(); await w8();
+    return {worker, client, supplier, left: [...document.querySelectorAll('.overlay.open')].map(o => o.id)}; });
   await p.setViewportSize({width: 1280, height: 720});
-  ok(wsz.worker > 600 && wsz.client === wsz.worker && wsz.supplier === wsz.worker, 'windows: on a phone the worker, client and supplier windows are one size ' + JSON.stringify(wsz));
+  ok(wsz.worker > 600 && wsz.client === wsz.worker && wsz.supplier === wsz.worker && !wsz.left.length, 'windows: on a phone the worker, client and supplier windows are one size ' + JSON.stringify(wsz));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -563,7 +564,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       const wait = ms => new Promise(res => setTimeout(res, ms));
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
       const sw = () => document.querySelector('[data-testid=account-theme] [data-testid=theme-switch]');
-      r.items = [...sw().querySelectorAll('button[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
+      r.items = [...sw().querySelectorAll('button[data-theme-v]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
       // the menu in the windows' glass (owner 2026-10-26): the sheet gradient and the glass edge, its tail in the same
       // fill (never black) with the same edge; Dark / Light / System fit inside the menu, none cut off
       { const m = document.querySelector('[data-testid=account-menu]'), cs = getComputedStyle(m), root = getComputedStyle(document.documentElement);
@@ -572,10 +573,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         r.menuGlass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim());
         r.tail = !!tail && getComputedStyle(tail).fill === rgb(root.getPropertyValue('--plate-top').trim()) && getComputedStyle(tail).fill !== 'rgb(0, 0, 0)' && getComputedStyle(edge).stroke === cs.borderTopColor;
         const mb = m.getBoundingClientRect();
-        r.fits = [...sw().querySelectorAll('button[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
+        r.fits = [...sw().querySelectorAll('button[data-theme-v]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
       sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
-      r.on = (sw().querySelector('button[data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'checked';
+      r.on = (sw().querySelector('button[data-theme-v][data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'unchecked'; // on = Dark, off once Light is picked
       r.open = !!document.querySelector('[data-testid=account-menu]');
       r.ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
       document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await wait(200);
@@ -1683,9 +1684,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const keep = JSON.stringify(getSession()), s = JSON.parse(keep), w = workers[1], keepW = JSON.stringify(w);
     const d = new Date(); d.setDate(d.getDate() - 2);
     w.docs = [{id: 'vperm', type: 'visa', name: 'v.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: new Date().toISOString(), expiry: localYMD(d)}];
+    // Schedule lists only the workers with a shift this week: give this one a week of work (put back below)
+    w.schedule = Array.from({length: 7}, () => ({type: 'work', start: '08:00', end: '16:00'})); render();
     const dbl = async () => {
       document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('schedule'); await T.tick(400);
-      const pl = document.querySelector('#scheduleRoot [data-testid="sched-worker"] .og-plate, [data-testid="sched-worker"] .og-plate');
+      const pl = document.querySelector(`#scheduleRoot [data-testid="sched-worker"][data-id="${w.id}"] > [data-slot="plate"] > [role="button"]`);
       if (!pl) return 'no plate';
       pl.dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); await T.tick(300);
       return document.getElementById('workerOverlay').classList.contains('open');
@@ -1917,7 +1920,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="sign-sent"]', {timeout: 30000});
   sg.sent = await p.evaluate(() => ({wa: (document.querySelector('[data-testid="sign-whatsapp"]') || {}).href || '', chip: (document.querySelector('[data-testid="card-sign-state"]') || {}).dataset?.state}));
   const sgReqs1 = await (await fetch('http://127.0.0.1:5055/signRequests', {method: 'POST'})).json();
-  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/.*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && /documents to sign\. Open your personal account/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
+  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/[\s\S]*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && /documents to sign\. Open your personal account/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
     && sgReqs1.length === 1 && sgReqs1[0].status === 'sent' && sgReqs1[0].workerId === 'w1' && sgReqs1[0].values.full_name !== undefined && /\/sign\//.test(sgReqs1[0].templatePath),
     'signing: Documents to sign — the category\'s default picked, the date for a login with the right; Send to sign keeps the template frozen, offers the link for WhatsApp, the card says Sent to sign ' + JSON.stringify({sg, sgReqs1: sgReqs1.map(r => ({s: r.status, w: r.workerId, t: r.templatePath}))}));
   await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
@@ -2788,9 +2791,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const plateH = await p.evaluate(async () => {
     switchTab('workers'); await T.tick(100);
     const hs = [...document.querySelectorAll('#workersRoot [data-testid="worker-plate"]')].map(e => Math.round(e.getBoundingClientRect().height));
-    return {hs, chip: !!document.querySelector('#workersRoot [data-testid="worker-chip1"]'), space: !!document.querySelector('#workersRoot [data-testid="worker-chip-space"]')};
+    return {hs, chip: !!document.querySelector('#workersRoot [data-testid="worker-chip1"]'), chips: document.querySelectorAll('#workersRoot [data-testid="worker-chip1"]').length, space: !!document.querySelector('#workersRoot [data-testid="worker-chip-space"]')};
   });
-  ok(plateH.hs.length > 1 && Math.max(...plateH.hs) - Math.min(...plateH.hs) <= 1 && (plateH.chip ? plateH.space : true),
+  ok(plateH.hs.length > 1 && Math.max(...plateH.hs) - Math.min(...plateH.hs) <= 1 && (plateH.chip && plateH.chips < plateH.hs.length ? plateH.space : true),
     'workers: every plate the same height, a notice chip or not ' + JSON.stringify(plateH));
   // Worker documents (stage 13): plates with Select in the card's documents box; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
   const wd = await p.evaluate(async () => {
