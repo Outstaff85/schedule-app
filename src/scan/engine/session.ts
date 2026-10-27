@@ -180,7 +180,8 @@ export class ScanSession {
     this.env = { ...defaultSessionEnv(), ...parts.env };
     this.log = parts.log || parts.engines?.log || new ScanLog();
     this.engines = parts.engines || new Engines(surface, this.log);
-    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.log, this.engines.settings.cpuDir);
+    // the readers share the engines' one read of models.json per open
+    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.log, this.engines.settings.cpuDir, () => this.engines.modelsInfo());
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
     this.keepCanvases = parts.keepCanvases ?? null;
@@ -247,11 +248,25 @@ export class ScanSession {
 
   /** The models made ready as the lab's page did on open: the accurate model first (photos and PDFs can go
    *  in), then the camera's models; the readers beside them. */
-  async prepare(): Promise<void> {
+  //
+  // early (the manager's new worker window, keep.ts prepareEarly): the same start with no scanner open yet — the
+  // scanner's open is not marked (its "Ready" line counts from the open that takes the session).
+  async prepare(early = false): Promise<void> {
+    if (!early) this.markOpen();
     this.attempts.start();
     if (this.readers) void this.readers.load();
     await this.engines.ensureCap().catch(e => this.log.log('Accurate model: ' + ((e as Error)?.message || e)));
     await this.engines.ensureSession().catch(e => this.log.log('Model: ' + ((e as Error)?.message || e)));
+  }
+
+  /** When the scanner opened (env.now()), until its first live frame: "Ready: first frame after N ms" goes to the
+   *  log then (the lab's loading log; the owner's measure of Preparing…). */
+  private openedAt: number | null = null;
+  /** The scanner opened now (the site's window, the lab's page): the log's "Time:" lines count from here too. */
+  markOpen(): void {
+    this.openedAt = this.env.now();
+    this.log.markOpen();
+    this.log.log('Time: scanner opened' + (this.engines.engine ? ' — its models kept from the last scan' : ''));
   }
 
   /** The camera shown in video, once the model is ready; the live frame and its follow start. */
@@ -261,7 +276,9 @@ export class ScanSession {
       if (this.readers) void this.readers.load();
       await this.engines.ensureSession();
       if (gen !== this.camGen) return;  // put away while the model loaded: the camera is not turned on
+      const tc = this.env.now();
       const started = await this.camera.start(video);
+      if (started) this.log.log('Time: camera started — ' + Math.round(this.env.now() - tc) + ' ms');
       if (!started || gen !== this.camGen) return;  // put away while the camera started (camera.stop gave it back)
       this.emitFigures();
       this.live.show(video);
@@ -278,6 +295,7 @@ export class ScanSession {
   }
 
   private answer(raw: Corners, res: SteadyAnswer): void {
+    if (this.openedAt !== null) { this.log.log('Ready: first frame after ' + Math.round(this.env.now() - this.openedAt) + ' ms'); this.openedAt = null; }
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);

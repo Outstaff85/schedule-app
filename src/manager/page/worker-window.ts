@@ -16,6 +16,7 @@ import { autoSave } from '../data/store';
 import { genToken } from '../data/ids';
 import { render } from './render';
 import { openNewScan } from './scan';
+import { prepareScanEarly } from '../../scan/open';
 import { verifierFor } from '../../scan-process/ai';
 import { normDate, normDigits } from '../../scan-process/ids';
 import { resetScan } from '../../scan-process/session';
@@ -58,6 +59,8 @@ export function openAddWorker(){
   resetScan();
   window.__wCapturedSigPng=undefined;
   showWorkerModal(blankWorkerDefaults());
+  // a new worker is usually scanned next: the scanner's models start now, in the background (src/scan/keep.ts)
+  prepareScanEarly();
 }
 export function openEditWorker(wi?: any){ const w=workers[wi]; if(!w) return; editingWorkerId=w.id; window.__wDraft=null; showWorkerModal(w); }
 // Form 101 fields a document scan fills: the worker field, its input in the

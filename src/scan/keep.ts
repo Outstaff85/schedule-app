@@ -3,6 +3,11 @@
 // (4–8 s). The camera stops the moment the window closes (session.sleep); when the time is up the session is
 // stopped — its background threads terminated, the readers' sessions released — and the next scan makes a new
 // one.
+//
+// Started early (owner, 2026-10-27, option b): when the manager opens a new worker's window, the session is made
+// and its models started in the background (prepareEarly: no camera, no screen), kept the same 3 minutes as after
+// a closed window; the scan window opened meanwhile takes it (takeSession), so its models are ready or well on
+// their way. Never a second session: nothing is started while one is kept or in use.
 import type { ScanSession } from './engine/session';
 
 export const KEEP_MS = 3 * 60 * 1000;
@@ -17,11 +22,8 @@ export function takeSession(make: () => ScanSession): ScanSession {
   return kept;
 }
 
-/** The scan window closed: the camera stops now, the session is stopped in KEEP_MS unless taken again. */
-export function releaseSession(): void {
-  const s = kept;
-  if (!s) return;
-  s.sleep();
+/** s stopped in KEEP_MS unless taken again meanwhile. */
+function stopLater(s: ScanSession): void {
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
@@ -29,6 +31,28 @@ export function releaseSession(): void {
     kept = null;
     try { s.stop(); } catch { /* stopped already */ }
   }, KEEP_MS);
+}
+
+/** The scan window closed: the camera stops now, the session is stopped in KEEP_MS unless taken again. */
+export function releaseSession(): void {
+  const s = kept;
+  if (!s) return;
+  s.sleep();
+  stopLater(s);
+}
+
+/** Whether a phone has the memory for the models to start ahead of the window: not under 4 GB
+ *  (navigator.deviceMemory; unknown counts as 4 — as the picked files' second thread, engines.ts growFiles). */
+export const earlyAllowed = (memoryGb: number | undefined | null): boolean => (memoryGb || 4) >= 4;
+
+/** The session made and its models started ahead of the scan window (a new worker's window opened), kept KEEP_MS
+ *  like a closed window's; null (nothing started) when a session is kept or in use already. */
+export function prepareEarly(make: () => ScanSession): ScanSession | null {
+  if (kept) return null;
+  const s = (kept = make());
+  void s.prepare(true);
+  stopLater(s);
+  return s;
 }
 
 /** The session kept now (the browser tests), or null. */

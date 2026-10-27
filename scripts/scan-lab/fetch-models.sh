@@ -70,7 +70,14 @@ HE=false
 if { [ -s "$CACHE/he.onnx" ] || fromhf he.onnx; } && { [ -s "$CACHE/he-layouts.json" ] || fromhf he-layouts.json 10; }; then
   cp "$CACHE/he.onnx" "$CACHE/he-layouts.json" "$OUT/"; HE=true
 fi
-printf '{"version":"%s","doctype":%s,"mrz":%s,"he":%s}\n' "$SCAN_MODELS_VERSION" "$DOCTYPE" "$MRZ" "$HE" > "$OUT/models.json"
+# models.json: the version, whether a document type model, a passport zone reader and a Hebrew field reader are there, and each model file's fingerprint
+# (sha256, 16 hex) — the phone keeps a model by it and asks the server nothing while it is the same (src/scan/engine/models.ts fetchModel).
+python - "$OUT" "$SCAN_MODELS_VERSION" "$DOCTYPE" "$MRZ" "$HE" <<'PY'
+import hashlib, json, pathlib, sys
+out, version, doctype, mrz, he = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3] == "true", sys.argv[4] == "true", sys.argv[5] == "true"
+files = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()[:16] for f in sorted(out.glob("*.onnx"))}
+(out / "models.json").write_text(json.dumps({"version": version, "doctype": doctype, "mrz": mrz, "he": he, "files": files}) + "\n")
+PY
 # The lab runs the face finder at 320×320: a file still fixed at 640 fails every shot's turn.
 python -c "import onnx,sys; d=onnx.load(sys.argv[1]).graph.input[0].type.tensor_type.shape.dim; sys.exit(0 if d[2].dim_param else 'yunet.onnx is still fixed at %d×%d' % (d[2].dim_value, d[3].dim_value))" "$OUT/yunet.onnx"
 # ONNX Runtime Web: 1.22 for the CPU, 1.30 for the GPU (its GPU runs the light model right where 1.22 returned zeros).

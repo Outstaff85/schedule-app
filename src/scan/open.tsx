@@ -9,6 +9,7 @@ import { adoptLanguage } from '@/lib/i18n';
 import type { ReadFn, ScannedPage } from './Scanner';
 import { imagesToPdf, jpegSize } from './pdf';
 import { bridge, hasBridge } from '../manager/bridge';
+import { earlyAllowed } from './keep';
 
 let root: Root | null = null;
 let seq = 0;
@@ -17,6 +18,16 @@ let chunk: Promise<typeof import('./Scanner')> | null = null;
 function loadScanner(): Promise<typeof import('./Scanner')> {
   if (!chunk) { chunk = import('./Scanner'); chunk.catch(() => { chunk = null; }); }
   return chunk;
+}
+
+/** The scan session started in the background ahead of the scan window (owner, 2026-10-27, option b: a new
+ *  worker's window opened — the Scan tap then finds the models ready): the scanner's chunk loaded and its
+ *  session's models started, no camera and no screen; kept 3 minutes, then stopped (keep.ts prepareEarly). Once
+ *  only: nothing when a session is kept or in use. Not on a phone with under 4 GB of memory. On a computer with no
+ *  camera too: photos and PDFs picked in the scanner need the same accurate model. */
+export function prepareScanEarly(): void {
+  if (!earlyAllowed((navigator as { deviceMemory?: number }).deviceMemory)) return;
+  void loadScanner().then(m => { m.prepareSiteEarly(); }, () => { /* the chunk did not load: the window loads it on open */ });
 }
 
 export async function openScanner(opts: { initial?: ScannedPage[]; read?: ReadFn; workerId?: string } = {}): Promise<ScannedPage[] | null> {

@@ -28,7 +28,7 @@ import { DOCTYPES, detectDoctype, pageCopy, type Doctype } from './doctype';
 import { attemptFolders, doctypeMode, scanAttempts, scanSessionId, sendFeedback, type DoctypeMode, type Example } from './server';
 import { loadBatches, saveBatches } from './store';
 import { engineStatusText } from './status-text';
-import { releaseSession, takeSession } from './keep';
+import { prepareEarly, releaseSession, takeSession } from './keep';
 import { ScanSession } from './engine/session';
 import { siteSurface } from './engine/surface';
 import { QUEUE_MAX } from './engine/attempts';
@@ -115,6 +115,8 @@ async function idToken(): Promise<string | null> {
 }
 /** The site's scan session (made once, kept 3 minutes after the window closes: keep.ts). */
 const newSiteSession = (): ScanSession => new ScanSession(siteSurface(idToken));
+/** The site's session started ahead of the window (keep.ts prepareEarly; open.tsx prepareScanEarly). */
+export const prepareSiteEarly = (): boolean => !!prepareEarly(newSiteSession);
 
 /** The session as the screen drives it, with the window told of each page deleted. */
 function siteView(s: ScanSession, removed: (id: string) => void): ScanSessionLike {

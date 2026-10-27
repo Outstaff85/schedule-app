@@ -216,8 +216,29 @@ const READS = {
   await p.fill('#loginUsername', 'owner1'); await p.fill('#loginPassword', 'owner-pass-1');
   await p.click('#loginBtn');
   ok(await p.waitForFunction(() => typeof workers !== 'undefined' && workers.length === 2, null, {timeout: 20000}).then(() => true, () => false), 'site: the firm owner signed in (the workers loaded)');
+  // The early start (owner, 2026-10-27, option b; src/scan/keep.ts prepareEarly): a new worker's window starts the
+  // scanner's session in the background — its models, no camera, no scanner on the screen —, once (the window opened
+  // again starts no second one), and the scan window opened next takes that same session.
+  const early = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks(), ov = document.getElementById('workerOverlay');
+    const close = async () => { ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); await T.tick(300); };
+    const r = {before: !!H.session()};
+    openAddWorker();
+    r.started = await T.until(() => !!H.session(), 8000);
+    window.__earlySession = H.session();
+    await close();
+    openAddWorker(); await T.tick(300);
+    r.once = H.session() === window.__earlySession;
+    await close();
+    r.noCamera = window.__camAsked.length === 0; r.noScanner = !T.q('[data-testid="scanner"]');
+    r.closed = !ov.classList.contains('open');
+    return r;
+  });
+  ok(!early.before && early.started && early.once && early.noCamera && early.noScanner && early.closed,
+    'site: a new worker\'s window starts the scanner\'s models in the background, once, with no camera and no scanner shown ' + JSON.stringify(early));
   await p.evaluate(() => { localStorage.removeItem('scanFeedbackQueue'); window.__scanGoing = startNewScan(); });
   await p.waitForSelector('[data-testid="scanner"][data-mode="site"] [data-testid="scan-status"]', {timeout: 20000});
+  ok(await p.evaluate(async () => (await ManagerScan.hooks()).session() === window.__earlySession), 'site: the scan window takes the session started early (no second one)');
   const siteStart = await startCamera(p, true);
   // the green frame on the canvas while the document is held still — read during the hold: after the shot the live frame
   // goes on by itself (template 6, no Next) and is looking again, so the canvas is no longer the shot's green frame

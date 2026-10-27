@@ -13,13 +13,15 @@
 //  - the accurate model's capture thread first, on the CPU (owner, 2026-10-22): picked photos and PDFs need
 //    only it; the live frame's pool shares it — one copy of the accurate model.
 //  - picked files: at most one more thread with the accurate model, none under 4 GB of memory or 4 cores.
+//  - models.json read once per open (modelsInfo, shared with the readers): each thread's 'load' carries the
+//    model files' stamps, so a kept model of the same version is used with no request (models.ts fetchModel).
 //  - the capture and file threads are keyed on the accurate model and the CPU's ONNX Runtime build together,
 //    so the lab's CPU engine choice reaches them too.
 // Every model and ONNX Runtime file comes from the surface (surface.ts): the site's from /scan/, the lab's
 // from /scan-lab/.
 import { S, warpRGBA } from './geometry';
 import type { ScanLog } from './log';
-import { cpuSession, detectRGBA, errText, openSession, type Ep, type Want } from './models';
+import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, modelStamp, modelStamps, openSession, readModels, type Ep, type ModelsInfo, type Want } from './models';
 import { loadOrt, type Ort, type OrtSession } from './ort';
 import { CPU_ORT, GPU_ORT, surfaceRef, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas, uprightRGBA, type Upright } from './upright';
@@ -160,6 +162,24 @@ export class Engines {
     ];
   }
 
+  /** The surface's models.json, read once per open (the readers share it: ScanSession), again after stopAll() —
+   *  a new deploy is seen by the next open. Its model version and file fingerprints are what a kept model is
+   *  checked against (models.ts fetchModel: no request while they match). A failed read is tried again next time. */
+  private info: Promise<ModelsInfo> | null = null;
+  modelsInfo(): Promise<ModelsInfo> {
+    if (!this.info) {
+      const t0 = this.env.now(), p = readModels(this.ref);
+      this.info = p;
+      p.then(i => this.log.log('Time: models.json read (version ' + (i.version || 'unknown') + ') — ' + Math.round(this.env.now() - t0) + ' ms'),
+        () => { if (this.info === p) this.info = null; });
+    }
+    return this.info;
+  }
+  /** The stamps of the model files a thread loads (null when models.json could not be read: the ETag check). */
+  private stampsFor(names: string[]): Promise<Record<string, string> | null> {
+    return this.modelsInfo().then(i => modelStamps(i, names), () => null);
+  }
+
   /** Listen to the engine's state; returns the unsubscribe. */
   onChange(fn: (s: EngineState) => void): () => void { this.changes.add(fn); return () => { this.changes.delete(fn); }; }
   /** The lab's tools change the settings; setting inWorker asks for the background ways again. */
@@ -198,11 +218,16 @@ export class Engines {
     const { log } = this;
     return {
       load: async (liveName, capName, want, withFace) => {
+        const info = await this.modelsInfo().catch(() => null), stamp = (n: string) => modelStamp(info, n);
+        // as in a thread (worker.ts): ONNX Runtime, the first model's file and the face finder's at once, the sessions in turn
+        const firstBytes = fetchModel(this.ref, liveName, downloadProgress(liveName, log.status), { stamp: stamp(liveName), said: log.log });
+        const faceBytes = withFace !== false ? fetchModel(this.ref, 'yunet.onnx', () => {}, { stamp: stamp('yunet.onnx'), said: log.log }) : null;
+        firstBytes.catch(() => {}); if (faceBytes) faceBytes.catch(() => {});
         ort = await loadOrt(this.ref, this.settings.cpuDir, this.THREADS);
-        const a = await openSession(ort, this.ref, liveName, want, log.status, log.any, this.layoutGet()); live = a.sess;
-        const b = capName ? await openSession(ort, this.ref, capName, want, log.status, log.any, this.layoutGet()) : a; cap = b.sess;
+        const a = await openSession(ort, this.ref, liveName, want, log.status, log.any, this.layoutGet(), { bytes: firstBytes, time: log.log }); live = a.sess;
+        const b = capName ? await openSession(ort, this.ref, capName, want, log.status, log.any, this.layoutGet(), { stamp: stamp(capName), time: log.log }) : a; cap = b.sess;
         this.layoutSet(a.layout || b.layout);
-        if (withFace !== false) face = await cpuSession(ort, this.ref, 'yunet.onnx');
+        if (faceBytes) face = await cpuSession(ort, this.ref, 'yunet.onnx', faceBytes);
         return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
       },
       hasCap: () => cap !== live,
@@ -225,7 +250,7 @@ export class Engines {
   workerEngine(threads: number, dir: OrtDir = this.settings.cpuDir, onHang: () => void = () => this.onStuck()): LoadableEngine {
     const { env, log } = this;
     const w = env.spawn(), waiting = new Map<number, { resolve: (m: WorkerOut & { type: 'reply' }) => void; reject: (e: Error) => void }>();
-    let n = 0, two = false, heard = env.now();
+    let n = 0, two = false, heard = env.now(), stopped = false;
     const failAll = (why: string) => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
     const watch = env.setInterval(() => { if (waiting.size && env.now() - heard > WATCH_MS) { failAll('no answer for 25 s'); onHang(); } }, 1000);
     w.onmessage = ({ data: m }) => {
@@ -239,13 +264,17 @@ export class Engines {
     // its first request after 25 s was taken as stuck at once (every picked file, 2026-10-22)
     type Msg = WorkerIn extends infer T ? T extends { id: number } ? Omit<T, 'id'> : never : never;
     const call = (msg: Msg, transfer?: Transferable[]) => new Promise<WorkerOut & { type: 'reply' }>((resolve, reject) => {
+      if (stopped) { reject(new Error('the model was stopped')); return; }  // stopped while models.json was read
       if (!waiting.size) heard = env.now();
       const id = ++n; waiting.set(id, { resolve, reject }); w.postMessage({ ...msg, id } as WorkerIn, transfer || []);
     });
     return {
       load: async (liveName, capName, want, withFace = true) => {
         two = !!capName;
-        const r = await call({ type: 'load', surface: this.ref, ort: dir, live: liveName, cap: capName, want, threads, face: withFace, layout: this.layoutGet() });
+        // the files' stamps from models.json (read once per open, beside the thread's own start): a kept copy of the
+        // same version is used with no request
+        const stamps = await this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace ? ['yunet.onnx'] : [])]);
+        const r = await call({ type: 'load', surface: this.ref, ort: dir, live: liveName, cap: capName, want, threads, face: withFace, layout: this.layoutGet(), stamps });
         this.layoutSet(r.layout as string | null);
         return r.ep as string;
       },
@@ -255,7 +284,7 @@ export class Engines {
         return { res: m.res as Corners, ms: m.ms as number };
       },
       warp: async (rgba, wd, h, pts, upright) => (await call({ type: 'warp', rgba: rgba.buffer as ArrayBuffer, w: wd, h, pts, upright }, [rgba.buffer as ArrayBuffer])).out as Upright,
-      stop() { env.clearInterval(watch); failAll('the model was stopped'); w.terminate(); },  // nothing left waiting on it
+      stop() { stopped = true; env.clearInterval(watch); failAll('the model was stopped'); w.terminate(); },  // nothing left waiting on it
     };
   }
 
@@ -330,6 +359,7 @@ export class Engines {
       const t = this.capOnly(e);
       this.capThread = t;
       log.log('The accurate model is ready (' + ((this.env.now() - t0) / 1000).toFixed(1) + ' s) — photos and PDFs can go in');
+      log.log('Time: accurate model ready (capture thread) — ' + Math.round(this.env.now() - t0) + ' ms');
       if (!this.engine) log.status({ key: 'ready_files' }, 1);
       return t;
     }, err => { e.stop(); if (!this.closed(g)) log.noteFail('Capture thread', errText(err)); throw err; })
@@ -387,6 +417,7 @@ export class Engines {
     }
     if (!e || !used) { this.setState({ phase: 'failed', label: 'failed' }); log.status({ key: 'failed' }); throw new Error('no way to run the model'); }
     log.log('Live ' + live + (cap ? ', capture ' + cap : '') + ' running as ' + used.label);
+    log.log('Time: live frame\'s models ready on ' + used.label + ' — ' + Math.round(this.env.now() - t0) + ' ms');
     this.engine = e; this.engineWay = used.id;
     // a start that fell back to the page stays there until the scanner closes (the lab unticked its
     // "background threads"); the key then matches the next asks, so the model is not started again each use
@@ -434,6 +465,7 @@ export class Engines {
     if (this.capThread) { this.capThread.stop(); this.capThread = null; }
     this.capFor = '';
     this.stuckWays.clear(); this.engineWay = null; this.pageOnly = false;
+    this.info = null;
     this.setState({ phase: 'idle', label: '—', worker: true, loadSeconds: null });
   }
 }

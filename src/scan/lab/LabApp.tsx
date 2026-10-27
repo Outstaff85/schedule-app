@@ -128,6 +128,7 @@ function startLab(l: Lab): void {
   if (l.started) return;
   l.started = true;
   const { session, engines, log } = l, env = engines.env;
+  session.markOpen();  // the "Time:" lines and "Ready: first frame after N ms" count from here
   log.log('CPU engine: ONNX Runtime ' + (l.cpuDir === GPU_ORT ? '1.30.0' : '1.22.0') + ', GPU engine: 1.30.0');
   log.log('GPU (WebGPU) in this browser: ' + (env.gpu ? 'yes' : 'no'));
   log.log('CPU: ' + (env.cores || '?') + ' cores' + (env.memory ? ', memory ' + env.memory + ' GB' : '') + '; several background threads of one thread each are used' + (env.isolated ? '' : ' (one core each: this page is not cross-origin isolated)'));

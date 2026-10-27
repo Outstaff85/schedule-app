@@ -777,6 +777,70 @@ await run('the live frame goes on with no frame from before it (a shutter tap ta
   b.s.stop();
 });
 
+// ── the start's timings and the early start (owner, 2026-10-27) ──
+await run('the open is timed: "Ready: first frame after N ms" once, at the first live answer after the open; an early start marks no open', async () => {
+  const lines = a => { const out = []; a.engines.log.on('log', t => out.push(t)); return out; };
+  // an early start (no window yet): no open marked, no Ready line
+  const a = setup(steadyLive(Q), { auto: false }), saidA = lines(a);
+  await a.s.prepare(true);
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(300);
+  assert.ok(!saidA.some(t => t.startsWith('Ready:')), saidA.join(' | '));
+  // the window opens (prepare): the first live answer gives the Ready line with the time since the open, once
+  const b = setup(steadyLive(Q), { auto: false }), saidB = lines(b);
+  await b.s.prepare();
+  await b.clock.runFor(500);
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(300);
+  const ready = saidB.filter(t => t.startsWith('Ready:'));
+  assert.equal(ready.length, 1, saidB.join(' | '));
+  const ms = +/^Ready: first frame after (\d+) ms$/.exec(ready[0])[1];
+  assert.ok(ms >= 500 && ms < 700, ready[0]);
+  assert.ok(saidB.some(t => /^Time: scanner opened — its models kept from the last scan/.test(t)), 'the open says the models were there already: ' + saidB.join(' | '));
+  assert.ok(saidB.some(t => /^Time: camera started — \d+ ms \(at \d+ ms\)$/.test(t)), saidB.join(' | '));
+  b.s.stop(); a.s.stop();
+});
+
+await run('the early start (a new worker\'s window): one session, its models started with no camera; the scan window takes it; stopped after 3 minutes unless taken; not under 4 GB', () => {
+  const K = M.keep;
+  const realST = globalThis.setTimeout, realCT = globalThis.clearTimeout;
+  const timers = new Map(); let n = 0;
+  globalThis.setTimeout = (fn, ms) => { const id = ++n; timers.set(id, { fn, ms }); return id; };
+  globalThis.clearTimeout = id => { timers.delete(id); };
+  const fire = () => { const due = [...timers.values()]; timers.clear(); for (const t of due) t.fn(); };
+  try {
+    const made = [];
+    const make = () => {
+      const s = { prepared: [], slept: 0, stopped: 0, prepare(early) { this.prepared.push(early); return Promise.resolve(); }, sleep() { this.slept++; }, stop() { this.stopped++; } };
+      made.push(s); return s;
+    };
+    assert.equal(K.KEEP_MS, 3 * 60 * 1000);
+    assert.deepEqual([0.5, 2, 3, 4, 8, undefined, 0].map(K.earlyAllowed), [false, false, false, true, true, true, true]);
+    const a = K.prepareEarly(make);
+    assert.ok(a && made.length === 1, 'made once');
+    assert.deepEqual(a.prepared, [true], 'its models started early (no open marked)');
+    assert.equal(a.slept, 0, 'no camera to put away');
+    assert.equal(K.prepareEarly(make), null, 'not started twice'); assert.equal(made.length, 1);
+    assert.deepEqual([...timers.values()].map(t => t.ms), [K.KEEP_MS], 'kept 3 minutes');
+    // the scan window opens: it takes the early session, its timer stopped — no second session
+    assert.equal(K.takeSession(make), a); assert.equal(timers.size, 0); assert.equal(made.length, 1);
+    assert.equal(K.prepareEarly(make), null, 'nothing started while the window is open');
+    // the window closes: kept 3 minutes (nothing started meanwhile), then stopped
+    K.releaseSession(); assert.equal(a.slept, 1); assert.equal(timers.size, 1);
+    assert.equal(K.prepareEarly(make), null, 'nothing started while one is kept');
+    fire();
+    assert.equal(a.stopped, 1); assert.equal(K.keptSession(), null);
+    // an early session never taken: stopped after 3 minutes; the next open makes a new one
+    const b = K.prepareEarly(make);
+    assert.ok(b && b !== a); fire();
+    assert.equal(b.stopped, 1); assert.equal(K.keptSession(), null);
+    const c = K.takeSession(make);
+    assert.ok(c !== b && made.length === 3);
+    K.releaseSession(); fire();
+    assert.equal(c.stopped, 1);
+  } finally { globalThis.setTimeout = realST; globalThis.clearTimeout = realCT; }
+});
+
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
