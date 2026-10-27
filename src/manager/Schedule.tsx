@@ -17,7 +17,7 @@ import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { useIsPhone } from '@/hooks/use-phone';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
+import { PickerCalendar } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -321,8 +321,12 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-2">
-            <Calendar mode="single" selected={start} defaultMonth={start}
-              onSelect={d => { if (d) { api.setWeek(localYMD(sundayOf(d))); setCalOpen(false); } }} />
+            {/* The one calendar (date-picker.tsx): the shown week lit, a tap on any day opens its week. */}
+            <div data-slot="date-calendar" dir="ltr">
+              <PickerCalendar mode="single" selected={start} defaultMonth={start}
+                modifiers={{ week: { from: start, to: addDays(start, 6) } }} modifiersClassNames={{ week: '[&>button]:bg-[rgba(109,214,160,.18)]' }}
+                onSelect={d => { if (d) { api.setWeek(localYMD(sundayOf(d))); setCalOpen(false); } }} />
+            </div>
           </PopoverContent>
         </Popover>
         <Button size="icon" aria-label={tr('Next week')} data-testid="week-next" onClick={() => week(1)}><IconChevronRight /></Button>

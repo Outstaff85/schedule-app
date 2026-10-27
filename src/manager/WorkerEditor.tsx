@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { DatePicker } from '@/components/ui/date-picker';
+import { DateInput, DatePicker } from '@/components/ui/date-picker';
 import { Combobox } from '@/components/ui/combobox';
 import { FieldRow } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -251,14 +251,20 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     if (!m || m.k === 'busy') return;
     if (m.k === 'check' || m.k === 'found' || String(val || '').trim()) setMark(key, null);
   };
-  const text = (key: FormKey, opts: { label: React.ReactNode; placeholder?: string; inputMode?: 'numeric'; className?: string; hint?: React.ReactNode } ) => {
+  const text = (key: FormKey, opts: { label: React.ReactNode; placeholder?: string; inputMode?: 'numeric'; className?: string; hint?: React.ReactNode; date?: boolean } ) => {
     const m = marks[key], sp = key in SCAN_FIELDS || key === 'docExpiry' ? scanProps(key) : null;
     const reg = form.register(key, { onChange: e => typed(key, e.target.value) });
     const ph = m && (m.k === 'missing' || m.k === 'none') ? (m.k === 'missing' ? '🔍 ' + tr('Tap to search the scan') : opts.placeholder) : m?.k === 'busy' ? tr('Searching the scan…') : opts.placeholder;
+    const input = (
+      <Input id={INPUT_ID[key]} dir="auto" autoComplete="off" inputMode={opts.inputMode} placeholder={ph} readOnly={m?.k === 'busy'}
+        {...reg} {...(sp || {})} className={cn(sp?.className)} />
+    );
     return (
       <Field label={opts.label} className={opts.className} hint={<>{opts.hint}<ScanHint k={key} m={m} /></>}>
-        <Input id={INPUT_ID[key]} dir="auto" autoComplete="off" inputMode={opts.inputMode} placeholder={ph} readOnly={m?.k === 'busy'}
-          {...reg} {...(sp || {})} className={cn(sp?.className)} />
+        {/* A date (dd/mm/yyyy): typed, or picked in the one calendar behind the icon at the field's end (date-picker.tsx). */}
+        {opts.date
+          ? <DateInput value={String(v[key] || '')} disabled={m?.k === 'busy'} onPick={val => { set(key, val); typed(key, val); }}>{input}</DateInput>
+          : input}
       </Field>
     );
   };
@@ -373,7 +379,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               {text('docId', { label: 'מספר ת.ז./דרכון', placeholder: 'ת.ז. / דרכון', hint: <>
                 {w.idChecksumOk === false && <Hint><IconAlertTriangle className="inline size-3" /> {tr('The number failed the check digit test — check it by hand')}</Hint>}
               </> })}
-              {text('docExpiry', { label: 'תוקף ת.ז./דרכון', placeholder: tr('DD/MM/YYYY') })}
+              {text('docExpiry', { label: 'תוקף ת.ז./דרכון', placeholder: tr('DD/MM/YYYY'), date: true })}
             </FieldRow>
             <Field label="מין" hint={<ScanHint k="docSex" m={marks.docSex} />}>
               <Seg id="wSex" value={v.docSex} onChange={pick('docSex')} opts={Object.entries(SEX_LABELS)} mark={choiceMark('docSex')} onPointerDown={choicePointer('docSex')} />
@@ -388,7 +394,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               </Field>
             </FieldRow>
             <FieldRow>
-              {text('docDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY') })}
+              {text('docDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY'), date: true })}
               {text('phone', { label: 'טלפון', placeholder: '+972...' })}
             </FieldRow>
           </AccordionContent>
@@ -530,7 +536,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
             <div className={cn('grid gap-2.5 rounded-[12px] border border-white/12 p-3', !spouseOpen && 'hidden')} data-testid="editor-spouse">
               <b className="flex items-center gap-1.5 text-[13px]" dir="rtl"><IconHeart className="size-4" />פרטי בן/בת הזוג</b>
               <FieldRow>{text('spouseSurname', { label: 'שם משפחה' })}{text('spouseGiven', { label: 'שם פרטי' })}</FieldRow>
-              <FieldRow>{text('spouseId', { label: 'מספר זהות / דרכון', inputMode: 'numeric' })}{text('spouseDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY') })}</FieldRow>
+              <FieldRow>{text('spouseId', { label: 'מספר זהות / דרכון', inputMode: 'numeric' })}{text('spouseDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY'), date: true })}</FieldRow>
               <Field label="הכנסת בן/בת הזוג"><Seg id="wSpouseIncome" value={v.spouseIncome} onChange={val => set('spouseIncome', val)} opts={Object.entries(SPOUSE_INCOME_LABELS)} /></Field>
             </div>
             <div className={cn('grid gap-2 rounded-[12px] border border-white/12 p-3', !kidsOpen && 'hidden')} data-testid="editor-kids">
@@ -542,7 +548,11 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
                     <Field label="שם הילד/ה"><Input dir="auto" value={c.name || ''} onChange={upd('name')} /></Field>
                     <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 [&>*]:min-w-0">
                       <Field label="ת.ז. / דרכון"><Input value={c.idNo || ''} onChange={upd('idNo')} /></Field>
-                      <Field label="תאריך לידה"><Input placeholder={tr('DD/MM/YYYY')} value={c.dob || ''} onChange={upd('dob')} /></Field>
+                      <Field label="תאריך לידה">
+                        <DateInput value={c.dob || ''} onPick={val => setChildren(list => list.map((x, j) => (j === i ? { ...x, dob: val } : x)))}>
+                          <Input placeholder={tr('DD/MM/YYYY')} value={c.dob || ''} onChange={upd('dob')} />
+                        </DateInput>
+                      </Field>
                       <Button size="icon-sm" title="הסר" aria-label="הסר" onClick={() => setChildren(list => list.filter((_, j) => j !== i))}><IconTrash className="size-4" /></Button>
                     </div>
                   </div>

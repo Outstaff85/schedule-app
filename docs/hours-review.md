@@ -1,6 +1,6 @@
 # Hours review (`src/hours-review/`, the `hours` function)
 
-The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows, the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and as a pill (`.hrv-pill`, `HRV_STATES[st].pill`: Waiting, Approved, Fixed, Changed, Disputed, Fix proposed, Rejected — stage 13) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
+The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows (the month's name between them opens the one month picker, `MonthPicker` — docs/components.md → `date-picker.tsx`; no month after this one), the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and as a pill (`.hrv-pill`, `HRV_STATES[st].pill`: Waiting, Approved, Fixed, Changed, Disputed, Fix proposed, Rejected — stage 13) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
 
 One screen, one Cloud Function and one store for every login that reviews its workers' hours: a **client**, a **supplier** and an **HR** — each in the manager app's **Hours** tab (a client's and a supplier's through `src/manager/Portal.tsx`, an HR's `HoursTab`). The same ticks, the same per-day actions, the same code (per user request 2026-10-11: "one template and one set of functions for hours").
 

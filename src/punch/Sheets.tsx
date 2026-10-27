@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { IconArrowsExchange, IconCalendarOff, IconCalendarWeek, IconChevronDown, IconClockHour4, IconFileTypePdf, IconMapPin } from '@tabler/icons-react';
 import { Combobox } from '@/components/ui/combobox';
+import { MonthPicker, ymOf } from '@/components/ui/date-picker';
 import { tr, uiLocale } from '@/lib/i18n';
 import { closeSheet, getState, histSite, URL_TOKEN, usePunch } from './core';
 import { hoursData, loadMonth, money, monthKey, myMonthFigures, schedDay, type MonthShift, type SchedDay } from './figures';
@@ -54,11 +55,18 @@ export function Sheet({ id, hidden, icon, title, children }: { id: string; hidde
   );
 }
 
-function MonthHead({ first, offset, onShift, noFuture }: { first: Date; offset: number; onShift: (n: number) => void; noFuture?: boolean }) {
+// The month's name opens the one month picker (date-picker.tsx); the arrows step a month; `onSet` gets the
+// picked month as months from this one.
+function MonthHead({ first, offset, onShift, onSet, noFuture }: { first: Date; offset: number; onShift: (n: number) => void; onSet: (offset: number) => void; noFuture?: boolean }) {
+  const now = new Date();
   return (
     <div className="sched-head">
       <button type="button" className="sched-nav" onClick={() => onShift(-1)} aria-label={tr('Previous month')}>‹</button>
-      <div className="m">{first.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}</div>
+      <MonthPicker value={ymOf(first)} monthOf={v => v} toValue={ym => ym} max={noFuture ? ymOf(now) : undefined} label=""
+        onChange={ym => { const [y, mo] = ym.split('-').map(Number); onSet((y - now.getFullYear()) * 12 + (mo - 1) - now.getMonth()); }}
+        trigger={<button type="button" className="m" data-testid="month-pick" title={tr('Pick a month')} style={{ cursor: 'pointer' }}>
+          {first.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}
+        </button>} />
       {offset !== 0 && <button type="button" className="sched-today" onClick={() => onShift(0)}>{tr('Today')}</button>}
       <button type="button" className="sched-nav" onClick={() => onShift(1)} aria-label={tr('Next month')} disabled={noFuture && offset === 0} style={noFuture && offset === 0 ? { opacity: 0.3 } : undefined}>›</button>
     </div>
@@ -115,7 +123,7 @@ export function ScheduleSheet({ hidden }: { hidden: boolean }) {
   return (
     <Sheet id="screenSchedule" hidden={hidden} icon={<IconCalendarWeek className="ti" />} title={tr('My Schedule')}>
       <div id="scheduleContent" style={{ width: '100%', maxWidth: 500 }}>
-        <MonthHead first={first} offset={month} onShift={shift} />
+        <MonthHead first={first} offset={month} onShift={shift} onSet={n => { setMonth(n); setSel(null); setShown(10); }} />
         {!hasAny ? <Msg>{tr('No shifts planned yet')}</Msg> : <>
           <div className="sched-sum top">
             <div><b>{days}</b><span>{tr('Work days this month')}</span></div>
@@ -254,7 +262,7 @@ export function HoursSheet({ hidden }: { hidden: boolean }) {
   return (
     <Sheet id="screenHours" hidden={hidden} icon={<IconClockHour4 className="ti" />} title={tr('My Hours')}>
       <div id="hoursContent" style={{ width: '100%', maxWidth: 500 }}>
-        <MonthHead first={new Date(y, m - 1, 1)} offset={month} onShift={n => setMonth(o => (n === 0 ? 0 : Math.min(0, o + n)))} noFuture />
+        <MonthHead first={new Date(y, m - 1, 1)} offset={month} onShift={n => setMonth(o => (n === 0 ? 0 : Math.min(0, o + n)))} onSet={n => setMonth(Math.min(0, n))} noFuture />
         {body}
       </div>
     </Sheet>

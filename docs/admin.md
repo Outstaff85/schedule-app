@@ -45,10 +45,10 @@ Drawn by `PunchLog` in `src/manager/Admin.tsx` from `ManagerBridge.admin()`: `lo
 
 - **Stats:** Total IN, Total OUT, Today and Total (over what is loaded) — glass tiles (`Figures`, `logFigures`).
 - **Views:** Log or By Client (a `ToggleGroup`), with the record count (Log) and the Export CSV / Clear Log icons on the same line; the view and the filters stay while the app stays open.
-- **Filters** (four selects — one row on a computer, two columns on a phone; the caption is the select's label):
+- **Filters** (four fields — one row on a computer, two columns on a phone; the caption is the field's label):
   - Worker — the workers that appear in the log;
   - Client — the punch's own `clientId` (where it was recorded); a punch saved without one falls back to the worker's current clients;
-  - Date — the days that have punches, as `en-GB` strings, newest day first (sorted by the real date);
+  - Date — the one Date Picker (`DatePicker format="dmy"`, docs/components.md → `date-picker.tsx`): only the days that have punches can be picked (`days` = `filterChoices`' dates, `en-GB` strings), its calendar opens at the newest of them, and its "All dates" line empties the filter;
   - Type.
 
   `filterChoices` / `filterLog`; the list is sorted newest first by `ts`.
@@ -122,8 +122,8 @@ The firm's contract templates: `ContractTemplatesPane` (`src/manager/ContractTem
 
 ## Errors and Timings: the period picker
 
-Both sections (`LogsPane` in `src/manager/Logs.tsx`) load one period at a time, picked in a select at the left of the toolbar:
-- the options are "Last 30 days" (default), "Last 7 days", and each calendar month (this one and the 11 before it) — the page's `logPeriodOptions`;
+Both sections (`LogsPane` in `src/manager/Logs.tsx`) load one period at a time, picked in the one month picker (`MonthPicker`, docs/components.md → `date-picker.tsx`) at the left of the toolbar:
+- "Last 30 days" (default) and "Last 7 days" are its named periods above the months, and each calendar month (this one and the 11 before it; the others can't be picked) is a month of its grid — the page's `logPeriodOptions` (`m:YYYY-MM`);
 - `logPeriodRange(value)` gives `{key, from, to, label}` (ISO times), sent to `loadErrors` / `loadTimings` as `from` / `to` (`logPeriodQuery`) by `loadLogPane(kind)`, which `switchAdminPane`, `setLogPeriod(kind, value)` and Refresh (`reloadLog`) call; the picked period is kept on the page (`__logPeriod`) while the app stays open;
 - each period has its own cache (`adminCache_errors:<key>`, `adminCache_timings:<key>`): the snapshot's `logs` is the cached rows (null until loaded, with the load error), drawn at once and again when the fresh rows arrive;
 - **Copy all** and **Print** take only the loaded period. Print opens a plain page with a table (for timings, the summary first) and prints it.

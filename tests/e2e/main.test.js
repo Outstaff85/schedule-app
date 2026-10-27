@@ -2219,18 +2219,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // A super-admin also gets the Scanner lab tile (it opens /scan-lab/ in a new tab).
   ok(at.tiles === 'punchlog,firms,users,contracts' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
     'admin: four tiles while no section is chosen — Contract templates the fourth (and the Scanner and the Scanner lab for a super-admin), a tile opens its section (no breadcrumb), the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
-  // The filters: Radix selects — the date list is newest day first; the client filter uses the punch's own clientId.
+  // The filters: Radix selects for the worker, client and type; the client filter uses the punch's own clientId.
   const pickFilter = async (k, label) => {
     await p.click(PL + ' [data-testid="punch-filter-' + k + '"]'); await p.waitForSelector('[role="option"]');
     if (label != null) await p.getByRole('option', {name: label, exact: true}).click(); else await p.keyboard.press('Escape');
     await sleep(150);
   };
-  await p.click(PL + ' [data-testid="punch-filter-date"]'); await p.waitForSelector('[role="option"]');
-  const dates = await p.evaluate(() => [...document.querySelectorAll('[role="option"]')].slice(1).map(o => o.textContent.trim()));
-  await p.keyboard.press('Escape'); await sleep(150);
-  const asTime = d => { const [dd,mm,yy] = d.split('/'); return new Date(+yy, mm-1, +dd).getTime(); };
-  ok(dates.length === 2 && asTime(dates[0]) > asTime(dates[1]), 'date filter: newest day first (' + dates.join(', ') + ')');
   const count = () => p.evaluate(sel => document.querySelector(sel + ' [data-testid="punch-count"]').textContent, PL);
+  // The date filter is the one Date Picker: its calendar opens at the newest day with punches, only the days
+  // that have punches can be picked, a picked day keeps that day's punches, "All dates" empties it.
+  const df = {all0: await count()};
+  await p.click(PL + ' [data-testid="punch-filter-date"]'); await p.waitForSelector('[data-slot="date-calendar"]');
+  Object.assign(df, await p.evaluate(() => {
+    const cells = [...document.querySelectorAll('[data-slot="date-calendar"] [data-day]')];
+    const on = cells.filter(c => { const b = c.querySelector('button'); return b && !b.disabled; }).map(c => c.dataset.day);
+    const days = new Set(getPunchLog().map(e => localYMD(new Date(e.ts))));
+    return {on, punchDays: on.every(d => days.has(d)), clear: !!document.querySelector('[data-testid="date-clear"]'), native: !!document.querySelector('input[type=date]')};
+  }));
+  df.newest = [...df.on].sort().pop();
+  if (df.newest) { await p.click('[data-slot="date-calendar"] [data-day="' + df.newest + '"] button'); await sleep(200); }
+  df.shown = await p.evaluate(sel => document.querySelector(sel + ' [data-testid="punch-filter-date"]').innerText.trim(), PL);
+  df.one = await count();
+  df.rows = await p.evaluate(sel => document.querySelectorAll(sel + ' [data-testid="punch-row"]').length, PL);
+  await p.click(PL + ' [data-testid="punch-filter-date"]'); await p.waitForSelector('[data-testid="date-clear"]');
+  await p.click('[data-testid="date-clear"]'); await sleep(200);
+  df.all1 = await count();
+  const ymdToDmy = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
+  ok(df.on.length >= 1 && df.punchDays && df.clear && !df.native && df.shown === ymdToDmy(df.newest) && df.rows > 0 && df.all1 === df.all0,
+    'date filter: the Date Picker — only the days with punches can be picked, a picked day filters the log, All dates brings every punch back ' + JSON.stringify(df));
   const siteName = id => p.evaluate(cid => clients.find(c => c.id === cid).name, id);
   await pickFilter('client', await siteName('c2'));
   const c2rows = await count();
@@ -2908,6 +2924,42 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(ac.inNav && ac.figs === 'Pay,Travel ₪,Total Pay,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.salSelect && ac.salBar && ac.salRows && ac.selOff && ac.stepped && ac.back, 'accounting: period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window; Select exports the ticked worker ' + JSON.stringify(ac));
+  // The period is the one month picker (docs/components.md → date-picker.tsx): This Week / This Month / All Time above
+  // the months, the 12 before this one; a month picked sets m:YYYY-MM.
+  const apk = {};
+  await p.evaluate(async () => { [...document.querySelectorAll('.overlay.open')].forEach(o => closeModal(o.id)); switchTab('accounting'); await ManagerBridge.setPeriod('week'); });
+  await sleep(300);
+  await p.click('#accountingRoot [data-testid=acc-period]'); await p.waitForSelector('[data-slot=month-grid]');
+  apk.presets = await p.evaluate(() => [...document.querySelectorAll('[data-slot=month-presets] button')].map(b => b.dataset.preset).join());
+  apk.prev = await p.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); });
+  apk.future = await p.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); const b = document.querySelector('[data-slot=month-grid] [data-month="' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '"]'); return b ? b.disabled : true; });
+  if (!(await p.locator(`[data-slot=month-grid] [data-month="${apk.prev}"]`).count())) await p.click('[data-slot=month-grid] button[aria-label="Previous year"]');
+  await p.click(`[data-slot=month-grid] [data-month="${apk.prev}"]`); await sleep(400);
+  apk.after = await p.evaluate(() => accPeriod);
+  apk.label = (await p.locator('#accountingRoot [data-testid=acc-period]').innerText()).trim();
+  await p.click('#accountingRoot [data-testid=acc-period]'); await p.click('[data-slot=month-presets] [data-preset=all]'); await sleep(400);
+  apk.all = await p.evaluate(() => accPeriod);
+  await p.evaluate(async () => { await ManagerBridge.setPeriod('week'); });
+  ok(apk.presets === 'week,month,all' && apk.future && apk.after === 'm:' + apk.prev && /\d{4}/.test(apk.label) && apk.all === 'all',
+    'accounting: the period is the one month picker — named periods above the months, no future month, a month and All Time picked ' + JSON.stringify(apk));
+  // One calendar everywhere: no native date / month input in the manager app's tabs and windows; the worker's
+  // Form 101 dates are typed fields with the same calendar behind their icon.
+  const nd = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const NATIVE = 'input[type=date],input[type=month],input[type=week],input[type=datetime-local]';
+    const seen = [];
+    const look = where => { document.querySelectorAll(NATIVE).forEach(i => { if (i.offsetParent !== null) seen.push(where + ':' + (i.id || i.name || i.type)); }); };
+    for (const t of ['dashboard', 'schedule', 'workers', 'clients', 'suppliers', 'accounting', 'admin']) { switchTab(t); await wait(150); look(t); }
+    openEditWorker(0); await wait(300); look('worker');
+    const r = {seen, dob: !!(document.getElementById('wDob') || {closest: () => null}).closest('[data-slot=date-input]'),
+      expiry: !!(document.getElementById('wDocExpiry') || {closest: () => null}).closest('[data-slot=date-input]'), start: (document.getElementById('wStartDate') || {}).dataset?.slot === 'date-picker'};
+    [...document.querySelectorAll('.overlay.open')].forEach(o => closeModal(o.id)); await wait(200);
+    openEditSupplier('s-1'); await wait(250); look('supplier'); closeModal('supplierOverlay'); await wait(200);
+    openManualPunch('c1'); await wait(250); look('manual-punch'); [...document.querySelectorAll('.overlay.open')].forEach(o => closeModal(o.id)); await wait(200);
+    switchTab('dashboard');
+    return r;
+  });
+  ok(!nd.seen.length && nd.dob && nd.expiry && nd.start, 'dates: no native date input in the manager app — every date through the one Date Picker ' + JSON.stringify(nd));
   // Worker photos are gone (owner 2026-10-13): an old avatarB64 is dropped after a load and never saved again.
   const ph = await p.evaluate(() => { const w = workers[0]; w.avatarB64 = 'AAAA'; const r = {dropped: dropWorkerPhotos(), gone: !('avatarB64' in w), again: dropWorkerPhotos()}; return r; });
   ok(ph.dropped && ph.gone && !ph.again, 'workers: an old photo is dropped from the record (dropWorkerPhotos) ' + JSON.stringify(ph));
