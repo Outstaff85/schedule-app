@@ -48,6 +48,16 @@ import { form101Payload } from '../logic/form101';
 import { loadSignRequests, signRequestOf } from '../logic/signing';
 import { workerDocsCall } from '../logic/workerdocs';
 import { openPdfBlob } from '../contracts';
+// The WhatsApp text of "Documents to sign" (owner 2026-10-27): in the sender's language — the worker's full
+// name, the ID or passport number, what to do, then the link to the worker's personal account.
+function signMessage(w?: any,link?: any){
+  const id=String(w.docId||'').trim();
+  return [String(w.name||'').trim(),
+    id?(w.docType==='passport'?tr('Passport: {0}',{0:id}):tr('ID: {0}',{0:id})):'',
+    tr('You have documents to sign. Open your personal account at the link, read them and sign at the bottom.'),
+    link].filter(Boolean).join('
+');
+}
 import { refreshTenantProfile } from './admin';
 Object.defineProperties(window, {
   "renderDashboard": {get: () => renderDashboard, configurable: true},
@@ -421,7 +431,7 @@ provideBridge({
     const link=w.token?buildPunchLink(w):'';
     return {worker:w, form101:form101Payload(w,w.docType!=='passport',profile),
       values:contractValues(w,{profile,clients,suppliers,seePay}), canSeePay:seePay, canSetDate:canSetSignDate(), punchLink:link,
-      whatsapp:link?'https://wa.me/'+String(w.phone||'').replace(/\D/g,'').replace(/^0/,'972')+'?text='+encodeURIComponent(tr('Documents to sign: {0}',{0:link})):''};
+      whatsapp:link?'https://wa.me/'+String(w.phone||'').replace(/\D/g,'').replace(/^0/,'972')+'?text='+encodeURIComponent(signMessage(w,link)):''};
   },
   async downloadData(workerId?: any,include?: any){
     const w=workers.find((x?: any)=>x.id===workerId); if(!w) throw new Error(tr('Worker not found'));

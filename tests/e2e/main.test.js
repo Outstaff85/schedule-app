@@ -1914,7 +1914,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="sign-sent"]', {timeout: 30000});
   sg.sent = await p.evaluate(() => ({wa: (document.querySelector('[data-testid="sign-whatsapp"]') || {}).href || '', chip: (document.querySelector('[data-testid="card-sign-state"]') || {}).dataset?.state}));
   const sgReqs1 = await (await fetch('http://127.0.0.1:5055/signRequests', {method: 'POST'})).json();
-  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/.*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
+  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/.*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && /documents to sign\. Open your personal account/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
     && sgReqs1.length === 1 && sgReqs1[0].status === 'sent' && sgReqs1[0].workerId === 'w1' && sgReqs1[0].values.full_name !== undefined && /\/sign\//.test(sgReqs1[0].templatePath),
     'signing: Documents to sign — the category\'s default picked, the date for a login with the right; Send to sign keeps the template frozen, offers the link for WhatsApp, the card says Sent to sign ' + JSON.stringify({sg, sgReqs1: sgReqs1.map(r => ({s: r.status, w: r.workerId, t: r.templatePath}))}));
   await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
