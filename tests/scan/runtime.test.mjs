@@ -324,17 +324,21 @@ await run('the page way\'s sessions and the readers\' sessions are released when
   files = { '/scan/lite.onnx': new Uint8Array(10), '/scan/sa24_w16.onnx': new Uint8Array(10), '/scan/yunet.onnx': new Uint8Array(10),
     '/scan/models.json': JSON.stringify({ version: 'v', doctype: true, mrz: true, he: true }), '/scan/he-layouts.json': '{}',
     '/scan/doctype.onnx': new Uint8Array(10), '/scan/mrz.onnx': new Uint8Array(10), '/scan/he.onnx': new Uint8Array(10) };
-  const { eng } = newEngines(SU.siteSurface(), { gpu: false });
+  const { eng, said } = newEngines(SU.siteSurface(), { gpu: false });
   const pe = eng.pageEngine();
   await pe.load('lite.onnx', 'sa24_w16.onnx', 'wasm', true);
+  // the page way's start is timed as a thread's: ONNX Runtime and the face finder too
+  assert.ok(said.log.some(t => /^Time: ONNX Runtime \(ort\) loaded for lite\.onnx \(page\) — \d+ ms$/.test(t)), said.log.join(' | '));
+  assert.ok(said.log.some(t => /^Time: face finder ready \(page\) — \d+ ms$/.test(t)), said.log.join(' | '));
   pe.stop(); await flush();
   assert.equal(released.length, 3, 'live, capture and the face finder');
   pe.stop(); await flush(); assert.equal(released.length, 3, 'once');
   const one = eng.pageEngine(); await one.load('lite.onnx', null, 'wasm', false); one.stop(); await flush();
   assert.equal(released.length, 4, 'one model for both: released once');
   released.length = 0;
-  const rd = new RD.Readers(SU.siteSurface());
+  const rdSaid = [], rd = new RD.Readers(SU.siteSurface(), t => rdSaid.push(t));
   await rd.load(); assert.ok(rd.doctype && rd.mrz && rd.he);
+  assert.ok(rdSaid.some(t => /^Time: ONNX Runtime \(ort\) loaded for readers — \d+ ms$/.test(t)), rdSaid.join(' | '));
   rd.release(); await flush();
   assert.equal(released.length, 3); assert.equal(rd.doctype, null); assert.equal(rd.he, null); assert.equal(rd.info, null);
   // a load running when they are released: what it opens is released, nothing kept
@@ -542,7 +546,7 @@ await run('every URL from the surface\'s base: the site never asks for /scan-lab
     assert.equal(SU.ortModuleUrl(surface, 'ort'), base + 'ort/ort.all.min.mjs');
     assert.equal(SU.ortModuleUrl(surface, 'ort130'), base + 'ort130/ort.all.min.mjs');
     files = { [base + 'models.json']: JSON.stringify({ version: 'v', doctype: true, mrz: true, he: true }), [base + 'he-layouts.json']: '{}',
-      [base + 'doctype.onnx']: new Uint8Array(10), [base + 'mrz.onnx']: new Uint8Array(10), [base + 'he.onnx']: new Uint8Array(10), [base + 'lite.onnx']: new Uint8Array(10) };
+      [base + 'doctype.onnx']: new Uint8Array(10), [base + 'mrz.onnx']: new Uint8Array(10), [base + 'he.onnx']: new Uint8Array(10), [base + 'lite.onnx']: new Uint8Array(10), [base + 'yunet.onnx']: new Uint8Array(10) };
     const created = [], ort = fakeOrt(created);
     ortFor = async () => ort;
     const rd = new RD.Readers(surface);
@@ -597,7 +601,7 @@ await run('a kept model is tied to the model version: the same version — no re
   const realCaches = globalThis.caches, realFetch = globalThis.fetch;
   const store = new Map(), asked = [], said = [];
   let offline = false, body = new Uint8Array([1, 2, 3]);
-  globalThis.caches = { open: async () => ({ match: async k => (store.has(k) ? store.get(k).clone() : undefined), put: async (k, r) => { store.set(k, r); } }) };
+  globalThis.caches = { open: async () => ({ match: async k => (store.has(k) ? store.get(k).clone() : undefined), put: async (k, r) => { store.set(k, r); }, delete: async k => store.delete(k) }) };
   globalThis.fetch = async (url, opts = {}) => {
     asked.push((opts.method || 'GET') + ' ' + url);
     if (offline) throw new TypeError('Failed to fetch');
@@ -634,7 +638,7 @@ await run('a kept model is tied to the model version: the same version — no re
     // offline: the kept copy as it is, even under another version
     offline = true; asked.length = 0;
     assert.equal(bytes(await get('lite.onnx', 'sha:ccc')), '9,9');
-    assert.match(said.at(-1), /kept copy \(offline\)/);
+    assert.match(said.at(-1), /kept copy of another version \(offline\)/);
     assert.equal(store.get('/scan/lite.onnx').headers.get('x-version'), 'sha:bbb', 'the kept copy is not marked with a version it is not');
     // offline with nothing kept: it fails (the session's start says so)
     await assert.rejects(get('yunet.onnx', 'sha:ddd'));
@@ -642,6 +646,30 @@ await run('a kept model is tied to the model version: the same version — no re
     offline = false; asked.length = 0;
     assert.equal(bytes(await get('lite.onnx', null)), '9,9');
     assert.deepEqual(asked, ['HEAD /scan/lite.onnx']);
+    // a kept copy whose body can no longer be read (its blob evicted): removed and downloaded again, once
+    const realMatch = (await globalThis.caches.open()).match;
+    globalThis.caches = { open: async () => ({ match: async k => (k === '/scan/lite.onnx' && store.has(k) ? { headers: store.get(k).headers, arrayBuffer: () => Promise.reject(new Error('blob gone')) } : realMatch(k)), put: async (k, r) => { store.set(k, r); }, delete: async k => store.delete(k) }) };
+    body = new Uint8Array([4, 4]); asked.length = 0;
+    assert.equal(bytes(await get('lite.onnx', 'sha:bbb')), '4,4');
+    assert.deepEqual(asked, ['GET /scan/lite.onnx']);
+    assert.ok(said.some(t => /^Time: lite\.onnx kept copy unreadable — removed, downloaded again/.test(t)));
+    globalThis.caches = { open: async () => ({ match: realMatch, put: async (k, r) => { store.set(k, r); }, delete: async k => store.delete(k) }) };
+    asked.length = 0;
+    assert.equal(bytes(await get('lite.onnx', 'sha:bbb')), '4,4'); assert.deepEqual(asked, [], 'the new copy kept');
+    // online, a new deploy whose download fails (a server error, or the body broken half-way): tried once more, never
+    // the kept copy of the old version
+    let answers = [];
+    globalThis.fetch = async (url, opts = {}) => { asked.push((opts.method || 'GET') + ' ' + url); return answers.shift()(); };
+    const broken = () => new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array([1])); c.error(new Error('connection reset')); } }), { status: 200 });
+    answers = [() => new Response('no', { status: 503 }), () => new Response('no', { status: 503 })]; asked.length = 0;
+    await assert.rejects(get('lite.onnx', 'sha:new'), /HTTP 503/);
+    assert.deepEqual(asked, ['GET /scan/lite.onnx', 'GET /scan/lite.onnx'], 'tried twice');
+    assert.equal(store.get('/scan/lite.onnx').headers.get('x-version'), 'sha:bbb');
+    answers = [broken, () => new Response(new Uint8Array([6]), { status: 200 })]; asked.length = 0;
+    assert.equal(bytes(await get('lite.onnx', 'sha:new')), '6', 'a broken body: the second try');
+    assert.ok(said.some(t => /^Time: lite\.onnx download failed \(connection reset\) — tried again/.test(t)), said.join(' | '));
+    answers = [broken, broken]; asked.length = 0;
+    await assert.rejects(get('sa24_w16.onnx', 'v:base-v2'), /connection reset/);
     // a stamp: the file's fingerprint first, else the surface's version, else none
     assert.equal(MO.modelStamp({ version: 'v5', doctype: false, mrz: false, he: false, files: { 'lite.onnx': 'abc' } }, 'lite.onnx'), 'sha:abc');
     assert.equal(MO.modelStamp({ version: 'v5', doctype: false, mrz: false, he: false, files: { 'lite.onnx': 'abc' } }, 'mrz.onnx'), 'v:v5');
@@ -666,8 +694,10 @@ await run('one models.json read per open: its stamps go to every thread\'s load 
     await Promise.all([rd.load(), eng.ensureCap(), eng.ensureSession()]);
     assert.equal(fetched.filter(f => f === 'GET /scan/models.json').length, 1, 'models.json read once: ' + fetched.join(', '));
     assert.ok(!fetched.some(f => f.startsWith('HEAD ')), 'no HEAD per model: ' + fetched.join(', '));
+    await flush();
     const loads = workers.map(w => w.sent.find(m => m.type === 'load'));
-    assert.deepEqual(loads.map(m => m.stamps), [
+    assert.ok(loads.every(m => m.stamps === undefined), 'the load is sent before models.json is read');
+    assert.deepEqual(workers.map(w => w.sent.find(m => m.type === 'stamps').stamps), [
       { 'sa24_w16.onnx': 'sha:s1', 'yunet.onnx': 'sha:y1' },
       { 'lite.onnx': 'sha:l1' },
       { 'lite.onnx': 'sha:l1' },
@@ -682,14 +712,14 @@ await run('one models.json read per open: its stamps go to every thread\'s load 
     assert.equal(fetched.filter(f => f === 'GET /scan/models.json').length, 1);
     // models.json missing (an old deploy): no stamps — the threads check by ETag as before
     const { eng: old } = newEngines(SU.siteSurface()); delete files['/scan/models.json']; workers.length = 0;
-    await old.ensureCap();
-    assert.equal(workers[0].sent.find(m => m.type === 'load').stamps, null);
+    await old.ensureCap(); await flush();
+    assert.equal(workers[0].sent.find(m => m.type === 'stamps').stamps, null);
   } finally { ortFor = () => Promise.reject(new Error('no ONNX Runtime here')); }
 });
 
-await run('a thread stopped while models.json is read: its load fails at once, nothing is sent to it', async () => {
+await run('a thread\'s load is sent before models.json is read (ONNX Runtime starts at once), its stamps follow; a stopped thread is sent nothing more; a models.json that does not answer in 4 s gives no stamps (the ETag check)', async () => {
   workers.length = 0;
-  policy = loadOk;
+  policy = () => undefined;  // the load waits (as a real thread waits for its stamps)
   let answer; const realFetch = globalThis.fetch;
   globalThis.fetch = (url, opts) => (String(url).endsWith('models.json') ? new Promise(r => { answer = r; }) : realFetch(url, opts));
   try {
@@ -697,10 +727,25 @@ await run('a thread stopped while models.json is read: its load fails at once, n
     const w = eng.workerEngine(1, 'ort');
     const p = w.load('sa24_w16.onnx', null, 'wasm', true);
     await flush();
+    assert.deepEqual(workers.at(-1).sent.map(m => m.type), ['load'], 'the load at once, before models.json answers');
     w.stop();
     answer(new Response(JSON.stringify({ version: 'v' }), { status: 200 }));
     await assert.rejects(p, /the model was stopped/);
-    assert.ok(!workers.at(-1).sent.length, 'nothing posted to a stopped thread');
+    await flush();
+    assert.deepEqual(workers.at(-1).sent.map(m => m.type), ['load'], 'no stamps posted to a stopped thread');
+    // models.json silent: after STAMPS_WAIT_MS the stamps go as null (the kept models checked by ETag)
+    assert.equal(EN.STAMPS_WAIT_MS, 4000);
+    const realST = globalThis.setTimeout; let due = null;
+    globalThis.setTimeout = (fn, ms) => (ms === EN.STAMPS_WAIT_MS ? (due = fn, 0) : realST(fn, ms));
+    const { eng: slow, said } = newEngines(SU.siteSurface());
+    const w2 = slow.workerEngine(1, 'ort');
+    w2.load('sa24_w16.onnx', null, 'wasm', true).catch(() => {});
+    await flush();
+    globalThis.setTimeout = realST;
+    assert.ok(due, 'a wait was set'); due(); await flush();
+    assert.deepEqual(workers.at(-1).sent.map(m => m.type + (m.type === 'stamps' ? ':' + m.stamps : '')), ['load', 'stamps:null']);
+    assert.ok(said.log.some(t => /^models\.json not read in 4 s/.test(t)));
+    w2.stop();
   } finally { globalThis.fetch = realFetch; }
 });
 

@@ -21,7 +21,7 @@
 // from /scan-lab/.
 import { S, warpRGBA } from './geometry';
 import type { ScanLog } from './log';
-import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, modelStamp, modelStamps, openSession, readModels, type Ep, type ModelsInfo, type Want } from './models';
+import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, modelStamps, openSession, readModels, type Ep, type ModelsInfo, type Want } from './models';
 import { loadOrt, type Ort, type OrtSession } from './ort';
 import { CPU_ORT, GPU_ORT, surfaceRef, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas, uprightRGBA, type Upright } from './upright';
@@ -107,6 +107,8 @@ export interface EngineState { phase: 'idle' | 'loading' | 'ready' | 'failed'; l
 
 const GPU_LAYOUT_KEY = 'scanGpuLayout';
 const WATCH_MS = 25000;
+// How long a model start waits for models.json's stamps before it checks its kept copy by ETag instead (engines.stampsFor).
+export const STAMPS_WAIT_MS = 4000;
 
 export class Engines {
   readonly env: EngineEnv;
@@ -175,9 +177,13 @@ export class Engines {
     }
     return this.info;
   }
-  /** The stamps of the model files a thread loads (null when models.json could not be read: the ETag check). */
+  /** The stamps of the model files a thread loads (null when models.json could not be read, or did not answer in
+   *  STAMPS_WAIT_MS: the ETag check — a slow models.json never holds the models back; the readers still wait for it). */
   private stampsFor(names: string[]): Promise<Record<string, string> | null> {
-    return this.modelsInfo().then(i => modelStamps(i, names), () => null);
+    return new Promise(resolve => {
+      const t = setTimeout(() => { this.log.log('models.json not read in ' + STAMPS_WAIT_MS / 1000 + ' s — the models checked by their ETag'); resolve(null); }, STAMPS_WAIT_MS);
+      this.modelsInfo().then(i => modelStamps(i, names), () => null).then(st => { clearTimeout(t); resolve(st); });
+    });
   }
 
   /** Listen to the engine's state; returns the unsubscribe. */
@@ -218,16 +224,25 @@ export class Engines {
     const { log } = this;
     return {
       load: async (liveName, capName, want, withFace) => {
-        const info = await this.modelsInfo().catch(() => null), stamp = (n: string) => modelStamp(info, n);
-        // as in a thread (worker.ts): ONNX Runtime, the first model's file and the face finder's at once, the sessions in turn
+        // as in a thread (worker.ts): ONNX Runtime at once; beside it the stamps, then the first model's file and the
+        // face finder's; the sessions in turn
+        const dir = this.settings.cpuDir, t0 = this.env.now();
+        const ortP = loadOrt(this.ref, dir, this.THREADS).then(o => { log.log('Time: ONNX Runtime (' + dir + ') loaded for ' + liveName + ' (page) — ' + Math.round(this.env.now() - t0) + ' ms'); return o; });
+        ortP.catch(() => {});  // its failure is the load's, below
+        const stamps = await this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace !== false ? ['yunet.onnx'] : [])]);
+        const stamp = (n: string): string | null => (stamps && stamps[n]) || null;
         const firstBytes = fetchModel(this.ref, liveName, downloadProgress(liveName, log.status), { stamp: stamp(liveName), said: log.log });
         const faceBytes = withFace !== false ? fetchModel(this.ref, 'yunet.onnx', () => {}, { stamp: stamp('yunet.onnx'), said: log.log }) : null;
         firstBytes.catch(() => {}); if (faceBytes) faceBytes.catch(() => {});
-        ort = await loadOrt(this.ref, this.settings.cpuDir, this.THREADS);
+        ort = await ortP;
         const a = await openSession(ort, this.ref, liveName, want, log.status, log.any, this.layoutGet(), { bytes: firstBytes, time: log.log }); live = a.sess;
         const b = capName ? await openSession(ort, this.ref, capName, want, log.status, log.any, this.layoutGet(), { stamp: stamp(capName), time: log.log }) : a; cap = b.sess;
         this.layoutSet(a.layout || b.layout);
-        if (faceBytes) face = await cpuSession(ort, this.ref, 'yunet.onnx', faceBytes);
+        if (faceBytes) {
+          const t1 = this.env.now();
+          face = await cpuSession(ort, this.ref, 'yunet.onnx', faceBytes);
+          log.log('Time: face finder ready (page) — ' + Math.round(this.env.now() - t1) + ' ms');
+        }
         return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
       },
       hasCap: () => cap !== live,
@@ -264,19 +279,22 @@ export class Engines {
     // its first request after 25 s was taken as stuck at once (every picked file, 2026-10-22)
     type Msg = WorkerIn extends infer T ? T extends { id: number } ? Omit<T, 'id'> : never : never;
     const call = (msg: Msg, transfer?: Transferable[]) => new Promise<WorkerOut & { type: 'reply' }>((resolve, reject) => {
-      if (stopped) { reject(new Error('the model was stopped')); return; }  // stopped while models.json was read
+      if (stopped) { reject(new Error('the model was stopped')); return; }  // a stopped thread is sent nothing more
       if (!waiting.size) heard = env.now();
       const id = ++n; waiting.set(id, { resolve, reject }); w.postMessage({ ...msg, id } as WorkerIn, transfer || []);
     });
     return {
       load: async (liveName, capName, want, withFace = true) => {
         two = !!capName;
-        // the files' stamps from models.json (read once per open, beside the thread's own start): a kept copy of the
-        // same version is used with no request
-        const stamps = await this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace ? ['yunet.onnx'] : [])]);
-        const r = await call({ type: 'load', surface: this.ref, ort: dir, live: liveName, cap: capName, want, threads, face: withFace, layout: this.layoutGet(), stamps });
-        this.layoutSet(r.layout as string | null);
-        return r.ep as string;
+        // the load sent at once (the thread starts ONNX Runtime's load now); the files' stamps from models.json (read
+        // once per open) follow in a 'stamps' message — a kept copy of the same version is used with no request
+        const r = call({ type: 'load', surface: this.ref, ort: dir, live: liveName, cap: capName, want, threads, face: withFace, layout: this.layoutGet() });
+        void this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace ? ['yunet.onnx'] : [])]).then(stamps => {
+          if (!stopped) w.postMessage({ type: 'stamps', stamps } as WorkerIn, []);
+        });
+        const m = await r;
+        this.layoutSet(m.layout as string | null);
+        return m.ep as string;
       },
       hasCap: () => two,
       detect: async (which, input) => {

@@ -234,10 +234,11 @@ export class Readers {
       const bytes = { doctype: mj.doctype ? files('doctype.onnx') : null, mrz: mj.mrz ? files('mrz.onnx') : null, he: mj.he ? files('he.onnx') : null };
       const layoutsP = mj.he ? fetch(layoutsUrl(s), { cache: 'no-cache' }) : null;
       if (layoutsP) layoutsP.catch(() => {});
-      if (mj.doctype || mj.mrz || mj.he) this.ort = await loadOrt(s, this.cpuDir);
-      const ort = this.ort as Ort;
       const time = (what: string, t: number): void => this.log('Time: ' + what + ' — ' + Math.round(now() - t) + ' ms');
       let t1 = now();
+      if (mj.doctype || mj.mrz || mj.he) { this.ort = await loadOrt(s, this.cpuDir); time('ONNX Runtime (' + this.cpuDir + ') loaded for readers', t1); }
+      const ort = this.ort as Ort;
+      t1 = now();
       if (bytes.doctype) { this.doctype = keep(await cpuSession(ort, s, 'doctype.onnx', bytes.doctype)); this.log('Document type model loaded'); time('document type model ready', t1); }
       t1 = now();
       if (bytes.mrz) { this.mrz = keep(await cpuSession(ort, s, 'mrz.onnx', bytes.mrz)); this.log('Passport zone reader loaded'); time('passport zone reader ready', t1); }

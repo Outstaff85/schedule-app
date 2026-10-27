@@ -16,8 +16,11 @@ import type { Quad } from './types';
 /** The messages the page sends. */
 export type WorkerIn =
   | { type: 'load'; id: number; surface: SurfaceRef; ort: OrtDir; live: string; cap: string | null; want: Want; threads: number; face: boolean; layout: string | null;
-      /** each model file's stamp from models.json (models.ts modelStamp): its kept copy is used with no request while it matches */
+      /** each model file's stamp from models.json (models.ts modelStamp): its kept copy is used with no request while it
+       *  matches. Unset: they follow in a 'stamps' message (the load is sent before models.json is read, so ONNX
+       *  Runtime starts loading at once; only the model files wait for the stamps). */
       stamps?: Record<string, string> | null }
+  | { type: 'stamps'; stamps: Record<string, string> | null }
   | { type: 'detect'; id: number; which: 'live' | 'cap'; bitmap?: ImageBitmap; rgba?: ArrayBuffer }
   | { type: 'warp'; id: number; rgba: ArrayBuffer; w: number; h: number; pts: Quad; upright: boolean };
 
@@ -36,20 +39,40 @@ const scope = self as unknown as Scope;
 let ort: Ort | null = null, live: OrtSession | null = null, cap: OrtSession | null = null, face: OrtSession | null = null;
 const say = (m: WorkerOut, transfer?: Transferable[]) => scope.postMessage(m, transfer || []);
 
+// The model files' stamps when they follow the load (a 'stamps' message): kept here until the load asks for them.
+let stampsGot: Record<string, string> | null | undefined;
+let stampsWait: ((v: Record<string, string> | null) => void) | null = null;
+const stampsLater = (): Promise<Record<string, string> | null> => (stampsGot !== undefined ? Promise.resolve(stampsGot) : new Promise(r => { stampsWait = r; }));
+
 scope.onmessage = async ({ data: m }) => {
+  if (m.type === 'stamps') {
+    stampsGot = m.stamps;
+    if (stampsWait) { stampsWait(m.stamps); stampsWait = null; }
+    return;
+  }
   try {
     if (m.type === 'load') {
       const onStatus = (status: EngineStatus, frac?: number) => say({ type: 'status', status, frac }), onLog = (text: string) => say({ type: 'log', text });
-      const stamp = (name: string): string | null => (m.stamps && m.stamps[name]) || null;
-      // ONNX Runtime's load, the first model's file and the face finder's (0.2 MB) at once — files only, no
-      // session: the sessions still start one after the other, the second model's file is fetched after the
-      // first model's session (one heavy model in memory at a time)
+      // ONNX Runtime's load at once; beside it the stamps (models.json, read by the page), then the first model's
+      // file and the face finder's (0.2 MB) — files only, no session: the sessions still start one after the
+      // other, the second model's file is fetched after the first model's session (one heavy model in memory at a time)
+      let t0 = performance.now();
+      const ortP = loadOrt(m.surface, m.ort, m.threads).then(o => {
+        onLog('Time: ONNX Runtime (' + m.ort + ') loaded for ' + m.live + ' — ' + Math.round(performance.now() - t0) + ' ms');
+        return o;
+      });
+      ortP.catch(() => {});  // its failure is the load's, below
+      if (m.stamps === undefined) {
+        const t1 = performance.now();
+        stampsGot = await stampsLater();
+        onLog('Time: model stamps from models.json waited for — ' + Math.round(performance.now() - t1) + ' ms');
+      } else stampsGot = m.stamps;
+      const stamps = stampsGot;
+      const stamp = (name: string): string | null => (stamps && stamps[name]) || null;
       const firstBytes = fetchModel(m.surface, m.live, downloadProgress(m.live, onStatus), { stamp: stamp(m.live), said: onLog });
       const faceBytes = m.face ? fetchModel(m.surface, 'yunet.onnx', () => {}, { stamp: stamp('yunet.onnx'), said: onLog }) : null;
       firstBytes.catch(() => {}); if (faceBytes) faceBytes.catch(() => {});  // their failure is the session's, below
-      let t0 = performance.now();
-      ort = await loadOrt(m.surface, m.ort, m.threads);
-      onLog('Time: ONNX Runtime (' + m.ort + ') loaded for ' + m.live + ' — ' + Math.round(performance.now() - t0) + ' ms');
+      ort = await ortP;
       const a = await openSession(ort, m.surface, m.live, m.want, onStatus, onLog, m.layout, { bytes: firstBytes, time: onLog });
       live = a.sess;
       const b = m.cap ? await openSession(ort, m.surface, m.cap, m.want, onStatus, onLog, m.layout, { stamp: stamp(m.cap), time: onLog }) : a; cap = b.sess;

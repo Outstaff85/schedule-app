@@ -801,7 +801,7 @@ await run('the open is timed: "Ready: first frame after N ms" once, at the first
   b.s.stop(); a.s.stop();
 });
 
-await run('the early start (a new worker\'s window): one session, its models started with no camera; the scan window takes it; stopped after 3 minutes unless taken; not under 4 GB', () => {
+await run('the early start (a new worker\'s window): one session, its models started with no camera; the scan window takes it; stopped after 3 minutes unless taken (a fresh 3 minutes when another new worker\'s window opens meanwhile); not under 4 GB', () => {
   const K = M.keep;
   const realST = globalThis.setTimeout, realCT = globalThis.clearTimeout;
   const timers = new Map(); let n = 0;
@@ -825,9 +825,16 @@ await run('the early start (a new worker\'s window): one session, its models sta
     // the scan window opens: it takes the early session, its timer stopped — no second session
     assert.equal(K.takeSession(make), a); assert.equal(timers.size, 0); assert.equal(made.length, 1);
     assert.equal(K.prepareEarly(make), null, 'nothing started while the window is open');
+    assert.equal(timers.size, 0, 'a session in use is given no stop timer');
     // the window closes: kept 3 minutes (nothing started meanwhile), then stopped
     K.releaseSession(); assert.equal(a.slept, 1); assert.equal(timers.size, 1);
+    const closedTimer = [...timers.keys()][0];
+    // 2:30 later another new worker's window: nothing new started, but the kept session gets a fresh 3 minutes
     assert.equal(K.prepareEarly(make), null, 'nothing started while one is kept');
+    assert.equal(made.length, 1);
+    assert.ok(!timers.has(closedTimer), 'the old deadline dropped');
+    assert.deepEqual([...timers.values()].map(t => t.ms), [K.KEEP_MS], 'a fresh 3 minutes from the new worker\'s window');
+    assert.equal(a.stopped, 0); assert.equal(K.keptSession(), a);
     fire();
     assert.equal(a.stopped, 1); assert.equal(K.keptSession(), null);
     // an early session never taken: stopped after 3 minutes; the next open makes a new one

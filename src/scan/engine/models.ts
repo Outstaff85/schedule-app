@@ -23,9 +23,12 @@ const hasGpu = (): boolean => !!((globalThis as { navigator?: { gpu?: unknown } 
 // carries the stamp it was downloaded under (header x-version). The same stamp: the kept copy is used with no
 // request at all; a different or missing one (a new deploy, an old entry kept by its ETag only): downloaded
 // again, once. With no stamp known (models.json not read): the old check — the kept copy while it is still
-// the file on the server (same ETag; one HEAD). Offline: the kept copy as it is. The cache key is the
-// surface's own model URL (root-relative, so the same entry wherever the code runs: the page, every pool
-// worker, the capture and file threads).
+// the file on the server (same ETag; one HEAD). A kept copy that can no longer be read is removed from the
+// cache and downloaded again. A kept copy of another version is used only when the network does not answer at
+// all (offline); a server error or a download broken half-way is tried once more and then fails the step — a
+// copy the server has just said is out of date never runs beside the new deploy's other files. The cache key
+// is the surface's own model URL (root-relative, so the same entry wherever the code runs: the page, every
+// pool worker, the capture and file threads).
 export interface FetchOpts {
   /** The model file's stamp from models.json (modelStamp); null or unset: unknown (the ETag check). */
   stamp?: string | null;
@@ -38,40 +41,52 @@ const mb = (n: number): string => (n / 1048576).toFixed(1) + ' MB';
 export async function fetchModel(s: SurfaceRef, name: string, onProgress: (got: number, total: number) => void, opts: FetchOpts = {}): Promise<Uint8Array> {
   const url = modelUrl(s, name), stamp = opts.stamp || null, t0 = now();
   const said = (how: string): void => { if (opts.said) opts.said('Time: ' + name + ' ' + how + ' — ' + Math.round(now() - t0) + ' ms'); };
-  const kept = async (h: Response, how: string): Promise<Uint8Array> => { onProgress(1, 1); const b = new Uint8Array(await h.arrayBuffer()); said(how); return b; };
-  let hit: Response | undefined;
-  try {
-    const cache = await caches.open(s.cache);
-    hit = await cache.match(url);
-    if (stamp) {
-      if (hit && hit.headers.get('x-version') === stamp) return await kept(hit, 'kept copy, same version (no request)');
-    } else {
+  let cache: Cache | null = null, hit: Response | undefined;
+  try { cache = await caches.open(s.cache); hit = await cache.match(url); } catch { cache = null; hit = undefined; }  // no cache here: the network only
+  // the kept copy's bytes; null — and the entry removed, so it is replaced once — when its body cannot be read
+  const kept = async (h: Response, how: string): Promise<Uint8Array | null> => {
+    try { const b = new Uint8Array(await h.arrayBuffer()); onProgress(1, 1); said(how); return b; } catch {
+      said('kept copy unreadable — removed, downloaded again');
+      if (cache) { try { await cache.delete(url); } catch { /* gone already */ } }
+      return null;
+    }
+  };
+  if (hit) {
+    let use: string | null = null;
+    if (stamp) { if (hit.headers.get('x-version') === stamp) use = 'kept copy, same version (no request)'; }
+    else {
       let etag: string | null = null;
       try { const h = await fetch(url, { method: 'HEAD', cache: 'no-cache' }); if (h.ok) etag = h.headers.get('etag'); } catch { /* offline: the kept copy */ }
-      if (hit && (!etag || hit.headers.get('x-etag') === etag)) return await kept(hit, etag ? 'kept copy, same ETag (one HEAD)' : 'kept copy (no answer from the server)');
+      if (!etag || hit.headers.get('x-etag') === etag) use = etag ? 'kept copy, same ETag (one HEAD)' : 'kept copy (no answer from the server)';
     }
+    if (use) { const b = await kept(hit, use); if (b) return b; hit = undefined; }
+  }
+  // the download: a server error or a body broken half-way tried once more, then the step fails
+  let failed: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
     let res: Response;
     try { res = await fetch(url, { cache: 'no-cache' }); } catch (e) {
-      if (hit) return await kept(hit, 'kept copy (offline)');  // offline: the kept copy as it is, even of another version
+      // no answer at all (offline): the kept copy as it is, even of another version
+      if (hit) { const b = await kept(hit, 'kept copy of another version (offline)'); if (b) return b; }
       throw e;
     }
-    if (!res.ok) {
-      if (hit) return await kept(hit, 'kept copy (the server said HTTP ' + res.status + ')');
-      throw new Error('model download failed: HTTP ' + res.status);
+    try {
+      if (!res.ok) throw new Error('model download failed: HTTP ' + res.status);
+      const total = +(res.headers.get('content-length') || 0) || 0;
+      const reader = res.body!.getReader(); const parts: Uint8Array[] = []; let got = 0;
+      for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
+      const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
+      const headers: Record<string, string> = { 'x-etag': res.headers.get('etag') || '' };
+      if (stamp) headers['x-version'] = stamp;
+      if (cache) { try { await cache.put(url, new Response(buf, { headers })); } catch { /* cache full or blocked */ } }
+      said('downloaded, ' + mb(got) + (stamp ? ' (' + stamp + ')' : ''));
+      return buf;
+    } catch (e) {
+      failed = e;
+      said('download failed (' + errText(e) + ')' + (attempt < 2 ? ' — tried again' : ''));
     }
-    const total = +(res.headers.get('content-length') || 0) || 0;
-    const reader = res.body!.getReader(); const parts: Uint8Array[] = []; let got = 0;
-    for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; onProgress(got, total); }
-    const buf = new Uint8Array(got); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
-    const headers: Record<string, string> = { 'x-etag': res.headers.get('etag') || '' };
-    if (stamp) headers['x-version'] = stamp;
-    try { await cache.put(url, new Response(buf, { headers })); } catch { /* cache full or blocked */ }
-    said('downloaded, ' + mb(got) + (stamp ? ' (' + stamp + ')' : ''));
-    return buf;
-  } catch {
-    if (hit) return new Uint8Array(await hit.arrayBuffer());
-    const res = await fetch(url); return new Uint8Array(await res.arrayBuffer());
   }
+  throw failed;
 }
 
 /** A model file's stamp from models.json: its fingerprint when the file list has it ("sha:" + 16 hex), else the

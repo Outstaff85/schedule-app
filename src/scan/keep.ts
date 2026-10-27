@@ -7,7 +7,8 @@
 // Started early (owner, 2026-10-27, option b): when the manager opens a new worker's window, the session is made
 // and its models started in the background (prepareEarly: no camera, no screen), kept the same 3 minutes as after
 // a closed window; the scan window opened meanwhile takes it (takeSession), so its models are ready or well on
-// their way. Never a second session: nothing is started while one is kept or in use.
+// their way. Never a second session: nothing is started while one is kept or in use; a kept one (not in use) is
+// given a fresh 3 minutes instead.
 import type { ScanSession } from './engine/session';
 
 export const KEEP_MS = 3 * 60 * 1000;
@@ -46,9 +47,11 @@ export function releaseSession(): void {
 export const earlyAllowed = (memoryGb: number | undefined | null): boolean => (memoryGb || 4) >= 4;
 
 /** The session made and its models started ahead of the scan window (a new worker's window opened), kept KEEP_MS
- *  like a closed window's; null (nothing started) when a session is kept or in use already. */
+ *  like a closed window's; null (nothing started) when a session is kept or in use already. A kept session not in
+ *  use (its stop timer running) is given a fresh KEEP_MS instead, so the Scan tap still finds it ready; one in use
+ *  (no timer) is left alone. */
 export function prepareEarly(make: () => ScanSession): ScanSession | null {
-  if (kept) return null;
+  if (kept) { if (timer) stopLater(kept); return null; }
   const s = (kept = make());
   void s.prepare(true);
   stopLater(s);
