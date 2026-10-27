@@ -2916,7 +2916,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ed.worker.join() === 'person,address,work,documents,contract,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Contract · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,place,rates' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.noRole,
+  ok(ed.client.join() === 'client,place,rates,contract' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.noRole,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
   const gp = await p.evaluate(async () => {
