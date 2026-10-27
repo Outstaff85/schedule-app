@@ -7,7 +7,8 @@
 // (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
 import { byId, qsa } from './dom';
-import { NAV_TABS, hasPermission, homeTab, isAccTab, tabAllowed } from '../logic/access';
+import { NAV_TABS, canAddWorkers, hasPermission, homeTab, isAccTab, tabAllowed } from '../logic/access';
+import { prepareScanEarly } from '../../scan/open';
 import { setFrame } from '../frame';
 import { island } from '../bridge';
 Object.defineProperties(window, {
@@ -49,7 +50,9 @@ export function switchTab(tab?: any){
   NAV_TABS.forEach((t?: any)=>{
     byId('section'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('visible',tab===t);
   });
-  if(tab==='workers')    renderWorkersPage();
+  // the Workers tab (also the landing tab): its New worker button opens the scanner, so the scanner's models start
+  // now, in the background — once; opened again it only refreshes the kept session's 3 minutes (src/scan/keep.ts)
+  if(tab==='workers'){   renderWorkersPage(); prepareScanEarly(canAddWorkers()); }
   if(tab==='clients')    renderClientsPage();
   if(tab==='suppliers')  renderSuppliersPage();
   // setupAdminPaneBar() (role-gated pane visibility + default pane) only

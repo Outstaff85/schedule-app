@@ -907,6 +907,47 @@ await run('the early start (a new worker\'s window): one session, its models sta
   } finally { globalThis.setTimeout = realST; globalThis.clearTimeout = realCT; }
 });
 
+await run('the Workers tab (owner, 2026-10-27): its first opening starts the session once, with no camera; opened again it only refreshes the keep; not for a login that may not add workers, not while the scan window is open, not under 4 GB', () => {
+  const K = M.keep;
+  const realST = globalThis.setTimeout, realCT = globalThis.clearTimeout;
+  const timers = new Map(); let n = 0;
+  globalThis.setTimeout = (fn, ms) => { const id = ++n; timers.set(id, { fn, ms }); return id; };
+  globalThis.clearTimeout = id => { timers.delete(id); };
+  const fire = () => { const due = [...timers.values()]; timers.clear(); for (const t of due) t.fn(); };
+  try {
+    const made = [];
+    const make = () => {
+      const s = { prepared: [], slept: 0, stopped: 0, prepare(early) { this.prepared.push(early); return Promise.resolve(); }, sleep() { this.slept++; }, stop() { this.stopped++; } };
+      made.push(s); return s;
+    };
+    // what open.tsx prepareScanEarly does on switchTab('workers'): earlyWanted, then prepareEarly
+    let scanOpen = false;
+    const openWorkersTab = (mayAdd = true, memoryGb = 8) => K.earlyWanted({ mayAdd, scanOpen, memoryGb }) ? K.prepareEarly(make) : null;
+    assert.equal(openWorkersTab(false), null, 'a login that may not add workers starts nothing'); assert.equal(made.length, 0);
+    assert.equal(openWorkersTab(true, 2), null, 'a phone under 4 GB starts nothing'); assert.equal(made.length, 0);
+    scanOpen = true;
+    assert.equal(openWorkersTab(), null, 'nothing while the scan window is open'); assert.equal(made.length, 0);
+    scanOpen = false;
+    assert.equal(K.earlyWanted({ mayAdd: true, scanOpen: false }), true, 'unknown memory counts as 4 GB');
+    const a = openWorkersTab();
+    assert.ok(a && made.length === 1, 'the first opening starts one session');
+    assert.deepEqual(a.prepared, [true], 'its models started early'); assert.equal(a.slept, 0, 'no camera');
+    const first = [...timers.keys()][0];
+    for (let i = 0; i < 5; i++) assert.equal(openWorkersTab(), null, 'opened again: nothing new started');
+    assert.equal(made.length, 1); assert.deepEqual(a.prepared, [true], 'its models not started again');
+    assert.ok(!timers.has(first), 'the old deadline dropped');
+    assert.deepEqual([...timers.values()].map(t => t.ms), [K.KEEP_MS], 'one fresh 3 minutes');
+    // the New worker button: the scanner takes the same session; the tab opened behind it leaves the session in use alone
+    assert.equal(K.takeSession(make), a); assert.equal(timers.size, 0);
+    assert.equal(K.prepareEarly(make), null); assert.equal(timers.size, 0, 'a session in use gets no stop timer');
+    K.releaseSession(); assert.equal(timers.size, 1);
+    fire(); assert.equal(a.stopped, 1, 'stopped 3 minutes after'); assert.equal(K.keptSession(), null);
+    // the tab opened after it was stopped: a new session
+    const b = openWorkersTab(); assert.ok(b && b !== a && made.length === 2);
+    fire(); assert.equal(b.stopped, 1); assert.equal(K.keptSession(), null);
+  } finally { globalThis.setTimeout = realST; globalThis.clearTimeout = realCT; }
+});
+
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

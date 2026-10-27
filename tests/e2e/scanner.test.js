@@ -216,26 +216,28 @@ const READS = {
   await p.fill('#loginUsername', 'owner1'); await p.fill('#loginPassword', 'owner-pass-1');
   await p.click('#loginBtn');
   ok(await p.waitForFunction(() => typeof workers !== 'undefined' && workers.length === 2, null, {timeout: 20000}).then(() => true, () => false), 'site: the firm owner signed in (the workers loaded)');
-  // The early start (owner, 2026-10-27, option b; src/scan/keep.ts prepareEarly): a new worker's window starts the
-  // scanner's session in the background — its models, no camera, no scanner on the screen —, once (the window opened
-  // again starts no second one), and the scan window opened next takes that same session.
+  // The early start (owner, 2026-10-27; src/scan/keep.ts prepareEarly): opening the Workers tab (the owner lands on
+  // Today) starts the scanner's session in the background — its models, no camera, no scanner on the screen —, once:
+  // the tab opened again and a new worker's window start no second one, and the scan window opened next takes that
+  // same session.
   const early = await p.evaluate(async () => {
     const H = await ManagerScan.hooks(), ov = document.getElementById('workerOverlay');
     const close = async () => { ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); await T.tick(300); };
-    const r = {before: !!H.session()};
-    openAddWorker();
+    const r = {landed: currentTab, before: !!H.session()};
+    switchTab('workers');
     r.started = await T.until(() => !!H.session(), 8000);
     window.__earlySession = H.session();
-    await close();
+    switchTab('schedule'); switchTab('workers'); await T.tick(300);
+    r.tabOnce = H.session() === window.__earlySession;
     openAddWorker(); await T.tick(300);
-    r.once = H.session() === window.__earlySession;
+    r.windowOnce = H.session() === window.__earlySession;
     await close();
     r.noCamera = window.__camAsked.length === 0; r.noScanner = !T.q('[data-testid="scanner"]');
     r.closed = !ov.classList.contains('open');
     return r;
   });
-  ok(!early.before && early.started && early.once && early.noCamera && early.noScanner && early.closed,
-    'site: a new worker\'s window starts the scanner\'s models in the background, once, with no camera and no scanner shown ' + JSON.stringify(early));
+  ok(early.landed !== 'workers' && !early.before && early.started && early.tabOnce && early.windowOnce && early.noCamera && early.noScanner && early.closed,
+    'site: opening the Workers tab starts the scanner\'s models in the background, once (the tab again and a new worker\'s window start no second), with no camera and no scanner shown ' + JSON.stringify(early));
   await p.evaluate(() => { localStorage.removeItem('scanFeedbackQueue'); window.__scanGoing = startNewScan(); });
   await p.waitForSelector('[data-testid="scanner"][data-mode="site"] [data-testid="scan-status"]', {timeout: 20000});
   ok(await p.evaluate(async () => (await ManagerScan.hooks()).session() === window.__earlySession), 'site: the scan window takes the session started early (no second one)');
