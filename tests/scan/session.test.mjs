@@ -16,7 +16,9 @@
 //  - hold() pauses the live frame (no frames, no Auto shot) and resume() starts it again from a fresh frame;
 //  - after a shot the live frame goes on by itself (no Next), and Auto does not take the same document again:
 //    a nudge keeps it waiting (taken), the document gone for AWAY_MS or another one away from it lets it shoot;
-//    the shutter is never held by it, and a held live frame does not go on after a shot until resume();
+//    the shutter is never held by it, and a held live frame does not go on after a shot until resume(); the frame
+//    stays on the document taken, green while it is held there (not wiped and found again red), and a new document
+//    goes red, then green, and is taken;
 //  - the status keys come out in order (finding, hold with the seconds, found with the count, then the shot's);
 //  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
@@ -630,6 +632,8 @@ const sceneLive = scene => call => {
   return sc === 'doc' ? { pts: Q, conf: 0.9 } : sc === 'nudge' ? { pts: shift(Q, 0.03), conf: 0.9 } : sc === 'other' ? { pts: shift(Q, 0.3, 0.2), conf: 0.9 } : NONE;
 };
 const attemptsOf = log => new Set(log.pages.map(p => p.record.attempt)).size;
+/** The frame lies away from q (its farthest corner over 0.1). */
+const farFrom = (a, q) => Math.max(...a.map((p, i) => Math.hypot(p[0] - q[i][0], p[1] - q[i][1]))) > 0.1;
 
 await run('after a shot the live frame goes on by itself; Auto does not take the same document again until it has left the frame', async () => {
   const scene = { now: 'doc' };
@@ -670,6 +674,38 @@ await run('after a shot the live frame goes on by itself; Auto does not take the
   assert.equal(attemptsOf(log), 4);
   s.stop();
   return attemptsOf(log) + ' shots';
+});
+
+await run('after a shot the frame stays on the document taken, green while it is held there (not wiped and found again red); a new document goes red, then green, and is taken', async () => {
+  // the owner's phone (2026-10-27): after each shot the square vanished and came back red and flickering — the live
+  // frame went on from nothing (clearFrame) — so there was nothing green to aim with
+  const scene = { now: 'doc' };
+  const { s, clock, log, video } = setup(sceneLive(scene), { auto: true });
+  await s.startCamera(video);
+  await clock.runFor(2500, () => log.pages.length > 0);
+  // the shot settled: the live frame went on
+  await clock.runFor(2000, () => s.live.running);
+  assert.ok(s.live.running, 'the live frame went on by itself');
+  const settled = clock.t;
+  await clock.runFor(1500);
+  const after = log.frames.filter(f => f.t >= settled);
+  assert.ok(after.length > 50, 'frames drawn after the shot');
+  assert.ok(after.every(f => f.quad), 'the frame never vanished after the shot (' + after.filter(f => !f.quad).length + ' frames with none)');
+  assert.ok(after.every(f => f.ok), 'the frame stayed green on the document held still (' + after.filter(f => !f.ok).length + ' red frames)');
+  near(after[after.length - 1].quad, Q, 'on the document taken');
+  assert.equal(attemptsOf(log), 1, 'not taken again');
+  assert.equal(log.status[log.status.length - 1].key, 'taken');
+  // another document away from it: red first (a fresh countdown), then green, then the Auto shot
+  scene.now = 'other';
+  const moved = clock.t;
+  await clock.runFor(2500, () => attemptsOf(log) > 1);
+  const other = log.frames.filter(f => f.t >= moved && f.t < log.pages[log.pages.length - 1].t);
+  const firstRed = other.find(f => f.quad && !f.ok && farFrom(f.quad, Q)), firstGreen = other.find(f => f.quad && f.ok && farFrom(f.quad, Q));
+  assert.ok(firstRed && firstGreen && firstRed.t < firstGreen.t, 'the new document: red, then green');
+  assert.ok(firstGreen.t - firstRed.t >= St.LOCK_MS - 20, 'green after LOCK_MS (' + (firstGreen.t - firstRed.t) + ' ms)');
+  assert.equal(attemptsOf(log), 2, 'the new document is taken');
+  s.stop();
+  return 'green ' + (firstGreen.t - firstRed.t) + ' ms after the new document was seen';
 });
 
 await run('a corner out of the frame is not gone; Auto turned on later does not take the document taken; wake forgets it', async () => {

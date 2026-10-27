@@ -351,18 +351,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     more().click(); await new Promise(r => setTimeout(r, 400));
     const win = () => document.querySelector('[data-testid=window]');
     const sheet = !!win(), items = win() ? [...win().querySelectorAll('button span.flex-1')].map(b => b.textContent.trim()) : [];
+    // the items are plates of the list template: the bar, no browser border (the page has no preflight)
+    const it0 = win() && win().querySelector('[data-testid=more-item]'), ics = it0 && getComputedStyle(it0);
+    const plate = !!it0 && it0.classList.contains('og-plate') && ics.borderTopWidth === '0px' && /4px 0px 0px( 0px)? inset/.test(ics.boxShadow);
     // the sheet lies over the bottom bar (the bar never covers its last item): at the bar's middle the sheet is on top
     // (the open sheet turns the page's pointer events off; turned back on for the look, the topmost element is hit)
     const pe = document.body.style.pointerEvents; document.body.style.pointerEvents = 'auto';
     const barHit = document.elementFromPoint(innerWidth / 2, innerHeight - 20); document.body.style.pointerEvents = pe;
     const onTop = !!win() && !!barHit && win().contains(barHit);
     if(win()) win().querySelectorAll('button span.flex-1')[0].closest('button').click(); await new Promise(r => setTimeout(r, 400));
-    const r = {shown, fixed, todayColor, sheet, items, onTop, tab: currentTab, moreOn: more().getAttribute('aria-current') === 'page', closed: !win() || win().dataset.state === 'closed'};
+    const r = {shown, fixed, todayColor, sheet, items, plate, onTop, tab: currentTab, moreOn: more().getAttribute('aria-current') === 'page', closed: !win() || win().dataset.state === 'closed'};
     switchTab('dashboard'); await new Promise(r => setTimeout(r, 200)); r.moreOff = more().getAttribute('aria-current') !== 'page';
     return r;
   });
-  ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.onTop && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
-    'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin, all of them above the bar ' + JSON.stringify(bb));
+  ok(bb.shown.join() === 'Today,Schedule,Workers,Accounting,More' && bb.fixed && bb.todayColor === 'rgb(34, 211, 238)' && bb.sheet && bb.items.join() === 'Clients,Suppliers,Admin' && bb.plate && bb.onTop && bb.tab === 'clients' && bb.moreOn && bb.closed && bb.moreOff,
+    'phone bottom bar: Today, Schedule, Workers, Accounting, More (the active one in its color); More opens Clients, Suppliers, Admin as plates of the list template, all of them above the bar ' + JSON.stringify(bb));
   // Schedule (stage 6b: React, src/manager/Schedule.tsx): a plate per worker with its week; a tap opens its 7 days, a day opens the shift window.
   const W0 = await p.evaluate(async () => {
     const w0 = workers.find(w => isActiveWorker(w)); window.__keepSched = JSON.stringify(w0.schedule || []);
@@ -445,6 +448,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const c = document.querySelector('#workersRoot [data-testid="worker-plate"]'); return c ? {h: c.getBoundingClientRect().height, name: c.querySelector('[data-testid="worker-name"]').textContent, full: c.querySelector('[data-testid="worker-name"]').title, hrs: (c.querySelector('[data-testid="worker-hours"]') || {}).textContent, kb: !!c.querySelector('button[aria-label="Actions"]'), sw: c.classList.contains('og-sw')} : {}; });
   await p.setViewportSize({width: 1280, height: 720});
   ok(wc.h > 0 && wc.h < 100 && wc.name && wc.name === wc.full && /h$/.test(wc.hrs) && wc.kb && wc.sw, 'workers: on a phone a worker is one plate — the full name (… when it does not fit), the month\'s hours, ⋮, swipe ' + JSON.stringify(wc));
+  // On a phone the worker, client and supplier windows open at one size, the full sheet (owner).
+  await p.setViewportSize({width: 390, height: 800});
+  const wsz = await p.evaluate(async () => { const w8 = () => new Promise(r => setTimeout(r, 200)); const h = id => Math.round(document.getElementById(id).getBoundingClientRect().height);
+    // each window closed and gone before the next opens: one opened over a closing one would go back to it (__returnTo)
+    openEditWorker(0); await w8(); const worker = h('workerModal'); closeModal('workerOverlay'); await w8(); await w8();
+    openEditClient(clients[0].id); await w8(); const client = h('clientModal'); closeModal('clientOverlay'); await w8(); await w8();
+    openEditSupplier(suppliers[0].id); await w8(); const supplier = h('supplierModal'); closeModal('supplierOverlay'); await w8(); await w8();
+    return {worker, client, supplier, left: [...document.querySelectorAll('.overlay.open')].map(o => o.id)}; });
+  await p.setViewportSize({width: 1280, height: 720});
+  ok(wsz.worker > 600 && wsz.client === wsz.worker && wsz.supplier === wsz.worker && !wsz.left.length, 'windows: on a phone the worker, client and supplier windows are one size ' + JSON.stringify(wsz));
   ok(rt.keptAfterEdit, 'worker pay: an edit in the worker modal keeps the pay fields', JSON.stringify(rt));
   ok(rt.moved === 0, "worker pay: moved to a client with a rate, the worker takes the client's rate", JSON.stringify(rt));
   // Commission for a worker paid by the day: a fixed ₪ per day when set, else hours × ₪/h.
@@ -551,7 +564,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       const wait = ms => new Promise(res => setTimeout(res, ms));
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
       const sw = () => document.querySelector('[data-testid=account-theme] [data-testid=theme-switch]');
-      r.items = [...sw().querySelectorAll('[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
+      r.items = [...sw().querySelectorAll('button[data-theme-v]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
       // the menu in the windows' glass (owner 2026-10-26): the sheet gradient and the glass edge, its tail in the same
       // fill (never black) with the same edge; Dark / Light / System fit inside the menu, none cut off
       { const m = document.querySelector('[data-testid=account-menu]'), cs = getComputedStyle(m), root = getComputedStyle(document.documentElement);
@@ -560,25 +573,25 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         r.menuGlass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim());
         r.tail = !!tail && getComputedStyle(tail).fill === rgb(root.getPropertyValue('--plate-top').trim()) && getComputedStyle(tail).fill !== 'rgb(0, 0, 0)' && getComputedStyle(edge).stroke === cs.borderTopColor;
         const mb = m.getBoundingClientRect();
-        r.fits = [...sw().querySelectorAll('[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
+        r.fits = [...sw().querySelectorAll('button[data-theme-v]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
       sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
-      r.on = (sw().querySelector('[data-state=on]') || {}).dataset?.testid?.slice(6);
+      r.on = (sw().querySelector('button[data-theme-v][data-state=on]') || {}).dataset?.testid?.slice(6); r.toggle = sw().querySelector('[data-testid=theme-toggle]')?.dataset.state === 'unchecked'; // on = Dark, off once Light is picked
       r.open = !!document.querySelector('[data-testid=account-menu]');
       r.ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
       document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); await wait(200);
       return r;
     });
-    ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light,system/System' && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s switch (Dark / Light / System) turns the light theme on, on this device ' + JSON.stringify(th));
-    ok(th.menuGlass && th.tail && th.fits, 'menus: the account menu in the windows\' glass and edge, its tail in the same fill and edge (not black), Dark / Light / System fit its width ' + JSON.stringify(th));
+    ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light' && th.toggle && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s one switch (Dark / Light) turns the light theme on, on this device ' + JSON.stringify(th));
+    ok(th.menuGlass && th.tail && th.fits, 'menus: the account menu in the windows\' glass and edge, its tail in the same fill and edge (not black), Dark and Light fit its width ' + JSON.stringify(th));
     await sleep(1500);
     const c3 = await newCtx(); const p3 = await page(c3);
     await p3.goto(BASE + 'schedule-manager.html'); await p3.waitForSelector('#loginScreen', {state:'visible'});
-    const before = await p3.evaluate(() => ({look: document.documentElement.dataset.theme, sw: document.querySelectorAll('#loginTheme [data-theme-v]').length, on: (document.querySelector('#loginTheme .on') || {}).dataset?.themeV}));
+    const before = await p3.evaluate(() => ({look: document.documentElement.dataset.theme, sw: document.querySelectorAll('#loginTheme [data-theme-v]').length, on: (document.querySelector('#loginTheme button.on') || {}).dataset?.themeV}));
     await p3.fill('#loginUsername', 'owner1'); await p3.fill('#loginPassword', 'owner-pass-1'); await p3.click('#loginBtn');
     const back = await waitFor(p3, () => !!document.querySelector('header [data-testid=lang-btn]') && document.documentElement.dataset.theme === 'light' && localStorage.getItem('uiTheme') === 'light', 15000);
     await p3.screenshot({path: SP + '/theme-light-manager.png'});
-    ok(before.look === 'dark' && before.sw === 3 && before.on === 'dark' && back, 'theme: the sign-in screen has the same switch (Dark on a new device); the user\'s light theme comes back with the login ' + JSON.stringify(before));
+    ok(before.look === 'dark' && before.sw === 2 && before.on === 'dark' && back, 'theme: the sign-in screen has the same switch (Dark on a new device); the user\'s light theme comes back with the login ' + JSON.stringify(before));
     // and back: Dark again, on the account too
     await p3.evaluate(async () => { const wait = ms => new Promise(res => setTimeout(res, ms));
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
@@ -1178,7 +1191,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const s = document.querySelector('[data-testid="scanner"][data-mode="lab"]'), b = s ? s.getBoundingClientRect() : {}, S = window.ScanLab && ScanLab.session;
     const r = {full: !!s && b.left === 0 && b.top === 0 && b.width === 390 && b.height === 844, noScroll: document.documentElement.scrollWidth <= 390,
       parts: ['scan-status', 'scan-bar', 'scan-shutter', 'scan-pick', 'scan-auto', 'scan-done', 'lab-tools'].filter(t => s && s.querySelector('[data-testid="' + t + '"]')).join(),
-      show: ((s && s.querySelector('[data-testid="scan-done"]')) || {}).textContent, surface: S && [S.surface.base, S.surface.cache, S.surface.source].join()};
+      show: s && s.querySelector('[data-testid="scan-done"]') ? s.querySelector('[data-testid="scan-done"]').getAttribute('aria-label') : null, surface: S && [S.surface.base, S.surface.cache, S.surface.source].join()};
     // the models start (and fail here: no models in the tests) before the way failures are looked at
     await T.until(() => ['failed', 'ready'].includes(ScanLab.session.engines.state.phase), 20000);
     document.querySelector('[data-testid="lab-tools"]').click();
@@ -1575,6 +1588,126 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(so.detail === 'signature' && so.label === 'Sign' && so.window && so.noScanner,
     'notices: only the signature missing — Sign opens the worker window, not the scanner ' + JSON.stringify(so));
+  // The worker window's Documents section (docs/workers.md → Documents): the ID / Passport line shows only the ID's own
+  // problems (red expired or failed, amber missing or expiring, Upload for any of them — a 2-digit year counts too);
+  // the Form 101 line its own (Sign when only the signature is missing); every file of a multi-file document warns;
+  // the document lines page by 10.
+  const dsx = await p.evaluate(async () => {
+    const i = 1, w = workers[i]; window.__dsKeep = JSON.stringify(w);
+    const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return localYMD(d); };
+    const dmy = n => { const d = new Date(); d.setDate(d.getDate() + n); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); };
+    const full = {docId: w.docId || '123456782', docUrl: 'https://x/f.pdf', scanPages: [{fileId: 'tenants/tenant-one/workers/' + w.id + '/pages/p.jpg', kind: 'id_front', primary: true}],
+      docType: 'israeli_id', docExtraPages: 1, docHasSignature: true, docUploadFailed: false, docExpiry: '', docs: []};
+    const row = k => document.querySelector(`#workerModal [data-testid="editor-doc"][data-doc="${k}"]`);
+    const look = async more => {
+      document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(80);
+      Object.assign(w, JSON.parse(window.__dsKeep), full, more); openEditWorker(i);
+      await T.until(() => !!row('id'), 5000);
+      const id = row('id'), f = row('form101');
+      return id.dataset.color + (id.querySelector('[data-testid="editor-doc-upload"]') ? '+upload' : '') + ' / ' + f.dataset.color + (f.querySelector('[data-testid="editor-doc-sign"]') ? '+sign' : '');
+    };
+    const r = {};
+    r.ok = await look({});
+    r.expired = await look({docExpiry: dmy(-3)});
+    r.expiring = await look({docExpiry: dmy(20)});
+    r.twoDigit = await look({docExpiry: dmy(-3).slice(0, 6) + dmy(-3).slice(8)});
+    r.isoShort = parseDocDate('2027-2-1') && localYMD(parseDocDate('2027-2-1'));
+    r.failed = await look({docUploadFailed: true});
+    r.sig = await look({docHasSignature: false});
+    r.noF101 = await look({docUrl: ''});
+    const at = new Date().toISOString();
+    const visa = id => ({id, type: 'visa', name: id + '.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: at, expiry: day(-2)});
+    await look({docs: [visa('vfront'), visa('vback')]});
+    r.map = Object.keys(workerDocExpiryMap(w)).sort().join();
+    r.renews = document.querySelectorAll('#workerModal [data-testid="editor-doc-renew"]').length;
+    const other = n => ({id: 'o' + n, type: 'other', name: 'o' + n + '.pdf', fileId: 'f', url: 'u', mediaType: 'application/pdf', uploadedAt: at, expiry: ''});
+    await look({docs: Array.from({length: 13}, (_, n) => other(n))});
+    r.paged = document.querySelectorAll('#workerModal [data-testid="editor-doc"]').length - 2;
+    r.more = !!document.querySelector('#workerModal [data-sec="documents"] [data-slot="paged-more"]');
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    const k = JSON.parse(window.__dsKeep); Object.keys(w).forEach(x => delete w[x]); Object.assign(w, k); render();
+    return r;
+  });
+  const OK = 'var(--ok)', WARN = 'var(--warn)', BAD = 'var(--bad)';
+  ok(dsx.ok === OK + ' / ' + OK && dsx.expired === BAD + '+upload / ' + OK && dsx.expiring === WARN + '+upload / ' + OK && dsx.twoDigit === BAD + '+upload / ' + OK
+    && dsx.isoShort === '2027-02-01' && dsx.failed === BAD + '+upload / ' + OK && dsx.sig === OK + ' / ' + WARN + '+sign' && dsx.noF101 === OK + ' / ' + WARN
+    && dsx.map === 'vback,vfront' && dsx.renews === 2 && dsx.paged === 10 && dsx.more,
+    'worker window → Documents: the ID line red / amber with Upload for its own expiry, failure or gap (a 2-digit year read), the Form 101 line amber with Sign for the signature, '
+    + 'both files of a visa warn with Renew, the lines page by 10 ' + JSON.stringify(dsx));
+  // Renew opens Add document on the row's type; an upload from the worker window goes back to it (no card over it),
+  // its new document listed at once.
+  await p.evaluate(async () => {
+    const w = workers[1], at = new Date(Date.now() - 864e5).toISOString(), d = new Date(); d.setDate(d.getDate() - 2);
+    w.docs = [{id: 'vren', type: 'visa', name: 'old.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: at, expiry: localYMD(d)}]; render();
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openEditWorker(1);
+    await T.until(() => !!document.querySelector('#workerModal [data-testid="editor-doc-renew"]'), 5000);
+    document.querySelector('#workerModal [data-testid="editor-doc-renew"]').click();
+  });
+  await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
+  const rn = {type: await p.evaluate(() => document.getElementById('wdType').innerText.trim()), expiryField: await p.evaluate(() => !!document.getElementById('wdExpiry'))};
+  await p.setInputFiles('#wdFiles', {name: 'visa-new.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')});
+  await p.click('#wdSubmit');
+  rn.saved = await waitFor(p, () => (workers[1].docs || []).some(d => d.type === 'visa' && d.name === 'visa-new.pdf') && !document.getElementById('workerDocOverlay').classList.contains('open'), 20000);
+  await p.waitForTimeout(400);
+  Object.assign(rn, await p.evaluate(() => ({editor: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'),
+    listed: [...document.querySelectorAll('#workerModal [data-testid="editor-doc"]')].some(x => /visa-new\.pdf/.test(x.textContent) || x.dataset.doc && workers[1].docs.some(d => String(d.id) === x.dataset.doc && d.name === 'visa-new.pdf')),
+    renews: document.querySelectorAll('#workerModal [data-testid="editor-doc-renew"]').length})));
+  // A partly failed upload retried (Upload again): every file of the window shares one upload time, so all count as the current document.
+  await p.evaluate(() => {
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    const B = ManagerBridge; window.__realUp = B.uploadWorkerFile; window.__upN = 0;
+    B.uploadWorkerFile = (body, prog) => (++window.__upN === 2 ? Promise.resolve({error: 'test failure'}) : window.__realUp(body, prog));
+    B.openDocUpload(workers[1].id, 'work_permit');
+  });
+  await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
+  rn.permitType = await p.evaluate(() => document.getElementById('wdType').innerText.trim());
+  await p.setInputFiles('#wdFiles', [{name: 'wp-1.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')}, {name: 'wp-2.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')}]);
+  await p.click('#wdSubmit');
+  rn.partFail = await waitFor(p, () => /failed/.test(document.getElementById('wdStatus').textContent) && !document.getElementById('wdSubmit').disabled, 20000);
+  await p.waitForTimeout(30);
+  await p.click('#wdSubmit');
+  rn.retried = await waitFor(p, () => !document.getElementById('workerDocOverlay').classList.contains('open'), 20000);
+  Object.assign(rn, await p.evaluate(() => {
+    ManagerBridge.uploadWorkerFile = window.__realUp;
+    const wp = (workers[1].docs || []).filter(d => d.type === 'work_permit');
+    const r = {permits: wp.map(d => d.name).sort().join(), times: new Set(wp.map(d => d.uploadedAt)).size};
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    const w = workers[1], k = JSON.parse(window.__dsKeep); Object.keys(w).forEach(x => delete w[x]); Object.assign(w, k); render(); autoSave();
+    return r;
+  }));
+  ok(rn.type === 'Visa' && rn.expiryField && rn.saved && rn.editor && !rn.card && rn.listed && rn.renews === 0
+    && rn.permitType === 'Work permit' && rn.partFail && rn.retried && rn.permits === 'wp-1.pdf,wp-2.pdf' && rn.times === 1,
+    'Documents: Renew opens Add document on the row\'s type; an upload from the worker window goes back to it, the new visa listed and the old one no longer warning; '
+    + 'a retried upload keeps one upload time ' + JSON.stringify(rn));
+  // A login without Edit workers: no worker window from Schedule (double click) or the bridge, no Upload / Renew / Add document in the notices.
+  const noEd = await p.evaluate(async () => {
+    const keep = JSON.stringify(getSession()), s = JSON.parse(keep), w = workers[1], keepW = JSON.stringify(w);
+    const d = new Date(); d.setDate(d.getDate() - 2);
+    w.docs = [{id: 'vperm', type: 'visa', name: 'v.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: new Date().toISOString(), expiry: localYMD(d)}];
+    // Schedule lists only the workers with a shift this week: give this one a week of work (put back below)
+    w.schedule = Array.from({length: 7}, () => ({type: 'work', start: '08:00', end: '16:00'})); render();
+    const dbl = async () => {
+      document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('schedule'); await T.tick(400);
+      const pl = document.querySelector(`#scheduleRoot [data-testid="sched-worker"][data-id="${w.id}"] > [data-slot="plate"] > [role="button"]`);
+      if (!pl) return 'no plate';
+      pl.dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); await T.tick(300);
+      return document.getElementById('workerOverlay').classList.contains('open');
+    };
+    const r = {adminDbl: await dbl()};
+    saveSession(Object.assign({}, s, {role: 'staff', rights: ['today', 'schedule', 'workers', 'editSchedule']}));
+    r.staffDbl = await dbl();
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    ManagerBridge.editWorker(w.id); await T.tick(200);
+    r.bridge = document.getElementById('workerOverlay').classList.contains('open');
+    r.acts = workerNotices(w).filter(n => n.icon === 'ti-id-badge-2').map(n => !!n.act).join();
+    saveSession(JSON.parse(keep));
+    r.adminActs = workerNotices(w).filter(n => n.icon === 'ti-id-badge-2').map(n => n.act && n.act.label).join();
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    workers[workers.indexOf(w)] = JSON.parse(keepW); switchTab('workers'); render();
+    return r;
+  });
+  ok(noEd.adminDbl === true && noEd.staffDbl === false && noEd.bridge === false && noEd.acts === 'false' && noEd.adminActs === 'Renew',
+    'no Edit workers: Schedule\'s double click and the bridge open no worker window, the notices offer no Renew ' + JSON.stringify(noEd));
   // Every growing list pages by 10; the next 10 come only when the user scrolls to the end
   for (const [w, h] of [[1280, 800], [390, 800]]) {
     await p.setViewportSize({width:w, height:h});
@@ -1787,7 +1920,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="sign-sent"]', {timeout: 30000});
   sg.sent = await p.evaluate(() => ({wa: (document.querySelector('[data-testid="sign-whatsapp"]') || {}).href || '', chip: (document.querySelector('[data-testid="card-sign-state"]') || {}).dataset?.state}));
   const sgReqs1 = await (await fetch('http://127.0.0.1:5055/signRequests', {method: 'POST'})).json();
-  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/.*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
+  ok(/Hourly contract/.test(sg.form.tpl) && sg.form.date && /^https:\/\/wa\.me\/[\s\S]*tok-avi/.test(decodeURIComponent(sg.sent.wa)) && /documents to sign\. Open your personal account/.test(decodeURIComponent(sg.sent.wa)) && sg.sent.chip === 'sent'
     && sgReqs1.length === 1 && sgReqs1[0].status === 'sent' && sgReqs1[0].workerId === 'w1' && sgReqs1[0].values.full_name !== undefined && /\/sign\//.test(sgReqs1[0].templatePath),
     'signing: Documents to sign — the category\'s default picked, the date for a login with the right; Send to sign keeps the template frozen, offers the link for WhatsApp, the card says Sent to sign ' + JSON.stringify({sg, sgReqs1: sgReqs1.map(r => ({s: r.status, w: r.workerId, t: r.templatePath}))}));
   await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
@@ -1903,9 +2036,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await waitFor(p, () => T.onTop('[data-testid="download-window"]'), 5000);
   const d5w = await p.evaluate(() => {
     const st = k => { const el = document.querySelector('[data-testid="download-' + k + '"]'); return el ? (el.disabled ? 'off' : el.dataset.state) : 'none'; };
-    return {form101: st('form101'), contract: st('contract'), scans: st('scans'), docs: st('docs'), top: T.onTop('[data-testid="download-window"]')};
+    // the tick is an L, not a diamond: only its right and bottom borders (the manager page has no Tailwind preflight)
+    const tick = getComputedStyle(document.querySelector('[data-testid="download-form101"]'), '::after');
+    return {form101: st('form101'), contract: st('contract'), scans: st('scans'), docs: st('docs'), top: T.onTop('[data-testid="download-window"]'),
+      tickL: tick.borderTopWidth === '0px' && tick.borderLeftWidth === '0px' && tick.borderRightWidth === '3px' && tick.borderBottomWidth === '3px'};
   });
-  ok(d5w.form101 === 'checked' && d5w.contract === 'unchecked' && ['checked', 'off'].includes(d5w.scans) && ['unchecked', 'off'].includes(d5w.docs) && d5w.top,
+  ok(d5w.form101 === 'checked' && d5w.contract === 'unchecked' && ['checked', 'off'].includes(d5w.scans) && ['unchecked', 'off'].includes(d5w.docs) && d5w.top && d5w.tickL,
     'download data: the picker opens over the card — Form 101 and the ID sheet ticked, the contract and the other documents not ' + JSON.stringify(d5w));
   await p.click('[data-testid="download-contract"]');
   const d5resp = p.waitForResponse(r => /cloudfunctions\.net\/worker_docs$/.test(r.url()) && r.request().method() === 'POST' && /"bundle"/.test(r.request().postData() || ''), {timeout: 30000});
@@ -2089,18 +2225,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // A super-admin also gets the Scanner lab tile (it opens /scan-lab/ in a new tab).
   ok(at.tiles === 'punchlog,firms,users,contracts' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
     'admin: four tiles while no section is chosen — Contract templates the fourth (and the Scanner and the Scanner lab for a super-admin), a tile opens its section (no breadcrumb), the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
-  // The filters: Radix selects — the date list is newest day first; the client filter uses the punch's own clientId.
+  // The filters: Radix selects for the worker, client and type; the client filter uses the punch's own clientId.
   const pickFilter = async (k, label) => {
     await p.click(PL + ' [data-testid="punch-filter-' + k + '"]'); await p.waitForSelector('[role="option"]');
     if (label != null) await p.getByRole('option', {name: label, exact: true}).click(); else await p.keyboard.press('Escape');
     await sleep(150);
   };
-  await p.click(PL + ' [data-testid="punch-filter-date"]'); await p.waitForSelector('[role="option"]');
-  const dates = await p.evaluate(() => [...document.querySelectorAll('[role="option"]')].slice(1).map(o => o.textContent.trim()));
-  await p.keyboard.press('Escape'); await sleep(150);
-  const asTime = d => { const [dd,mm,yy] = d.split('/'); return new Date(+yy, mm-1, +dd).getTime(); };
-  ok(dates.length === 2 && asTime(dates[0]) > asTime(dates[1]), 'date filter: newest day first (' + dates.join(', ') + ')');
   const count = () => p.evaluate(sel => document.querySelector(sel + ' [data-testid="punch-count"]').textContent, PL);
+  // The date filter is the one Date Picker: its calendar opens at the newest day with punches, only the days
+  // that have punches can be picked, a picked day keeps that day's punches, "All dates" empties it.
+  const df = {all0: await count()};
+  await p.click(PL + ' [data-testid="punch-filter-date"]'); await p.waitForSelector('[data-slot="date-calendar"]');
+  Object.assign(df, await p.evaluate(() => {
+    const cells = [...document.querySelectorAll('[data-slot="date-calendar"] [data-day]')];
+    const on = cells.filter(c => { const b = c.querySelector('button'); return b && !b.disabled; }).map(c => c.dataset.day);
+    const days = new Set(getPunchLog().map(e => localYMD(new Date(e.ts))));
+    return {on, punchDays: on.every(d => days.has(d)), clear: !!document.querySelector('[data-testid="date-clear"]'), native: !!document.querySelector('input[type=date]')};
+  }));
+  df.newest = [...df.on].sort().pop();
+  if (df.newest) { await p.click('[data-slot="date-calendar"] [data-day="' + df.newest + '"] button'); await sleep(200); }
+  df.shown = await p.evaluate(sel => document.querySelector(sel + ' [data-testid="punch-filter-date"]').innerText.trim(), PL);
+  df.one = await count();
+  df.rows = await p.evaluate(sel => document.querySelectorAll(sel + ' [data-testid="punch-row"]').length, PL);
+  await p.click(PL + ' [data-testid="punch-filter-date"]'); await p.waitForSelector('[data-testid="date-clear"]');
+  await p.click('[data-testid="date-clear"]'); await sleep(200);
+  df.all1 = await count();
+  const ymdToDmy = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
+  ok(df.on.length >= 1 && df.punchDays && df.clear && !df.native && df.shown === ymdToDmy(df.newest) && df.rows > 0 && df.all1 === df.all0,
+    'date filter: the Date Picker — only the days with punches can be picked, a picked day filters the log, All dates brings every punch back ' + JSON.stringify(df));
   const siteName = id => p.evaluate(cid => clients.find(c => c.id === cid).name, id);
   await pickFilter('client', await siteName('c2'));
   const c2rows = await count();
@@ -2443,11 +2595,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await delTmp();
   Object.assign(wp, await p.evaluate(sel => { render(); return {leftOut: !document.querySelector(sel), notYet: workers.some(w => w.id === 'wtmp')}; }, tmpSel));
   await sleep(5400); wp.deleted = await p.evaluate(() => !workers.some(w => w.id === 'wtmp'));
-  // Select: a Select button above the plates and no boxes; after it "0 selected · Select all", a tick → Vacation.
+  // Select: a Select button above the plates and no boxes; after it the same button reads "Select all" and the bar "0 selected", a tick → Vacation.
   const wsel = '#workersRoot [data-testid="workers-select"]';
   wp.selHead = await p.evaluate(sel => { const h = document.querySelector(sel); return !!h && /^Select$/.test(h.innerText.trim()) && !document.querySelector('#workersRoot .og-box') && !document.querySelector('[data-testid="select-bar"]'); }, wsel);
   await p.click(wsel + ' button:has-text("Select")'); await sleep(100);
-  wp.selOn = await p.evaluate(sel => /0 selected/.test(document.querySelector(sel).innerText) && /Select all/.test(document.querySelector(sel).innerText), wsel);
+  wp.selOn = await p.evaluate(sel => document.querySelector(sel).innerText.trim() === 'Select all' && /0 selected/.test((document.querySelector('[data-testid="select-bar"] b') || {}).textContent), wsel);
   await p.click('#workersRoot [data-testid="worker-plate"][data-wid="w1"] [role="button"]', {position: {x: 30, y: 14}}); await sleep(100);
   wp.sel = await p.evaluate(() => (document.querySelector('[data-testid="select-bar"] b') || {}).textContent);
   await p.click('[data-testid="sel-vacation"]'); await sleep(150);
@@ -2457,6 +2609,29 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wp.onePage && wp.hoursStatus && wp.edit, 'worker card: one page — no Info / Docs / Hours switch; the facts, the Documents and Hours sent boxes and the documents box all on it; one Edit button ' + JSON.stringify({onePage: wp.onePage, hoursStatus: wp.hoursStatus, edit: wp.edit}));
   ok(wp.menu === 'Edit,Open card,Pay,Punch link,Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));
+  // One look for every name on the list (owner, 2026-10-27): a name all in Latin capitals is drawn a little smaller, a
+  // Hebrew one a little larger, so the letters stand the same height (Plate nameScale).
+  const nm = await p.evaluate(async () => {
+    switchTab('workers'); await T.tick(100);
+    const keep = workers.map(w => w.name);
+    workers[0].name = 'SURESH MARTIN'; workers[1].name = 'אלכס ליברמן'; render(); await T.tick(150);
+    const size = n => { const el = [...document.querySelectorAll('#workersRoot [data-testid="worker-name"]')].find(e => e.textContent === n);
+      return el ? parseFloat(getComputedStyle(el).fontSize) : 0; };
+    const base = parseFloat(getComputedStyle(document.querySelector('#workersRoot [data-testid="worker-plate"] b')).fontSize);
+    const r = {base, caps: size('SURESH MARTIN'), he: size('אלכס ליברמן')};
+    workers.forEach((w, i) => { w.name = keep[i]; }); render(); await T.tick(100);
+    return r;
+  });
+  ok(nm.base > 0 && nm.caps > 0 && nm.he > 0 && nm.caps < nm.base && nm.he > nm.base,
+    'workers: a name in Latin capitals drawn a little smaller and a Hebrew name a little larger, so both look the same size ' + JSON.stringify(nm));
+  // every worker plate the same height, with or without a notice chip or a site (owner, 2026-10-27)
+  const plateH = await p.evaluate(async () => {
+    switchTab('workers'); await T.tick(100);
+    const hs = [...document.querySelectorAll('#workersRoot [data-testid="worker-plate"]')].map(e => Math.round(e.getBoundingClientRect().height));
+    return {hs, chip: !!document.querySelector('#workersRoot [data-testid="worker-chip1"]'), chips: document.querySelectorAll('#workersRoot [data-testid="worker-chip1"]').length, space: !!document.querySelector('#workersRoot [data-testid="worker-chip-space"]')};
+  });
+  ok(plateH.hs.length > 1 && Math.max(...plateH.hs) - Math.min(...plateH.hs) <= 1 && (plateH.chip && plateH.chips < plateH.hs.length ? plateH.space : true),
+    'workers: every plate the same height, a notice chip or not ' + JSON.stringify(plateH));
   // Worker documents (stage 13): plates with Select in the card's documents box; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
   const wd = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -2468,8 +2643,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.plates = docs().length; r.boxes0 = !document.querySelector('#workerCardModal .og-box');
     const head = () => document.querySelector('#workerCardModal [data-testid="card-docs"]');
     [...head().querySelectorAll('button')].find(b => b.textContent.trim() === 'Select').click(); await wait(100);
-    r.head = /0 selected/.test(head().textContent) && document.querySelectorAll('#workerCardModal .og-box').length === 2;
-    [...head().querySelectorAll('.sel-head button')].find(b => /Select all/.test(b.textContent)).click(); await wait(100);
+    const docSel = () => head().querySelector('[data-testid="docs-select"] button');
+    r.head = docSel().textContent.trim() === 'Select all' && /0 selected/.test(document.querySelector('[data-testid="select-bar"]').textContent) && document.querySelectorAll('#workerCardModal .og-box').length === 2;
+    docSel().click(); await wait(100);
     r.bar = (document.querySelector('[data-testid="select-bar"] b') || {}).textContent;
     [...document.querySelectorAll('[data-testid="select-bar"] button')].find(b => /Delete/.test(b.textContent)).click(); await wait(400);
     r.pending = w.docs.length === 2 && !docs().length && /2 documents/.test(document.querySelector('[data-testid="undo-snack"]').textContent);
@@ -2755,6 +2931,42 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(ac.inNav && ac.figs === 'Pay,Travel ₪,Total Pay,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.salSelect && ac.salBar && ac.salRows && ac.selOff && ac.stepped && ac.back, 'accounting: period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window; Select exports the ticked worker ' + JSON.stringify(ac));
+  // The period is the one month picker (docs/components.md → date-picker.tsx): This Week / This Month / All Time above
+  // the months, the 12 before this one; a month picked sets m:YYYY-MM.
+  const apk = {};
+  await p.evaluate(async () => { [...document.querySelectorAll('.overlay.open')].forEach(o => closeModal(o.id)); switchTab('accounting'); await ManagerBridge.setPeriod('week'); });
+  await sleep(300);
+  await p.click('#accountingRoot [data-testid=acc-period]'); await p.waitForSelector('[data-slot=month-grid]');
+  apk.presets = await p.evaluate(() => [...document.querySelectorAll('[data-slot=month-presets] button')].map(b => b.dataset.preset).join());
+  apk.prev = await p.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); });
+  apk.future = await p.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); const b = document.querySelector('[data-slot=month-grid] [data-month="' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '"]'); return b ? b.disabled : true; });
+  if (!(await p.locator(`[data-slot=month-grid] [data-month="${apk.prev}"]`).count())) await p.click('[data-slot=month-grid] button[aria-label="Previous year"]');
+  await p.click(`[data-slot=month-grid] [data-month="${apk.prev}"]`); await sleep(400);
+  apk.after = await p.evaluate(() => accPeriod);
+  apk.label = (await p.locator('#accountingRoot [data-testid=acc-period]').innerText()).trim();
+  await p.click('#accountingRoot [data-testid=acc-period]'); await p.click('[data-slot=month-presets] [data-preset=all]'); await sleep(400);
+  apk.all = await p.evaluate(() => accPeriod);
+  await p.evaluate(async () => { await ManagerBridge.setPeriod('week'); });
+  ok(apk.presets === 'week,month,all' && apk.future && apk.after === 'm:' + apk.prev && /\d{4}/.test(apk.label) && apk.all === 'all',
+    'accounting: the period is the one month picker — named periods above the months, no future month, a month and All Time picked ' + JSON.stringify(apk));
+  // One calendar everywhere: no native date / month input in the manager app's tabs and windows; the worker's
+  // Form 101 dates are typed fields with the same calendar behind their icon.
+  const nd = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const NATIVE = 'input[type=date],input[type=month],input[type=week],input[type=datetime-local]';
+    const seen = [];
+    const look = where => { document.querySelectorAll(NATIVE).forEach(i => { if (i.offsetParent !== null) seen.push(where + ':' + (i.id || i.name || i.type)); }); };
+    for (const t of ['dashboard', 'schedule', 'workers', 'clients', 'suppliers', 'accounting', 'admin']) { switchTab(t); await wait(150); look(t); }
+    openEditWorker(0); await wait(300); look('worker');
+    const r = {seen, dob: !!(document.getElementById('wDob') || {closest: () => null}).closest('[data-slot=date-input]'),
+      expiry: !!(document.getElementById('wDocExpiry') || {closest: () => null}).closest('[data-slot=date-input]'), start: (document.getElementById('wStartDate') || {}).dataset?.slot === 'date-picker'};
+    [...document.querySelectorAll('.overlay.open')].forEach(o => closeModal(o.id)); await wait(200);
+    openEditSupplier('s-1'); await wait(250); look('supplier'); closeModal('supplierOverlay'); await wait(200);
+    openManualPunch('c1'); await wait(250); look('manual-punch'); [...document.querySelectorAll('.overlay.open')].forEach(o => closeModal(o.id)); await wait(200);
+    switchTab('dashboard');
+    return r;
+  });
+  ok(!nd.seen.length && nd.dob && nd.expiry && nd.start, 'dates: no native date input in the manager app — every date through the one Date Picker ' + JSON.stringify(nd));
   // Worker photos are gone (owner 2026-10-13): an old avatarB64 is dropped after a load and never saved again.
   const ph = await p.evaluate(() => { const w = workers[0]; w.avatarB64 = 'AAAA'; const r = {dropped: dropWorkerPhotos(), gone: !('avatarB64' in w), again: dropWorkerPhotos()}; return r; });
   ok(ph.dropped && ph.gone && !ph.again, 'workers: an old photo is dropped from the record (dropWorkerPhotos) ' + JSON.stringify(ph));
@@ -2901,6 +3113,33 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(cpl.noRate && cpl.crumb === 'Clients' && cpl.crumbS === 'Suppliers' && cpl.sidebar && cpl.old && cpl.menu === 'Edit,Manual punch,Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.noWindow && cpl.notYet && cpl.deleted
     && cpl.supplier && cpl.supMenu === 'Edit,Delete' && cpl.supWindow,
     'clients / suppliers (React): plates with notices, the section lit in the menu (no breadcrumb), no side panel, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates open the supplier window ' + JSON.stringify(cpl));
+  // The Select template (owner, 2026-10-27) on two lists — Clients (its head row, after New) and Workers (its own row):
+  // one Select button, the same glass pill, the last thing at the right of its row; a tap turns selecting on and the
+  // same button reads "Select all"; a tap ticks every item of the list and it reads "Select none"; ✕ ends.
+  const stpl = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+    for (const [tab, root, tid, plate] of [['clients', '#clientsRoot', 'clients-select', 'client-plate'], ['workers', '#workersRoot', 'workers-select', 'worker-plate']]) {
+      switchTab(tab); await wait(250);
+      const head = () => document.querySelector(root + ' [data-testid="' + tid + '"]'), btn = () => head().querySelector('button');
+      const right = () => { const b = btn().getBoundingClientRect(), row = head().parentElement, r = row.getBoundingClientRect();
+        return Math.abs(b.right - r.right) <= 1.5 && [...row.children].every(c => c === head() || c.getBoundingClientRect().right <= b.left + 1); };
+      const r = {right: right(), label: btn().textContent.trim(), pill: /og-btn/.test(btn().className)};
+      btn().click(); await wait(120);
+      r.on = btn().textContent.trim(); r.rightOn = right();
+      btn().click(); await wait(120);
+      const plates = document.querySelectorAll(root + ' [data-testid="' + plate + '"]').length;
+      r.allTicked = plates > 0 && document.querySelectorAll(root + ' [data-testid="' + plate + '"] .og-plate.on').length === plates;
+      r.count = parseInt((document.querySelector('[data-testid="select-bar"] b') || {}).textContent, 10) >= plates;
+      r.none = btn().textContent.trim();
+      [...document.querySelectorAll('[data-testid="select-bar"] button')].pop().click(); await wait(120);
+      r.ended = !document.querySelector('[data-testid="select-bar"]') && btn().textContent.trim() === 'Select';
+      out[tab] = r;
+    }
+    return out;
+  });
+  ok(['clients', 'workers'].every(k => { const r = stpl[k]; return r.right && r.rightOn && r.pill && r.label === 'Select' && r.on === 'Select all' && r.allTicked && r.count && r.none === 'Select none' && r.ended; }),
+    'Select template: on Clients and Workers the Select button sits at the right of its row; a tap → "Select all" ticks every item → "Select none"; ✕ ends ' + JSON.stringify(stpl));
+  await p.evaluate(() => switchTab('clients')); await sleep(200);
   // The client window: a tap outside saves it; an empty new client is not created; the rates block; manual punch from the window and back.
   const cs = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -3066,6 +3305,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {off, on, gone: !__firmsCache.some(t => t.tenantId === t3) && !row(t3)};
   });
   ok(fd.off && fd.on && fd.gone, 'firms: Select → Disable, Enable, and delete (deleteTenant) ' + JSON.stringify(fd));
+  // the firms list in one column on a computer (owner, 2026-10-27: one firm stood in a narrow third of the screen), a
+  // name in its own direction so a Hebrew one is cut at its end, never its start
+  const fw = await p.evaluate(() => {
+    const row = document.querySelector('#firmsScreenRoot [data-testid="firm-row"]'), list = row && row.parentElement.closest('div');
+    const root = document.querySelector('#firmsScreenRoot');
+    return row ? {ratio: Math.round(row.getBoundingClientRect().width / root.getBoundingClientRect().width * 100) / 100,
+      dir: row.querySelector('b').getAttribute('dir'), vw: innerWidth} : {};
+  });
+  ok(fw.dir === 'auto' && (fw.vw < 700 || fw.ratio > 0.6), 'firms: one column on a computer, the name in its own direction ' + JSON.stringify(fw));
   await p.evaluate(() => { T.tap(document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-one"]')); });
   await p.waitForNavigation().catch(()=>{});
   ok(await waitFor(p, () => workers.length === 2), 'boss: viewing Firm One (a tap on its plate)');
@@ -3596,8 +3844,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('#adminRoot [data-testid="users-select"] button').click(); await T.tick(50);
     const rows = [...document.querySelectorAll('#adminRoot [data-testid="user-row"]')];
     r.n = rows.length; r.ownerNoBox = !rows[0].querySelector('.og-box') && rows.slice(1).every(x => !!x.querySelector('.og-box'));
-    [...document.querySelectorAll('#adminRoot [data-testid="select-head"] button')].pop().click(); await T.tick(50);
+    const selBtn = document.querySelector('#adminRoot [data-testid="users-select"] button');
+    r.allLabel = selBtn.textContent.trim();
+    selBtn.click(); await T.tick(50);
     r.all = document.querySelector('[data-testid="select-bar"] b').innerText.trim();
+    r.noneLabel = selBtn.textContent.trim();
     T.tap(document.querySelector(sel)); await T.tick(50);
     r.unpicked = document.querySelector('[data-testid="select-bar"] b').innerText.trim() === (r.n - 2) + ' selected' && !document.getElementById('userFormOverlay').classList.contains('open');
     [...document.querySelectorAll('[data-testid="select-bar"] button')].pop().click(); await T.tick(50);
@@ -3605,7 +3856,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }, {sel: clientRow, uid: lsA.uid});
   ok(lsA.plate && lsPop === 'Edit,Delete' && ls.gone && ls.snack && ls.back && delCalls === 0, 'lists: a plate per user; ⋮ opens Edit / Delete; Delete takes it behind the Undo snack, Undo brings it back ' + JSON.stringify({lsPop, ls, delCalls}));
-  ok(ls.ownerNoBox && ls.all === (ls.n - 1) + ' selected' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), Select all, a tap unticks, ✕ ends ' + JSON.stringify(ls));
+  ok(ls.ownerNoBox && ls.allLabel === 'Select all' && ls.all === (ls.n - 1) + ' selected' && ls.noneLabel === 'Select none' && ls.unpicked && ls.ended, 'lists: Select — boxes (none for the owner), the same button reads Select all and ticks them all, a tap unticks, ✕ ends ' + JSON.stringify(ls));
   // The user form: the template picked says the role and shows its flat ticks read-only; "Only own workers" locked on for a supplier and a client.
   await q.evaluate(async () => { openCreateUserForm(); await T.tick(100); document.querySelector('#userFormModal [data-sec="sections"] [data-slot="accordion-trigger"]').click(); await T.tick(50); });
   const uf = {};

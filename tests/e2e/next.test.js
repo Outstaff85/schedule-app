@@ -39,8 +39,8 @@ const server = http.createServer((req, res) => {
 });
 
 const DEMOS = {
-  controls: ['button', 'input', 'select', 'checkbox', 'toggle-group', 'form'],
-  lists: ['plate', 'plate-sizes', 'empty'],
+  controls: ['button', 'input', 'select', 'dates', 'checkbox', 'toggle-group', 'form'],
+  lists: ['plate', 'select-button', 'plate-sizes', 'empty'],
   windows: ['window', 'signature', 'sign-documents', 'menu', 'account', 'theme', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
   data: ['table', 'data-table', 'chart', 'calendar', 'card'],
@@ -128,7 +128,7 @@ async function computer(browser) {
   ok(await p.locator('[data-testid=plate-w2]').count() === 1 && !(await visible(p, '[data-testid=undo-snack]')), 'next: Undo brings the plate back');
 
   // Select mode
-  await p.getByRole('button', { name: 'Select', exact: true }).click(); await sleep(200);
+  await p.locator('[data-testid=plate-select] button').click(); await sleep(200);
   await p.click('[data-testid=plate-w3] .og-plate', { position: { x: 80, y: 20 } });
   await p.click('[data-testid=plate-w4] .og-plate', { position: { x: 80, y: 20 } }); await sleep(200);
   const selText = await p.locator('[data-testid=select-bar]').innerText();
@@ -176,6 +176,33 @@ async function computer(browser) {
   await p.click('#d-date'); await sleep(250);
   await p.locator('[data-slot=popover-content] button', { hasText: /^20$/ }).first().click(); await sleep(250);
   ok((await p.locator('#d-date').innerText()).includes('20/10/2026'), 'next: the Date Picker sets a dd/mm/yyyy date');
+  // The one calendar everywhere (docs/components.md → date-picker.tsx): its header is ‹ month ▾ year ▾ ›, the years
+  // reach a birth in 1940 and an expiry in 2040; an optional date empties with its line; a typed date field gets
+  // the same calendar behind its icon; a period is the same popover over the months, with its named periods.
+  const dp = {};
+  await p.click('#d-expiry'); await p.waitForSelector('[data-slot=date-calendar]');
+  dp.range = await p.evaluate(() => { const y = [...document.querySelectorAll('[data-slot=date-calendar] select')].map(s => [...s.options].map(o => +o.value)).find(v => v.some(x => x > 1900)) || [];
+    return y.includes(1940) && y.includes(2040); });
+  dp.tail = await p.locator('[data-slot=popover-content] [data-slot=pop-tail]').count();
+  dp.sunday = await p.evaluate(() => (document.querySelector('[data-slot=date-calendar] thead th, [data-slot=date-calendar] .rdp-weekday') || {}).textContent || '');
+  // no date yet: the calendar opens at this month — the 5th of it
+  await p.locator('[data-slot=date-calendar] [data-day]:not([data-outside]) button', { hasText: /^5$/ }).first().click(); await sleep(200);
+  dp.picked = (await p.locator('#d-expiry').innerText()).trim();
+  await p.click('#d-expiry'); await p.click('[data-testid=date-clear]'); await sleep(200);
+  dp.cleared = (await p.locator('#d-expiry').innerText()).trim();
+  await p.fill('#d-dob', '12/03/1984');
+  await p.click('[data-testid=demo-dates] [data-slot=date-input-calendar]'); await p.waitForSelector('[data-slot=date-calendar]');
+  dp.dobMonth = await p.evaluate(() => [...document.querySelectorAll('[data-slot=date-calendar] select')].map(s => s.value).join('/'));
+  await p.locator('[data-slot=date-calendar] [data-day="1984-03-20"] button').click(); await sleep(200);
+  dp.dob = await p.inputValue('#d-dob');
+  await p.click('#d-period'); await p.waitForSelector('[data-slot=month-grid]');
+  dp.presets = await p.locator('[data-slot=month-presets] button').count();
+  const prevYm = await p.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); });
+  if (!(await p.locator(`[data-slot=month-grid] [data-month="${prevYm}"]`).count())) await p.click('[data-slot=month-grid] button[aria-label="Previous year"]');
+  await p.click(`[data-slot=month-grid] [data-month="${prevYm}"]`); await sleep(200);
+  dp.period = await p.locator('#d-period').getAttribute('data-value');
+  ok(dp.range && dp.tail === 1 && /^su/i.test(dp.sunday.trim()) && dp.dobMonth.includes('1984') && /^\d\d\/\d\d\/\d{4}$/.test(dp.picked) && !/\d/.test(dp.cleared) && dp.dob === '20/03/1984' && dp.presets === 3 && dp.period === 'm:' + prevYm,
+    'next: the one calendar — years from 1940 to 2040 in its header, the tail, an optional date picked and emptied, a typed date field picked in the same calendar (dd/mm/yyyy), a period picked over the months ' + JSON.stringify(dp));
   await p.locator('[data-testid=worker-form] button[type=submit]').click(); await sleep(300);
   const formErr = await p.locator('[data-testid=worker-form] [data-slot=form-message]').allInnerTexts();
   ok(formErr.includes('Enter a first name') && formErr.includes('Enter a phone like 050-1234567'), 'next: the form shows its field errors ' + JSON.stringify(formErr));
@@ -256,6 +283,28 @@ async function phone(browser) {
   ok(await p.locator('[data-testid=page-layout]').count() === 1, 'next: a section from More opens');
   for (const s of Object.keys(DEMOS)) { await open(p, s); await p.screenshot({ path: path.join(OUT, `next-phone-${s}.png`), fullPage: true }); }
 
+  // The Select template on a phone (owner, 2026-10-27): the one Select button is the last thing at the right of
+  // the line above its list; a tap turns selecting on and the same button reads "Select all"; a tap ticks every
+  // item — all 14, not only the 10 drawn — and it reads "Select none"; the gallery shows both states.
+  await open(p, 'lists');
+  const rightOf = tid => p.evaluate(t => {
+    const head = document.querySelector(`[data-testid=${t}]`), btn = head.querySelector('button'), row = head.parentElement;
+    const b = btn.getBoundingClientRect(), r = row.getBoundingClientRect();
+    return Math.abs(b.right - r.right) <= 1.5 && [...row.children].every(c => c === head || c.getBoundingClientRect().right <= b.left + 1);
+  }, tid);
+  const label = tid => p.locator(`[data-testid=${tid}] button`).innerText().then(s => s.trim());
+  const st = { right: await rightOf('plate-select'), states: (await label('select-state-off')) + '|' + (await label('select-state-on')), drawn: await p.locator('[data-testid^=plate-w]').count() };
+  await p.locator('[data-testid=plate-select] button').tap(); await sleep(250);
+  st.on = await label('plate-select'); st.rightOn = await rightOf('plate-select');
+  await p.locator('[data-testid=plate-select] button').tap(); await sleep(250);
+  st.all = (await p.locator('[data-testid=select-bar] b').innerText()).trim(); st.none = await label('plate-select');
+  await p.locator('[data-testid=plate-select] button').tap(); await sleep(250);
+  st.cleared = (await p.locator('[data-testid=select-bar] b').innerText()).trim();
+  await p.locator('[data-testid=select-bar] button[aria-label=Done]').tap(); await sleep(250);
+  st.ended = !(await visible(p, '[data-testid=select-bar]')) && (await label('plate-select')) === 'Select';
+  ok(st.right && st.rightOn && st.states === 'Select|Select all' && st.drawn === 10 && st.on === 'Select all' && st.all === '14 selected' && st.none === 'Select none' && st.cleared === '0 selected' && st.ended,
+    'next (phone): the Select button sits at the right of its line; a tap → "Select all", which ticks all 14 (10 drawn) → "Select none"; ✕ ends; the gallery shows both states ' + JSON.stringify(st));
+
   await open(p, 'frame');
   const frp = await p.evaluate(() => {
     const box = q => document.querySelector(q).getBoundingClientRect(), g = box('[data-testid=shell-greeting]'), a = box('[data-testid=account-btn]'), hd = box('[data-slot=shell] > header');
@@ -314,7 +363,9 @@ async function scanner(browser) {
     const root = document.querySelector(cam), q = s => root.querySelector(s), box = el => el.getBoundingClientRect();
     const r = box(root), bar = box(q('[data-testid=scan-bar]')), st = box(q('[data-testid=scan-status]')), strip = box(q('[data-testid=scan-thumbs]')), done = box(q('[data-testid=scan-done]')), auto = box(q('[data-testid=scan-auto]'));
     const files = q('[data-testid=scan-files]');
-    return { h: Math.round(r.height), statusTop: st.top - r.top < 90 && Math.abs((st.left + st.right) / 2 - (r.left + r.right) / 2) < 3, barBottom: r.bottom - bar.bottom < 30, stripAboveBar: strip.bottom <= bar.top + 1,
+    // the status: a short one centred, a long one taking the width beside Auto (it wraps)
+    return { h: Math.round(r.height), statusTop: st.top - r.top < 90 && st.left >= r.left + 12 && st.right <= auto.left
+        && (Math.abs((st.left + st.right) / 2 - (r.left + r.right) / 2) < 3 || st.width > r.width / 2), barBottom: r.bottom - bar.bottom < 30, stripAboveBar: strip.bottom <= bar.top + 1,
       autoTopRight: auto.top - r.top < 90 && r.right - auto.right < 30, doneInBar: !!q('[data-testid=scan-bar] [data-testid=scan-done]') && r.right - done.right < 30 && done.top >= bar.top,
       thumbs: root.querySelectorAll('[data-testid=scan-thumb]').length, files: !!files && files.type === 'file' && !files.hasAttribute('accept') && files.multiple,
       shutter: !!q('[data-testid=scan-shutter]'), auto: q('[data-testid=scan-auto]').getAttribute('aria-pressed'), done: q('[data-testid=scan-done]').textContent };
@@ -551,28 +602,37 @@ async function theme(browser) {
       if (section === 'lists') ok(r.bars > 3 && r.lowBars.length === 0, `theme ${w}: the plates' coloured bars stand out (≥ 3:1, ${r.bars} plates) ` + JSON.stringify(r.lowBars));
       await p.screenshot({ path: path.join(OUT, `next-theme-light-${section}-${w}.png`), fullPage: false });
     }
-    // System follows the device's own setting, live
+    // the one switch (owner 2026-10-27: Dark ↔ Light, no System segment): its toggle turns Light on
     await open(p, 'windows');
     if (mobile) {
       // a phone page without an account (the punch page) has the bare button: it opens the switch in a window
       await p.click('[data-testid=demo-theme] [data-testid=theme-btn]');
       await p.waitForSelector('[data-testid=window] [data-testid=theme-switch]');
-      await p.click('[data-testid=window] [data-testid=theme-system]');
+      ok(await p.locator('[data-testid=window] [data-testid=theme-system]').count() === 0, `theme ${w}: the switch has no System choice`);
+      await p.click('[data-testid=window] [data-testid=theme-dark]'); // the earlier checks left it light
+      await p.click('[data-testid=window] [data-testid=theme-toggle]');
       await p.keyboard.press('Escape');
     } else {
       // the account menu carries the switch
       await p.click('[data-testid=demo-account] [data-testid=account-btn]');
       await p.waitForSelector('[data-testid=account-menu] [data-testid=account-theme]');
-      await p.click('[data-testid=account-menu] [data-testid=theme-system]');
-      ok(await visible(p, '[data-testid=account-menu]'), `theme ${w}: picking a theme leaves the account menu open`);
+      ok(await p.locator('[data-testid=account-menu] [data-testid=theme-system]').count() === 0, `theme ${w}: the switch has no System choice`);
+      await p.click('[data-testid=account-menu] [data-testid=theme-dark]'); // the earlier checks left it light
+      ok(await p.getAttribute('[data-testid=account-menu] [data-testid=theme-toggle]', 'data-state') === 'checked', `theme ${w}: on Dark the switch stands on`);
+      await p.click('[data-testid=account-menu] [data-testid=theme-toggle]');
+      ok(await visible(p, '[data-testid=account-menu]'), `theme ${w}: switching the theme leaves the account menu open`);
       await p.keyboard.press('Escape');
     }
+    ok(await look() === 'light' && await stored() === 'light', `theme ${w}: the toggle turns Light on ` + JSON.stringify([await look(), await stored()]));
+    // a device that kept the former "system" still follows its own setting, live
+    await p.evaluate(() => localStorage.setItem('uiTheme', 'system'));
     await p.emulateMedia({ colorScheme: 'dark' });
+    await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('[data-testid=page-windows]');
     await sleep(100);
-    ok(await stored() === 'system' && await look() === 'dark', `theme ${w}: System on a dark device is dark ` + JSON.stringify([await stored(), await look()]));
+    ok(await stored() === 'system' && await look() === 'dark', `theme ${w}: a kept System on a dark device is dark ` + JSON.stringify([await stored(), await look()]));
     await p.emulateMedia({ colorScheme: 'light' });
     await sleep(100);
-    ok(await look() === 'light', `theme ${w}: System follows the device turning light`);
+    ok(await look() === 'light', `theme ${w}: a kept System follows the device turning light`);
     // and back to Dark
     await p.click('[data-testid=demo-theme] [data-testid=theme-switch] [data-testid=theme-dark]');
     ok(await look() === 'dark' && await stored() === 'dark', `theme ${w}: Dark switches the light theme off again ` + JSON.stringify([await look(), await stored()]));

@@ -19,7 +19,8 @@
 // The lab's start order is kept: the accurate model first (photos and PDFs can go in within seconds), then the
 // camera's models in the background once nothing is being worked on — the camera waits for both (startLab runs
 // before the camera's start: the screen's effect runs before this page's). The session lives as long as the
-// page (the lab's page reloads to start again: the CPU engine choice does); only its newest KEEP_CANVASES pages
+// page (the lab's page reloads to start again: the CPU engine choice does); the phone's back goes one step back
+// inside it and does not leave it when it is the first page of its tab (ui/back.ts); only its newest KEEP_CANVASES pages
 // keep their full-size pixels (session keepCanvases), so a long lab session does not fill the phone's memory.
 import * as React from 'react';
 import { tr } from '@/lib/i18n';
@@ -39,6 +40,7 @@ import type { EngineStatus } from '../engine/status';
 import type { InjectOpts } from '../hooks';
 import { engineStatusText } from '../status-text';
 import { ScannerScreen } from '../ui/ScannerScreen';
+import { labGuard, useBack } from '../ui/back';
 import type { ScanSessionLike, UiPage } from '../ui/useScanSession';
 import { defaultKindsEnv, Kinds } from './kinds';
 import { LabDrawer } from './LabDrawer';
@@ -100,6 +102,7 @@ async function idToken(): Promise<string | null> {
 }
 
 let lab: Lab | null = null;
+let guarded = false;
 function getLab(): Lab {
   if (lab) return lab;
   // the CPU's ONNX Runtime build: 1.22 (faster and smoother there), ?ort=130 picks 1.30 (the GPU always uses 1.30)
@@ -203,6 +206,10 @@ export function LabApp() {
   const [settings, setSettings] = React.useState<EngineSettings>(l.engines.settings);
   const [kindsSeen, setKindsSeen] = React.useState(0);
   const [shown, setShown] = React.useState<UiPage[] | null>(null);
+  // the phone's back (ui/back.ts): the sheet of what the models read closed; with nothing open the lab stays (its
+  // guard) unless it was opened from a page of the site in this tab
+  useBack(!!shown, () => setShown(null));
+  React.useEffect(() => { if (!guarded) { guarded = true; labGuard(); } }, []);
 
   React.useEffect(() => {
     let seen = false;

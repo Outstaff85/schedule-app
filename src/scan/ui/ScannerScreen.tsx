@@ -7,7 +7,7 @@
 // and % on top (a tap there opens the page large: PageView, its type chips, Looks good), a round Edit corners
 // button on its left (CornerEditor) and a round red Delete on its right (the Undo snack); a tap on it again or on
 // another shrinks it; the bottom bar — Photos/PDF, the big shutter, Done (CaptureBar; the lab: Show what the
-// models read, mode 'lab'). There is no Next: after a shot the live frame goes on by itself, and Auto does not
+// models read — Models read on the button —, mode 'lab'). There is no Next: after a shot the live frame goes on by itself, and Auto does not
 // take the same document again (the session's rule, src/scan/engine/session.ts). While a page is opened large or
 // its corners are being fixed the live frame is paused under it (session.hold / resume: no follow, no Auto shot
 // behind it). A picked picture is shown in place of the camera the moment it is being worked on, with the frame
@@ -24,7 +24,8 @@
 // for it — busy, the bar and the pages closed meanwhile (no new page, no change it would miss) — and the scan
 // ends (session.done, the screen emptied) only when it says true; false leaves the pages and the scan as they
 // are (the read failed: the host says why). A type picked by hand is told to the host (onChoose). Escape inside
-// it closes the step on top (the corner editor, then the page opened large) before the window.
+// it closes the step on top (the corner editor, then the page opened large) before the window; so does the phone's
+// back (back.ts: one history entry per step open — `back` off in the /next gallery, which keeps its own hash).
 import * as React from 'react';
 import { IconBolt, IconCheck, IconEye } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
@@ -33,12 +34,13 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { DOCTYPE_LABELS, type Doctype } from '../engine/doctypes';
 import type { Quad } from '../engine/types';
-import { CaptureBar } from './CaptureBar';
+import { BAR_SIDE, CaptureBar } from './CaptureBar';
 import { CornerEditor } from './CornerEditor';
 import { HintPill } from './HintPill';
 import { LiveOverlay } from './LiveOverlay';
 import { PageView, percent } from './PageView';
 import { StatusPill } from './StatusPill';
+import { useBack } from './back';
 import { Thumbs } from './Thumbs';
 import { kindOf, useScanSession, type Fixable, type KeptPage, type PageTyping, type ScanSessionLike, type UiPage } from './useScanSession';
 
@@ -46,7 +48,7 @@ export type ScannerMode = 'site' | 'lab';
 
 const cannotFix = (): string => tr('This page can no longer be fixed — delete it and take it again');
 
-export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, kindTick, children }: {
+export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, statusText, initial, kept, onRemoveKept, typing, thumbNote, kindTick, back = true, children }: {
   mode: ScannerMode;
   session: ScanSessionLike;
   /** Done (the site) / Show what the models read (the lab): the pages shown at that moment, in order (the kept
@@ -73,6 +75,8 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   /** the lab's document type collection (src/scan/lab/kinds.ts): a page the model answered gets a tick beside its
    *  type chips, which sends the type shown */
   kindTick?: { offered: (id: string) => boolean; sent: (id: string) => boolean; sending?: (id: string) => boolean; onTick: (id: string, kind: Doctype | null) => void };
+  /** the phone's back closes the step on top (back.ts); off in the /next gallery */
+  back?: boolean;
   /** drawn over the screen (the lab's tools drawer) */
   children?: React.ReactNode;
 }) {
@@ -97,7 +101,9 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   const [fixing, setFixing] = React.useState<{ id: string; data: Fixable } | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
-  const [still, setStill] = React.useState<{ w: number; h: number } | null>(null);
+  // the picked picture's size once its image has loaded, by its url (an image that loads before the screen has
+  // caught up is not lost: no reset to race with its load)
+  const [still, setStill] = React.useState<{ url: string; w: number; h: number } | null>(null);
 
   // the camera on while the screen is shown; the session put to sleep when it goes (its models kept)
   React.useEffect(() => {
@@ -142,6 +148,17 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
 
   // Escape inside the screen: the step on top first (before the window it is in)
   const root = React.useRef<HTMLDivElement>(null);
+  // where the top ends (the status line may take two or three lines): --scan-top on the screen, under it
+  const top = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = top.current, box = root.current;
+    if (!el || !box || typeof ResizeObserver === 'undefined') return;
+    const put = () => { box.style.setProperty('--scan-top', Math.round(el.getBoundingClientRect().bottom - box.getBoundingClientRect().top + 8) + 'px'); };
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    put();
+    return () => ro.disconnect();
+  }, []);
   React.useEffect(() => {
     if (!open && !fixing) return;
     const key = (e: KeyboardEvent) => {
@@ -153,6 +170,10 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
     return () => window.removeEventListener('keydown', key, true);
   }, [open, fixing]);
 
+  // the phone's back: the page opened large, then its corner editor above it (opened later: its entry on top)
+  useBack(back && !!page, () => setOpen(null));
+  useBack(back && !!fixing, () => setFixing(null));
+
   const apply = (pts: Quad) => {
     const id = fixing?.id;
     setFixing(null);
@@ -161,9 +182,9 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   const remove = (id: string) => { setSelected(null); s.remove(id); };
 
   const preview = s.preview;
-  React.useEffect(() => { setStill(null); }, [preview?.url]);
-  // the picked picture's frame: the same object while nothing in it changes (its overlay is not redrawn)
-  const stillFrame = React.useMemo(() => (preview && still ? { quad: preview.quad, w: still.w, h: still.h } : null), [preview?.quad, still?.w, still?.h]);
+  const size = preview && still && still.url === preview.url ? still : null;
+  // the picked picture's frames: the same object while nothing in them changes (its overlay is not redrawn)
+  const stillFrame = React.useMemo(() => (preview && size ? { quads: preview.quads, w: size.w, h: size.h } : null), [preview?.quads, size?.w, size?.h]);
 
   // the newest page of this scan (not one the host kept): its type and % lead the status line while its shot is
   // in work, and a passport whose zone was not found asks for its two lines in the frame
@@ -178,8 +199,9 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
     ? <Button variant="primary" size="sm" disabled={!saved || finishing} data-testid="scan-done" data-busy={finishing || undefined} onClick={() => { void finish(); }}>
         {finishing ? <Spinner className="size-[18px]" /> : <IconCheck className="size-[18px]" />}{saved ? tr('Done · {n}', { n: saved }) : tr('Done')}
       </Button>
-    : <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.pages, s.current)} className="max-w-full">
-        <IconEye className="size-[18px]" /><span className="truncate">{tr('Show what the models read')}</span>
+    : <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.pages, s.current)} className={BAR_SIDE}
+        aria-label={tr('Show what the models read')} title={tr('Show what the models read')}>
+        <IconEye className="size-[18px]" />{tr('Models read')}
       </Button>;
 
   return (
@@ -189,20 +211,26 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
       {!preview && <LiveOverlay session={session} video={video} />}
       {/* a picked picture, shown whole the moment it is being worked on */}
       {preview && (
-        <div data-testid="scan-preview" data-stage={preview.stage} className="absolute inset-0 bg-background">
+        <div data-testid="scan-preview" data-stage={preview.stage} data-frames={preview.quads.length} className="absolute inset-0 bg-background">
           <img src={preview.url} alt="" draggable={false} className="absolute inset-0 size-full object-contain"
-            onLoad={e => setStill({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
+            onLoad={e => { const im = e.currentTarget; setStill({ url: im.getAttribute('src') || '', w: im.naturalWidth, h: im.naturalHeight }); }} />
           {stillFrame && <LiveOverlay session={session} video={video} still={stillFrame} />}
         </div>
       )}
 
-      {/* the top: the status line in the middle, Auto at the right */}
-      <div className="absolute inset-x-0 top-0 z-10 flex justify-center px-[104px] pt-[calc(28px+env(safe-area-inset-top,0px))]">
-        <StatusPill session={session} text={statusText} lead={lead} className="max-w-full" />
-      </div>
-      <div className="absolute right-4 top-0 z-10 pt-[calc(28px+env(safe-area-inset-top,0px))]">
+      {/* the top: the status line in the middle, Auto at the right; a long status takes the width left of Auto too
+          and wraps onto more lines rather than being cut (owner, 2026-10-27: "A corner is ou…" on a phone of 390 px);
+          what lies under the top (the lab's Lab tools, the site's errors) is put under it by --scan-top */}
+      <div ref={top} data-testid="scan-top" className="absolute inset-x-0 top-0 z-10 flex items-start gap-2 px-4 pt-[calc(28px+env(safe-area-inset-top,0px))]">
+        {/* as wide as Auto, so a short status sits in the screen's middle; it gives its width up first to a long one */}
+        <div aria-hidden className="invisible flex min-w-0 shrink-[100000] overflow-hidden">
+          <Button size="sm" tabIndex={-1}><IconBolt className="size-[18px]" />{tr('Auto')}</Button>
+        </div>
+        <div className="flex min-w-0 flex-[1_1_auto] justify-center">
+          <StatusPill session={session} text={statusText} lead={lead} className="max-w-full" />
+        </div>
         <Button size="sm" on={s.auto} aria-pressed={s.auto} disabled={finishing} onClick={() => s.setAuto(!s.auto)} data-testid="scan-auto"
-          className={cn(!s.auto && 'opacity-70')}><IconBolt className="size-[18px]" />{tr('Auto')}</Button>
+          className={cn('shrink-0', !s.auto && 'opacity-70')}><IconBolt className="size-[18px]" />{tr('Auto')}</Button>
       </div>
 
       {/* the hint for the person, under the camera's frame */}

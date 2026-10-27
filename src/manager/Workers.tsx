@@ -8,7 +8,7 @@
 // form — both still the page's (ManagerBridge); Delete never asks (Undo).
 import * as React from 'react';
 import {
-  IconBeach, IconCash, IconChevronDown, IconChevronUp, IconCircleCheck, IconDownload, IconFilter, IconId, IconLayoutGrid, IconLink, IconList,
+  IconAlertTriangle, IconBeach, IconCash, IconChevronDown, IconChevronUp, IconCircleCheck, IconDownload, IconFilter, IconId, IconLayoutGrid, IconLink, IconList,
   IconScan, IconTransfer, IconTrash, IconUserPlus, IconUsers, IconX,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
@@ -27,7 +27,7 @@ import { Plate, type PlateAction } from '@/components/shared/plate';
 import { Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
 import { NewBadge } from '@/components/shared/new-badge';
-import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
+import { SelectBar, SelectRow, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
 import type { ManagerBridge, WorkerRow, WorkersSnapshot } from './bridge';
 import { TransferAskWindow } from './TransferAsk';
@@ -134,8 +134,11 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
       title={<span title={w.name} data-testid="worker-name">{w.name}</span>}
       chips={<><MoreChip n={w.notices.length - 1} onOpen={() => api.openNotices(w.id)} /><NewBadge createdAt={w.createdAt} /></>}
       sub={<>
-        {w.notices.length > 0 && <span className="mb-0.5 mt-[3px] flex" data-testid="worker-chip1"><NoticeChip n={w.notices[0]} onOpen={() => api.openNotices(w.id)} /></span>}
-        <Line parts={[w.site, <TodayPin key="p" w={w} />]} />
+        {/* every plate keeps the chip row and the site line, empty or not: the plates stand the same height (owner, 2026-10-27) */}
+        {w.notices.length > 0
+          ? <span className="mb-0.5 mt-[3px] flex" data-testid="worker-chip1"><NoticeChip n={w.notices[0]} onOpen={() => api.openNotices(w.id)} /></span>
+          : <span className="invisible mb-0.5 mt-[3px] flex" aria-hidden data-testid="worker-chip-space"><Badge variant="warn"><IconAlertTriangle />—</Badge></span>}
+        <span className="block min-h-[1lh]"><Line parts={[w.site, <TodayPin key="p" w={w} />]} /></span>
       </>}
       right={<span data-testid="worker-hours">{hoursShort(w.monthHours)}</span>}
       actions={menu(w)}
@@ -260,7 +263,7 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
         <div data-testid="workers-none" className="rounded-[14px] border border-dashed border-white/20 px-3 py-6 text-center text-sm text-ink-2">{tr('No workers found')}</div>
       ) : (
         <>
-          {can && cards && <div className="mb-2 flex" data-testid="workers-select"><SelectHead sel={sel} /></div>}
+          {can && cards && <SelectRow sel={sel} testid="workers-select" />}
           {groups.map(g => g.key
             ? <Section key={g.key} label={g.name === 'No client assigned' || g.name === 'No supplier assigned' ? tr(g.name) : g.name} count={g.items.length} icon={dot(g.color)} data-testid="workers-group">{body(g.items)}</Section>
             : <React.Fragment key="all">{body(g.items)}</React.Fragment>)}

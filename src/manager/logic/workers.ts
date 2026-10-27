@@ -93,11 +93,13 @@ export const DOC_EXPIRY_WARN_MONTHS = 3;
 // contractDate:'YYYY-MM-DD' instead, the day its term counts from (workerExpiryStatus).
 // Warn this many days before expiry.
 export const WORKER_DOC_WARN_DAYS: Record<string, number> = {visa: 60, work_permit: 60, other: 30};
+/** A document date typed or read: DD/MM/YYYY (or with . or -), DD/MM/YY (a 2-digit year is 20YY — these are
+ * expiry and contract dates), or ISO YYYY-MM-DD, padded or not. Anything else → null. */
 export function parseDocDate(v: unknown): Date | null {
   const s = String(v || '').trim();
-  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
-  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4}|\d{2})$/);
+  if (m) return new Date(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1]);
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/);
   if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
   return null;
 }
@@ -119,7 +121,7 @@ export function workerDocExpiries(w: Rec): DocNote[] {
     const date = parseDocDate(d.expiry);
     if (!date || isNaN(date.getTime())) continue;
     // One reminder per document, not per file (a visa uploaded as front +
-    // back shares its type and expiry).
+    // back shares its type and expiry) — workerDocExpiryMap gives every file its line.
     const key = d.type + '|' + d.expiry; if (seen.has(key)) continue; seen.add(key);
     const label = tr(WORKER_DOC_TYPES[d.type] || 'Document');
     const warnAt = new Date(today); warnAt.setDate(warnAt.getDate() + (WORKER_DOC_WARN_DAYS[d.type] || 30));
@@ -128,13 +130,24 @@ export function workerDocExpiries(w: Rec): DocNote[] {
   }
   return out.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
+/** Each file's expiry line, by doc id: every file of a current document that warns — a visa uploaded as front +
+ * back gives both files the line and Renew, though workerDocExpiries reminds of it once. */
+export function workerDocExpiryMap(w: Rec): Record<string, {level: 'error' | 'warn'; text: string}> {
+  const byKey = new Map(workerDocExpiries(w).map(x => [x.doc.type + '|' + x.doc.expiry, x]));
+  const out: Record<string, {level: 'error' | 'warn'; text: string}> = {};
+  for (const d of currentDocs(w)) { const x = byKey.get(d.type + '|' + d.expiry); if (x) out[String(d.id)] = {level: x.level, text: x.text}; }
+  return out;
+}
 export function workerDocStatus(w: Rec) {
   const missing: string[] = [];
-  if (!workerDocId(w as Parameters<typeof workerDocId>[0])) missing.push(tr('ID/passport no.'));
-  if (!w.docUrl) missing.push(tr('Form 101'));
-  if (!workerHasScan(w)) missing.push(tr('document scan'));
-  if (w.docHasSignature === false) missing.push(tr('signature'));
-  if ((w.docType || 'israeli_id') === 'israeli_id' && w.docExtraPages === 0) missing.push(tr('ספח (ID appendix)'));
+  // idMissing: what a new scan supplies (the ID / Passport line's Upload); f101Missing: the Form 101 line's (it is built
+  // on save, the signature drawn in the worker window — a photo supplies neither)
+  const idMissing: string[] = [], f101Missing: string[] = [];
+  if (!workerDocId(w as Parameters<typeof workerDocId>[0])) { missing.push(tr('ID/passport no.')); idMissing.push(tr('ID/passport no.')); }
+  if (!w.docUrl) { missing.push(tr('Form 101')); f101Missing.push(tr('Form 101')); }
+  if (!workerHasScan(w)) { missing.push(tr('document scan')); idMissing.push(tr('document scan')); }
+  if (w.docHasSignature === false) { missing.push(tr('signature')); f101Missing.push(tr('signature')); }
+  if ((w.docType || 'israeli_id') === 'israeli_id' && w.docExtraPages === 0) { missing.push(tr('ספח (ID appendix)')); idMissing.push(tr('ספח (ID appendix)')); }
   let expiry: {level: 'error' | 'warn'; date: Date; text: string} | null = null;
   const d = parseDocDate(w.docExpiry);
   if (d && !isNaN(d.getTime())) {
@@ -152,5 +165,5 @@ export function workerDocStatus(w: Rec) {
   if (missing.length) lines.push(tr('Missing: {0}', {0: missing.join(', ')}));
   if (expiry) lines.push(expiry.text);
   for (const x of docExpiries) lines.push(x.text);
-  return {level, missing, expiry, docExpiries, docExpired, failed, lines};
+  return {level, missing, idMissing, f101Missing, expiry, docExpiries, docExpired, failed, lines};
 }

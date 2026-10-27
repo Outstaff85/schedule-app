@@ -2,7 +2,7 @@
 // event, every screen frame, straight onto a canvas (no React render): red while it is still searching, green
 // once it has stuck (the sticky frame of steady.ts). The video fills the screen cropped (object-fit: cover), so
 // the frame's points — shares of the camera's picture — are mapped the same way. With `still`, the frame of a
-// picked picture shown whole (object-fit: contain) instead. The colours are the design system's (og.css --red,
+// picked picture shown whole (object-fit: contain) instead — every document found on it so far, green. The colours are the design system's (og.css --red,
 // --green), read from the page, so the light theme's apply too.
 import * as React from 'react';
 import type { Quad } from '../engine/types';
@@ -39,8 +39,8 @@ export function drawQuad(g: CanvasRenderingContext2D, quad: Quad, ok: boolean, w
 export function LiveOverlay({ session, video, still }: {
   session: ScanSessionLike;
   video: React.RefObject<HTMLVideoElement | null>;
-  /** A picked picture's frame (its size in px): drawn whole instead of the live frame. */
-  still?: { quad: Quad | null; w: number; h: number } | null;
+  /** A picked picture's frames (its size in px): drawn on the picture shown whole, instead of the live frame. */
+  still?: { quads: Quad[]; w: number; h: number } | null;
 }) {
   const ref = React.useRef<HTMLCanvasElement>(null);
 
@@ -57,7 +57,7 @@ export function LiveOverlay({ session, video, still }: {
 
   React.useEffect(() => {
     if (still) {
-      const draw = () => { const c = sized(); if (c && still.quad) drawQuad(c.g, still.quad, true, still.w, still.h, c.bw, c.bh, 'contain'); };
+      const draw = () => { const c = sized(); if (c) for (const q of still.quads) drawQuad(c.g, q, true, still.w, still.h, c.bw, c.bh, 'contain'); };
       draw();
       window.addEventListener('resize', draw);
       return () => window.removeEventListener('resize', draw);

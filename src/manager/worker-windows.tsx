@@ -4,13 +4,13 @@
 // on a phone — the page's overlay) and go back to the window that opened them.
 import * as React from 'react';
 import { IconFileSpreadsheet, IconFileTypePdf, IconId, IconPlus, IconTrash, IconUpload } from '@tabler/icons-react';
-import { tr, uiLocale } from '@/lib/i18n';
+import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DatePicker } from '@/components/ui/date-picker';
+import { DatePicker, MonthPicker, monthLabel, monthsBack } from '@/components/ui/date-picker';
 import { FormSection } from '@/components/ui/form';
 import { Plate } from '@/components/shared/plate';
 import { Section } from '@/components/shared/section';
@@ -54,15 +54,21 @@ export function NoticesSheet({ wid, head, api }: { wid: string; head: WorkerHead
 
 const todayYmd = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 // ── Add document: type, a contract's date or another document's optional expiry, several files, uploaded in parallel ──
-export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
+// `initialType`: Renew's document type (Contract otherwise); `fromEditor`: opened from the worker window, which stays
+// open under it — a finished upload only closes this window (the worker window, unsaved edits and all, shows again);
+// from the card or a notice it opens the worker card.
+export function DocUpload({ wid, api, initialType, fromEditor }: { wid: string; api: ManagerBridge; initialType?: string; fromEditor?: boolean }) {
   const w = api.record(wid);
-  const [type, setType] = React.useState('contract');
+  const [type, setType] = React.useState(initialType && initialType in WORKER_DOC_TYPES ? initialType : 'contract');
   const [expiry, setExpiry] = React.useState('');
   // a contract has no expiry: its date (today unless changed) is the day the contract term counts from (workerExpiryStatus)
   const [contractDate, setContractDate] = React.useState(todayYmd);
   const [files, setFiles] = React.useState<File[]>([]);
   const [status, setStatus] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  // one upload time for the whole window: the files of a retried upload (Upload again) belong to the same document
+  // (currentDocs keeps a type's latest upload time — files with an earlier one count as replaced)
+  const uploadedAt = React.useRef('');
   if (!w) return null;
   const submit = async () => {
     if (!files.length) { setStatus(tr('Choose at least one file')); return; }
@@ -76,7 +82,7 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
         { action: 'saveWorkerFile', workerId: wid, fileBase64: f.b64, fileName: f.fileName, mimeType: f.mediaType },
         (l, t) => { loaded[i] = l; totals[i] = t; tick(); })));
       const failed = results.filter(r => !r || r.error);
-      const now = new Date().toISOString();
+      const now = uploadedAt.current || (uploadedAt.current = new Date().toISOString());
       const added = results.map((r, i) => (r && r.ok ? { id: 'd' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6), type, name: prepared[i].fileName,
         fileId: r.id, url: r.url, mediaType: prepared[i].mediaType, uploadedAt: now,
         ...(type === 'contract' ? { contractDate: contractDate || todayYmd() } : { expiry }) } : null)).filter(Boolean) as NonNullable<Parameters<ManagerBridge['addDocs']>[1]>;
@@ -90,7 +96,7 @@ export function DocUpload({ wid, api }: { wid: string; api: ManagerBridge }) {
       }
       api.closeModal('workerDocOverlay');
       api.toast(tr('{0} document{1} uploaded', { 0: added.length, 1: added.length > 1 ? 's' : '' }));
-      api.openCard(wid);
+      if (!fromEditor) api.openCard(wid);
     } catch (e) {
       setStatus(tr('Upload failed: {0}', { 0: (e as Error)?.message || String(e) })); setBusy(false);
     }
@@ -277,24 +283,19 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
 
 // ── Export hours: a month of the last 12, Excel or PDF ──
 export function HoursExport({ wid, api }: { wid: string; api: ManagerBridge }) {
-  const months = React.useMemo(() => {
-    const now = new Date();
-    return Array.from({ length: 12 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - i, 1));
-  }, []);
-  const [pick, setPick] = React.useState(`${months[0].getFullYear()}-${months[0].getMonth()}`);
+  // This month and the 11 before it, in the one month picker (date-picker.tsx).
+  const [pick, setPick] = React.useState(() => monthsBack(0));
   const run = (format: 'excel' | 'pdf') => {
     const [y, m] = pick.split('-').map(Number);
     api.closeModal('hoursExportOverlay');
-    void api.exportHours(wid, y, m, format);
+    void api.exportHours(wid, y, m - 1, format);
   };
   return (
     <div data-testid="hours-export" data-wid={wid}>
       <Title>{tr('Export hours')}</Title>
       <Field label={tr('Month')}>
-        <Select value={pick} onValueChange={setPick}>
-          <SelectTrigger id="hoursExportMonth" className="w-full"><SelectValue /></SelectTrigger>
-          <SelectContent>{months.map(d => <SelectItem key={d.getTime()} value={`${d.getFullYear()}-${d.getMonth()}`}>{d.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}</SelectItem>)}</SelectContent>
-        </Select>
+        <MonthPicker id="hoursExportMonth" className="w-full" align="start" value={pick} onChange={setPick} label={monthLabel(pick)}
+          monthOf={v => v} toValue={ym => ym} min={monthsBack(11)} max={monthsBack(0)} />
       </Field>
       <div className="flex justify-end gap-2">
         <Button data-testid="hours-export-excel" onClick={() => run('excel')}><IconFileSpreadsheet className="size-[18px]" />Excel</Button>

@@ -22,7 +22,7 @@ import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Plate } from '@/components/shared/plate';
 import { Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
-import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
+import { SelectBar, SelectRow, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
 import { LanguageButton } from '@/components/shared/language';
 import type { AdminSnapshot, FirmProfile, ManagerBridge } from './bridge';
@@ -97,8 +97,8 @@ function FirmsList({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
   }
   return (
     <div data-testid="firms-list">
-      {list.length > 0 && <div className="mb-2 flex" data-testid="firms-select"><SelectHead sel={sel} /></div>}
-      <PagedList items={list} columns render={t => {
+      {list.length > 0 && <SelectRow sel={sel} testid="firms-select" />}
+      <PagedList items={list} render={t => {
         const off = t.active === false, saved = when(t.savedAt, snap.locale);
         const counts = tr('{0} workers · {1} clients{2}', { 0: t.workerCount || 0, 1: t.clientCount || 0, 2: saved ? ' · ' + tr('saved {0}', { 0: saved }) : '' });
         const flags = [off && <span key="off" className="text-warn">{tr('disabled')}</span>,

@@ -158,7 +158,7 @@ export class Live {
   start(): void { this.running = true; this.loop(++this.loopGen); this.startFollow(); }
 
   /** The frame starts again from nothing (the lab's Looks good / Retake). */
-  clearFrame(): void { this.steady.smooth = null; this.steady.steadySince = 0; this.target = this.shown = null; }
+  clearFrame(): void { this.steady.reset(); this.target = this.shown = null; }
 
   /** Everything learnt about the frame forgotten (a new way: no frame, no figures from the old one). */
   forget(): void {

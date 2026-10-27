@@ -187,7 +187,8 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
               </Field>
             </FieldRow>
             <button type="button" id="cMapMini" data-testid="client-map" data-set={placeSet ? '1' : ''} onClick={pick}
-              className="relative h-[110px] overflow-hidden rounded-[14px] border border-white/10 bg-white/[.04] active:scale-[.99]">
+              className="relative h-[110px] overflow-hidden rounded-[14px] border border-white/10 active:scale-[.99]"
+              style={{ background: 'linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/22px 22px,rgba(34,211,238,.05)' }}>
               <span className={cn('absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-dashed border-info bg-info/10', !placeSet && 'opacity-35')}
                 style={{ width: 2 * Math.max(28, Math.min(84, 20 + radius / 4)), height: 2 * Math.max(28, Math.min(84, 20 + radius / 4)) }} />
               <span className="absolute left-2.5 top-2.5 grid size-[30px] place-items-center rounded-[10px] border border-white/15 bg-white/[.08] text-info"><IconMap2 className="size-4" /></span>
@@ -233,7 +234,7 @@ export function ClientEditor({ props, info, api }: { props: ClientProps; info: C
             {!daily && (
               <div id="cHourlyBill" className="grid gap-2.5">
                 <ToggleGroup id="cRateMode" type="single" value={fixed ? 'fixed' : 'tiered'} onValueChange={v => { if (v) setBill(b => setRateMode(b, v as 'tiered' | 'fixed')); }}>
-                  <ToggleGroupItem value="tiered" data-mode="tiered" className="flex-1">{tr('By law (overtime + Shabbat)')}</ToggleGroupItem>
+                  <ToggleGroupItem value="tiered" data-mode="tiered" className="flex-1">{tr('By law')}</ToggleGroupItem>
                   <ToggleGroupItem value="fixed" data-mode="fixed" className="flex-1">{tr('Fixed')}</ToggleGroupItem>
                 </ToggleGroup>
                 {!fixed && (

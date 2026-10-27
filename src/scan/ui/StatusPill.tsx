@@ -4,7 +4,8 @@
 // on while a shot or a pick is in work ("Passport 97% · Refining the corners…"; the owner's template 6). What
 // the person should do is the hint under the camera's frame (HintPill). A spinner while it works, a coloured dot
 // for found / move back / failed. It listens to the session's status events on its own and is drawn again
-// only when its words or its look change (the session says the status on every model answer).
+// only when its words or its look change (the session says the status on every model answer). The words are never
+// cut: a long status wraps onto a second (or third) line on a narrow phone (owner, 2026-10-27).
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { tr } from '@/lib/i18n';
@@ -36,9 +37,9 @@ export function StatusPill({ session, text, lead, className }: {
   const words = text || (said ? (lead ? lead + ' · ' : '') + said.words : tr('Preparing the scanner…'));
   return (
     <div role="status" aria-live="polite" data-testid="scan-status" data-tone={tone} data-key={said?.key || ''}
-      className={cn('og-glass-menu flex min-h-[36px] min-w-0 items-center gap-2 !rounded-full px-3.5 py-1.5 text-[14px] font-semibold', className)}>
+      className={cn('og-glass-menu flex min-h-[36px] min-w-0 items-center gap-2 !rounded-[18px] px-3.5 py-1.5 text-[14px] font-semibold leading-snug', className)}>
       {tone === 'busy' ? <Spinner className="size-4 shrink-0" /> : <span aria-hidden className={cn('size-2 shrink-0 rounded-full', DOT[tone])} />}
-      <span className="min-w-0 truncate">{words}</span>
+      <span data-testid="scan-status-text" className="min-w-0 break-words">{words}</span>
     </div>
   );
 }

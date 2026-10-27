@@ -84,7 +84,7 @@ Object.assign(w, {
   // a worker's status (logic/workers.ts)
   DOC_STORE: wk.DOC_STORE, workerDocId: wk.workerDocId, workerAddress: wk.workerAddress, isActiveWorker: wk.isActiveWorker,
   workerExpiryStatus: wk.workerExpiryStatus, WORKER_DOC_TYPES: wk.WORKER_DOC_TYPES, parseDocDate: wk.parseDocDate,
-  workerDocExpiries: wk.workerDocExpiries, workerDocStatus: wk.workerDocStatus,
+  workerDocExpiries: wk.workerDocExpiries, workerDocExpiryMap: wk.workerDocExpiryMap, workerDocStatus: wk.workerDocStatus,
   // upload preparation (logic/uploads.ts)
   UPLOAD_MAX_DIM: up.UPLOAD_MAX_DIM, downscaleForUpload: up.downscaleForUpload, _loadPdfJs: up.loadPdfJs, isPdfFile: up.isPdfFile,
   fileToUploadPages: up.fileToUploadPages, fileForStorage: up.fileForStorage, filesToUploadPages: up.filesToUploadPages,

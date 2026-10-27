@@ -83,6 +83,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
   - each image is shrunk to 150 dpi for its box (`_shrink_for_embed` — JPEG 82, or PNG when the image has transparency);
   - this happens only here: the stored page stays as it was kept (a JPEG of at most 2000 px).
 - **Output:**
+  - the form is **flattened** (`doc.bake(widgets=True)`, owner 2026-10-27): every field's appearance becomes page content and the fields are removed, so a viewer shows a plain document, never a fillable form with blue boxes (`build_form101_pdf(p, flatten=False)` keeps the fields — only the tests use it, to read the values); files built before keep their fields;
   - the file is saved with `garbage=4, deflate, clean`, and `NeedAppearances=false`;
   - the file name is `<given> <surname> - <ID or passport number> - <company>.pdf` ([form101-field-map.md](form101-field-map.md) → File name);
   - `build_form101_pdf` returns `(pdf bytes, file name)`; the function returns `{pdfBase64, fileName}`.

@@ -98,7 +98,7 @@ function Directory<R extends { id: string; name: string }>({ kind, rows, canEdit
     <div data-testid={kind}>
       <div className="mb-2 flex flex-wrap items-center gap-2" data-testid={kind + '-head'}>
         <Button variant="primary" className="og-new" data-testid={kind + '-new'} onClick={onNew}><IconPlus />{tr('New')}</Button>
-        {canEdit && list.length > 0 && <div className="flex" data-testid={kind + '-select'}><SelectHead sel={sel} /></div>}
+        {canEdit && list.length > 0 && <SelectHead sel={sel} testid={kind + '-select'} />}
       </div>
       {list.length
         ? <PagedList items={list} columns render={r => render(r, { on: sel.on, picked: sel.picked.has(r.id), toggle: () => sel.toggle(r.id) }, remove)} />

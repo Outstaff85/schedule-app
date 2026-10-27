@@ -111,10 +111,26 @@ const LIVE = new Set<SessionStatus['key']>(['finding', 'corners_out', 'edges_unc
 /** The statuses of a shot still in work (cut, being refined, looking for more documents); any other ends it. */
 const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
 
+/** The picked picture on the screen: the session's latest preview event, and the frame of every document found on
+ *  that picture so far (the event carries one: the document being cut now). */
+export interface ShownPicture extends PreviewEvent { quads: Quad[] }
+
+/** The same frame (each corner within 0.01): a picture's 'done' event repeats its first document's frame. */
+const sameQuad = (a: Quad, b: Quad): boolean => a.every((p, i) => Math.abs(p[0] - b[i][0]) < 0.01 && Math.abs(p[1] - b[i][1]) < 0.01);
+
+/** The picture shown after a preview event: the frames found on it kept while it is the same picture. */
+export function nextShown(prev: ShownPicture | null, p: PreviewEvent): ShownPicture {
+  const same = !!prev && prev.url === p.url && prev.batch === p.batch;
+  const quads = same ? prev!.quads.slice() : [];
+  if (p.quad && !quads.some(q => sameQuad(q, p.quad as Quad))) quads.push(p.quad);
+  return { ...p, quads };
+}
+
 export interface ScanScreenState {
   pages: UiPage[];
-  /** The picked picture being worked on (shown in place of the camera), null on the camera. */
-  preview: PreviewEvent | null;
+  /** The picked picture being worked on (shown in place of the camera, with its documents' frames), null on the
+   *  camera. */
+  preview: ShownPicture | null;
   auto: boolean;
   /** A shot is still in work (refining, looking for more documents). */
   busy: boolean;
@@ -172,7 +188,7 @@ export function useScanSession(session: ScanSessionLike, opts: {
   const [chosen, setChosen] = React.useState<Record<string, Doctype>>({});
   const [looked, setLooked] = React.useState<Record<string, true>>({});
   const [hidden, setHidden] = React.useState<Record<string, true>>({});
-  const [preview, setPreview] = React.useState<PreviewEvent | null>(null);
+  const [preview, setPreview] = React.useState<ShownPicture | null>(null);
   const [auto, setAutoState] = React.useState(session.auto);
   const [busy, setBusy] = React.useState(false);
   const [picking, setPicking] = React.useState(0);
@@ -226,7 +242,7 @@ export function useScanSession(session: ScanSessionLike, opts: {
         putBusy(SHOT_WORK.has(s.key));
         if (LIVE.has(s.key)) clearPreview();
       }),
-      session.on('preview', p => { now.current.preview = true; setPreview(p); }),
+      session.on('preview', p => { now.current.preview = true; setPreview(prev => nextShown(prev, p)); }),
       session.on('page', p => {
         setShots(m => ({ ...m, [p.id]: p }));
         setOrder(o => (o.includes(p.id) ? o : [...o, p.id]));

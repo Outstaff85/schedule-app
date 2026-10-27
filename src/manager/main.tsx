@@ -157,7 +157,7 @@ const notices = windowRoot<{ id: string }>('noticesModal', (p, api) => {
   return head ? <NoticesSheet key={p.id} wid={p.id} head={head} api={api} /> : null;
 });
 const workerWin = windowRoot<EditorProps>('workerModal', (p, api) => <WorkerEditor key={p.seq} props={p} info={api.editorInfo(p.w, p.editId)} api={api} />);
-const docUpload = windowRoot<{ id: string; seq: number }>('workerDocModal', (p, api) => <DocUpload key={p.seq} wid={p.id} api={api} />);
+const docUpload = windowRoot<{ id: string; type?: string; fromEditor?: boolean; seq: number }>('workerDocModal', (p, api) => <DocUpload key={p.seq} wid={p.id} initialType={p.type} fromEditor={p.fromEditor} api={api} />);
 const hoursImport = windowRoot<{ id: string; seq: number }>('hoursImportModal', (p, api) => <HoursImport key={p.seq} wid={p.id} api={api} />);
 const hoursExport = windowRoot<{ id: string; seq: number }>('hoursExportModal', (p, api) => <HoursExport key={p.seq} wid={p.id} api={api} />);
 const clientWin = windowRoot<ClientProps>('clientModal', (p, api) => <ClientEditor key={p.seq} props={p} info={api.clientInfo(p.editId)} api={api} />);
@@ -213,7 +213,7 @@ provideIsland({
   },
   findMissing: async () => { if (editor.current) await editor.current.findMissing(); },
   uploadProgress: (label, pct) => { editor.current?.progress(label, pct); },
-  openDocUpload: id => docUpload.show({ id, seq: ++seq }),
+  openDocUpload: (id, type, fromEditor) => docUpload.show({ id, type, fromEditor, seq: ++seq }),
   openHoursImport: id => hoursImport.show({ id, seq: ++seq }),
   openHoursExport: id => hoursExport.show({ id, seq: ++seq }),
   refreshWindows: () => { card.refresh(); notices.refresh(); workerWin.refresh(); userWin.refresh(); assignWin.refresh(); },

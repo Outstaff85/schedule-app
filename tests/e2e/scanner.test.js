@@ -145,11 +145,41 @@ const READS = {
   const cameraScreen = p => p.evaluate(() => {
     const root = T.q('[data-testid="scanner"]'), box = s => root.querySelector(s) && root.querySelector(s).getBoundingClientRect();
     const r = root.getBoundingClientRect(), st = box('[data-testid="scan-status"]'), done = box('[data-testid="scan-done"]'), auto = box('[data-testid="scan-auto"]'), strip = box('[data-testid="scan-thumbs"]'), bar = box('[data-testid="scan-bar"]');
-    return {w: Math.round(r.width), h: Math.round(r.height), statusTop: !!st && st.top - r.top < 90 && Math.abs((st.left + st.right) / 2 - (r.left + r.right) / 2) < 3,
+    // the status in the screen's middle while it is short; a long one takes the width left of Auto too (never under it)
+    const roomy = !!st && !!auto && st.width < r.width - 2 * (r.right - auto.left) - 2;
+    return {w: Math.round(r.width), h: Math.round(r.height), statusTop: !!st && !!auto && st.top - r.top < 90 && st.left >= r.left + 12 && st.right <= auto.left
+      && (!roomy || Math.abs((st.left + st.right) / 2 - (r.left + r.right) / 2) < 3),
       autoTopRight: !!auto && auto.top - r.top < 90 && r.right - auto.right < 30, doneBottomRight: !!done && r.bottom - done.bottom < 60 && r.right - done.right < 30,
       stripAboveBar: !!strip && !!bar && strip.bottom <= bar.top + 1, barBottom: !!bar && r.bottom - bar.bottom < 30, noScroll: document.documentElement.scrollWidth <= 390,
       bar: ['scan-pick', 'scan-shutter', 'scan-done'].filter(t => root.querySelector('[data-testid="scan-bar"] [data-testid="' + t + '"]')).join(),
       video: !!root.querySelector('video[data-testid="scan-video"]') && root.querySelector('video').videoWidth === 720};
+  });
+  // the status line's words never cut (owner, 2026-10-27: "A corner is ou…" at 390 px): the longest statuses said
+  // through the session one after another (its live frame held meanwhile), each wholly shown — no ellipsis, nothing
+  // past its box —, inside the screen, clear of Auto and of what lies under the top (the lab's Lab tools, the site's
+  // errors: --scan-top)
+  const statusShown = (p, site) => p.evaluate(async site => {
+    const s = site ? (await ManagerScan.hooks()).session() : ScanLab.session, root = T.q('[data-testid="scanner"]'), R = e => e.getBoundingClientRect();
+    const over = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+    s.hold();
+    const out = [];
+    for (const st of [{key: 'corners_out', n: 1}, {key: 'corners_out', n: 2}, {key: 'taken'}, {key: 'stopped'}, {key: 'looking_more', count: 2}, {key: 'pick_open_failed'}]) {
+      s.emit('status', st);
+      await T.tick(80);
+      const pill = root.querySelector('[data-testid="scan-status"]'), words = root.querySelector('[data-testid="scan-status-text"]'), b = R(pill), r = R(root), auto = R(root.querySelector('[data-testid="scan-auto"]'));
+      const under = root.querySelector('[data-testid="lab-tools"]') || root.querySelector('[data-testid="scan-error"]');
+      out.push({key: st.key, text: words.textContent, h: Math.round(b.height), whole: words.scrollWidth <= words.clientWidth + 1 && words.scrollHeight <= words.clientHeight + 1 && getComputedStyle(words).textOverflow !== 'ellipsis' && getComputedStyle(words).whiteSpace !== 'nowrap',
+        inside: b.left >= r.left && b.right <= r.right, clearOfAuto: !over(b, auto), clearUnder: !under || !over(b, R(under))});
+    }
+    s.resume();
+    return out;
+  }, site);
+  // the bottom bar's three controls side by side, none over another, inside the screen
+  const barClear = p => p.evaluate(() => {
+    const root = T.q('[data-testid="scanner"]'), R = e => e.getBoundingClientRect(), r = R(root);
+    const [a, b, c] = ['scan-pick', 'scan-shutter', 'scan-done'].map(t => R(root.querySelector('[data-testid="scan-bar"] [data-testid="' + t + '"]')));
+    return {pick: Math.round(a.left) + '-' + Math.round(a.right), shutter: Math.round(b.left) + '-' + Math.round(b.right), done: Math.round(c.left) + '-' + Math.round(c.right),
+      clear: a.right <= b.left && b.right <= c.left && a.left >= r.left && c.right <= r.right};
   });
   const fill = async (p, w, h, doc) => Buffer.from(await p.evaluate(async ([w, h, doc]) => {
     const c = new OffscreenCanvas(w, h), g = c.getContext('2d');
@@ -219,12 +249,22 @@ const READS = {
   await p.screenshot({path: SP + '/scanner-site-camera.png'});
   // no Next (template 6): the live frame goes on by itself after the shot, and with both documents still on the
   // table Auto does not take them again — the status line says taken, the hint under the frame asks for the next
+  const afterGreenP = (async () => {
+    await sleep(1500);
+    for (let i = 0; i < 200; i++) { const g = await greenDrawn(p); if (g > 20) return g; await sleep(25); }
+    return 0;
+  })();
   const after = await p.evaluate(async () => {
     const H = await ManagerScan.hooks(), s = H.session();
-    const r = {going: await T.until(() => s.live.running, 6000), taken: await T.until(() => window.__keys.includes('taken'), 10000)};
+    const r = {going: await T.until(() => s.live.running, 6000)};
+    // the frame from the moment the live frame went on: it stays on the documents taken, green — not wiped and found
+    // again red and flickering (owner, 2026-10-27)
+    const fr = {green: 0, red: 0, none: 0}, off = s.on('frame', (q, g) => { if (!q) fr.none++; else if (g) fr.green++; else fr.red++; });
+    r.taken = await T.until(() => window.__keys.includes('taken'), 10000);
     r.tip = await T.until(() => (T.q('[data-testid="scan-tip"]') || {dataset: {}}).dataset.hint === 'next', 4000);
     r.tipText = (T.q('[data-testid="scan-tip"]') || {}).textContent;
     await T.tick(3000);
+    off(); r.frames = fr;
     r.pages = T.all('[data-testid="scan-thumb"]').length; r.attempts = new Set([...s.pages.values()].map(x => x.record.attempt)).size;
     r.shutters = document.documentElement.dataset.shutters || '0';
     r.shutter = T.q('[data-testid="scan-shutter"]').getAttribute('aria-label');
@@ -232,6 +272,14 @@ const READS = {
   });
   ok(after.going && after.taken && after.tip && /next document/.test(after.tipText || '') && after.pages === 2 && after.attempts === 1 && after.shutters === '1' && after.shutter === 'Take the shot',
     'site: no Next — the live frame goes on by itself after the shot; with the same documents still in the frame Auto does not take them again (taken, the hint asks for the next document; still one shot, one click) ' + JSON.stringify(after));
+  const fa = after.frames || {}, afterGreen = await afterGreenP;
+  ok(fa.green > 20 && fa.none === 0 && fa.red * 10 < fa.green && afterGreen > 20,
+    'site: after the shot the live frame stays on the document taken, drawn green while it is held there — not wiped and found again red (on the phone of the owner only red flickered) ' + JSON.stringify({frames: fa, greenPixels: afterGreen}));
+  const shown = await statusShown(p, true);
+  ok(shown.length === 6 && shown.every(x => x.whole && x.inside && x.clearOfAuto && x.clearUnder) && shown.some(x => x.h > 40),
+    'site at 390 px: every long status is shown whole — wrapped onto more lines, never cut with an ellipsis —, inside the screen and clear of Auto ' + JSON.stringify(shown));
+  const sbar = await barClear(p);
+  ok(sbar.clear, 'site at 390 px: Photos/PDF, the shutter and Done side by side, none over another ' + JSON.stringify(sbar));
   // nothing more on the table: the camera shows an empty table from now on (the live frame has nothing more for
   // Auto to take)
   await p.evaluate(() => { window.__scene = []; });
@@ -348,6 +396,23 @@ const READS = {
       if (im && (!window.__pv.length || window.__pv[window.__pv.length - 1].src !== im.src)) window.__pv.push({src: im.src, stage: st.dataset.stage}); })
       .observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ['src', 'data-stage']});
     document.addEventListener('load', e => { const im = e.target; if (im.tagName === 'IMG' && im.closest('[data-testid="scan-preview"]')) window.__pvSize[im.src] = im.naturalWidth + 'x' + im.naturalHeight; }, true);
+    // the picked picture's frames drawn on it while it is worked on (green: og.css --green), by its url — the most
+    // green pixels seen and the most frames it said it had
+    window.__pvGreen = {}; window.__pvFrames = {};
+    const t = document.createElement('canvas').getContext('2d');
+    t.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--green').trim(); t.fillRect(0, 0, 1, 1);
+    const [gr, gg, gb] = t.getImageData(0, 0, 1, 1).data;
+    const look = () => {
+      const pv = T.q('[data-testid="scan-preview"]'), im = pv && pv.querySelector('img'), c = pv && pv.querySelector('[data-testid="scan-overlay"]');
+      if (im) window.__pvFrames[im.src] = Math.max(window.__pvFrames[im.src] || 0, +pv.dataset.frames || 0);
+      if (im && c && c.width) {
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 240 && Math.abs(d[i] - gr) < 10 && Math.abs(d[i + 1] - gg) < 10 && Math.abs(d[i + 2] - gb) < 10) n++;
+        window.__pvGreen[im.src] = Math.max(window.__pvGreen[im.src] || 0, n);
+      }
+      requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
   });
   const pick1 = await fill(p, 1200, 900, [0.2, 0.25, 0.8, 0.7]);
   await p.setInputFiles('[data-testid="scan-files"]', {name: 'card.jpg', mimeType: 'image/jpeg', buffer: pick1});
@@ -355,6 +420,7 @@ const READS = {
     const r = {three: await T.until(() => T.all('[data-testid="scan-thumb"][data-kind]').length === 3 && window.__keys.includes('picked'), 20000)};
     await T.until(() => window.__pv.length && window.__pvSize[window.__pv[0].src], 3000);
     r.src = window.__pv[0] && window.__pv[0].src; r.size = window.__pvSize[r.src];
+    r.green = window.__pvGreen[r.src] || 0; r.frames = window.__pvFrames[r.src] || 0;
     const H = await ManagerScan.hooks(), s = H.session(), page = [...s.pages.values()].find(x => x.record.input === 'photo');
     r.id = page && page.id; r.attempt = page && page.record.attempt;
     // no Next after a pick either: the camera comes back by itself (the picture shown a moment first)
@@ -381,6 +447,8 @@ const READS = {
   ok(first.three && first.size === '1200x900' && first.camera && second.four && second.switched && second.stageWhenShown === 'finding' && second.size === '900x1200'
     && !second.firstLooked && second.firstUndecided && second.looked === 1 && second.kinds === 'id_front,sefach,id_front,sefach',
     'site, picked files: the camera comes back by itself after a pick (no Next); a second pick leaves the first one as it was (not looked at, its attempt undecided), and the preview shows the new picture at once — while its document is still being found ' + JSON.stringify({first, second}));
+  ok(first.frames >= 1 && first.green > 20,
+    'site, picked files: the picked picture is shown with the green frame of the document found on it while it is worked on (owner, 2026-10-27: it was gone) ' + JSON.stringify({frames: first.frames, greenPixels: first.green}));
   ok(second.doneRect && second.doneRect.t === doneBefore.t && second.doneRect.r === doneBefore.r && /Done · 4/.test(second.done),
     'site: Done stays at the bottom right as pages come (Done · 4) ' + JSON.stringify({before: doneBefore, now: second.doneRect, done: second.done}));
 
@@ -414,6 +482,53 @@ const READS = {
     && (camAttempt.edgesMore || []).length === 1 && pickAttempt.outcome === 'kept' && pickAttempt.input === 'photo',
     'site, Done: the attempts go for training — the camera shot\'s with its other document and the corners fixed by hand (edgesFixed 14,16), the picked picture\'s too '
     + JSON.stringify({cam: {outcome: camAttempt.outcome, source: camAttempt.source, input: camAttempt.input, edgesFixed: camAttempt.edgesFixed, more: (camAttempt.edgesMore || []).length}, pick: {outcome: pickAttempt.outcome, input: pickAttempt.input}}));
+  // The phone's back (src/scan/ui/back.ts): one step back inside the scanner, the innermost first — the corner
+  // editor, then the page opened large, then the scan window itself, closed as by hand (back to the worker window
+  // it was opened from) — never off the site; a step closed by hand takes its history entry back off
+  await p.evaluate(() => { openEditWorker(0); });
+  await p.waitForFunction(() => document.getElementById('workerOverlay').classList.contains('open'), null, {timeout: 5000});
+  const url0 = p.url();
+  await p.evaluate(() => { window.__scanGoing = rescanFromWorkerModal(); });
+  await p.waitForSelector('[data-testid="scanner"][data-mode="site"] [data-testid="scan-status"]', {timeout: 20000});
+  await p.setInputFiles('[data-testid="scan-files"]', {name: 'card.jpg', mimeType: 'image/jpeg', buffer: pick1});
+  const backOpen = await p.evaluate(async () => {
+    const depth = () => (history.state && history.state.scanBack) || 0;
+    const r = {page: await T.until(() => T.all('[data-testid="scan-thumb"][data-kind]').length >= 1 && !T.q('[data-testid="scan-preview"]'), 20000)};
+    r.workerUnder = document.getElementById('workerOverlay').classList.contains('open');
+    r.depthOpen = depth();
+    // opened large and closed by hand (a tap on the dimmed ground): its entry taken back off
+    await T.openThumb(T.q('[data-testid="scan-thumb"]'));
+    r.view = !!(await T.until(() => T.q('[data-testid="page-view"]'), 3000));
+    r.depthView = depth();
+    T.q('[data-testid="page-view"]').click();
+    r.closedByHand = await T.until(() => !T.q('[data-testid="page-view"]'), 3000);
+    r.depthAfterHand = await T.until(() => depth() === 1, 3000) && depth();
+    // opened large again, then its corner editor
+    await T.openThumb(T.q('[data-testid="scan-thumb"]'));
+    await T.until(() => T.q('[data-testid="page-view"]'), 3000);
+    T.q('[data-testid="page-fix"]').click();
+    r.editor = !!(await T.until(() => T.q('[data-testid="corner-editor"]'), 4000));
+    r.depthEditor = depth();
+    return r;
+  });
+  const backStep = async () => {
+    await p.goBack();
+    await sleep(500);
+    return p.evaluate(() => ({editor: !!T.q('[data-testid="corner-editor"]'), view: !!T.q('[data-testid="page-view"]'), scanner: !!T.q('[data-testid="scanner"]')}));
+  };
+  const back1 = await backStep(), back2 = await backStep(), back3 = await backStep();
+  const backEnd = await p.evaluate(async () => {
+    await window.__scanGoing;
+    return {app: typeof workers !== 'undefined' && workers.length === 2, worker: document.getElementById('workerOverlay').classList.contains('open'),
+      depth: (history.state && history.state.scanBack) || 0, scanner: !!T.q('[data-testid="scanner"]')};
+  });
+  const url1 = p.url();
+  ok(backOpen.page && backOpen.depthOpen === 1 && backOpen.view && backOpen.depthView === 2 && backOpen.closedByHand && backOpen.depthAfterHand === 1 && backOpen.editor && backOpen.depthEditor === 3,
+    'site, the phone\'s back: one history entry for the scan window and one per step open (the page opened large, its corner editor); a page closed by hand takes its entry back off ' + JSON.stringify(backOpen));
+  ok(back1.scanner && back1.view && !back1.editor && back2.scanner && !back2.view && !back2.editor && !back3.scanner
+    && url1 === url0 && backEnd.app && backEnd.worker === backOpen.workerUnder && backEnd.depth === 0 && !backEnd.scanner,
+    'site, the phone\'s back: back closes the corner editor, then the page opened large, then the scan window — the worker window it was opened from as it was, the URL still the app\'s ' + JSON.stringify({back1, back2, back3, backEnd, url0, url1}));
+  await p.evaluate(() => { if (document.getElementById('workerOverlay').classList.contains('open')) closeModal('workerOverlay'); });
   const siteLab = p.reqs.filter(u => u.includes('/scan-lab/')), siteOwn = p.reqs.filter(u => /\/scan\/(models\.json|ort(130)?\/)/.test(u));
   ok(siteLab.length === 0 && siteOwn.length > 0,
     'site: the scanner loads only its own files (/scan/) — no request to the lab\'s /scan-lab/ ' + JSON.stringify({lab: siteLab.slice(0, 5), own: [...new Set(siteOwn.map(u => u.replace(/^.*\/scan\//, '/scan/')))]}));
@@ -443,17 +558,21 @@ const READS = {
     const pages = [...ScanLab.session.pages.values()];
     r.attempt = pages[0] && pages[0].record.attempt;
     r.surface = [ScanLab.session.surface.base, ScanLab.session.surface.source].join();
-    r.show = T.q('[data-testid="scan-done"]').textContent;
+    r.show = T.q('[data-testid="scan-done"]').getAttribute('aria-label'); r.showText = T.q('[data-testid="scan-done"]').textContent;
     return r;
   });
+  const lshown = await statusShown(p, false), lbar = await barClear(p);
   await p.evaluate(() => { window.__scene = []; });
   const labAsked = await p.evaluate(() => window.__camAsked);
   const lsaid = lshot.said || [];
-  ok(labStart.before === 'failed' && lshot.two && lshot.kinds === 'id_front,sefach' && lshot.surface === '/scan-lab/,lab' && lshot.show === 'Show what the models read'
+  ok(labStart.before === 'failed' && lshot.two && lshot.kinds === 'id_front,sefach' && lshot.surface === '/scan-lab/,lab' && lshot.show === 'Show what the models read' && lshot.showText === 'Models read'
     && lsaid.includes('Finding the document…') && lsaid.some(t => /^Hold still · \d\.\d s$/.test(t)) && lsaid.includes('2 documents found') && lshot.green > 0
     && ((labAsked[0] || {}).video || {}).frameRate && labAsked[0].video.frameRate.ideal === 30,
     'lab (/scan-lab/): the same scanner on the lab\'s surface — the live frame, "Finding the document…" → "Hold still" → "2 documents found", green, the Auto shot with its second document; the camera asked for 30 frames a second; Show what the models read in Done\'s place '
     + JSON.stringify({labStart, ...lshot, asked: labAsked}));
+  ok(lshown.length === 6 && lshown.every(x => x.whole && x.inside && x.clearOfAuto && x.clearUnder),
+    'lab at 390 px: every long status is shown whole (wrapped, never cut), clear of Auto, and Lab tools moves down under it ' + JSON.stringify(lshown));
+  ok(lbar.clear, 'lab at 390 px: Photos/PDF, the shutter and Models read (named Show what the models read) side by side, none over the shutter ' + JSON.stringify(lbar));
 
   // the tick on the model's type sends it (keep), once; Looks good on both pages sends the shot's attempt at once
   const ltrain = await p.evaluate(async ([a, bId]) => {
@@ -559,6 +678,21 @@ const READS = {
   ok(hang.ready && hang.hung >= 2 && hang.waiting && !hang.early && hang.logged && hang.stuck && hang.next && hang.nextWay === 'bg-cpu' && hang.nextWorker && hang.ended >= hang.hung && hang.again,
     'lab, the watchdog: the live threads stop answering — nothing given up before 25 s; then "stopped answering", the way marked stuck, its threads ended, the next way (one background thread) started and the live frame going on there '
     + JSON.stringify(hang));
+  // The phone's back in the lab (src/scan/ui/back.ts): the Lab tools drawer closed by back; with nothing open,
+  // the lab — the first page of its tab — is not left (its guard entry, armed on the first touch)
+  await p.evaluate(() => { window.__labMark = 1; });
+  if (!(await p.evaluate(() => !!T.q('[data-testid="lab-drawer"]')))) await p.locator('[data-testid="lab-tools"]').tap();
+  await p.waitForSelector('[data-testid="lab-drawer"]');
+  await sleep(400);
+  const labDepth = await p.evaluate(() => ({depth: (history.state && history.state.scanBack) || 0, len: history.length}));
+  await p.goBack();
+  const labBack1 = await p.evaluate(async () => ({closed: await T.until(() => !T.q('[data-testid="lab-drawer"]'), 4000),
+    scanner: !!T.q('[data-testid="scanner"][data-mode="lab"]'), depth: (history.state && history.state.scanBack) || 0}));
+  await p.goBack();
+  await sleep(800);
+  const labBack2 = await p.evaluate(() => ({lab: location.pathname, same: window.__labMark === 1, scanner: !!T.q('[data-testid="scanner"][data-mode="lab"]')}));
+  ok(labDepth.depth === 2 && labBack1.closed && labBack1.scanner && labBack1.depth === 1 && /^\/scan-lab\/?$/.test(labBack2.lab) && labBack2.same && labBack2.scanner,
+    'lab, the phone\'s back: back closes the Lab tools drawer; back again with nothing open does not leave the lab (the first page of its tab: its guard entry) ' + JSON.stringify({labDepth, labBack1, labBack2}));
   const labSite = p.reqs.filter(u => /\/scan\//.test(u)), labOwn = p.reqs.filter(u => /\/scan-lab\//.test(u));
   ok(labSite.length === 0 && labOwn.length > 0,
     'lab: it loads only its own files (/scan-lab/) — no request to the site\'s /scan/ ' + JSON.stringify({site: labSite.slice(0, 5), own: [...new Set(labOwn.map(u => u.replace(/^.*\/scan-lab\//, '/scan-lab/')))]}));

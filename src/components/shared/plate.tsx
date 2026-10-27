@@ -26,6 +26,26 @@ const SIZES = {
 const SWIPE_OPEN = 128;
 const LONG_PRESS_MS = 550;
 
+
+/** The text a title shows (its strings, also inside elements). */
+function textOf(n: React.ReactNode): string {
+  if (n == null || typeof n === 'boolean') return '';
+  if (typeof n === 'string' || typeof n === 'number') return String(n);
+  if (Array.isArray(n)) return n.map(textOf).join('');
+  if (React.isValidElement(n)) return textOf((n.props as { children?: React.ReactNode }).children);
+  return '';
+}
+
+/** One look for every name (owner, 2026-10-27): Hebrew letters sit lower than Latin capitals at the same font size,
+ *  so a name all in Latin capitals (a passport's, "SURESH MARTIN") is drawn a little smaller and a Hebrew one a
+ *  little larger — the letters then stand the same height on the list. */
+export function nameScale(title: React.ReactNode): React.CSSProperties | undefined {
+  const t = textOf(title);
+  if (/[֐-׿]/.test(t)) return { fontSize: '1.06em' };
+  if (/[A-Z]/.test(t) && !/[a-z]/.test(t)) return { fontSize: '0.92em' };
+  return undefined;
+}
+
 export function Plate({
   title, sub, chips, right, color = 'var(--green)', size = 'md', icon,
   onOpen, onEdit, onDelete, actions,
@@ -148,7 +168,7 @@ export function Plate({
         {icon && <span className="grid size-[30px] shrink-0 place-items-center rounded-[10px] [&_svg]:size-[17px]" style={{ color, background: `color-mix(in srgb, ${color} 16%, transparent)` }}>{icon}</span>}
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            <b className={cn('min-w-0 truncate font-semibold', s.name)}>{title}</b>
+            <b dir="auto" className={cn('min-w-0 truncate font-semibold', s.name)}><span style={nameScale(title)}>{title}</span></b>
             {chips && <span className="flex shrink-0 items-center gap-1">{chips}</span>}
           </div>
           {sub && <small className={cn('mt-px block truncate text-muted-foreground', s.sub)}>{sub}</small>}

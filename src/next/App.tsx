@@ -23,7 +23,7 @@ import { Figures, Section } from '@/components/shared/section';
 import { Plate } from '@/components/shared/plate';
 import { PagedList } from '@/components/shared/paged-list';
 import { undoDelete } from '@/components/shared/undo';
-import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
+import { SelectBar, SelectHead, SelectRow, useSelection } from '@/components/shared/select-mode';
 import { Window } from '@/components/shared/window';
 import { SignaturePad } from '@/components/shared/signature-pad';
 import { SignDocuments } from '@/components/shared/sign-documents';
@@ -58,8 +58,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Calendar } from '@/components/ui/calendar';
-import { DatePicker } from '@/components/ui/date-picker';
+import { DateInput, DatePicker, MonthPicker, PickerCalendar, monthLabel, monthsBack } from '@/components/ui/date-picker';
 import { Combobox } from '@/components/ui/combobox';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DataTable, type DataColumn } from '@/components/ui/data-table';
@@ -98,6 +97,9 @@ function Controls() {
   const [client, setClient] = React.useState<string>('');
   const [worker, setWorker] = React.useState<string>('w1');
   const [date, setDate] = React.useState('2026-10-17');
+  const [expiry, setExpiry] = React.useState('');
+  const [dob, setDob] = React.useState('');
+  const [period, setPeriod] = React.useState('month');
   const [pay, setPay] = React.useState('hour');
   const [loading, setLoading] = React.useState(false);
   return (
@@ -149,6 +151,27 @@ function Controls() {
             <DatePicker id="d-date" value={date} onChange={setDate} />
           </div>
         </FieldRow>
+      </Demo>
+
+      <Demo id="dates" title={tr('Dates: one calendar everywhere')}>
+        <FieldRow>
+          <div className="grid gap-1.5">
+            <Label htmlFor="d-expiry">{tr('Expiry date (optional)')}</Label>
+            <DatePicker id="d-expiry" value={expiry} onChange={setExpiry} clearLabel={tr('No date')} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="d-dob">{tr('Date of birth (typed or picked)')}</Label>
+            <DateInput value={dob} onPick={setDob}><Input id="d-dob" placeholder={tr('DD/MM/YYYY')} value={dob} onChange={e => setDob(e.target.value)} /></DateInput>
+          </div>
+        </FieldRow>
+        <div className="grid gap-1.5">
+          <Label htmlFor="d-period">{tr('Period')}</Label>
+          <MonthPicker id="d-period" value={period} onChange={setPeriod} align="start"
+            label={period === 'week' ? tr('This Week') : period === 'month' ? tr('This Month') : period === 'all' ? tr('All Time') : monthLabel(period.slice(2))}
+            presets={[['week', tr('This Week')], ['month', tr('This Month')], ['all', tr('All Time')]]}
+            monthOf={v => (v === 'month' ? monthsBack(0) : v.startsWith('m:') ? v.slice(2) : null)}
+            toValue={ym => (ym === monthsBack(0) ? 'month' : 'm:' + ym)} min={monthsBack(12)} max={monthsBack(0)} />
+        </div>
       </Demo>
 
       <Demo id="checkbox" title={tr('Tick tiles, Switch, Radio')}>
@@ -229,6 +252,18 @@ function WorkerForm() {
   );
 }
 
+/* The Select button in its two states: off ("Select") and selecting ("Select all"). */
+function SelectStates() {
+  const ids = React.useMemo(() => ['a', 'b', 'c'], []);
+  const off = useSelection(ids), on = useSelection(ids);
+  const start = on.start;
+  React.useEffect(() => { start(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <>
+    <SelectRow sel={off} testid="select-state-off"><span className="text-[13px] text-ink-2">{tr('Off: a tap starts selecting')}</span></SelectRow>
+    <SelectRow sel={on} testid="select-state-on"><span className="text-[13px] text-ink-2">{tr('Selecting: a tap ticks every item')}</span></SelectRow>
+  </>;
+}
+
 /* ───────── Lists ───────── */
 function Lists() {
   const [list, setList] = React.useState(WORKERS);
@@ -255,8 +290,7 @@ function Lists() {
           active={filter}
           onPick={k => setFilter(f => (f === k || k !== 'notes' ? null : k))}
         />
-        <div className="flex items-center gap-2"><SelectHead sel={sel} /></div>
-        <Section label={tr('Active')} count={shown.length} folded={folded} onFold={() => setFolded(f => !f)}>
+        <Section label={tr('Active')} count={shown.length} folded={folded} onFold={() => setFolded(f => !f)} tools={<SelectHead sel={sel} testid="plate-select" />}>
           <AnimatePresence initial={false}>
             <PagedList
               items={shown}
@@ -290,6 +324,10 @@ function Lists() {
         <SelectBar sel={sel} onDelete={remove}>
           <Button size="icon-sm" aria-label={tr('Export')} disabled={!sel.picked.size}><IconDownload className="size-4" /></Button>
         </SelectBar>
+      </Demo>
+
+      <Demo id="select-button" title={tr('Select button (both states)')}>
+        <SelectStates />
       </Demo>
 
       <Demo id="plate-sizes" title={tr('Plate sizes and states')}>
@@ -398,7 +436,7 @@ function Windows() {
         </Row>
       </Demo>
 
-      <Demo id="theme" title={tr('Theme switch (Dark / Light / System)')}>
+      <Demo id="theme" title={tr('Theme switch (Dark / Light)')}>
         <Row>
           <ThemeSwitch className="w-full max-w-[340px]" />
           <ThemeButton />
@@ -514,7 +552,7 @@ function Data() {
       </Demo>
 
       <Demo id="calendar" title={tr('Calendar')}>
-        <Calendar mode="single" selected={day} onSelect={setDay} defaultMonth={new Date(2026, 9, 1)} className="mx-auto" />
+        <PickerCalendar mode="single" selected={day} onSelect={setDay} defaultMonth={new Date(2026, 9, 1)} className="mx-auto" />
       </Demo>
 
       <Demo id="card" title={tr('Card and Separator')}>

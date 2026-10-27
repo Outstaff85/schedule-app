@@ -25,6 +25,7 @@ import type { ShotPage } from '../engine/shot';
 import type { Want } from '../engine/models';
 import type { OrtDir } from '../engine/surface';
 import { useFigures } from '../ui/useFigures';
+import { useBack } from '../ui/back';
 import type { ScanSessionLike } from '../ui/useScanSession';
 import { PageReadouts } from './Readouts';
 
@@ -96,13 +97,14 @@ export function LabDrawer({ session, figuresNow, errors, lines, settings, onSett
   onProbe?: (files: File[]) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  useBack(open, () => setOpen(false));  // the phone's back closes it (ui/back.ts)
   const live = useFigures(session, open);
   const figures = live || (open ? figuresNow() : null);
   return (
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>
         <Button size="sm" data-testid="lab-tools"
-          className="absolute left-4 top-[calc(76px+env(safe-area-inset-top,0px))] z-10">
+          className="absolute left-4 top-[var(--scan-top,calc(76px+env(safe-area-inset-top,0px)))] z-10">
           <IconAdjustments className="size-[18px]" />{tr('Lab tools')}
         </Button>
       </DrawerTrigger>

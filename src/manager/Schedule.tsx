@@ -17,7 +17,7 @@ import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { useIsPhone } from '@/hooks/use-phone';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
+import { PickerCalendar } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -276,7 +276,7 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
           sub={<><span>{sum}</span><DayMarks w={w} start={start} today={today} /></>}
           right={<span className="flex items-center gap-1.5" data-testid="week-hours">{hoursShort(weekHours(w, start))}<IconChevronDown className={cn('size-4 text-ink-3 transition-transform duration-150', open && 'rotate-180')} /></span>}
           selecting={sel.on} selected={sel.picked.has(w.id)} onToggle={() => sel.toggle(w.id)}
-          onOpen={() => toggle(w.id)} onEdit={() => api.editWorker(w.id)}
+          onOpen={() => toggle(w.id)} onEdit={snap.canAddWorker ? () => api.editWorker(w.id) : undefined}
           expanded={open && !sel.on}
         >
           {open && !sel.on && (
@@ -321,8 +321,12 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-2">
-            <Calendar mode="single" selected={start} defaultMonth={start}
-              onSelect={d => { if (d) { api.setWeek(localYMD(sundayOf(d))); setCalOpen(false); } }} />
+            {/* The one calendar (date-picker.tsx): the shown week lit, a tap on any day opens its week. */}
+            <div data-slot="date-calendar" dir="ltr">
+              <PickerCalendar mode="single" selected={start} defaultMonth={start}
+                modifiers={{ week: { from: start, to: addDays(start, 6) } }} modifiersClassNames={{ week: '[&>button]:bg-[rgba(109,214,160,.18)]' }}
+                onSelect={d => { if (d) { api.setWeek(localYMD(sundayOf(d))); setCalOpen(false); } }} />
+            </div>
           </PopoverContent>
         </Popover>
         <Button size="icon" aria-label={tr('Next week')} data-testid="week-next" onClick={() => week(1)}><IconChevronRight /></Button>
@@ -362,7 +366,7 @@ export function Schedule({ snap, api }: { snap: ScheduleSnapshot; api: ManagerBr
               <Button size="sm" data-testid="copy-last" onClick={() => askCopy('last', ids)}><IconCopy className="size-4" />{tr('Copy last week')}</Button>
               <Button size="sm" data-testid="copy-repeat" onClick={() => askCopy('repeat', ids)}><IconCalendarRepeat className="size-4" />{tr('Repeat for N weeks')}</Button>
             </>}
-            <span className={cn('flex', !sel.on && 'ml-auto')}><SelectHead sel={sel} /></span>
+            <SelectHead sel={sel} testid="sched-select" />
           </div>
         )}
         <PagedList items={vis} columns render={row}

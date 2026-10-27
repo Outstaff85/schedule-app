@@ -1,6 +1,6 @@
 // The Accounting tab of the manager app (docs/accounting.md → Accounting tab),
 // drawn in React inside the old page (stage 6e). One layout for every section,
-// so nothing moves when the tab changes: the period (‹ select ›, centred), the
+// so nothing moves when the tab changes: the period (‹ the month picker ›, centred), the
 // tabs Salary / Billing / Approvals / Alerts on one line, then the same figures (Pay, Travel ₪, Total Pay, To
 // approve — or an HR's My commission) over every row, and for an HR its
 // reduced view (its own workers' Salary with its commission; Hours approval
@@ -21,13 +21,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable, type DataColumn } from '@/components/ui/data-table';
 import { Plate } from '@/components/shared/plate';
 import { Figures, Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
 import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
 import { Window } from '@/components/shared/window';
+import { MonthPicker, monthsBack } from '@/components/ui/date-picker';
 import { HoursReview } from '@/hours-review/HoursReview';
 import type { AccountingSnapshot, ManagerBridge, PendingBatch } from './bridge';
 import {
@@ -134,10 +134,7 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
     <div data-testid="accounting" data-tab={shown} data-view={simple ? 'pay' : 'full'}>
       <div className="mb-3 flex items-center justify-center gap-1.5" data-testid="acc-period-nav">
         <Button size="icon" aria-label={tr('Earlier')} title={tr('Earlier')} data-testid="acc-earlier" onClick={() => step(-1)}><IconChevronLeft /></Button>
-        <Select value={snap.period} onValueChange={p => void api.setPeriod(p)}>
-          <SelectTrigger data-testid="acc-period" className="w-auto min-w-[150px] font-semibold text-info"><SelectValue /></SelectTrigger>
-          <SelectContent>{opts.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
-        </Select>
+        <AccPeriodPicker value={snap.period} onChange={p => void api.setPeriod(p)} locale={snap.locale} data-testid="acc-period" className="w-auto min-w-[150px] font-semibold text-info" />
         <Button size="icon" aria-label={tr('Later')} title={tr('Later')} data-testid="acc-later" onClick={() => step(1)}><IconChevronRight /></Button>
       </div>
       {!simple && (
@@ -288,12 +285,12 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
       <Section label={<SecLabel k="salary" label="Salary Calculation" onHelp={onHelp} />} icon={<IconCash className="size-4" />} tools={<>
         <Button size="icon-sm" data-testid="sal-search-btn" aria-label={tr('Search a worker')} title={tr('Search a worker')} on={searching} onClick={() => setSearch(!searching)}><IconSearch className="size-4" /></Button>
         {snap.canExport && !payOnly && <Button size="icon-sm" data-testid="sal-export" aria-label={tr('Export')} title={tr('Export')} onClick={onExport}><IconDownload className="size-4" /></Button>}
+        {!payOnly && entries.length > 0 && <SelectHead sel={sel} testid="sal-select" className="ml-0" />}
       </>}>
         {searching && <Input data-testid="sal-search" autoFocus type="search" className="mb-2" value={q} placeholder={tr('Search a worker')} onChange={e => setSearch(true, e.target.value)} />}
         {!entries.length ? (
           <div data-testid="sal-empty" className="rounded-[14px] border border-dashed border-white/20 px-3 py-4 text-center text-[13px] text-ink-2">{tr('No punch data for this period')}</div>
         ) : <>
-          {!payOnly && <div className="mb-2 flex" data-testid="sal-select"><SelectHead sel={sel} /></div>}
           <DataTable data-testid="sal-table" columns={columns} data={rows} rowId={e => String(e.workerId)} footer={footer} card={plate}
             empty={<div className="py-4 text-center text-[13px] text-ink-2">{tr('No workers found')}</div>}
             onRowOpen={e => (sel.on ? sel.toggle(String(e.workerId)) : setRow(e))} onRowEdit={e => api.openPay(String(e.workerId))} />
@@ -453,7 +450,7 @@ function PendingHours({ snap, api, d, onHelp }: { snap: AccountingSnapshot; api:
   const reject = async (which: string[]) => { await api.rejectBatches(which); setSeq(n => n + 1); };
   return (
     <Section id="accSecPending" data-testid="pending-hours" label={<SecLabel k="pending" label="Pending hours" onHelp={onHelp} />} icon={<IconFileCheck className="size-4" />} count={list ? list.length : undefined}
-      tools={can && list && list.length > 0 ? <SelectHead sel={sel} /> : undefined}>
+      tools={can && list && list.length > 0 ? <SelectHead sel={sel} testid="pending-select" /> : undefined}>
       {failed ? <div className="py-3 text-[13px] text-ink-3">{tr('Could not load')}</div>
         : !list ? <Skeleton className="h-[52px]" />
         : !list.length ? <div data-testid="pending-empty" className="rounded-[14px] border border-dashed border-white/20 px-3 py-4 text-center text-[13px] text-ink-2">{tr('Nothing pending')}</div>
@@ -505,6 +502,19 @@ function AlertsTab({ alerts, api }: { alerts: AccAlert[]; api: ManagerBridge }) 
   );
 }
 
+// ── The period: the one MonthPicker — This Week, This Month, All Time above the months (the 12 before this one) ──
+function AccPeriodPicker({ value, onChange, locale, className, ...rest }: { value: string; onChange: (p: string) => void; locale: string; className?: string; 'data-testid'?: string }) {
+  const opts = periodOptions(tr, locale), now = monthsBack(0);
+  return (
+    <MonthPicker value={value} onChange={onChange} className={className} {...rest}
+      label={(opts.find(o => o[0] === value) || [value, value])[1]}
+      presets={opts.filter(o => !o[0].startsWith('m:'))}
+      monthOf={v => (v === 'month' ? now : /^m:/.test(v) ? v.slice(2) : null)}
+      toValue={ym => (ym === now ? 'month' : 'm:' + ym)}
+      min={monthsBack(12)} max={now} />
+  );
+}
+
 // ── Export ──
 function ExportWindow({ snap, api, onClose }: { snap: AccountingSnapshot; api: ManagerBridge; onClose: () => void }) {
   const [period, setPeriod] = React.useState(snap.period);
@@ -518,10 +528,7 @@ function ExportWindow({ snap, api, onClose }: { snap: AccountingSnapshot; api: M
     <Window open onOpenChange={o => { if (!o) onClose(); }} title={tr('Export salary')}>
       <div className="grid gap-3" data-testid="sal-export-window">
         <label className="grid gap-1.5"><span className="og-label">{tr('Period')}</span>
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger data-testid="sal-export-period" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>{periodOptions(tr, snap.locale).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
-          </Select>
+          <AccPeriodPicker value={period} onChange={setPeriod} locale={snap.locale} data-testid="sal-export-period" className="w-full" />
         </label>
         <div className="grid grid-cols-3 gap-2">
           <Button data-testid="sal-export-csv" onClick={() => void run('csv')}><IconFileText />CSV</Button>

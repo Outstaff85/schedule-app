@@ -11,7 +11,7 @@
 import * as React from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import {
-  IconAlertCircle, IconAlertTriangle, IconBriefcase, IconCalendar, IconChevronDown, IconChevronUp, IconClipboardText, IconDeviceFloppy,
+  IconAlertCircle, IconAlertTriangle, IconBriefcase, IconCalendar, IconCheck, IconChevronDown, IconChevronUp, IconClipboardText, IconDeviceFloppy,
   IconFileCertificate, IconFileText, IconFiles, IconHeart, IconHome, IconId, IconIdBadge2, IconKey, IconLink, IconLoader2, IconMapPin,
   IconMoodKid, IconPlus, IconRefresh, IconScan, IconTrash, IconTruckDelivery, IconUpload, IconUser, IconUserShield, IconUsers, IconX,
 } from '@tabler/icons-react';
@@ -25,11 +25,12 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { DatePicker } from '@/components/ui/date-picker';
+import { DateInput, DatePicker } from '@/components/ui/date-picker';
 import { Combobox } from '@/components/ui/combobox';
 import { FieldRow } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { SignaturePad, type SignaturePadHandle } from '@/components/shared/signature-pad';
+import { PagedList } from '@/components/shared/paged-list';
 import type { Child, DayShift, EditorInfo, ManagerBridge, ScanHit, WorkerRecord } from './bridge';
 import { NoticeChipsAll, initials } from './worker-head';
 import { Line, TodayPin } from './pieces';
@@ -250,14 +251,20 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
     if (!m || m.k === 'busy') return;
     if (m.k === 'check' || m.k === 'found' || String(val || '').trim()) setMark(key, null);
   };
-  const text = (key: FormKey, opts: { label: React.ReactNode; placeholder?: string; inputMode?: 'numeric'; className?: string; hint?: React.ReactNode } ) => {
+  const text = (key: FormKey, opts: { label: React.ReactNode; placeholder?: string; inputMode?: 'numeric'; className?: string; hint?: React.ReactNode; date?: boolean } ) => {
     const m = marks[key], sp = key in SCAN_FIELDS || key === 'docExpiry' ? scanProps(key) : null;
     const reg = form.register(key, { onChange: e => typed(key, e.target.value) });
     const ph = m && (m.k === 'missing' || m.k === 'none') ? (m.k === 'missing' ? '🔍 ' + tr('Tap to search the scan') : opts.placeholder) : m?.k === 'busy' ? tr('Searching the scan…') : opts.placeholder;
+    const input = (
+      <Input id={INPUT_ID[key]} dir="auto" autoComplete="off" inputMode={opts.inputMode} placeholder={ph} readOnly={m?.k === 'busy'}
+        {...reg} {...(sp || {})} className={cn(sp?.className)} />
+    );
     return (
       <Field label={opts.label} className={opts.className} hint={<>{opts.hint}<ScanHint k={key} m={m} /></>}>
-        <Input id={INPUT_ID[key]} dir="auto" autoComplete="off" inputMode={opts.inputMode} placeholder={ph} readOnly={m?.k === 'busy'}
-          {...reg} {...(sp || {})} className={cn(sp?.className)} />
+        {/* A date (dd/mm/yyyy): typed, or picked in the one calendar behind the icon at the field's end (date-picker.tsx). */}
+        {opts.date
+          ? <DateInput value={String(v[key] || '')} disabled={m?.k === 'busy'} onPick={val => { set(key, val); typed(key, val); }}>{input}</DateInput>
+          : input}
       </Field>
     );
   };
@@ -335,7 +342,16 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   const addClient = (id: string) => { if (id && !clientIds.includes(id)) setClientIds([...clientIds, id]); };
   const left = info.clients.filter(c => !clientIds.includes(c.id));
   const termDoc = currentContractDoc(w);
-  const docs = [...(w.docs || [])].sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
+  // the Documents section reads the stored record (a document added from here while the window is open shows at once)
+  const live = (editId && api.record(editId)) || w;
+  const docs = [...(live.docs || [])].sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
+  // the ID / Passport line: only the ID's own problems (its number, the scan, the ספח, its expiry, a failed upload) — red
+  // expired or failed, amber missing or expiring; Upload (a new scan) for any of them
+  const idColor = info.docFailed || info.docExpiryLevel === 'error' ? 'var(--bad)' : info.docIdMissing.length || info.docExpiryLevel === 'warn' ? 'var(--warn)' : 'var(--ok)';
+  const idUpload = !!(info.docIdMissing.length || info.docFailed || info.docExpiryText);
+  // the Form 101 line: its PDF (built on save) and the signature (drawn in this window's Form 101 section — Sign opens it)
+  const sigMissing = info.docF101Missing.length > 0 && !!live.docUrl;
+  const openForm101 = () => { setOpen(o => (o.includes('form101') ? o : [...o, 'form101'])); requestAnimationFrame(() => document.querySelector('#workerModal [data-sec="form101"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); };
 
   return (
     <div data-testid="worker-editor" data-edit={editId || ''} className="grid gap-2">
@@ -363,7 +379,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               {text('docId', { label: 'מספר ת.ז./דרכון', placeholder: 'ת.ז. / דרכון', hint: <>
                 {w.idChecksumOk === false && <Hint><IconAlertTriangle className="inline size-3" /> {tr('The number failed the check digit test — check it by hand')}</Hint>}
               </> })}
-              {text('docExpiry', { label: 'תוקף ת.ז./דרכון', placeholder: tr('DD/MM/YYYY') })}
+              {text('docExpiry', { label: 'תוקף ת.ז./דרכון', placeholder: tr('DD/MM/YYYY'), date: true })}
             </FieldRow>
             <Field label="מין" hint={<ScanHint k="docSex" m={marks.docSex} />}>
               <Seg id="wSex" value={v.docSex} onChange={pick('docSex')} opts={Object.entries(SEX_LABELS)} mark={choiceMark('docSex')} onPointerDown={choicePointer('docSex')} />
@@ -378,7 +394,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               </Field>
             </FieldRow>
             <FieldRow>
-              {text('docDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY') })}
+              {text('docDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY'), date: true })}
               {text('phone', { label: 'טלפון', placeholder: '+972...' })}
             </FieldRow>
           </AccordionContent>
@@ -479,15 +495,17 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
           </AccordionTrigger>
           <AccordionContent {...body('documents')} className="grid gap-1.5">
             {editing ? <>
-              <DocLine color={info.docMissing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconId />} title={tr('ID / Passport')} sub={info.docExpiryText || v.docId}
-                act={info.docMissing.length || info.docFailed ? <Button size="sm" onClick={() => api.rescan()}>{tr('Upload')}</Button> : null} />
-              <DocLine color={w.docUrl ? 'var(--ok)' : 'var(--warn)'} icon={<IconFileText />} title={tr('Form 101')} sub={w.docUrl ? tr('Saved') : tr('Not saved yet')} />
-              {docs.map(d => { const x = info.docExpiry[String(d.id)], cd = d.type === 'contract' ? contractDocDate(w, d) : null;
-                return <DocLine key={d.id} color={x ? (x.level === 'error' ? 'var(--bad)' : 'var(--warn)') : 'var(--ok)'} icon={d.type === 'contract' ? <IconFileCertificate /> : <IconIdBadge2 />}
+              <DocLine color={idColor} icon={<IconId />} title={tr('ID / Passport')} sub={info.docExpiryText || v.docId} doc="id"
+                act={idUpload ? <Button size="sm" data-testid="editor-doc-upload" onClick={() => api.rescan()}>{tr('Upload')}</Button> : null} />
+              <DocLine color={info.docF101Missing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconFileText />} title={tr('Form 101')} doc="form101"
+                sub={!live.docUrl ? tr('Not saved yet') : sigMissing ? tr('Saved — signature missing') : tr('Saved')}
+                act={sigMissing ? <Button size="sm" data-testid="editor-doc-sign" onClick={openForm101}>{tr('Sign')}</Button> : null} />
+              <PagedList items={docs} render={d => { const x = info.docExpiry[String(d.id)], cd = d.type === 'contract' ? contractDocDate(live, d) : null;
+                return <DocLine key={d.id} className="mb-1.5" doc={String(d.id)} color={x ? (x.level === 'error' ? 'var(--bad)' : 'var(--warn)') : 'var(--ok)'} icon={d.type === 'contract' ? <IconFileCertificate /> : <IconIdBadge2 />}
                   title={tr(WORKER_DOC_TYPES[d.type] || 'Document')} sub={x ? x.text : d.type === 'contract' ? (cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : d.name || '')
                     : d.expiry ? tr('Expires {0}', { 0: fmtDMY(d.expiry) }) : d.name || ''}
-                  act={x ? <Button size="sm" onClick={() => api.openDocUpload(w.id)}>{tr('Renew')}</Button> : null} />; })}
-              <Button className="mt-1 justify-self-start" onClick={() => api.openDocUpload(w.id)}><IconUpload className="size-4" />{tr('Add document')}</Button>
+                  act={x ? <Button size="sm" data-testid="editor-doc-renew" onClick={() => api.openDocUpload(w.id, d.type, true)}>{tr('Renew')}</Button> : null} />; }} />
+              <Button className="mt-1 justify-self-start" data-testid="editor-doc-add" onClick={() => api.openDocUpload(w.id, undefined, true)}><IconUpload className="size-4" />{tr('Add document')}</Button>
             </> : <div className="text-[13px] text-ink-2">{tr('Documents are added on the worker card after the worker is saved.')}</div>}
           </AccordionContent>
         </AccordionItem>
@@ -506,19 +524,19 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
               <Field label="סוג הכנסה (טופס 101)"><Choice id="wIncomeType" value={v.incomeType} opts={Object.entries(INCOME_LABELS)} onChange={val => set('incomeType', val)} /></Field>
               <Field label="הכנסה נוספת (טופס 101)"><Choice id="wOtherIncomeType" value={v.otherIncomeType} opts={Object.entries(OTHER_INCOME_LABELS)} onChange={val => set('otherIncomeType', val)} /></Field>
             </div>
-            <Hint tone="muted">{w.docUrl ? tr('Changing these fields (or the address, city or income type above) updates the document saved in {0} by itself.', { 0: 'Firebase Storage' }) : tr('The Form 101 PDF is built by itself when the worker is saved.')}</Hint>
+            <Hint tone="muted">{w.docUrl ? tr('Changing these fields (or the address, city or income type above) updates the saved Form 101 by itself.') : tr('The Form 101 PDF is built by itself when the worker is saved.')}</Hint>
             <FieldRow>
               <Button size="sm" className="justify-between" aria-expanded={spouseOpen} data-testid="editor-spouse-btn" onClick={() => setSpouseOpen(!spouseOpen)}>
-                <span className="inline-flex items-center gap-1.5" dir="rtl"><IconHeart className="size-4" />בן/בת הזוג{spouseFilled ? ' ✓' : ''}</span>{spouseOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap" dir="rtl"><IconHeart className="size-4" />בן/בת הזוג{spouseFilled && <IconCheck className="size-4 text-ok" data-testid="editor-spouse-filled" />}</span>{spouseOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
               </Button>
               <Button size="sm" className="justify-between" aria-expanded={kidsOpen} data-testid="editor-kids-btn" onClick={() => setKidsOpen(!kidsOpen)}>
-                <span className="inline-flex items-center gap-1.5" dir="rtl"><IconMoodKid className="size-4" />ילדים{kidsN ? ` (${kidsN})` : ''}</span>{kidsOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap" dir="rtl"><IconMoodKid className="size-4" />ילדים{kidsN ? ` (${kidsN})` : ''}</span>{kidsOpen ? <IconChevronUp className="size-4" /> : <IconChevronDown className="size-4" />}
               </Button>
             </FieldRow>
             <div className={cn('grid gap-2.5 rounded-[12px] border border-white/12 p-3', !spouseOpen && 'hidden')} data-testid="editor-spouse">
               <b className="flex items-center gap-1.5 text-[13px]" dir="rtl"><IconHeart className="size-4" />פרטי בן/בת הזוג</b>
               <FieldRow>{text('spouseSurname', { label: 'שם משפחה' })}{text('spouseGiven', { label: 'שם פרטי' })}</FieldRow>
-              <FieldRow>{text('spouseId', { label: 'מספר זהות / דרכון', inputMode: 'numeric' })}{text('spouseDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY') })}</FieldRow>
+              <FieldRow>{text('spouseId', { label: 'מספר זהות / דרכון', inputMode: 'numeric' })}{text('spouseDob', { label: 'תאריך לידה', placeholder: tr('DD/MM/YYYY'), date: true })}</FieldRow>
               <Field label="הכנסת בן/בת הזוג"><Seg id="wSpouseIncome" value={v.spouseIncome} onChange={val => set('spouseIncome', val)} opts={Object.entries(SPOUSE_INCOME_LABELS)} /></Field>
             </div>
             <div className={cn('grid gap-2 rounded-[12px] border border-white/12 p-3', !kidsOpen && 'hidden')} data-testid="editor-kids">
@@ -530,7 +548,11 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
                     <Field label="שם הילד/ה"><Input dir="auto" value={c.name || ''} onChange={upd('name')} /></Field>
                     <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 [&>*]:min-w-0">
                       <Field label="ת.ז. / דרכון"><Input value={c.idNo || ''} onChange={upd('idNo')} /></Field>
-                      <Field label="תאריך לידה"><Input placeholder={tr('DD/MM/YYYY')} value={c.dob || ''} onChange={upd('dob')} /></Field>
+                      <Field label="תאריך לידה">
+                        <DateInput value={c.dob || ''} onPick={val => setChildren(list => list.map((x, j) => (j === i ? { ...x, dob: val } : x)))}>
+                          <Input placeholder={tr('DD/MM/YYYY')} value={c.dob || ''} onChange={upd('dob')} />
+                        </DateInput>
+                      </Field>
                       <Button size="icon-sm" title="הסר" aria-label="הסר" onClick={() => setChildren(list => list.filter((_, j) => j !== i))}><IconTrash className="size-4" /></Button>
                     </div>
                   </div>
@@ -571,9 +593,9 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   );
 }
 
-function DocLine({ color, icon, title, sub, act }: { color: string; icon: React.ReactNode; title: string; sub?: string; act?: React.ReactNode }) {
+function DocLine({ color, icon, title, sub, act, doc, className }: { color: string; icon: React.ReactNode; title: string; sub?: string; act?: React.ReactNode; doc?: string; className?: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-[12px] bg-white/[.04] px-3 py-2" style={{ boxShadow: `inset 3px 0 0 ${color}` }} data-testid="editor-doc">
+    <div className={cn('flex items-center gap-2.5 rounded-[12px] bg-white/[.04] px-3 py-2', className)} style={{ boxShadow: `inset 3px 0 0 ${color}` }} data-testid="editor-doc" data-doc={doc} data-color={color}>
       <span className="grid size-[30px] shrink-0 place-items-center rounded-[10px] [&_svg]:size-[17px]" style={{ color, background: `color-mix(in srgb, ${color} 16%, transparent)` }}>{icon}</span>
       <div className="min-w-0 flex-1"><b className="block text-sm font-semibold">{title}</b><small className="block truncate text-xs text-ink-2">{sub}</small></div>
       {act}

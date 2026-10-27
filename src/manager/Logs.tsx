@@ -13,7 +13,7 @@ import { esc } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty, EmptyTitle } from '@/components/ui/empty';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MonthPicker, monthsBack } from '@/components/ui/date-picker';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
@@ -42,10 +42,8 @@ export function LogsPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBridg
   return (
     <div data-testid={pane.kind} data-period={pane.period}>
       <div className="mb-3 flex flex-wrap items-center gap-1" data-testid="log-toolbar">
-        <Select value={pane.period} onValueChange={v => api.setLogPeriod(pane.kind, v)}>
-          <SelectTrigger className="mr-1 w-auto min-w-[170px]" aria-label={tr('Period')} data-testid="log-period"><SelectValue /></SelectTrigger>
-          <SelectContent>{pane.periods.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
-        </Select>
+        <MonthPicker value={pane.period} onChange={v => api.setLogPeriod(pane.kind, v)} className="mr-1 w-auto min-w-[170px]" aria-label={tr('Period')} data-testid="log-period"
+          label={pane.label} presets={pane.periods.filter(o => !o[0].startsWith('m:'))} min={monthsBack(11)} max={monthsBack(0)} align="start" />
         <Button size="icon-sm" variant="ghost" data-testid="log-copy" title={tr('Copy all')} aria-label={tr('Copy all')} onClick={copyAll}><IconCopy className="size-4" /></Button>
         <Button size="icon-sm" variant="ghost" data-testid="log-print" title={tr('Print')} aria-label={tr('Print')} onClick={() => printPane(pane, firm, api)}><IconPrinter className="size-4" /></Button>
         <Button size="icon-sm" variant="ghost" data-testid="log-refresh" title={tr('Refresh')} aria-label={tr('Refresh')} onClick={() => void api.reloadLog(pane.kind)}><IconRefresh className="size-4" /></Button>

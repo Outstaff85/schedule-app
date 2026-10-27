@@ -1,6 +1,6 @@
 # Hours review (`src/hours-review/`, the `hours` function)
 
-The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows, the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and as a pill (`.hrv-pill`, `HRV_STATES[st].pill`: Waiting, Approved, Fixed, Changed, Disputed, Fix proposed, Rejected — stage 13) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
+The screen is drawn in the Odinson Glass look (redesign stage 10): glass tabs and month arrows (the month's name between them opens the one month picker, `MonthPicker` — docs/components.md → `date-picker.tsx`; no month after this one), the status line as a plate with a coloured bar, each day a plate with its state as the bar (`--c`) and as a pill (`.hrv-pill`, `HRV_STATES[st].pill`: Waiting, Approved, Fixed, Changed, Disputed, Fix proposed, Rejected — stage 13) and the hours in the figure green. Its styles fall back to plain values where a page lacks the design tokens.
 
 One screen, one Cloud Function and one store for every login that reviews its workers' hours: a **client**, a **supplier** and an **HR** — each in the manager app's **Hours** tab (a client's and a supplier's through `src/manager/Portal.tsx`, an HR's `HoursTab`). The same ticks, the same per-day actions, the same code (per user request 2026-10-11: "one template and one set of functions for hours").
 
@@ -9,7 +9,7 @@ One screen, one Cloud Function and one store for every login that reviews its wo
 `HOUR_PERMS` in `functions-auth/core.py` (the Users list shows a login's hours ticks from its flat rights, `HOUR_RIGHTS` in `src/manager/Users.tsx`), each given by one right — hours by **Hours**, approve / dispute / fix by **Approve / Dispute / Fix hours**, schedule by **Schedule**, export by **Export**:
 
 - **hours** — see the month's shifts (in / out / hours per day);
-- **approve** — approve a day, several ticked days at once (Select for a login with this tick — owner 2026-10-13: a Select button above the days; after it "N selected · Select all · Done" and a tick box on every day still waiting / changed / whose fix was rejected; a tap on the day or its box ticks it, the day's own buttons stay; with a tick the glass bar shows — its Approve sends their lines in one `approve` (`approveSelected` in `HoursReview.tsx`), ✕ clears the ticks), or the whole month at once;
+- **approve** — approve a day, several ticked days at once (Select for a login with this tick — owner 2026-10-13: the Select button at the right of the Total line above the days; after it the same button reads "Select all" (then "Select none") and a tick box shows on every day still waiting / changed / whose fix was rejected; a tap on the day or its box ticks it, the day's own buttons stay; with a tick the glass bar shows — its Approve sends their lines in one `approve` (`approveSelected` in `HoursReview.tsx`), ✕ clears the ticks), or the whole month at once;
 - **dispute** — dispute a day with a comment;
 - **fix** — propose the right in / out of a day (with a comment); applied only when a manager accepts it;
 - **schedule** — the workers' planned shifts;
