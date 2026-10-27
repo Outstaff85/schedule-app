@@ -18,7 +18,7 @@ def _build(fmain, **extra):
     p = {"isId": True, "isIsraeli": True, "surname": "כהן", "given": "דנה", "no": "12345678",
          "dob": "01/02/1990", "sex": "F", "city": "חיפה", "signDate": "01/10/2026"}
     p.update(extra)
-    out = fmain.build_form101_pdf(p)
+    out = fmain.build_form101_pdf(p, flatten=False)   # the fields kept, to read their values
     assert len(out) == 2
     return out
 
@@ -52,3 +52,15 @@ def test_a_passport_number_is_not_padded(functions_main):
     f = _fields(_build(functions_main, isId=False, isIsraeli=False, no="AB1234567")[0])
     assert f["passport_no"] == "AB1234567"
     assert not f.get("employer_zeut_num")
+
+
+def test_the_built_pdf_is_flat_no_fillable_fields_and_the_values_on_the_page(functions_main):
+    # owner, 2026-10-27: a downloaded Form 101 showed the form's blue field boxes — the PDF is flattened
+    p = {"isId": True, "isIsraeli": True, "surname": "כהן", "given": "דנה", "no": "12345678",
+         "dob": "01/02/1990", "sex": "F", "city": "חיפה", "signDate": "01/10/2026"}
+    pdf, _ = functions_main.build_form101_pdf(p)
+    doc = pymupdf.open(stream=pdf, filetype="pdf")
+    assert sum(1 for page in doc for _ in page.widgets()) == 0
+    assert not doc.is_form_pdf
+    text = "".join(page.get_text() for page in doc).replace(" ", "").replace(chr(10), "")
+    assert "012345678" in text

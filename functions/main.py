@@ -193,7 +193,7 @@ class Form101Builder:
         page.draw_line(p1, p2, color=CHECK_BLUE, width=thickness, lineCap=1)
         page.draw_line(p2, p3, color=CHECK_BLUE, width=thickness, lineCap=1)
 
-    def finalize(self):
+    def finalize(self, flatten=True):
         catalog = self.doc.pdf_catalog()
         # xref_set_key's dotted "AcroForm/NeedAppearances" path only works
         # when /AcroForm is embedded directly in the catalog dict — this
@@ -208,6 +208,12 @@ class Form101Builder:
             self.doc.xref_set_key(acroform_xref, "NeedAppearances", "false")
         else:
             self.doc.xref_set_key(catalog, "AcroForm/NeedAppearances", "false")
+        # Flatten (owner, 2026-10-27): the fields' appearances are baked into the page and the fields removed, so
+        # a viewer shows a plain document — not a fillable form with its blue field boxes and comb marks. The
+        # values drawn by hand (set_hebrew, check…) are page content already; the ones PyMuPDF drew in a field's
+        # own appearance (set_text, set_comb) become page content here.
+        if flatten:
+            self.doc.bake(annots=False, widgets=True)
         # garbage=4 drops unused/duplicate objects (the biggest win on a doc
         # with several embedded scan/signature images), deflate*=True compresses
         # any stream that isn't already, clean=True repacks page content more
@@ -319,7 +325,8 @@ def _israeli_id(no):
     return ident.zfill(9) if re.fullmatch(r"\d{8}", ident) else ident
 
 
-def build_form101_pdf(p):
+def build_form101_pdf(p, flatten=True):
+    """flatten=False keeps the form's fields (the tests read the values from them); every caller gets a flat PDF."""
     b = Form101Builder()
     page_h = b.page1.rect.height
 
@@ -519,7 +526,7 @@ def build_form101_pdf(p):
     parts = [full_name, re.sub(r"[^A-Za-z0-9]", "", str(no or "")).upper(), fn_part(employer.get("companyName"))]
     file_name = " - ".join(x for x in parts if x) + ".pdf"
 
-    return b.finalize(), file_name
+    return b.finalize(flatten), file_name
 
 
 # Frankfurt, next to Firestore and Storage (2026-10-24).
