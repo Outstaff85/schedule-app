@@ -602,28 +602,34 @@ async function theme(browser) {
       if (section === 'lists') ok(r.bars > 3 && r.lowBars.length === 0, `theme ${w}: the plates' coloured bars stand out (≥ 3:1, ${r.bars} plates) ` + JSON.stringify(r.lowBars));
       await p.screenshot({ path: path.join(OUT, `next-theme-light-${section}-${w}.png`), fullPage: false });
     }
-    // System follows the device's own setting, live
+    // the one switch (owner 2026-10-27: Dark ↔ Light, no System segment): its toggle turns Light on
     await open(p, 'windows');
     if (mobile) {
       // a phone page without an account (the punch page) has the bare button: it opens the switch in a window
       await p.click('[data-testid=demo-theme] [data-testid=theme-btn]');
       await p.waitForSelector('[data-testid=window] [data-testid=theme-switch]');
-      await p.click('[data-testid=window] [data-testid=theme-system]');
+      ok(await p.locator('[data-testid=window] [data-testid=theme-system]').count() === 0, `theme ${w}: the switch has no System choice`);
+      await p.click('[data-testid=window] [data-testid=theme-toggle]');
       await p.keyboard.press('Escape');
     } else {
       // the account menu carries the switch
       await p.click('[data-testid=demo-account] [data-testid=account-btn]');
       await p.waitForSelector('[data-testid=account-menu] [data-testid=account-theme]');
-      await p.click('[data-testid=account-menu] [data-testid=theme-system]');
-      ok(await visible(p, '[data-testid=account-menu]'), `theme ${w}: picking a theme leaves the account menu open`);
+      ok(await p.locator('[data-testid=account-menu] [data-testid=theme-system]').count() === 0, `theme ${w}: the switch has no System choice`);
+      await p.click('[data-testid=account-menu] [data-testid=theme-toggle]');
+      ok(await visible(p, '[data-testid=account-menu]'), `theme ${w}: switching the theme leaves the account menu open`);
       await p.keyboard.press('Escape');
     }
+    ok(await look() === 'light' && await stored() === 'light', `theme ${w}: the toggle turns Light on ` + JSON.stringify([await look(), await stored()]));
+    // a device that kept the former "system" still follows its own setting, live
+    await p.evaluate(() => localStorage.setItem('uiTheme', 'system'));
     await p.emulateMedia({ colorScheme: 'dark' });
+    await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('[data-testid=page-windows]');
     await sleep(100);
-    ok(await stored() === 'system' && await look() === 'dark', `theme ${w}: System on a dark device is dark ` + JSON.stringify([await stored(), await look()]));
+    ok(await stored() === 'system' && await look() === 'dark', `theme ${w}: a kept System on a dark device is dark ` + JSON.stringify([await stored(), await look()]));
     await p.emulateMedia({ colorScheme: 'light' });
     await sleep(100);
-    ok(await look() === 'light', `theme ${w}: System follows the device turning light`);
+    ok(await look() === 'light', `theme ${w}: a kept System follows the device turning light`);
     // and back to Dark
     await p.click('[data-testid=demo-theme] [data-testid=theme-switch] [data-testid=theme-dark]');
     ok(await look() === 'dark' && await stored() === 'dark', `theme ${w}: Dark switches the light theme off again ` + JSON.stringify([await look(), await stored()]));
