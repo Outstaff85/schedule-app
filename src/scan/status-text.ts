@@ -48,6 +48,7 @@ export function sessionStatusText(s: SessionStatus): string {
     case 'taken': return tr('Taken · waiting for the next document');
     case 'no_frame': return tr('No frame to capture yet');
     case 'captured': return tr('Captured in {ms} ms', { ms: Math.round(s.ms) });
+    case 'preparing_accurate': return tr('Preparing the accurate model…');
     case 'refining': return tr('Refining the corners…');
     case 'looking_more': return s.count === 1 ? tr('1 document — looking for more…') : tr('{count} documents — looking for more…', { count: s.count });
     case 'shot_failed': return tr('The shot failed — try again');
@@ -70,7 +71,7 @@ export function sessionStatusTone(s: SessionStatus): StatusTone {
     case 'hold': case 'found': case 'taken': case 'picked': return 'ok';
     case 'corners_out': case 'edges_unclear': case 'no_frame': return 'warn';
     case 'shot_failed': case 'stopped': case 'camera_failed': case 'pick_failed': case 'pick_open_failed': return 'bad';
-    case 'finding': case 'captured': case 'refining': case 'looking_more': case 'picture_finding': case 'picture_cutting': return 'busy';
+    case 'finding': case 'captured': case 'preparing_accurate': case 'refining': case 'looking_more': case 'picture_finding': case 'picture_cutting': return 'busy';
     default: return 'plain';
   }
 }

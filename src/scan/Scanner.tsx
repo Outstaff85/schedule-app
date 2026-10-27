@@ -28,7 +28,7 @@ import { DOCTYPES, detectDoctype, pageCopy, type Doctype } from './doctype';
 import { attemptFolders, doctypeMode, scanAttempts, scanSessionId, sendFeedback, type DoctypeMode, type Example } from './server';
 import { loadBatches, saveBatches } from './store';
 import { engineStatusText } from './status-text';
-import { releaseSession, takeSession } from './keep';
+import { prepareEarly, releaseSession, takeSession } from './keep';
 import { ScanSession } from './engine/session';
 import { siteSurface } from './engine/surface';
 import { QUEUE_MAX } from './engine/attempts';
@@ -74,7 +74,7 @@ type KeptStored = Stored & { batch: string; source: Batch['source'] };
 type Typed = Omit<Stored, 'id' | 'turn' | 'blurry'> & { kind?: Doctype };
 
 /** The statuses of a shot still in work: its pages are typed once it settles (a refined cut would be typed again). */
-const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
+const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'preparing_accurate', 'refining', 'looking_more']);
 /** How long Done waits for the pages' types before it goes on without the ones still missing. */
 const WAIT_MS = 30e3;
 let rightSeen = 0; // one right page in five keeps its copy (the document type model's examples)
@@ -115,6 +115,8 @@ async function idToken(): Promise<string | null> {
 }
 /** The site's scan session (made once, kept 3 minutes after the window closes: keep.ts). */
 const newSiteSession = (): ScanSession => new ScanSession(siteSurface(idToken));
+/** The site's session started ahead of the window (keep.ts prepareEarly; open.tsx prepareScanEarly). */
+export const prepareSiteEarly = (): boolean => !!prepareEarly(newSiteSession);
 
 /** The session as the screen drives it, with the window told of each page deleted. */
 function siteView(s: ScanSession, removed: (id: string) => void): ScanSessionLike {

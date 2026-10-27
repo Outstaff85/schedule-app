@@ -7,6 +7,9 @@
 //  - a tremble under JERK does not start the countdown again, a drift over DRIFT does;
 //  - a weak (missed) answer is held for 600 ms, then the frame goes;
 //  - the accurate model's corners replace the live page (the same page id) only when they moved over 0.002;
+//  - the light model first: prepare (and the early start) starts the accurate model only once the live frame's
+//    models are up; a shot before the accurate model is up is shown by the live frame's corners at once and
+//    refined once it is up (kept as it is when it cannot start);
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
 //  - Looks good while the shot still looks for more documents: the attempt goes once the search is over, with
 //    every document the shot gave;
@@ -23,7 +26,8 @@
 //  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
 //  - the refined page is read again on its own cut; a page's pixels are kept once;
-//  - the camera asks for 1280×720 at 30 frames a second and nothing else about the rate.
+//  - the camera asks for 1280×720 at 30 frames a second and nothing else about the rate;
+//  - a listener of the pages that comes after a page was given hears it at once (none after the scan ended).
 //
 //   node tests/scan/session.test.mjs
 import assert from 'node:assert/strict';
@@ -285,6 +289,62 @@ for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
     return log.pages.length + ' page events';
   });
 }
+
+await run('the light model first: prepare (and the early start) starts the live frame\'s models, then the accurate model only once they are up — never both loading at once', async () => {
+  for (const early of [false, true]) {
+    const { s, engines } = setup(steadyLive(Q), { auto: false });
+    const order = [];
+    let liveUp = null;
+    engines.ensureSession = () => { order.push('live start'); return new Promise(r => { liveUp = () => { order.push('live up'); r(); }; }); };
+    engines.ensureCap = async () => { order.push('accurate start'); };
+    const p = s.prepare(early);
+    await flush();
+    assert.deepEqual(order, ['live start'], 'the accurate model waits for the live frame\'s (early ' + early + ')');
+    liveUp(); await p;
+    assert.deepEqual(order, ['live start', 'live up', 'accurate start']);
+    // a live start that fails still lets the accurate model start after it (photos and PDFs)
+    const b = setup(steadyLive(Q), { auto: false }), bo = [];
+    b.engines.ensureSession = async () => { bo.push('live'); throw new Error('no way'); };
+    b.engines.ensureCap = async () => { bo.push('accurate'); };
+    await b.s.prepare(early);
+    assert.deepEqual(bo, ['live', 'accurate']);
+  }
+});
+
+await run('a shot before the accurate model is up: shown at once by the live frame\'s corners ("Preparing the accurate model…"), refined once it is up', async () => {
+  const exact = shift(Q, 0.01);
+  const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false });
+  let up = false, release = null;
+  engine.capUp = () => up;
+  engine.capWait = () => new Promise(r => { release = () => { up = true; r(true); }; });
+  await s.startCamera(video);
+  await clock.runFor(600);
+  engine.shooting = true;
+  let done = null; s.snap().then(n => { done = n; });
+  await clock.runFor(300, () => !!release);
+  assert.equal(log.pages.length >= 1, true, 'the page is out at once');
+  near(log.pages[0].quad, Q, 'cut by the live frame\'s corners');
+  assert.ok(log.status.some(x => x.key === 'preparing_accurate'), 'the status line says it waits: ' + log.status.map(x => x.key).join());
+  assert.ok(!engine.calls.some(c => c.which === 'cap'), 'the accurate model is not asked before it is up');
+  assert.equal(done, null, 'the shot waits for it');
+  release();
+  await clock.runFor(2000, () => done !== null);
+  assert.equal(done, 1);
+  const refined = log.pages.filter(p => p.refined);
+  assert.ok(refined.length >= 1, 'refined once the accurate model is up');
+  assert.deepEqual(refined.at(-1).quad, exact);
+  assert.equal(log.pages.filter(p => p.refined).every(p => p.id === log.pages[0].id), true, 'under the same page id');
+  // the accurate model that could not start: the shot keeps the live frame's corners (no error)
+  const b = setup(call => call.which === 'live' && !call.shooting ? { pts: Q, conf: 0.9 } : NONE, { auto: false });
+  b.engine.capUp = () => false; b.engine.capWait = async () => false;
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(600);
+  let bd = null; b.s.snap().then(n => { bd = n; });
+  await b.clock.runFor(1000, () => bd !== null);
+  assert.equal(bd, 1); assert.ok(!b.engine.calls.some(c => c.which === 'cap'));
+  assert.ok(!b.log.pages.some(p => p.refined)); assert.ok(!b.log.status.some(x => x.key === 'shot_failed'));
+  assert.deepEqual(b.log.status.filter(x => x.key === 'found').at(-1).count, 1);
+});
 
 // the other documents: Q, then the three other quarters; a fifth answer is there for findNext if it asked again
 const QS = [Q, shift(Q, 0.5), shift(Q, 0, 0.5), shift(Q, 0.5, 0.5)];
@@ -775,6 +835,139 @@ await run('the live frame goes on with no frame from before it (a shutter tap ta
   await b.clock.runFor(1000);
   assert.equal(b.s.live.running, true, 'the live frame went on after the switch');
   b.s.stop();
+});
+
+// ── the start's timings and the early start (owner, 2026-10-27) ──
+await run('the open is timed: "Ready: first frame after N ms" once, at the first live answer after the open; an early start marks no open', async () => {
+  const lines = a => { const out = []; a.engines.log.on('log', t => out.push(t)); return out; };
+  // an early start (no window yet): no open marked, no Ready line
+  const a = setup(steadyLive(Q), { auto: false }), saidA = lines(a);
+  await a.s.prepare(true);
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(300);
+  assert.ok(!saidA.some(t => t.startsWith('Ready:')), saidA.join(' | '));
+  // the window opens (prepare): the first live answer gives the Ready line with the time since the open, once
+  const b = setup(steadyLive(Q), { auto: false }), saidB = lines(b);
+  await b.s.prepare();
+  await b.clock.runFor(500);
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(300);
+  const ready = saidB.filter(t => t.startsWith('Ready:'));
+  assert.equal(ready.length, 1, saidB.join(' | '));
+  const ms = +/^Ready: first frame after (\d+) ms$/.exec(ready[0])[1];
+  assert.ok(ms >= 500 && ms < 700, ready[0]);
+  assert.ok(saidB.some(t => /^Time: scanner opened — its models kept from the last scan/.test(t)), 'the open says the models were there already: ' + saidB.join(' | '));
+  assert.ok(saidB.some(t => /^Time: camera started — \d+ ms \(at \d+ ms\)$/.test(t)), saidB.join(' | '));
+  b.s.stop(); a.s.stop();
+});
+
+await run('a listener of the pages that comes after a page was given hears it at once (the scan window listens a moment after it shows); none after the scan ended', async () => {
+  const { s } = setup(() => NONE);
+  const page = (id, readouts) => ({ id, record: { shot: 1, batch: 1, attempt: 'a', input: 'camera', w: 64, h: 48, edgesModel: null, edgesMore: [], pages: 2, way: 'test', model: '' },
+    pg: 0, quad: Q, page: { width: 8, height: 8, turn: -1 }, canvas: null, turn: -1, readouts, refined: false });
+  s.inject(page('a:0', null), true);
+  s.inject(page('a:1', null), true);
+  s.inject({ ...page('a:0', null), readouts: { doctype: null, mrz: null, he: null, errors: [] } });
+  const heard = [];
+  const off = s.on('page', p => heard.push(p.id + (p.readouts ? '+r' : '')));
+  assert.deepEqual(heard, ['a:0+r', 'a:1'], 'the pages held now, in the order given, each as it is now');
+  s.inject(page('a:2', null), true);
+  assert.deepEqual(heard, ['a:0+r', 'a:1', 'a:2'], 'and the next ones as they come');
+  off();
+  s.discard();
+  const later = [];
+  s.on('page', p => later.push(p.id));
+  assert.deepEqual(later, [], 'a scan ended (Done or closed) leaves no page to hear');
+  s.stop();
+  return heard.join(', ');
+});
+
+await run('the early start (a new worker\'s window): one session, its models started with no camera; the scan window takes it; stopped after 3 minutes unless taken (a fresh 3 minutes when another new worker\'s window opens meanwhile); not under 4 GB', () => {
+  const K = M.keep;
+  const realST = globalThis.setTimeout, realCT = globalThis.clearTimeout;
+  const timers = new Map(); let n = 0;
+  globalThis.setTimeout = (fn, ms) => { const id = ++n; timers.set(id, { fn, ms }); return id; };
+  globalThis.clearTimeout = id => { timers.delete(id); };
+  const fire = () => { const due = [...timers.values()]; timers.clear(); for (const t of due) t.fn(); };
+  try {
+    const made = [];
+    const make = () => {
+      const s = { prepared: [], slept: 0, stopped: 0, prepare(early) { this.prepared.push(early); return Promise.resolve(); }, sleep() { this.slept++; }, stop() { this.stopped++; } };
+      made.push(s); return s;
+    };
+    assert.equal(K.KEEP_MS, 3 * 60 * 1000);
+    assert.deepEqual([0.5, 2, 3, 4, 8, undefined, 0].map(K.earlyAllowed), [false, false, false, true, true, true, true]);
+    const a = K.prepareEarly(make);
+    assert.ok(a && made.length === 1, 'made once');
+    assert.deepEqual(a.prepared, [true], 'its models started early (no open marked)');
+    assert.equal(a.slept, 0, 'no camera to put away');
+    assert.equal(K.prepareEarly(make), null, 'not started twice'); assert.equal(made.length, 1);
+    assert.deepEqual([...timers.values()].map(t => t.ms), [K.KEEP_MS], 'kept 3 minutes');
+    // the scan window opens: it takes the early session, its timer stopped — no second session
+    assert.equal(K.takeSession(make), a); assert.equal(timers.size, 0); assert.equal(made.length, 1);
+    assert.equal(K.prepareEarly(make), null, 'nothing started while the window is open');
+    assert.equal(timers.size, 0, 'a session in use is given no stop timer');
+    // the window closes: kept 3 minutes (nothing started meanwhile), then stopped
+    K.releaseSession(); assert.equal(a.slept, 1); assert.equal(timers.size, 1);
+    const closedTimer = [...timers.keys()][0];
+    // 2:30 later another new worker's window: nothing new started, but the kept session gets a fresh 3 minutes
+    assert.equal(K.prepareEarly(make), null, 'nothing started while one is kept');
+    assert.equal(made.length, 1);
+    assert.ok(!timers.has(closedTimer), 'the old deadline dropped');
+    assert.deepEqual([...timers.values()].map(t => t.ms), [K.KEEP_MS], 'a fresh 3 minutes from the new worker\'s window');
+    assert.equal(a.stopped, 0); assert.equal(K.keptSession(), a);
+    fire();
+    assert.equal(a.stopped, 1); assert.equal(K.keptSession(), null);
+    // an early session never taken: stopped after 3 minutes; the next open makes a new one
+    const b = K.prepareEarly(make);
+    assert.ok(b && b !== a); fire();
+    assert.equal(b.stopped, 1); assert.equal(K.keptSession(), null);
+    const c = K.takeSession(make);
+    assert.ok(c !== b && made.length === 3);
+    K.releaseSession(); fire();
+    assert.equal(c.stopped, 1);
+  } finally { globalThis.setTimeout = realST; globalThis.clearTimeout = realCT; }
+});
+
+await run('the Workers tab (owner, 2026-10-27): its first opening starts the session once, with no camera; opened again it only refreshes the keep; not for a login that may not add workers, not while the scan window is open, not under 4 GB', () => {
+  const K = M.keep;
+  const realST = globalThis.setTimeout, realCT = globalThis.clearTimeout;
+  const timers = new Map(); let n = 0;
+  globalThis.setTimeout = (fn, ms) => { const id = ++n; timers.set(id, { fn, ms }); return id; };
+  globalThis.clearTimeout = id => { timers.delete(id); };
+  const fire = () => { const due = [...timers.values()]; timers.clear(); for (const t of due) t.fn(); };
+  try {
+    const made = [];
+    const make = () => {
+      const s = { prepared: [], slept: 0, stopped: 0, prepare(early) { this.prepared.push(early); return Promise.resolve(); }, sleep() { this.slept++; }, stop() { this.stopped++; } };
+      made.push(s); return s;
+    };
+    // what open.tsx prepareScanEarly does on switchTab('workers'): earlyWanted, then prepareEarly
+    let scanOpen = false;
+    const openWorkersTab = (mayAdd = true, memoryGb = 8) => K.earlyWanted({ mayAdd, scanOpen, memoryGb }) ? K.prepareEarly(make) : null;
+    assert.equal(openWorkersTab(false), null, 'a login that may not add workers starts nothing'); assert.equal(made.length, 0);
+    assert.equal(openWorkersTab(true, 2), null, 'a phone under 4 GB starts nothing'); assert.equal(made.length, 0);
+    scanOpen = true;
+    assert.equal(openWorkersTab(), null, 'nothing while the scan window is open'); assert.equal(made.length, 0);
+    scanOpen = false;
+    assert.equal(K.earlyWanted({ mayAdd: true, scanOpen: false }), true, 'unknown memory counts as 4 GB');
+    const a = openWorkersTab();
+    assert.ok(a && made.length === 1, 'the first opening starts one session');
+    assert.deepEqual(a.prepared, [true], 'its models started early'); assert.equal(a.slept, 0, 'no camera');
+    const first = [...timers.keys()][0];
+    for (let i = 0; i < 5; i++) assert.equal(openWorkersTab(), null, 'opened again: nothing new started');
+    assert.equal(made.length, 1); assert.deepEqual(a.prepared, [true], 'its models not started again');
+    assert.ok(!timers.has(first), 'the old deadline dropped');
+    assert.deepEqual([...timers.values()].map(t => t.ms), [K.KEEP_MS], 'one fresh 3 minutes');
+    // the New worker button: the scanner takes the same session; the tab opened behind it leaves the session in use alone
+    assert.equal(K.takeSession(make), a); assert.equal(timers.size, 0);
+    assert.equal(K.prepareEarly(make), null); assert.equal(timers.size, 0, 'a session in use gets no stop timer');
+    K.releaseSession(); assert.equal(timers.size, 1);
+    fire(); assert.equal(a.stopped, 1, 'stopped 3 minutes after'); assert.equal(K.keptSession(), null);
+    // the tab opened after it was stopped: a new session
+    const b = openWorkersTab(); assert.ok(b && b !== a && made.length === 2);
+    fire(); assert.equal(b.stopped, 1); assert.equal(K.keptSession(), null);
+  } finally { globalThis.setTimeout = realST; globalThis.clearTimeout = realCT; }
 });
 
 fs.rmSync(TMP, { recursive: true, force: true });

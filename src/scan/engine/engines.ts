@@ -5,21 +5,27 @@
 //    background thread with several CPU threads, one with one, the page itself. Each is tried in turn: a way
 //    that fails or goes silent for 25 s is dropped (with its throwaway background thread) and the next starts
 //    clean; a way whose thread stopped answering while scanning is not tried again until the scanner closes.
-//    Nothing is remembered between opens (owner, 2026-10-22) but the GPU layout that worked and the failures'
-//    log: the lab reloaded its page on every open, the engine now outlives a close in the manager page, so
+//    Nothing is remembered between opens (owner, 2026-10-22) but the GPU layout that worked, the failures' log and
+//    a GPU check that passed (owner, 2026-10-27: kept with the model's stamp, the ONNX Runtime version and the
+//    browser — the same three skip the check next time; removed by a run-time failure of that GPU session; a
+//    failure never kept): the lab reloaded its page on every open, the engine now outlives a close in the manager page, so
 //    stopAll() forgets the stuck ways and a fall back to the page, and stops every start still loading (a
 //    generation number: a load that ends after the close stops its threads instead of keeping them).
 //  - every session is released when its way stops (the page way's sessions live in the page's own heap).
-//  - the accurate model's capture thread first, on the CPU (owner, 2026-10-22): picked photos and PDFs need
-//    only it; the live frame's pool shares it — one copy of the accurate model.
+//  - the light model first (owner, 2026-10-27 — it replaced "the accurate model first", 2026-10-22): the live
+//    frame's model on its way, so the camera and its frame come as soon as it is ready; the accurate model's
+//    capture thread (on the CPU) right after it, never beside it — never two models loading at once. Picked photos
+//    and PDFs go only to the accurate model and wait for it; the live frame's pool shares it — one copy of it.
 //  - picked files: at most one more thread with the accurate model, none under 4 GB of memory or 4 cores.
+//  - models.json read once per open (modelsInfo, shared with the readers): each thread's 'load' carries the
+//    model files' stamps, so a kept model of the same version is used with no request (models.ts fetchModel).
 //  - the capture and file threads are keyed on the accurate model and the CPU's ONNX Runtime build together,
 //    so the lab's CPU engine choice reaches them too.
 // Every model and ONNX Runtime file comes from the surface (surface.ts): the site's from /scan/, the lab's
 // from /scan-lab/.
 import { S, warpRGBA } from './geometry';
 import type { ScanLog } from './log';
-import { cpuSession, detectRGBA, errText, openSession, type Ep, type Want } from './models';
+import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, gpuPassed, modelStamps, newGpuPass, openSession, ortVersion, readModels, userAgent, WRONG_GPU, type Ep, type GpuPasses, type ModelsInfo, type Opened, type Want } from './models';
 import { loadOrt, type Ort, type OrtSession } from './ort';
 import { CPU_ORT, GPU_ORT, surfaceRef, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas, uprightRGBA, type Upright } from './upright';
@@ -43,6 +49,10 @@ export interface LoadableEngine extends Engine {
   /** A pool: its live threads and whether its capture thread is the shared one. */
   size?: number;
   shared?: boolean;
+  /** A pool whose accurate model comes after its live models: whether it is up now, and the wait for it (true once
+   *  up, false when it could not start — the shot then keeps the live frame's corners). */
+  capUp?(): boolean;
+  capWait?(): Promise<boolean>;
 }
 /** The capture thread as an engine of its own (picked files), or a file thread. */
 export interface ThreadEngine extends Engine { label: string; raw?: LoadableEngine; dead?: boolean }
@@ -104,7 +114,12 @@ export interface EngineSettings { model: string; backend: Want; inWorker: boolea
 export interface EngineState { phase: 'idle' | 'loading' | 'ready' | 'failed'; label: string; worker: boolean; loadSeconds: number | null }
 
 const GPU_LAYOUT_KEY = 'scanGpuLayout';
+/** Where the GPU checks that passed are kept: this key + ':' + the surface's cache name, so the site's and the lab's
+ *  are apart (scanGpuPassed:scan-models, scanGpuPassed:scan-lab-models). */
+export const GPU_PASS_KEY = 'scanGpuPassed';
 const WATCH_MS = 25000;
+// How long a model start waits for models.json's stamps before it checks its kept copy by ETag instead (engines.stampsFor).
+export const STAMPS_WAIT_MS = 4000;
 
 export class Engines {
   readonly env: EngineEnv;
@@ -140,6 +155,9 @@ export class Engines {
   capThread: ThreadEngine | null = null;
   private capFor = '';
   private capLoading: Promise<ThreadEngine> | null = null;
+  /** The capture thread's own load running now (past its wait for the live frame's models): a start of the live
+   *  frame's models waits for it — never two models loading at once. */
+  private capBusy: Promise<unknown> | null = null;
   fileThreads: ThreadEngine[] = [];
   private fileThreadsFor: LoadableEngine | null = null;
   private ensuring: Promise<void> | null = null;
@@ -158,6 +176,28 @@ export class Engines {
       { id: 'bg-cpu1', label: 'CPU ×1 · bg', worker: true, ep: 'wasm', threads: 1 },
       { id: 'page-cpu', label: 'CPU ×' + this.THREADS + ' · page', worker: false, ep: 'wasm', threads: this.THREADS },
     ];
+  }
+
+  /** The surface's models.json, read once per open (the readers share it: ScanSession), again after stopAll() —
+   *  a new deploy is seen by the next open. Its model version and file fingerprints are what a kept model is
+   *  checked against (models.ts fetchModel: no request while they match). A failed read is tried again next time. */
+  private info: Promise<ModelsInfo> | null = null;
+  modelsInfo(): Promise<ModelsInfo> {
+    if (!this.info) {
+      const t0 = this.env.now(), p = readModels(this.ref);
+      this.info = p;
+      p.then(i => this.log.log('Time: models.json read (version ' + (i.version || 'unknown') + ') — ' + Math.round(this.env.now() - t0) + ' ms'),
+        () => { if (this.info === p) this.info = null; });
+    }
+    return this.info;
+  }
+  /** The stamps of the model files a thread loads (null when models.json could not be read, or did not answer in
+   *  STAMPS_WAIT_MS: the ETag check — a slow models.json never holds the models back; the readers still wait for it). */
+  private stampsFor(names: string[]): Promise<Record<string, string> | null> {
+    return new Promise(resolve => {
+      const t = setTimeout(() => { this.log.log('models.json not read in ' + STAMPS_WAIT_MS / 1000 + ' s — the models checked by their ETag'); resolve(null); }, STAMPS_WAIT_MS);
+      this.modelsInfo().then(i => modelStamps(i, names), () => null).then(st => { clearTimeout(t); resolve(st); });
+    });
   }
 
   /** Listen to the engine's state; returns the unsubscribe. */
@@ -186,6 +226,33 @@ export class Engines {
   private layoutGet(): string | null { try { return this.env.store ? this.env.store.getItem(GPU_LAYOUT_KEY) : null; } catch { return null; } }
   private layoutSet(v: string | null | undefined): void { try { if (v && this.env.store) this.env.store.setItem(GPU_LAYOUT_KEY, v); } catch { /* blocked */ } }
 
+  // The GPU checks that passed on this device (models.ts GpuPass), by model — the surface's own key.
+  private passKey(): string { return GPU_PASS_KEY + ':' + this.ref.cache; }
+  gpuPasses(): GpuPasses {
+    try {
+      const v = this.env.store ? this.env.store.getItem(this.passKey()) : null, o = v ? JSON.parse(v) : null;
+      return o && typeof o === 'object' && !Array.isArray(o) ? o as GpuPasses : {};
+    } catch { return {}; }
+  }
+  private passesWrite(p: GpuPasses): void { try { if (this.env.store) this.env.store.setItem(this.passKey(), JSON.stringify(p)); } catch { /* blocked */ } }
+  /** Checks that passed now: kept (a failed one never comes here). */
+  private passesPut(p: unknown): void {
+    if (!p || typeof p !== 'object') return;
+    const add = p as GpuPasses, names = Object.keys(add);
+    if (!names.length) return;
+    this.passesWrite({ ...this.gpuPasses(), ...add });
+    for (const n of names) this.log.log('GPU check passed for ' + n + ' (' + add[n].layout + ') — remembered on this device');
+  }
+  /** A GPU session failed at run time (its way dropped, an error, a hang, a wrong answer): the passes of its models
+   *  removed, so the next open checks the GPU again. */
+  forgetGpuPasses(models: string[], why: string): void {
+    const cur = this.gpuPasses(), hit = models.filter(m => Object.prototype.hasOwnProperty.call(cur, m));
+    if (!hit.length) return;
+    for (const m of hit) delete cur[m];
+    this.passesWrite(cur);
+    this.log.log('GPU check of ' + hit.join(', ') + ' forgotten (' + why + ') — the next open checks the GPU again');
+  }
+
   private rgbaOf(input: DetectInput): Uint8ClampedArray {
     if (input.rgba) return input.rgba;
     const c = mkCanvas(S, S), g = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
@@ -195,21 +262,44 @@ export class Engines {
   /** The models in the page itself. */
   pageEngine(): LoadableEngine {
     let ort: Ort | null = null, live: OrtSession | null = null, cap: OrtSession | null = null, face: OrtSession | null = null;
+    let liveCheck = false, capCheck = false, gpuModels: string[] = [];
     const { log } = this;
     return {
       load: async (liveName, capName, want, withFace) => {
-        ort = await loadOrt(this.ref, this.settings.cpuDir, this.THREADS);
-        const a = await openSession(ort, this.ref, liveName, want, log.status, log.any, this.layoutGet()); live = a.sess;
-        const b = capName ? await openSession(ort, this.ref, capName, want, log.status, log.any, this.layoutGet()) : a; cap = b.sess;
+        // as in a thread (worker.ts): ONNX Runtime at once; beside it the stamps, then the first model's file and the
+        // face finder's; the sessions in turn
+        const dir = this.settings.cpuDir, t0 = this.env.now();
+        const ortP = loadOrt(this.ref, dir, this.THREADS).then(o => { log.log('Time: ONNX Runtime (' + dir + ') loaded for ' + liveName + ' (page) — ' + Math.round(this.env.now() - t0) + ' ms'); return o; });
+        ortP.catch(() => {});  // its failure is the load's, below
+        const stamps = await this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace !== false ? ['yunet.onnx'] : [])]);
+        const stamp = (n: string): string | null => (stamps && stamps[n]) || null;
+        const firstBytes = fetchModel(this.ref, liveName, downloadProgress(liveName, log.status), { stamp: stamp(liveName), said: log.log });
+        const faceBytes = withFace !== false ? fetchModel(this.ref, 'yunet.onnx', () => {}, { stamp: stamp('yunet.onnx'), said: log.log }) : null;
+        firstBytes.catch(() => {}); if (faceBytes) faceBytes.catch(() => {});
+        ort = await ortP;
+        // the GPU checks remembered on this device (as in a thread, worker.ts)
+        const ov = ortVersion(ort, dir), ua = userAgent(), known = this.gpuPasses(), passes: GpuPasses = {}, gpu: string[] = [];
+        const passed = (n: string) => gpuPassed(known[n], stamp(n), ov, ua);
+        const noted = (n: string, o: Opened): Opened => { if (o.ep === 'webgpu') gpu.push(n); const p = newGpuPass(o, stamp(n), ov, ua); if (p) passes[n] = p; return o; };
+        const a = noted(liveName, await openSession(ort, this.ref, liveName, want, log.status, log.any, this.layoutGet(), { bytes: firstBytes, time: log.log, passed: passed(liveName) })); live = a.sess;
+        const b = capName ? noted(capName, await openSession(ort, this.ref, capName, want, log.status, log.any, this.layoutGet(), { stamp: stamp(capName), time: log.log, passed: passed(capName) })) : a; cap = b.sess;
+        liveCheck = a.checked === 'skipped'; capCheck = b.checked === 'skipped'; gpuModels = gpu;
         this.layoutSet(a.layout || b.layout);
-        if (withFace !== false) face = await cpuSession(ort, this.ref, 'yunet.onnx');
+        this.passesPut(passes);
+        if (faceBytes) {
+          const t1 = this.env.now();
+          face = await cpuSession(ort, this.ref, 'yunet.onnx', faceBytes);
+          log.log('Time: face finder ready (page) — ' + Math.round(this.env.now() - t1) + ' ms');
+        }
         return a.ep + (b.ep !== a.ep ? '/' + b.ep : '');
       },
       hasCap: () => cap !== live,
       detect: async (which, input) => {
         const t = this.env.now();
-        const res = await detectRGBA(ort as Ort, (which === 'cap' ? cap : live) as OrtSession, this.rgbaOf(input));
-        return { res, ms: this.env.now() - t };
+        try {
+          const res = await detectRGBA(ort as Ort, (which === 'cap' ? cap : live) as OrtSession, this.rgbaOf(input), which === 'cap' ? capCheck : liveCheck);
+          return { res, ms: this.env.now() - t };
+        } catch (e) { if (gpuModels.length) this.forgetGpuPasses(gpuModels, 'an error on the GPU: ' + errText(e)); throw e; }
       },
       warp: async (rgba, w, h, pts, upright) => uprightRGBA(ort, upright ? face : null, warpRGBA(rgba, w, h, pts)),
       // the sessions live in the page's own ONNX Runtime heap: released, or every open adds to it
@@ -221,33 +311,55 @@ export class Engines {
   }
 
   /** The models in a background thread (worker.ts) with `threads` CPU threads and the ONNX Runtime build `dir`.
-   *  A thread that says nothing for 25 s while a call waits is taken as stuck: its calls fail and onHang runs. */
-  workerEngine(threads: number, dir: OrtDir = this.settings.cpuDir, onHang: () => void = () => this.onStuck()): LoadableEngine {
+   *  A thread that says nothing for 25 s while a call waits is taken as stuck: its calls fail and onHang runs — as
+   *  when a GPU session whose check was skipped gives a wrong answer (onHang(why)). A run-time failure of a thread
+   *  that runs a model on the GPU (a hang, a thread error, an error or a wrong answer on a detect) removes that
+   *  model's remembered GPU check. */
+  workerEngine(threads: number, dir: OrtDir = this.settings.cpuDir, onHang: (why?: string) => void = why => this.onStuck(why)): LoadableEngine {
     const { env, log } = this;
-    const w = env.spawn(), waiting = new Map<number, { resolve: (m: WorkerOut & { type: 'reply' }) => void; reject: (e: Error) => void }>();
-    let n = 0, two = false, heard = env.now();
+    const w = env.spawn(), waiting = new Map<number, { resolve: (m: WorkerOut & { type: 'reply' }) => void; reject: (e: Error) => void; kind: string }>();
+    let n = 0, two = false, heard = env.now(), stopped = false, gpuModels: string[] = [];
+    const forgetGpu = (why: string) => { if (gpuModels.length) this.forgetGpuPasses(gpuModels, why); };
     const failAll = (why: string) => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
-    const watch = env.setInterval(() => { if (waiting.size && env.now() - heard > WATCH_MS) { failAll('no answer for 25 s'); onHang(); } }, 1000);
+    const watch = env.setInterval(() => { if (waiting.size && env.now() - heard > WATCH_MS) { failAll('no answer for 25 s'); forgetGpu('the thread stopped answering'); onHang(); } }, 1000);
     w.onmessage = ({ data: m }) => {
       heard = env.now();
       if (m.type === 'status') log.status(m.status, m.frac);
       else if (m.type === 'log') log.any(m.text);
-      else if (m.type === 'reply') { const p = waiting.get(m.id); waiting.delete(m.id); if (p) { if (m.error) p.reject(new Error(m.error)); else p.resolve(m); } }  // a late answer to a call given up on: dropped
+      else if (m.type === 'reply') {
+        const p = waiting.get(m.id); waiting.delete(m.id);
+        if (!p) return;  // a late answer to a call given up on: dropped
+        if (!m.error) { p.resolve(m); return; }
+        p.reject(new Error(m.error));
+        if (p.kind === 'detect' && gpuModels.length) {
+          forgetGpu('an error on the GPU: ' + m.error);
+          if (m.error.startsWith(WRONG_GPU)) onHang('gave a wrong answer on the GPU');  // the way is left, as a hung one
+        }
+      }
     };
-    w.onerror = e => { log.err('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); };
+    w.onerror = e => { log.err('Worker error: ' + (e.message || 'could not start')); failAll('the background thread failed: ' + (e.message || 'could not start')); forgetGpu('the thread failed'); };
     // a request to a thread that had nothing to do starts the clock again: an idle thread says nothing, so
     // its first request after 25 s was taken as stuck at once (every picked file, 2026-10-22)
     type Msg = WorkerIn extends infer T ? T extends { id: number } ? Omit<T, 'id'> : never : never;
     const call = (msg: Msg, transfer?: Transferable[]) => new Promise<WorkerOut & { type: 'reply' }>((resolve, reject) => {
+      if (stopped) { reject(new Error('the model was stopped')); return; }  // a stopped thread is sent nothing more
       if (!waiting.size) heard = env.now();
-      const id = ++n; waiting.set(id, { resolve, reject }); w.postMessage({ ...msg, id } as WorkerIn, transfer || []);
+      const id = ++n; waiting.set(id, { resolve, reject, kind: msg.type }); w.postMessage({ ...msg, id } as WorkerIn, transfer || []);
     });
     return {
       load: async (liveName, capName, want, withFace = true) => {
         two = !!capName;
-        const r = await call({ type: 'load', surface: this.ref, ort: dir, live: liveName, cap: capName, want, threads, face: withFace, layout: this.layoutGet() });
-        this.layoutSet(r.layout as string | null);
-        return r.ep as string;
+        // the load sent at once (the thread starts ONNX Runtime's load now); the files' stamps from models.json (read
+        // once per open) follow in a 'stamps' message — a kept copy of the same version is used with no request
+        const r = call({ type: 'load', surface: this.ref, ort: dir, live: liveName, cap: capName, want, threads, face: withFace, layout: this.layoutGet(), passes: this.gpuPasses() });
+        void this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace ? ['yunet.onnx'] : [])]).then(stamps => {
+          if (!stopped) w.postMessage({ type: 'stamps', stamps } as WorkerIn, []);
+        });
+        const m = await r;
+        this.layoutSet(m.layout as string | null);
+        gpuModels = Array.isArray(m.gpu) ? m.gpu as string[] : [];
+        if (!stopped) this.passesPut(m.passes);
+        return m.ep as string;
       },
       hasCap: () => two,
       detect: async (which, input) => {
@@ -255,18 +367,18 @@ export class Engines {
         return { res: m.res as Corners, ms: m.ms as number };
       },
       warp: async (rgba, wd, h, pts, upright) => (await call({ type: 'warp', rgba: rgba.buffer as ArrayBuffer, w: wd, h, pts, upright }, [rgba.buffer as ArrayBuffer])).out as Upright,
-      stop() { env.clearInterval(watch); failAll('the model was stopped'); w.terminate(); },  // nothing left waiting on it
+      stop() { stopped = true; env.clearInterval(watch); failAll('the model was stopped'); w.terminate(); },  // nothing left waiting on it
     };
   }
 
   // A background thread that stops answering while scanning (a phone's GPU was seen to hang, and every
   // later call then waited on it): the way it ran on is left for this page, and the model starts again on
   // the next way at the next use (the live frame, a picked file).
-  onStuck(): void {
+  onStuck(why = 'stopped answering'): void {
     if (!this.engine) return;
     const w = this.WAYS.find(x => x.id === this.engineWay), label = w ? w.label : String(this.engineWay);
-    this.log.err('The model stopped answering on "' + label + '" — it starts again on the next way');
-    this.log.noteFail(label, 'stopped answering while scanning');
+    this.log.err('The model ' + why + ' on "' + label + '" — it starts again on the next way');
+    this.log.noteFail(label, why + ' while scanning');
     if (this.engineWay) this.stuckWays.add(this.engineWay);
     const old = this.engine; this.engine = null; this.engineKey = ''; this.dropFileThreads();
     try { old.stop(); } catch { /* gone already */ }
@@ -276,28 +388,47 @@ export class Engines {
   // turn (2–3 frames worked on at once), the accurate model has its own thread,
   // so a capture never stops the live frame. Phones that refuse CPU threads
   // inside a background thread still run several background threads.
-  // shared: the accurate model's thread already loaded (the capture thread — loaded first, picked files use it
-  // at once); the pool then loads only its live threads and never stops the shared one.
-  poolEngine(nLive: number = this.POOL, liveEp: Ep | null = null, capEp: Ep | null = null, shared: LoadableEngine | null = null): LoadableEngine {
+  // capOf (the light model first, owner 2026-10-27): the accurate model's thread — the engines' one capture thread
+  // (ensureCap), which picked files use too — asked for only once the live threads are loaded, never beside them;
+  // the pool is ready (the camera and its frame go on) without waiting for it. A shot taken before it is up is cut
+  // by the live frame's corners at once (on the first live thread, which has the face finder for that) and waits
+  // for it to refine them (capWait); one that could not start leaves the shot with the live frame's corners. The
+  // pool never stops the shared thread.
+  poolEngine(nLive: number = this.POOL, liveEp: Ep | null = null, capOf: (() => Promise<LoadableEngine>) | null = null): LoadableEngine {
+    const { log } = this;
     const lives = Array.from({ length: nLive }, () => this.workerEngine(1, liveEp === 'webgpu' ? GPU_ORT : this.settings.cpuDir));
-    const capE = shared || this.workerEngine(1), free = lives.slice();
-    let two = false;
+    const free = lives.slice();
+    let two = false, capE: LoadableEngine | null = null, capP: Promise<LoadableEngine | null> | null = null, capFailed = false, stopped = false;
     return {
       size: nLive,
-      shared: !!shared,
+      shared: !!capOf,
       async load(liveName, capName, want) {
-        two = !!capName;
-        const eps = await Promise.all(lives.map((e, i) => e.load(liveName, null, liveEp || want, !two && i === 0)).concat(two && !shared ? [capE.load(capName as string, null, capEp || want, true)] : []));
-        return eps[0] + (two && (shared || eps[eps.length - 1] !== eps[0]) ? '/' + (shared ? 'wasm' : eps[eps.length - 1]) : '');
+        two = !!capName && !!capOf;
+        // the first live thread holds the face finder: a shot before the accurate model is up is cut there
+        const eps = await Promise.all(lives.map((e, i) => e.load(liveName, null, liveEp || want, i === 0)));
+        if (two && capOf && !stopped) {
+          // the accurate model right after the live frame's — not waited for here
+          capP = capOf().then(e => (stopped ? null : (capE = e)), err => {
+            capFailed = true;
+            log.log('The accurate model could not start for the shots (' + errText(err) + ') — they keep the live frame\'s corners');
+            return null;
+          });
+        }
+        return eps[0] + (two ? '/wasm' : '');
       },
-      hasCap: () => two,
+      hasCap: () => two && !capFailed,
+      capUp: () => !!capE,
+      capWait: () => (capE ? Promise.resolve(true) : capP ? capP.then(e => !!e) : Promise.resolve(false)),
       async detect(which, input) {
-        if (which === 'cap' && two) return capE.detect('live', input);
+        if (which === 'cap' && two) {
+          const c = capE || (capP ? await capP : null);
+          if (c) return c.detect('live', input);
+        }
         const e = free.shift() || lives[0];
         try { return await e.detect('live', input); } finally { if (!free.includes(e)) free.push(e); }
       },
-      warp: (rgba, w, h, pts, upright) => (two ? capE : lives[0]).warp(rgba, w, h, pts, upright),
-      stop() { lives.forEach(e => e.stop()); if (!shared) capE.stop(); },
+      warp: (rgba, w, h, pts, upright) => (capE || lives[0]).warp(rgba, w, h, pts, upright),
+      stop() { stopped = true; lives.forEach(e => e.stop()); },
     };
   }
 
@@ -305,35 +436,51 @@ export class Engines {
     return { detect: (_which, input) => e.detect('live', input), warp: e.warp, hasCap: () => false, stop: () => e.stop(), raw: e, label: 'the capture thread' };
   }
 
-  // The accurate model's thread is started first, on the CPU (owner, 2026-10-22): picked photos and PDFs need
-  // only it, so they can go in a few seconds after the page opens; the live frame's models (the GPU's light
-  // one) are loaded after it, in the background when nothing is being worked on, or when the camera starts,
-  // and they share this thread for the shot — one copy of the accurate model. ensureCap() → the thread
-  // (a capture-only engine for a picked picture), started again when it failed or the model was changed.
+  /** Whether the accurate model's capture thread is up now (for the settings asked). */
+  capReady(): boolean { return !!this.capThread && this.capFor === this.capKey().key; }
+
+  // The accurate model's thread, on the CPU — the light model first (owner, 2026-10-27; it replaced "the accurate
+  // model first", 2026-10-22): it starts right after the live frame's models (a start of them running is waited for
+  // — never two models loading at once: on the owner's phone that made the capture thread stop answering), so the
+  // camera and its frame come first; picked photos and PDFs need only this thread and wait for it; the live frame's
+  // pool shares it for the shot — one copy of the accurate model. ensureCap() → the thread (a capture-only engine
+  // for a picked picture), started again when it failed or the model was changed.
   ensureCap(): Promise<ThreadEngine> {
-    const { log } = this, { name, key } = this.capKey(), g = this.gen;
+    const { log } = this, { name, key } = this.capKey(), g = this.gen, dir = this.settings.cpuDir;
     if (this.capThread && this.capFor === key) return Promise.resolve(this.capThread);
     if (this.capLoading && this.capFor === key) return this.capLoading;
     if (this.capThread) { this.capThread.stop(); this.capThread = null; }
     this.capFor = key;
-    const t0 = this.env.now();
-    log.status({ key: 'preparing_accurate' }, 0);
-    const e: LoadableEngine = this.workerEngine(1, this.settings.cpuDir, () => {
-      log.err('The capture thread stopped answering — it starts again');
-      log.noteFail('Capture thread', 'stopped answering');
-      if (this.capThread && this.capThread.raw === e) this.capThread = null;
-      e.stop(); this.onStuck();
-    });
-    const p: Promise<ThreadEngine> = this.track(e, e.load(name, null, 'wasm', true)).then(() => {
+    const run = async (): Promise<ThreadEngine> => {
+      const tw = this.env.now();
+      let waited = false;
+      while (this.ensuring) { waited = true; await this.ensuring.catch(() => {}); }
       const gone = this.closed(g);
-      if (gone || this.capFor !== key) { e.stop(); throw gone || new Error('the model was changed'); }  // closed or changed meanwhile
+      if (gone) throw gone;
+      if (this.capFor !== key) throw new Error('the model was changed');
+      if (waited) log.log('Time: the accurate model waited for the live frame\'s models — ' + Math.round(this.env.now() - tw) + ' ms');
+      if (!this.engine) log.status({ key: 'preparing_accurate' }, 0);
+      const t0 = this.env.now();
+      const e: LoadableEngine = this.workerEngine(1, dir, () => {
+        log.err('The capture thread stopped answering — it starts again');
+        log.noteFail('Capture thread', 'stopped answering');
+        if (this.capThread && this.capThread.raw === e) this.capThread = null;
+        e.stop(); this.onStuck();
+      });
+      const busy = this.track(e, e.load(name, null, 'wasm', true));
+      this.capBusy = busy;
+      try { await busy; } catch (err) { e.stop(); if (!this.closed(g)) log.noteFail('Capture thread', errText(err)); throw err; }
+      finally { if (this.capBusy === busy) this.capBusy = null; }
+      const gone2 = this.closed(g);
+      if (gone2 || this.capFor !== key) { e.stop(); throw gone2 || new Error('the model was changed'); }  // closed or changed meanwhile
       const t = this.capOnly(e);
       this.capThread = t;
       log.log('The accurate model is ready (' + ((this.env.now() - t0) / 1000).toFixed(1) + ' s) — photos and PDFs can go in');
+      log.log('Time: accurate model ready (capture thread) — ' + Math.round(this.env.now() - t0) + ' ms');
       if (!this.engine) log.status({ key: 'ready_files' }, 1);
       return t;
-    }, err => { e.stop(); if (!this.closed(g)) log.noteFail('Capture thread', errText(err)); throw err; })
-      .finally(() => { if (this.capLoading === p) this.capLoading = null; });
+    };
+    const p: Promise<ThreadEngine> = run().finally(() => { if (this.capLoading === p) this.capLoading = null; });
     this.capLoading = p;
     return p;
   }
@@ -370,15 +517,21 @@ export class Engines {
     this.engine = null; this.setState({ phase: 'loading', label: 'loading…', loadSeconds: null }); log.status({ key: 'preparing' }, 0);
     const t0 = this.env.now();
     let e: LoadableEngine | null = null, used: Way | null = null;
+    // the pool ways share the accurate model's capture thread, asked for once their live threads are loaded
+    const capOf = cap ? () => this.ensureCap().then(t => t.raw as LoadableEngine) : null;
     for (const w of this.waysFor(want, inWorker)) {
-      log.status({ key: 'trying_way', way: w.label }, 0);
-      const shared = cap && (w.gpuLive || w.pool) ? await this.ensureCap().then(t => t.raw || null, () => null) : null;
+      // the accurate model's thread loading now (a pick, or the way before this one): waited for — never two
+      // models loading at once
+      if (this.capBusy) await this.capBusy.catch(() => {});
       let gone = this.closed(g);
       if (gone) throw gone;  // closed while the capture thread loaded
-      const cand = w.gpuLive ? this.poolEngine(2, 'webgpu', 'wasm', shared) : w.pool ? this.poolEngine(this.POOL, null, null, shared) : w.worker ? this.workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : cpuDir) : this.pageEngine();
+      log.status({ key: 'trying_way', way: w.label }, 0);
+      const cand = w.gpuLive ? this.poolEngine(2, 'webgpu', capOf) : w.pool ? this.poolEngine(this.POOL, null, capOf) : w.worker ? this.workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : cpuDir) : this.pageEngine();
       try { await this.track(cand, cand.load(live, cap || null, w.ep)); } catch (err) {
         cand.stop();
         gone = this.closed(g); if (gone) throw gone;
+        // a GPU way that failed: its models' remembered GPU checks go (the next open checks again)
+        if (w.gpuLive || w.ep === 'webgpu') this.forgetGpuPasses([live, ...(cap ? [cap] : [])], 'its way failed: ' + errText(err));
         log.noteFail(w.label, errText(err)); log.log('Trying the next way'); continue;
       }
       gone = this.closed(g);
@@ -387,6 +540,7 @@ export class Engines {
     }
     if (!e || !used) { this.setState({ phase: 'failed', label: 'failed' }); log.status({ key: 'failed' }); throw new Error('no way to run the model'); }
     log.log('Live ' + live + (cap ? ', capture ' + cap : '') + ' running as ' + used.label);
+    log.log('Time: live frame\'s models ready on ' + used.label + ' — ' + Math.round(this.env.now() - t0) + ' ms');
     this.engine = e; this.engineWay = used.id;
     // a start that fell back to the page stays there until the scanner closes (the lab unticked its
     // "background threads"); the key then matches the next asks, so the model is not started again each use
@@ -428,12 +582,13 @@ export class Engines {
     this.gen++;
     for (const e of this.inFlight) { try { e.stop(); } catch { /* gone */ } }
     this.inFlight.clear();
-    this.ensuring = null; this.capLoading = null;
+    this.ensuring = null; this.capLoading = null; this.capBusy = null;
     this.dropFileThreads();
     if (this.engine) { try { this.engine.stop(); } catch { /* gone */ } this.engine = null; this.engineKey = ''; }
     if (this.capThread) { this.capThread.stop(); this.capThread = null; }
     this.capFor = '';
     this.stuckWays.clear(); this.engineWay = null; this.pageOnly = false;
+    this.info = null;
     this.setState({ phase: 'idle', label: '—', worker: true, loadSeconds: null });
   }
 }

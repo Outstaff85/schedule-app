@@ -168,6 +168,15 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   if (id !== c.current()) { if (c.has(p0.id)) c.page({ ...p0, readouts }); return 0; }
   first = { ...p0, readouts }; c.page(first);
   if (!engine.hasCap()) { c.status({ key: 'found', count: 1 }); return 1; }
+  // the accurate model still starting (it comes right after the live frame's): the page stays as the live frame cut
+  // it, and is refined once the accurate model is up
+  if (engine.capUp && engine.capWait && !engine.capUp()) {
+    c.status({ key: 'preparing_accurate' });
+    const tw = c.now(), up = await engine.capWait();
+    c.log.log('The shot waited ' + Math.round(c.now() - tw) + ' ms for the accurate model' + (up ? '' : ', which could not start — the live frame\'s corners kept'));
+    if (id !== c.current()) return 0;
+    if (!up) { c.status({ key: 'found', count: 1 }); return 1; }
+  }
   c.status({ key: 'refining' });
   while (live.inFlight) await c.sleep(10);  // the live frames still in work finish first
   const { res: exact } = await engine.detect('cap', { rgba: smallRGBA(frame, w, h) });

@@ -6,3 +6,4 @@ export * as camera from '../../src/scan/engine/camera';
 export * as steady from '../../src/scan/engine/steady';
 export * as log from '../../src/scan/engine/log';
 export * as surface from './surface-entry';
+export * as keep from '../../src/scan/keep';

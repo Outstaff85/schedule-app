@@ -68,6 +68,9 @@ export function mayWriteWorkers(pay: boolean): boolean {
   const r = rights();
   return (r.includes('workers') || r.includes('schedule')) && r.includes('editWorkers') && (!pay || r.includes('editPay'));
 }
+/** May this login add workers — the Workers tab's New worker / Scan buttons (the bridge's canEdit there): the
+ *  Workers section and Edit workers. Also gates the scanner's early start (src/scan/open.tsx prepareScanEarly). */
+export function canAddWorkers(): boolean { return hasPermission('workers') && canChange('editWorkers'); }
 export function isHrSession(): boolean { const s = getSession(); return !!s && s.role === 'hr'; }
 export function isFirmAdminSession(): boolean { const s = getSession(); return !!s && (s.role === 'tenant_admin' || s.role === 'superadmin'); }
 // An HR login (docs/hr.md) gets only the tabs of its sections: never Today,

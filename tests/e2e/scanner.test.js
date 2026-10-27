@@ -216,8 +216,31 @@ const READS = {
   await p.fill('#loginUsername', 'owner1'); await p.fill('#loginPassword', 'owner-pass-1');
   await p.click('#loginBtn');
   ok(await p.waitForFunction(() => typeof workers !== 'undefined' && workers.length === 2, null, {timeout: 20000}).then(() => true, () => false), 'site: the firm owner signed in (the workers loaded)');
+  // The early start (owner, 2026-10-27; src/scan/keep.ts prepareEarly): opening the Workers tab (the owner lands on
+  // Today) starts the scanner's session in the background — its models, no camera, no scanner on the screen —, once:
+  // the tab opened again and a new worker's window start no second one, and the scan window opened next takes that
+  // same session.
+  const early = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks(), ov = document.getElementById('workerOverlay');
+    const close = async () => { ov.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})); ov.click(); await T.tick(300); };
+    const r = {landed: currentTab, before: !!H.session()};
+    switchTab('workers');
+    r.started = await T.until(() => !!H.session(), 8000);
+    window.__earlySession = H.session();
+    switchTab('schedule'); switchTab('workers'); await T.tick(300);
+    r.tabOnce = H.session() === window.__earlySession;
+    openAddWorker(); await T.tick(300);
+    r.windowOnce = H.session() === window.__earlySession;
+    await close();
+    r.noCamera = window.__camAsked.length === 0; r.noScanner = !T.q('[data-testid="scanner"]');
+    r.closed = !ov.classList.contains('open');
+    return r;
+  });
+  ok(early.landed !== 'workers' && !early.before && early.started && early.tabOnce && early.windowOnce && early.noCamera && early.noScanner && early.closed,
+    'site: opening the Workers tab starts the scanner\'s models in the background, once (the tab again and a new worker\'s window start no second), with no camera and no scanner shown ' + JSON.stringify(early));
   await p.evaluate(() => { localStorage.removeItem('scanFeedbackQueue'); window.__scanGoing = startNewScan(); });
   await p.waitForSelector('[data-testid="scanner"][data-mode="site"] [data-testid="scan-status"]', {timeout: 20000});
+  ok(await p.evaluate(async () => (await ManagerScan.hooks()).session() === window.__earlySession), 'site: the scan window takes the session started early (no second one)');
   const siteStart = await startCamera(p, true);
   // the green frame on the canvas while the document is held still — read during the hold: after the shot the live frame
   // goes on by itself (template 6, no Next) and is looking again, so the canvas is no longer the shot's green frame
@@ -241,6 +264,11 @@ const READS = {
     const E = s.engines, st = window.__stub.stats, [live, cap] = E.settings.model.split('+');
     r.engine = {way: E.engineWay, label: E.state.label, worker: E.state.worker, size: E.engine && E.engine.size, shared: E.engine && E.engine.shared};
     r.threads = {spawned: st.spawned, bitmaps: st.bitmaps, copied: st.copied, maxInFlight: st.maxInFlight, live: st.byModel[live] || {}, cap: st.byModel[cap] || {}};
+    // the light model first (owner, 2026-10-27): the live threads' loads answered before the accurate model's load is
+    // sent — never both loading at once
+    r.loads = st.loads.slice(); r.models = [live, cap];
+    // the GPU check remembered on success only, under the surface's own key (the stand-in's GPU threads say they passed)
+    r.passes = {site: localStorage.getItem('scanGpuPassed:scan-models'), lab: localStorage.getItem('scanGpuPassed:scan-lab-models')};
     return r;
   });
   const green = await greenWhileHeld;
@@ -295,6 +323,16 @@ const READS = {
     && th.bitmaps > 0 && th.copied === 0 && th.maxInFlight >= 2 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,
     'site: the models run in background threads as on a phone — a pool of live threads (several frames at once) beside the shared capture thread, which found and cut the shot\'s pages; every frame handed over as a bitmap (none copied) '
     + JSON.stringify({engine: eng, threads: th}));
+  const lightFirst = (loads, [live, cap]) => {
+    const at = loads.indexOf('load ' + cap); if (at < 0) return false;
+    const before = loads.slice(0, at), pending = before.filter(x => x === 'load ' + live).length - before.filter(x => x === 'up ' + live).length;
+    return before.includes('up ' + live) && pending === 0;
+  };
+  ok(lightFirst(shot.loads || [], shot.models || []),
+    'site: the light model first — the live frame\'s threads loaded, then the accurate model\'s capture thread right after them, never both loading at once ' + JSON.stringify(shot.loads));
+  const ps = shot.passes || {};
+  ok(eng.way === 'bg-gpulive' ? !!ps.site && JSON.parse(ps.site)[(shot.models || [])[0]] && !ps.lab : !ps.site && !ps.lab,
+    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); none without the GPU way ' + JSON.stringify({way: eng.way, ...ps}));
   ok(look.w === 390 && look.h === 844 && look.statusTop && look.autoTopRight && look.doneBottomRight && look.stripAboveBar && look.barBottom && look.noScroll && look.bar === 'scan-pick,scan-shutter,scan-done' && look.video,
     'site, screen 1 at 390×844 (template 6): the camera fills the screen, the status line at the top centre, Auto at the top right, the photos\' strip above the bottom bar (Photos/PDF, the shutter, Done at the bottom right) ' + JSON.stringify(look));
   const fr = (asked[0] || {}).video || {};

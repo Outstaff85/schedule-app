@@ -27,8 +27,18 @@ const deviceMemory = (): number | null => ((globalThis as { navigator?: { device
 export class ScanLog {
   private listeners: { [K in keyof ScanLogEvents]: Set<ScanLogEvents[K]> } = { status: new Set(), log: new Set(), err: new Set(), fails: new Set() };
 
-  /** store: where the way failures are kept (localStorage by default); memory: the device's (GB). */
-  constructor(private store: KeyValue | null = safeStorage(), private memory: () => number | null = deviceMemory) {}
+  /** store: where the way failures are kept (localStorage by default); memory: the device's (GB); now: the clock
+   *  the "Time:" lines' "at" counts by. */
+  constructor(private store: KeyValue | null = safeStorage(), private memory: () => number | null = deviceMemory,
+    private now: () => number = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())) {}
+
+  /** When the scanner opened (markOpen): every "Time: …" line (a start step and how long it took, from the page
+   *  or a background thread) is given with how long after the open it came — "(at N ms)". */
+  private openedAt: number | null = null;
+  markOpen(): void { this.openedAt = this.now(); }
+  private stamp(text: string): string {
+    return this.openedAt !== null && text.startsWith('Time: ') ? text + ' (at ' + Math.round(this.now() - this.openedAt) + ' ms)' : text;
+  }
 
   /** Listen; returns the unsubscribe. */
   on<K extends keyof ScanLogEvents>(ev: K, fn: ScanLogEvents[K]): () => void {
@@ -42,7 +52,7 @@ export class ScanLog {
   }
 
   status = (s: EngineStatus, frac?: number): void => this.emit('status', s, frac);
-  log = (text: string): void => this.emit('log', text);
+  log = (text: string): void => this.emit('log', this.stamp(text));
   err = (text: string): void => this.emit('err', text);
   /** A line from scan's model loading (one onLog for the page and the threads): errors apart. */
   any = (text: string): void => (isErrLine(text) ? this.err : this.log)(text);

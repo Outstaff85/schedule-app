@@ -105,10 +105,11 @@ export function brightDocs(px: ArrayLike<number>, w: number, h: number): Quad[] 
 /** What the threads' stand-ins did, for the checks: threads started and ended, the messages each kind got (and
  *  per model loaded on the thread), the frames that came as bitmaps, the bitmaps and buffers the page sent
  *  without handing them over (copied, not transferred: 0 when every one was), the calls a stopped thread kept
- *  unanswered, and the most frames worked on at once. */
+ *  unanswered, the most frames worked on at once, and the loads in time ('load <model>' when sent, 'up <model>'
+ *  when answered — which models were loading at once). */
 export interface ThreadStats {
   spawned: number; terminated: number; load: number; detect: number; warp: number; bitmaps: number; copied: number;
-  swallowed: number; inFlight: number; maxInFlight: number; byModel: Record<string, { detect: number; warp: number }>;
+  swallowed: number; inFlight: number; maxInFlight: number; byModel: Record<string, { detect: number; warp: number }>; loads: string[];
 }
 /** The threads' stand-ins as the checks drive them: their figures, hang(model) — the threads holding that model
  *  (by default the live model) stop answering, as a phone's hung GPU did; returns how many —, and skew(ms) —
@@ -124,7 +125,7 @@ export interface StubThreads { stats: ThreadStats; hang(model?: string): number;
  *  the pool of live threads sharing it, the watchdog, the next way when one stops answering. */
 export function stubWorkers(s: ScanSession, o: { ms?: number; loadMs?: number } = {}): StubThreads {
   const E = s.engines, ms = o.ms ?? 30, loadMs = o.loadMs ?? 250, all: Fake[] = [];
-  const stats: ThreadStats = { spawned: 0, terminated: 0, load: 0, detect: 0, warp: 0, bitmaps: 0, copied: 0, swallowed: 0, inFlight: 0, maxInFlight: 0, byModel: {} };
+  const stats: ThreadStats = { spawned: 0, terminated: 0, load: 0, detect: 0, warp: 0, bitmaps: 0, copied: 0, swallowed: 0, inFlight: 0, maxInFlight: 0, byModel: {}, loads: [] };
   const sleep = (t: number) => new Promise(r => setTimeout(r, t));
   class Fake implements WorkerLike {
     onmessage: WorkerLike['onmessage'] = null;
@@ -155,10 +156,15 @@ export function stubWorkers(s: ScanSession, o: { ms?: number; loadMs?: number } 
     }
     private async answer(m: WorkerIn): Promise<void> {
       if (m.type === 'load') {
-        stats.load++; this.model = m.live;
+        stats.load++; this.model = m.live; stats.loads.push('load ' + m.live);
         this.say({ type: 'log', text: 'The test stand-in thread loads ' + m.live + (m.cap ? ' + ' + m.cap : '') });
         await sleep(loadMs);
-        this.say({ type: 'reply', id: m.id, ep: m.want === 'webgpu' ? 'webgpu' : 'wasm', layout: null });
+        if (this.dead) return;
+        stats.loads.push('up ' + m.live);
+        // on the GPU: its check passed now (a stand-in pass the page keeps under its surface's key)
+        const gpu = m.want === 'webgpu';
+        this.say({ type: 'reply', id: m.id, ep: gpu ? 'webgpu' : 'wasm', layout: gpu ? 'NHWC' : null, gpu: gpu ? [m.live] : [],
+          passes: gpu ? { [m.live]: { stamp: 'stand-in', ort: 'stand-in', ua: navigator.userAgent, layout: 'NHWC' } } : {} });
       } else if (m.type === 'detect') {
         this.count('detect');
         stats.inFlight++; stats.maxInFlight = Math.max(stats.maxInFlight, stats.inFlight);

@@ -10,7 +10,7 @@
 // lab's doctypeAnswer, mrzRead and heRead on canvases (its former plain page), ported unchanged.
 import { mrzCheck } from '@/scan-process/mrz';
 import { DOCTYPES, type Doctype } from './doctypes';
-import { cpuSession, errText, readModels, type ModelsInfo } from './models';
+import { cpuSession, errText, fetchModel, modelStamp, readModels, type ModelsInfo } from './models';
 import { loadOrt, tensor, type Ort, type OrtSession } from './ort';
 import { CPU_ORT, layoutsUrl, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas, type Drawable } from './upright';
@@ -203,7 +203,10 @@ export class Readers {
   /** Bumped by release(): a load begun before it releases what it opens instead of keeping it. */
   private gen = 0;
 
-  constructor(readonly surface: SurfaceRef, private log: (text: string) => void = () => {}, private cpuDir: OrtDir = CPU_ORT) {}
+  /** modelsInfo: where models.json comes from — the session's engines' one read per open (Engines.modelsInfo), so
+   *  it is read once; unset: read here. */
+  constructor(readonly surface: SurfaceRef, private log: (text: string) => void = () => {}, private cpuDir: OrtDir = CPU_ORT,
+    private modelsInfo: () => Promise<ModelsInfo> = () => readModels(surface)) {}
 
   /** models.json read and the readers it names loaded (once); null when that failed (said in the log). */
   load(): Promise<ModelsInfo | null> {
@@ -218,17 +221,33 @@ export class Readers {
       throw new Error('the readers were released');
     };
     try {
-      const mj = await readModels(s);
+      const t0 = now();
+      const mj = await this.modelsInfo();
       if (g !== this.gen) return null;
       this.info = mj;
-      if (mj.doctype || mj.mrz || mj.he) this.ort = await loadOrt(s, this.cpuDir);
+      // the readers' files (small) and the page's ONNX Runtime at once; their sessions one after the other
+      const files = (name: string): Promise<Uint8Array> => {
+        const p = fetchModel(s, name, () => {}, { stamp: modelStamp(mj, name), said: this.log });
+        p.catch(() => {});  // its failure is the session's, below
+        return p;
+      };
+      const bytes = { doctype: mj.doctype ? files('doctype.onnx') : null, mrz: mj.mrz ? files('mrz.onnx') : null, he: mj.he ? files('he.onnx') : null };
+      const layoutsP = mj.he ? fetch(layoutsUrl(s), { cache: 'no-cache' }) : null;
+      if (layoutsP) layoutsP.catch(() => {});
+      const time = (what: string, t: number): void => this.log('Time: ' + what + ' — ' + Math.round(now() - t) + ' ms');
+      let t1 = now();
+      if (mj.doctype || mj.mrz || mj.he) { this.ort = await loadOrt(s, this.cpuDir); time('ONNX Runtime (' + this.cpuDir + ') loaded for readers', t1); }
       const ort = this.ort as Ort;
-      if (mj.doctype) { this.doctype = keep(await cpuSession(ort, s, 'doctype.onnx')); this.log('Document type model loaded'); }
-      if (mj.mrz) { this.mrz = keep(await cpuSession(ort, s, 'mrz.onnx')); this.log('Passport zone reader loaded'); }
-      if (mj.he) {
-        const lr = await fetch(layoutsUrl(s), { cache: 'no-cache' });
-        if (lr.ok) { const layouts = await lr.json() as HeLayouts; this.he = keep(await cpuSession(ort, s, 'he.onnx')); this.layouts = layouts; this.log('Hebrew field reader loaded'); }
+      t1 = now();
+      if (bytes.doctype) { this.doctype = keep(await cpuSession(ort, s, 'doctype.onnx', bytes.doctype)); this.log('Document type model loaded'); time('document type model ready', t1); }
+      t1 = now();
+      if (bytes.mrz) { this.mrz = keep(await cpuSession(ort, s, 'mrz.onnx', bytes.mrz)); this.log('Passport zone reader loaded'); time('passport zone reader ready', t1); }
+      t1 = now();
+      if (bytes.he && layoutsP) {
+        const lr = await layoutsP;
+        if (lr.ok) { const layouts = await lr.json() as HeLayouts; this.he = keep(await cpuSession(ort, s, 'he.onnx', bytes.he)); this.layouts = layouts; this.log('Hebrew field reader loaded'); time('Hebrew field reader ready', t1); }
       }
+      time('readers ready', t0);
       return mj;
     } catch (e) {
       if (g !== this.gen) return null;

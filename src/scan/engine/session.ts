@@ -180,7 +180,8 @@ export class ScanSession {
     this.env = { ...defaultSessionEnv(), ...parts.env };
     this.log = parts.log || parts.engines?.log || new ScanLog();
     this.engines = parts.engines || new Engines(surface, this.log);
-    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.log, this.engines.settings.cpuDir);
+    // the readers share the engines' one read of models.json per open
+    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.log, this.engines.settings.cpuDir, () => this.engines.modelsInfo());
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
     this.keepCanvases = parts.keepCanvases ?? null;
@@ -253,13 +254,28 @@ export class ScanSession {
   private modelVersion(): string { return this.readers && this.readers.info ? this.readers.info.version : ''; }
   private sleepMs(ms: number): Promise<void> { return new Promise<void>(r => this.env.setTimeout(r, ms)); }
 
-  /** The models made ready as the lab's page did on open: the accurate model first (photos and PDFs can go
-   *  in), then the camera's models; the readers beside them. */
-  async prepare(): Promise<void> {
+  /** The models made ready on open — the light model first (owner, 2026-10-27): the live frame's model on its way,
+   *  so the camera and its frame come as soon as it is ready, then the accurate model right after it (photos and
+   *  PDFs picked meanwhile wait for it); the readers beside them. */
+  //
+  // early (the manager's new worker window, keep.ts prepareEarly): the same start with no scanner open yet — the
+  // scanner's open is not marked (its "Ready" line counts from the open that takes the session).
+  async prepare(early = false): Promise<void> {
+    if (!early) this.markOpen();
     this.attempts.start();
     if (this.readers) void this.readers.load();
-    await this.engines.ensureCap().catch(e => this.log.log('Accurate model: ' + ((e as Error)?.message || e)));
     await this.engines.ensureSession().catch(e => this.log.log('Model: ' + ((e as Error)?.message || e)));
+    await this.engines.ensureCap().catch(e => this.log.log('Accurate model: ' + ((e as Error)?.message || e)));
+  }
+
+  /** When the scanner opened (env.now()), until its first live frame: "Ready: first frame after N ms" goes to the
+   *  log then (the lab's loading log; the owner's measure of Preparing…). */
+  private openedAt: number | null = null;
+  /** The scanner opened now (the site's window, the lab's page): the log's "Time:" lines count from here too. */
+  markOpen(): void {
+    this.openedAt = this.env.now();
+    this.log.markOpen();
+    this.log.log('Time: scanner opened' + (this.engines.engine ? ' — its models kept from the last scan' : ''));
   }
 
   /** The camera shown in video, once the model is ready; the live frame and its follow start. */
@@ -269,7 +285,9 @@ export class ScanSession {
       if (this.readers) void this.readers.load();
       await this.engines.ensureSession();
       if (gen !== this.camGen) return;  // put away while the model loaded: the camera is not turned on
+      const tc = this.env.now();
       const started = await this.camera.start(video);
+      if (started) this.log.log('Time: camera started — ' + Math.round(this.env.now() - tc) + ' ms');
       if (!started || gen !== this.camGen) return;  // put away while the camera started (camera.stop gave it back)
       this.emitFigures();
       this.live.show(video);
@@ -286,6 +304,7 @@ export class ScanSession {
   }
 
   private answer(raw: Corners, res: SteadyAnswer): void {
+    if (this.openedAt !== null) { this.log.log('Ready: first frame after ' + Math.round(this.env.now() - this.openedAt) + ' ms'); this.openedAt = null; }
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);
@@ -610,6 +629,9 @@ export class ScanSession {
     this.live.running = false;
     this.live.lastRes = null;  // the picked picture replaces the camera: no shot from the frame found before it
     while (this.live.inFlight) await this.sleepMs(10);
+    // picked files go only to the accurate model: one picked before it is up waits for it (it starts right after
+    // the live frame's model), the status line says so
+    if (!this.engines.capReady()) { this.emit('status', { key: 'preparing_accurate' }); log.log('Picked files wait for the accurate model'); }
     try { await this.engines.ensureCap(); }
     catch (e) { log.err('Accurate model: ' + errText(e)); this.emit('status', { key: 'pick_failed' }); return 0; }
     let pages = 0;
@@ -618,11 +640,12 @@ export class ScanSession {
     let reads: Promise<void> = Promise.resolve();
     const where = (pic: { file: number; files: number; page: number; pages: number }) => ({ file: pic.file, files: pic.files, page: pic.page, pages: pic.pages });
     const res = await workPictures(pickedPictures(files, this.env.files, log.log), {
+      // only the accurate model's threads: the capture thread (lane 0, shared with the live frame's pool) and a
+      // file thread — never the live frame's (a picked picture sent to the light model's GPU thread hung, 2026-10-20)
       engineOf: async (k): Promise<LaneEngine> => {
         const t = k ? this.engines.fileThreads[k - 1] : undefined;
         if (t && !t.dead) return t;
-        const e = this.engines.engine;
-        return e && e.shared ? e : this.engines.ensureCap();
+        return this.engines.ensureCap();
       },
       growFiles: addLane => this.engines.growFiles(addLane),
       analyze: (pic, eng, onStep) => analyzePicture(pic.url, pic.pdfPage, eng, onStep, { decode: url => this.env.files.decode(url), log: log.log, now: this.env.now }),
