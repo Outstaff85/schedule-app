@@ -29,7 +29,7 @@ import {
 import { Plate } from '@/components/shared/plate';
 import { Figures, Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
-import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
+import { SelectBar, SelectRow, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
 import { Window } from '@/components/shared/window';
 import type { AdminPane, AdminPunch, AdminSnapshot, ManagerBridge } from './bridge';
@@ -224,7 +224,7 @@ function PunchLog({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
               className="w-full min-w-0" aria-label={tr('Date')} title={tr('Date')} data-testid="punch-filter-date" />
             {filterSelect('type', tr('Type'), tr('All types'), [{ v: 'in', l: tr('Punch IN') }, { v: 'out', l: tr('Punch OUT') }])}
           </div>
-          {rows.length > 0 && snap.canEditPunches && <div className="mb-2 flex" data-testid="punch-select"><SelectHead sel={sel} /></div>}
+          {rows.length > 0 && snap.canEditPunches && <SelectRow sel={sel} testid="punch-select" />}
           <PagedList key={[f.worker, f.client, f.date, f.type].join('|')} items={rows} columns render={e => plate(e)}
             empty={<Empty data-testid="punch-empty"><EmptyMedia><IconClipboardText /></EmptyMedia><EmptyTitle>{tr('No punch records found')}</EmptyTitle></Empty>} />
           {snap.loadedFrom && (

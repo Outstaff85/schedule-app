@@ -67,7 +67,7 @@ export function Workers() {
       {!d.workers.length
         ? <div className="py-4 text-sm text-faint">{tr('No workers yet')}</div>
         : (
-          <Section label={tr('Workers')} count={list.length} tools={<SelectHead sel={sel} />}>
+          <Section label={tr('Workers')} count={list.length} tools={<SelectHead sel={sel} testid="workers-select" />}>
             <AnimatePresence initial={false}>
               <PagedList items={list} render={w => {
                 const onSite = lastEntryFor(d.punches, w.id)?.type === 'in';

@@ -285,12 +285,12 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
       <Section label={<SecLabel k="salary" label="Salary Calculation" onHelp={onHelp} />} icon={<IconCash className="size-4" />} tools={<>
         <Button size="icon-sm" data-testid="sal-search-btn" aria-label={tr('Search a worker')} title={tr('Search a worker')} on={searching} onClick={() => setSearch(!searching)}><IconSearch className="size-4" /></Button>
         {snap.canExport && !payOnly && <Button size="icon-sm" data-testid="sal-export" aria-label={tr('Export')} title={tr('Export')} onClick={onExport}><IconDownload className="size-4" /></Button>}
+        {!payOnly && entries.length > 0 && <SelectHead sel={sel} testid="sal-select" className="ml-0" />}
       </>}>
         {searching && <Input data-testid="sal-search" autoFocus type="search" className="mb-2" value={q} placeholder={tr('Search a worker')} onChange={e => setSearch(true, e.target.value)} />}
         {!entries.length ? (
           <div data-testid="sal-empty" className="rounded-[14px] border border-dashed border-white/20 px-3 py-4 text-center text-[13px] text-ink-2">{tr('No punch data for this period')}</div>
         ) : <>
-          {!payOnly && <div className="mb-2 flex" data-testid="sal-select"><SelectHead sel={sel} /></div>}
           <DataTable data-testid="sal-table" columns={columns} data={rows} rowId={e => String(e.workerId)} footer={footer} card={plate}
             empty={<div className="py-4 text-center text-[13px] text-ink-2">{tr('No workers found')}</div>}
             onRowOpen={e => (sel.on ? sel.toggle(String(e.workerId)) : setRow(e))} onRowEdit={e => api.openPay(String(e.workerId))} />
@@ -450,7 +450,7 @@ function PendingHours({ snap, api, d, onHelp }: { snap: AccountingSnapshot; api:
   const reject = async (which: string[]) => { await api.rejectBatches(which); setSeq(n => n + 1); };
   return (
     <Section id="accSecPending" data-testid="pending-hours" label={<SecLabel k="pending" label="Pending hours" onHelp={onHelp} />} icon={<IconFileCheck className="size-4" />} count={list ? list.length : undefined}
-      tools={can && list && list.length > 0 ? <SelectHead sel={sel} /> : undefined}>
+      tools={can && list && list.length > 0 ? <SelectHead sel={sel} testid="pending-select" /> : undefined}>
       {failed ? <div className="py-3 text-[13px] text-ink-3">{tr('Could not load')}</div>
         : !list ? <Skeleton className="h-[52px]" />
         : !list.length ? <div data-testid="pending-empty" className="rounded-[14px] border border-dashed border-white/20 px-3 py-4 text-center text-[13px] text-ink-2">{tr('Nothing pending')}</div>

@@ -113,8 +113,7 @@ export function UsersPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
     <div data-testid="users">
       <TemplatesSection isSuper={snap.isSuper} api={api} />
       <Section label={<span className="inline-flex items-center gap-1.5"><IconUsers className="size-4" />{tr('Logins')}</span>} count={users.length}
-        tools={<Button variant="primary" size="sm" className="og-new" data-testid="user-new" onClick={() => api.openUserWindow(null)}><IconPlus className="size-4" />{tr('New user')}</Button>}>
-        {ids.length > 0 && <div className="mb-2 flex" data-testid="users-select"><SelectHead sel={sel} /></div>}
+        tools={<><Button variant="primary" size="sm" className="og-new" data-testid="user-new" onClick={() => api.openUserWindow(null)}><IconPlus className="size-4" />{tr('New user')}</Button>{ids.length > 0 && <SelectHead sel={sel} testid="users-select" className="ml-0" />}</>}>
         <PagedList items={users} columns render={row}
           empty={<Empty data-testid="users-empty"><EmptyMedia><IconUsers /></EmptyMedia><EmptyTitle>{tr('No staff, HR or supplier users yet.')}</EmptyTitle></Empty>} />
       </Section>

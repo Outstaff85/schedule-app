@@ -27,7 +27,7 @@ import { Plate, type PlateAction } from '@/components/shared/plate';
 import { Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
 import { NewBadge } from '@/components/shared/new-badge';
-import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-mode';
+import { SelectBar, SelectRow, useSelection } from '@/components/shared/select-mode';
 import { undoDelete } from '@/components/shared/undo';
 import type { ManagerBridge, WorkerRow, WorkersSnapshot } from './bridge';
 import { TransferAskWindow } from './TransferAsk';
@@ -263,7 +263,7 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
         <div data-testid="workers-none" className="rounded-[14px] border border-dashed border-white/20 px-3 py-6 text-center text-sm text-ink-2">{tr('No workers found')}</div>
       ) : (
         <>
-          {can && cards && <div className="mb-2 flex" data-testid="workers-select"><SelectHead sel={sel} /></div>}
+          {can && cards && <SelectRow sel={sel} testid="workers-select" />}
           {groups.map(g => g.key
             ? <Section key={g.key} label={g.name === 'No client assigned' || g.name === 'No supplier assigned' ? tr(g.name) : g.name} count={g.items.length} icon={dot(g.color)} data-testid="workers-group">{body(g.items)}</Section>
             : <React.Fragment key="all">{body(g.items)}</React.Fragment>)}
