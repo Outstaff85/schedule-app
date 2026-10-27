@@ -204,6 +204,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(pv.rows.length === 1 && pv.rows[0] === 'w2' && pv.com && pv.figs === 'Pay,Travel ₪,Total Pay,My commission' && pv.view === 'pay' && !pv.tabs && !pv.payable && !pv.pend && !pv.alerts && pv.noExport && pv.noSelect,
     'hr Commission tab: own worker only, its commission, no tabs, no export, nothing else of Accounting ' + JSON.stringify(pv).slice(0, 300));
   ok(pv.comText.includes('₪' + (pv.hours * 4).toFixed(0)), 'hr Commission tab: commission = hours × 4 ' + pv.hours);
+  // The firm's signature and stamp (docs/contracts.md): an HR without the right "Firm's signature and stamp" gets no way to them
+  // in the worker window's Contract section (the server refuses its changes too — tests/auth/test_seal.py).
+  const hseal = await h.evaluate(async () => {
+    switchTab('workers'); await T.tick(100);
+    openEditWorker(0); await T.until(() => document.querySelector('[data-sec="contract"] button'), 5000);
+    document.querySelector('[data-sec="contract"] button').click();
+    await T.until(() => document.querySelector('[data-testid="editor-contract"]'), 5000);
+    const r = {section: !!document.querySelector('[data-testid="editor-contract"]'), seal: !!document.querySelector('[data-testid="editor-contract-seal"]')};
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(200);
+    return r;
+  });
+  ok(hseal.section && !hseal.seal, 'hr: no Firm\'s signature and stamp button without its right ' + JSON.stringify(hseal));
   // The HR's Hours tab (hours ticks): the shared React screen (src/hours-review/); its own worker's days; approve one.
   const hrReady = () => !!document.querySelector('#hoursRoot #accSecReview [data-testid="hours-review"][data-ready="1"]');
   await h.evaluate(() => switchTab('hours'));

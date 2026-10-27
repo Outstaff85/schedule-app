@@ -2065,6 +2065,70 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && d5h.body.include.form101 === true && d5h.body.include.contract === true && d5h.body.include.docs === false && d5h.body.form101 && 'employer' in d5h.body.form101
     && d5.name && d5.sign && !d5.pay && d5.closed && d5.kept && d5.kept.contract === true,
     'download data: one raw PDF — the summary (names, the signing date, never pay) then Form 101 and the contract, its page count in X-Pages; Form 101\'s values sent; the choice kept ' + JSON.stringify({d5, d5h: {pages: d5h.pages, parts: d5h.parts, type: d5h.type}}));
+  // The firm's signature and stamp (docs/contracts.md → The firm's signature and stamp): the owner opens Firm details,
+  // uploads a photo of the stamp (its paper made transparent on the server) and draws the firm's signature — a preview each;
+  // a template with the every-page tick (on for a new one) shows both at the bottom right of its sample, the stamp drawn
+  // over the signature; ⋮ turns the tick off and the sample has neither.
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); ManagerBridge.openFirmWindow('mine'); });
+  await p.waitForSelector('#firmModal [data-testid="firm-seal"][data-can="1"]', {timeout: 30000});
+  const stampPhoto = Buffer.from(await (await fetch('http://127.0.0.1:5055/stampPhoto', {method: 'POST'})).arrayBuffer());
+  await p.setInputFiles('#firmModal [data-testid="firm-seal-file-stamp"]', {name: 'stamp.jpg', mimeType: 'image/jpeg', buffer: stampPhoto});
+  await p.waitForSelector('#firmModal [data-testid="firm-seal-preview-stamp"]', {timeout: 30000});
+  await p.click('#firmModal [data-testid="firm-seal-draw"]');
+  await p.waitForSelector('[data-testid="firm-seal-draw-window"] [data-testid="signature-pad"]', {timeout: 10000});
+  await sleep(500);  // the window slides in
+  const fsPad = await (await p.$('[data-testid="firm-seal-draw-window"] [data-testid="signature-pad"]')).boundingBox();
+  await p.mouse.move(fsPad.x + 30, fsPad.y + 40); await p.mouse.down();
+  for (let i = 1; i <= 12; i++) await p.mouse.move(fsPad.x + 30 + i * 18, fsPad.y + 40 + (i % 2 ? 30 : -5));
+  await p.mouse.up();
+  await p.click('[data-testid="firm-seal-draw-save"]');
+  await p.waitForSelector('#firmModal [data-testid="firm-seal-preview-signature"]', {timeout: 30000});
+  const fsUi = await p.evaluate(() => ({sig: document.querySelector('#firmModal [data-testid="firm-seal-signature"]').dataset.set,
+    stamp: document.querySelector('#firmModal [data-testid="firm-seal-stamp"]').dataset.set,
+    section: !!document.querySelector('#firmModal [data-testid="firm-seal-section"]')}));
+  const fsRec = await (await fetch('http://127.0.0.1:5055/firmSeal', {method: 'POST'})).json();
+  ok(fsUi.section && fsUi.sig === '1' && fsUi.stamp === '1' && fsRec.stamp && fsRec.stamp.exists && /^tenants\/tenant-one\/firmSeal\/stamp-/.test(fsRec.stamp.path)
+    && fsRec.signature && fsRec.signature.exists && fsRec.signature.way === 'drawn' && fsRec.stamp.w <= 800,
+    'firm\'s signature and stamp: Firm details has the section; a stamp photo uploaded and the signature drawn, each shown, stored under the firm (firmSeal) ' + JSON.stringify({fsUi, fsRec}));
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); window.__sealOpened = []; window.__sealOrigOpen = window.open;
+    window.open = u => { window.__sealOpened.push(String(u)); return {}; }; switchTab('admin'); switchAdminPane('contracts'); });
+  await p.waitForSelector('[data-testid="contract-row"]', {timeout: 30000});
+  const sealSample = async () => {
+    const b64 = await p.evaluate(async () => {
+      const n = window.__sealOpened.length;
+      T.tap('[data-testid="contract-row"]');
+      await T.until(() => window.__sealOpened.length > n, 20000);
+      const buf = new Uint8Array(await (await fetch(window.__sealOpened[window.__sealOpened.length - 1])).arrayBuffer());
+      let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      return btoa(s);
+    });
+    return (await fetch('http://127.0.0.1:5055/pdfInfo', {method: 'POST', body: Buffer.from(b64, 'base64')})).json();
+  };
+  const fsChip = await p.evaluate(() => !!document.querySelector('[data-testid="contract-row"] [data-testid="contract-seal"]') && !!document.querySelector('[data-testid="contract-seal-open"]'));
+  const fsOn = await sealSample();
+  const fsPage = fsOn[0], fsBottom = fsPage.images.filter(i => i.bbox[0] > fsPage.w / 2 && i.bbox[1] > fsPage.h / 2);
+  ok(fsChip && fsOn.length === 1 && fsBottom.length === 2 && fsBottom[1].width === fsRec.stamp.w && fsBottom[0].width === fsRec.signature.w
+    && fsBottom[1].bbox[0] < fsBottom[0].bbox[2] && fsBottom[1].bbox[2] > fsBottom[0].bbox[2],
+    'firm\'s signature and stamp: a new template has the tick (its Stamp chip); its sample shows the firm\'s own signature and then its stamp over it, bottom right ' + JSON.stringify({fsChip, fsOn}));
+  await p.click('[data-testid="contract-row"] button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  await p.click('[role="menuitem"]:has-text("Stamp on every page: turn off")');
+  ok(await waitFor(p, () => !document.querySelector('[data-testid="contract-row"] [data-testid="contract-seal"]'), 15000), 'firm\'s signature and stamp: ⋮ turns the every-page tick off');
+  const fsOff = await sealSample();
+  ok(fsOff[0].images.filter(i => i.bbox[0] > fsOff[0].w / 2 && i.bbox[1] > fsOff[0].h / 2).length === 0,
+    'firm\'s signature and stamp: without the tick the sample has no seal at the bottom ' + JSON.stringify(fsOff));
+  // a template saved before the tick (no field) reads as on: its chip, ⋮ offers to turn it off, its sample has the seal
+  await fetch('http://127.0.0.1:5055/contractSealFieldDrop', {method: 'POST'});
+  await p.evaluate(() => { switchAdminPane(null); switchAdminPane('contracts'); });
+  await p.waitForSelector('[data-testid="contract-row"] [data-testid="contract-seal"]', {timeout: 30000});
+  const fsOld = await sealSample();
+  await p.click('[data-testid="contract-row"] button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  const fsOldMenu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Stamp on every page: turn off")');
+  ok(/Stamp on every page: turn off/.test(fsOldMenu) && fsOld[0].images.filter(i => i.bbox[0] > fsOld[0].w / 2 && i.bbox[1] > fsOld[0].h / 2).length === 2
+    && await waitFor(p, () => !document.querySelector('[data-testid="contract-row"] [data-testid="contract-seal"]'), 15000),
+    'firm\'s signature and stamp: a template without the field reads as on (chip, ⋮ turn off, the seal in its sample); turned off again ' + JSON.stringify({fsOldMenu, fsOld}));
+  await p.evaluate(() => { window.open = window.__sealOrigOpen; });
+  await fetch('http://127.0.0.1:5055/firmSealClear', {method: 'POST'});
   // D6: a worker of firm two moves to this firm — the request, the worker's consent and signing in their own page, the copy.
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });
@@ -2130,7 +2194,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('[role="menuitem"]:has-text("Delete")');
   await p.waitForTimeout(6500);
   const ctAfter = await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json();
-  ok(ctMenu === 'Edit,Category,Replace file,Delete' && ctAfter.length === 0, 'contract templates: ⋮ holds Edit (the name), Category, Replace file, Delete; Delete goes through the Undo snack ' + JSON.stringify({ctMenu, after: ctAfter.length}));
+  ok(ctMenu === 'Edit,Category,Replace file,Stamp on every page: turn on,Delete' && ctAfter.length === 0, 'contract templates: ⋮ holds Edit (the name), Category, Replace file, the every-page stamp (turned off above), Delete; Delete goes through the Undo snack ' + JSON.stringify({ctMenu, after: ctAfter.length}));
   // D7: several files at once — a PDF and a Word file — each prepared and saved in the background.
   const docxBuf = Buffer.from(await (await fetch('http://127.0.0.1:5055/contractDocx', {method: 'POST'})).arrayBuffer());
   await p.setInputFiles('[data-testid="contract-file"]', [
@@ -2143,6 +2207,129 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const word = d7.find(t => t.name === 'Word contract') || {};
   ok(d7busy === 2 && (word.marks || []).includes('full_name') && (word.marks || []).includes('signature') && /\.pdf$/.test(word.fileId || ''),
     'word templates: a .docx is turned into a PDF (LibreOffice), made light and its marks found — the Hebrew line too ' + JSON.stringify(d7.map(t => ({n: t.name, m: t.marks}))));
+  // Client contracts (docs/contracts.md → Client contracts): a template For a client; the client window's contact fields
+  // saved; Send to sign → a wa.me/972… link with the text and the link, Copy; the client's own page (/client-sign, no
+  // login) — its details prefilled, one changed, the end of the contract, one signature → the signed PDF on the client and
+  // its empty contact fields filled (never what the firm typed); Sign here in the window; a login without the right: no Send.
+  const ccPdf = Buffer.from(await (await fetch('http://127.0.0.1:5055/clientContractPdf', {method: 'POST'})).arrayBuffer());
+  const [ccChooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-testid="contract-new-client"]')]);
+  await ccChooser.setFiles({name: 'Service agreement.pdf', mimeType: 'application/pdf', buffer: ccPdf});
+  await p.waitForSelector('[data-testid="contract-upload"][data-state="ready"]', {timeout: 60000});
+  const ccUp = await p.evaluate(() => ({kind: (document.querySelector('[data-testid="contract-kind-pick"] [data-state="on"]') || {}).dataset?.kind,
+    notFilled: (document.querySelector('[data-testid="contract-not-filled"]') || {}).innerText || ''}));
+  await p.click('[data-testid="contract-save"]');
+  ok(await waitFor(p, () => !!document.querySelector('[data-testid="contracts-clients"] [data-testid="contract-row"] [data-testid="contract-kind"][data-kind="client"]'), 30000),
+    'client contracts: a template uploaded For a client is listed under For clients');
+  const ccTpl = (await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json()).find(t => t.kind === 'client') || {};
+  ok(ccUp.kind === 'client' && /\{\{given\}\}/.test(ccUp.notFilled) && ccTpl.isDefault && (ccTpl.marks || []).includes('client_signature') && (ccTpl.marks || []).includes('client_name'),
+    'client contracts: the upload window has the kind picked (For a client), names the worker marks it leaves empty; the first client template is their default ' + JSON.stringify({ccUp, kind: ccTpl.kind, d: ccTpl.isDefault, m: ccTpl.marks}));
+  // the client window: contact phone and email typed, the signer left empty; Send to sign
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchAdminPane(null); switchTab('clients'); openEditClient('c1'); });
+  await p.waitForSelector('#clientModal [data-testid="client-editor"]');
+  await p.evaluate(() => { T.fill('cContactPhone', '050-1234567'); T.fill('cEmail', 'office@site-a.co.il'); document.querySelector('#clientModal [data-sec="contract"] button').click(); });
+  await p.waitForSelector('#clientModal [data-testid="client-contract-send"]:not([disabled])', {timeout: 30000});
+  const ccTrigger = await p.evaluate(() => document.querySelector('[data-testid="client-contract-template"]').innerText);
+  await p.click('#clientModal [data-testid="client-contract-send"]');
+  await p.waitForSelector('#clientModal [data-testid="client-contract-sent"]', {timeout: 30000});
+  const ccSent = await p.evaluate(() => ({link: document.querySelector('[data-testid="client-contract-link"]').innerText.trim(),
+    wa: (document.querySelector('[data-testid="client-contract-whatsapp"]') || {}).href || '', copy: !!document.querySelector('[data-testid="client-contract-copy"]')}));
+  const ccWa = decodeURIComponent(ccSent.wa);
+  ok(/The default: Service agreement/.test(ccTrigger) && /^http:\/\/127\.0\.0\.1:8765\/client-sign\?t=[\w-]{30,}$/.test(ccSent.link) && /^https:\/\/wa\.me\/972501234567\?text=/.test(ccSent.wa)
+    && ccWa.includes('Site A') && ccWa.includes('You have a contract to sign') && ccWa.includes(ccSent.link) && ccSent.copy,
+    'client contracts: Send to sign — the firm\'s default client template, the link to /client-sign, Send on WhatsApp to the contact phone (972…) with the name, what to do and the link, Copy ' + JSON.stringify({ccTrigger, ccSent}));
+  await p.click('#clientModal [data-testid="client-save"]');
+  ok(await waitFor(p, () => { const c = clients.find(x => x.id === 'c1'); return !!c && c.contactPhone === '050-1234567' && c.email === 'office@site-a.co.il' && !c.signerRole; }, 10000),
+    'client contracts: the client window saves the contact phone and email');
+  const ccReqs1 = await (await fetch('http://127.0.0.1:5055/clientSignRequests', {method: 'POST'})).json();
+  const ccTok = ccSent.link.split('?t=')[1];
+  ok(ccReqs1.length === 1 && ccReqs1[0].status === 'sent' && ccReqs1[0].tokenHash && !JSON.stringify(ccReqs1).includes(ccTok) && /\/clients\/c1\/sign\//.test(ccReqs1[0].templatePath)
+    && ccReqs1[0].details.contactPhone === '050-1234567' && ccReqs1[0].values.company === 'Firm One' && ccReqs1[0].values.client_rate !== undefined,
+    'client contracts: the send keeps only the token\'s hash, the template frozen under the client, the prefill and the firm\'s values (billing for the owner) ' + JSON.stringify(ccReqs1.map(r => ({s: r.status, t: r.templatePath, d: r.details}))));
+  // the client's own page: no login, only its request
+  const cctx = await newCtx();
+  const cpg = await page(cctx);
+  await cpg.goto(BASE + 'client-sign.html?t=' + ccTok);
+  await cpg.waitForSelector('[data-testid="client-sign"][data-state="sent"]', {timeout: 30000});
+  const ccPre = await cpg.evaluate(() => ({name: T.val('csName'), phone: T.val('csPhone'), email: T.val('csEmail'), no: T.val('csCompanyNo'),
+    firm: document.querySelector('[data-testid="client-sign-brand"]').innerText, lang: !!document.querySelector('[data-testid="lang-btn"]')}));
+  await cpg.evaluate(() => { T.fill('csSigner', 'Moshe Levi'); T.fill('csSignerRole', 'CEO'); T.fill('csPhone', '050-9999999'); });
+  await cpg.click('[data-testid="client-sign-show"]');
+  ok(await waitFor(cpg, () => { const d = document.querySelectorAll('[data-testid="pdf-doc"]'); return d.length === 1 && Number(d[0].dataset.pages) === 2; }, 40000),
+    'client contracts: the client\'s page shows the contract filled, both pages');
+  const ccLocked = await cpg.evaluate(() => (document.querySelector('[data-testid="sign-locked"]') || {}).innerText || 'open');
+  await cpg.evaluate(() => document.querySelector('[data-testid="pdf-end"]').scrollIntoView());
+  await cpg.waitForSelector('[data-testid="sign-button"]', {timeout: 10000});
+  const ccPad = await (await cpg.$('[data-testid="sign-documents"] canvas:not([data-page])')).boundingBox();
+  await cpg.mouse.move(ccPad.x + 20, ccPad.y + 30); await cpg.mouse.down();
+  for (let i = 1; i <= 10; i++) await cpg.mouse.move(ccPad.x + 20 + i * 15, ccPad.y + 30 + (i % 2 ? 15 : -10));
+  await cpg.mouse.up();
+  await cpg.click('[data-testid="sign-button"]');
+  await cpg.waitForSelector('[data-testid="client-sign-done"]', {timeout: 60000});
+  const ccErrs = cpg.errs.slice();
+  const ccBad = await page(cctx);
+  await ccBad.goto(BASE + 'client-sign.html?t=not-a-token');
+  ok(await waitFor(ccBad, () => !!document.querySelector('[data-testid="client-sign-invalid"]') && !document.querySelector('[data-testid="client-sign-flow"]'), 20000),
+    'client contracts: a wrong link shows that it is no longer valid, nothing of the firm');
+  await cctx.close();
+  const ccReqs2 = await (await fetch('http://127.0.0.1:5055/clientSignRequests', {method: 'POST'})).json();
+  const ccR = ccReqs2[0] || {};
+  const ccPdfOut = ccR.part ? await (await fetch('http://127.0.0.1:5055/clientSignedPdf/' + ccR.id, {method: 'POST'})).json() : {};
+  ok(ccPre.name === 'Site A' && ccPre.phone === '050-1234567' && ccPre.email === 'office@site-a.co.il' && /Firm One/.test(ccPre.firm) && ccPre.lang && /end of the document/.test(ccLocked)
+    && ccR.status === 'signed' && /^tenants\/tenant-one\/clients\/c1\/documents\/\d+-contract-/.test((ccR.part || {}).path || '') && ccR.clientDetails.signerName === 'Moshe Levi'
+    && ccPdfOut.pages === 2 && /Moshe Levi/.test(ccPdfOut.text) && /050-9999999/.test(ccPdfOut.text) && ccPdfOut.images >= 2 && !/\{\{/.test(ccPdfOut.text) && !ccErrs.length,
+    'client contracts: the client\'s page — its details prefilled, changed and signed once; the signed PDF built and kept on the client with them ' + JSON.stringify({ccPre, ccLocked, s: ccR.status, part: ccR.part, cd: ccR.clientDetails, ccPdfOut: {p: ccPdfOut.pages, i: ccPdfOut.images}, ccErrs}));
+  // back in the manager: the signed contract listed on the client, its empty contact fields filled, the typed phone kept
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openEditClient('c1'); });
+  await p.waitForSelector('#clientModal [data-testid="client-editor"]');
+  await p.evaluate(() => document.querySelector('#clientModal [data-sec="contract"] button').click());
+  await p.waitForSelector('#clientModal [data-testid="client-contract-signed"]', {timeout: 30000});
+  ok(await waitFor(p, () => T.val('cSignerName') === 'Moshe Levi' && T.val('cSignerRole') === 'CEO', 10000)
+    && await p.evaluate(() => T.val('cContactPhone') === '050-1234567' && document.querySelector('[data-testid="client-contract-status"]').dataset.state === 'signed'),
+    'client contracts: the signed contract is listed on the client; the signing fills its empty signer fields and keeps the phone the firm typed');
+  // the signed contract is one of the client's documents (written once by the server), and the window lists it from there
+  const ccDocs1 = await (await fetch('http://127.0.0.1:5055/clientDocs', {method: 'POST'})).json();
+  await waitFor(p, () => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].every(e => e.dataset.from === 'doc'), 15000);
+  const ccListed1 = await p.evaluate(() => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].map(e => ({id: e.dataset.id, from: e.dataset.from})));
+  ok(ccDocs1.length === 1 && ccDocs1[0].id === ccR.id && ccDocs1[0].type === 'contract' && ccDocs1[0].signed === true && ccDocs1[0].signRequestId === ccR.id
+    && ccDocs1[0].path === ccR.part.path && ccListed1.length === 1 && ccListed1[0].id === ccR.id && ccListed1[0].from === 'doc',
+    'client contracts: the signed contract is in the client\'s documents, once, and listed from them ' + JSON.stringify({ccDocs1, ccListed1}));
+  // Sign here: the client signs in the window
+  await p.click('#clientModal [data-testid="client-contract-here"]');
+  await p.waitForSelector('[data-testid="client-contract-here-window"] [data-testid="client-sign-show"]', {timeout: 30000});
+  await p.click('[data-testid="client-contract-here-window"] [data-testid="client-sign-show"]');
+  ok(await waitFor(p, () => Number((document.querySelector('[data-testid="client-contract-here-window"] [data-testid="pdf-doc"]') || {dataset: {}}).dataset.pages) === 2, 40000),
+    'client contracts: Sign here shows the contract in the window');
+  await p.evaluate(() => document.querySelector('[data-testid="client-contract-here-window"] [data-testid="pdf-end"]').scrollIntoView());
+  await p.waitForSelector('[data-testid="client-contract-here-window"] [data-testid="sign-button"]', {timeout: 10000});
+  const ccPad2 = await (await p.$('[data-testid="client-contract-here-window"] [data-testid="sign-documents"] canvas:not([data-page])')).boundingBox();
+  await p.mouse.move(ccPad2.x + 20, ccPad2.y + 30); await p.mouse.down();
+  for (let i = 1; i <= 10; i++) await p.mouse.move(ccPad2.x + 20 + i * 15, ccPad2.y + 30 + (i % 2 ? 15 : -10));
+  await p.mouse.up();
+  await p.click('[data-testid="client-contract-here-window"] [data-testid="sign-button"]');
+  ok(await waitFor(p, () => !document.querySelector('[data-testid="client-contract-here-window"]') && document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]').length === 2, 40000),
+    'client contracts: Sign here — signed in the window, the second signed contract listed');
+  const ccDocs2 = await (await fetch('http://127.0.0.1:5055/clientDocs', {method: 'POST'})).json();
+  await waitFor(p, () => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].every(e => e.dataset.from === 'doc'), 15000);
+  const ccListed2 = await p.evaluate(() => [...document.querySelectorAll('#clientModal [data-testid="client-contract-signed"]')].map(e => e.dataset.from));
+  ok(ccDocs2.length === 2 && new Set(ccDocs2.map(d => d.id)).size === 2 && ccDocs2.every(d => d.type === 'contract' && d.signed === true && d.id === d.signRequestId)
+    && ccListed2.length === 2 && ccListed2.every(f => f === 'doc'),
+    'client contracts: Sign here adds its own entry to the client\'s documents (one per signed contract) ' + JSON.stringify({ccDocs2, ccListed2}));
+  // a staff login without the right "Firm's signature and stamp; client contracts" sees the status, not Send
+  const ccStaff = await p.evaluate(async () => {
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(200);
+    const key = 'schedMgr_session', raw = localStorage.getItem(key), s = JSON.parse(raw);
+    localStorage.setItem(key, JSON.stringify(Object.assign({}, s, {role: 'staff', rights: ['clients', 'workers']})));
+    openEditClient('c1'); await T.tick(200);
+    document.querySelector('#clientModal [data-sec="contract"] button').click();
+    await T.until(() => document.querySelector('#clientModal [data-testid="client-contract-status"]'), 20000);
+    const r = {status: !!document.querySelector('#clientModal [data-testid="client-contract-status"]'), send: !!document.querySelector('#clientModal [data-testid="client-contract-send"]'),
+      here: !!document.querySelector('#clientModal [data-testid="client-contract-here"]'), seal: !!document.querySelector('#clientModal [data-testid="client-contract-seal"]')};
+    localStorage.setItem(key, raw);
+    closeModal('clientOverlay'); await T.tick(200);
+    return r;
+  });
+  ok(ccStaff.status && !ccStaff.send && !ccStaff.here && !ccStaff.seal, 'client contracts: a login without the right sees the status, no Send to sign, Sign here or seal ' + JSON.stringify(ccStaff));
+  await p.evaluate(() => { switchTab('admin'); switchAdminPane('contracts'); });
   await p.evaluate(() => { window.open = window.__origOpen; window.__opened = undefined; switchAdminPane(null); switchTab('schedule'); });
   // Admin pane: users through the dispatcher
   ok(await p.evaluate(async () => { const j = await (await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'listUsers'})})).json(); return (j.users||[]).some(u=>u.username==='sup1'); }), 'owner: listUsers via the dispatcher');
@@ -2753,7 +2940,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(ed.worker.join() === 'person,address,work,documents,contract,form101,access' && /Dana/.test(ed.personSum) && ed.sexSeg && ed.sexVal === 'F' && ed.toggles && ed.closedHidden && ed.noSave,
     'editors: the worker editor is section plates (Person · Address · Work · Documents · Contract · Form 101 · Access), summaries, segmented choices, closed sections keep their fields, no Save ' + JSON.stringify(ed));
-  ok(ed.client.join() === 'client,place,rates' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.noRole,
+  ok(ed.client.join() === 'client,place,rates,contract' && ed.supplier.join() === 'supplier*' && ed.supSave && /f5a623|--warn/.test(ed.supNameAmber) && ed.user[0] === 'person*' && ed.user.map(x => x.replace('*', '')).join() === 'person,sections' && ed.supplierEdit === 'supplier,commission,workers' && ed.noRole,
     'editors: client, supplier (one Save, an empty name amber) and user form as section plates ' + JSON.stringify(ed));
   // Redesign gaps: client billing by the day; the supplier editor's payable commission and editable portal ticks (saved at once).
   const gp = await p.evaluate(async () => {
@@ -3362,7 +3549,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await (await p.$('#adminRoot [data-testid="templates"]')).screenshot({path: SP + '/templates.png'}).catch(()=>{});
   await (await p.$('[data-testid="window"]')).screenshot({path: SP + '/template-window.png'}).catch(()=>{});
   const capd = await p.evaluate(() => { const t = k => document.querySelector('[data-testid="template-window"] [data-k="' + k + '"]');
-    return {clients: t('clients').disabled && t('clients').dataset.cap === 'no', pay: t('seePay').disabled, hours: !t('hours').disabled}; });
+    return {clients: t('clients').disabled && t('clients').dataset.cap === 'no', pay: t('seePay').disabled, hours: !t('hours').disabled,
+      // the firm's signature and stamp: a tile among the actions, greyed on a client's template
+      firm: !!document.querySelector('[data-testid="template-window"] [data-testid="rights-actions"] [data-k="firmSign"]')
+        && t('firmSign').disabled && t('firmSign').dataset.cap === 'no'}; });
   await p.click('[data-testid="template-window"] [data-testid="rights-tabs"] [data-k="schedule"]');
   await p.click('[data-testid="template-save"]');
   const tpB = await p.evaluate(async () => {
@@ -3383,9 +3573,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const row = l => rows.find(x => x.dataset.label === l), col = n => head.findIndex(h => h.includes(n));
     const cell = (l, n) => row(l).children[col(n)].textContent.trim();
     return {n: rows.length, shifts: cell('Edit shifts', 'Dispatcher'), sup: cell('Edit shifts', 'Supplier'), ownHr: cell('Only own workers', 'HR with pay'), today: cell('Today', 'Supplier'),
-      hrToday: cell('Today', 'HR with pay'), com: cell('Commission', 'HR with pay'), pay: cell('Edit pay', 'Accountant'), payD: cell('Edit pay', 'Dispatcher')};
+      hrToday: cell('Today', 'HR with pay'), com: cell('Commission', 'HR with pay'), pay: cell('Edit pay', 'Accountant'), payD: cell('Edit pay', 'Dispatcher'),
+      // the firm's signature and stamp: off by default on a staff / HR template, never on a supplier's
+      firm: ['Dispatcher', 'Accountant', 'HR with pay', 'Supplier'].map(n => cell("Firm's signature and stamp; client contracts", n)).join('|')};
   });
-  ok(rmx.n === 20 && rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.today === "✓" && rmx.hrToday === "" && rmx.com === "✓" && rmx.pay === "✓" && rmx.payD === "—",
+  ok(rmx.n === 21 && rmx.firm === '—|—|—|' &&rmx.shifts === "✓" && rmx.sup === "" && rmx.ownHr === "✓" && rmx.today === "✓" && rmx.hrToday === "" && rmx.com === "✓" && rmx.pay === "✓" && rmx.payD === "—",
     "boss: Who gets what — the flat ticks by template (blank: never for that role) " + JSON.stringify(rmx));
   // A staff login on a template without its edit ticks: the Schedule, Workers, card and punch log only read.
   const vo = await p.evaluate(() => {
@@ -3401,8 +3593,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   ok(!vo.sched && !vo.workers && !vo.add && !vo.punches && !vo.punch && vo.schedOnly && vo.all, 'edit ticks: without them Schedule, Workers and punches only read; with all three it changes all ' + JSON.stringify(vo));
-  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.old === '' && /schedule,hours/.test(tpB.rights) && capd.clients && capd.pay && capd.hours,
-    'boss: Users lists the permission templates with New template and Put them on templates; a client template greys Clients and pay; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB, capd}));
+  ok(tpA.newBtn && tpA.link && /dispatcher/.test(tpA.rows) && /client/.test(tpA.rows) && tpB.closed && tpB.old === '' && /schedule,hours/.test(tpB.rights) && capd.clients && capd.pay && capd.hours && capd.firm,
+    'boss: Users lists the permission templates with New template and Put them on templates; a client template greys Clients, pay and the firm\'s signature and stamp; a tick changed in a template is saved for every firm ' + JSON.stringify({tpA, tpB, capd}));
   // Admin → Scanner (docs/hf-plan.md): the training figures, the versions, the document type model's mode
   // (Off / Shadow / Mixed) and the per-firm switch of the full-document collection — all through scan_feedback.
   const sfCalls = [];

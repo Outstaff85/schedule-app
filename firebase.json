@@ -74,6 +74,15 @@
         ]
       },
       {
+        "source": "/client-sign",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, must-revalidate"
+          }
+        ]
+      },
+      {
         "source": "/supplier",
         "headers": [
           {
@@ -157,6 +166,10 @@
       {
         "source": "/next",
         "destination": "/next/index.html"
+      },
+      {
+        "source": "/client-sign",
+        "destination": "/client-sign.html"
       }
     ]
   },

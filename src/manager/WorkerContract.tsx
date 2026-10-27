@@ -2,9 +2,10 @@
 // contract's category, the template this worker signs (the category's default unless another is
 // picked for this worker alone), the worker's own terms that fill {{terms_1}}…{{terms_5}}, and a
 // contract uploaded for this worker only (a template that belongs to the worker). The firm's
-// templates are loaded when the section is first opened.
+// templates are loaded when the section is first opened. A login that may change the firm's
+// signature and stamp (canFirmSign) — a staff or HR login with the right sees no Admin — opens them here.
 import * as React from 'react';
-import { IconUpload } from '@tabler/icons-react';
+import { IconRubberStamp, IconUpload } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,8 @@ import { FieldRow } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TEMPLATE_ACCEPT, defaultFor, listTemplates, type ContractTemplate } from './contracts';
 import { UploadWindow } from './ContractTemplates';
+import { FirmSealWindow } from './FirmSeal';
+import { canFirmSign } from './logic/access';
 import type { FormKey, WorkerForm } from './worker';
 
 const DEFAULT = '-';
@@ -22,6 +25,7 @@ export function ContractSection({ v, set, workerId, opened, toast }: {
 }) {
   const [list, setList] = React.useState<ContractTemplate[] | null>(null);
   const [upload, setUpload] = React.useState<File | null>(null);
+  const [seal, setSeal] = React.useState(false);
   const pick = React.useRef<HTMLInputElement>(null);
   const load = React.useCallback(() => { listTemplates(workerId || undefined).then(r => setList(r.templates), () => setList([])); }, [workerId]);
   React.useEffect(() => { if (opened && list === null) load(); }, [opened, list, load]);
@@ -67,6 +71,9 @@ export function ContractSection({ v, set, workerId, opened, toast }: {
         <Button size="sm" className="justify-self-start" data-testid="editor-contract-upload" onClick={() => pick.current?.click()}>
           <IconUpload className="size-4" />{tr('A contract for this worker only')}</Button>
       </>}
+      {canFirmSign() && <Button size="sm" className="justify-self-start" data-testid="editor-contract-seal" onClick={() => setSeal(true)}>
+        <IconRubberStamp className="size-4" />{tr("Firm's signature and stamp")}</Button>}
+      {seal && <FirmSealWindow toast={toast} onClose={() => setSeal(false)} />}
       {upload && workerId && <UploadWindow file={upload} categories={categories} api={{ toast }} workerId={workerId}
         onClose={() => setUpload(null)} onSaved={t => { setUpload(null); set('contractTemplateId', t.id); load(); }} />}
     </div>
