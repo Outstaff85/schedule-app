@@ -8,7 +8,7 @@
 // form — both still the page's (ManagerBridge); Delete never asks (Undo).
 import * as React from 'react';
 import {
-  IconBeach, IconCash, IconChevronDown, IconChevronUp, IconCircleCheck, IconDownload, IconFilter, IconId, IconLayoutGrid, IconLink, IconList,
+  IconAlertTriangle, IconBeach, IconCash, IconChevronDown, IconChevronUp, IconCircleCheck, IconDownload, IconFilter, IconId, IconLayoutGrid, IconLink, IconList,
   IconScan, IconTransfer, IconTrash, IconUserPlus, IconUsers, IconX,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
@@ -134,8 +134,11 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
       title={<span title={w.name} data-testid="worker-name">{w.name}</span>}
       chips={<><MoreChip n={w.notices.length - 1} onOpen={() => api.openNotices(w.id)} /><NewBadge createdAt={w.createdAt} /></>}
       sub={<>
-        {w.notices.length > 0 && <span className="mb-0.5 mt-[3px] flex" data-testid="worker-chip1"><NoticeChip n={w.notices[0]} onOpen={() => api.openNotices(w.id)} /></span>}
-        <Line parts={[w.site, <TodayPin key="p" w={w} />]} />
+        {/* every plate keeps the chip row and the site line, empty or not: the plates stand the same height (owner, 2026-10-27) */}
+        {w.notices.length > 0
+          ? <span className="mb-0.5 mt-[3px] flex" data-testid="worker-chip1"><NoticeChip n={w.notices[0]} onOpen={() => api.openNotices(w.id)} /></span>
+          : <span className="invisible mb-0.5 mt-[3px] flex" aria-hidden data-testid="worker-chip-space"><Badge variant="warn"><IconAlertTriangle />—</Badge></span>}
+        <span className="block min-h-[1lh]"><Line parts={[w.site, <TodayPin key="p" w={w} />]} /></span>
       </>}
       right={<span data-testid="worker-hours">{hoursShort(w.monthHours)}</span>}
       actions={menu(w)}
