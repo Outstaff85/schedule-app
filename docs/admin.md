@@ -119,7 +119,7 @@ HR logins are created and edited here (form above); what they can do and how it 
 
 ## Contract templates pane
 
-The firm's contract templates: `ContractTemplatesPane` (`src/manager/ContractTemplates.tsx`), its calls in `src/manager/contracts.ts` to the `contract_templates` function. What it shows and does: [contracts.md](contracts.md) → Contract templates — among it the upload window's tick **Firm's signature and stamp on every page** (on for a new template), the plate's **Stamp** chip and its ⋮ **Stamp on every page: turn on / off**, and **Signature and stamp** next to New template, which opens the firm's signature and stamp ([contracts.md](contracts.md) → The firm's signature and stamp).
+The firm's contract templates: `ContractTemplatesPane` (`src/manager/ContractTemplates.tsx`), its calls in `src/manager/contracts.ts` to the `contract_templates` function. What it shows and does: [contracts.md](contracts.md) → Contract templates — among it the upload window's tick **Firm's signature and stamp on every page** (on for a new template), the plate's **Stamp** chip and its ⋮ **Stamp on every page: turn on / off**, and **Signature and stamp** next to New template, which opens the firm's signature and stamp ([contracts.md](contracts.md) → The firm's signature and stamp). The templates are in two sections, **For workers** and **For clients**, each with its count and its own **New template**; a template's kind (**For a worker** / **For a client**) is a chip on its plate and is picked in the upload window ([contracts.md](contracts.md) → Client contracts).
 
 ## Errors and Timings: the period picker
 
