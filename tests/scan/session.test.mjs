@@ -26,7 +26,8 @@
 //  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
 //  - the refined page is read again on its own cut; a page's pixels are kept once;
-//  - the camera asks for 1280×720 at 30 frames a second and nothing else about the rate.
+//  - the camera asks for 1280×720 at 30 frames a second and nothing else about the rate;
+//  - a listener of the pages that comes after a page was given hears it at once (none after the scan ended).
 //
 //   node tests/scan/session.test.mjs
 import assert from 'node:assert/strict';
@@ -858,6 +859,27 @@ await run('the open is timed: "Ready: first frame after N ms" once, at the first
   assert.ok(saidB.some(t => /^Time: scanner opened — its models kept from the last scan/.test(t)), 'the open says the models were there already: ' + saidB.join(' | '));
   assert.ok(saidB.some(t => /^Time: camera started — \d+ ms \(at \d+ ms\)$/.test(t)), saidB.join(' | '));
   b.s.stop(); a.s.stop();
+});
+
+await run('a listener of the pages that comes after a page was given hears it at once (the scan window listens a moment after it shows); none after the scan ended', async () => {
+  const { s } = setup(() => NONE);
+  const page = (id, readouts) => ({ id, record: { shot: 1, batch: 1, attempt: 'a', input: 'camera', w: 64, h: 48, edgesModel: null, edgesMore: [], pages: 2, way: 'test', model: '' },
+    pg: 0, quad: Q, page: { width: 8, height: 8, turn: -1 }, canvas: null, turn: -1, readouts, refined: false });
+  s.inject(page('a:0', null), true);
+  s.inject(page('a:1', null), true);
+  s.inject({ ...page('a:0', null), readouts: { doctype: null, mrz: null, he: null, errors: [] } });
+  const heard = [];
+  const off = s.on('page', p => heard.push(p.id + (p.readouts ? '+r' : '')));
+  assert.deepEqual(heard, ['a:0+r', 'a:1'], 'the pages held now, in the order given, each as it is now');
+  s.inject(page('a:2', null), true);
+  assert.deepEqual(heard, ['a:0+r', 'a:1', 'a:2'], 'and the next ones as they come');
+  off();
+  s.discard();
+  const later = [];
+  s.on('page', p => later.push(p.id));
+  assert.deepEqual(later, [], 'a scan ended (Done or closed) leaves no page to hear');
+  s.stop();
+  return heard.join(', ');
 });
 
 await run('the early start (a new worker\'s window): one session, its models started with no camera; the scan window takes it; stopped after 3 minutes unless taken (a fresh 3 minutes when another new worker\'s window opens meanwhile); not under 4 GB', () => {
