@@ -201,6 +201,14 @@ export class ScanSession {
   /** Listen; returns the unsubscribe. */
   on<K extends keyof SessionEvents>(ev: K, fn: SessionEvents[K]): () => void {
     this.listeners[ev].add(fn);
+    // a new listener of the pages hears the ones held now, in the order given: the scan window listens in its
+    // effects, a moment after its first paint, and a page given meanwhile (the browser tests give one as soon as
+    // the window shows) was never shown in its strip nor typed (as the screen's fake session, ui/fake-session.ts)
+    if (ev === 'page') {
+      for (const p of [...this.pages.values()]) {
+        try { (fn as SessionEvents['page'])(p); } catch { /* a listener's fault stays its own */ }
+      }
+    }
     return () => { this.listeners[ev].delete(fn); };
   }
   private emit<K extends keyof SessionEvents>(ev: K, ...args: Parameters<SessionEvents[K]>): void {

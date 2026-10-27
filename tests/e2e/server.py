@@ -45,7 +45,10 @@ def sign_documents(request):
         return app.response_class(json.dumps({'ok': True, 'warm': True}), mimetype='application/json')
     bucket = _orig_bucket('demo-schedule.appspot.com')
     try:
-        if body.get('token') and not (request.headers.get('Authorization') or '').startswith('Bearer '):
+        if body.get('clientToken') and not (request.headers.get('Authorization') or '').startswith('Bearer '):
+            import client_signing as _client_signing
+            out = _client_signing.run_public(DB, bucket, body)
+        elif body.get('token') and not (request.headers.get('Authorization') or '').startswith('Bearer '):
             out = _signing.run_worker(DB, bucket, body, _fmain.build_form101_pdf)
         else:
             status, error, claims = _gate.claims_of(request.headers, lambda t: main.auth.verify_id_token(t, check_revoked=True))
@@ -181,11 +184,77 @@ class H(BaseHTTPRequestHandler):
             pg.insert_htmlbox(pymupdf.Rect(40, 60, 550, 160), '<p dir="rtl" style="font-size:12pt">אני {{full_name}} ת.ז. {{id}}' + '&nbsp;' * 12 + 'מסכים. {{tpyo}}</p>')
             pg.insert_text((50, 250), 'Name: {{given}} {{surname}}   Signature: {{signature}}   Date: {{sign_date}}', fontsize=12)
             status, data = 200, doc.tobytes()
+        elif self.path == '/clientContractPdf':
+            # a client's contract template (docs/contracts.md → Client contracts): the client's marks, the firm's, a billing
+            # mark, a worker's mark it leaves empty, and the client's signature on both pages
+            import pymupdf
+            doc = pymupdf.open()
+            for i in range(2):
+                pg = doc.new_page()
+                if i == 0:
+                    pg.insert_text((50, 100), 'Client: {{client_name}}   No: {{client_company_no}}   Firm: {{company}}', fontsize=12)
+                    pg.insert_text((50, 130), 'Phone: {{client_phone}}   Mail: {{client_email}}   Rate: {{client_rate}}   Worker: {{given}}', fontsize=11)
+                pg.insert_text((50, 400), 'Signer: {{client_signer}} {{client_signer_role}}   Sign: {{client_signature}}   Date: {{client_sign_date}}', fontsize=11)
+            status, data = 200, doc.tobytes()
+        elif self.path == '/clientSignRequests':
+            rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('clientSignRequests').stream()]
+            rows.sort(key=lambda r: str(r.get('sentAt') or ''))
+            status, data = 200, json.dumps(rows, default=str).encode()
+        elif self.path == '/clientDocs':
+            # the client c1's documents (tenants/<t>/clients/c1/docs, written by sign_documents once per signed contract)
+            rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('clients').document('c1').collection('docs').stream()]
+            rows.sort(key=lambda r: str(r.get('signedAt') or ''))
+            status, data = 200, json.dumps(rows, default=str).encode()
+        elif self.path.startswith('/clientSignedPdf/'):
+            # the text of a client's signed contract in Storage: what was printed
+            import pymupdf
+            rid = self.path.split('/')[2]
+            r = DB.collection('tenants').document(T1).collection('clientSignRequests').document(rid).get().to_dict() or {}
+            pdf = _orig_bucket('demo-schedule.appspot.com').blob(r['part']['path']).download_as_bytes()
+            d = pymupdf.open(stream=pdf)
+            out = os.environ.get('E2E_OUT') or os.path.join(_HERE, 'out')
+            os.makedirs(out, exist_ok=True)
+            open(os.path.join(out, 'client-signed-contract.pdf'), 'wb').write(pdf)
+            status, data = 200, json.dumps({'text': ''.join(pg.get_text() for pg in d), 'pages': d.page_count, 'images': sum(len(pg.get_images()) for pg in d)}).encode()
         elif self.path == '/contractDocx':
             # a Word contract template with marks (D7)
             sys.path.insert(0, os.path.join(_HERE, '..', 'auth'))
             from test_docx2pdf import docx as _docx
             status, data = 200, _docx()
+        elif self.path == '/stampPhoto':
+            # a phone photo of a stamp: grey paper lit unevenly, a blue ring (the firm's signature and stamp, functions/seal.py)
+            from PIL import Image, ImageDraw
+            import io as _io
+            im = Image.linear_gradient('L').rotate(90).resize((700, 500)).point(lambda v: 150 + v * 80 // 255).convert('RGB')
+            ImageDraw.Draw(im).ellipse((150, 50, 550, 450), outline=(30, 60, 180), width=14)
+            buf = _io.BytesIO(); im.save(buf, 'JPEG', quality=90)
+            status, data = 200, buf.getvalue()
+        elif self.path == '/firmSeal':
+            # firm one's signature and stamp as stored: the record and whether each file is there
+            rec = DB.collection('tenants').document(T1).collection('firmSeal').document('current').get().to_dict() or {}
+            bk = _orig_bucket('demo-schedule.appspot.com')
+            status, data = 200, json.dumps({k: (dict(v, exists=bk.blob(v['path']).exists()) if v else None) for k, v in rec.items()}, default=str).encode()
+        elif self.path == '/contractSealFieldDrop':
+            # firm one's templates as saved before the every-page tick: no sealEveryPage field (read as on)
+            from google.cloud import firestore as _fs
+            for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream():
+                d.reference.update({'sealEveryPage': _fs.DELETE_FIELD})
+            status, data = 200, b'{}'
+        elif self.path == '/firmSealClear':
+            # the checks after it see a firm with no signature and stamp, as seeded
+            ref = DB.collection('tenants').document(T1).collection('firmSeal').document('current')
+            bk = _orig_bucket('demo-schedule.appspot.com')
+            for v in (ref.get().to_dict() or {}).values():
+                if v and bk.blob(v['path']).exists():
+                    bk.blob(v['path']).delete()
+            ref.delete()
+            status, data = 200, b'{"ok":true}'
+        elif self.path == '/pdfInfo':
+            # a PDF sent as the body: each page's size and its pictures in drawing order (box, pixel width, xref)
+            import pymupdf
+            d = pymupdf.open(stream=raw)
+            status, data = 200, json.dumps([{'w': pg.rect.width, 'h': pg.rect.height,
+                'images': [{'xref': i['xref'], 'bbox': list(i['bbox']), 'width': i['width']} for i in pg.get_image_info(xrefs=True)]} for pg in d]).encode()
         elif self.path == '/contractTemplates':
             rows = [dict(d.to_dict() or {}, id=d.id) for d in DB.collection('tenants').document(T1).collection('contractTemplates').stream()]
             status, data = 200, json.dumps(rows, default=str).encode()

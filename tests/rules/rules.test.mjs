@@ -409,6 +409,51 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
 });
 
+test('storage: the firm\'s signature and stamp are server-only — no login reads or writes them, other firm files still read', async () => {
+  const pSeal = 'tenants/' + A + '/firmSeal/stamp-1.png';
+  // a send's frozen copies (seal.freeze) sit under firmSeal/frozen/, never in the send's own folder
+  const pFrozen = 'tenants/' + A + '/firmSeal/frozen/workers/w1/sign/r1/company-signature.png';
+  await env.withSecurityRulesDisabled(async ctx => {
+    await uploadString(ref(ctx.storage(), pSeal), 'png');
+    await uploadString(ref(ctx.storage(), pFrozen), 'png');
+    await uploadString(ref(ctx.storage(), 'tenants/' + A + '/contracts/t1/1.pdf'), 'pdf');
+  });
+  for (const name of ['ownerA', 'staffAll', 'hrAll', 'hrOwn', 'superadmin', 'ownerB', 'supplierA', 'clientA', 'anon']) {
+    await assertFails(getBytes(ref(st(name), pSeal)));
+    await assertFails(getBytes(ref(st(name), pFrozen)));
+  }
+  for (const name of ['ownerA', 'staffAll', 'superadmin']) {
+    await assertFails(uploadString(ref(st(name), 'tenants/' + A + '/firmSeal/stamp-2.png'), 'png'));
+    await assertFails(deleteObject(ref(st(name), pSeal)));
+  }
+  await assertSucceeds(getBytes(ref(st('ownerA'), 'tenants/' + A + '/contracts/t1/1.pdf')));
+  await assertSucceeds(getBytes(ref(st('staffAll'), 'tenants/' + A + '/contracts/t1/1.pdf')));
+  await assertFails(getBytes(ref(st('ownerB'), 'tenants/' + A + '/contracts/t1/1.pdf')));
+});
+
+test('firestore: the firm\'s seal record is server-only', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'tenants/' + A + '/firmSeal/current'), { stamp: { path: 'x' } });
+  });
+  for (const name of ['ownerA', 'staffAll', 'hrAll', 'superadmin', 'supplierA', 'clientA']) {
+    await assertFails(getDoc(doc(db(name), 'tenants/' + A + '/firmSeal/current')));
+    await assertFails(setDoc(doc(db(name), 'tenants/' + A + '/firmSeal/current'), { stamp: null }));
+  }
+});
+
+test('firestore: a client\'s contract to sign and its link\'s token are server-only', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'tenants/' + A + '/clientSignRequests/r1'), { clientId: 'c1', status: 'sent', tokenHash: 'h1' });
+    await setDoc(doc(ctx.firestore(), 'clientSignTokens/h1'), { tenantId: A, requestId: 'r1' });
+  });
+  for (const name of ['ownerA', 'staffAll', 'hrAll', 'superadmin', 'ownerB', 'supplierA', 'clientA', 'anon']) {
+    await assertFails(getDoc(doc(db(name), 'tenants/' + A + '/clientSignRequests/r1')));
+    await assertFails(getDoc(doc(db(name), 'clientSignTokens/h1')));
+    await assertFails(setDoc(doc(db(name), 'tenants/' + A + '/clientSignRequests/r2'), { clientId: 'c1', status: 'signed' }));
+    await assertFails(setDoc(doc(db(name), 'clientSignTokens/h2'), { tenantId: A, requestId: 'r2' }));
+  }
+});
+
 test('storage: a client\'s signed month PDF is server-only — managers read it, no browser login writes or deletes it', async () => {
   const pSigned = 'tenants/' + A + '/clients/c1/documents/hours-2026-10-signed.pdf';
   await env.withSecurityRulesDisabled(async ctx => { await uploadString(ref(ctx.storage(), pSigned), 'signed'); });
