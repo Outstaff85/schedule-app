@@ -9,7 +9,7 @@
 // data comes only from the `hours` function (`call`); this screen never reads
 // Firestore. (It replaced the old pages' hours-review.js, now removed.)
 import * as React from 'react';
-import { IconAlertTriangle, IconCheck, IconChecks, IconChevronLeft, IconChevronRight, IconCircleCheck, IconClock, IconFileSpreadsheet, IconPencil, IconSignature } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCalendar, IconCheck, IconChecks, IconChevronLeft, IconChevronRight, IconCircleCheck, IconClock, IconFileSpreadsheet, IconPencil, IconSignature } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { tr, uiLocale } from '@/lib/i18n';
 import { loadScript, XLSX_URL } from '@/lib/backend';
@@ -30,6 +30,7 @@ import { Label } from '@/components/ui/label';
 import { FieldRow } from '@/components/ui/form';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MonthPicker } from '@/components/ui/date-picker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
@@ -112,8 +113,15 @@ export function HoursReview({ call, hideOwner, sign }: { call: HoursCall; hideOw
       )}
       <div className="mb-2 flex items-center gap-2">
         <Button size="icon" aria-label={tr('Previous month')} onClick={() => set({ month: s.month - 1 })}><IconChevronLeft className="size-5" /></Button>
-        <div className="flex-1 text-center text-base font-bold capitalize" data-testid="hours-month">
-          {monthStart(key).toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}
+        {/* The month's name opens the one month picker (date-picker.tsx); the arrows step a month. */}
+        <div className="flex flex-1 justify-center">
+          <MonthPicker value={key} monthOf={v => v} toValue={ym => ym} max={monthKey(0)} label=""
+            onChange={ym => { const n = new Date(), [y, mo] = ym.split('-').map(Number); set({ month: (y - n.getFullYear()) * 12 + (mo - 1) - n.getMonth() }); }}
+            trigger={
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-[12px] px-2 py-0.5 text-base font-bold capitalize hover:bg-white/4" data-testid="hours-month" title={tr('Pick a month')}>
+                {monthStart(key).toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}<IconCalendar className="size-4 text-ink-2" />
+              </button>
+            } />
         </div>
         <Button size="icon" aria-label={tr('Next month')} disabled={s.month >= 0} onClick={() => set({ month: Math.min(0, s.month + 1) })}><IconChevronRight className="size-5" /></Button>
       </div>

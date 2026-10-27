@@ -4,13 +4,13 @@
 // on a phone — the page's overlay) and go back to the window that opened them.
 import * as React from 'react';
 import { IconFileSpreadsheet, IconFileTypePdf, IconId, IconPlus, IconTrash, IconUpload } from '@tabler/icons-react';
-import { tr, uiLocale } from '@/lib/i18n';
+import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DatePicker } from '@/components/ui/date-picker';
+import { DatePicker, MonthPicker, monthLabel, monthsBack } from '@/components/ui/date-picker';
 import { FormSection } from '@/components/ui/form';
 import { Plate } from '@/components/shared/plate';
 import { Section } from '@/components/shared/section';
@@ -277,24 +277,19 @@ export function HoursImport({ wid, api }: { wid: string; api: ManagerBridge }) {
 
 // ── Export hours: a month of the last 12, Excel or PDF ──
 export function HoursExport({ wid, api }: { wid: string; api: ManagerBridge }) {
-  const months = React.useMemo(() => {
-    const now = new Date();
-    return Array.from({ length: 12 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - i, 1));
-  }, []);
-  const [pick, setPick] = React.useState(`${months[0].getFullYear()}-${months[0].getMonth()}`);
+  // This month and the 11 before it, in the one month picker (date-picker.tsx).
+  const [pick, setPick] = React.useState(() => monthsBack(0));
   const run = (format: 'excel' | 'pdf') => {
     const [y, m] = pick.split('-').map(Number);
     api.closeModal('hoursExportOverlay');
-    void api.exportHours(wid, y, m, format);
+    void api.exportHours(wid, y, m - 1, format);
   };
   return (
     <div data-testid="hours-export" data-wid={wid}>
       <Title>{tr('Export hours')}</Title>
       <Field label={tr('Month')}>
-        <Select value={pick} onValueChange={setPick}>
-          <SelectTrigger id="hoursExportMonth" className="w-full"><SelectValue /></SelectTrigger>
-          <SelectContent>{months.map(d => <SelectItem key={d.getTime()} value={`${d.getFullYear()}-${d.getMonth()}`}>{d.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}</SelectItem>)}</SelectContent>
-        </Select>
+        <MonthPicker id="hoursExportMonth" className="w-full" align="start" value={pick} onChange={setPick} label={monthLabel(pick)}
+          monthOf={v => v} toValue={ym => ym} min={monthsBack(11)} max={monthsBack(0)} />
       </Field>
       <div className="flex justify-end gap-2">
         <Button data-testid="hours-export-excel" onClick={() => run('excel')}><IconFileSpreadsheet className="size-[18px]" />Excel</Button>

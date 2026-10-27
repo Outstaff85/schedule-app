@@ -22,6 +22,7 @@ import { FieldRow } from '@/components/ui/form';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
@@ -219,7 +220,8 @@ function PunchLog({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
           <div className="mb-3 grid grid-cols-2 gap-2 min-[701px]:grid-cols-4" data-testid="punch-filters">
             {filterSelect('worker', tr('Worker'), tr('All workers'), choices.workers.map(w => ({ v: w.id, l: w.name })))}
             {filterSelect('client', tr('Client'), tr('All clients'), snap.clients.map(c => ({ v: c.id, l: c.name })))}
-            {filterSelect('date', tr('Date'), tr('All dates'), choices.dates.map(d => ({ v: d, l: d })))}
+            <DatePicker format="dmy" value={f.date} onChange={v => setFilter('date', v)} days={choices.dates} clearLabel={tr('All dates')}
+              className="w-full min-w-0" aria-label={tr('Date')} title={tr('Date')} data-testid="punch-filter-date" />
             {filterSelect('type', tr('Type'), tr('All types'), [{ v: 'in', l: tr('Punch IN') }, { v: 'out', l: tr('Punch OUT') }])}
           </div>
           {rows.length > 0 && snap.canEditPunches && <div className="mb-2 flex" data-testid="punch-select"><SelectHead sel={sel} /></div>}

@@ -39,7 +39,7 @@ const server = http.createServer((req, res) => {
 });
 
 const DEMOS = {
-  controls: ['button', 'input', 'select', 'checkbox', 'toggle-group', 'form'],
+  controls: ['button', 'input', 'select', 'dates', 'checkbox', 'toggle-group', 'form'],
   lists: ['plate', 'plate-sizes', 'empty'],
   windows: ['window', 'signature', 'sign-documents', 'menu', 'account', 'theme', 'sheet'],
   feedback: ['alert', 'toast', 'progress'],
@@ -176,6 +176,33 @@ async function computer(browser) {
   await p.click('#d-date'); await sleep(250);
   await p.locator('[data-slot=popover-content] button', { hasText: /^20$/ }).first().click(); await sleep(250);
   ok((await p.locator('#d-date').innerText()).includes('20/10/2026'), 'next: the Date Picker sets a dd/mm/yyyy date');
+  // The one calendar everywhere (docs/components.md → date-picker.tsx): its header is ‹ month ▾ year ▾ ›, the years
+  // reach a birth in 1940 and an expiry in 2040; an optional date empties with its line; a typed date field gets
+  // the same calendar behind its icon; a period is the same popover over the months, with its named periods.
+  const dp = {};
+  await p.click('#d-expiry'); await p.waitForSelector('[data-slot=date-calendar]');
+  dp.range = await p.evaluate(() => { const y = [...document.querySelectorAll('[data-slot=date-calendar] select')].map(s => [...s.options].map(o => +o.value)).find(v => v.some(x => x > 1900)) || [];
+    return y.includes(1940) && y.includes(2040); });
+  dp.tail = await p.locator('[data-slot=popover-content] [data-slot=pop-tail]').count();
+  dp.sunday = await p.evaluate(() => (document.querySelector('[data-slot=date-calendar] thead th, [data-slot=date-calendar] .rdp-weekday') || {}).textContent || '');
+  // no date yet: the calendar opens at this month — the 5th of it
+  await p.locator('[data-slot=date-calendar] [data-day]:not([data-outside]) button', { hasText: /^5$/ }).first().click(); await sleep(200);
+  dp.picked = (await p.locator('#d-expiry').innerText()).trim();
+  await p.click('#d-expiry'); await p.click('[data-testid=date-clear]'); await sleep(200);
+  dp.cleared = (await p.locator('#d-expiry').innerText()).trim();
+  await p.fill('#d-dob', '12/03/1984');
+  await p.click('[data-testid=demo-dates] [data-slot=date-input-calendar]'); await p.waitForSelector('[data-slot=date-calendar]');
+  dp.dobMonth = await p.evaluate(() => [...document.querySelectorAll('[data-slot=date-calendar] select')].map(s => s.value).join('/'));
+  await p.locator('[data-slot=date-calendar] [data-day="1984-03-20"] button').click(); await sleep(200);
+  dp.dob = await p.inputValue('#d-dob');
+  await p.click('#d-period'); await p.waitForSelector('[data-slot=month-grid]');
+  dp.presets = await p.locator('[data-slot=month-presets] button').count();
+  const prevYm = await p.evaluate(() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); });
+  if (!(await p.locator(`[data-slot=month-grid] [data-month="${prevYm}"]`).count())) await p.click('[data-slot=month-grid] button[aria-label="Previous year"]');
+  await p.click(`[data-slot=month-grid] [data-month="${prevYm}"]`); await sleep(200);
+  dp.period = await p.locator('#d-period').getAttribute('data-value');
+  ok(dp.range && dp.tail === 1 && /^su/i.test(dp.sunday.trim()) && dp.dobMonth.includes('1984') && /^\d\d\/\d\d\/\d{4}$/.test(dp.picked) && !/\d/.test(dp.cleared) && dp.dob === '20/03/1984' && dp.presets === 3 && dp.period === 'm:' + prevYm,
+    'next: the one calendar — years from 1940 to 2040 in its header, the tail, an optional date picked and emptied, a typed date field picked in the same calendar (dd/mm/yyyy), a period picked over the months ' + JSON.stringify(dp));
   await p.locator('[data-testid=worker-form] button[type=submit]').click(); await sleep(300);
   const formErr = await p.locator('[data-testid=worker-form] [data-slot=form-message]').allInnerTexts();
   ok(formErr.includes('Enter a first name') && formErr.includes('Enter a phone like 050-1234567'), 'next: the form shows its field errors ' + JSON.stringify(formErr));

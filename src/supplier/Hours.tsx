@@ -18,9 +18,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Combobox } from '@/components/ui/combobox';
-import { DatePicker } from '@/components/ui/date-picker';
+import { DatePicker, MonthPicker, monthLabel, monthsBack } from '@/components/ui/date-picker';
 import { DataTable, type DataColumn } from '@/components/ui/data-table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SENT_KEY, queryClient, supplierCall, useSentHours, useSupplierData, type HoursBatch, type SupplierData, type SWorker } from './api';
 import { payRows, summaryRows, workerMonthShifts, type PayRow } from './money';
 import { parseTimesheetFile, timesheetRowIsFor } from './timesheet';
@@ -37,12 +36,10 @@ export function Hours() {
     <div data-testid="hours" className="grid gap-4">
       <div className="grid max-w-80 gap-1.5">
         <Label htmlFor="hoursMonth">{tr('Month')}</Label>
-        <Select value={String(ui.month)} onValueChange={v => setUi({ month: Number(v) })}>
-          <SelectTrigger id="hoursMonth" data-testid="hours-month-pick"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {Array.from({ length: 12 }, (_, i) => <SelectItem key={i} value={String(i)}>{monthOf(i).toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' })}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        {/* The one month picker (date-picker.tsx): this month and the 11 before it; the store keeps how many months back. */}
+        <MonthPicker id="hoursMonth" data-testid="hours-month-pick" align="start" value={monthsBack(ui.month)} label={monthLabel(monthsBack(ui.month))}
+          monthOf={v => v} toValue={ym => ym} min={monthsBack(11)} max={monthsBack(0)}
+          onChange={ym => { const n = new Date(), [y, mo] = ym.split('-').map(Number); setUi({ month: (n.getFullYear() - y) * 12 + n.getMonth() - (mo - 1) }); }} />
       </div>
       {d.showPay && <PayTable d={d} year={year} month={month} />}
       <Exports d={d} year={year} month={month} />

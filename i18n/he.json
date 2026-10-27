@@ -1712,5 +1712,13 @@
   "No cycle reported yet.": "עדיין לא דווח אף מחזור.",
   "better": "טוב יותר",
   "not better": "לא טוב יותר",
-  "Pull request": "בקשת משיכה"
+  "Pull request": "בקשת משיכה",
+  "Previous year": "השנה הקודמת",
+  "Year": "שנה",
+  "Next year": "השנה הבאה",
+  "Pick a month": "בחירת חודש",
+  "Dates: one calendar everywhere": "תאריכים: לוח שנה אחד בכל מקום",
+  "Expiry date (optional)": "תאריך תפוגה (לא חובה)",
+  "No date": "ללא תאריך",
+  "Date of birth (typed or picked)": "תאריך לידה (הקלדה או בחירה)"
 }
