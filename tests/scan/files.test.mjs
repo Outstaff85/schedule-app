@@ -370,19 +370,19 @@ function fakeEngine(label, delay, log) {
     detect: async (which, input) => { assert.equal(input.rgba.length, 256 * 256 * 4); await new Promise(r => setTimeout(r, delay)); return { res: NONE, ms: delay }; },
     async warp(rgba, w, h, pts, upright) { this.warps.push({ w, h, pts, upright }); if (log && upright) log.push(label + ' warp ' + w + 'x' + h); return { data: new Uint8ClampedArray(6 * 4 * 4), width: 6, height: 4, turn: upright ? 0 : -1 }; } };
 }
-function pickSession({ main, file, grow = true, source = 'site', readers = null } = {}) {
+function pickSession({ main, file, grow = true, source = 'site', readers = null, getUserMedia = undefined, ensureSession = async () => {} } = {}) {
   const server = fakeServer();
   const engines = {
     engine: null, engineWay: 'bg-pool', state: { phase: 'ready', label: 'x', worker: true, loadSeconds: 1 }, settings: { cpuDir: 'ort' },
     log: new Log.ScanLog(null, () => null), fileThreads: [], grown: 0,
-    ensureSession: async () => {}, ensureCap: async () => main, onChange: () => () => {}, stopAll() {},
+    ensureSession, ensureCap: async () => main, onChange: () => () => {}, stopAll() {},
     growFiles(addLane) { this.grown++; if (grow && file) { this.fileThreads = [file]; setImmediate(() => addLane(1)); } },
   };
   const pics = new Map();
   let ids = 0;
   const s = new Sess.ScanSession((source === 'site' ? Surf.siteSurface : Surf.labSurface)(async () => 'tok'), { engines, readers,
     attemptsEnv: { idb: fakeIDB(), fetch: server.fetch, now: () => Date.now(), online: () => true, encode: async c => 'j' + c.width, setTimeout: () => {}, onOnline: () => () => {} },
-    env: { now: () => performance.now(), raf: fn => setImmediate(fn), setTimeout: (fn, ms) => { setTimeout(fn, ms); }, bitmap: null, newId: () => 'p' + (++ids),
+    env: { now: () => performance.now(), raf: fn => setImmediate(fn), ...(getUserMedia ? { getUserMedia } : {}), setTimeout: (fn, ms) => { setTimeout(fn, ms); }, bitmap: null, newId: () => 'p' + (++ids),
       follower: { reset() {}, since: (t, p) => p, step: async () => null },
       files: { objectUrl: f => 'blob:' + f.name, pdfPages: async function* () {}, decode: async url => pics.get(url) } } });
   const log = { pages: [], preview: [], status: [], lines: [] };
@@ -417,6 +417,28 @@ await run('session.pick: pages in the files\' order though a later picture finis
   assert.deepEqual(log.status.at(-1), { key: 'picked', pages: 3, files: 3 });
   assert.ok(log.status.some(x => x.key === 'picture_finding' && x.file === 1 && x.files === 3 && x.page === 1 && x.pages === 1));
   return 'cut order ' + order.map(x => x.split(' ')[0] + ' ' + x.split(' ')[2]).join(', ');
+});
+
+await run('session.pick: the camera getting ready during a pick does not start the live frame over the picked picture; it goes on PICK_SHOWN_MS after the pick', async () => {
+  // the site's scanner takes photos and PDFs before the camera's models are ready: the camera that came up in the
+  // middle of a pick started the live frame, and its first answer put the camera back over the picture being worked on
+  let ready; const camReady = new Promise(r => { ready = r; });
+  const main = fakeEngine('main', 60), { s, log, file1 } = pickSession({ main, file: null,
+    getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }), ensureSession: () => camReady });
+  s.engines.engine = { size: 1, hasCap: () => false, stop() {}, detect: async () => ({ res: NONE, ms: 1 }), warp: main.warp.bind(main) };
+  const video = { srcObject: null, videoWidth: 64, videoHeight: 48, readyState: 4, play: async () => {} };
+  const cam = s.startCamera(video);
+  const picked = s.pick([file1('a.jpg'), file1('b.jpg', 44, 30, 2)]);
+  await new Promise(r => setTimeout(r, 30));
+  ready(); await cam;
+  assert.ok(s.camera.on, 'the camera is on');
+  assert.equal(s.live.running, false, 'the live frame waits while the pick is in work');
+  await picked;
+  assert.equal(s.live.running, false, 'and while its picture is still shown');
+  assert.ok(!log.status.some(x => x.key === 'finding'), 'no live status put the camera back over the picture ' + log.status.map(x => x.key).join());
+  await new Promise(r => setTimeout(r, Sess.PICK_SHOWN_MS + 200));
+  assert.equal(s.live.running, true, 'the live frame went on after PICK_SHOWN_MS');
+  s.stop();
 });
 
 await run('session.pick: a second pick leaves the first pick\'s pages untouched and undecided', async () => {

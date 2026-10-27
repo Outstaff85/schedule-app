@@ -34,11 +34,12 @@
 // site); discard() sends nothing (the site's window closed without Done).
 //
 // After a shot the live frame goes on by itself once the shot has settled (owner, 2026-10-26: no Next to tap) —
-// from a fresh frame, and Auto does not take the same document again: the documents the shot took are kept
+// with its frame kept on the document just taken (green while held there; owner, 2026-10-27: wiped, it came back
+// red and flickering), and Auto does not take the same document again: the documents the shot took are kept
 // (steady.ts Taken, carried by the follow) and Auto waits until they have left the frame or the scene changed
 // enough (another document found away from them); the status line says `taken` meanwhile. The shutter is never
 // held by it (a person may take the same document again on purpose). After a pick the picked picture stays on
-// the screen PICK_SHOWN_MS, then the live frame goes on too. hold() pauses the live frame (its follow, Auto)
+// the screen PICK_SHOWN_MS, then the live frame goes on too (a camera that gets ready meanwhile waits for it). hold() pauses the live frame (its follow, Auto)
 // while a page is opened large over the camera or its corners are being fixed — a shot or a pick in work goes
 // on, and the live frame does not go on after it while held — and resume() lets it go on again from a fresh
 // frame. wake() starts it at once and forgets the documents taken (Retake: the same document again).
@@ -61,8 +62,9 @@ import type { ScanSurface } from './surface';
 import type { Corners, Pt, Quad } from './types';
 
 const copy = (q: Quad): Quad => q.map(p => p.slice() as Pt);
-/** How long a picked picture stays on the screen after its pick, before the live frame goes on (ms). */
-export const PICK_SHOWN_MS = 1500;
+/** How long a picked picture stays on the screen after its pick, with the frame of each document found on it,
+ *  before the live frame goes on (ms; owner, 2026-10-27: 1.5 s was too short to see the frames). */
+export const PICK_SHOWN_MS = 2500;
 const errText = (e: unknown): string => String((e as Error)?.message || e);
 
 /** The picked picture being worked on: its pick (batch), its place in the pick (n, 1-based), its url, which file
@@ -164,6 +166,10 @@ export class ScanSession {
   private held = false;
   /** Picks in work (wake waits for them). */
   private picking = 0;
+  /** The last pick's picture still shown (PICK_SHOWN_MS after it settled): the camera getting ready meanwhile does
+   *  not start the live frame over it. */
+  private pickShown = false;
+  private pickShownGen = 0;
   /** Bumped by done() / discard(): a pick still in work gives nothing more. */
   private scanGen = 0;
   /** One pick at a time, in the order picked. */
@@ -259,6 +265,9 @@ export class ScanSession {
       if (!started || gen !== this.camGen) return;  // put away while the camera started (camera.stop gave it back)
       this.emitFigures();
       this.live.show(video);
+      // a picked picture on the screen (a pick in work, or just over) or a page opened over the camera: the live frame
+      // goes on after them (goOn), not now — its first answer would put the camera back over the picture
+      if (this.picking || this.pickShown || this.held) return;
       this.emit('status', { key: 'finding' });
       this.live.start();
     } catch (e) {
@@ -279,9 +288,15 @@ export class ScanSession {
   /** The live frame goes on by itself (after a shot settled, a pick, a page closed) from a fresh frame — unless
    *  something still holds it: a page opened over it, a shot or a pick in work, the camera off or put away, or it
    *  runs already. */
-  private goOn(): void {
+  //
+  // keep (after a shot that took documents): the frame stays where it was — on the document just taken, green while
+  // it is still held there — and is not found again from nothing (owner, 2026-10-27: the square vanished after each
+  // shot and came back red and flickering, so nothing could be aimed with); Auto still does not take it again (the
+  // documents taken: steady.ts Taken), and a new document moves the frame over MOVE × 3, which starts its countdown
+  // from nothing, red first. Otherwise (a pick, a page closed, a failed shot) the frame starts from nothing.
+  private goOn(keep = false): void {
     if (this.held || this.picking || this.switching || this.shotInWork || this.live.running || !this.camera.on || !this.live.video) return;
-    this.live.clearFrame();
+    if (!keep) this.live.clearFrame();
     this.live.lastRes = null;  // a shutter tap before the first new answer takes nothing from an old frame
     this.live.start();
   }
@@ -332,8 +347,9 @@ export class ScanSession {
       // was not running (a picked picture still shown: the camera comes back)
       if (id < 0 || id === this.shotId) {
         const r = rec as ShotRecord | null;
-        if (got && r && r.edgesModel) this.live.taken.set([r.edgesModel, ...r.edgesMore]);
-        this.goOn();
+        const took = !!(got && r && r.edgesModel);
+        if (took) this.live.taken.set([r!.edgesModel as Quad, ...r!.edgesMore]);
+        this.goOn(took);
       }
     }
   }
@@ -385,6 +401,7 @@ export class ScanSession {
   wake(video?: VideoLike): void {
     if (this.picking) return;  // a pick in work: its pictures are on the screen, the models busy with them
     this.held = false;
+    this.pickShown = false; this.pickShownGen++;
     this.shotId++;
     this.shotInWork = false;
     this.live.clearFrame();
@@ -398,6 +415,7 @@ export class ScanSession {
    *  camera stops (one still starting is not turned on), the loops end, a shot in work is dropped. */
   sleep(): void {
     this.held = false;
+    this.pickShown = false; this.pickShownGen++;
     this.shotId++;
     this.shotInWork = false;
     this.camGen++;
@@ -567,7 +585,12 @@ export class ScanSession {
     this.picking++;
     const run = this.pickChain.then(() => this.runPick(files));
     this.pickChain = run.catch(() => 0);
-    const settled = (): void => { if (!--this.picking) this.env.setTimeout(() => this.goOn(), PICK_SHOWN_MS); };
+    const settled = (): void => {
+      if (--this.picking) return;
+      const gen = ++this.pickShownGen;
+      this.pickShown = true;
+      this.env.setTimeout(() => { if (gen !== this.pickShownGen || this.picking) return; this.pickShown = false; this.goOn(); }, PICK_SHOWN_MS);
+    };
     run.then(settled, settled);
     return run;
   }

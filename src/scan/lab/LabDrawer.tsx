@@ -102,7 +102,7 @@ export function LabDrawer({ session, figuresNow, errors, lines, settings, onSett
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>
         <Button size="sm" data-testid="lab-tools"
-          className="absolute left-4 top-[calc(76px+env(safe-area-inset-top,0px))] z-10">
+          className="absolute left-4 top-[var(--scan-top,calc(76px+env(safe-area-inset-top,0px)))] z-10">
           <IconAdjustments className="size-[18px]" />{tr('Lab tools')}
         </Button>
       </DrawerTrigger>

@@ -394,7 +394,7 @@ export function Scanner({ open, onDone, onClose, initial, read, superAdmin, work
         <ScannerScreen mode="site" session={view} kept={keptPages} typing={typing} thumbNote={note} statusText={engineText}
           onRemoveKept={id => setKept(xs => xs.filter(x => x.id !== id))} onChoose={choose} onDone={finish}>
           {(hint || queue > 0) && (
-            <div className="pointer-events-none absolute inset-x-4 top-[calc(76px+env(safe-area-inset-top,0px))] z-10 flex flex-col items-start gap-1.5">
+            <div className="pointer-events-none absolute inset-x-4 top-[var(--scan-top,calc(76px+env(safe-area-inset-top,0px)))] z-10 flex flex-col items-start gap-1.5">
               {hint && <div data-testid="scan-error" role="alert" className="og-glass-menu !rounded-[var(--radius-md)] px-3 py-1.5 text-[13px] text-[var(--amber-text)]">{hint}</div>}
               {queue > 0 && <div data-testid="scan-queue" className="og-glass-menu !rounded-full px-3 py-1 text-[12px] text-ink-2">{tr('In queue: {n} / {max}', { n: queue, max: QUEUE_MAX })}</div>}
             </div>

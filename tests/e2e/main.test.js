@@ -1178,7 +1178,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const s = document.querySelector('[data-testid="scanner"][data-mode="lab"]'), b = s ? s.getBoundingClientRect() : {}, S = window.ScanLab && ScanLab.session;
     const r = {full: !!s && b.left === 0 && b.top === 0 && b.width === 390 && b.height === 844, noScroll: document.documentElement.scrollWidth <= 390,
       parts: ['scan-status', 'scan-bar', 'scan-shutter', 'scan-pick', 'scan-auto', 'scan-done', 'lab-tools'].filter(t => s && s.querySelector('[data-testid="' + t + '"]')).join(),
-      show: ((s && s.querySelector('[data-testid="scan-done"]')) || {}).textContent, surface: S && [S.surface.base, S.surface.cache, S.surface.source].join()};
+      show: s && s.querySelector('[data-testid="scan-done"]') ? s.querySelector('[data-testid="scan-done"]').getAttribute('aria-label') : null, surface: S && [S.surface.base, S.surface.cache, S.surface.source].join()};
     // the models start (and fail here: no models in the tests) before the way failures are looked at
     await T.until(() => ['failed', 'ready'].includes(ScanLab.session.engines.state.phase), 20000);
     document.querySelector('[data-testid="lab-tools"]').click();
