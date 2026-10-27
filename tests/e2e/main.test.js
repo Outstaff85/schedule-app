@@ -2457,6 +2457,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wp.onePage && wp.hoursStatus && wp.edit, 'worker card: one page — no Info / Docs / Hours switch; the facts, the Documents and Hours sent boxes and the documents box all on it; one Edit button ' + JSON.stringify({onePage: wp.onePage, hoursStatus: wp.hoursStatus, edit: wp.edit}));
   ok(wp.menu === 'Edit,Open card,Pay,Punch link,Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));
+  // One look for every name on the list (owner, 2026-10-27): a name all in Latin capitals is drawn a little smaller, a
+  // Hebrew one a little larger, so the letters stand the same height (Plate nameScale).
+  const nm = await p.evaluate(async () => {
+    switchTab('workers'); await T.tick(100);
+    const keep = workers.map(w => w.name);
+    workers[0].name = 'SURESH MARTIN'; workers[1].name = 'אלכס ליברמן'; render(); await T.tick(150);
+    const size = n => { const el = [...document.querySelectorAll('#workersRoot [data-testid="worker-name"]')].find(e => e.textContent === n);
+      return el ? parseFloat(getComputedStyle(el).fontSize) : 0; };
+    const base = parseFloat(getComputedStyle(document.querySelector('#workersRoot [data-testid="worker-plate"] b')).fontSize);
+    const r = {base, caps: size('SURESH MARTIN'), he: size('אלכס ליברמן')};
+    workers.forEach((w, i) => { w.name = keep[i]; }); render(); await T.tick(100);
+    return r;
+  });
+  ok(nm.base > 0 && nm.caps > 0 && nm.he > 0 && nm.caps < nm.base && nm.he > nm.base,
+    'workers: a name in Latin capitals drawn a little smaller and a Hebrew name a little larger, so both look the same size ' + JSON.stringify(nm));
   // Worker documents (stage 13): plates with Select in the card's documents box; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
   const wd = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
