@@ -203,7 +203,7 @@ export function UploadWindow({ file, replace, categories, api, workerId, clientI
   const [sample, setSample] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   // the firm's signature and stamp on every page: on for a new template, a replaced one's own value
-  const [sealOn, setSealOn] = React.useState(replace ? sealOn(replace) : true);
+  const [sealOn, setSealOn] = React.useState(replace ? replace.sealEveryPage !== false : true); // contracts.ts sealOn: no field = on
   const sealFirst = React.useRef(sealOn);
   React.useEffect(() => {
     let live = true;
