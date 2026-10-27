@@ -17,7 +17,6 @@ import { isAccTab, isFirmAdminSession } from '../logic/access';
 import { cacheTenantProfile, renderAccountControl } from './gate';
 import { closeModal } from './windows';
 import { renderWorkersPage } from './workers';
-import { renderCrumb } from './header';
 import { showToast } from '../toast';
 import { island } from '../bridge';
 Object.defineProperties(window, {
@@ -194,7 +193,6 @@ export function switchAdminPane(pane?: any){
   __adminPane=pane && adminPanes().includes(pane) ? pane : null;
   if(__adminPane==='errors'||__adminPane==='timings') loadLogPane(__adminPane);
   renderAdmin();
-  renderCrumb();
 }
 // The user window (React, #userFormModal): a saved login from the list the
 // Users section drew (its cache; the server only when the row isn't there),

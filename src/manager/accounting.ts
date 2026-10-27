@@ -265,10 +265,6 @@ export function salaryTotals(rows: SalaryEntry[]): { hours: number; pay: number;
   const pay = rows.reduce((s, e) => s + e.total, 0), travel = rows.reduce((s, e) => s + e.travel, 0);
   return { hours, pay, travel, total: pay + travel };
 }
-/** The figures on top: the period's hours and payroll (pay + travel) over every row. */
-export function accFigures(rows: SalaryEntry[]): { hours: number; payroll: number } {
-  return { hours: rows.reduce((t, e) => t + e.hours, 0), payroll: rows.reduce((t, e) => t + e.total + e.travel, 0) };
-}
 /** Search by name (the totals follow the rows shown). */
 export function searchRows(rows: SalaryEntry[], q: string): SalaryEntry[] {
   q = (q || '').trim().toLowerCase();

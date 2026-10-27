@@ -161,11 +161,13 @@ export async function gsUpdatePunch(data: Rec): Promise<void> {
 }
 // Best-effort: deletes a worker's stored file in Storage (the replaced Form
 // 101 or sidecar, or every file of a deleted worker). Never blocks anything.
-export async function gsDeleteWorkerDoc(fileId: unknown): Promise<void> {
+/** manual: a person's own delete (Remove, Delete worker) — it removes a signed file too; every other
+ * delete (a file replaced, a rescan) leaves a signed one (the server refuses; docs/contracts.md → Signed files are kept). */
+export async function gsDeleteWorkerDoc(fileId: unknown, manual = false): Promise<void> {
   try {
     await fetch(API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'deleteWorkerDoc', ...gsAuth(), fileId })
+      body: JSON.stringify({ action: 'deleteWorkerDoc', ...gsAuth(), fileId, ...(manual ? { manual: true } : {}) })
     });
   } catch (e) { console.warn('Worker file delete failed:', e); }
 }

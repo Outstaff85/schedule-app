@@ -437,7 +437,6 @@ SUPPLIER_PAY_FIELDS = ("payMode", "hourlyRate", "regRate", "otRate", "shabbatRat
 CLIENT_PAY_FIELDS = ("defaultHourlyRate", "defaultOtRate", "defaultShabbatRate")
 E_SUPPLIER_ONLY = "Supplier role only"
 E_NO_SECTION = "Not allowed for this login"
-E_SIGNED_WORKER = "This worker has signed documents and can't be deleted"
 
 
 def strip_worker(d, supplier_id, pay=False):
@@ -541,10 +540,7 @@ def supplier_action(db, caller, body):
         if not snap or not snap.exists or (snap.to_dict() or {}).get("supplierId") != sid:
             return {"error": "Worker not found"}
         if action == "supplierDeleteWorker":
-            # a signed worker's record and files are kept (docs/contracts.md → Signed files are kept)
-            cur = snap.to_dict() or {}
-            if cur.get("signedAt") or cur.get("signedRequestId"):
-                return {"error": E_SIGNED_WORKER}
+            # a person's own delete: a signed worker goes too (owner, 2026-10-25; docs/contracts.md → Signed files are kept)
             ref.delete()
             return {"ok": True}
         upd = {k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None}

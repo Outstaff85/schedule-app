@@ -1,11 +1,12 @@
 // shadcn/ui Dropdown Menu as the design system's RowMenu (docs/design/system/
-// components/RowMenu): menu glass with a tail at its ⋮, items 14/500 with a
+// components/RowMenu): the windows' glass (og-glass-menu) with a tail at its ⋮ (PopTail), items 14/500 with a
 // 17px icon, the gradient line on the left of the hovered item; Delete last,
 // in red-soft, under a hairline (`destructive` + DropdownMenuSeparator).
 import * as React from 'react';
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui';
 import { IconCheck, IconChevronRight } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
+import { PopTail } from '@/components/ui/popover';
 
 function DropdownMenu(props: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
@@ -25,14 +26,14 @@ function DropdownMenuContent({ className, sideOffset = 10, align = 'end', childr
         sideOffset={sideOffset}
         align={align}
         className={cn(
-          'og-glass-menu z-50 min-w-[190px] max-w-[260px] p-1.5 outline-none',
+          'og-glass-menu group/pop z-50 min-w-[190px] max-w-[260px] p-1.5 outline-none',
           'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2',
           className,
         )}
         {...props}
       >
         {children}
-        <DropdownMenuPrimitive.Arrow width={14} height={7} className="fill-[var(--pop-tail)]" />
+        <PopTail Arrow={DropdownMenuPrimitive.Arrow} />
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   );

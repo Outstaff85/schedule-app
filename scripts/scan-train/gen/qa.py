@@ -446,7 +446,18 @@ def compare(made, ref):
     feats = [k for k in STATS if share(made, k) >= 0.8 and share(ref, k) >= 0.8]
     whole = lambda xs: [[x[k] for k in feats] for x in xs if all(x[k] is not None for k in feats)]
     a = logistic_auc(whole(ref), whole(made)) if feats else None
-    return {"ks": d, "auc": None if a is None else round(a, 4), "n": len(ref), "features": feats}
+    # the medians tell the side a KS distance lies on (gen tune moves the camera's settings toward the real ones)
+    med = {who: {k: median([x[k] for x in xs]) for k in STATS} for who, xs in (("made", made), ("ref", ref))}
+    return {"ks": d, "auc": None if a is None else round(a, 4), "n": len(ref), "features": feats, "median": med}
+
+
+def median(xs):
+    """The median of the values that are there (None skipped), rounded; None when none is."""
+    v = sorted(float(x) for x in xs if x is not None)
+    if not v:
+        return None
+    m = len(v) // 2
+    return round(v[m] if len(v) % 2 else (v[m - 1] + v[m]) / 2, 5)
 
 
 def realism(folder, run, rows, real_dir=None, midv_dir=None):

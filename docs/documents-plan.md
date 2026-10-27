@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done (one PR, not merged yet): S0's inventory script (its figures wait for a run of `migrate-docs.yml` with the owner's yes), S0b (signed files are never deleted) and S2 (Download data with the picker and the A4 ID sheet). Still open: the owner's answers Q1–Q6, Q9, Q10. Next: S1.
+Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). Still open: the owner's answers Q1–Q6, Q9, Q10. Next: S1.
 
 ## What and why
 
@@ -93,7 +93,7 @@ Keeping the files is the safe default, so this does not wait for Q2.
 - `supplierDeleteWorker` refuses a signed worker (`signedAt` / `signedRequestId`).
 - Tests: `test_files.py` (`deleteWorkerDoc` refuses each kind of signed path, an unsigned path still deletes); `test_portal.py` (a signed worker cannot be deleted by the supplier); e2e: removing a signed document leaves it, and Delete worker leaves its signed files.
 - Docs: docs/contracts.md (signed files are kept), docs/workers.md, docs/portals.md, docs/history.md (why the 2026-10-20 "no archive" deletes stopped).
-- Status: **done** (with S0 and S2 in one PR). The check is `signed_file` in `functions-auth/files.py`, fed by `signed_lookup` in `functions-auth/main.py`; it also refuses a signing's signature (`sigPath`), a signed worker's `sigFileId`, and the parts of the `transferRequests` that made a worker; without a lookup `deleteWorkerDoc` deletes nothing (docs/contracts.md → Signed files are kept).
+- Status: **done** (with S0 and S2 in one PR); then narrowed by the owner (2026-10-25): a signed file is never deleted **on its own** (a newer file over it, a rescan, a new signing), but a person's own delete — Remove, Delete worker, a supplier's Delete — removes it (`manual: true`; docs/contracts.md → Signed files are kept). The check is `signed_file` in `functions-auth/files.py`, fed by `signed_lookup` in `functions-auth/main.py`; it also refuses a signing's signature (`sigPath`), a signed worker's `sigFileId`, and the parts of the `transferRequests` that made a worker; without a lookup `deleteWorkerDoc` deletes nothing (docs/contracts.md → Signed files are kept).
 
 ### S1 — a builder that gives the same bytes every time (old documents untouched)
 - **New folder `functions/builders/`:**

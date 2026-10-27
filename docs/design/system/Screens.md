@@ -6,7 +6,7 @@ Every screen of the app is built from the same parts: the blob ground, a header 
 | --- | --- |
 | Sign in | The site stays as the background; a compact glass sign-in card pinned to the bottom of the screen, moving with the scroll. |
 | Today | Figures (On shift, Late, No punch, Notices) tap to filter; collapsible sections with worker plates; right side: hours worked today. |
-| Schedule | Week in a glass switcher (‹ 12 – 18 Oct ›, tap the dates for a calendar); site tabs; a plate per worker with day marks for the week; tap opens the days under it. |
+| Schedule | Week in a glass switcher (‹ 12 – 18 Oct ›, tap the dates for a calendar); one site select; a plate per worker with day marks for the week; tap opens the days under it. |
 | Workers | Worker plates: "Avi C.", notice chips after the name, site · today's punch under it, month hours left of ⋮; swipe, Select, Undo. |
 | Worker card | Bottom sheet: big avatar, full name, site and punch, month hours; notice chips; Info / Docs / Hours switch; facts in pairs; Edit as the one primary, ⋮ next to it. |
 | Clients | Client plates: name, chips (no rate, hours waiting), workers count · address, month hours. |
@@ -33,8 +33,8 @@ Four pages share one look: the **manager app** (`/`, every tab below), the **sup
 | Tab | What it is | Real screens and mockups |
 | --- | --- | --- |
 | Today | Live attendance: four filter figures, folding sections, bell. | Today card, "Today and Workers" shots |
-| Schedule | Weekly roster, a plate per worker with seven day marks, site tabs, export. | Schedule card |
-| Workers | Worker plates, tabs Active / Vacation / Pending, filters, notices sheet, Select, Undo. | Workers card |
+| Schedule | Weekly roster, a plate per worker with seven day marks, a site select, export. | Schedule card |
+| Workers | Worker plates, one create button (New worker: scan, or by hand), filters, notices sheet, Select, Undo. | Workers card |
 | Worker card | Read-only sheet: Info / Docs / Hours, one primary Edit. | Worker card |
 | Worker editor | Section plates; the window saves itself on close. | Worker editor |
 | Clients | Client plates, notices No rate and Hours waiting; editor with Place on a map and Rates. | Clients card, Client editor |

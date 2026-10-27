@@ -14,7 +14,7 @@ import { homeTab, isAccTab, isHrSession } from '../logic/access';
 import { loadFirestoreBackend } from '../data/api';
 import { getSession, saveSession } from '../data/session';
 import { USERS_ADMIN_FN_URL, warmCloudFunctions } from '../logic/functions';
-import { applyI18n, showContractNotice, syncLangButtons } from './language';
+import { applyI18n, syncLangButtons } from './language';
 import { gateApp } from './gate';
 import { render } from './render';
 import { setSaveStatus } from './wiring';
@@ -80,7 +80,6 @@ loadI18n(storedLanguage()).catch(()=>{}).then(()=>{ applyI18n(); syncLangButtons
     applyNavPermissions();
     // Start on Dashboard (an HR login: its first tab)
     switchTab(homeTab());
-    showContractNotice();
     // A staff / HR login's flat rights as the ID token has them now (a
     // template change ends the session; until then the token is the truth).
     if(isHrSession() || (getSession() || {} as any).role === 'staff') loadFirestoreBackend().then((b?: any) => b.rights()).then((rt?: any) => {

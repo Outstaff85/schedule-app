@@ -2,7 +2,8 @@
 // check — the scanner screen looked at with no camera and no models. It plays what a real ScanSession says: a
 // drawn "camera" (a document on a desk, through a canvas stream), the live frame red while it searches then
 // green, the status going finding → a corner outside → hold → found; a shot gives a page that is read a moment
-// later; a pick shows its picture, then its page; Fix corners gets a drawn photo, and Apply cuts the page again.
+// later, then the live frame goes on by itself and says the document taken is still in front of the camera
+// (taken: Auto waits); a pick shows its picture, then its page, and the camera comes back; Fix corners gets a drawn photo, and Apply cuts the page again.
 // Every call is written to `calls` (the gallery shows them, so the check can see what the screen asked for).
 // The pictures are drawn in the design system's colours (og.css tokens), read from the page.
 import type { VideoLike } from '../engine/camera';
@@ -148,6 +149,7 @@ export class FakeScanSession implements ScanSessionLike {
     const f = FAKE_PAGES[this.seq % 2];
     this.addPage(f.kind, null);
     this.later(400, () => this.say({ key: 'found', count: 1 }));
+    this.later(1000, () => this.say({ key: 'taken' }));
     return 1;
   }
   setAuto(on: boolean): void { this.auto = on; this.log('auto ' + (on ? 'on' : 'off')); }
@@ -174,6 +176,7 @@ export class FakeScanSession implements ScanSessionLike {
       this.emit('preview', { batch, n: i + 1, url, ...where, stage: 'done', quad: DOC });
     }
     this.say({ key: 'picked', pages: files.length, files: files.length });
+    this.later(1500, () => this.say({ key: 'finding' }));
     return files.length;
   }
 

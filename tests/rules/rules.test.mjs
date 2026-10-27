@@ -449,6 +449,20 @@ test('notifReads: a manager-side login reads and writes only its own read list',
   await assertFails(getDoc(doc(db('anon'), 'notifReads', me)));
 });
 
+test('scanTrainingStats: only a super-admin reads the training loop\'s reports; nobody writes them; the counters stay function-only', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'scanTrainingStats', 'loop'), { latest: { id: 'c1', state: 'published', version: 'v9' }, history: [] });
+    await setDoc(doc(ctx.firestore(), 'scanTrainingStats', 'current'), { edgesSince: 3 });
+  });
+  await assertSucceeds(getDoc(doc(db('superadmin'), 'scanTrainingStats', 'loop')));
+  for (const r of ['ownerA', 'staffAll', 'hrAll', 'supplierA', 'clientA', 'anon']) await assertFails(getDoc(doc(db(r), 'scanTrainingStats', 'loop')));
+  for (const r of ['superadmin', 'ownerA']) {
+    await assertFails(setDoc(doc(db(r), 'scanTrainingStats', 'loop'), { latest: { id: 'x', state: 'failed' } }));
+    await assertFails(deleteDoc(doc(db(r), 'scanTrainingStats', 'loop')));
+  }
+  await assertFails(getDoc(doc(db('superadmin'), 'scanTrainingStats', 'current')));
+});
+
 test('shiftRequests: the punch function writes; managers read; a schedule writer only confirms or declines a pending offer', async () => {
   const swap = { kind: 'swap', workerId: 'w1', date: '2026-11-02', start: '08:00', end: '16:00', toWorkerId: 'w3', status: 'pending' };
   await env.withSecurityRulesDisabled(async ctx => {

@@ -26,7 +26,7 @@ import { exportExcel, exportJSON, exportPDF, exportShiftsDetail } from '../logic
 import { genToken } from '../data/ids';
 import { fileForStorage, fileToUploadPages } from '../logic/uploads';
 import { reportError } from '../data/telemetry';
-import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderCrumb, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
+import { bellAct, bellItems, loadFirmMessages, markAllNotifRead, openNotif, renderGreeting, saveFirmMessage, toggleBell, waTemplate } from './header';
 import { editFromWorkerCard, openHoursExportModal, openHoursImportModal, openNotices, openWorkerCard, openWorkerDocUpload, parseHoursExcelFile, parseHoursImagePage, renderClientsPage, renderSuppliersPage, renderWorkersPage, rescanFromWorkerCard, setWorkersStatus, todayPunchLog, workerBarColor, workerNotices, workerSiteName, workerToday } from './workers';
 import { portalInfo, switchTab } from './nav';
 import { buildPunchLink, copyWorkerLink, deleteWorkerNow, findScanFields, openAddWorker, openEditWorker, regenerateWorkerToken, rescanFromWorkerModal, setWorkerStatus, supplierMonthPayable, workerHasScanPages, workerScanLive } from './worker-window';
@@ -89,7 +89,7 @@ function renderSchedulePage(){
   loadShiftRequests();
   if(island()) island()!.renderSchedule();
 }
-window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(isAccTab(currentTab)) renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') island()!.renderFirmsScreen(); renderCrumb(); });
+window.addEventListener('manager-island-ready', () => { if(currentTab==='dashboard') renderDashboard(); if(currentTab==='schedule') renderSchedulePage(); if(currentTab==='workers') renderWorkersPage(); if(currentTab==='clients') renderClientsPage(); if(currentTab==='suppliers') renderSuppliersPage(); if(isAccTab(currentTab)) renderAccounting(); if(currentTab==='admin') renderAdmin(); if(byId('firmsScreen').style.display==='block') island()!.renderFirmsScreen(); });
 provideBridge({
   lang:()=>currentLang(),
   dict:()=>currentDict(),
@@ -266,7 +266,7 @@ provideBridge({
     };
   },
   accData:()=>accData(),
-  setPeriod:async (p?: any)=>{ await ensurePunchesSince(periodPunchStart(p)); accPeriod=p; renderAccounting(); renderCrumb(); },
+  setPeriod:async (p?: any)=>{ await ensurePunchesSince(periodPunchStart(p)); accPeriod=p; renderAccounting(); },
   ensurePeriod:async (p?: any)=>{ await ensurePunchesSince(periodPunchStart(p)); },
   openClientWindow:(id?: any)=>openEditClient(id),
   hourApprovals:async(month?: any,fresh?: any)=>{ const docs=await hourApprovalsOf(month,fresh); if(__punchSynced) await __punchSynced.catch(()=>{}); return docs; },
@@ -365,7 +365,7 @@ provideBridge({
     const head=workerHeadOf(w), st=workerDocStatus(w), ex=workerExpiryStatus(w), sh=shiftOn(w,new Date()), b=latestHoursBatch(w.id);
     const sup=suppliers.find((s?: any)=>s.id===w.supplierId);
     return {...head, w:JSON.parse(JSON.stringify(w)), canEdit:hasPermission('workers')&&canChange('editWorkers'), canPay:!!canEditPay(w), canExport:hasPermission('exports'),
-      isFirmAdmin:isFirmAdminSession(), hr:w.hrId?{name:hrNameOf(w.hrId), color:hrColor(w.hrId)}:null,
+      isFirmAdmin:isFirmAdminSession(), hr:w.hrId?{name:hrNameOf(w.hrId)||(w.hrId===(getSession()||{} as any).uid?String((getSession() as any).fullName||(getSession() as any).username||''):''), color:hrColor(w.hrId)}:null,
       clients:(w.clientIds||[]).map((cid?: any)=>clients.find((x?: any)=>x.id===cid)).filter(Boolean).map((c?: any)=>({id:c.id, name:c.name||'', color:c.color||''})),
       supplier:sup?{name:sup.name||'', color:sup.color||''}:null,
       shiftToday:sh&&sh.type==='work'&&sh.start?{start:sh.start, end:sh.end||''}:null,
@@ -398,14 +398,12 @@ provideBridge({
   // Delete never asks (the card's Undo snack): when its time is up the entries go, saved, and their files are deleted.
   removeDocs(wid?: any,ids?: any){
     const w=workers.find((x?: any)=>x.id===wid); if(!w) return;
-    const picked=(w.docs||[]).filter((d?: any)=>ids.includes(String(d.id)));
-    // a signed document is never removed (docs/contracts.md → Signed files are kept)
-    const gone=picked.filter((d?: any)=>!d.signed);
-    if(gone.length<picked.length) showToast(tr('Signed documents are kept'));
+    // a person's own delete: a signed document goes too (docs/contracts.md → Signed files are kept)
+    const gone=(w.docs||[]).filter((d?: any)=>ids.includes(String(d.id)));
     if(!gone.length) return;
     w.docs=(w.docs||[]).filter((d?: any)=>!gone.includes(d));
     autoSave(); render();
-    gone.forEach((d?: any)=>{ if(d.fileId) gsDeleteWorkerDoc(d.fileId); });
+    gone.forEach((d?: any)=>{ if(d.fileId) gsDeleteWorkerDoc(d.fileId, true); });
   },
   setScanField(wid?: any,key?: any,v?: any){
     const w=workers.find((x?: any)=>x.id===wid); if(!w) return;
@@ -526,7 +524,7 @@ export function renderAccounting(){
   const i=island(); if(!i || portalInfo()) return; // a supplier's or client's tabs are its portal screens (nav.ts)
   if(currentTab==='commission') i.renderCommission(); else if(currentTab==='hours') i.renderHours(); else i.renderAccounting();
 }
-function setAccTab(k?: any){ if(island()) island()!.setAccTab(k); renderCrumb(); }
+function setAccTab(k?: any){ if(island()) island()!.setAccTab(k); }
 
 // The hours function (the HR's Hours approval, the owner's approvals list and fixes).
 const HOURS_REVIEW_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/hours';

@@ -197,11 +197,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const txt = (root.querySelector('#accSecSalary') || {}).innerText || '';
     const rows = [...root.querySelectorAll('[data-testid=sal-table] tbody tr')].map(r => r.dataset.rowId);
     const e = ManagerAcc.salaryEntriesFor(accData(), 'all').byWorker;
-    return {rows, com: /My commission/.test(txt), tabs: vis('#accTabs'), payable: vis('[data-testid=acc-billing]'), pend: vis('#accSecPending'),
+    return {rows, com: /My commission/i.test(txt) && [...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] span.truncate')].some(x => /My commission/.test(x.textContent)), tabs: vis('#accTabs'), payable: vis('[data-testid=acc-billing]'), pend: vis('#accSecPending'),
       alerts: vis('#accSecAlerts'), view: (root.querySelector('[data-testid=accounting]') || {dataset: {}}).dataset.view, noExport: !vis('[data-testid=sal-export]'), noSelect: !vis('[data-testid=sal-select]'),
-      hours: rows.reduce((t, id) => t + e[id].hours, 0), comText: txt};
+      hours: rows.reduce((t, id) => t + e[id].hours, 0), comText: txt, figs: [...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] span.truncate')].map(x => x.textContent).join()};
   });
-  ok(pv.rows.length === 1 && pv.rows[0] === 'w2' && pv.com && pv.view === 'pay' && !pv.tabs && !pv.payable && !pv.pend && !pv.alerts && pv.noExport && pv.noSelect,
+  ok(pv.rows.length === 1 && pv.rows[0] === 'w2' && pv.com && pv.figs === 'Pay,Travel ₪,Total Pay,My commission' && pv.view === 'pay' && !pv.tabs && !pv.payable && !pv.pend && !pv.alerts && pv.noExport && pv.noSelect,
     'hr Commission tab: own worker only, its commission, no tabs, no export, nothing else of Accounting ' + JSON.stringify(pv).slice(0, 300));
   ok(pv.comText.includes('₪' + (pv.hours * 4).toFixed(0)), 'hr Commission tab: commission = hours × 4 ' + pv.hours);
   // The HR's Hours tab (hours ticks): the shared React screen (src/hours-review/); its own worker's days; approve one.

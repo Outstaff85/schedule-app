@@ -4,7 +4,8 @@
 // Vite) run beside it on the same generated inputs — heatmaps (two documents, a card above its ספח, one document, a missing
 // corner, random spots), random quads, warps, a document on a document, synthetic gray frames for the
 // follow and the affine fit, white pages with photos, passport zones, Hebrew lines, ID numbers, the sticky
-// frame's sequences on a fake clock, the way-failure log — and must give the same answers (floats to 1e-9).
+// frame's sequences on a fake clock, the way-failure log — and must give the same answers (floats to 1e-9);
+// the documents a shot took (steady.ts Taken, new with the template 6 screen, 2026-10-26) are checked on their own.
 //
 //   node tests/scan/engine.test.mjs
 import assert from 'node:assert/strict';
@@ -360,6 +361,39 @@ await run('the sticky frame: Steady vs smoothen and the follow\'s restart rule, 
   same(['STEADY_MS', 'MOVE', 'LOCK_MS', 'HOLD', 'MISS_MS', 'DRIFT', 'JERK'].map(k => vm.runInContext(k, page)), [ST.STEADY_MS, ST.MOVE, ST.LOCK_MS, ST.HOLD, ST.MISS_MS, ST.DRIFT, ST.JERK], 'constants');
   return `${events} events, ${greens} green, ${shots} shots, ${holds} held`;
 });
+// The documents a shot took (steady.ts Taken — new with the scanner's template 6, no counterpart in the lab's old
+// page): with the same document trembling, nudged and missed for less than MISS_MS, Auto never takes it again; once
+// it has been gone AWAY_MS the sticky frame has let it go too, so the next document starts a fresh countdown.
+await run('the documents taken: the same document trembling or briefly missed keeps Auto waiting; gone for AWAY_MS, a fresh countdown', () => {
+  assert.ok(ST.AWAY_MS > ST.MISS_MS, 'AWAY_MS outlives the sticky frame\'s MISS_MS');
+  const R = rng(41); let free = 0, waits = 0;
+  for (let seq = 0; seq < 20; seq++) {
+    clock.t = 5000 + seq;
+    const st = new ST.Steady(() => clock.t), tk = new ST.Taken(() => clock.t), doc = randomQuad(R, 0.2);
+    tk.set([doc]);
+    let missedFor = 0;
+    for (let n = 0; n < 60; n++) {
+      const dt = 16 + Math.floor(R() * 60); clock.t += dt;
+      const miss = missedFor + dt < ST.MISS_MS && R() < 0.15;
+      missedFor = miss ? missedFor + dt : 0;
+      const nudge = (R() - 0.5) * 0.04, raw = miss ? { pts: [null, null, null, null], conf: 0.1 } : { pts: doc.map(([x, y]) => [x + nudge, y + (R() - 0.5) * 0.01]), conf: 0.9 };
+      const res = st.answer(raw), still = tk.still(raw);
+      assert.ok(still, `seq ${seq}: the same document, answer ${n}, is still taken`);
+      if (ST.autoShot(res)) waits++;
+    }
+    // gone: nothing found for AWAY_MS (from a last answer that found it)
+    clock.t += 30; st.answer({ pts: doc, conf: 0.9 }); assert.ok(tk.still({ pts: doc, conf: 0.9 }));
+    const t0 = clock.t;
+    while (tk.waiting && clock.t - t0 < ST.AWAY_MS + 200) { clock.t += 30; st.answer({ pts: [null, null, null, null], conf: 0.1 }); tk.still({ pts: [null, null, null, null], conf: 0.1 }); }
+    assert.ok(!tk.waiting && clock.t - t0 >= ST.AWAY_MS, `seq ${seq}: gone after AWAY_MS`);
+    assert.equal(st.smooth, null, `seq ${seq}: the sticky frame let it go too`);
+    const back = st.answer({ pts: doc, conf: 0.9 });
+    assert.ok(!ST.autoShot(back) && back.steady === 0, `seq ${seq}: the next document starts a fresh countdown`);
+    free++;
+  }
+  return `${free} sequences, Auto held back ${waits} times`;
+});
+
 function hintText(h) {
   return h.key === 'no_document' ? 'No document in the frame' : h.key === 'corners_out' ? h.n + ' corner(s) outside the frame — move the phone back'
     : h.key === 'edges_unclear' ? 'Edges not clear — more light, a darker background' : h.key === 'hold' ? 'Hold still… ' + h.seconds.toFixed(1) + ' s' : 'Found';

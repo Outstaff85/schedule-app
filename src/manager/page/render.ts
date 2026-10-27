@@ -6,7 +6,7 @@
 // reachable under their old global names through the window accessors below
 // (the markup's onclick handlers, the React bridge, the
 // other parts and the browser tests use them).
-import { loadNotifReads, refreshBell, renderCrumb, renderGreeting } from './header';
+import { loadNotifReads, refreshBell, renderGreeting } from './header';
 import { island } from '../bridge';
 import { isAccTab } from '../logic/access';
 import { portalInfo } from './nav';
@@ -19,7 +19,7 @@ Object.defineProperties(window, {
 // --- Render -------------------------------------------------------------------
 export function render(){
   // A supplier or client login: only its portal screens (nav.ts) — no firm data here.
-  if(portalInfo()){ island()?.renderPortal(); renderCrumb(); return; }
+  if(portalInfo()){ island()?.renderPortal(); return; }
   if(currentTab==='schedule')   renderSchedulePage();
   // render() only ever refreshed the Schedule tab's own pieces above — every
   // other tab's table (Workers/Clients/Admin/Accounting) is rendered ONLY by
@@ -37,7 +37,7 @@ export function render(){
   if(currentTab==='dashboard')  renderDashboard();
   if(isAccTab(currentTab)) renderAccounting();
   refreshBell(); loadNotifReads();
-  renderGreeting(); renderCrumb();
+  renderGreeting();
   // The worker windows that are open (the card, the notices, the worker window) read their data again.
   if(island()) island()!.refreshWindows();
 }

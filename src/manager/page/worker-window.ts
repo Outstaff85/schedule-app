@@ -21,7 +21,6 @@ import { normDate, normDigits } from '../../scan-process/ids';
 import { resetScan } from '../../scan-process/session';
 import { loadStoredAssets, scanFileIds } from '../data/pages';
 import { workerHasScan } from '../worker';
-import { keptSignedFiles } from '../logic/signing';
 import { showToast } from '../toast';
 import { island } from '../bridge';
 Object.defineProperties(window, {
@@ -239,13 +238,12 @@ export function copyWorkerLink(wid?: any){
 }
 // Removes the worker, then best-effort deletes their files (Form 101 PDF,
 // the scanned pages and the signature, the contract / visa / permit files) —
-// never a signed one: a signed worker's Form 101 and signature and every signed
-// document stay (keptSignedFiles; docs/contracts.md → Signed files are kept).
+// a person's own delete, so the signed ones go too (manual; docs/contracts.md →
+// Signed files are kept: only a delete on its own leaves them).
 export function deleteWorkerNow(id?: any){
   const wi=workers.findIndex((x?: any)=>x.id===id); if(wi<0) return;
   const w=workers[wi];
-  const kept=keptSignedFiles(w);
   const docFileIds=(w.docs||[]).map((d?: any)=>d.fileId).filter(Boolean);
   workers.splice(wi,1);
-  [w.docFileId, ...scanFileIds(w), ...docFileIds].filter((f?: any)=>f&&!kept.has(String(f))).forEach(gsDeleteWorkerDoc);
+  [w.docFileId, ...scanFileIds(w), ...docFileIds].filter(Boolean).forEach((f?: any)=>gsDeleteWorkerDoc(f, true));
 }

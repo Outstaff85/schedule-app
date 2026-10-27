@@ -824,7 +824,8 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
     the scanner (S8): every scan attempt, for the training, and what became of it (a page deleted, the worker saved).
     {"action": "stats"} (a super-admin): the counts, and whether retraining is due — the edges, the document type, the
     scan attempts, and the readers (passportsSince / idCardsSince against REAL_NEEDED: the real passports and ID cards
-    saved since each reader's last training, feedback.reader_counts).
+    saved since each reader's last training, feedback.reader_counts), and the automatic training cycle's reports
+    (_scan_stats: "loop").
     The files go to the private Hugging Face bucket once the server has its token, else to
     Firebase Storage training/ (datastore.py)."""
     if req.method != "POST":
@@ -850,11 +851,7 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         if payload.get("action") == "stats":
             if claims.get("role") != "superadmin":
                 return _json({"error": "Only the super-admin sees the scanner's training"}, 403)
-            stats = (stats_ref.get().to_dict() or {})
-            return _json({"ok": True, "stats": stats, "due": feedback.edges_since(stats) >= feedback.RETRAIN_AT, "edgesSince": feedback.edges_since(stats),
-                          "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats),
-                          "attemptsSince": feedback.attempts_since(stats), "attemptsAt": feedback.ATTEMPTS_AT, "attemptsDue": feedback.attempts_due(stats),
-                          **feedback.readers_due(stats)})
+            return _json(_scan_stats(db, stats_ref))
         if payload.get("action") == "document":
             return _scan_document(payload, claims, db, stats_ref, storage)
         if payload.get("action") == "attempt":
@@ -864,6 +861,18 @@ def scan_feedback(req: https_fn.Request) -> https_fn.Response:
         return _scan_add(payload, claims, db, stats_ref, storage)
     except Exception as e:
         return _json({"error": str(e)}, 500)
+
+
+def _scan_stats(db, stats_ref):
+    """scan_feedback {"action": "stats"} (a super-admin's): the counts and what is due — the edges, the document type,
+    the scan attempts, the readers — and "loop": the automatic training cycle's latest report and the last 20 (the
+    owner's PC writes scanTrainingStats/loop, scripts/scan-train/loop_report.py; feedback.loop_reports)."""
+    stats = (stats_ref.get().to_dict() or {})
+    loop = db.collection("scanTrainingStats").document(feedback.LOOP_DOC).get().to_dict() or {}
+    return {"ok": True, "stats": stats, "due": feedback.edges_since(stats) >= feedback.RETRAIN_AT, "edgesSince": feedback.edges_since(stats),
+            "doctypes": feedback.doctype_counts(stats), "doctypesDue": feedback.doctypes_due(stats),
+            "attemptsSince": feedback.attempts_since(stats), "attemptsAt": feedback.ATTEMPTS_AT, "attemptsDue": feedback.attempts_due(stats),
+            **feedback.readers_due(stats), "loop": feedback.loop_reports(loop)}
 
 
 # ===== Contract templates (contracts.py; docs/contracts.md → Contract templates) =====

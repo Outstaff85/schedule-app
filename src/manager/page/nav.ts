@@ -61,5 +61,4 @@ export function switchTab(tab?: any){
   if(tab==='schedule')   renderSchedulePage();
   if(isAccTab(tab)){ __hourApprovalsCache=null; __accOpenSeq++; renderAccounting(); } // opening the tab reads the approvals afresh
   document.body.dataset.tab=tab; // V7: the Workers / Filter-by-client panel only on Workers and Schedule
-  renderCrumb();
 }

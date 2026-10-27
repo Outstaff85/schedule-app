@@ -221,6 +221,20 @@ def test_delete_refuses_a_signed_document_entry_of_any_worker():
     assert _delete(b, SCTR, lambda wid: (w, [])) == {"error": files.E_SIGNED} and SCTR in b.store
 
 
+def test_a_persons_own_delete_removes_a_signed_file():
+    # Remove on the card and Delete worker send manual: true (owner, 2026-10-25); only a delete on its own is refused
+    b = _signed_bucket()
+    rec = lambda wid: (SIGNED_W, [REQ])  # noqa: E731
+    for p in (S101, SCTR, SSIG, UPL):
+        assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": p, "manual": True}, None, rec) == {"ok": True}
+        assert p not in b.store
+    # only the literal true counts; another firm's path is still refused
+    b = _signed_bucket()
+    assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": S101, "manual": "yes"}, None, rec) == {"error": files.E_SIGNED}
+    other = "tenants/other/workers/w1/form101/x.pdf"
+    assert files.run(b, ADMIN, {"action": "deleteWorkerDoc", "fileId": other, "manual": True}, None, rec) == {"error": files.E_NOT_FIRM}
+
+
 def test_delete_of_an_unsigned_file_still_works():
     b = _signed_bucket()
     unsigned_w = {"id": "w1", "docFileId": S101, "sigFileId": SSIG, "docs": [{"id": "d2", "fileId": UPL}]}

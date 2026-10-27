@@ -67,7 +67,7 @@ if (og) og.before(style); else document.head.append(style);
  * One React root per moved tab. A redraw asked by the page (its render())
  * bumps the version and the tab reads a fresh snapshot from the bridge. The
  * draw is synchronous (flushSync), so the page's code that runs right after
- * it (the breadcrumb, a test) sees the new DOM.
+ * it (a test) sees the new DOM.
  */
 function island<S>(rootId: string, read: (b: ManagerBridge) => S, draw: (snap: S, api: ManagerBridge) => ReactNode) {
   let version = 0, snapAt = -1, snap: S | null = null, root: Root | null = null;

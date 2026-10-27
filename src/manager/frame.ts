@@ -1,8 +1,8 @@
 // The manager app's frame state (React migration stage 8e-1): what the React
 // frame (Frame.tsx, the Shell with `app`) draws — the open section, the
-// sections this login may see, the breadcrumb, the greeting, the bell, the
-// save state, the account. The page's modules write it (switchTab,
-// applyNavPermissions, renderCrumb, renderGreeting, refreshBell,
+// sections this login may see, the greeting, the bell, the save state, the
+// account. The page's modules write it (switchTab,
+// applyNavPermissions, renderGreeting, refreshBell,
 // setSaveStatus, renderAccountControl…); the frame redraws on every change.
 import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
@@ -18,8 +18,6 @@ export type FrameState = {
   tabs: string[];
   /** a count on a section (Accounting: hours batches waiting) */
   counts: Record<string, number>;
-  /** the breadcrumb after the section: its count and the open sub-tab */
-  crumb: { count?: number; sub?: string };
   /** the greeting's name and weather; null = not signed in yet */
   greet: { name: string; wx: { kind: string; temp?: number } | null } | null;
   save: 'saved' | 'saving';
@@ -37,7 +35,7 @@ export type FrameState = {
 };
 
 let state: FrameState = {
-  lang: 'en', screen: 'app', tab: 'dashboard', tabs: [], counts: {}, crumb: {}, greet: null, save: 'saved',
+  lang: 'en', screen: 'app', tab: 'dashboard', tabs: [], counts: {}, greet: null, save: 'saved',
   bell: { shown: false, count: 0 }, bellOpen: false, bellV: 0, account: null, adminWarn: false, install: false,
 };
 const listeners = new Set<() => void>();

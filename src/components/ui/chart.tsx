@@ -2,7 +2,7 @@
 // series its colour as a CSS variable (`--color-<key>`, from `config`), plus a
 // tooltip in the glass menu look (written from the shadcn source; the registry
 // is not reachable from the cloud sessions). Restyled to Odinson Glass: the
-// grid and axes in the hairline / ink-2 tokens, the tooltip on `bg-popover`.
+// grid and axes in the hairline / ink-2 tokens, the tooltip in the menus' glass (`og-glass-menu`).
 import * as React from 'react';
 import * as RechartsPrimitive from 'recharts';
 import { cn } from '@/lib/utils';
@@ -55,7 +55,7 @@ function ChartTooltipContent({ active, payload, label, labelFormatter, formatter
   const { config } = useChart();
   if (!active || !payload || !payload.length) return null;
   return (
-    <div className={cn('og-glass-menu grid min-w-32 gap-1 rounded-[10px] border border-white/12 px-2.5 py-1.5 text-xs shadow-xl', className)}>
+    <div className={cn('og-glass-menu grid min-w-32 gap-1 rounded-[10px] px-2.5 py-1.5 text-xs shadow-xl', className)}>
       {!hideLabel && <div className="font-medium text-ink">{labelFormatter ? labelFormatter(label, payload) : label}</div>}
       {payload.map((item, i) => {
         const key = String(item.dataKey || item.name || 'value'), cfg = config[key];

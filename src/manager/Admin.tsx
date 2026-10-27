@@ -1,5 +1,5 @@
 // The Admin tab of the manager app (docs/admin.md), drawn in React inside the
-// old page: the section tabs (the breadcrumb "Admin › <section>"), three large
+// old page: the section tabs, three large
 // tiles while no section is chosen, and the sections — the Punch Log (stage
 // 6f-1: the figures, Log / By Client, the filters, a plate per punch — a tap
 // edits it, ⋮ / swipe, Delete through the Undo snack, Select —, "Load earlier

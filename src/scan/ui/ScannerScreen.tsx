@@ -1,12 +1,18 @@
-// The full-screen scanner (docs/scan-plan.md → S9): one screen for the site and the lab. The camera fills the
-// screen with the live frame (LiveOverlay); the status line is always over it (StatusPill); a fixed bottom bar —
-// Photos/PDF, the big shutter, Auto (CaptureBar) — with the strip of the pages found above it (Thumbs); one Done
-// button always in the same place, at the top right (the lab: Show what the models read, mode 'lab'). A tap on
-// a thumbnail opens the page large (PageView): its type as chips, Fix corners (CornerEditor), Delete (the Undo
-// snack), Looks good; while it is open the live frame is paused under it (session.hold / resume: no follow, no
-// Auto shot behind it). A picked picture is shown in place of the camera the moment it is being worked on, with
-// the frame of each document found on it. The shutter is off while a shot is still in work (refining, looking
-// for more documents) or a pick is.
+// The full-screen scanner (docs/scan-plan.md → S9): one screen for the site and the lab, to the owner's template
+// "6 · Camera — selected photo grows" (2026-10-26). The camera fills the screen with the live frame
+// (LiveOverlay); the status line at the top centre (StatusPill: the state, led by the type and % of the page a
+// shot is working on), Auto at the top right; the hint for the person under the camera's frame (HintPill:
+// "A little closer", "Keep the two lines at the bottom in the frame" …); at the bottom, above the bar, the strip
+// of the photos taken, each with the model's % under it (Thumbs) — a tap makes one grow in place with its type
+// and % on top (a tap there opens the page large: PageView, its type chips, Looks good), a round Edit corners
+// button on its left (CornerEditor) and a round red Delete on its right (the Undo snack); a tap on it again or on
+// another shrinks it; the bottom bar — Photos/PDF, the big shutter, Done (CaptureBar; the lab: Show what the
+// models read, mode 'lab'). There is no Next: after a shot the live frame goes on by itself, and Auto does not
+// take the same document again (the session's rule, src/scan/engine/session.ts). While a page is opened large or
+// its corners are being fixed the live frame is paused under it (session.hold / resume: no follow, no Auto shot
+// behind it). A picked picture is shown in place of the camera the moment it is being worked on, with the frame
+// of each document found on it. The shutter is off while a shot is still in work (refining, looking for more
+// documents) or a pick is.
 //
 // It fills the box it is put in (a full Window — Window full — in the app; a phone frame in the /next gallery)
 // and drives a ScanSessionLike (useScanSession.ts): the camera starts when the screen is shown (camera: false
@@ -17,21 +23,23 @@
 // (not the ones typed Other). When the host's onDone gives a promise (the site reads the pages first), Done waits
 // for it — busy, the bar and the pages closed meanwhile (no new page, no change it would miss) — and the scan
 // ends (session.done, the screen emptied) only when it says true; false leaves the pages and the scan as they
-// are (the read failed: the host says why). A type picked by hand is told to the host (onChoose). Escape inside it closes the step on top
-// (the corner editor, then the page opened large) before the window.
+// are (the read failed: the host says why). A type picked by hand is told to the host (onChoose). Escape inside
+// it closes the step on top (the corner editor, then the page opened large) before the window.
 import * as React from 'react';
-import { IconCheck, IconEye } from '@tabler/icons-react';
+import { IconBolt, IconCheck, IconEye } from '@tabler/icons-react';
+import { cn } from '@/lib/utils';
 import { tr } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
-import type { Doctype } from '../engine/doctypes';
+import { Spinner } from '@/components/ui/spinner';
+import { DOCTYPE_LABELS, type Doctype } from '../engine/doctypes';
 import type { Quad } from '../engine/types';
 import { CaptureBar } from './CaptureBar';
 import { CornerEditor } from './CornerEditor';
+import { HintPill } from './HintPill';
 import { LiveOverlay } from './LiveOverlay';
-import { PageView } from './PageView';
+import { PageView, percent } from './PageView';
 import { StatusPill } from './StatusPill';
 import { Thumbs } from './Thumbs';
-import { Spinner } from '@/components/ui/spinner';
 import { kindOf, useScanSession, type Fixable, type KeptPage, type PageTyping, type ScanSessionLike, type UiPage } from './useScanSession';
 
 export type ScannerMode = 'site' | 'lab';
@@ -51,8 +59,9 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   camera?: boolean;
   /** a status of the screen's own (the models loading) in place of the session's */
   statusText?: string;
-  /** the step to open with (the /next gallery's still screens): a page opened large, or its corner editor */
-  initial?: { page: string; fix?: boolean };
+  /** the step to open with (the /next gallery's still screens): a page opened large, its corner editor, or the
+   *  photo grown in the strip */
+  initial?: { page: string; fix?: boolean; grow?: boolean };
   /** the pages the host keeps already (the site: its batches on the phone, the pages from before Scan again) */
   kept?: KeptPage[];
   /** a kept page deleted (once its Undo is over) */
@@ -68,7 +77,7 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   children?: React.ReactNode;
 }) {
   const video = React.useRef<HTMLVideoElement>(null);
-  const s = useScanSession(session, video, { kept, onRemoveKept, typing, onChoose });
+  const s = useScanSession(session, { kept, onRemoveKept, typing, onChoose });
   const [finishing, setFinishing] = React.useState(false);
   // the pages that will be saved: not the ones typed Other
   const saved = s.pages.filter(p => kindOf(p) !== 'other').length;
@@ -78,7 +87,7 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
     const r = onDone?.(shown, s.current);
     if (!r || typeof r.then !== 'function') { s.end(); return; }
     setFinishing(true);
-    setOpen(null); setFixing(null);
+    setOpen(null); setFixing(null); setSelected(null);
     let ok = false;
     try { ok = await r; } catch { ok = false; }
     setFinishing(false);
@@ -87,6 +96,7 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   const [open, setOpen] = React.useState<string | null>(null);
   const [fixing, setFixing] = React.useState<{ id: string; data: Fixable } | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
+  const [selected, setSelected] = React.useState<string | null>(null);
   const [still, setStill] = React.useState<{ w: number; h: number } | null>(null);
 
   // the camera on while the screen is shown; the session put to sleep when it goes (its models kept)
@@ -96,9 +106,8 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
     return () => session.sleep();
   }, [session, camera]);
 
-  // a page opened large: the live frame paused under it, started again when it closes (unless Looks good
-  // already woke it, or it waits after a shot anyway)
-  const isOpen = open != null;
+  // a page opened large, or its corners being fixed: the live frame paused under it, going on when it closes
+  const isOpen = open != null || fixing != null;
   React.useEffect(() => {
     if (!isOpen) return;
     session.hold();
@@ -107,9 +116,13 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
 
   const page = open ? s.pages.find(p => p.id === open) || null : null;
   const index = page ? s.pages.indexOf(page) + 1 : 0;
-  // a page deleted (or gone with its shot) closes its view
+  // a page deleted (or gone with its shot) closes its view and its corner editor, and shrinks
+  const fixingGone = !!fixing && !s.pages.some(p => p.id === fixing.id);
+  const selectedGone = !!selected && !s.pages.some(p => p.id === selected);
   React.useEffect(() => { if (open && !page) { setOpen(null); setFixing(null); } }, [open, page]);
-  React.useEffect(() => { setNote(null); }, [open]);
+  React.useEffect(() => { if (fixingGone) setFixing(null); }, [fixingGone]);
+  React.useEffect(() => { if (selectedGone) setSelected(null); }, [selectedGone]);
+  React.useEffect(() => { setNote(null); }, [open, selected]);
 
   const startFix = React.useCallback((id: string) => {
     const data = s.fixable(id);
@@ -122,6 +135,7 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   React.useEffect(() => {
     if (!initial || opened.current || !s.pages.some(p => p.id === initial.page)) return;
     opened.current = true;
+    if (initial.grow) { setSelected(initial.page); return; }
     setOpen(initial.page);
     if (initial.fix) startFix(initial.page);
   }, [initial, s.pages, startFix]);
@@ -129,7 +143,7 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
   // Escape inside the screen: the step on top first (before the window it is in)
   const root = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    if (!open) return;
+    if (!open && !fixing) return;
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || !root.current || !root.current.contains(e.target as Node)) return;
       e.stopPropagation();
@@ -144,11 +158,29 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
     setFixing(null);
     if (id) void s.fix(id, pts).then(ok => { if (!ok) setNote(cannotFix()); });
   };
+  const remove = (id: string) => { setSelected(null); s.remove(id); };
 
   const preview = s.preview;
   React.useEffect(() => { setStill(null); }, [preview?.url]);
   // the picked picture's frame: the same object while nothing in it changes (its overlay is not redrawn)
   const stillFrame = React.useMemo(() => (preview && still ? { quad: preview.quad, w: still.w, h: still.h } : null), [preview?.quad, still?.w, still?.h]);
+
+  // the newest page of this scan (not one the host kept): its type and % lead the status line while its shot is
+  // in work, and a passport whose zone was not found asks for its two lines in the frame
+  const newest = [...s.pages].reverse().find(p => !p.kept) || null;
+  const newestKind = newest ? kindOf(newest) : null;
+  const lead = s.busy && newest && newestKind && !newest.reading
+    ? tr(DOCTYPE_LABELS[newestKind]) + (newestKind === newest.model && newest.conf != null ? ' ' + percent(newest.conf) : '') : null;
+  const mrz = newest?.shot?.readouts?.mrz;
+  const mrzMissing = !!newest && newestKind === 'passport' && !!mrz && !mrz.found;
+
+  const done = mode === 'site'
+    ? <Button variant="primary" size="sm" disabled={!saved || finishing} data-testid="scan-done" data-busy={finishing || undefined} onClick={() => { void finish(); }}>
+        {finishing ? <Spinner className="size-[18px]" /> : <IconCheck className="size-[18px]" />}{saved ? tr('Done · {n}', { n: saved }) : tr('Done')}
+      </Button>
+    : <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.pages, s.current)} className="max-w-full">
+        <IconEye className="size-[18px]" /><span className="truncate">{tr('Show what the models read')}</span>
+      </Button>;
 
   return (
     <div ref={root} data-testid="scanner" data-mode={mode} className="relative isolate size-full overflow-hidden bg-background text-ink">
@@ -164,29 +196,33 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
         </div>
       )}
 
-      {/* the top: the status line, and Done always in the same place */}
-      <div className="absolute inset-x-0 top-0 z-10 flex items-start gap-2 px-4 pt-[calc(28px+env(safe-area-inset-top,0px))]">
-        <StatusPill session={session} text={statusText} className="mr-auto" />
-        {mode === 'site'
-          ? <Button variant="primary" size="sm" disabled={!saved || finishing} data-testid="scan-done" data-busy={finishing || undefined} onClick={() => { void finish(); }}>
-              {finishing ? <Spinner className="size-[18px]" /> : <IconCheck className="size-[18px]" />}{saved ? tr('Done · {n}', { n: saved }) : tr('Done')}
-            </Button>
-          : <Button variant="primary" size="sm" disabled={!s.pages.length} data-testid="scan-done" onClick={() => onDone?.(s.pages, s.current)}>
-              <IconEye className="size-[18px]" />{tr('Show what the models read')}
-            </Button>}
+      {/* the top: the status line in the middle, Auto at the right */}
+      <div className="absolute inset-x-0 top-0 z-10 flex justify-center px-[104px] pt-[calc(28px+env(safe-area-inset-top,0px))]">
+        <StatusPill session={session} text={statusText} lead={lead} className="max-w-full" />
+      </div>
+      <div className="absolute right-4 top-0 z-10 pt-[calc(28px+env(safe-area-inset-top,0px))]">
+        <Button size="sm" on={s.auto} aria-pressed={s.auto} disabled={finishing} onClick={() => s.setAuto(!s.auto)} data-testid="scan-auto"
+          className={cn(!s.auto && 'opacity-70')}><IconBolt className="size-[18px]" />{tr('Auto')}</Button>
       </div>
 
-      {/* the bottom: the pages found, and the bar */}
+      {/* the hint for the person, under the camera's frame */}
+      <HintPill session={session} video={video} mrzMissing={mrzMissing} hidden={!!preview || isOpen} />
+
+      {/* the bottom: the photos taken, and the bar */}
       <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/85 to-transparent pt-6">
-        <Thumbs pages={s.pages} open={open} onOpen={id => { if (!finishing) setOpen(id); }} note={thumbNote} />
-        <CaptureBar auto={s.auto} paused={s.paused} disabled={s.busy || s.picking} locked={finishing} onAuto={s.setAuto} onShutter={s.shutter} onPick={s.pick} />
+        {note && !page && <p data-testid="scan-note" role="alert" className="mx-4 mb-1 text-center text-[13px] text-[var(--amber-text)]">{note}</p>}
+        <Thumbs pages={s.pages} selected={selected} onSelect={setSelected} locked={finishing} note={thumbNote}
+          onOpen={id => { if (!finishing) setOpen(id); }}
+          onFix={id => { if (!finishing) startFix(id); }}
+          onDelete={remove} />
+        <CaptureBar disabled={s.busy || s.picking} locked={finishing} onShutter={s.shutter} onPick={s.pick} done={done} />
       </div>
 
       {page && (
         <PageView page={page} index={index} note={note}
           onChoose={k => s.choose(page.id, k)}
           onFix={() => startFix(page.id)}
-          onDelete={() => { setOpen(null); s.remove(page.id); }}
+          onDelete={() => { setOpen(null); remove(page.id); }}
           onKeep={() => { setOpen(null); s.keep(page.id); }}
           onClose={() => setOpen(null)}
           onTick={kindTick && !page.kept && kindTick.offered(page.id) ? () => kindTick.onTick(page.id, kindOf(page)) : undefined}

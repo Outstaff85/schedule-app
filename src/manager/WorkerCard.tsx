@@ -1,20 +1,23 @@
 // The worker card (docs/workers.md → Worker card), drawn in React into the
-// page's #workerCardModal (stage 6c-2): a sheet that only reads — the head,
-// every notice chip, the status pills, "saved" and the scan button, an Info /
-// Docs / Hours switch, one primary Edit and a ⋮ with the rest. A double click
-// (computer) or a long press (phone) anywhere but a control opens the edit
-// form, like Edit. The page opens and closes the overlay (backdrop, swipe,
-// back to the card from a window opened from it — `__reopen`).
+// page's #workerCardModal: one page that only reads (owner's mock, 2026-10-26)
+// — the head with every notice chip and the Active ↔ Inactive switch at the
+// top right, Rescan and Documents to sign, the facts in pairs (every box the
+// same width), the documents box across both columns with + Add, and a bottom
+// bar — "Saved: <date>" on the left, Edit and ⋮ on the right — that stays put
+// while the middle scrolls. A double click (computer) or a long press (phone)
+// anywhere but a control opens the edit form, like Edit. The page opens and
+// closes the overlay (backdrop, swipe, back to the card from a window opened
+// from it — `__reopen`).
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconCash, IconChevronDown, IconCircleCheck, IconDotsVertical, IconDownload, IconFile, IconFileCertificate,
-  IconFileDownload, IconFileExport, IconFileUpload, IconFiles, IconFolder, IconIdBadge2, IconLink, IconLoader2, IconPencil, IconScan, IconSearch, IconSend, IconSignature, IconUpload,
+  IconAlertTriangle, IconCash, IconChevronDown, IconDotsVertical, IconDownload, IconFile, IconFileCertificate,
+  IconFileDownload, IconFileExport, IconFileUpload, IconIdBadge2, IconLink, IconLoader2, IconPencil, IconPlus, IconScan, IconSearch, IconSend, IconSignature,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Switch } from '@/components/ui/switch';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Plate } from '@/components/shared/plate';
 import { PagedList } from '@/components/shared/paged-list';
@@ -23,30 +26,29 @@ import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-
 import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
 import { SignWindow, takeSign } from './SignWindow';
-import { contractDocDate } from './logic/workers';
+import { contractDocDate, statusFromSwitch, statusSwitchOn } from './logic/workers';
 import { WORKER_DOCS_FN_URL, warmCloudFunctions } from './logic/functions';
 import { DownloadData } from './DownloadData';
-import { HoursStatusChip, NoticeChipsAll, WorkerHeadLine } from './worker-head';
+import { HOURS_STATUS, NoticeChipsAll, WorkerHeadLine } from './worker-head';
 import { INCOME_LABELS, OTHER_INCOME_LABELS, WORKER_DOC_TYPES, fmtDMY, missingScanKeys, recordScanValues, scanLabel, workerAddress, workerDocId, workerHasScan } from './worker';
-import { hoursShort } from './today';
 
-type Pane = 'info' | 'docs' | 'hours';
-// The open pane is kept while the card is opened again for the same worker.
-let lastPane: { wid: string; pane: Pane } | null = null;
 // Documents deleted here and still inside their Undo time.
 const hiddenDocs = new Set<string>();
 const LONG_PRESS_MS = 550;
 
-const STATUS: [string, string, string][] = [['active', 'Active', 'var(--green)'], ['vacation', 'Vacation', 'var(--amber)'], ['fired', 'Inactive', 'var(--red)']];
-const STATUS_BADGE: Record<string, ['ok' | 'warn' | 'bad', string]> = { active: ['ok', 'Active'], vacation: ['warn', 'On vacation'], fired: ['bad', 'Inactive'] };
+// The switch's word: a stored vacation shows on, named as it is until the switch is flipped.
+const STATUS_WORD: Record<string, [string, string]> = { active: ['Active', 'text-ok'], vacation: ['On vacation', 'text-warn'], fired: ['Inactive', 'text-bad'] };
 
-/** A fact of the Info / Hours panes: a small caption over its value; `wide` across both columns. */
-function Kv({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
-  if (children == null || children === '' || children === false) return null;
+const NONE = <span className="text-faint">—</span>;
+
+/** A fact of the card: a small caption over its value (a second line under it when given); `wide` across both columns.
+ * Every box takes its column's width — a pair is two equal boxes, never one stretched. */
+function Kv({ label, children, sub, wide, testid }: { label: string; children: React.ReactNode; sub?: React.ReactNode; wide?: boolean; testid?: string }) {
   return (
-    <div className={cn('min-w-0 rounded-[12px] bg-white/[.04] px-3 py-2', wide && 'col-span-2')} data-testid="card-kv">
-      <small className="block text-[11px] text-ink-3">{label}</small>
-      <div className="break-words text-sm text-ink">{children}</div>
+    <div className={cn('min-w-0 rounded-[14px] bg-white/[.04] px-3 py-2 min-[701px]:px-3.5 min-[701px]:py-2.5', wide && 'col-span-2')} data-testid="card-kv" data-kv={testid}>
+      <small className="block text-[11px] text-ink-2 min-[701px]:text-xs">{label}</small>
+      <div className="mt-0.5 break-words text-sm text-ink min-[701px]:text-[15px]">{children == null || children === '' || children === false ? NONE : children}</div>
+      {sub != null && sub !== '' && sub !== false && <div className="break-words text-xs text-ink-2 min-[701px]:text-[13px]">{sub}</div>}
     </div>
   );
 }
@@ -80,7 +82,7 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
     api.regenerateDoc(w.id).then(ok => api.toast(ok ? tr('Form 101 updated') : tr('Form 101 update failed')));
   };
   return (
-    <div className="mb-3 flex flex-col gap-1.5" data-testid="card-missing">
+    <div className="col-span-2 flex flex-col gap-1.5" data-testid="card-missing">
       {keys.map((k, i) => {
         const st = state[k];
         return (
@@ -103,21 +105,17 @@ function MissingScanRows({ snap, api }: { snap: CardSnapshot; api: ManagerBridge
   );
 }
 
-function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridge; active: boolean }) {
+/** The worker's uploaded documents, in one box across both columns: + Add, Select, the plates (paged by 10). */
+function DocsBox({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
   const w = snap.w, can = snap.canEdit;
   const [, redraw] = React.useReducer((n: number) => n + 1, 0);
   const docs = React.useMemo(() => [...(w.docs || [])].filter(d => !hiddenDocs.has(String(d.id)))
     .sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || ''))), [w.docs, hiddenDocs.size]); // eslint-disable-line react-hooks/exhaustive-deps
   const ids = React.useMemo(() => docs.map(d => String(d.id)), [docs]);
   const sel = useSelection(ids);
-  // Another pane clears the ticks.
-  const { end } = sel;
-  React.useEffect(() => { if (!active) end(); }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
   const remove = (which: string[]) => {
-    // a signed document is never removed (docs/contracts.md → Signed files are kept)
-    const picked = docs.filter(d => which.includes(String(d.id)));
-    const gone = picked.filter(d => !d.signed);
-    if (gone.length < picked.length) api.toast(tr('Signed documents are kept'));
+    // a person's own delete: a signed document goes too (docs/contracts.md → Signed files are kept)
+    const gone = docs.filter(d => which.includes(String(d.id)));
     if (!gone.length) return;
     gone.forEach(d => hiddenDocs.add(String(d.id))); redraw();
     const one = gone.length === 1 ? gone[0] : null;
@@ -140,28 +138,23 @@ function DocsPane({ snap, api, active }: { snap: CardSnapshot; api: ManagerBridg
         sub={<>{d.name || 'file'} · <span style={{ color: x ? c : undefined }}>{exText}</span></>}
         actions={[{ label: tr('Open'), icon: <IconDownload />, onSelect: () => open(d) }]}
         onOpen={() => open(d)}
-        onDelete={can && !d.signed ? () => remove([String(d.id)]) : undefined}
+        onDelete={can ? () => remove([String(d.id)]) : undefined}
         selecting={sel.on} selected={sel.picked.has(String(d.id))} onToggle={() => sel.toggle(String(d.id))} />
     );
   };
   return (
-    <div data-testid="card-docs">
-      <div className="mb-2.5 flex items-start gap-2 text-[13px] text-ink-2" data-testid="card-docs-status">
-        <IconFiles className="mt-0.5 size-4 shrink-0" />
-        <span>{tr('Documents:')}{' '}
-          {snap.docLevel === 'ok'
-            ? <span className="text-ok"><IconCircleCheck className="inline size-3.5 align-[-2px]" /> {tr('Complete')}</span>
-            : <span className={snap.docLevel === 'error' ? 'text-bad' : 'text-warn'}>{snap.docLines.map((l, i) => <React.Fragment key={i}>{i > 0 && <br />}{l}</React.Fragment>)}</span>}
-        </span>
+    <div className="col-span-2 min-w-0 rounded-[14px] bg-white/[.04] px-3 py-2 min-[701px]:px-3.5 min-[701px]:py-2.5" data-testid="card-docs">
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="min-w-0">
+          <small className="block text-[11px] text-ink-2 min-[701px]:text-xs">{tr('Uploaded documents')}</small>
+          {!docs.length && <div className="mt-0.5 text-[13px] text-ink-2 min-[701px]:text-sm">{tr('No documents yet — contract, visa, work permit…')}</div>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {can && docs.length > 0 && <SelectHead sel={sel} />}
+          {can && <Button size="sm" data-testid="card-docs-add" onClick={() => api.openDocUpload(w.id)}><IconPlus className="size-4" />{tr('Add')}</Button>}
+        </div>
       </div>
-      {can && <MissingScanRows snap={snap} api={api} />}
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <b className="flex items-center gap-1.5 text-[13px]"><IconFolder className="size-4" />{tr('Documents')}</b>
-        {can && docs.length > 0 && <SelectHead sel={sel} />}
-      </div>
-      {docs.length
-        ? <div data-testid="worker-docs"><PagedList items={docs} render={plate} /></div>
-        : <div className="text-xs text-ink-3">{tr('No documents yet — contract, visa, work permit…')}</div>}
+      {docs.length > 0 && <div className="mt-2" data-testid="worker-docs"><PagedList items={docs} render={plate} /></div>}
       <SelectBar sel={sel} onDelete={can ? remove : undefined} />
     </div>
   );
@@ -176,11 +169,26 @@ function SignChip({ req, signDate }: { req: SignRequestView | null; signDate?: s
   return d ? <Badge variant="ok" data-testid="card-sign-state" data-state="signed"><IconSignature />{tr('Signed {0}', { 0: d })}</Badge> : null;
 }
 
+/** The one Active ↔ Inactive switch at the top right (read-only without the right to edit workers). */
+function StatusSwitch({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
+  const w = snap.w, status = w.status || 'active';
+  const on = statusSwitchOn(status);
+  const [word, color] = STATUS_WORD[status] || STATUS_WORD.active;
+  const label = <span className={cn('text-[11px] font-semibold min-[701px]:text-[13px]', color)} data-testid="card-status-word">{tr(word)}</span>;
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1" data-testid="card-status" data-status={status}>
+      <label className={cn('flex flex-col-reverse items-end gap-1 min-[701px]:flex-row min-[701px]:items-center min-[701px]:gap-2.5', snap.canEdit && 'cursor-pointer')}>
+        {label}
+        <Switch checked={on} disabled={!snap.canEdit} aria-label={tr('Active')} data-testid="card-status-switch"
+          onCheckedChange={v => api.setWorkerStatus(w.id, statusFromSwitch(v))} />
+      </label>
+      <span className="hidden text-[11px] text-faint min-[701px]:block">{tr('Active')} · {tr('Inactive')}</span>
+    </div>
+  );
+}
+
 export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
   const w = snap.w, can = snap.canEdit;
-  const [pane, setPaneState] = React.useState<Pane>(() => (lastPane && lastPane.wid === w.id ? lastPane.pane : 'info'));
-  const setPane = (p: Pane) => { lastPane = { wid: w.id, pane: p }; setPaneState(p); };
-  React.useEffect(() => { lastPane = { wid: w.id, pane }; }, [w.id, pane]);
   const press = React.useRef(0);
   const [signing, setSigning] = React.useState(() => takeSign(w.id));
   const [downloading, setDownloading] = React.useState(false);
@@ -188,23 +196,24 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
   React.useEffect(() => { warmCloudFunctions([WORKER_DOCS_FN_URL]); }, [w.id]);
   const req = api.signRequest(w.id);
 
-  const status = w.status || 'active';
   const docId = workerDocId(w);
-  const addr = [[workerAddress(w), w.houseNumber].filter(Boolean).join(' '), w.city].filter(Boolean).join(', ');
+  const street = [workerAddress(w), w.houseNumber].filter(Boolean).join(' ');
   const edit = () => api.editFromCard(w.id);
-  const control = (t: EventTarget) => !!(t as HTMLElement).closest?.('button, a, input, select, textarea, [role="button"], [role="radio"], [data-slot="plate"]');
+  const control = (t: EventTarget) => !!(t as HTMLElement).closest?.('button, a, input, select, textarea, label, [role="button"], [role="radio"], [role="switch"], [data-slot="plate"]');
   const more = [
     ...(snap.canPay ? [{ icon: <IconCash />, label: tr('Pay'), run: () => api.payFromCard(w.id) }] : []),
-    ...(can ? [{ icon: <IconUpload />, label: tr('Add document'), run: () => api.openDocUpload(w.id) }] : []),
     ...(w.docUrl ? [{ icon: <IconDownload />, label: tr('Download document'), run: () => window.open(w.docUrl, '_blank', 'noopener') }] : []),
     { icon: <IconFileDownload />, label: tr('Download data'), run: () => setDownloading(true) },
     ...(can ? [{ icon: <IconFileUpload />, label: tr('Upload hours'), run: () => api.openHoursImport(w.id) }] : []),
     ...(can && snap.canExport ? [{ icon: <IconFileExport />, label: tr('Export hours'), run: () => api.openHoursExport(w.id) }] : []),
     ...(can ? [{ icon: <IconLink />, label: tr('Punch link'), run: () => api.copyLink(w.id) }] : []),
   ];
+  const hb = snap.hoursBatch, hs = hb ? (HOURS_STATUS[hb.status] || HOURS_STATUS.pending) : null;
+  const hsColor = { ok: 'text-ok', warn: 'text-warn', bad: 'text-bad' };
 
   return (
-    <div data-testid="worker-card" data-wid={w.id} className="select-text"
+    <div data-testid="worker-card" data-wid={w.id}
+      className="flex min-h-0 shrink select-text flex-col"
       onDoubleClick={e => { if (can && !control(e.target)) edit(); }}
       onPointerDown={e => {
         if (!can || control(e.target)) return;
@@ -214,85 +223,76 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
         const off = () => ['pointermove', 'pointerup', 'pointercancel'].forEach(t => window.removeEventListener(t, stop as EventListener));
         ['pointermove', 'pointerup', 'pointercancel'].forEach(t => window.addEventListener(t, stop as EventListener));
       }}>
-      <WorkerHeadLine head={snap} />
-      <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="card-chips">
-        <NoticeChipsAll notices={snap.notices} onOpen={() => { api.closeModal('workerCardOverlay'); api.openNotices(w.id); }} />
-        {!can && <Badge variant={STATUS_BADGE[status]?.[0] || 'ok'}>{tr(STATUS_BADGE[status]?.[1] || 'Active')}</Badge>}
-        <NewBadge createdAt={w.createdAt} />
-        <SignChip req={req} signDate={w.signDate as string | undefined} />
-        {!!w.movedToOtherFirm && <Badge variant="warn" data-testid="card-moved">{tr('Moved to another firm')}</Badge>}
-      </div>
-      {signing && <SignWindow workerId={w.id} api={api} onClose={() => setSigning(false)} />}
-      {downloading && <DownloadData w={w} api={api} onClose={() => setDownloading(false)} />}
-      {(can || w.docSavedAt) && (
-        <div className="mb-2.5 flex flex-wrap items-center justify-end gap-2" data-testid="card-tools">
-          {can && (
-            <div role="radiogroup" aria-label={tr('Status')} className="flex gap-1" data-testid="status-pills">
-              {STATUS.map(([v, l, c]) => (
-                <button key={v} type="button" role="radio" aria-checked={status === v} data-st={v} title={tr('Set status: {0}', { 0: tr(l) })}
-                  onClick={() => api.setWorkerStatus(w.id, v)}
-                  className={cn('inline-flex h-7 items-center gap-1.5 rounded-full border border-white/12 px-2.5 text-xs font-semibold text-ink-2', status === v && 'on text-ink')}
-                  style={status === v ? { background: `color-mix(in srgb, ${c} 22%, transparent)`, borderColor: c } : undefined}>
-                  <i className="size-2 rounded-full" style={{ background: c }} />{tr(l)}
-                </button>
-              ))}
-            </div>
-          )}
-          {w.docSavedAt && <span className="text-[11px] text-ink-3">{tr('Saved: {0}', { 0: new Date(w.docSavedAt).toLocaleDateString('en-GB') })}</span>}
-          {can && <Button size="sm" data-testid="card-scan" onClick={() => api.rescanFromCard(w.id)}><IconScan className="size-4" />{tr(w.docUrl ? 'Rescan' : 'Scan document')}</Button>}
-          {can && <Button size="sm" data-testid="card-sign" onClick={() => setSigning(true)}><IconSignature className="size-4" />{tr('Documents to sign')}</Button>}
+      {/* the middle scrolls; the bottom bar stays at the bottom of the sheet */}
+      <div className="min-h-0 shrink overflow-y-auto" data-testid="card-body">
+        <WorkerHeadLine head={snap} right={<StatusSwitch snap={snap} api={api} />} />
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 empty:hidden" data-testid="card-chips">
+          <NoticeChipsAll notices={snap.notices} onOpen={() => { api.closeModal('workerCardOverlay'); api.openNotices(w.id); }} />
+          <NewBadge createdAt={w.createdAt} />
+          <SignChip req={req} signDate={w.signDate as string | undefined} />
+          {!!w.movedToOtherFirm && <Badge variant="warn" data-testid="card-moved">{tr('Moved to another firm')}</Badge>}
         </div>
-      )}
-      <ToggleGroup type="single" value={pane} onValueChange={v => { if (v) setPane(v as Pane); }} className="mb-3" data-testid="card-panes">
-        <ToggleGroupItem value="info" data-p="info">{tr('Info')}</ToggleGroupItem>
-        <ToggleGroupItem value="docs" data-p="docs">{tr('Docs')}</ToggleGroupItem>
-        <ToggleGroupItem value="hours" data-p="hours">{tr('Hours')}</ToggleGroupItem>
-      </ToggleGroup>
-
-      {/* every pane stays in the card, the others hidden (as the old card had them) */}
-      <div data-testid="card-info" data-p="info" hidden={pane !== 'info'}>
-          <div className="grid grid-cols-2 gap-2">
-            <Kv label={tr('Phone')}>{w.phone}</Kv>
-            <Kv label={tr('ID / Passport')}>{docId && <span className="font-mono">{docId}</span>}</Kv>
-            <Kv label={tr('Clients')}>{snap.clients.length ? snap.clients.map((o, i) => <React.Fragment key={o.id}>{i > 0 && ', '}<span style={{ color: o.color }}>{o.name}</span></React.Fragment>) : <span className="text-ink-3">{tr('Not assigned to any object')}</span>}</Kv>
-            <Kv label={tr('Supplier')}>{snap.supplier && <span style={{ color: snap.supplier.color }}>{snap.supplier.name}</span>}</Kv>
-            {snap.isFirmAdmin && <Kv label={tr('HR')}>{snap.hr ? <span style={{ color: snap.hr.color }}>{snap.hr.name || '—'}</span> : <span className="text-ink-3">{tr('none')}</span>}</Kv>}
-            <Kv label={tr('Shift today')}>{snap.shiftToday ? <span className="font-mono text-fig">{snap.shiftToday.start}–{snap.shiftToday.end}</span> : <span className="text-warn">{tr('Day off')}</span>}</Kv>
-            <Kv label={tr('Start date')}>{w.startDate && fmtDMY(w.startDate)}</Kv>
-            {snap.contract && <Kv label={tr('Contract')}><span className={snap.contract.overdue ? 'text-bad' : 'text-warn'}>{snap.contract.overdue ? tr('Expired') : tr('Expiring soon')} — {snap.contract.deadline}</span></Kv>}
-            <Kv label={tr('Address')} wide>{addr}</Kv>
-            {w.incomeType && INCOME_LABELS[w.incomeType] && <Kv label={tr('Income')}><span dir="rtl">{INCOME_LABELS[w.incomeType]}</span></Kv>}
-            {w.otherIncomeType && w.otherIncomeType !== 'none' && OTHER_INCOME_LABELS[w.otherIncomeType] && <Kv label={tr('Other income')}><span dir="rtl">{OTHER_INCOME_LABELS[w.otherIncomeType]}</span></Kv>}
+        {signing && <SignWindow workerId={w.id} api={api} onClose={() => setSigning(false)} />}
+        {downloading && <DownloadData w={w} api={api} onClose={() => setDownloading(false)} />}
+        {can && (
+          <div className="mb-3 grid grid-cols-2 gap-2 min-[701px]:flex min-[701px]:justify-end min-[701px]:gap-2.5" data-testid="card-tools">
+            <Button data-testid="card-scan" className="justify-center" onClick={() => api.rescanFromCard(w.id)}><IconScan className="size-[18px]" />{tr(w.docUrl ? 'Rescan' : 'Scan document')}</Button>
+            <Button data-testid="card-sign" className="justify-center" onClick={() => setSigning(true)}><IconSignature className="size-[18px]" />
+              <span className="min-[701px]:hidden">{tr('To sign')}</span><span className="hidden min-[701px]:inline">{tr('Documents to sign')}</span>
+            </Button>
           </div>
-          {w.notes && <div className="mt-2 whitespace-pre-wrap rounded-[12px] bg-white/[.04] px-3 py-2 text-[13px] text-ink-2" data-testid="card-notes">{w.notes}</div>}
-      </div>
-      <div data-p="docs" hidden={pane !== 'docs'}><DocsPane snap={snap} api={api} active={pane === 'docs'} /></div>
-      <div data-testid="card-hours" data-p="hours" hidden={pane !== 'hours'}>
-          <div className="grid grid-cols-2 gap-2">
-            <Kv label={tr('This month')}><span className="font-mono text-lg font-bold text-fig">{hoursShort(snap.monthHours)}</span></Kv>
-            <Kv label={tr('Scheduled')}>{tr('{0}h scheduled / week', { 0: snap.weekHours.toFixed(1) })}</Kv>
-          </div>
-          {snap.hoursBatch && (
-            <div className="mt-2 flex items-center gap-1.5 text-[13px] text-ink-2" data-testid="card-hours-status">
-              <IconFileUpload className="size-4" />{tr('Hours sent:')} <HoursStatusChip b={snap.hoursBatch} />
-            </div>
-          )}
-      </div>
-
-      <div className="mt-4 flex items-center justify-end gap-2" data-testid="card-actions">
-        {can && <Button variant="primary" id="workerCardEdit" data-testid="card-edit" onClick={edit}><IconPencil className="size-[18px]" />{tr('Edit')}</Button>}
-        {more.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" aria-label={tr('More')} data-testid="card-more"><IconDotsVertical className="size-[18px]" /></Button>
-            </DropdownMenuTrigger>
-            {/* its items open other windows: the focus does not go back to ⋮ in the card behind them once the menu
-                has closed — it closed a date picker opened meanwhile in Add document (a focus outside it) */}
-            <DropdownMenuContent onCloseAutoFocus={e => e.preventDefault()}>
-              {more.map(m => <DropdownMenuItem key={m.label} onSelect={m.run}>{m.icon}{m.label}</DropdownMenuItem>)}
-            </DropdownMenuContent>
-          </DropdownMenu>
         )}
+
+        <div className="grid grid-cols-2 gap-2 min-[701px]:gap-2.5" data-testid="card-info">
+          <Kv label={tr('ID / Passport')} testid="id">{docId && <span className="font-mono">{docId}</span>}</Kv>
+          <Kv label={tr('Clients')} testid="clients">{snap.clients.length ? snap.clients.map((o, i) => <React.Fragment key={o.id}>{i > 0 && ', '}<span style={{ color: o.color }}>{o.name}</span></React.Fragment>) : <span className="text-ink-2">{tr('Not assigned to any object')}</span>}</Kv>
+          <Kv label={tr('HR')} testid="hr">{snap.hr && (snap.hr.name
+            ? <span style={{ color: snap.hr.color }}>{snap.hr.name}</span>
+            // an HR is set but its name is not known to this login (only the owner / super-admin loads the HR logins)
+            : <span className="text-ink-2">{tr('Assigned')}</span>)}</Kv>
+          <Kv label={tr('Supplier')} testid="supplier">{snap.supplier && <span style={{ color: snap.supplier.color }}>{snap.supplier.name}</span>}</Kv>
+          <Kv label={tr('Start date')} testid="start">{w.startDate && <span className="font-mono">{fmtDMY(w.startDate)}</span>}</Kv>
+          <Kv label={tr('Shift today')} testid="shift">{snap.shiftToday ? <span className="font-mono text-fig">{snap.shiftToday.start}–{snap.shiftToday.end}</span> : <span className="text-warn">{tr('Day off')}</span>}</Kv>
+          {/* the city on the first line, the street under it; without a city the street takes the first line */}
+          <Kv label={tr('Address')} testid="address" sub={w.city && street && <span dir="rtl">{street}</span>}>{(w.city || street) && <span dir="rtl">{w.city || street}</span>}</Kv>
+          <Kv label={tr('Income')} testid="income">{w.incomeType && INCOME_LABELS[w.incomeType] && <span dir="rtl">{INCOME_LABELS[w.incomeType]}</span>}</Kv>
+          <Kv label={tr('Documents')} testid="docs-status">
+            {snap.docLevel === 'ok'
+              ? <span className="text-ok">{tr('Complete')}</span>
+              : <span className={snap.docLevel === 'error' ? 'text-bad' : 'text-warn'}>{snap.docLines.map((l, i) => <React.Fragment key={i}>{i > 0 && <br />}{l}</React.Fragment>)}</span>}
+          </Kv>
+          <Kv label={tr('Hours sent')} testid="hours-sent" sub={hb && hb.when && <span className="font-mono">{new Date(hb.when).toLocaleDateString('en-GB')}</span>}>
+            {hb && hs && <span className={hsColor[hs[1]]} data-testid="card-hours-status" data-status={hb.status}>{tr(hs[0])}</span>}
+          </Kv>
+          {/* the facts the mock leaves out stay, in the same pairs, only when the worker has them */}
+          {w.phone && <Kv label={tr('Phone')} testid="phone">{w.phone}</Kv>}
+          {snap.contract && <Kv label={tr('Contract')} testid="contract"><span className={snap.contract.overdue ? 'text-bad' : 'text-warn'}>{snap.contract.overdue ? tr('Expired') : tr('Expiring soon')} — {snap.contract.deadline}</span></Kv>}
+          {w.otherIncomeType && w.otherIncomeType !== 'none' && OTHER_INCOME_LABELS[w.otherIncomeType] && <Kv label={tr('Other income')} testid="other-income"><span dir="rtl">{OTHER_INCOME_LABELS[w.otherIncomeType]}</span></Kv>}
+          {w.notes && <div className="col-span-2 whitespace-pre-wrap rounded-[14px] bg-white/[.04] px-3 py-2 text-[13px] text-ink-2" data-testid="card-notes">{w.notes}</div>}
+          {can && <MissingScanRows snap={snap} api={api} />}
+          <DocsBox snap={snap} api={api} />
+        </div>
+      </div>
+
+      <div className="mt-3 flex shrink-0 items-end justify-between gap-2 border-t border-white/10 pt-3" data-testid="card-actions">
+        <span className="pb-1 font-mono text-[11px] text-faint min-[701px]:text-xs" data-testid="card-saved">
+          {tr('Saved: {0}', { 0: w.docSavedAt ? new Date(w.docSavedAt).toLocaleDateString('en-GB') : '—' })}
+        </span>
+        <div className="flex items-center gap-2">
+          {can && <Button variant="primary" id="workerCardEdit" data-testid="card-edit" onClick={edit}><IconPencil className="size-[18px]" />{tr('Edit')}</Button>}
+          {more.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" aria-label={tr('More')} data-testid="card-more"><IconDotsVertical className="size-[18px]" /></Button>
+              </DropdownMenuTrigger>
+              {/* its items open other windows: the focus does not go back to ⋮ in the card behind them once the menu
+                  has closed — it closed a date picker opened meanwhile in a window opened from the card (a focus outside it) */}
+              <DropdownMenuContent onCloseAutoFocus={e => e.preventDefault()}>
+                {more.map(m => <DropdownMenuItem key={m.label} onSelect={m.run}>{m.icon}{m.label}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
     </div>
   );

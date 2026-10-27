@@ -3,7 +3,8 @@
 // model files, ways or GPU layouts — those are the lab's); the lab says what the engine is doing, as its old
 // page did. The engine's free-text log and error lines stay English: they are shown only in the lab's tools
 // drawer (docs/scan-plan.md → S9). sessionStatusText words the scan session's status line (the scanner's
-// status pill, src/scan/ui/StatusPill.tsx) — the same for the site and the lab.
+// status pill, src/scan/ui/StatusPill.tsx) — the same for the site and the lab; sessionHint picks the hint for
+// the person shown under the camera's frame (src/scan/ui/HintPill.tsx) and hintText words it.
 import { tr } from '@/lib/i18n';
 import { mb, type EngineStatus, type SessionStatus } from './engine/status';
 
@@ -40,10 +41,11 @@ export type StatusTone = 'plain' | 'busy' | 'ok' | 'warn' | 'bad';
 export function sessionStatusText(s: SessionStatus): string {
   switch (s.key) {
     case 'finding': return tr('Finding the document…');
-    case 'corners_out': return s.n === 1 ? tr('A corner is outside the frame — move the phone back') : tr('{n} corners are outside the frame — move the phone back', { n: s.n });
-    case 'edges_unclear': return tr('The edges are not clear — more light, a darker background');
+    case 'corners_out': return s.n === 1 ? tr('A corner is outside the frame') : tr('{n} corners are outside the frame', { n: s.n });
+    case 'edges_unclear': return tr('The edges are not clear');
     case 'hold': return tr('Hold still · {seconds} s', { seconds: s.seconds.toFixed(1) });
     case 'found': return s.count === 1 ? tr('1 document found') : tr('{count} documents found', { count: s.count });
+    case 'taken': return tr('Taken · waiting for the next document');
     case 'no_frame': return tr('No frame to capture yet');
     case 'captured': return tr('Captured in {ms} ms', { ms: Math.round(s.ms) });
     case 'refining': return tr('Refining the corners…');
@@ -65,10 +67,44 @@ export function sessionStatusText(s: SessionStatus): string {
 
 export function sessionStatusTone(s: SessionStatus): StatusTone {
   switch (s.key) {
-    case 'hold': case 'found': case 'picked': return 'ok';
+    case 'hold': case 'found': case 'taken': case 'picked': return 'ok';
     case 'corners_out': case 'edges_unclear': case 'no_frame': return 'warn';
     case 'shot_failed': case 'stopped': case 'camera_failed': case 'pick_failed': case 'pick_open_failed': return 'bad';
     case 'finding': case 'captured': case 'refining': case 'looking_more': case 'picture_finding': case 'picture_cutting': return 'busy';
     default: return 'plain';
+  }
+}
+
+/** The hint for the person under the camera's frame: what to do now — put the document in, move back (a corner is
+ *  out), more light, come a little closer (the document is small in the picture: its small text would be read
+ *  badly), take the document just taken away (Auto waits for the next), keep the passport's two lines in the frame
+ *  (the newest page is a passport whose zone was not found: take it again). */
+export type ScanHint = 'put_in' | 'move_back' | 'light' | 'closer' | 'next' | 'mrz';
+
+/** A document smaller than this share of the picture is too far: "A little closer". */
+export const SMALL_DOC = 0.15;
+
+/** The hint for a session status: small — the live frame covers less than SMALL_DOC of the picture; mrzMissing —
+ *  the newest page taken is a passport whose zone (its two lines at the bottom) was not found. */
+export function sessionHint(s: SessionStatus | null, o: { small: boolean; mrzMissing: boolean }): ScanHint | null {
+  if (!s) return null;
+  switch (s.key) {
+    case 'finding': return 'put_in';
+    case 'corners_out': return 'move_back';
+    case 'edges_unclear': return 'light';
+    case 'hold': case 'found': return o.small ? 'closer' : null;
+    case 'taken': return o.mrzMissing ? 'mrz' : 'next';
+    default: return null;
+  }
+}
+
+export function hintText(h: ScanHint): string {
+  switch (h) {
+    case 'put_in': return tr('Put the document in the frame');
+    case 'move_back': return tr('Move the phone back a little');
+    case 'light': return tr('More light, a darker background');
+    case 'closer': return tr('A little closer');
+    case 'next': return tr('Take it away and put the next document in');
+    case 'mrz': return tr('Keep the two lines at the bottom in the frame — take it again');
   }
 }

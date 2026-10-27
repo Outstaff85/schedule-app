@@ -1,30 +1,25 @@
 // The full-screen scanner (docs/scan-plan.md → S9): the corner editor — the lab's cornerEditor (its former
 // plain page, S8-3) in React, a step inside the scanner screen (not a window of its own). The page's whole photo
-// fitted to the screen with the four corners the model found; each is dragged to the document's real corner (a
-// press within 48 px of a corner picks it up, the pointer captured until it is let go; a corner stays on the
-// photo); Apply gives the corners rounded to 5 decimals (session.fix cuts the page again from them and sends
-// them with its training attempt as the right answer), Cancel gives nothing. The colours are the design
-// system's (og.css --uline-2, the lab's cyan, and --ink), read from the page.
+// fitted to the screen with the four corners the model found, the photo outside them dimmed and a 3×3 grid inside
+// them to line the document's text up with (the owner's template pair 6, 2026-10-26). A corner (an L-bracket) is
+// dragged alone to the document's corner; a whole side moves along its normal — both its corners — by its middle
+// bar or by its line itself (a press within 24 px of it). The picking and the moves are src/scan/ui/quad-edit.ts:
+// a press within 48 px of a corner or a middle bar picks the nearest up, the pointer captured until it is let go;
+// everything stays on the photo. Apply gives the corners rounded to 5 decimals (session.fix cuts the page again
+// from them and sends them with its training attempt as the right answer), Cancel gives nothing. The colours are
+// the design system's (og.css --uline-2, the lab's cyan, --ink and --glass-sheet), read from the page.
 import * as React from 'react';
 import { IconCheck } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import type { Pt, Quad } from '../engine/types';
 import { fitBox, token } from './LiveOverlay';
+import { gridLines, moveCorner, moveSide, pickHandle, roundCorners, sideMid, type Grab } from './quad-edit';
 
-/** The pick radius (px on the screen) of a corner. */
-export const PICK_RADIUS = 48;
+export { PICK_RADIUS, LINE_RADIUS, pickCorner, pickHandle, roundCorners } from './quad-edit';
 
-/** The corners as Apply gives them: rounded to 5 decimals. */
-export const roundCorners = (pts: Quad): Quad => pts.map(p => [+p[0].toFixed(5), +p[1].toFixed(5)] as Pt);
-
-/** The corner within PICK_RADIUS px of (x, y) — the nearest —, -1 when none (x, y and the corners in shares of a
- *  photo drawn iw×ih px). */
-export function pickCorner(pts: Quad, x: number, y: number, iw: number, ih: number): number {
-  let best = 1e9, at = -1;
-  pts.forEach(([px, py], i) => { const d = Math.hypot((px - x) * iw, (py - y) * ih); if (d < best && d < PICK_RADIUS) { best = d; at = i; } });
-  return at;
-}
+/** The length (px) of a corner's bracket arms and of a side's middle bar. */
+const ARM = 22, BAR = 34;
 
 export function CornerEditor({ frame, start, onApply, onCancel }: {
   frame: CanvasImageSource & { width: number; height: number };
@@ -34,8 +29,9 @@ export function CornerEditor({ frame, start, onApply, onCancel }: {
 }) {
   const wrap = React.useRef<HTMLDivElement>(null);
   const cv = React.useRef<HTMLCanvasElement>(null);
-  const pts = React.useRef<Quad>(start.map(p => p.slice() as Pt));
-  const drag = React.useRef(-1);
+  const pts = React.useRef<Quad>(start.map(p => p.slice() as Pt) as Quad);
+  // what the press holds, with the corners and the pointer (shares) as they were when it was pressed
+  const drag = React.useRef<{ grab: Grab; from: Quad; x: number; y: number }>({ grab: null, from: pts.current, x: 0, y: 0 });
   const fit = React.useRef({ ox: 0, oy: 0, iw: 1, ih: 1 });
 
   const draw = React.useCallback(() => {
@@ -46,21 +42,50 @@ export function CornerEditor({ frame, start, onApply, onCancel }: {
     const { k, ox, oy } = fitBox(frame.width, frame.height, r.width, r.height, 'contain');
     const iw = frame.width * k, ih = frame.height * k;
     fit.current = { ox, oy, iw, ih };
-    const line = token('--uline-2'), ring = token('--ink');
+    const line = token('--uline-2'), ink = token('--ink'), dim = token('--glass-sheet');
+    const S = ([x, y]: Pt): Pt => [ox + x * iw, oy + y * ih];
+    const q = pts.current, held = drag.current.grab;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, r.width, r.height);
     g.drawImage(frame, ox, oy, iw, ih);
+    // the photo outside the quad dimmed — half the sheet's strength, so the document's real edge, often outside
+    // the quad the model found, still shows through
+    g.beginPath(); g.rect(ox, oy, iw, ih);
+    q.forEach((p, i) => (i ? g.lineTo(...S(p)) : g.moveTo(...S(p))));
+    g.closePath(); g.fillStyle = dim; g.globalAlpha = 0.5; g.fill('evenodd'); g.globalAlpha = 1;
+    // the 3×3 grid
+    g.strokeStyle = line; g.lineWidth = 1; g.globalAlpha = 0.6;
+    g.beginPath();
+    for (const [a, b] of gridLines(q)) { g.moveTo(...S(a)); g.lineTo(...S(b)); }
+    g.stroke(); g.globalAlpha = 1;
+    // the quad
     g.strokeStyle = line; g.lineWidth = 2.5;
     g.beginPath();
-    pts.current.forEach(([x, y], i) => (i ? g.lineTo(ox + x * iw, oy + y * ih) : g.moveTo(ox + x * iw, oy + y * ih)));
+    q.forEach((p, i) => (i ? g.lineTo(...S(p)) : g.moveTo(...S(p))));
     g.closePath(); g.stroke();
-    for (const [x, y] of pts.current) {
-      g.beginPath(); g.arc(ox + x * iw, oy + y * ih, 14, 0, 7);
-      g.globalAlpha = 0.25; g.fillStyle = line; g.fill(); g.globalAlpha = 1;
-      g.strokeStyle = ring; g.lineWidth = 3; g.stroke();
+    // the handles: a dark rim under a light stroke, the held one in the lab's cyan
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    const along = (from: Pt, to: Pt, len: number): Pt => {
+      const dx = to[0] - from[0], dy = to[1] - from[1], l = Math.hypot(dx, dy) || 1;
+      return [from[0] + dx / l * Math.min(len, l / 2), from[1] + dy / l * Math.min(len, l / 2)];
+    };
+    const handle = (path: () => void, on: boolean) => {
+      g.beginPath(); path(); g.strokeStyle = dim; g.lineWidth = 9; g.stroke();
+      g.beginPath(); path(); g.strokeStyle = on ? line : ink; g.lineWidth = 5; g.stroke();
+    };
+    for (let i = 0; i < 4; i++) {  // a side's middle bar, along the side
+      const a = S(q[i]), b = S(q[(i + 1) % 4]), m = S(sideMid(q, i));
+      const p0 = along(m, a, BAR / 2), p1 = along(m, b, BAR / 2);
+      handle(() => { g.moveTo(...p0); g.lineTo(...p1); }, held?.kind === 'side' && held.i === i);
     }
-    c.dataset.pts = JSON.stringify(pts.current);
+    for (let i = 0; i < 4; i++) {  // a corner's L-bracket, along its two sides
+      const p = S(q[i]), n = along(p, S(q[(i + 1) % 4]), ARM), b = along(p, S(q[(i + 3) % 4]), ARM);
+      handle(() => { g.moveTo(...n); g.lineTo(...p); g.lineTo(...b); }, held?.kind === 'corner' && held.i === i);
+    }
+    g.lineCap = 'butt'; g.lineJoin = 'miter';
+    c.dataset.pts = JSON.stringify(q);
     c.dataset.fit = [ox, oy, iw, ih].map(v => v.toFixed(2)).join(',');
+    c.dataset.grab = held ? held.kind + held.i : '';
   }, [frame]);
 
   React.useEffect(() => {
@@ -76,20 +101,30 @@ export function CornerEditor({ frame, start, onApply, onCancel }: {
   };
   const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const [x, y] = at(e);
-    drag.current = pickCorner(pts.current, x, y, fit.current.iw, fit.current.ih);
-    if (drag.current >= 0) try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no live pointer (a test's event) */ }
-  };
-  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (drag.current < 0) return;
-    const [x, y] = at(e);
-    pts.current[drag.current] = [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))];
+    const grab = pickHandle(pts.current, x, y, fit.current.iw, fit.current.ih);
+    drag.current = { grab, from: pts.current.map(p => p.slice() as Pt) as Quad, x, y };
+    if (!grab) return;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no live pointer (a test's event) */ }
     draw();
   };
-  const up = () => { drag.current = -1; };
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const d = drag.current;
+    if (!d.grab) return;
+    const [x, y] = at(e);
+    pts.current = d.grab.kind === 'corner'
+      ? moveCorner(pts.current, d.grab.i, x, y)
+      : moveSide(d.from, d.grab.i, x - d.x, y - d.y, fit.current.iw, fit.current.ih);
+    draw();
+  };
+  const up = () => {
+    if (!drag.current.grab) return;
+    drag.current = { ...drag.current, grab: null };
+    draw();
+  };
 
   return (
     <div data-testid="corner-editor" className="absolute inset-0 z-30 flex flex-col gap-3 bg-background px-3.5 pb-[calc(14px+env(safe-area-inset-bottom,0px))] pt-[calc(28px+env(safe-area-inset-top,0px))]">
-      <div className="og-glass-menu self-center !rounded-full px-4 py-2 text-[14px] font-semibold">{tr("Drag each corner to the document's corner")}</div>
+      <div className="og-glass-menu self-center !rounded-full px-4 py-2 text-center text-[14px] font-semibold">{tr("Drag a corner or a side to the document's edge")}</div>
       <div ref={wrap} className="relative min-h-0 flex-1">
         <canvas ref={cv} data-testid="corner-canvas" className="absolute inset-0 size-full touch-none"
           onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} />

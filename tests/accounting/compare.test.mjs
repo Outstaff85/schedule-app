@@ -201,11 +201,12 @@ function compare(label, workers, clients, suppliers, log, session) {
     for (const q of ['', 'avi', ' DANA ', 'zzz']) {
       const F = O.salaryFigures(period, q);
       const entries = Object.values(n.byWorker).filter(e => !payOnly || ((workers.find(w => w.id === e.workerId) || {}).hrId === me.uid));
-      const shown = A.searchRows(entries, q), tot = A.salaryTotals(shown), figs = A.accFigures(entries);
+      const shown = A.searchRows(entries, q), tot = A.salaryTotals(shown), figs = A.salaryTotals(entries);
       same(shown.map(e => e.workerId), F.rows.map(r => r.workerId), `${L} q=${q}: rows shown`);
       sameNum(tot.hours, F.totals.hours, `${L} q=${q}: total hours`); sameNum(tot.pay, F.totals.pay, `${L} q=${q}: total pay`);
       sameNum(tot.travel, F.totals.travel, `${L} q=${q}: total travel`); sameNum(tot.total, F.totals.total, `${L} q=${q}: Total Pay`);
-      sameNum(Math.round(figs.hours), F.figs.hours, `${L}: figure Hours`); sameNum(Math.round(Number(figs.payroll) || 0), F.figs.payroll, `${L}: figure Payroll`);
+      // The figures on top (every row, whatever the search): Total Pay = the old Payroll figure.
+      sameNum(Math.round(Number(figs.total) || 0), F.figs.payroll, `${L}: figure Total Pay`);
       shown.forEach((e, i) => {
         const r = F.rows[i], rs = A.rateShown(D, e);
         same([rs.kind, ...(rs.value !== undefined ? [rs.value] : [])], [...r.rate], `${L} ${e.workerId}: rate shown`);

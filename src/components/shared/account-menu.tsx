@@ -1,7 +1,8 @@
 // AccountMenu: the account at the top right (header variant C, the old pages'
 // .acct / toggleAccountMenu): one round button with the login's first letter
 // (and its name on a computer); inside, the name and role on top, then the
-// page's items, the theme switch (Dark / Light / System — ThemeSwitch) and
+// page's items, the theme switch (Dark / Light / System — ThemeSwitch, its
+// segments stacked so the three fit the menu's width) and
 // Sign out last, in red. Built on the Dropdown Menu.
 import * as React from 'react';
 import { IconChevronDown, IconLogout } from '@tabler/icons-react';
@@ -42,7 +43,7 @@ export function AccountMenu({ name, firm, sub, onSignOut, onThemeSave, children 
         {children}
         <div className="px-1 pb-1.5 pt-1" data-testid="account-theme">
           <div className="og-label mb-1 px-1">{tr('Theme')}</div>
-          <ThemeSwitch onSave={onThemeSave} />
+          <ThemeSwitch stacked onSave={onThemeSave} />
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem destructive onSelect={onSignOut}><IconLogout />{tr('Sign out')}</DropdownMenuItem>

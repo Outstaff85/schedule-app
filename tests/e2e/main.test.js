@@ -68,6 +68,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         tap(sel){ const el = (T.el(sel) || {}).classList && T.el(sel).classList.contains('og-plate') ? T.el(sel) : T.el(sel) && T.el(sel).querySelector('.og-plate'); if(!el) return false;
           for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new PointerEvent(t, {bubbles: true, pointerType: 'touch', isPrimary: true})); return true; },
         esc: () => document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})),
+        // a photo in the scanner's strip opened large (template 6): a tap grows it, a tap on its type and % opens it
+        async openThumb(el){ if (!el.dataset.selected) el.click(); await T.until(() => el.querySelector('[data-testid="scan-thumb-open"]'), 3000); el.querySelector('[data-testid="scan-thumb-open"]').click(); },
         fill(sel, v){ const el = T.el(sel); const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); },
         val: id => { const el = document.getElementById(id); return el ? (el.dataset.value != null ? el.dataset.value : el.value) : undefined; },
@@ -194,7 +196,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sc.h > 0 && sc.h < 60 && !sc.before && sc.after && sc.closedDet, 'salary: one compact line per worker (the Data Table), a tap opens its details in a window ' + JSON.stringify(sc));
   ok(sc.menu && sc.menu.open && sc.menu.lang && sc.menu.out && sc.menu.name && sc.closed, 'header: one account menu with my name and sign out; the Language button beside it ' + JSON.stringify(sc.menu));
-  // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning shows a notice at the top.
+  // An inactive worker leaves the everyday lists and comes back when set Active; a contract warning is a bell notice
+  // only — no banner at the top (removed, owner 2026-10-26).
   const ia = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w2'), keep = JSON.parse(JSON.stringify(w)), r = {};
     const wait = ms => new Promise(res => setTimeout(res, ms));
@@ -207,53 +210,57 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     w.status = 'active'; document.querySelector('#workersRoot [data-testid="workers-chips"] button[data-key="status"]').click(); render(); await wait(50); r.back = /Dana Levi/.test(names());
     const d = new Date(); d.setMonth(d.getMonth() - 2);
     Object.assign(w, {expiryEnabled: true, expiryMonths: 1, expiryWarnMonths: 1, startDate: localYMD(d)});
-    try{ sessionStorage.removeItem('contractNoticeClosed'); }catch(e){}
-    showContractNotice(); const n = document.getElementById('contractNotice');
-    r.notice = n.style.display !== 'none' && /Contracts: 1 expired/.test(n.innerText);
-    closeContractNotice(); r.closed = n.style.display === 'none';
+    render(); await wait(50);
+    r.bell = ManagerBridge.bellItems().some(x => x.title === 'Contract ended' && /Dana Levi/.test(x.detail));
+    r.noBanner = !document.getElementById('contractNotice') && !/Contracts:/.test(document.getElementById('appMain').innerText) && typeof window.showContractNotice === 'undefined';
     Object.keys(w).forEach(k => delete w[k]); Object.assign(w, keep); render();
     return r;
   });
   ok(ia.hidden && ia.shown && ia.back, 'workers: an inactive worker leaves the lists, "Inactive: N — show" brings them, Active returns them ' + JSON.stringify(ia));
-  ok(ia.notice && ia.closed, 'contracts: an expired contract shows a notice at the top until closed ' + JSON.stringify(ia));
-  // V7 (stage 6a): the frame on a computer — the sections in a side menu, the breadcrumb plate (section,
-  // count, open sub-tab), the date / greeting / weather in the middle, no page titles, no side panel
-  // (removed, owner 2026-10-18) on any tab, the page at most 1200px; Today drawn in React.
+  ok(ia.bell && ia.noBanner, 'contracts: an expired contract is a bell notice; no banner at the top of the page ' + JSON.stringify(ia));
+  // V7 (stage 6a): the frame on a computer — the sections in a side menu, no breadcrumb (removed, owner
+  // 2026-10-26: the lit section says where you are), the date / greeting / weather in the middle, no page
+  // titles, no side panel (removed, owner 2026-10-18) on any tab, the page at most 1200px; Today drawn in React.
   const v7 = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const box = q => document.querySelector(q).getBoundingClientRect(), shown = q => { const el = document.querySelector(q); return !!el && getComputedStyle(el).display !== 'none'; };
-    const crumb = () => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim();
+    const noCrumb = () => !document.querySelector('[data-testid=shell-crumb]');
+    const lit = () => (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim();
     switchTab('dashboard'); await wait(300);
     const nav = box('[data-testid=shell-menu]'), t = box('[data-testid=shell-menu] button:nth-child(1)'), s2 = box('[data-testid=shell-menu] button:nth-child(2)');
     r.menu = nav.left < 2 && Math.abs(nav.width - 210) < 2 && s2.top > t.top && Math.abs(s2.left - t.left) < 2;
-    r.crumbToday = crumb();
+    r.crumbToday = noCrumb() && lit() === 'Today';
     r.noTitle = [...document.querySelectorAll('.page-title')].every(e => getComputedStyle(e).display === 'none');
     r.center = /\d/.test(document.querySelector('[data-testid=shell-date]').innerText) && /^Good /.test(document.querySelector('[data-testid=shell-greet-text]').textContent);
     r.noSidebarToday = !document.querySelector('.sidebar, #workerList, #sidebarClientList');
     r.react = !!document.querySelector('#todayRoot [data-testid=today]') && document.querySelectorAll('#todayRoot [data-slot=figures] > button').length === 4 && document.querySelectorAll('#todayRoot section[data-panel]').length >= 1;
     r.width = getComputedStyle(document.getElementById('sectionDashboard')).maxWidth === '1200px';
     switchTab('workers'); await wait(200);
-    r.sidebarWorkers = !document.querySelector('.sidebar'); r.crumbWorkers = crumb();
+    r.sidebarWorkers = !document.querySelector('.sidebar'); r.crumbWorkers = noCrumb() && lit() === 'Workers';
     switchTab('accounting'); setAccTab('salary'); await wait(200);
-    r.crumbAcc = crumb(); r.noRepeat = !shown('#accountingRoot [data-testid=acc-figs]') && shown('#accountingRoot [data-testid=sal-sum]');
+    const accLayout = () => ({tabs: Math.round(box('#accTabs').top), figs: Math.round(box('#accountingRoot [data-testid=acc-figs]').top),
+      labels: [...document.querySelectorAll('#accountingRoot [data-testid=acc-figs] [data-slot=figures] span.truncate')].map(x => x.textContent).join()});
+    r.crumbAcc = noCrumb() && lit() === 'Accounting'; const lSal = accLayout(); r.noRepeat = !shown('#accountingRoot [data-testid=sal-sum]') && lSal.figs > lSal.tabs;
     setAccTab('billing'); document.body.click(); await wait(100);
-    r.crumbBill = crumb(); r.figsBack = shown('#accountingRoot [data-testid=acc-figs]');
+    r.crumbBill = noCrumb() && lit() === 'Accounting'; const lBill = accLayout(); r.figsBack = JSON.stringify(lSal) === JSON.stringify(lBill);
+    const pnav = box('[data-testid=acc-period-nav]'), first = box('[data-testid=acc-earlier]'), last = box('[data-testid=acc-later]');
+    r.navCentred = Math.abs((first.left - pnav.left) - (pnav.right - last.right)) < 3;
     setAccTab('salary'); switchTab('dashboard'); await wait(200);
     return r;
   });
-  ok(v7.menu && v7.crumbToday === 'Today' && v7.noTitle && v7.center && v7.noSidebarToday && v7.react && v7.width && v7.sidebarWorkers && /^Workers \d+$/.test(v7.crumbWorkers)
-    && v7.crumbAcc === 'Accounting Salary' && v7.noRepeat && v7.crumbBill === 'Accounting Billing' && v7.figsBack,
-    'V7 frame: side menu, breadcrumb with count and sub-tab, date / greeting / weather in the middle, no page titles, no side panel, Accounting figures not repeated on Salary ' + JSON.stringify(v7));
+  ok(v7.menu && v7.crumbToday && v7.noTitle && v7.center && v7.noSidebarToday && v7.react && v7.width && v7.sidebarWorkers && v7.crumbWorkers
+    && v7.crumbAcc && v7.noRepeat && v7.crumbBill && v7.figsBack && v7.navCentred,
+    'V7 frame: side menu (the open section lit), no breadcrumb, date / greeting / weather in the middle, no page titles, no side panel; Accounting: one layout on every section (the tabs, then the same figures, in the same place), the period centred ' + JSON.stringify(v7));
   // Hebrew mirrors the frame only: the menu on the right, the account on the left, the page left to right.
   await p.evaluate(() => setLanguage('he', {save:false})); await waitFor(p, () => I18N_LANG === 'he' && document.documentElement.lang === 'he');
   await sleep(400);
   const v7he = await p.evaluate(() => {
     const box = q => document.querySelector(q).getBoundingClientRect();
-    return {menuRight: box('[data-testid=shell-menu]').right > innerWidth - 2, acctLeft: box('[data-testid=account-btn]').left < box('[data-testid=app-brand]').left, crumbRight: box('[data-testid=shell-crumb]').left > innerWidth / 2,
+    return {menuRight: box('[data-testid=shell-menu]').right > innerWidth - 2, acctLeft: box('[data-testid=account-btn]').left < box('[data-testid=app-brand]').left, brandRight: box('[data-testid=app-brand]').left > innerWidth / 2, noCrumb: !document.querySelector('[data-testid=shell-crumb]'),
       pageLtr: getComputedStyle(document.querySelector('#todayRoot')).direction === 'ltr', today: document.querySelector('#todayRoot [data-testid=today] p').textContent};
   });
   await p.evaluate(() => setLanguage('en', {save:false})); await waitFor(p, () => I18N_LANG === 'en');
-  ok(v7he.menuRight && v7he.acctLeft && v7he.crumbRight && v7he.pageLtr && v7he.today === 'נוכחות בזמן אמת', 'V7 Hebrew: the side menu on the right, brand and breadcrumb right, the account left; Today\'s content stays left to right, in Hebrew ' + JSON.stringify(v7he));
+  ok(v7he.menuRight && v7he.acctLeft && v7he.brandRight && v7he.noCrumb && v7he.pageLtr && v7he.today === 'נוכחות בזמן אמת', 'V7 Hebrew: the side menu on the right, the brand right (no breadcrumb), the account left; Today\'s content stays left to right, in Hebrew ' + JSON.stringify(v7he));
   // Today, drawn in React (stage 6a): the figures as glass tiles, the sections as panels; a figure filters
   // to its section ("Show all" brings the rest back), the arrow folds a section (kept on this device).
   const tf = await p.evaluate(async () => {
@@ -318,9 +325,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.setViewportSize({width: 390, height: 844});
   const t3 = await p.evaluate(async () => { switchTab('dashboard'); await new Promise(r => setTimeout(r, 300));
     const box = q => document.querySelector(q).getBoundingClientRect(), figs = [...document.querySelectorAll('#todayRoot [data-slot=figures] > button')];
-    const cr = box('[data-testid=shell-crumb]'), c = box('[data-testid=shell-greeting]'), a = document.querySelector('[data-testid=account-btn]').parentElement.getBoundingClientRect(), tb = getComputedStyle(document.querySelector('[data-slot=shell] > header'));
+    const c = box('[data-testid=shell-greeting]'), hd = box('[data-slot=shell] > header'), br = box('[data-testid=app-brand]'), a = document.querySelector('[data-testid=account-btn]').parentElement.getBoundingClientRect(), tb = getComputedStyle(document.querySelector('[data-slot=shell] > header'));
     return {stats: figs.length, row: figs.every(f => Math.abs(f.getBoundingClientRect().top - figs[0].getBoundingClientRect().top) < 1), lines: document.querySelectorAll('#todayRoot .og-plate').length,
-      twoRows: cr.top >= c.bottom - 1 && cr.top >= a.bottom - 1 && Math.abs(c.top - a.top) < 12, fixed: tb.position === 'sticky' && tb.top === '0px',
+      oneRow: !document.querySelector('[data-testid=shell-crumb]') && Math.abs(c.top - a.top) < 12 && Math.abs(br.top - a.top) < 12 && hd.height < 70, fixed: tb.position === 'sticky' && tb.top === '0px',
       greetHidden: getComputedStyle(document.querySelector('[data-testid=shell-greet-text]')).display === 'none' && !!document.querySelector('[data-testid=shell-greeting] svg.gic'),
       shortDate: getComputedStyle(document.querySelector('[data-testid=shell-date] > span:last-child')).display !== 'none' && getComputedStyle(document.querySelector('[data-testid=shell-date] > span:first-child')).display === 'none',
       noMenu: !document.querySelector('[data-testid=shell-menu]') && box('[data-testid=shell-bar]').bottom > innerHeight - 2}; });
@@ -369,7 +376,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {sum: line ? line.querySelector('small').innerText : '', arrows: q('[data-testid="week-prev"]').length + q('[data-testid="week-next"]').length,
       marks: line ? line.querySelectorAll('[data-testid="daymarks"] i').length : 0, hrs: line ? (line.querySelector('[data-testid="week-hours"]') || {}).textContent : '',
       kinds: line ? [...line.querySelectorAll('[data-testid="daymarks"] i')].map(i => i.dataset.k).join('') : '',
-      week: (document.querySelector('#scheduleRoot [data-testid="week-range"]') || {}).innerText || '', crumb: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' '),
+      week: (document.querySelector('#scheduleRoot [data-testid="week-range"]') || {}).innerText || '', noCrumb: !document.querySelector('[data-testid=shell-crumb]'),
       old: !!document.getElementById('ganttBody')};
   }, schedPlate);
   await p.click(schedPlate, {position: {x: 30, y: 14}});
@@ -380,26 +387,39 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.keyboard.press('Escape'); await waitFor(p, () => !document.querySelector('[data-testid="shift-window"]'), 3000);
   await p.click(schedPlate, {position: {x: 30, y: 14}});
   sch.closedNow = await waitFor(p, () => document.querySelectorAll('#scheduleRoot [data-testid="sched-day"]').length === 0, 3000);
-  ok(/shift/.test(sch.sum) && sch.days && sch.editor && sch.closedNow && /–/.test(sch.week) && !sch.old, 'schedule: a plate per worker, a tap opens its 7 days, a day opens the shift window ' + JSON.stringify(sch));
+  ok(/shift/.test(sch.sum) && sch.days && sch.editor && sch.closedNow && /–/.test(sch.week) && !sch.old && sch.noCrumb, 'schedule: a plate per worker, a tap opens its 7 days, a day opens the shift window ' + JSON.stringify(sch));
   await p.screenshot({path: SP + '/t3-schedule.png'}).catch(()=>{});
-  // Glass week arrows, site tabs (the breadcrumb follows), 7 day marks per worker (green work, blue a night).
-  const sc6 = await p.evaluate(async () => {
-    const r = {}, tabs = [...document.querySelectorAll('#scheduleRoot [data-testid="site-tabs"] button')]; r.tabs = tabs.map(b => b.textContent);
-    r.crumbAll = document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ');
-    if(tabs[1]){ tabs[1].click(); await new Promise(res => setTimeout(res, 50));
-      r.filtered = selectedClientId === clients[0].id && document.querySelector('#scheduleRoot [data-testid="site-tabs"] button.on').textContent === clients[0].name;
-      r.crumbSite = document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' '); filterByClient(null); }
-    return r;
-  });
-  ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.tabs[0] === 'All sites' && sc6.filtered
-    && /Schedule.*All sites/.test(sc6.crumbAll) && new RegExp('Schedule.*' + sc6.tabs[1]).test(sc6.crumbSite),
-    'schedule: glass arrows, site tabs filter (breadcrumb "Schedule › <site>"), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
+  // Glass week arrows, one site select (owner, 2026-10-26: no row of tabs; no breadcrumb — the select shows the pick), 7 day marks per worker (green work, blue a night).
+  const sc6 = await p.evaluate(() => ({
+    noTabs: !document.querySelector('#scheduleRoot [data-testid="site-tabs"]') && !document.querySelector('#scheduleRoot .og-tabs'),
+    shown: document.querySelector('#scheduleRoot [data-testid="site-select"]').innerText.trim(),
+    crumbAll: !document.querySelector('[data-testid=shell-crumb]'),
+    site: [...clients].sort((a, b) => (a.name || '').localeCompare(b.name || ''))[0],
+    names: [...clients].map(c => c.name).sort((a, b) => (a || '').localeCompare(b || '')),
+  }));
+  await p.click('#scheduleRoot [data-testid="site-select"]'); await p.waitForSelector('[role="option"]');
+  sc6.opts = await p.evaluate(() => [...document.querySelectorAll('[role="option"]')].map(o => o.innerText.trim()));
+  await p.click('[role="option"]:has-text("' + sc6.site.name + '")'); await sleep(150);
+  Object.assign(sc6, await p.evaluate(id => ({
+    filtered: selectedClientId === id,
+    crumbSite: !document.querySelector('[data-testid=shell-crumb]') && document.querySelector('#scheduleRoot [data-testid="site-select"]').innerText.trim(),
+  }), sc6.site.id));
+  await p.click('#scheduleRoot [data-testid="site-select"]'); await p.click('[role="option"]:has-text("All sites")'); await sleep(150);
+  sc6.back = await p.evaluate(() => selectedClientId === null && document.querySelector('#scheduleRoot [data-testid="site-select"]').innerText.trim() === 'All sites');
+  ok(sch.arrows === 2 && sch.marks === 7 && /h$/.test(sch.hrs) && sch.kinds === '-wn----' && sc6.noTabs && sc6.shown === 'All sites'
+    && sc6.opts.join() === ['All sites', ...sc6.names].join() && sc6.filtered && sc6.back
+    && sc6.crumbAll && sc6.crumbSite === sc6.site.name,
+    'schedule: glass arrows, one site select (All sites, then the sites by name) filters (the pick shown in the select, no breadcrumb), 7 day marks and the week\'s hours per worker ' + JSON.stringify({sch, sc6}));
   await p.evaluate(() => { workers.find(w => isActiveWorker(w)).schedule = JSON.parse(window.__keepSched); render(); });
   await p.evaluate(async () => { localStorage.setItem('workersView', 'cards'); switchTab('workers'); await new Promise(r => setTimeout(r, 300)); });
   await p.screenshot({path: SP + '/t3-workers.png'}).catch(()=>{});
   // Salary on a phone: the Data Table becomes plates; a tap opens a plate's details under it.
   const salPhone = await p.evaluate(async () => { switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod('all'); await new Promise(res => setTimeout(res, 200));
     const r = {kind: (document.querySelector('#accountingRoot [data-slot=data-table]') || {dataset: {}}).dataset.kind};
+    const tabs = document.getElementById('accTabs'), tb = tabs.getBoundingClientRect(), btns = [...tabs.querySelectorAll('button')];
+    r.tabsFit = tabs.scrollWidth <= tabs.clientWidth + 1 && btns.every(b => { const x = b.getBoundingClientRect(); return x.left >= tb.left - 1 && x.right <= tb.right + 1 && Math.abs(x.top - btns[0].getBoundingClientRect().top) < 1; });
+    const nav = document.querySelector('#accountingRoot [data-testid=acc-period-nav]').getBoundingClientRect(), e0 = document.querySelector('#accountingRoot [data-testid=acc-earlier]').getBoundingClientRect(), e1 = document.querySelector('#accountingRoot [data-testid=acc-later]').getBoundingClientRect();
+    r.navCentred = Math.abs((e0.left - nav.left) - (nav.right - e1.right)) < 3;
     const plate = document.querySelector('#accountingRoot [data-testid=sal-row] .og-plate');
     if (plate) { plate.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, pointerType: 'touch', isPrimary: true})); plate.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, pointerType: 'touch', isPrimary: true})); }
     await new Promise(res => setTimeout(res, 450));
@@ -407,10 +427,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     window.scrollTo(0, 0); document.querySelector('#sectionAccounting').scrollIntoView(); await new Promise(res => setTimeout(res, 300)); return r; });
   await p.screenshot({path: SP + '/t3-accounting.png'}).catch(()=>{});
   ok(salPhone.kind === 'cards' && salPhone.open, 'salary on a phone: plates, a tap opens the details under the plate ' + JSON.stringify(salPhone));
+  ok(salPhone.tabsFit && salPhone.navCentred, 'accounting on a phone: Salary / Billing / Approvals / Alerts fit whole on one line, the period centred ' + JSON.stringify(salPhone));
+  // A narrow phone (360px): the tabs still fit whole, Alerts not cut.
+  await p.setViewportSize({width: 360, height: 800}); await sleep(300);
+  const tabs360 = await p.evaluate(() => { const tabs = document.getElementById('accTabs'), tb = tabs.getBoundingClientRect(), btns = [...tabs.querySelectorAll('button')];
+    return {fit: tabs.scrollWidth <= tabs.clientWidth + 1 && btns.every(b => { const x = b.getBoundingClientRect(); return x.left >= tb.left - 1 && x.right <= tb.right + 1 && Math.abs(x.top - btns[0].getBoundingClientRect().top) < 1; }),
+      sw: tabs.scrollWidth, cw: tabs.clientWidth}; });
+  ok(tabs360.fit, 'accounting at 360px: every tab fits whole on one line ' + JSON.stringify(tabs360));
+  await p.setViewportSize({width: 390, height: 844}); await sleep(300);
   await p.evaluate(async () => { await ManagerBridge.setPeriod('week'); });
   await p.setViewportSize({width: 1280, height: 720});
   ok(t3.stats === 4 && t3.row && t3.lines >= 1, 'today: four figure tiles in one row on a phone and colored plates ' + JSON.stringify(t3));
-  ok(t3.twoRows && t3.fixed && t3.greetHidden && t3.shortDate && t3.noMenu, 'V7 on a phone: two header rows fixed at the top (logo · short date and weather · buttons; the breadcrumb under them), the greeting\'s words hidden, the bottom bar stays ' + JSON.stringify(t3));
+  ok(t3.oneRow && t3.fixed && t3.greetHidden && t3.shortDate && t3.noMenu, 'V7 on a phone: one header row fixed at the top (logo · short date and weather · buttons; no breadcrumb), the greeting\'s words hidden, the bottom bar stays ' + JSON.stringify(t3));
   // On a phone a worker card is compact: one summary line instead of the detail rows.
   await p.setViewportSize({width: 390, height: 800});
   const wc = await p.evaluate(async () => { switchTab('workers'); await new Promise(r => setTimeout(r, 200));
@@ -524,6 +552,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       document.querySelector('[data-testid=account-btn]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); await wait(200);
       const sw = () => document.querySelector('[data-testid=account-theme] [data-testid=theme-switch]');
       r.items = [...sw().querySelectorAll('[data-testid^=theme-]')].map(b => b.dataset.testid.slice(6) + '/' + b.innerText.trim()).join();
+      // the menu in the windows' glass (owner 2026-10-26): the sheet gradient and the glass edge, its tail in the same
+      // fill (never black) with the same edge; Dark / Light / System fit inside the menu, none cut off
+      { const m = document.querySelector('[data-testid=account-menu]'), cs = getComputedStyle(m), root = getComputedStyle(document.documentElement);
+        const rgb = v => { const d = document.createElement('i'); d.style.color = v; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; };
+        const tail = m.querySelector('[data-slot=pop-tail] polygon'), edge = m.querySelector('[data-slot=pop-tail] polyline');
+        r.menuGlass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim());
+        r.tail = !!tail && getComputedStyle(tail).fill === rgb(root.getPropertyValue('--plate-top').trim()) && getComputedStyle(tail).fill !== 'rgb(0, 0, 0)' && getComputedStyle(edge).stroke === cs.borderTopColor;
+        const mb = m.getBoundingClientRect();
+        r.fits = [...sw().querySelectorAll('[data-testid^=theme-]')].every(b => { const bb = b.getBoundingClientRect(), s = b.querySelector('span'); return bb.left >= mb.left && bb.right <= mb.right && s.scrollWidth <= s.clientWidth + 1; }); }
       sw().querySelector('[data-testid=theme-light]').click(); await wait(100);
       r.light = document.documentElement.dataset.theme; r.saved = localStorage.getItem('uiTheme');
       r.on = (sw().querySelector('[data-state=on]') || {}).dataset?.testid?.slice(6);
@@ -533,6 +570,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       return r;
     });
     ok(th.def === 'dark' && th.items === 'dark/Dark,light/Light,system/System' && th.light === 'light' && th.saved === 'light' && th.on === 'light' && th.open && th.ground === '#eef1f7', 'theme: Dark by default; the account menu\'s switch (Dark / Light / System) turns the light theme on, on this device ' + JSON.stringify(th));
+    ok(th.menuGlass && th.tail && th.fits, 'menus: the account menu in the windows\' glass and edge, its tail in the same fill and edge (not black), Dark / Light / System fit its width ' + JSON.stringify(th));
     await sleep(1500);
     const c3 = await newCtx(); const p3 = await page(c3);
     await p3.goto(BASE + 'schedule-manager.html'); await p3.waitForSelector('#loginScreen', {state:'visible'});
@@ -841,11 +879,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.attempt = s.attempt;
     return r;
   }, [JPG, JPG2, sure, zones, hes]);
-  // A thumbnail opens the page large: one set to Other is not saved (Done counts one); set to Contract it is again.
+  // A photo in the strip opens the page large (grown, then its type tapped): one set to Other is not saved (Done counts one); set to Contract it is again.
   // Looks good on both pages keeps the shot's attempt — held until Done (owner, 2026-10-21).
   const view = await p.evaluate(async () => {
     const H = await ManagerScan.hooks(), r = {};
-    const open = async i => { document.querySelectorAll('[data-testid="scan-thumb"]')[i].click(); return T.until(() => document.querySelector('[data-testid="page-view"]'), 3000); };
+    const open = async i => { await T.openThumb(document.querySelectorAll('[data-testid="scan-thumb"]')[i]); return T.until(() => document.querySelector('[data-testid="page-view"]'), 3000); };
     r.opened = await open(1);
     document.querySelector('[data-testid="kind-chip"][data-kind="other"]').click(); await T.tick(200);
     document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);  // a tap on the dimmed ground: back to the camera
@@ -903,7 +941,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await H.inject({pics: [{b64: b}], camera: false});  // a picked picture (f<n>)
     r.typed = await T.until(() => thumbs('[data-kind]') === 2, 15000);
     // a type picked by hand is kept on the phone with its page (Haiku said ספח: set to Passport)
-    document.querySelectorAll('[data-testid="scan-thumb"]')[0].click();
+    await T.openThumb(document.querySelectorAll('[data-testid="scan-thumb"]')[0]);
     await T.until(() => document.querySelector('[data-testid="page-view"]'), 3000);
     document.querySelector('[data-testid="kind-chip"][data-kind="passport"]').click(); await T.tick(200);
     document.querySelector('[data-testid="page-view"]').click(); await T.tick(200);
@@ -1096,9 +1134,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const a = await H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
     // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
     await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length === 1, 15000);
+    // its Edit corners button on the photo grown in the strip (template 6)
     document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
-    const r = {button: await T.until(() => document.querySelector('[data-testid="page-fix"]'), 4000)};
-    document.querySelector('[data-testid="page-fix"]').click();
+    const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
+    document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]').click();
     r.editor = await T.until(() => document.querySelector('[data-testid="corner-canvas"][data-fit]'), 4000);
     const c = document.querySelector('[data-testid="corner-canvas"]'), b = c.getBoundingClientRect(), [ox, oy, iw, ih] = c.dataset.fit.split(',').map(Number);
     const ev = (type, x, y) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: b.left + ox + x * iw, clientY: b.top + oy + y * ih}));
@@ -1182,7 +1221,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const a = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), b = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]});
     const quiet = await ScanLab.inject({pics: [{b64: jpg, doctype: sure}]}), none = await ScanLab.inject({pics: [{b64: jpg}]});
     const r = {thumbs: await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind="sefach"]').length === 3 && document.querySelectorAll('[data-testid="scan-thumb"]').length === 4, 8000)};
-    const open = id => { document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"]').click(); return T.until(() => document.querySelector('[data-testid="page-view"][data-id="' + id + '"]'), 3000); };
+    const open = async id => { await T.openThumb(document.querySelector('[data-testid="scan-thumb"][data-id="' + id + '"]')); return T.until(() => document.querySelector('[data-testid="page-view"][data-id="' + id + '"]'), 3000); };
     const close = async () => { const v = document.querySelector('[data-testid="page-view"]'); if (v) v.click(); await T.until(() => !document.querySelector('[data-testid="page-view"]'), 3000); };
     await open(a.ids[0]);
     r.chosen = (document.querySelector('[data-testid="kind-chip"][data-state="on"]') || {dataset: {}}).dataset.kind;
@@ -1452,8 +1491,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   await p.waitForSelector('#workerCardModal [data-testid="worker-card"]');
   ct0.card = await p.evaluate(() => /Contract\s*Expired —/.test(document.querySelector('#workerCardModal [data-testid="worker-card"]').innerText));
-  await p.click('#workerCardModal [data-testid="card-more"]');
-  await p.click('[role="menuitem"]:has-text("Add document")');
+  await p.click('#workerCardModal [data-testid="card-docs-add"]');
   await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
   const ctToday = await p.evaluate(() => { const d = new Date(); window.__ctYmd = localYMD(d); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); });
   ct0.label = await p.evaluate(() => document.getElementById('wdContractDate').closest('.grid').innerText);
@@ -1803,20 +1841,19 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const sd = (w.docs || []).find(d => d.signed);
     const call = async b => (await fetch(API_URL, {method: 'POST', body: JSON.stringify(b)})).json();
     const r = {};
-    // Remove on a signed document leaves it on the worker
-    ManagerBridge.removeDocs('w1', [String(sd.id)]);
-    r.entry = (w.docs || []).some(d => d.id === sd.id);
-    // the server refuses to delete the signed Form 101, the signed contract and the signature
+    // a delete on its own (a file replaced, a rescan: no manual) never removes a signed Form 101, contract or signature
     r.refused = [];
     for (const f of [w.docFileId, sd.fileId, w.sigFileId]) r.refused.push((await call({action: 'deleteWorkerDoc', fileId: f})).error || 'deleted');
     r.sigBack = ((await call({action: 'loadWorkerPages', fileIds: [w.sigFileId]})).pages || []).length;
-    // Delete worker on a signed worker asks to delete only its unsigned files
+    // a person's own delete removes signed files too (owner, 2026-10-25): Remove on a signed document, then Delete worker
     const f0 = window.fetch, asked = [];
-    window.fetch = (u, o) => { try { const b = JSON.parse((o && o.body) || '{}'); if (b.action === 'deleteWorkerDoc') asked.push(b.fileId); } catch (e) {} return f0(u, o); };
+    window.fetch = (u, o) => { try { const b = JSON.parse((o && o.body) || '{}'); if (b.action === 'deleteWorkerDoc') asked.push(b.fileId + (b.manual === true ? ' manual' : '')); } catch (e) {} return f0(u, o); };
     const P = 'tenants/tenant-one/workers/wS/';
     workers.push({id: 'wS', name: 'Signed Test', status: 'active', clientIds: [], schedule: [], signedAt: '2026-10-20T10:00:00Z', signedRequestId: 'rS',
       docFileId: P + 'form101/s.pdf', sigFileId: P + 'signature/s.png', scanPages: [{fileId: P + 'pages/1-0-id_front.jpg', kind: 'id_front', savedAt: ''}],
       docs: [{id: 'dS', type: 'contract', fileId: P + 'docs/c.pdf', signed: true}, {id: 'dU', type: 'visa', fileId: P + 'docs/v.pdf'}]});
+    ManagerBridge.removeDocs('wS', ['dS']);
+    r.entry = !workers.find(x => x.id === 'wS').docs.some(d => d.id === 'dS');
     ManagerBridge.deleteWorkers(['wS']);
     await T.tick(200);
     window.fetch = f0;
@@ -1826,10 +1863,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   const keepF101 = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/form101', {method: 'POST'})).json();
   const keepCtr = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/contract', {method: 'POST'})).json();
-  ok(keep.entry && keep.refused.every(e => /signed document is kept/.test(e)) && keep.sigBack === 1 && keepF101.pages > 0 && keepCtr.pages > 0,
-    'signed files are kept: Remove leaves a signed document, and the server refuses to delete the signed Form 101, contract and signature ' + JSON.stringify(keep));
-  ok(keep.gone && JSON.stringify(keep.asked) === JSON.stringify(['tenants/tenant-one/workers/wS/docs/v.pdf', 'tenants/tenant-one/workers/wS/pages/1-0-id_front.jpg']),
-    'signed files are kept: Delete worker leaves a signed worker\'s Form 101, signature and signed documents ' + JSON.stringify(keep));
+  ok(keep.refused.every(e => /signed document is kept/.test(e)) && keep.sigBack === 1 && keepF101.pages > 0 && keepCtr.pages > 0,
+    'signed files are kept: a delete on its own (no manual) is refused for the signed Form 101, contract and signature ' + JSON.stringify(keep));
+  const kP = 'tenants/tenant-one/workers/wS/';
+  ok(keep.entry && keep.gone && JSON.stringify(keep.asked) === JSON.stringify(['docs/c.pdf', 'docs/v.pdf', 'form101/s.pdf', 'pages/1-0-id_front.jpg', 'signature/s.png'].map(f => kP + f + ' manual')),
+    "a person's own delete: Remove takes a signed document off, Delete worker deletes every file of a signed worker, each sent as manual " + JSON.stringify(keep));
   // D4: a change to what the signed documents print asks for a new signature; the firm's own details don't.
   const d4 = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w1');
@@ -1885,7 +1923,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const closed = !document.querySelector('[data-testid="download-window"]');
     let kept = null; try { kept = JSON.parse(localStorage.getItem('downloadDataPicks')); } catch (e) {}
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
-    return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /50/.test(first), closed, kept};
+    return {pages: pdf.numPages, name: /Avi/.test(first), sign: /\d{2}\/\d{2}\/\d{4}/.test(first), pay: /(?<![\d:./])50(?![\d:./])/.test(first), closed, kept};   // the rate 50 alone — not part of a phone number (050…), a date or a time
   });
   ok(d5.pages === d5h.pages && d5h.type === 'application/pdf' && /^summary,form101-(signed|stored|preview)/.test(d5h.parts) && /contract/.test(d5h.parts)
     && d5h.body.include.form101 === true && d5h.body.include.contract === true && d5h.body.include.docs === false && d5h.body.form101 && 'employer' in d5h.body.form101
@@ -1895,6 +1933,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });
   await p.click('[data-testid="workers-transfer"]');
+  await p.waitForSelector('#transferNo');
+  ok(await p.evaluate(() => !document.querySelector('[data-testid="transfer-pick"]')), 'transfer: a firm\'s own admin gets no list of the other firms\' workers — only the number field');
   await p.fill('#transferNo', '039337423');
   await p.click('[data-testid="transfer-send"]');
   await p.waitForSelector('[data-testid="transfer-sent"]', {timeout: 20000});
@@ -2029,17 +2069,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await p.screenshot({path: SP + '/shot_admin_log_' + w + '.png'});
   }
   await p.setViewportSize({width:1280, height:720});
-  // The tiles while no section is chosen; a tile opens its section; the breadcrumb follows.
+  // The tiles while no section is chosen; a tile opens its section; Admin lit in the menu, no breadcrumb.
   const at = await p.evaluate(async () => {
     switchTab('admin'); switchAdminPane(null); await new Promise(r => setTimeout(r, 100));
-    return {tiles: [...document.querySelectorAll('#adminRoot [data-testid="admin-tile"]')].map(t => t.dataset.k).join(), crumb0: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim(),
+    return {tiles: [...document.querySelectorAll('#adminRoot [data-testid="admin-tile"]')].map(t => t.dataset.k).join(), crumb0: document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim(),
       noRows: !document.querySelector('#adminRoot [data-testid="punch-row"]'), oldBar: !!document.getElementById('adminPaneBar'),
       superadmin: !!document.querySelector('#adminTabs [data-k="timings"]')};
   });
   await p.click('#adminRoot [data-testid="admin-tile"][data-k="punchlog"] [role="button"]'); await sleep(250);
   Object.assign(at, await p.evaluate(() => ({
     opened: __adminPane === 'punchlog' && !!document.querySelector('#adminRoot [data-testid="punchlog"]') && !document.querySelector('#adminRoot [data-testid="admin-tiles"]'),
-    crumb: document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim(),
+    crumb: !document.querySelector('[data-testid=shell-crumb]'),
     figs: [...document.querySelectorAll('#adminRoot [data-slot="figures"] button span:first-of-type')].map(x => x.textContent).join()})));
   // Entering the tab again (Admin in the menu) brings the tiles back: no section is kept from before.
   at.back = await p.evaluate(async () => { switchTab('dashboard'); switchTab('admin'); await new Promise(r => setTimeout(r, 100));
@@ -2047,8 +2087,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchAdminPane('punchlog'); await new Promise(r => setTimeout(r, 250)); // the checks below go on in the Punch Log
     return back; });
   // A super-admin also gets the Scanner lab tile (it opens /scan-lab/ in a new tab).
-  ok(at.tiles === 'punchlog,firms,users,contracts' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb === 'Admin Punch Log' && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
-    'admin: four tiles while no section is chosen — Contract templates the fourth (and the Scanner and the Scanner lab for a super-admin), a tile opens its section, the breadcrumb "Admin › Punch Log", the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
+  ok(at.tiles === 'punchlog,firms,users,contracts' + (at.superadmin ? ',scanner,scanlab' : '') && at.crumb0 === 'Admin' && at.noRows && !at.oldBar && at.opened && at.crumb && at.figs === 'Total IN,Total OUT,Today,Total' && at.back,
+    'admin: four tiles while no section is chosen — Contract templates the fourth (and the Scanner and the Scanner lab for a super-admin), a tile opens its section (no breadcrumb), the figures, back to the tiles on entering the tab again ' + JSON.stringify(at));
   // The filters: Radix selects — the date list is newest day first; the client filter uses the punch's own clientId.
   const pickFilter = async (k, label) => {
     await p.click(PL + ' [data-testid="punch-filter-' + k + '"]'); await p.waitForSelector('[role="option"]');
@@ -2273,13 +2313,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       eq(rows.map(r => r.id), F.rows.map(r => r.workerId), period + ' salary rows');
       F.rows.forEach((r, i) => { const d = rows[i] || {};
         eq([d.worker, d.hours, d.days, d.pay, d.travel, d.total], [r.worker, hrs1(r.hours), String(r.days), r.pay > 0 ? money2(r.pay) : '—', r.travel > 0 ? money2(r.travel) : '—', r.total > 0 ? money2(r.total) : '—'], period + ' row ' + r.workerId); });
-      const sum = [...root.querySelectorAll('[data-testid=sal-sum] [data-slot=figures] b')].map(b => b.innerText.trim());
-      if (F.rows.length) eq(sum, [hrs1(F.totals.hours), money2(F.totals.pay), F.totals.travel > 0 ? money2(F.totals.travel) : '—', money2(F.totals.total)], period + ' salary totals');
+      const sum = [...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] b')].slice(0, 3).map(b => b.innerText.trim());
+      eq(sum, [money2(F.totals.pay), F.totals.travel > 0 ? money2(F.totals.travel) : '—', money2(F.totals.total)], period + ' salary figures');
       const foot = [...root.querySelectorAll('[data-testid=sal-table] tfoot td')].map(x => x.innerText.trim());
       if (F.rows.length) eq([foot[1], foot[5], foot[7]], [hrs1(F.totals.hours), money2(F.totals.pay), money2(F.totals.total)], period + ' table totals');
       // The figures on top (shown on the other tabs) and the alerts.
       setAccTab('alerts'); await wait(50);
-      eq([...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] b')].slice(0, 2).map(b => b.innerText.trim()), [String(F.figs.hours), '₪' + F.figs.payroll.toLocaleString('en-US')], period + ' figures');
+      eq([...root.querySelectorAll('[data-testid=acc-figs] [data-slot=figures] b')].slice(0, 3).map(b => b.innerText.trim()), sum, period + ' figures (the same on every section)');
       eq([...root.querySelectorAll('[data-testid=alert-row]')].map(a => a.innerText.replace(/\s+/g, ' ').trim()), F.alerts.map(a => (a.title + ' ' + a.sub).replace(/\s+/g, ' ').trim()), period + ' alerts');
       // Billing: Payable by supplier (and its detail windows), by HR, Billable by client (and its details).
       setAccTab('billing'); await wait(50);
@@ -2379,11 +2419,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.head = document.querySelector('#noticesModal [data-testid="worker-head-name"]').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
     document.querySelector('#noticesModal [data-testid="notices-open-card"]').click(); await wait(300);
     r.card = document.getElementById('workerCardOverlay').classList.contains('open') && !document.getElementById('noticesOverlay').classList.contains('open');
-    const panes = () => [...document.querySelectorAll('#workerCardModal [data-p]')].filter(x => x.tagName === 'DIV' && !x.hidden).map(x => x.dataset.p).join();
-    const pane = async k => { document.querySelector('#workerCardModal [data-testid="card-panes"] [data-p="' + k + '"]').click(); await wait(50); };
-    r.panes = [panes()]; await pane('docs'); r.panes.push(panes()); await pane('hours'); r.panes.push(panes());
-    r.hoursStatus = !!document.querySelector('#workerCardModal [data-testid="card-hours"]');
-    r.edit = !!document.getElementById('workerCardEdit'); await pane('info');
+    const card = document.querySelector('#workerCardModal [data-testid="worker-card"]'), shown = el => !!el && el.getClientRects().length > 0;
+    r.onePage = !card.querySelector('[data-testid="card-panes"]') && !card.querySelector('[data-p]')
+      && ['card-info', 'card-docs'].every(t => shown(card.querySelector('[data-testid="' + t + '"]')));
+    r.hoursStatus = shown(card.querySelector('[data-kv="hours-sent"]')) && shown(card.querySelector('[data-kv="docs-status"]'));
+    r.edit = !!document.getElementById('workerCardEdit');
     // closing the card brings the notices sheet back; on a slow runner that takes longer than a fixed 200 ms, so up to 3 s
     closeModal('workerCardOverlay');
     for (let i = 0; i < 20 && !document.getElementById('noticesOverlay').classList.contains('open'); i++) await wait(150);
@@ -2414,17 +2454,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   wp.vac = await p.evaluate(sel => workers.find(w => w.id === 'w1').status === 'vacation' && !document.querySelector('[data-testid="select-bar"]') && /^Select$/.test(document.querySelector(sel).innerText.trim()), wsel);
   await p.evaluate(() => { workers.find(w => w.id === 'w1').status = window.__wpKeep.status; render(); autoSave(); });
   ok(wp.chip === 'red' && wp.more && wp.bar === 'var(--red)' && wp.sheet && wp.notices.includes('Upload failed') && wp.head === 'Avi Cohen' && wp.card && wp.backToNotices, 'worker plate: a red notice chip opens the notices sheet; "Open worker card" opens the card, closing it goes back to the sheet ' + JSON.stringify(wp));
-  ok(wp.panes.join('|') === 'info|docs|hours' && wp.hoursStatus && wp.edit, 'worker card: Info / Docs / Hours switch, one Edit button ' + JSON.stringify(wp.panes));
+  ok(wp.onePage && wp.hoursStatus && wp.edit, 'worker card: one page — no Info / Docs / Hours switch; the facts, the Documents and Hours sent boxes and the documents box all on it; one Edit button ' + JSON.stringify({onePage: wp.onePage, hoursStatus: wp.hoursStatus, edit: wp.edit}));
   ok(wp.menu === 'Edit,Open card,Pay,Punch link,Delete' && wp.pendingHidden && wp.stillThere && wp.undone && wp.leftOut && wp.notYet && wp.deleted, 'workers: Delete never asks — Undo keeps the worker, otherwise it is removed after 5 s ' + JSON.stringify(wp));
   ok(wp.selHead && wp.selOn && wp.sel === '1 selected' && wp.vac, 'workers: a Select button, boxes only after it; a tick, the bulk bar sets Vacation and Select ends ' + JSON.stringify({selHead: wp.selHead, selOn: wp.selOn, sel: wp.sel, vac: wp.vac}));
-  // Worker documents (stage 13): plates with Select in the card's Docs pane; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
+  // Worker documents (stage 13): plates with Select in the card's documents box; bulk Delete through Undo; closing the card ends Select and the workers list keeps its own.
   const wd = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
     const w = workers[0]; window.__wdKeep = w.docs;
     w.docs = [{id:'d1', type:'contract', name:'contract.pdf', url:'#', uploadedAt:'2026-01-02'}, {id:'d2', type:'other', name:'visa.jpg', url:'#', uploadedAt:'2026-01-01'}];
     switchTab('workers'); await wait(100);
     openWorkerCard(0); await wait(300);
-    document.querySelector('#workerCardModal [data-testid="card-panes"] [data-p="docs"]').click(); await wait(100);
     const docs = () => [...document.querySelectorAll('#workerCardModal [data-testid="worker-doc"]')];
     r.plates = docs().length; r.boxes0 = !document.querySelector('#workerCardModal .og-box');
     const head = () => document.querySelector('#workerCardModal [data-testid="card-docs"]');
@@ -2453,6 +2492,61 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }));
   ok(wd.plates === 2 && wd.boxes0 && wd.head && wd.bar === '2 selected' && wd.pending && wd.undone && wd.menu === 'Open,!Delete' && wd.deleted === 'd1' && wd.barOn && wd.back, 'worker documents: plates with Select, bulk Delete through Undo, ⋮ Delete after 5 s, Select ends when the card closes and the workers list keeps its Select ' + JSON.stringify(wd));
+  // The worker card is one page (owner's mock, 2026-10-26): one Active ↔ Inactive switch at the top right (a stored
+  // vacation shows on and stays stored until the switch is flipped), no month's hours at the top, HR and Supplier always
+  // shown ("—" when none), the address as city over street, the boxes in pairs of one width, the documents box across
+  // both columns with + Add, "Saved:" at the bottom left with Edit and ⋮ at the bottom right; the hours actions under ⋮.
+  const wcd = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
+    document.querySelectorAll('.overlay.open').forEach(o => { o.__returnTo = null; closeModal(o.id); }); await wait(200);
+    const w = workers[0], keep = JSON.parse(JSON.stringify(w));
+    w.status = 'vacation'; w.supplierId = ''; w.hrId = ''; w.city = 'Haifa'; w.address = 'Herzl'; w.houseNumber = '5';
+    switchTab('workers'); openWorkerCard(0); await wait(400);
+    const m = document.getElementById('workerCardModal'), q = s => m.querySelector(s), kv = k => q('[data-kv="' + k + '"]');
+    const sw = q('[data-testid="card-status-switch"]'), head = q('[data-testid="worker-head"]'), mr = m.getBoundingClientRect(), sr = sw.getBoundingClientRect();
+    r.topRight = head.contains(sw) && sr.right > mr.right - 90 && sr.top < mr.top + 110;
+    r.vacationOn = sw.getAttribute('aria-checked') === 'true' && /On vacation/.test(q('[data-testid="card-status-word"]').textContent) && w.status === 'vacation';
+    r.pills = !q('[data-testid="status-pills"]'); r.noMonth = !/this month/.test(head.innerText);
+    r.supplier = kv('supplier').innerText.replace(/\s+/g, ' ').trim(); r.hr = kv('hr').innerText.replace(/\s+/g, ' ').trim();
+    r.address = kv('address').innerText.split('\n').map(x => x.trim()).filter(Boolean);
+    const boxes = [...m.querySelectorAll('[data-testid="card-info"] > [data-kv]')];
+    r.order = boxes.slice(0, 10).map(x => x.dataset.kv).join();
+    const ws = boxes.map(x => Math.round(x.getBoundingClientRect().width)); r.equal = ws.every(x => x === ws[0]);
+    r.pairs = Math.abs(boxes[0].getBoundingClientRect().top - boxes[1].getBoundingClientRect().top) < 2;
+    const docs = q('[data-testid="card-docs"]'), info = q('[data-testid="card-info"]');
+    r.docsWide = Math.abs(docs.getBoundingClientRect().width - info.getBoundingClientRect().width) < 2 && !!docs.querySelector('[data-testid="card-docs-add"]');
+    const saved = q('[data-testid="card-saved"]'), bar = q('[data-testid="card-actions"]'), edit = document.getElementById('workerCardEdit'), more = q('[data-testid="card-more"]');
+    const br = bar.getBoundingClientRect(), svr = saved.getBoundingClientRect();
+    r.saved = /^Saved: /.test(saved.textContent.trim()) && svr.left < br.left + 8 && edit.getBoundingClientRect().left > svr.right
+      && more.getBoundingClientRect().right > br.right - 8 && br.bottom > mr.bottom - 40;
+    sw.click(); await wait(400);
+    r.flipOff = w.status === 'fired';
+    const sw2 = document.querySelector('#workerCardModal [data-testid="card-status-switch"]');
+    r.offShown = sw2.getAttribute('aria-checked') === 'false' && /Inactive/.test(document.querySelector('#workerCardModal [data-testid="card-status-word"]').textContent);
+    sw2.click(); await wait(400);
+    r.flipOn = w.status === 'active';
+    // an HR whose name this login does not know reads "Assigned", never "—"; without a city the street takes the first line
+    w.hrId = 'e2e-unknown-hr'; w.city = ''; closeModal('workerCardOverlay'); openWorkerCard(0); await wait(400);
+    const kv2 = k => document.querySelector('#workerCardModal [data-kv="' + k + '"]').innerText.split('\n').map(x => x.trim()).filter(Boolean).join('|');
+    r.hrUnknown = kv2('hr'); r.noCity = kv2('address');
+    Object.keys(w).forEach(k => { if(!(k in keep)) delete w[k]; }); Object.assign(w, keep); render(); autoSave();
+    openWorkerCard(0); await wait(300);
+    return r;
+  });
+  await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
+  wcd.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.keyboard.press('Escape'); await sleep(200);
+  await p.click('#workerCardModal [data-testid="card-docs-add"]');
+  wcd.add = await waitFor(p, () => document.getElementById('workerDocOverlay').classList.contains('open') && !!document.querySelector('#workerDocModal [data-testid="doc-upload"]'), 5000);
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => { o.__returnTo = null; closeModal(o.id); }); }); await sleep(300);
+  ok(wcd.topRight && wcd.vacationOn && wcd.pills && wcd.flipOff && wcd.offShown && wcd.flipOn,
+    'worker card: one Active ↔ Inactive switch at the top right — a stored vacation shows on and stays, a flip sets Inactive, again Active ' + JSON.stringify(wcd));
+  ok(wcd.noMonth && wcd.supplier === 'Supplier —' && wcd.hr === 'HR —' && wcd.address.join('|') === 'Address|Haifa|Herzl 5'
+    && wcd.order === 'id,clients,hr,supplier,start,shift,address,income,docs-status,hours-sent' && wcd.equal && wcd.pairs && wcd.docsWide && wcd.saved
+    && wcd.hrUnknown === 'HR|Assigned' && wcd.noCity === 'Address|Herzl 5',
+    'worker card: no month\'s hours at the top; the boxes in equal pairs (ID | Clients, HR | Supplier — "—" when none, an HR not known to the login "Assigned", Start date | Shift today, Address city over street, the street alone on the first line without a city | Income, Documents | Hours sent); the documents box across both with + Add; Saved at the bottom left, Edit and ⋮ at the right ' + JSON.stringify(wcd));
+  ok(/Upload hours/.test(wcd.menu) && /Export hours/.test(wcd.menu) && /Download data/.test(wcd.menu) && !/Add document/.test(wcd.menu) && wcd.add,
+    'worker card: the hours actions under ⋮; + Add in the documents box opens Add document ' + JSON.stringify({menu: wcd.menu, add: wcd.add}));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), r = {};
@@ -2569,18 +2663,24 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(wa.phones === '972501234567,972501234567,972501234567,' && /^https:\/\/wa\.me\/972527654321\?text=Hi .+, you have not punched in today \(shift 00:01 · /.test(wa.defLink), 'WhatsApp: the phone in international form, the default message ' + JSON.stringify(wa));
   ok(wa.field && wa.saved === 'Hello {first name}, shift at {start} · {site}' && wa.bellActs === 'Call,WhatsApp' && wa.sheetBtn && /^https:\/\/wa\.me\/972527654321\?text=Hello \S+, shift at 00:01 · /.test(wa.link),
     'WhatsApp: the firm template saved in the firm form; Call + WhatsApp on a no-punch notice (bell and notices sheet) open wa.me with it ' + JSON.stringify(wa));
-  // Worker list header (the owner's fixed structure): "Workers N", glass New, ⋮; tabs Active / Vacation / Pending.
+  // Worker list header (owner, 2026-10-26): Workers lit in the menu (no breadcrumb), no Active / Vacation / Pending tabs (the filters do that),
+  // one create button — its main part scans a new worker, its menu also adds one by hand.
   const wh = await p.evaluate(async () => {
     const wait = ms => new Promise(res => setTimeout(res, ms));
     switchTab('workers'); await wait(50);
-    const crumb = () => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim();
-    const chips = () => [...document.querySelectorAll('#workersRoot [data-testid="workers-chips"] button')].map(b => b.dataset.key + ':' + b.innerText.trim()).join();
-    const tabs = () => [...document.querySelectorAll('#workersRoot #workersTabs button')], r = {tabs: tabs().map(b => b.textContent).join(), count: crumb()};
-    tabs()[1].click(); await wait(50); r.vac = chips() === 'status:On vacation' && tabs()[1].classList.contains('on'); r.crumbVac = crumb();
-    tabs()[1].click(); await wait(50); r.cleared = chips() === '' && !tabs().some(b => b.classList.contains('on'));
-    tabs()[2].click(); await wait(50); r.pending = chips() === 'docs:Documents incomplete'; tabs()[2].click(); await wait(50);
-    const scan = document.querySelector('#workersRoot [data-testid="workers-scan"]');
-    r.scan = !!scan && /Scan passport/.test(scan.textContent) && scan.classList.contains('og-btn') && !!document.querySelector('#workersRoot [data-testid="workers-new"].og-new');
+    const crumb = () => document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim();
+    const r = {count: crumb(), noTabs: !document.querySelector('#workersRoot #workersTabs') && !document.querySelector('#workersRoot .og-tabs')};
+    const main = document.querySelector('#workersRoot [data-testid="workers-create"] [data-testid="workers-new"]');
+    r.create = !!main && main.classList.contains('og-new') && main.innerText.trim() === 'New worker'
+      && !!document.querySelector('#workersRoot [data-testid="workers-create"] [data-testid="workers-new-more"]')
+      && !document.querySelector('#workersRoot [data-testid="workers-scan"]')
+      && document.querySelectorAll('#workersRoot [data-testid="workers-head"] .og-new').length === 2; // the button and its menu arrow, one button
+    // The main part runs the scan (startNewScan, stubbed here so no camera opens).
+    const keep = Object.getOwnPropertyDescriptor(window, 'startNewScan'); let scans = 0;
+    Object.defineProperty(window, 'startNewScan', {value: () => { scans++; }, configurable: true, writable: true});
+    main.click(); await wait(50);
+    Object.defineProperty(window, 'startNewScan', keep);
+    r.scan = scans === 1 && !document.getElementById('workerOverlay').classList.contains('open');
     // Filters: hidden until the button, its count, the open state kept on this device
     const fb = document.querySelector('#workersRoot [data-testid="workers-filters-btn"]');
     r.filtersHidden = !document.querySelector('#workersRoot [data-testid="workers-filters"]');
@@ -2589,8 +2689,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     fb.click(); await wait(50);
     return r;
   });
-  ok(wh.tabs === 'Active,Vacation,Pending' && /^Workers \d+$/.test(wh.count) && wh.vac && /^Workers \d+ Vacation$/.test(wh.crumbVac) && wh.cleared && wh.pending && wh.scan && wh.filtersHidden && wh.filtersOpen,
-    'workers: the breadcrumb "Workers N › <tab>", New and a glass Scan passport, tabs Active / Vacation / Pending set the filters (a chip each), the Filters open on their button ' + JSON.stringify(wh));
+  // The menu: Scan passport and Enter by hand — the second opens the worker window, empty.
+  await p.click('#workersRoot [data-testid="workers-new-more"]'); await p.waitForSelector('[role="menuitem"]');
+  wh.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
+  await p.click('[role="menuitem"]:has-text("Enter by hand")');
+  wh.byHand = await waitFor(p, () => document.getElementById('workerOverlay').classList.contains('open'), 3000);
+  await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); }); await sleep(200);
+  ok(wh.count === 'Workers' && wh.noTabs && wh.create && wh.scan && wh.menu === 'Scan passport,Enter by hand' && wh.byHand && wh.filtersHidden && wh.filtersOpen,
+    'workers: Workers lit in the menu (no breadcrumb), no status tabs, one create button (New worker scans; its menu: Scan passport, Enter by hand — the worker window), the Filters open on their button ' + JSON.stringify(wh));
   // Workers filters (stage 6c-1): a filter picked in its select shows as a chip; Group by client draws a section per
   // site; the list view is a table on a computer — a tap on a row opens the worker card.
   await p.evaluate(() => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-filters-btn"]').click(); });
@@ -2648,7 +2754,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     root.querySelector('[data-testid=acc-later]').click(); await wait(400); r.back = period() === p0 && accPeriod === 'week';
     return r;
   });
-  ok(ac.inNav && ac.figs === 'Hours,Payroll,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.salSelect && ac.salBar && ac.salRows && ac.selOff && ac.stepped && ac.back, 'accounting: period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window; Select exports the ticked worker ' + JSON.stringify(ac));
+  ok(ac.inNav && ac.figs === 'Pay,Travel ₪,Total Pay,To approve' && ac.tabs === 'salary,billing,approvals,alerts' && ac.salaryTab && ac.billingTab && ac.approvalsTab && ac.alertsTab && /pay/.test(ac.secs) && ac.tabN && ac.opensPay && ac.salSelect && ac.salBar && ac.salRows && ac.selOff && ac.stepped && ac.back, 'accounting: period ‹ select ›, figures, Salary / Billing / Approvals / Alerts tabs show their sections; Alerts in sections with a count, a tap opens the pay window; Select exports the ticked worker ' + JSON.stringify(ac));
   // Worker photos are gone (owner 2026-10-13): an old avatarB64 is dropped after a load and never saved again.
   const ph = await p.evaluate(() => { const w = workers[0]; w.avatarB64 = 'AAAA'; const r = {dropped: dropWorkerPhotos(), gone: !('avatarB64' in w), again: dropWorkerPhotos()}; return r; });
   ok(ph.dropped && ph.gone && !ph.again, 'workers: an old photo is dropped from the record (dropWorkerPhotos) ' + JSON.stringify(ph));
@@ -2664,6 +2770,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     bell().click(); await wait(100);
     const items = [...document.querySelectorAll('#bellPanel .og-ni')];
     r.item = items.some(b => /ID \/ passport expired/.test(b.textContent) && /Dana/.test(b.textContent) && b.classList.contains('new'));
+    { const bp = document.getElementById('bellPanel'), cs = getComputedStyle(bp), tl = getComputedStyle(bp, '::before'), root = getComputedStyle(document.documentElement);
+      const rgb = v => { const d = document.createElement('i'); d.style.color = v; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; };
+      r.glass = /gradient/.test(cs.backgroundImage) && cs.borderTopColor === rgb(root.getPropertyValue('--glass-edge').trim())
+        && tl.backgroundColor === rgb(root.getPropertyValue('--plate-top').trim()) && tl.borderTopColor === cs.borderTopColor; }
     document.querySelector('#bellPanel .og-npop-all').click(); await wait(800);
     r.after = count(); r.noNew = !document.querySelector('#bellPanel .og-ni.new');
     __notifRead = new Set(); __notifReadLoaded = false; await loadNotifReads(); r.kept = count();
@@ -2674,6 +2784,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(/^Good (morning|afternoon|evening|night)/.test(nt.greet) && nt.icon, 'today: the greeting by time of day with its icon ' + JSON.stringify(nt));
   ok(await waitFor(p, () => { const g = document.querySelector('[data-testid=shell-greeting]'); return !!g && /14°/.test(g.textContent) && !!g.querySelector('svg.gic .drop'); }), 'today: the greeting shows the weather at the firm\'s main site — the rain icon and 14°');
+  ok(nt.glass, 'notifications: the bell\'s list in the windows\' glass and edge, its tail in the same fill and edge ' + JSON.stringify(nt));
   ok(nt.bell && nt.before >= 1 && nt.item && nt.after === 0 && nt.noNew && nt.kept === 0 && nt.opens, 'notifications: the bell counts, the panel lists the expired ID as new, Mark all read is kept on the account, a tap opens the worker\'s notices ' + JSON.stringify(nt));
   // Worker card: a click only reads; a double click, a long touch or its ✎ opens the edit form;
   // closing it (a tap outside saves it) brings the card back.
@@ -2719,6 +2830,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {short, long, locked: getComputedStyle(document.body).overflow};
   });
   ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  const phc = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), w = workers[1], keep = w.notes;
+    w.notes = Array(40).fill('a long note line').join('\n');
+    openWorkerCard(1); await wait(500);
+    const m = document.getElementById('workerCardModal'), body = m.querySelector('[data-testid="card-body"]'), bar = m.querySelector('[data-testid="card-actions"]');
+    const k = [...m.querySelectorAll('[data-testid="card-info"] > [data-kv]')].map(x => x.getBoundingClientRect());
+    const mr = m.getBoundingClientRect(), b0 = bar.getBoundingClientRect();
+    const r = {pairs: k.length >= 2 && Math.abs(k[0].top - k[1].top) < 2 && k[1].left >= k[0].right, sheet: Math.abs(mr.bottom - innerHeight) < 2 && mr.width > innerWidth - 2,
+      scrolls: body.scrollHeight > body.clientHeight, barAtBottom: b0.bottom <= mr.bottom + 1 && b0.bottom > mr.bottom - 30,
+      sign: m.querySelector('[data-testid="card-sign"]').innerText.trim(), saved: /^Saved: /.test(m.querySelector('[data-testid="card-saved"]').textContent.trim())};
+    body.scrollTop = 100000; await wait(100);
+    r.barStays = Math.abs(bar.getBoundingClientRect().top - b0.top) < 1 && body.scrollTop > 0;
+    closeModal('workerCardOverlay'); w.notes = keep; render(); await wait(200);
+    return r;
+  });
+  ok(phc.pairs && phc.sheet && phc.scrolls && phc.barAtBottom && phc.barStays && phc.sign === 'To sign' && phc.saved,
+    'phone: the worker card is the bottom sheet, its fields still in pairs, "To sign"; the bottom bar (Saved, Edit, ⋮) stays at the bottom while the middle scrolls ' + JSON.stringify(phc));
   await p.setViewportSize({width: 1280, height: 900}); await sleep(300);
   // Any window opened from the worker card goes back to it: Pay → tap outside → the card again.
   await p.evaluate(() => openWorkerCard(1)); await sleep(300);
@@ -2730,7 +2858,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(pay1.pay && !pay1.card && !pay2.pay && pay2.card, 'back: closing Pay opened from the worker card shows the card again ' + JSON.stringify({pay1, pay2}));
   await p.mouse.click(5, 450); await sleep(400);
   // The Clients and Suppliers tabs are React (stage 6d, src/manager/Clients.tsx): a client plate's single click
-  // or double click opens its window (no card to read first); the breadcrumb counts them; no side panel.
+  // or double click opens its window (no card to read first); no breadcrumb; no side panel.
   await p.evaluate(() => switchTab('clients')); await sleep(400);
   await p.click('#clientsRoot [data-testid="client-plate"] [data-testid="client-name"] >> nth=0'); await sleep(500);
   const cl1 = await p.evaluate(() => document.getElementById('clientOverlay').classList.contains('open') && !!document.querySelector('#clientModal [data-testid="client-editor"]'));
@@ -2740,7 +2868,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(cl1 && cl2, 'clients: a single click or a double click opens the editor ' + JSON.stringify({cl1, cl2}));
   await p.evaluate(() => closeModal('clientOverlay')); await sleep(200);
   // Plates: notices, ⋮ (Edit, Manual punch, Delete), Delete → Undo, Select → Delete after 5 s; supplier plates.
-  const crumbNow = () => p.evaluate(() => document.querySelector('[data-testid=shell-crumb]').innerText.replace(/\s+/g, ' ').trim());
+  const crumbNow = () => p.evaluate(() => document.querySelector('[data-testid=shell-crumb]') ? 'crumb' : (document.querySelector('[data-testid=shell-menu] button[aria-current=page] > span:last-child') || {}).innerText?.trim());
   await p.evaluate(() => { clients.push({id:'ctmp', name:'Temp Client', color:'#60a5fa'}); switchTab('clients'); renderClientsPage(); });
   const ctmp = '#clientsRoot [data-testid="client-plate"][data-cid="ctmp"]';
   await p.waitForSelector(ctmp);
@@ -2770,9 +2898,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('#suppliersRoot [data-testid="supplier-plate"] [data-testid="supplier-name"] >> nth=0'); await sleep(400);
   cpl.supWindow = await p.evaluate(() => document.getElementById('supplierOverlay').classList.contains('open') && !!document.querySelector('#supplierModal [data-testid="supplier-editor"]'));
   await p.evaluate(() => { closeModal('supplierOverlay'); switchTab('clients'); }); await sleep(200);
-  ok(cpl.noRate && /^Clients \d+$/.test(cpl.crumb) && /^Suppliers \d+$/.test(cpl.crumbS) && cpl.sidebar && cpl.old && cpl.menu === 'Edit,Manual punch,Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.noWindow && cpl.notYet && cpl.deleted
+  ok(cpl.noRate && cpl.crumb === 'Clients' && cpl.crumbS === 'Suppliers' && cpl.sidebar && cpl.old && cpl.menu === 'Edit,Manual punch,Delete' && cpl.pending && cpl.undone && cpl.sel === '1 selected' && cpl.noWindow && cpl.notYet && cpl.deleted
     && cpl.supplier && cpl.supMenu === 'Edit,Delete' && cpl.supWindow,
-    'clients / suppliers (React): plates with notices, the breadcrumb count, no side panel, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates open the supplier window ' + JSON.stringify(cpl));
+    'clients / suppliers (React): plates with notices, the section lit in the menu (no breadcrumb), no side panel, ⋮, Delete → Undo, Select → Delete after 5 s; supplier plates open the supplier window ' + JSON.stringify(cpl));
   // The client window: a tap outside saves it; an empty new client is not created; the rates block; manual punch from the window and back.
   const cs = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -2864,7 +2992,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (JSON.parse(r.request().postData() || '{}').action !== 'stats') return r.fallback();
     return r.fulfill({status:200, contentType:'application/json', headers:h, body: JSON.stringify({ok: true, due: false, edgesSince: 3, doctypesDue: false, doctypes: {},
       stats: {attemptsSince: 18}, attemptsSince: 18, attemptsAt: 15, attemptsDue: true,
-      passportsSince: 31, idCardsSince: 4, realNeeded: 30, passportsDue: true, idCardsDue: false})});
+      passportsSince: 31, idCardsSince: 4, realNeeded: 30, passportsDue: true, idCardsDue: false,
+      loop: {latest: {id: 'cyc-1', startedAt: new Date(Date.now() - 6 * 3600e3).toISOString(), finishedAt: new Date(Date.now() - 3600e3).toISOString(), state: 'published',
+        due: {edgesSince: 22}, models: {edges: {trained: true, verdict: 'yes', failed: [], examReport: null}}, version: 'v9', branch: 'scan-train/v9',
+        prUrl: 'https://github.com/Outstaff85/schedule-app/pull/400', notes: [], needsOwner: [], log: 'C:/w/loop/cyc-1.log'}, history: []}})});
   });
   await login(p, BASE + 'schedule-manager.html', 'boss', 'boss-pass-1');
   await p.waitForNavigation().catch(()=>{});
@@ -2874,6 +3005,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const readersBell = await p.evaluate(() => ({passports: notifList().some(n => /^scan-passports:/.test(n.id) && /31 real passports/.test(n.detail)),
     cards: notifList().some(n => /^scan-idcards:/.test(n.id))}));
   ok(readersBell.passports && !readersBell.cards, 'boss: the bell says "Enough real passports to train the passport zone reader" at 30 (passportsDue), and nothing for the ID cards under 30 ' + JSON.stringify(readersBell));
+  const loopBell = await p.evaluate(() => notifList().filter(n => /^scan-loop:/.test(n.id)).map(n => ({id: n.id, title: n.title, lvl: n.lvl})));
+  ok(loopBell.length === 1 && loopBell[0].id === 'scan-loop:cyc-1:published' && /New lab version v9 from the training loop — PR to merge/.test(loopBell[0].title) && loopBell[0].lvl === 'green',
+    'boss: the bell shows the training loop\'s latest report (scan_feedback stats "loop"): a new lab version with its PR to merge ' + JSON.stringify(loopBell));
   // The firms list (React, stage 6f-2): ✎ and a bare ⋮ (Edit, Disable, Delete last via Undo); Select; a tap opens the firm (below).
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -2942,6 +3076,34 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sum = await p.evaluate(() => [...document.querySelectorAll('#adminRoot [data-testid="payable-row"]')].map(r => r.innerText.replace(/\s+/g, ' ')).join(' | '));
   ok(/Firm Two Hours \(this week\): 2\.0h ₪200/.test(sum), 'summary: Firm Two pays 2h × its own client rate 100 = ₪200 ' + sum);
   ok(await p.evaluate(() => clients.length === 2 && clients[0].id === 'c1'), 'summary: the loaded firm\'s clients are back');
+  // From another firm, as a super-admin (owner, 2026-10-26): the worker is picked from a list — the other firms' workers
+  // with an ID / passport, a search on top (name or ID), five in view at a time — and fills the number sent.
+  await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
+  await p.evaluate(() => { switchTab('workers'); });
+  await p.click('#workersRoot [data-testid="workers-transfer"]');
+  await p.waitForSelector('[data-testid="transfer-pick"] #transferPick:not([disabled])', {timeout: 20000});
+  await p.click('#transferPick'); await p.waitForSelector('[cmdk-item]');
+  const tp = await p.evaluate(() => {
+    const list = document.querySelector('[cmdk-list]');
+    return {items: [...document.querySelectorAll('[cmdk-item]')].map(i => i.innerText.replace(/\s+/g, ' ').trim()).join('|'),
+      rows: list.style.maxHeight, search: !!document.querySelector('[cmdk-input]')};
+  });
+  await p.fill('[cmdk-input]', '0393'); await sleep(150);
+  tp.found = await p.evaluate(() => [...document.querySelectorAll('[cmdk-item]')].map(i => i.innerText.replace(/\s+/g, ' ').trim()).join('|'));
+  await p.fill('[cmdk-input]', 'nobody-here'); await sleep(150);
+  tp.none = await p.evaluate(() => document.querySelectorAll('[cmdk-item]').length === 0);
+  await p.fill('[cmdk-input]', 'Other'); await sleep(150);
+  await p.click('[cmdk-item]:has-text("Other")'); await sleep(150);
+  tp.number = await p.evaluate(() => document.getElementById('transferNo').value);
+  // the picker's list closes on the first Escape, the transfer window (a React Dialog) on the next ones
+  for (let i = 0; i < 4 && await p.evaluate(() => !!document.querySelector('[data-slot="dialog-overlay"], [cmdk-list]')); i++) {
+    await p.keyboard.press('Escape'); await sleep(300);
+  }
+  await p.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)));
+  tp.closed = await p.evaluate(() => !document.querySelector('[data-slot="dialog-overlay"]'));
+  await fetch('http://127.0.0.1:5055/transferCleanup', {method: 'POST'});
+  ok(/^Other Firm Two · 039337423$/.test(tp.items) && tp.rows === '190px' && tp.search && tp.found === tp.items && tp.none && tp.number === '039337423' && tp.closed,
+    'transfer (super-admin): the other firms\' workers in a list with a search (name / ID), five rows in view, a pick fills the number ' + JSON.stringify(tp));
   // Permission templates: the super-admin's Users section lists the one set of every firm; it creates and edits them.
   await p.evaluate(() => { switchTab('admin'); switchAdminPane('users'); });
   await p.waitForSelector('#adminRoot [data-testid="template-row"][data-tid="client"]');
@@ -3002,7 +3164,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     if (r.request().method() === 'OPTIONS') return r.fulfill({status:204, headers:SFCORS});
     const b = JSON.parse(r.request().postData() || '{}'); sfCalls.push(b);
     if (b.action === 'stats') return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, due: false, edgesSince: 42, doctypesDue: false,
-      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8, mrzShadowPassports: 4, mrzShadowRight: 3, mrzAiRight: 2, heShadowCards: 5, heShadowRight: 4, heAiRight: 3}})});
+      doctypes: {id_front: 30, id_back: 12, sefach: 20, passport: 8, contract: 5}, stats: {documents: 7, fieldsCorrected: 3, shadowPages: 10, shadowModelRight: 9, shadowHaikuRight: 8, mrzShadowPassports: 4, mrzShadowRight: 3, mrzAiRight: 2, heShadowCards: 5, heShadowRight: 4, heAiRight: 3},
+      loop: {latest: null, history: [
+        {id: 'cyc-2', startedAt: '2026-10-28T02:00:00Z', finishedAt: '2026-10-28T05:00:00Z', state: 'rejected', due: {}, version: null, branch: null, prUrl: null, notes: [], needsOwner: [], log: null,
+          models: {doctype: {trained: true, verdict: 'no', failed: ['turn exam under 98%'], examReport: null}}},
+        {id: 'cyc-1', startedAt: '2026-10-25T02:00:00Z', finishedAt: '2026-10-25T06:00:00Z', state: 'published', due: {}, version: 'v9', branch: 'scan-train/v9',
+          prUrl: 'https://github.com/Outstaff85/schedule-app/pull/400', notes: [], needsOwner: [], log: null,
+          models: {edges: {trained: true, verdict: 'yes', failed: [], examReport: null}}}]}})});
     if (b.action === 'setSettings') { if (b.doctypeMode) sfSet.doctypeMode = b.doctypeMode; Object.assign(sfSet.collect, b.collect || {}); }
     return r.fulfill({status:200, contentType:'application/json', headers:SFCORS, body: JSON.stringify({ok: true, ...sfSet})});
   });
@@ -3015,7 +3183,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       shadow: root.querySelector('[data-testid="scan-shadow"]').textContent,
       mrz: root.querySelector('[data-testid="scan-mrz"]').textContent,
       he: root.querySelector('[data-testid="scan-he"]').textContent,
-      on: root.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state')};
+      on: root.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state'),
+      loop: [...root.querySelectorAll('[data-testid="scan-loop-row"]')].map(r => r.dataset.state + '|' + r.textContent + '|' + ((r.querySelector('[data-testid="scan-loop-pr"]') || {}).href || '')).join(' / ')};
   }));
   await p.screenshot({path: SP + '/scan-admin.png'});
   await p.click('#adminRoot [data-testid="scan-doctype-mode"] [data-v="mixed"]');
@@ -3028,6 +3197,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(sa.shown && sa.figs === '42/20,5/20,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && /5 ID cards/.test(sa.he) && /80%/.test(sa.he) && /60%/.test(sa.he) && sa.on === 'checked'
     && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
     'Admin → Scanner: the figures, the shadow, the passport zone reader\'s and the Hebrew field reader\'s shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
+  ok(/^rejected\|Not better — nothing published.*Document type: not better.*Document type: turn exam under 98%\| \/ published\|Published to the lab · v9.*Document edges: better.*Merge the pull request.*\|https:\/\/github\.com\/Outstaff85\/schedule-app\/pull\/400$/.test(sa.loop || ''),
+    'Admin → Scanner → Automatic training: the last cycles newest first — the state, the version, each model\'s verdict, the reason and the PR link ' + JSON.stringify(sa.loop));
   // Admin lists draw 10 rows at first (Errors, Timings), at phone and desktop sizes
   await p.evaluate(async () => {
     const items = [];

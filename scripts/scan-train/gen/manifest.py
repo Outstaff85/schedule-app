@@ -195,6 +195,8 @@ def write_run(folder, model, split, params, rows, manifest_sha):
             "counts": counts(rows), "manifestSha256": manifest_sha, "fingerprint": manifest_sha, "params": params}
     if params.get("focus"):   # gen build --focus: gen mine's multipliers and the weights they gave (also in params)
         info["focus"] = params["focus"]
+    if params.get("capture"):   # gen tune's / gen ablate's capture settings (gen/capture.py; also in params)
+        info["capture"] = {"settings": params["capture"], "from": params.get("tune")}
     (pathlib.Path(folder) / RUN).write_text(json.dumps(info, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
     return info
 

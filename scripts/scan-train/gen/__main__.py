@@ -22,6 +22,9 @@ verify, QA").
   python -m gen mine [--run PATH ...] [--real DIR] [--prev FILE] [--out DIR]   # exam mistakes → focus.json, hard/pool.jsonl, note.txt
   python -m gen build --model edges --focus DIR/focus.json ...   # the next made-up set drawn by gen mine's weights
   python -m gen status [--work DIR]             # each model's counters on this PC and the command to run next (read-only)
+  python -m gen bg fetch [--limit 40]           # more CC0 / public-domain background photos for the short categories (Openverse)
+  python -m gen tune                            # the capture settings a bounded step toward the real photos (gen/tune.json)
+  python -m gen ablate [--cycle ID] [--force]   # every 4th cycle: which effects help the real exam (gen/ablation.json)
 """
 import argparse
 import sys
@@ -53,7 +56,7 @@ def main(argv=None):
     sub.add_parser("build", help="a made-up set through the manifest: --model edges (scenes) | doctype | he (today's) | "
                    "doctype,mrz,he,face (the phone's own cuts) and the generator's options (scenes: --focus focus.json)")
     b = sub.add_parser("bg", help="the background bank (gen/backgrounds.py): add, check, split, pull, push")
-    b.add_argument("action", choices=("add", "check", "split", "pull", "push"))
+    b.add_argument("action", choices=("add", "check", "split", "pull", "push", "fetch"))
     b.add_argument("dir", nargs="?", help="add: the folder of photos (copied into <home>/backgrounds unless there)")
     b.add_argument("--category", default="auto", help="add: the photos' category, or auto (from a download's sources.json)")
     b.add_argument("--series", help="add: one surface shot again (its photos stay on one side)")
@@ -63,6 +66,7 @@ def main(argv=None):
     b.add_argument("--min-side", type=int, default=None, help="check: the long side at least (default 1600)")
     b.add_argument("--version", help="check: the edges models' version (default the lab's)")
     b.add_argument("--share", type=float, default=None, help="split: the exam's share of the surfaces (default 0.2)")
+    b.add_argument("--limit", type=int, default=None, help="fetch: photos fetched this run at most (default 40)")
     o = sub.add_parser("occluders", help="cut-outs laid over documents (PNG with alpha)")
     o.add_argument("action", choices=("add",))
     o.add_argument("dir")
@@ -122,7 +126,19 @@ def main(argv=None):
     mn.add_argument("--out", help="the folder (default <home>/mine)")
     st = sub.add_parser("status", help="each model's counters on this PC and the command to run next (read-only)")
     st.add_argument("--work", help="the work folder (default SCAN_TRAIN_HOME, else ~/.scan-train)")
+    sub.add_parser("tune", help="the capture settings moved a bounded step toward the real photos by the newest realism "
+                   "panel (<home>/gen/tune.json, read by the next training run's gen build)")
+    ab = sub.add_parser("ablate", help="every 4th cycle: a short training with and without each effect, kept only when it "
+                        "helps the real exam (<home>/gen/ablation.json)")
+    ab.add_argument("--cycle", help="the cycle's id (counted once; default the SCAN_TRAIN_CYCLE environment variable)")
+    ab.add_argument("--force", action="store_true", help="run now whatever the cadence")
     a = ap.parse_args(argv)
+    if a.command == "tune":
+        from .tune import main as tune_main
+        return tune_main()
+    if a.command == "ablate":
+        from .ablate import main as ablate_main
+        return ablate_main(a.cycle, a.force)
     if a.command == "mine":
         from .mine import mine
         mine(a.run, a.real, a.prev, a.out)
@@ -193,6 +209,12 @@ def bg(a):
         return 0
     if a.action == "push":
         gb.push()
+        return 0
+    if a.action == "fetch":
+        from . import bgfetch
+        got = bgfetch.fetch(limit=a.limit or bgfetch.PER_RUN)
+        print(f"fetched {sum(got['fetched'].values())} photos {json.dumps(got['fetched'])}; waiting to be pushed {got['waiting']}"
+              + ("; no network" if got["offline"] else "") + f"; still short {json.dumps(got['short'])}")
         return 0
     if a.action == "pull":
         for n, todo in gb.pull().items():

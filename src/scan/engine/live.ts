@@ -5,15 +5,17 @@
 //  - each frame is scaled to S×S on the GPU (createImageBitmap) and handed to the model's thread as is — no
 //    full-size copy in the page —, drawn through a small canvas where that is not possible; an answer that
 //    comes after a later frame's is dropped (seq), a late one is carried to now by the follow (since);
-//  - the answer goes through the sticky frame (steady.ts), then to the session (the status line, Auto);
+//  - the answer goes through the sticky frame (steady.ts), then to the session (the status line, Auto — which
+//    waits while a document the last shot took is still in front of the camera, steady.ts Taken);
 //  - on every camera frame the follow (Lucas–Kanade, track.ts) moves the frame between the model's answers
-//    (requestVideoFrameCallback, rAF where there is none); a jump or a drift starts the countdown again;
+//    (requestVideoFrameCallback, rAF where there is none); a jump or a drift starts the countdown again; the
+//    documents taken move with it;
 //  - every screen frame the drawn frame glides 0.35 of the way toward the latest answer.
 // No DOM of its own: the clock, the frame scaling and the follow come in (the tests give fakes).
 import { S } from './geometry';
 import type { LoadableEngine, DetectInput } from './engines';
 import type { ScanLog } from './log';
-import { Steady, isGreen, type SteadyAnswer } from './steady';
+import { Steady, Taken, isGreen, type SteadyAnswer } from './steady';
 import { Tracker, videoGrabber, type FollowStep } from './track';
 import { mkCanvas, type Drawable } from './upright';
 import type { VideoLike } from './camera';
@@ -113,6 +115,8 @@ export class Live {
   /** The latest answer (after the sticky frame): what a shot takes. */
   lastRes: SteadyAnswer | null = null;
   readonly steady: Steady;
+  /** The documents the last shot took (Auto waits while they are still in front of the camera). */
+  readonly taken: Taken;
   /** The follow on (the lab's tools can turn it off). */
   follow = true;
   /** The video on the screen while the camera is shown (null once it is put away). */
@@ -134,6 +138,7 @@ export class Live {
 
   constructor(private readonly hooks: LiveHooks, private readonly clock: SessionClock, readonly follower: Follower, private readonly bitmap: Bitmapper | null) {
     this.steady = new Steady(() => clock.now());
+    this.taken = new Taken(() => clock.now());
     this.bitmapOk = !!bitmap;
   }
 
@@ -157,7 +162,7 @@ export class Live {
 
   /** Everything learnt about the frame forgotten (a new way: no frame, no figures from the old one). */
   forget(): void {
-    this.target = this.shown = this.steady.smooth = this.lastRes = null; this.steady.steadySince = 0; this.follower.reset();
+    this.target = this.shown = this.steady.smooth = this.lastRes = null; this.steady.steadySince = 0; this.follower.reset(); this.taken.clear();
     this.times.length = this.frames.length = this.followTimes.length = this.followMs.length = 0;
     this.fig = { ...this.fig, modelMs: null, fps: null, conf: null, followFps: null, followMs: null };
     this.hooks.figures();
@@ -229,6 +234,7 @@ export class Live {
         if (this.lastRes && !this.lastRes.pts.some(p => !p)) this.lastRes = { ...this.lastRes, pts: r.apply(this.lastRes.pts as Quad) };
         // the phone or the document moved: not still (a tremble moves the stuck frame with it, the countdown goes on)
         this.steady.follow(r.apply, r.moved);
+        this.taken.follow(r.apply);
         const now = this.clock.now(), ft = this.followTimes, fm = this.followMs;
         ft.push(now); while (ft.length && now - ft[0] > 1000) ft.shift();
         fm.push(now - t); if (fm.length > 30) fm.shift();

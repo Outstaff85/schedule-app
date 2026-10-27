@@ -1,6 +1,8 @@
-// The full-screen scanner (docs/scan-plan.md → S9): the status line, always over the camera — what the scanner
-// is doing or what the user should do ("Finding the document…", "Hold still · 0.6 s", "2 documents found"),
-// worded from the session's status key (src/scan/status-text.ts). A spinner while it works, a coloured dot
+// The full-screen scanner (docs/scan-plan.md → S9): the status line, always over the camera at the top centre —
+// what the scanner is doing ("Finding the document…", "Hold still · 0.6 s", "2 documents found"), worded from
+// the session's status key (src/scan/status-text.ts), led by the type and the model's % of the page being worked
+// on while a shot or a pick is in work ("Passport 97% · Refining the corners…"; the owner's template 6). What
+// the person should do is the hint under the camera's frame (HintPill). A spinner while it works, a coloured dot
 // for found / move back / failed. It listens to the session's status events on its own and is drawn again
 // only when its words or its look change (the session says the status on every model answer).
 import * as React from 'react';
@@ -14,10 +16,12 @@ const DOT: Record<string, string> = { ok: 'bg-ok', warn: 'bg-warn', bad: 'bg-bad
 
 interface Said { key: string; words: string; tone: StatusTone }
 
-export function StatusPill({ session, text, className }: {
+export function StatusPill({ session, text, lead, className }: {
   session: ScanSessionLike;
   /** a text of the screen's own in place of the status (the models loading) */
   text?: string;
+  /** before the status: the type and % of the page being worked on */
+  lead?: string | null;
   className?: string;
 }) {
   const [said, setSaid] = React.useState<Said | null>(null);
@@ -29,7 +33,7 @@ export function StatusPill({ session, text, className }: {
     });
   }, [session]);
   const tone: StatusTone = text ? 'busy' : said ? said.tone : 'busy';
-  const words = text || (said ? said.words : tr('Preparing the scanner…'));
+  const words = text || (said ? (lead ? lead + ' · ' : '') + said.words : tr('Preparing the scanner…'));
   return (
     <div role="status" aria-live="polite" data-testid="scan-status" data-tone={tone} data-key={said?.key || ''}
       className={cn('og-glass-menu flex min-h-[36px] min-w-0 items-center gap-2 !rounded-full px-3.5 py-1.5 text-[14px] font-semibold', className)}>
