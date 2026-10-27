@@ -893,7 +893,8 @@ def _scan_stats(db, stats_ref):
 )
 def contract_templates(req: https_fn.Request) -> https_fn.Response:
     """Admin → Contract templates: {"action": "list" | "file" | "prepare" | "sample" | "save" |
-    "update" | "delete", …} from a manager login of the firm (contracts.run). No shared state per
+    "update" | "delete" | "seal" | "sealSave" | "sealDelete", …} from a manager login of the firm (contracts.run;
+    the firm's signature and stamp: seal.py). No shared state per
     request: the uploads of several files are sent at once (CLAUDE.md → Parallel AI calls)."""
     if req.method != "POST":
         return _json({"error": "POST only"}, 405)
