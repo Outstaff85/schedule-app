@@ -1575,6 +1575,124 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(so.detail === 'signature' && so.label === 'Sign' && so.window && so.noScanner,
     'notices: only the signature missing — Sign opens the worker window, not the scanner ' + JSON.stringify(so));
+  // The worker window's Documents section (docs/workers.md → Documents): the ID / Passport line shows only the ID's own
+  // problems (red expired or failed, amber missing or expiring, Upload for any of them — a 2-digit year counts too);
+  // the Form 101 line its own (Sign when only the signature is missing); every file of a multi-file document warns;
+  // the document lines page by 10.
+  const dsx = await p.evaluate(async () => {
+    const i = 1, w = workers[i]; window.__dsKeep = JSON.stringify(w);
+    const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return localYMD(d); };
+    const dmy = n => { const d = new Date(); d.setDate(d.getDate() + n); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); };
+    const full = {docId: w.docId || '123456782', docUrl: 'https://x/f.pdf', scanPages: [{fileId: 'tenants/tenant-one/workers/' + w.id + '/pages/p.jpg', kind: 'id_front', primary: true}],
+      docType: 'israeli_id', docExtraPages: 1, docHasSignature: true, docUploadFailed: false, docExpiry: '', docs: []};
+    const row = k => document.querySelector(`#workerModal [data-testid="editor-doc"][data-doc="${k}"]`);
+    const look = async more => {
+      document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); await T.tick(80);
+      Object.assign(w, JSON.parse(window.__dsKeep), full, more); openEditWorker(i);
+      await T.until(() => !!row('id'), 5000);
+      const id = row('id'), f = row('form101');
+      return id.dataset.color + (id.querySelector('[data-testid="editor-doc-upload"]') ? '+upload' : '') + ' / ' + f.dataset.color + (f.querySelector('[data-testid="editor-doc-sign"]') ? '+sign' : '');
+    };
+    const r = {};
+    r.ok = await look({});
+    r.expired = await look({docExpiry: dmy(-3)});
+    r.expiring = await look({docExpiry: dmy(20)});
+    r.twoDigit = await look({docExpiry: dmy(-3).slice(0, 6) + dmy(-3).slice(8)});
+    r.isoShort = parseDocDate('2027-2-1') && localYMD(parseDocDate('2027-2-1'));
+    r.failed = await look({docUploadFailed: true});
+    r.sig = await look({docHasSignature: false});
+    r.noF101 = await look({docUrl: ''});
+    const at = new Date().toISOString();
+    const visa = id => ({id, type: 'visa', name: id + '.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: at, expiry: day(-2)});
+    await look({docs: [visa('vfront'), visa('vback')]});
+    r.map = Object.keys(workerDocExpiryMap(w)).sort().join();
+    r.renews = document.querySelectorAll('#workerModal [data-testid="editor-doc-renew"]').length;
+    const other = n => ({id: 'o' + n, type: 'other', name: 'o' + n + '.pdf', fileId: 'f', url: 'u', mediaType: 'application/pdf', uploadedAt: at, expiry: ''});
+    await look({docs: Array.from({length: 13}, (_, n) => other(n))});
+    r.paged = document.querySelectorAll('#workerModal [data-testid="editor-doc"]').length - 2;
+    r.more = !!document.querySelector('#workerModal [data-sec="documents"] [data-slot="paged-more"]');
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    const k = JSON.parse(window.__dsKeep); Object.keys(w).forEach(x => delete w[x]); Object.assign(w, k); render();
+    return r;
+  });
+  const OK = 'var(--ok)', WARN = 'var(--warn)', BAD = 'var(--bad)';
+  ok(dsx.ok === OK + ' / ' + OK && dsx.expired === BAD + '+upload / ' + OK && dsx.expiring === WARN + '+upload / ' + OK && dsx.twoDigit === BAD + '+upload / ' + OK
+    && dsx.isoShort === '2027-02-01' && dsx.failed === BAD + '+upload / ' + OK && dsx.sig === OK + ' / ' + WARN + '+sign' && dsx.noF101 === OK + ' / ' + WARN
+    && dsx.map === 'vback,vfront' && dsx.renews === 2 && dsx.paged === 10 && dsx.more,
+    'worker window → Documents: the ID line red / amber with Upload for its own expiry, failure or gap (a 2-digit year read), the Form 101 line amber with Sign for the signature, '
+    + 'both files of a visa warn with Renew, the lines page by 10 ' + JSON.stringify(dsx));
+  // Renew opens Add document on the row's type; an upload from the worker window goes back to it (no card over it),
+  // its new document listed at once.
+  await p.evaluate(async () => {
+    const w = workers[1], at = new Date(Date.now() - 864e5).toISOString(), d = new Date(); d.setDate(d.getDate() - 2);
+    w.docs = [{id: 'vren', type: 'visa', name: 'old.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: at, expiry: localYMD(d)}]; render();
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openEditWorker(1);
+    await T.until(() => !!document.querySelector('#workerModal [data-testid="editor-doc-renew"]'), 5000);
+    document.querySelector('#workerModal [data-testid="editor-doc-renew"]').click();
+  });
+  await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
+  const rn = {type: await p.evaluate(() => document.getElementById('wdType').innerText.trim()), expiryField: await p.evaluate(() => !!document.getElementById('wdExpiry'))};
+  await p.setInputFiles('#wdFiles', {name: 'visa-new.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')});
+  await p.click('#wdSubmit');
+  rn.saved = await waitFor(p, () => (workers[1].docs || []).some(d => d.type === 'visa' && d.name === 'visa-new.pdf') && !document.getElementById('workerDocOverlay').classList.contains('open'), 20000);
+  await p.waitForTimeout(400);
+  Object.assign(rn, await p.evaluate(() => ({editor: document.getElementById('workerOverlay').classList.contains('open'), card: document.getElementById('workerCardOverlay').classList.contains('open'),
+    listed: [...document.querySelectorAll('#workerModal [data-testid="editor-doc"]')].some(x => /visa-new\.pdf/.test(x.textContent) || x.dataset.doc && workers[1].docs.some(d => String(d.id) === x.dataset.doc && d.name === 'visa-new.pdf')),
+    renews: document.querySelectorAll('#workerModal [data-testid="editor-doc-renew"]').length})));
+  // A partly failed upload retried (Upload again): every file of the window shares one upload time, so all count as the current document.
+  await p.evaluate(() => {
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    const B = ManagerBridge; window.__realUp = B.uploadWorkerFile; window.__upN = 0;
+    B.uploadWorkerFile = (body, prog) => (++window.__upN === 2 ? Promise.resolve({error: 'test failure'}) : window.__realUp(body, prog));
+    B.openDocUpload(workers[1].id, 'work_permit');
+  });
+  await p.waitForSelector('#workerDocModal [data-testid="doc-upload"]');
+  rn.permitType = await p.evaluate(() => document.getElementById('wdType').innerText.trim());
+  await p.setInputFiles('#wdFiles', [{name: 'wp-1.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')}, {name: 'wp-2.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n')}]);
+  await p.click('#wdSubmit');
+  rn.partFail = await waitFor(p, () => /failed/.test(document.getElementById('wdStatus').textContent) && !document.getElementById('wdSubmit').disabled, 20000);
+  await p.waitForTimeout(30);
+  await p.click('#wdSubmit');
+  rn.retried = await waitFor(p, () => !document.getElementById('workerDocOverlay').classList.contains('open'), 20000);
+  Object.assign(rn, await p.evaluate(() => {
+    ManagerBridge.uploadWorkerFile = window.__realUp;
+    const wp = (workers[1].docs || []).filter(d => d.type === 'work_permit');
+    const r = {permits: wp.map(d => d.name).sort().join(), times: new Set(wp.map(d => d.uploadedAt)).size};
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    const w = workers[1], k = JSON.parse(window.__dsKeep); Object.keys(w).forEach(x => delete w[x]); Object.assign(w, k); render(); autoSave();
+    return r;
+  }));
+  ok(rn.type === 'Visa' && rn.expiryField && rn.saved && rn.editor && !rn.card && rn.listed && rn.renews === 0
+    && rn.permitType === 'Work permit' && rn.partFail && rn.retried && rn.permits === 'wp-1.pdf,wp-2.pdf' && rn.times === 1,
+    'Documents: Renew opens Add document on the row\'s type; an upload from the worker window goes back to it, the new visa listed and the old one no longer warning; '
+    + 'a retried upload keeps one upload time ' + JSON.stringify(rn));
+  // A login without Edit workers: no worker window from Schedule (double click) or the bridge, no Upload / Renew / Add document in the notices.
+  const noEd = await p.evaluate(async () => {
+    const keep = JSON.stringify(getSession()), s = JSON.parse(keep), w = workers[1], keepW = JSON.stringify(w);
+    const d = new Date(); d.setDate(d.getDate() - 2);
+    w.docs = [{id: 'vperm', type: 'visa', name: 'v.jpg', fileId: 'f', url: 'u', mediaType: 'image/jpeg', uploadedAt: new Date().toISOString(), expiry: localYMD(d)}];
+    const dbl = async () => {
+      document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('schedule'); await T.tick(400);
+      const pl = document.querySelector('#scheduleRoot [data-testid="sched-worker"] .og-plate, [data-testid="sched-worker"] .og-plate');
+      if (!pl) return 'no plate';
+      pl.dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); await T.tick(300);
+      return document.getElementById('workerOverlay').classList.contains('open');
+    };
+    const r = {adminDbl: await dbl()};
+    saveSession(Object.assign({}, s, {role: 'staff', rights: ['today', 'schedule', 'workers', 'editSchedule']}));
+    r.staffDbl = await dbl();
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    ManagerBridge.editWorker(w.id); await T.tick(200);
+    r.bridge = document.getElementById('workerOverlay').classList.contains('open');
+    r.acts = workerNotices(w).filter(n => n.icon === 'ti-id-badge-2').map(n => !!n.act).join();
+    saveSession(JSON.parse(keep));
+    r.adminActs = workerNotices(w).filter(n => n.icon === 'ti-id-badge-2').map(n => n.act && n.act.label).join();
+    document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id));
+    workers[workers.indexOf(w)] = JSON.parse(keepW); switchTab('workers'); render();
+    return r;
+  });
+  ok(noEd.adminDbl === true && noEd.staffDbl === false && noEd.bridge === false && noEd.acts === 'false' && noEd.adminActs === 'Renew',
+    'no Edit workers: Schedule\'s double click and the bridge open no worker window, the notices offer no Renew ' + JSON.stringify(noEd));
   // Every growing list pages by 10; the next 10 come only when the user scrolls to the end
   for (const [w, h] of [[1280, 800], [390, 800]]) {
     await p.setViewportSize({width:w, height:h});

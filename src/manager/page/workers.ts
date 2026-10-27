@@ -17,7 +17,7 @@ import { form101Payload } from '../logic/form101';
 import { activeTenantProfile } from '../logic/admin';
 import { askSign } from '../SignWindow';
 import { loadXlsx, toMins } from '../logic/util';
-import { hasPermission } from '../logic/access';
+import { canChange, hasPermission } from '../logic/access';
 import { tr } from '../logic/i18n';
 import { autoSave } from '../data/store';
 import { API_URL } from '../data/api';
@@ -71,19 +71,20 @@ export function signedChanged(w?: any): boolean {
   return printHash(f,v,w.signedPrintMarks||null,!!w.signedPrintPay)!==w.signedPrint;
 }
 export function workerNotices(w?: any, today?: any){
-  const out: any=[], st=workerDocStatus(w), id=w.id, can=hasPermission('workers');
+  // the actions that change the worker (Upload, Renew, Add document, Sign, Extend): the same right as the card's (card().canEdit)
+  const out: any=[], st=workerDocStatus(w), id=w.id, can=hasPermission('workers')&&canChange('editWorkers');
   const idx=()=>workers.findIndex((x?: any)=>x.id===id);
   const go=(fn?: any)=>()=>{ closeModal('noticesOverlay'); fn(); };
   const days=(d?: any)=>Math.max(0,Math.ceil((d-new Date().setHours(0,0,0,0))/864e5));
   const rescan=can?{label:tr('Upload'), icon:'ti-scan', fn:go(()=>rescanFromWorkerCard(idx()))}:null;
-  const renew=can?{label:tr('Renew'), icon:'ti-refresh', fn:go(()=>openWorkerDocUpload(id))}:null;
   if(st.failed) out.push({lvl:'red', icon:'ti-cloud-off', word:tr('Upload failed'), title:tr('Upload failed'), detail:tr('Last upload to {0} failed',{0:DOC_STORE}), act:rescan});
   // the scanned contract could not be saved (saveScanContract): until a contract document is added
   if(w.contractUploadFailed) out.push({lvl:'red', icon:'ti-file-alert', word:tr('Contract'), title:tr('Contract not saved'), detail:tr('The scanned contract could not be saved — add it from Add document'),
     act:can?{label:tr('Add document'), icon:'ti-upload', fn:go(()=>openWorkerDocUpload(id))}:null});
   if(st.expiry){ const bad=st.expiry.level==='error'; out.push({lvl:bad?'red':'amber', icon:'ti-id', word:bad?tr('ID expired'):tr('ID {n}d',{n:days(st.expiry.date)}), title:tr('ID / Passport'), detail:st.expiry.text, act:rescan}); }
   st.docExpiries.forEach((x?: any)=>{ const bad=x.level==='error', label=tr(WORKER_DOC_TYPES[x.doc.type]||'Document');
-    out.push({lvl:bad?'red':'amber', icon:'ti-id-badge-2', word:bad?tr('{0} expired',{0:label}):tr('{0} {n}d',{0:label,n:days(x.date)}), title:label, detail:x.text, act:renew}); });
+    out.push({lvl:bad?'red':'amber', icon:'ti-id-badge-2', word:bad?tr('{0} expired',{0:label}):tr('{0} {n}d',{0:label,n:days(x.date)}), title:label, detail:x.text,
+      act:can?{label:tr('Renew'), icon:'ti-refresh', fn:go(()=>openWorkerDocUpload(id,x.doc.type))}:null}); });
   // only the signature missing: drawn in the worker window (Form 101 → its signature pad), not photographed
   const sigOnly=st.missing.length===1&&w.docHasSignature===false;
   if(st.missing.length) out.push({lvl:'amber', icon:'ti-file-alert', word:tr('Documents'), title:tr('Missing documents'), detail:st.missing.join(', '),
@@ -158,9 +159,11 @@ export function rescanFromWorkerCard(wi?: any){
 // tenants/<t>/workers/<id>/docs), listed on the worker card with their
 // expiry. Expiry reminders flow through workerDocStatus() (badges, the
 // "expiring" filter) and the Today tab's expiry cards.
-export function openWorkerDocUpload(workerId?: any){
+// `type`: the window's first type (Renew: the renewed document's); `fromEditor`: opened from the worker window,
+// which stays open under it — the upload closes back to it instead of opening the worker card.
+export function openWorkerDocUpload(workerId?: any, type?: any, fromEditor?: any){
   if(!workers.some((x?: any)=>x.id===workerId)||!island()) return;
-  island()!.openDocUpload(workerId);
+  island()!.openDocUpload(workerId, type||undefined, !!fromEditor);
   byId('workerDocOverlay').classList.add('open');
 }
 

@@ -30,6 +30,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { FieldRow } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { SignaturePad, type SignaturePadHandle } from '@/components/shared/signature-pad';
+import { PagedList } from '@/components/shared/paged-list';
 import type { Child, DayShift, EditorInfo, ManagerBridge, ScanHit, WorkerRecord } from './bridge';
 import { NoticeChipsAll, initials } from './worker-head';
 import { Line, TodayPin } from './pieces';
@@ -335,7 +336,16 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   const addClient = (id: string) => { if (id && !clientIds.includes(id)) setClientIds([...clientIds, id]); };
   const left = info.clients.filter(c => !clientIds.includes(c.id));
   const termDoc = currentContractDoc(w);
-  const docs = [...(w.docs || [])].sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
+  // the Documents section reads the stored record (a document added from here while the window is open shows at once)
+  const live = (editId && api.record(editId)) || w;
+  const docs = [...(live.docs || [])].sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
+  // the ID / Passport line: only the ID's own problems (its number, the scan, the ספח, its expiry, a failed upload) — red
+  // expired or failed, amber missing or expiring; Upload (a new scan) for any of them
+  const idColor = info.docFailed || info.docExpiryLevel === 'error' ? 'var(--bad)' : info.docIdMissing.length || info.docExpiryLevel === 'warn' ? 'var(--warn)' : 'var(--ok)';
+  const idUpload = !!(info.docIdMissing.length || info.docFailed || info.docExpiryText);
+  // the Form 101 line: its PDF (built on save) and the signature (drawn in this window's Form 101 section — Sign opens it)
+  const sigMissing = info.docF101Missing.length > 0 && !!live.docUrl;
+  const openForm101 = () => { setOpen(o => (o.includes('form101') ? o : [...o, 'form101'])); requestAnimationFrame(() => document.querySelector('#workerModal [data-sec="form101"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); };
 
   return (
     <div data-testid="worker-editor" data-edit={editId || ''} className="grid gap-2">
@@ -479,15 +489,17 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
           </AccordionTrigger>
           <AccordionContent {...body('documents')} className="grid gap-1.5">
             {editing ? <>
-              <DocLine color={info.docMissing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconId />} title={tr('ID / Passport')} sub={info.docExpiryText || v.docId}
-                act={info.docMissing.length || info.docFailed ? <Button size="sm" onClick={() => api.rescan()}>{tr('Upload')}</Button> : null} />
-              <DocLine color={w.docUrl ? 'var(--ok)' : 'var(--warn)'} icon={<IconFileText />} title={tr('Form 101')} sub={w.docUrl ? tr('Saved') : tr('Not saved yet')} />
-              {docs.map(d => { const x = info.docExpiry[String(d.id)], cd = d.type === 'contract' ? contractDocDate(w, d) : null;
-                return <DocLine key={d.id} color={x ? (x.level === 'error' ? 'var(--bad)' : 'var(--warn)') : 'var(--ok)'} icon={d.type === 'contract' ? <IconFileCertificate /> : <IconIdBadge2 />}
+              <DocLine color={idColor} icon={<IconId />} title={tr('ID / Passport')} sub={info.docExpiryText || v.docId} doc="id"
+                act={idUpload ? <Button size="sm" data-testid="editor-doc-upload" onClick={() => api.rescan()}>{tr('Upload')}</Button> : null} />
+              <DocLine color={info.docF101Missing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconFileText />} title={tr('Form 101')} doc="form101"
+                sub={!live.docUrl ? tr('Not saved yet') : sigMissing ? tr('Saved — signature missing') : tr('Saved')}
+                act={sigMissing ? <Button size="sm" data-testid="editor-doc-sign" onClick={openForm101}>{tr('Sign')}</Button> : null} />
+              <PagedList items={docs} render={d => { const x = info.docExpiry[String(d.id)], cd = d.type === 'contract' ? contractDocDate(live, d) : null;
+                return <DocLine key={d.id} className="mb-1.5" doc={String(d.id)} color={x ? (x.level === 'error' ? 'var(--bad)' : 'var(--warn)') : 'var(--ok)'} icon={d.type === 'contract' ? <IconFileCertificate /> : <IconIdBadge2 />}
                   title={tr(WORKER_DOC_TYPES[d.type] || 'Document')} sub={x ? x.text : d.type === 'contract' ? (cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : d.name || '')
                     : d.expiry ? tr('Expires {0}', { 0: fmtDMY(d.expiry) }) : d.name || ''}
-                  act={x ? <Button size="sm" onClick={() => api.openDocUpload(w.id)}>{tr('Renew')}</Button> : null} />; })}
-              <Button className="mt-1 justify-self-start" onClick={() => api.openDocUpload(w.id)}><IconUpload className="size-4" />{tr('Add document')}</Button>
+                  act={x ? <Button size="sm" data-testid="editor-doc-renew" onClick={() => api.openDocUpload(w.id, d.type, true)}>{tr('Renew')}</Button> : null} />; }} />
+              <Button className="mt-1 justify-self-start" data-testid="editor-doc-add" onClick={() => api.openDocUpload(w.id, undefined, true)}><IconUpload className="size-4" />{tr('Add document')}</Button>
             </> : <div className="text-[13px] text-ink-2">{tr('Documents are added on the worker card after the worker is saved.')}</div>}
           </AccordionContent>
         </AccordionItem>
@@ -571,9 +583,9 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   );
 }
 
-function DocLine({ color, icon, title, sub, act }: { color: string; icon: React.ReactNode; title: string; sub?: string; act?: React.ReactNode }) {
+function DocLine({ color, icon, title, sub, act, doc, className }: { color: string; icon: React.ReactNode; title: string; sub?: string; act?: React.ReactNode; doc?: string; className?: string }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-[12px] bg-white/[.04] px-3 py-2" style={{ boxShadow: `inset 3px 0 0 ${color}` }} data-testid="editor-doc">
+    <div className={cn('flex items-center gap-2.5 rounded-[12px] bg-white/[.04] px-3 py-2', className)} style={{ boxShadow: `inset 3px 0 0 ${color}` }} data-testid="editor-doc" data-doc={doc} data-color={color}>
       <span className="grid size-[30px] shrink-0 place-items-center rounded-[10px] [&_svg]:size-[17px]" style={{ color, background: `color-mix(in srgb, ${color} 16%, transparent)` }}>{icon}</span>
       <div className="min-w-0 flex-1"><b className="block text-sm font-semibold">{title}</b><small className="block truncate text-xs text-ink-2">{sub}</small></div>
       {act}
