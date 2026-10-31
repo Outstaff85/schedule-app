@@ -48,7 +48,7 @@ export function Section({ label, count, folded, onFold, tools, children, classNa
  * under it; four in a row on a phone too); with `onPick` a figure is a filter
  * and the picked one carries the highlight line. A zero stays readable (ink-2).
  * `strip`: one glass plate, the figures side by side in one line, the numbers sized to fit and each column as wide
- * as its figure, so a long sum takes what a short one leaves (owner, 2026-10-31: Accounting's sums were cut off in the tiles).
+ * as its figure: a sum is never squeezed, only a label gives way (`truncate`), so a long sum takes what a short one leaves (owner, 2026-10-31: Accounting's sums were cut off in the tiles).
  */
 export function Figures({ items, active, onPick, className, strip }: {
   items: { key: string; label: React.ReactNode; value: React.ReactNode; color?: string }[];
@@ -66,7 +66,7 @@ export function Figures({ items, active, onPick, className, strip }: {
           disabled={!onPick}
           onClick={() => onPick?.(f.key)}
           aria-pressed={onPick ? active === f.key : undefined}
-          className={cn('relative grid min-w-0 gap-0.5 px-2 text-left disabled:cursor-default', i > 0 && 'border-l border-white/12', onPick && 'hover:bg-white/10')}
+          className={cn('relative grid gap-0.5 px-2 text-left disabled:cursor-default', i > 0 && 'border-l border-white/12', onPick && 'hover:bg-white/10')}
         >
           <b className="whitespace-nowrap text-[clamp(13px,3.7vw,20px)] font-semibold leading-tight tabular-nums" style={{ color: f.color || 'var(--fig)' }}>{f.value}</b>
           <span className="truncate text-[11px] text-ink-2 min-[701px]:text-[13px]">{f.label}</span>
