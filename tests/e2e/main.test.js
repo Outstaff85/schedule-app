@@ -2009,10 +2009,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const counted = t => { w.docs = [{id: 'dx', type: 'contract', name: 'c', uploadedAt: '2026-01-01T00:00:00.000Z', ...t}]; return workerDocStatus(w).missing.length; };
     r.signed = counted({signed: true}); r.added = counted({}); r.noDate = counted({uploadedAt: ''});
     w.docs = [];
+    // a saved Form 101 with no signature and no contract: Sign, as with the signature alone; the Missing line names both
+    Object.assign(w, {docHasSignature: false});
+    const n2 = workerNotices(w).find(x => x.title === 'Missing documents');
+    r.both = {act: n2 && n2.act && n2.act.label, detail: n2 && n2.detail};
     Object.keys(w).forEach(k => delete w[k]); Object.assign(w, JSON.parse(keep));
     return r;
   });
-  ok(ctMiss.missing === 'contract' && ctMiss.level === 'warn' && /Missing: contract/.test(ctMiss.line) && ctMiss.act === 'Add document' && ctMiss.signed === 0 && ctMiss.added === 0 && ctMiss.noDate === 0,
+  ok(ctMiss.missing === 'contract' && ctMiss.level === 'warn' && /Missing: contract/.test(ctMiss.line) && ctMiss.act === 'Add document' && ctMiss.signed === 0 && ctMiss.added === 0 && ctMiss.noDate === 0
+    && ctMiss.both.act === 'Sign' && /signature/.test(ctMiss.both.detail) && /contract/.test(ctMiss.both.detail),
     'documents: with a default contract template a worker with no contract shows Missing: contract, its notice opens Add document; any contract ends it ' + JSON.stringify(ctMiss));
   // A signature whose documents could not be saved (docs/contracts.md → Signing): the worker's page never says Signed, retries by
   // itself once and by Try again; the manager's card says Not saved, with the reason, Try again and Withdraw.

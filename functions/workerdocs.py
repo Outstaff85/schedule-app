@@ -173,10 +173,10 @@ def _pages_of(w, reader):
 
 
 def _clean_form101(p):
-    """The values the app sent, without what the server decides itself: no signature, no pages, no signing date."""
+    """The values the app sent, without what the server decides itself: no signature, no pages, no signing date, no builder."""
     if not isinstance(p, dict):
         return None
-    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear")}
+    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear", "sheetLang", "builder")}
     import json
     return out if len(json.dumps(out, default=str)) < 30000 else None
 

@@ -379,3 +379,16 @@ def test_another_document_s_caption_stays_hebrew():
     bucket.store[P + "docs/1-visa.pdf"] = OTHER  # a picture among the documents: a page of its own, captioned
     pages = _sheet_text(call(db, bucket, OWNER, {"docs": True}, lang="en"))
     assert any("\u0590" <= c <= "\u05ff" for c in "".join(pages[1:]))
+
+
+def test_a_caller_cannot_pick_the_builder_of_a_preview():
+    assert workerdocs._clean_form101({"given": "Avi", "builder": "b9", "sheetLang": "he"}) == {"given": "Avi"}
+    db, bucket = setup()
+    seen = []
+
+    def build(p, report=None):
+        seen.append(p)
+        return build101(p)
+
+    out = workerdocs.run(db, bucket, OWNER, {"action": "form101", "workerId": "w1", "form101": dict(F101, builder="b9", sheetLang="he")}, build)
+    assert out["pdf"] and "builder" not in seen[-1] and "sheetLang" not in seen[-1]

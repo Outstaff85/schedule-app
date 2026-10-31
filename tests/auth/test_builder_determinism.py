@@ -454,3 +454,8 @@ def test_the_sheet_s_words_are_the_dictionary_s():
 def test_russian_lives_only_in_its_dictionary():
     for path in (FN / "idsheet.py", FN / "builders" / "sheets_b2.py"):
         assert not any("\u0400" <= c <= "\u04ff" for c in path.read_text(encoding="utf-8"))
+
+
+def test_a_caller_cannot_pick_the_builder_of_the_stored_form(functions_main, monkeypatch):
+    r = _call(functions_main, dict(selftest.FORM, builder="b9", sheetLang="he"), monkeypatch)
+    assert r.status_code == 200 and set(json.loads(r.get_data())) == {"pdfBase64", "fileName"}

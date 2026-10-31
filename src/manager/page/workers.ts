@@ -85,8 +85,8 @@ export function workerNotices(w?: any, today?: any){
   st.docExpiries.forEach((x?: any)=>{ const bad=x.level==='error', label=tr(WORKER_DOC_TYPES[x.doc.type]||'Document');
     out.push({lvl:bad?'red':'amber', icon:'ti-id-badge-2', word:bad?tr('{0} expired',{0:label}):tr('{0} {n}d',{0:label,n:days(x.date)}), title:label, detail:x.text,
       act:can?{label:tr('Renew'), icon:'ti-refresh', fn:go(()=>openWorkerDocUpload(id,x.doc.type))}:null}); });
-  // only the signature missing: drawn in the worker window (Form 101 → its signature pad), not photographed
-  const sigOnly=st.missing.length===1&&w.docHasSignature===false;
+  // only the signature missing, a missing contract aside: drawn in the worker window (Form 101 → its signature pad), not photographed
+  const sigOnly=st.missing.length-(st.contractMissing?1:0)===1&&w.docHasSignature===false;
   // only the contract missing: added as a document, not photographed as the ID
   const contractOnly=st.missing.length===1&&st.contractMissing;
   if(st.missing.length) out.push({lvl:'amber', icon:'ti-file-alert', word:tr('Documents'), title:tr('Missing documents'), detail:st.missing.join(', '),
