@@ -47,8 +47,8 @@ export function LogsPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBridg
         <Button size="icon-sm" variant="ghost" data-testid="log-copy" title={tr('Copy all')} aria-label={tr('Copy all')} onClick={copyAll}><IconCopy className="size-4" /></Button>
         <Button size="icon-sm" variant="ghost" data-testid="log-print" title={tr('Print')} aria-label={tr('Print')} onClick={() => printPane(pane, firm, api)}><IconPrinter className="size-4" /></Button>
         <Button size="icon-sm" variant="ghost" data-testid="log-refresh" title={tr('Refresh')} aria-label={tr('Refresh')} onClick={() => void api.reloadLog(pane.kind)}><IconRefresh className="size-4" /></Button>
-        <Button size={isT ? 'sm' : 'icon-sm'} variant="ghost" className="!text-bad" data-testid="log-reset" title={tr('Reset: delete every error and measurement')} aria-label={tr('Reset: delete every error and measurement')} onClick={() => setReset(true)}>
-          <IconTrash className="size-4" />{isT && <span className="text-xs font-semibold">{tr('Reset')}</span>}
+        <Button size="icon-sm" variant="ghost" className="ml-auto !text-bad" data-testid="log-reset" title={tr('Reset: delete every error and measurement')} aria-label={tr('Reset: delete every error and measurement')} onClick={() => setReset(true)}>
+          <IconTrash className="size-4" />
         </Button>
       </div>
       {pane.rows === null
