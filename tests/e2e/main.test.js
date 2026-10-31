@@ -3534,9 +3534,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const row = () => document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-two"]');
-    const out = {pencil: !!row().querySelector('[data-testid="firm-edit"]'), select: !!document.querySelector('#firmsScreenRoot [data-testid="firms-select"] button'),
+    const out = {pencil: !row().querySelector('[data-testid="firm-edit"]'), select: !!document.querySelector('#firmsScreenRoot [data-testid="firms-select"] button'),
       incomplete: /profile incomplete/.test(row().innerText) === (firmProfileMissing(__firmsCache.find(t => t.tenantId === 'tenant-two')).length > 0)};
-    row().querySelector('[data-testid="firm-edit"]').click(); await wait(300);
+    window.ManagerBridge.openFirmWindow('edit', 'tenant-two'); await wait(300);
     const win = document.querySelector('#firmModal [data-testid="firm-window"]');
     out.edit = document.getElementById('editFirmOverlay').classList.contains('open') && !!win && win.dataset.mode === 'edit' && document.getElementById('fCompanyName').value === 'Firm Two' && !document.querySelector('#firmModal [data-testid="firm-wa"]');
     out.hebrew = /שם המעסיק/.test(win.innerText) && /מספר תיק ניכויים/.test(win.innerText);

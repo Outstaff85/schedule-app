@@ -10,7 +10,7 @@
 // shows its signature and stamp (FirmSeal.tsx), saved on their own.
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconRubberStamp, IconCash, IconCheck, IconLogout, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlus,
+  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconRubberStamp, IconCash, IconCheck, IconLogout, IconPlayerPause, IconPlayerPlay, IconPlus,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -109,7 +109,6 @@ function FirmsList({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
           <Plate key={t.tenantId} data-testid="firm-row" data-tid={t.tenantId} className={cn('mb-1.5', off && 'opacity-70')}
             color={off || t.missing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconBuildingSkyscraper />}
             title={t.companyName || tr('(no name)')} sub={<Line parts={[counts, ...flags]} />}
-            right={<Button size="icon-sm" variant="ghost" data-testid="firm-edit" title={tr('Edit')} aria-label={tr('Edit')} onClick={() => api.openFirmWindow('edit', t.tenantId)}><IconPencil className="size-4" /></Button>}
             onPointerDown={tap(t.tenantId).onPointerDown} onOpen={tap(t.tenantId).onOpen}
             onEdit={() => api.openFirmWindow('edit', t.tenantId)}
             actions={[{ label: off ? tr('Enable') : tr('Disable'), icon: off ? <IconPlayerPlay /> : <IconPlayerPause />, onSelect: () => void api.setFirmsActive([t.tenantId], off) }]}
