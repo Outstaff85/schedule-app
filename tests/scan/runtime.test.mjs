@@ -956,6 +956,15 @@ await run('a shape Auto will not take: its status, an amber tone, and what to do
   assert.equal(STT.sessionStatusTone(st), 'warn');
   assert.equal(hint(false), 'straight'); assert.equal(hint(true), 'closer');
   assert.equal(STT.hintText('straight'), 'Hold the phone straight over it, or tap the shutter');
+  // the document type model did not call it a document: said plainly, and a person takes it with the shutter
+  const typed = { key: 'not_document', type: true };
+  assert.equal(STT.sessionStatusText(typed), 'Not an ID, passport or contract — Auto waits');
+  assert.equal(STT.sessionStatusTone(typed), 'warn');
+  assert.equal(STT.sessionHint(typed, { small: false, mrzMissing: false }), 'shutter'); assert.equal(STT.sessionHint(typed, { small: true, mrzMissing: false }), 'shutter');
+  assert.equal(STT.hintText('shutter'), 'Another paper? Tap the shutter to take it');
+  assert.equal(STT.sessionStatusText({ key: 'checking' }), 'Checking it is a document…');
+  assert.equal(STT.sessionStatusTone({ key: 'checking' }), 'busy');
+  assert.equal(STT.sessionHint({ key: 'checking' }, { small: true, mrzMissing: false }), null);
 });
 
 fs.rmSync(TMP, { recursive: true, force: true });

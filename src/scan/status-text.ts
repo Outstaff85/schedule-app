@@ -45,7 +45,8 @@ export function sessionStatusText(s: SessionStatus): string {
     case 'edges_unclear': return tr('The edges are not clear');
     case 'hold': return tr('Hold still · {seconds} s', { seconds: s.seconds.toFixed(1) });
     case 'found': return s.count === 1 ? tr('1 document found') : tr('{count} documents found', { count: s.count });
-    case 'not_document': return tr('Not a document\'s shape — Auto waits');
+    case 'checking': return tr('Checking it is a document…');
+    case 'not_document': return s.type ? tr('Not an ID, passport or contract — Auto waits') : tr('Not a document\'s shape — Auto waits');
     case 'taken': return tr('Taken · waiting for the next document');
     case 'no_frame': return tr('No frame to capture yet');
     case 'captured': return tr('Captured in {ms} ms', { ms: Math.round(s.ms) });
@@ -72,7 +73,7 @@ export function sessionStatusTone(s: SessionStatus): StatusTone {
     case 'hold': case 'found': case 'taken': case 'picked': return 'ok';
     case 'corners_out': case 'edges_unclear': case 'not_document': case 'no_frame': return 'warn';
     case 'shot_failed': case 'stopped': case 'camera_failed': case 'pick_failed': case 'pick_open_failed': return 'bad';
-    case 'finding': case 'captured': case 'preparing_accurate': case 'refining': case 'looking_more': case 'picture_finding': case 'picture_cutting': return 'busy';
+    case 'finding': case 'checking': case 'captured': case 'preparing_accurate': case 'refining': case 'looking_more': case 'picture_finding': case 'picture_cutting': return 'busy';
     default: return 'plain';
   }
 }
@@ -81,8 +82,8 @@ export function sessionStatusTone(s: SessionStatus): StatusTone {
  *  out), more light, come a little closer (the document is small in the picture: its small text would be read
  *  badly), take the document just taken away (Auto waits for the next), keep the passport's two lines in the frame
  *  (the newest page is a passport whose zone was not found: take it again), hold the phone straight (Auto will not
- *  take this shape). */
-export type ScanHint = 'put_in' | 'move_back' | 'light' | 'closer' | 'next' | 'mrz' | 'straight';
+ *  take this shape), the shutter takes any other paper (Auto takes only the document types). */
+export type ScanHint = 'put_in' | 'move_back' | 'light' | 'closer' | 'next' | 'mrz' | 'straight' | 'shutter';
 
 /** A document smaller than this share of the picture is too far: "A little closer". */
 export const SMALL_DOC = 0.15;
@@ -96,7 +97,7 @@ export function sessionHint(s: SessionStatus | null, o: { small: boolean; mrzMis
     case 'corners_out': return 'move_back';
     case 'edges_unclear': return 'light';
     case 'hold': case 'found': return o.small ? 'closer' : null;
-    case 'not_document': return o.small ? 'closer' : 'straight';
+    case 'not_document': return s.type ? 'shutter' : o.small ? 'closer' : 'straight';
     case 'taken': return o.mrzMissing ? 'mrz' : 'next';
     default: return null;
   }
@@ -111,5 +112,6 @@ export function hintText(h: ScanHint): string {
     case 'next': return tr('Take it away and put the next document in');
     case 'mrz': return tr('Keep the two lines at the bottom in the frame — take it again');
     case 'straight': return tr('Hold the phone straight over it, or tap the shutter');
+    case 'shutter': return tr('Another paper? Tap the shutter to take it');
   }
 }

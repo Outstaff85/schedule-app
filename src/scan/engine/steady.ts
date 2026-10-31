@@ -13,6 +13,13 @@ export const HOLD = 0.04, MISS_MS = 600, DRIFT = 0.03, JERK = 0.02;
 /** Auto turns itself off after this many of its shots in a row with no touch (owner, 2026-10-31: pointed at a
  *  keyboard it went on shooting keys and the phone grew hot). */
 export const AUTO_MAX = 5;
+/** Auto asks the document type model once a frame, one question at a time: a frame it refused is asked about again only
+ *  once it moved LOOK_MOVE (the jump at which the sticky frame takes it for a new document; session.ts) or after
+ *  LOOK_AGAIN_MS (the same frame may read better on a new look), so a keyboard in front of the camera adds little heat. */
+export const LOOK_MOVE = MOVE * 3, LOOK_AGAIN_MS = 3000;
+/** Auto waits at most this long for readers still loading, then goes on without them (a first open downloads them;
+ *  a download that hangs must not stop Auto). */
+export const READERS_WAIT_MS = 20000;
 /** Auto's second counts while at least this share of the answers of the last STEADY_MS are the model's own: a lone
  *  blur or glare does not start it again (a real card under a lamp dips every 10–20 answers on a fast phone), a
  *  model that only flickers on something never gets there. */

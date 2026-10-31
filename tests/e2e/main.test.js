@@ -1134,6 +1134,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await A.flush();
     const r = {gone: await T.until(() => !document.querySelector('[data-testid="scan-queue"]'), 8000), waiting: (await A.queued()).length};
     T.esc(); await window.__queueGoing;
+    // really gone: the next check waits for a scanner on the screen, and the one closing here would answer it
+    await T.until(() => !document.querySelector('[data-testid="scanner"]'), 5000);
     return r;
   });
   ok(queue.shown && queue.waiting === 5 && online.gone && online.waiting === 0,
