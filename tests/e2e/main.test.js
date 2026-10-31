@@ -1386,8 +1386,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(cfail.notice && cfail.bar === 'var(--bad)' && cfail.cleared, 'scan contract not saved: a red notice on the worker until a contract document is added ' + JSON.stringify(cfail));
   // Field search: the card's missing rows and the modal's marked fields search the saved scan
-  const fs = await p.evaluate(async () => {
-    const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'SCAN', scanMediaType:'image/jpeg', sigPng:null, extraPages:[{b64:'SEF', mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
+  // real pictures: this worker signs later on, and a signed Form 101 is never built without a page it cannot place
+  const fs = await p.evaluate(async ({jpg, jpg2}) => {
+    const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:jpg, scanMediaType:'image/jpeg', sigPng:null, extraPages:[{b64:jpg2, mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
     const w = workers[0]; w.assetsFileId = a.id; w.docType = 'israeli_id'; w.city = ''; w.address = '';
     openWorkerCard(0);
     const rowsBefore = ['city','address'].map(k => !!document.getElementById('cardMiss_'+k));
@@ -1404,7 +1405,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.cleared = !T.scan('wAddress') && !T.hint('address');
     closeModal('workerOverlay');
     return r;
-  });
+  }, {jpg: JPG, jpg2: JPG2});
   await p.setViewportSize({width:420, height:900});
   await p.evaluate(() => { workers[0].city=''; workers[0].address=''; openWorkerCard(0); });
   await p.waitForTimeout(300);
