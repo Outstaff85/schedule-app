@@ -296,7 +296,7 @@ provideBridge({
   },
   clearDays(id?: any,period?: any){
     const w=workers.find((x?: any)=>x.id===id); if(!w || !canEditPay(w) || !w.dayOverrides) return;
-    const ov={...w.dayOverrides}; delete ov[salaryPeriodKey(period)];
+    const ov={...w.dayOverrides}; delete ov[salaryPeriodKey(period,undefined)];
     if(Object.keys(ov).length) w.dayOverrides=ov; else delete w.dayOverrides;
     autoSave(); render();
   },
