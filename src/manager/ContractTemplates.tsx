@@ -11,7 +11,7 @@
 // on a replace); the client window uploads a client's own template through the same window (`clientId`).
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX, IconRubberStamp,
+  IconAlertTriangle, IconBraces, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX, IconRubberStamp,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,7 @@ import { PagedList } from '@/components/shared/paged-list';
 import { undoDelete } from '@/components/shared/undo';
 import { Field } from './ClientEditor';
 import { readFileB64 } from './logic/uploads';
+import { MarksWindow } from './ContractMarks';
 import { FirmSealWindow } from './FirmSeal';
 import {
   MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, kindOf, listTemplates, marksNotFilled, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sealOn, sizeText,
@@ -80,6 +81,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   const kindFor = React.useRef<TemplateKind>('worker');
   const [pending, setPending] = React.useState<Pending[]>([]);
   const [seal, setSeal] = React.useState(false);
+  const [marks, setMarks] = React.useState(false);
   const [view, setView] = React.useState<TemplateKind>('worker');
   if (error && !list) return <p className="text-[13px] text-bad" data-testid="contracts-error">{tr(error)}</p>;
   if (!list) return <div className="grid gap-2" aria-busy="true" data-testid="contracts-loading">{[0, 1].map(i => <Skeleton key={i} className="h-[62px]" />)}</div>;
@@ -132,6 +134,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
           <ToggleGroupItem value="client" data-kind="client">{tr('Clients')} · {forClients.length}</ToggleGroupItem>
         </ToggleGroup>
         <span className="min-w-0 flex-1" />
+        <Button size="icon-sm" data-testid="contract-marks-open" aria-label={tr('Marks for a contract')} title={tr('Marks for a contract')} onClick={() => setMarks(true)}><IconBraces className="size-4" /></Button>
         <Button size="icon-sm" data-testid="contract-seal-open" aria-label={tr('Signature and stamp')} title={tr('Signature and stamp')} onClick={() => setSeal(true)}><IconRubberStamp className="size-4" /></Button>
         <Button variant="primary" size="icon-sm" className="og-new" data-testid={view === 'client' ? 'contract-new-client' : 'contract-new'} aria-label={tr('New template')} title={tr('New template')} onClick={() => pickFile(view)}><IconPlus className="size-4" /></Button>
       </div>
@@ -155,6 +158,7 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
       </div>
       {upload && <UploadWindow file={upload.file} replace={upload.replace} kind={upload.kind} categories={categories} api={api}
         onClose={() => setUpload(null)} onSaved={() => { setUpload(null); load(); }} />}
+      {marks && <MarksWindow toast={api.toast} onClose={() => setMarks(false)} />}
       {seal && <FirmSealWindow toast={api.toast} onClose={() => setSeal(false)} />}
       {edit && <EditWindow t={edit.t} what={edit.what} categories={categories} api={api} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
     </div>

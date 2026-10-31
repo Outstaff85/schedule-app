@@ -2299,6 +2299,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // login) — its details prefilled, one changed, the end of the contract, one signature → the signed PDF on the client and
   // its empty contact fields filled (never what the firm typed); Sign here in the window; a login without the right: no Send.
   const ccPdf = Buffer.from(await (await fetch('http://127.0.0.1:5055/clientContractPdf', {method: 'POST'})).arrayBuffer());
+  // Every mark is listed once, with what fills it: the list of the upload window's marks and this window are one set
+  await p.click('[data-testid="contract-marks-open"]');
+  await p.waitForSelector('[data-testid="contract-marks"]');
+  const ctMarks = await p.evaluate(() => [...document.querySelectorAll('[data-testid="contract-mark"]')].map(b => b.dataset.mark));
+  ok(ctMarks.length === 53 && new Set(ctMarks).size === 53 && ctMarks.includes('client_name') && ctMarks.includes('terms_5'), 'contract templates: the { } button lists every mark once ' + ctMarks.length);
+  await p.keyboard.press('Escape');
+  await waitFor(p, () => !document.querySelector('[data-testid="contract-marks"]'), 3000);
   await p.click('[data-testid="contracts-view"] [data-kind="client"]');
   const [ccChooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-testid="contract-new-client"]')]);
   await ccChooser.setFiles({name: 'Service agreement.pdf', mimeType: 'application/pdf', buffer: ccPdf});
