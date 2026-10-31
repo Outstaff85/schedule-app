@@ -132,11 +132,15 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
     <Plate key={w.id} data-testid="worker-plate" data-wid={w.id} className="mb-1.5"
       color={barColor(w)}
       title={<span title={w.name} data-testid="worker-name">{w.name}</span>}
-      chips={<><MoreChip n={w.notices.length - 1} onOpen={() => api.openNotices(w.id)} /><NewBadge createdAt={w.createdAt} /></>}
+      chips={<NewBadge createdAt={w.createdAt} />}
       sub={<>
-        {/* every plate keeps the chip row and the site line, empty or not: the plates stand the same height (owner, 2026-10-27) */}
+        {/* every plate keeps the chip row and the site line, empty or not: the plates stand the same height (owner,
+            2026-10-27). Two notices are shown, the others in +N (owner, 2026-10-31). */}
         {w.notices.length > 0
-          ? <span className="mb-0.5 mt-[3px] flex" data-testid="worker-chip1"><NoticeChip n={w.notices[0]} onOpen={() => api.openNotices(w.id)} /></span>
+          ? <span className="mb-0.5 mt-[3px] flex items-center gap-1" data-testid="worker-chip1">
+              {w.notices.slice(0, 2).map((n, i) => <NoticeChip key={i} n={n} onOpen={() => api.openNotices(w.id)} />)}
+              <MoreChip n={w.notices.length - 2} onOpen={() => api.openNotices(w.id)} />
+            </span>
           : <span className="invisible mb-0.5 mt-[3px] flex" aria-hidden data-testid="worker-chip-space"><Badge variant="warn"><IconAlertTriangle />—</Badge></span>}
         <span className="block min-h-[1lh]"><Line parts={[w.site, <TodayPin key="p" w={w} />]} /></span>
       </>}

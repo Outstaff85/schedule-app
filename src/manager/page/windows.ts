@@ -40,13 +40,18 @@ document.addEventListener('click',(e?: any)=>{
 // same code is in the manager app and both portals.
 (function(){
   let sw: any=null;
+  // a swipe that lost its end (below) puts the sheet back before anything else
+  const release=()=>{ if(sw&&sw.on){ sw.m.style.transform=''; sw.m.style.transition=''; } sw=null; };
   document.addEventListener('touchstart',(e?: any)=>{
-    sw=null;
+    release();
     if(!window.matchMedia('(max-width:700px)').matches||e.touches.length!==1) return;
     const m=e.target.closest&&e.target.closest('.overlay.open>.modal');
     if(!m||e.target.closest('input,textarea,select,canvas,.leaflet-container,.no-swipe')) return;
     for(let n=e.target;n&&n!==m.parentElement;n=n.parentElement){ if(n.scrollTop>0) return; }
     sw={m, x:e.touches[0].clientX, y:e.touches[0].clientY, dy:0, on:false};
+    // the end of a touch goes to the element it began on, even one drawn again meanwhile (the sheet's data changed):
+    // off the page it never reaches the document, and the sheet would stay half way down (owner, 2026-10-31)
+    e.target.addEventListener('touchend',end,{once:true}); e.target.addEventListener('touchcancel',end,{once:true});
   },{passive:true});
   document.addEventListener('touchmove',(e?: any)=>{
     if(!sw) return;

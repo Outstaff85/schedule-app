@@ -2871,7 +2871,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('workers'); render(); await wait(200);
     const plate = document.querySelector('#workersRoot [data-testid="worker-plate"][data-wid="w1"]'), r = {};
     const chip = plate.querySelector('[data-testid="worker-chip1"] [data-testid="notice-chip"]');
-    r.chip = chip && chip.dataset.lvl; r.more = !!plate.querySelector('[data-testid="notice-more"]'); r.bar = plate.querySelector('.og-plate').style.getPropertyValue('--bar');
+    r.chip = chip && chip.dataset.lvl; r.more = !plate.querySelector('[data-testid="notice-more"]') && plate.querySelectorAll('[data-testid="notice-chip"]').length === 2; r.bar = plate.querySelector('.og-plate').style.getPropertyValue('--bar');
     chip.click(); await wait(150);
     r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); r.notices = [...document.querySelectorAll('#noticesModal [data-testid="notice"] b')].map(b => b.textContent);
     r.head = document.querySelector('#noticesModal [data-testid="worker-head-name"]').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
@@ -3340,6 +3340,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Phone: a swipe down on a window closes it the same way as a tap outside; a short one does not.
   await p.setViewportSize({width: 390, height: 844});
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
+  // the element under the finger is drawn again in the middle of the swipe: its end still ends it, the window is not left half way
+  const swipeLost = await p.evaluate(async () => {
+    const m = document.getElementById('workerCardModal'), r = m.getBoundingClientRect(), x = r.left + 40, y = r.top + 20, c = document.createElement('div');
+    m.prepend(c);
+    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: c, clientX: x, clientY: y + dy}); c.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
+    t('touchstart', 0); for (let d = 10; d <= 50; d += 20) t('touchmove', d);
+    const down = m.style.transform; c.remove(); t('touchend', 50);
+    await new Promise(r => setTimeout(r, 300));
+    return {down, after: m.style.transform};
+  });
+  ok(/translateY/.test(swipeLost.down) && swipeLost.after === '', 'phone: a swipe whose element is drawn again leaves no window half way down ' + JSON.stringify(swipeLost));
   const swipe = await p.evaluate(async () => {
     const m = document.getElementById('workerCardModal'), r = m.getBoundingClientRect(), x = r.left + 40, y = r.top + 20;
     const t = (type, dy) => { const tp = new Touch({identifier: 1, target: m, clientX: x, clientY: y + dy}); m.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };

@@ -196,6 +196,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-acts svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}
 .og-plate{position:relative;display:flex;align-items:center;gap:var(--space-3);padding:11px 8px 11px var(--space-4);background-color:var(--plate);background-image:var(--plate-grad);border-radius:var(--radius-lg);box-shadow:inset 4px 0 0 var(--bar,var(--green)),var(--shadow-plate);transition:transform .28s var(--og-ease);touch-action:pan-y;cursor:pointer;user-select:none}
 .og-plate.drag{transition:none}
+.og-plate.plain{background:none;box-shadow:none;border-radius:0}
+.og-plate.plain::before,.og-plate.plain::after{display:none}
 .og-plate.on{background:var(--plate-on)}
 .og-kb{position:relative;width:32px;height:32px;border:0;border-radius:var(--radius-sm);background:none;color:var(--ink-2);font-size:18px;cursor:pointer}
 .og-kb::after{content:'';position:absolute;left:9px;right:9px;bottom:3px;height:3px;border-radius:2px;background:var(--og-uline);background-size:300% 100%;animation:og-flow 2.4s linear infinite;transform:scaleX(0);transition:transform .45s var(--og-spring)}
@@ -336,6 +338,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-bell::after{display:none}
 .og-bell i{font-size:23px}
 .og-bell svg{width:23px;height:23px}
+/* "+N" on a worker's line: the bell's number, pulsing */
+.og-more{flex:none;min-width:20px;height:20px;padding:0 5px;border:0;border-radius:999px;background:var(--bad);color:#fff;font:700 11px 'DM Sans',Arial,sans-serif;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}
 .og-bell.has-new i,.og-bell.has-new svg{animation:og-ring 4s ease-in-out infinite;transform-origin:50% 10%}
 @keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
 .og-bell-n{position:absolute;top:-4px;right:-4px;z-index:1;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}

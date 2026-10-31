@@ -130,13 +130,13 @@ function DocsBox({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
     const c = x ? (x.level === 'error' ? 'var(--red)' : 'var(--amber)') : 'var(--green)';
     // a contract has no expiry: its date is the day the contract term counts from (workerExpiryStatus)
     const cd = d.type === 'contract' ? contractDocDate(w, d) : null;
-    const exText = d.type === 'contract' ? (cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : '')
+    const exText = d.type === 'contract' ? (d.signed && cd ? tr('Signed {0}', { 0: cd.toLocaleDateString('en-GB') }) : cd ? tr('Contract date {0}', { 0: cd.toLocaleDateString('en-GB') }) : '')
       : d.expiry ? (x && x.level === 'error' ? tr('Expired {0}', { 0: fmtDMY(d.expiry) }) : tr('Expires {0}', { 0: fmtDMY(d.expiry) })) : tr('No expiry date');
     const Icon = d.type === 'contract' ? IconFileCertificate : d.type === 'other' ? IconFile : IconIdBadge2;
     return (
-      <Plate key={d.id} data-testid="worker-doc" data-doc={d.id} className="mb-1.5" size="sm" color={c} icon={<Icon />}
+      <Plate key={d.id} plain data-testid="worker-doc" data-doc={d.id} className="border-t border-white/10 first:border-t-0" size="sm" color={c} icon={<Icon />}
         title={tr(WORKER_DOC_TYPES[d.type] || 'Document')}
-        sub={<>{d.name || 'file'} · <span style={{ color: x ? c : undefined }}>{exText}</span></>}
+        sub={<span title={d.name} style={{ color: x ? c : undefined }}>{exText}</span>}
         actions={[{ label: tr('Open'), icon: <IconDownload />, onSelect: () => open(d) }]}
         onOpen={() => open(d)}
         onDelete={can ? () => remove([String(d.id)]) : undefined}
@@ -155,7 +155,7 @@ function DocsBox({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
           {can && docs.length > 0 && <SelectHead sel={sel} testid="docs-select" />}
         </div>
       </div>
-      {docs.length > 0 && <div className="mt-2" data-testid="worker-docs"><PagedList items={docs} render={plate} /></div>}
+      {docs.length > 0 && <div className="mt-2 overflow-hidden rounded-[12px] bg-white/[.04]" data-testid="worker-docs"><PagedList items={docs} render={plate} /></div>}
       <SelectBar sel={sel} onDelete={can ? remove : undefined} />
     </div>
   );

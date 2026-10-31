@@ -22,7 +22,7 @@ export function NoticeChip({ n, onOpen }: { n: Notice; onOpen: () => void }) {
 /** "+N" for the notices after the first; a tap opens the notices sheet. */
 export function MoreChip({ n, onOpen }: { n: number; onOpen: () => void }) {
   if (n < 1) return null;
-  return <Badge asChild><button type="button" data-testid="notice-more" onClick={e => { e.stopPropagation(); onOpen(); }}>+{n}</button></Badge>;
+  return <button type="button" className="og-more" data-testid="notice-more" onClick={e => { e.stopPropagation(); onOpen(); }}>+{n}</button>;
 }
 
 /** A notice chip (the first notice's word) and "+N"; a tap opens the notices sheet. */
