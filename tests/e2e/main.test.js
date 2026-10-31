@@ -4421,6 +4421,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       else { if (m === 'denied') localStorage.setItem('gpsPerm', 'denied'); err({code: m === 'off' ? 2 : 1, message: m}); }
     }, 900);
   };
+  // The first load on a phone with nothing kept: the punch screen's shape with the logo in the ring, then the page.
+  const gpo = await page(ctx);
+  await gpo.setViewportSize({width: 390, height: 844});
+  await gpo.addInitScript(() => {
+    localStorage.removeItem('punchWorkers_v1');
+    const f = window.fetch;
+    window.fetch = (u, o) => /\/punch(\?|$)/.test(String(u)) ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o);
+  });
+  await gpo.goto(BASE + 'worker-punch.html?t=tok-new');
+  const gpo1 = {shown: await waitFor(gpo, () => !!document.querySelector('[data-testid="punch-loading"] .pl-ring svg'), 4000)};
+  gpo1.text = await gpo.textContent('[data-testid="punch-loading"] .pl-step');
+  gpo1.gone = await waitFor(gpo, () => !document.querySelector('[data-testid="punch-loading"]') && !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  ok(gpo1.shown && /Checking your link/.test(gpo1.text) && gpo1.gone, 'punch: the first load shows the logo in its ring and a line of what is happening, then the page ' + JSON.stringify(gpo1));
+  await gpo.close();
   // Back from a sheet: a reading asked for earlier that answers late does not unlock the punch.
   const gpl = await page(ctx);
   await gpl.setViewportSize({width: 390, height: 844});
