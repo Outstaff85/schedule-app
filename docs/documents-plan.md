@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). S1 (the frozen builders) is built on the branch `docs-s1`, waiting for the owner's yes to merge. Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. Next: S3.
+Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). S1 (the frozen builders) is merged, and builder b2 (the attached sheet's language) follows it. Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. Next: S3.
 
 ## What and why
 
@@ -168,7 +168,8 @@ Keeping the files is the safe default, so this does not wait for Q2.
   - **The sheet's title** said "ID card and ספח" over an empty ספח box. Fixed in `idsheet.py` and `sheets_b1.py` before freezing.
   - **`extraPages` from the app carry no `kind`:** the stored unsigned form stays by position until S6 ends it. Only the signing sends kinds.
   - **Self-check:** `{ping, selftest}` covers Form 101, the contract and the sheet (eleven fixed inputs), once per instance. The deploy reaches it with no secret; the step cannot run before the first deploy, so its first real run is the merge of this stage.
-- Status: **built**, on the branch `docs-s1`; not merged.
+- Status: **done**, merged 2026-10-31.
+- **Builder b2 (owner, 2026-10-31): the attached sheet's words follow the language.** `sheets_b2.py` and `form101_b2.py` are new frozen files; b1 stays for what was signed with it. Download data and the preview take the viewer's language from the app (`lang`; none sent: English). A signed form takes the signer's: the page sends the language it showed the documents in, with `view` and `sign`, and `frozen {lang, builder}` holds it for every retry. A page or a signature with none stays on b1's Hebrew. Hebrew in b2 is b1's bytes exactly; b2's contract is `contract_b1.py`, unchanged, and the registry says so; a part names the version (`parts.form101.builder`). The words are a list in each file, held equal to `i18n/he.json` by a test, since a frozen builder must not read a dictionary that can change and `functions/` deploys without it. The summary page, the two form pages, the other documents' captions and the by-position English captions do not change.
 
 ### S2 — "Download data" with the picker and one A4 ID sheet (the owner's visible win, no data change)
 - **New HTTP function `worker_docs`** in `functions/main.py`:

@@ -4,6 +4,7 @@
 import { gsAuth } from '../data/session';
 import { loadFirestoreBackend } from '../data/api';
 import { WORKER_DOCS_FN_URL } from './functions';
+import { storedLanguage } from './i18n';
 
 /** The parts the Download data picker offers; the summary page is always first and has no tick. */
 export type DownloadPart = 'form101' | 'contract' | 'scans' | 'docs';
@@ -24,7 +25,8 @@ export async function workerDocsCall(body: Record<string, unknown>): Promise<Wor
   const resp = await fetch(WORKER_DOCS_FN_URL, {
     method: 'POST',
     headers: idToken ? { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken } : { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...gsAuth(), ...body }),
+    // the language picked in the app: it sets the words of the attached ID sheet
+    body: JSON.stringify({ ...gsAuth(), lang: storedLanguage(), ...body }),
   });
   if (!resp.ok || !/application\/pdf/.test(resp.headers.get('Content-Type') || '')) {
     const json = await resp.json().catch(() => null);

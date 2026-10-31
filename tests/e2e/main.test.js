@@ -1981,6 +1981,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sgCtr = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/contract', {method: 'POST'})).json();
   ok(sg.locked && sgR2.status === 'signed' && sgR2.signedAt && sgR2.signDate && sgF101.text.includes(sgR2.signDate) && sgF101.images >= 1 && sgCtr.text.includes(sgR2.signDate) && sgCtr.images === 1 && !/\{\{/.test(sgCtr.text.replace(/tpyo/, '')) && sg.opens === 2 && !wpg.errs.length,
     'signing: the signature opens only after both documents; one signature and the same date in both signed PDFs; afterwards the page keeps them to read ' + JSON.stringify({sg, status: sgR2.status, signDate: sgR2.signDate, sgF101: {i: sgF101.images, p: sgF101.pages}, sgCtr: {i: sgCtr.images, p: sgCtr.pages}, errs: wpg.errs}));
+  ok(sgR2.frozen && sgR2.frozen.lang === 'en' && sgR2.frozen.builder === 'b2' && sgR2.parts.form101.builder === 'b2',
+    "signing: the attached sheet's language is the signing page's, frozen at the signature, with the builder version " + JSON.stringify({lang: (sgR2.frozen || {}).lang, builder: (sgR2.frozen || {}).builder}));
   await wpg.close();
   // The manager app takes the signed documents onto the worker; Form 101 is never built again.
   const sgTook = await p.evaluate(async () => {
@@ -1998,6 +2000,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sgTook.docFile && sgTook.url && sgTook.contract && sgTook.signedAt && sgTook.sig && sgTook.regen && sgTook.kept && /Signed/.test(sgTook.chip),
     'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
+  // A firm with a default contract template expects a contract: Missing and Documents incomplete, the signed, added or scanned one counting.
+  const ctMiss = await p.evaluate(async () => {
+    await ManagerBridge.reloadSignRequests();
+    const w = workers[1], keep = JSON.stringify(w);
+    const full = {docId: '123456782', docUrl: 'https://x/f.pdf', scanPages: [{fileId: 'x/p.jpg', kind: 'id_front', primary: true}], docExtraPages: 1, docHasSignature: true, docExpiry: '', docUploadFailed: false};
+    Object.assign(w, full, {docs: []});
+    const st = workerDocStatus(w), n = workerNotices(w).find(x => x.title === 'Missing documents');
+    const r = {missing: st.missing.join(), level: st.level, line: st.lines.join(), act: n && n.act && n.act.label};
+    const counted = t => { w.docs = [{id: 'dx', type: 'contract', name: 'c', uploadedAt: '2026-01-01T00:00:00.000Z', ...t}]; return workerDocStatus(w).missing.length; };
+    r.signed = counted({signed: true}); r.added = counted({}); r.noDate = counted({uploadedAt: ''});
+    w.docs = [];
+    // a saved Form 101 with no signature and no contract: Sign, as with the signature alone; the Missing line names both
+    Object.assign(w, {docHasSignature: false});
+    const n2 = workerNotices(w).find(x => x.title === 'Missing documents');
+    r.both = {act: n2 && n2.act && n2.act.label, detail: n2 && n2.detail};
+    Object.keys(w).forEach(k => delete w[k]); Object.assign(w, JSON.parse(keep));
+    return r;
+  });
+  ok(ctMiss.missing === 'contract' && ctMiss.level === 'warn' && /Missing: contract/.test(ctMiss.line) && ctMiss.act === 'Add document' && ctMiss.signed === 0 && ctMiss.added === 0 && ctMiss.noDate === 0
+    && ctMiss.both.act === 'Sign' && /signature/.test(ctMiss.both.detail) && /contract/.test(ctMiss.both.detail),
+    'documents: with a default contract template a worker with no contract shows Missing: contract, its notice opens Add document; any contract ends it ' + JSON.stringify(ctMiss));
   // A signature whose documents could not be saved (docs/contracts.md → Signing): the worker's page never says Signed, retries by
   // itself once and by Try again; the manager's card says Not saved, with the reason, Try again and Withdraw.
   const STUCK = 'The signed documents could not be built: withdraw them and send the documents again';
@@ -2137,6 +2160,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const d5r = await d5resp;
   const d5h = {pages: Number(d5r.headers()['x-pages']), parts: d5r.headers()['x-parts'], type: d5r.headers()['content-type'],
     body: JSON.parse(d5r.request().postData())};
+  ok(d5h.body.lang === 'en', "download data: the call sends the language picked in the app, for the attached sheet's words " + d5h.body.lang);
   ok(await waitFor(p, () => window.__opened.length === 1, 30000), 'download data: the PDF opens');
   const d5 = await p.evaluate(async () => {
     const buf = await (await fetch(window.__opened[0])).arrayBuffer();

@@ -465,3 +465,33 @@ def test_a_delete_that_fails_keeps_its_path_and_is_tried_again():
     _call(db, bucket, action="mine")
     r = _req(db)
     assert not r["discardPending"] and not r["sigPath"] and sig not in bucket.store and not r["frozen"]
+
+
+def test_a_move_is_viewed_and_signed_in_the_signer_s_language_and_a_retry_keeps_it():
+    db, bucket = _asked()
+    seen = []
+
+    def build(p, strict=False):
+        seen.append(p)
+        return build101(p, strict)
+
+    assert _call(db, bucket, build, action="view", which="form101", lang="he")["ok"]
+    assert (seen[-1]["sheetLang"], seen[-1]["builder"]) == ("he", "b2")
+    assert _call(db, bucket, build, action="sign", signaturePng=SIG, lang="he")["ok"]
+    r = _req(db)
+    assert (r["frozen"]["lang"], r["frozen"]["builder"]) == ("he", "b2")
+    assert _call(db, bucket, build, action="build", which="form101", lang="en")["part"]["builder"] == "b2"
+    assert seen[-1]["sheetLang"] == "he"
+
+
+def test_a_move_signed_with_no_language_stays_on_b1():
+    db, bucket = _asked()
+    seen = []
+
+    def build(p, strict=False):
+        seen.append(p)
+        return build101(p, strict)
+
+    assert _call(db, bucket, build, action="sign", signaturePng=SIG)["ok"]
+    assert _call(db, bucket, build, action="build", which="form101")["part"]["builder"] == "b1"
+    assert seen[-1]["builder"] == "b1" and "sheetLang" not in seen[-1]

@@ -24,31 +24,32 @@ if str(FN) not in sys.path:
     sys.path.append(str(FN))
 
 import builders  # noqa: E402
-from builders import contract_b1, form101_b1, manifest, selftest, sheets_b1  # noqa: E402
+from builders import contract_b1, form101_b1, form101_b2, manifest, selftest, sheets_b1, sheets_b2  # noqa: E402
+import idsheet  # noqa: E402
 
 sys.path.append(str(ROOT / "scripts"))
 import builder_selfcheck  # noqa: E402
 
 GOLDEN = json.loads((ROOT / "tests" / "auth" / "builder_golden.json").read_text(encoding="utf-8"))
-FROZEN = ("form101_b1.py", "contract_b1.py", "sheets_b1.py")
+FROZEN = {"b1": ("form101_b1.py", "contract_b1.py", "sheets_b1.py"), "b2": ("form101_b2.py", "contract_b1.py", "sheets_b2.py")}
 ID_JPEG, TALL = base64.b64decode(selftest.ID_JPEG), base64.b64decode(selftest.TALL_JPEG)
 PNG = base64.b64decode(selftest.SIGNATURE_PNG)
 SHA = hashlib.sha256(b"a manifest").hexdigest()
 
 
 def _in_a_new_process(seed):
-    code = f"import json, sys; sys.path.insert(0, {str(FN)!r}); from builders import selftest; print(json.dumps(selftest.run()))"
+    code = f"import json, sys; sys.path.insert(0, {str(FN)!r}); from builders import selftest; print(json.dumps(selftest.run_all()))"
     out = subprocess.run([sys.executable, "-c", code], env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True, check=True, cwd=ROOT)
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
 def _frozen_files():
     """The frozen sources' hashes, line ends as git keeps them: a second tripwire behind the output hashes."""
-    return {n: hashlib.sha256((FN / "builders" / n).read_bytes().replace(b"\r\n", b"\n")).hexdigest() for n in FROZEN}
+    return {v: {n: hashlib.sha256((FN / "builders" / n).read_bytes().replace(b"\r\n", b"\n")).hexdigest() for n in names} for v, names in FROZEN.items()}
 
 
 def _golden_now():
-    return json.dumps({"builders": {builders.BUILDER_VERSION: selftest.run()}, "files": {builders.BUILDER_VERSION: _frozen_files()}}, indent=2, sort_keys=True)
+    return json.dumps({"builders": selftest.run_all(), "files": _frozen_files()}, indent=2, sort_keys=True)
 
 
 def _doc(data):
@@ -67,7 +68,7 @@ def _jpegs(data):
 # ---- the same bytes ----
 
 def test_two_processes_give_the_same_bytes():
-    assert _in_a_new_process("1") == _in_a_new_process("2") == selftest.run()
+    assert _in_a_new_process("1") == _in_a_new_process("2") == selftest.run_all()
 
 
 def test_the_output_hashes_are_the_golden_ones():
@@ -77,13 +78,13 @@ def test_the_output_hashes_are_the_golden_ones():
         pytest.skip("the golden hashes are compared on CI only")
     assert sys.version_info[:2] == (3, 12)
     now = json.loads(_golden_now())
-    assert GOLDEN.get("builders", {}).get(builders.BUILDER_VERSION) == now["builders"][builders.BUILDER_VERSION], "builder_golden.json should be:\n" + _golden_now()
+    assert GOLDEN.get("builders") == now["builders"], "builder_golden.json should be:\n" + _golden_now()
 
 
 def test_the_frozen_sources_did_not_change():
     if not GOLDEN:  # only while the file is first made (see above): the golden test fails with the file's content then
         pytest.fail("builder_golden.json is empty:\n" + _golden_now())
-    assert GOLDEN["files"][builders.BUILDER_VERSION] == _frozen_files()
+    assert GOLDEN["files"] == _frozen_files()
 
 
 def test_the_file_id_comes_from_the_manifest():
@@ -274,6 +275,7 @@ def test_the_template_and_the_font_are_the_frozen_files():
 def test_the_registry_names_the_current_builder():
     assert set(builders.BUILDERS[builders.BUILDER_VERSION]) == {"form101", "contract", "sheet"}
     assert set(selftest.run()) == set(selftest.cases())
+    assert set(selftest.run_all()) == set(builders.BUILDERS)
 
 
 def _locked():
@@ -312,11 +314,13 @@ def test_the_installed_versions_are_the_locked_ones_on_ci():
 # ---- the self-check's comparison ----
 
 def test_the_self_check_compares_every_hash():
-    golden = {"builders": {"b1": {"a": "1", "b": "2"}}}
-    assert builder_selfcheck.differences({"builder": "b1", "hashes": {"a": "1", "b": "2"}}, golden) == []
-    assert len(builder_selfcheck.differences({"builder": "b1", "hashes": {"a": "1", "b": "9"}}, golden)) == 1
-    assert len(builder_selfcheck.differences({"builder": "b1", "hashes": {"a": "1"}}, golden)) == 1
-    assert builder_selfcheck.differences({"builder": "b2", "hashes": {}}, golden)
+    golden = {"builders": {"b1": {"a": "1", "b": "2"}, "b2": {"a": "3"}}}
+    both = lambda **b1: {"builder": "b2", "builders": {"b1": b1, "b2": {"a": "3"}}}
+    assert builder_selfcheck.differences(both(a="1", b="2"), golden) == []
+    assert len(builder_selfcheck.differences(both(a="1", b="9"), golden)) == 1  # an older version counts too
+    assert len(builder_selfcheck.differences(both(a="1"), golden)) == 1
+    assert builder_selfcheck.differences({"builder": "b3", "builders": {"b3": {}}}, golden)
+    assert builder_selfcheck.differences({"builder": "b2", "builders": {"b1": {"a": "1", "b": "2"}}}, golden)  # none for its own version
     assert builder_selfcheck.differences({"ok": True, "warm": True}, golden)  # an older deploy's plain ping
 
 
@@ -334,7 +338,7 @@ def test_the_self_check_needs_no_login_and_answers_hashes(functions_main, monkey
     import flask
     with flask.Flask(__name__).test_request_context("/", method="POST", json={"ping": True, "selftest": True}):
         out = json.loads(functions_main.fill_form_101(flask.request).get_data())
-    assert out["builder"] == "b1" and set(out["hashes"]) == set(selftest.cases())
+    assert out["builder"] == builders.BUILDER_VERSION and {v: set(h) for v, h in out["builders"].items()} == {v: set(selftest.cases(v)) for v in builders.BUILDERS}
 
 
 def test_fill_form_101_keeps_its_answer_and_prints_this_year(functions_main, monkeypatch):
@@ -372,3 +376,86 @@ def test_the_dropped_count_is_readable_by_the_app(functions_main, monkeypatch):
 
 def test_a_ping_alone_stays_a_ping(functions_main, monkeypatch):
     assert json.loads(_call(functions_main, {"ping": True}, monkeypatch).get_data()) == {"ok": True, "warm": True}
+
+
+# ---- the attached sheet's language (builder b2) ----
+
+SHEET = {"isId": True}
+
+
+def _with_pages(lang=None, **over):
+    p = dict(selftest.FORM, extraPages=_kinds(("id_front", ID_JPEG), ("sefach", TALL), ("other", ID_JPEG)), **over)
+    return dict(p, sheetLang=lang) if lang else p
+
+
+def _has_hebrew(text):
+    return any("\u0590" <= c <= "\u05ff" for c in text)
+
+
+def test_the_sheet_is_in_the_language_asked_for():
+    en = _doc(form101_b2.build_form101_pdf(_with_pages("en"))[0])
+    he = _doc(form101_b2.build_form101_pdf(_with_pages("he"))[0])
+    assert en.page_count == he.page_count == 4
+    assert "ID card and appendix" in en[2].get_text() and "Document" in en[3].get_text()
+    assert not _has_hebrew(en[2].get_text()) and not _has_hebrew(en[3].get_text())
+    assert _has_hebrew(he[2].get_text()) and "ID card" not in he[2].get_text()
+
+
+def test_a_missing_appendix_and_a_passport_in_english():
+    no = _doc(form101_b2.build_form101_pdf(dict(selftest.FORM, sheetLang="en", extraPages=_kinds(("id_front", ID_JPEG))))[0])[2].get_text()
+    assert "Appendix — missing, not scanned" in no and "ID card and appendix" not in no
+    pp = _doc(form101_b2.build_form101_pdf(dict(selftest.PASSPORT, sheetLang="en", extraPages=_kinds(("passport", ID_JPEG))))[0])[2].get_text()
+    assert "Passport" in pp and not _has_hebrew(pp)
+
+
+@pytest.mark.parametrize("lang", ["ru", "fr", "", None])
+def test_any_other_language_reads_english(lang):
+    assert sheets_b2.lang_of(lang) == "en" and idsheet.lang_of(lang) == "en"
+    assert "ID card" in _doc(sheets_b2.sheet_pdf([{"kind": "id_front", "data": ID_JPEG}], False, SHA, lang)[0])[0].get_text()
+
+
+def test_an_app_language_is_kept_and_none_sent_stays_on_b1():
+    assert builders.sheet_lang("he") == "he" and builders.sheet_lang("en") == "en" and builders.sheet_lang("ru") == "en"
+    assert builders.sheet_lang(None) is None and builders.sheet_lang("") is None and builders.sheet_lang(5) is None
+
+
+def test_the_two_form_pages_are_the_same_in_every_language_and_in_b1():
+    def looks(data):
+        d = _doc(data)
+        return [d[i].get_pixmap(dpi=100, alpha=False).samples for i in (0, 1)]
+
+    base = looks(form101_b1.build_form101_pdf(_with_pages())[0])
+    assert looks(form101_b2.build_form101_pdf(_with_pages("en"))[0]) == base == looks(form101_b2.build_form101_pdf(_with_pages("he"))[0])
+    assert _has_hebrew(_doc(form101_b2.build_form101_pdf(_with_pages("en"))[0])[0].get_text())
+
+
+def test_hebrew_in_b2_is_b1_to_the_byte_and_the_contract_stays_b1_s_file():
+    b1, b2 = selftest.run("b1"), selftest.run("b2")
+    assert all(b2[k + "_he"] == b1[k] for k in ("form101_by_kind", "form101_no_sefach", "form101_passport", "sheet_id", "sheet_passport"))
+    assert b2["form101_by_kind"] != b1["form101_by_kind"]  # English is what is new
+    assert builders.BUILDERS["b2"]["contract"] is contract_b1.fill
+    assert all(b2[k] == b1[k] for k in b1 if k.startswith("contract"))
+
+
+def test_a_payload_names_its_builder_and_the_name_changes_no_byte():
+    p = _with_pages()
+    assert builders.build_form101(dict(p, builder="b1"))[0] == form101_b1.build_form101_pdf(p)[0]
+    assert builders.build_form101(dict(p, sheetLang="en", builder="b2"))[0] == form101_b2.build_form101_pdf(dict(p, sheetLang="en"))[0]
+    assert builders.build_form101(dict(p, sheetLang="en"))[0] == form101_b2.build_form101_pdf(dict(p, sheetLang="en"))[0]  # none named: the current one
+
+
+def test_the_sheet_s_words_are_the_dictionary_s():
+    he = json.loads((ROOT / "i18n" / "he.json").read_text(encoding="utf-8"))
+    assert sheets_b2.CAPTIONS == idsheet.CAPTIONS
+    for key, english in sheets_b2.CAPTIONS["en"].items():
+        assert he[english] == sheets_b2.CAPTIONS["he"][key], english
+
+
+def test_russian_lives_only_in_its_dictionary():
+    for path in (FN / "idsheet.py", FN / "builders" / "sheets_b2.py"):
+        assert not any("\u0400" <= c <= "\u04ff" for c in path.read_text(encoding="utf-8"))
+
+
+def test_a_caller_cannot_pick_the_builder_of_the_stored_form(functions_main, monkeypatch):
+    r = _call(functions_main, dict(selftest.FORM, builder="b9", sheetLang="he"), monkeypatch)
+    assert r.status_code == 200 and set(json.loads(r.get_data())) == {"pdfBase64", "fileName"}

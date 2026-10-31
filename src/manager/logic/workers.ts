@@ -2,7 +2,7 @@
 // document number and address, active or not, the contract-expiry warning,
 // the completeness of its documents. Pure: the worker in, the answer out.
 import { tr } from './i18n';
-import type { Rec } from '../data/state';
+import { state, type Rec } from '../data/state';
 export { workerDocId, workerAddress, workerHasScan, WORKER_DOC_TYPES } from '../worker';
 import { workerDocId, workerHasScan, WORKER_DOC_TYPES } from '../worker';
 
@@ -78,7 +78,7 @@ export function currentContractDoc(w: Rec): {doc: Rec; date: Date} | null {
 
 // ── Worker document completeness ──
 // One status per worker, used by the Workers list badge, the worker card and
-// the "Documents incomplete" filter.
+// the "Documents incomplete" filter. A firm with a default contract template also expects a contract.
 //   missing — ID/passport number (workerDocId), Form 101 PDF (w.docUrl), the
 //     scan (workerHasScan: its stored pages, or the old sidecar), signature and, for an Israeli ID, the ספח page. Signature /
 //     ספח are only known for documents saved since these flags existed
@@ -148,6 +148,11 @@ export function workerDocStatus(w: Rec) {
   if (!workerHasScan(w)) { missing.push(tr('document scan')); idMissing.push(tr('document scan')); }
   if (w.docHasSignature === false) { missing.push(tr('signature')); f101Missing.push(tr('signature')); }
   if ((w.docType || 'israeli_id') === 'israeli_id' && w.docExtraPages === 0) { missing.push(tr('ספח (ID appendix)')); idMissing.push(tr('ספח (ID appendix)')); }
+  // Only a firm with a default contract template expects a contract (state.firmDefaultContract, false until the server says
+  // so and for every login that never asks: a supplier's, a client's). Any current contract counts — signed, added or
+  // scanned, the documents currentContractDoc reads, here with or without a readable date.
+  const contractMissing = state.firmDefaultContract && !currentDocs(w).some(x => x.type === 'contract');
+  if (contractMissing) missing.push(tr('contract'));
   let expiry: {level: 'error' | 'warn'; date: Date; text: string} | null = null;
   const d = parseDocDate(w.docExpiry);
   if (d && !isNaN(d.getTime())) {
@@ -165,5 +170,5 @@ export function workerDocStatus(w: Rec) {
   if (missing.length) lines.push(tr('Missing: {0}', {0: missing.join(', ')}));
   if (expiry) lines.push(expiry.text);
   for (const x of docExpiries) lines.push(x.text);
-  return {level, missing, idMissing, f101Missing, expiry, docExpiries, docExpired, failed, lines};
+  return {level, missing, idMissing, f101Missing, contractMissing, expiry, docExpiries, docExpired, failed, lines};
 }

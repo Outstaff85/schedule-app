@@ -8,6 +8,8 @@ import { host } from './events';
 export type Rec = Record<string, any>;
 
 export const state = {
+  /** the firm has a default worker contract template (`sign_documents` `list`): a worker with no contract then counts as missing one */
+  firmDefaultContract: false,
   workers: [] as Rec[],
   clients: [] as Rec[],
   // Suppliers: {id,name,color,phone,notes,bank,bankBranch,accountNumber,

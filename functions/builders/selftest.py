@@ -83,13 +83,25 @@ def client_template():
     return doc.tobytes(garbage=4, deflate=True, no_new_id=True)
 
 
-def cases():
-    """{case name: a function building its PDF bytes}. Every name is in builder_golden.json."""
-    b = BUILDERS[BUILDER_VERSION]
+def cases(version=BUILDER_VERSION):
+    """{case name: a function building its PDF bytes} of one builder version. Every name is in builder_golden.json. A case
+    has the same inputs in every version; from b2 on the sheet has a language (none given: English), so its Hebrew has cases too."""
+    b = BUILDERS[version]
     form, contract, sheet = b["form101"], b["contract"], b["sheet"]
     jpg, tall, png, sig = ID_JPEG, TALL_JPEG, PAGE_PNG, SIGNATURE_PNG
     signed = dict(FORM, signaturePngBase64=sig)
+    he = {} if version == "b1" else {
+        "form101_by_kind_he": lambda: form(dict(signed, sheetLang="he", extraPages=_pages(("id_front", jpg), ("id_back", jpg), ("sefach", tall), ("other", png))),
+                                           strict=True, manifest_sha256=MANIFEST)[0],
+        "form101_no_sefach_he": lambda: form(dict(signed, sheetLang="he", extraPages=_pages(("id_front", jpg))), strict=True, manifest_sha256=MANIFEST)[0],
+        "form101_passport_he": lambda: form(dict(PASSPORT, signaturePngBase64=sig, sheetLang="he", extraPages=_pages(("passport", tall), ("other", jpg))),
+                                            strict=True, manifest_sha256=MANIFEST)[0],
+        "sheet_id_he": lambda: sheet([{"kind": "id_front", "data": _b(jpg)}, {"kind": "id_back", "data": _b(jpg)}, {"kind": "sefach", "data": _b(tall)},
+                                      {"kind": "other", "data": _b(png)}], False, MANIFEST, "he")[0],
+        "sheet_passport_he": lambda: sheet([{"kind": "passport", "data": _b(tall)}], True, MANIFEST, "he")[0],
+    }
     return {
+        **he,
         "form101_empty_pages": lambda: form(FORM)[0],
         "form101_positional": lambda: form(dict(signed, extraPages=[{"b64": jpg, "caption": "Document scan"}, {"b64": tall, "caption": "Document"},
                                                                     {"b64": png, "caption": "Document"}]), strict=True, manifest_sha256=MANIFEST)[0],
@@ -108,12 +120,17 @@ def cases():
     }
 
 
-def run():
+def run(version=BUILDER_VERSION):
     """{case: the SHA-256 of its PDF}."""
-    return {name: hashlib.sha256(build()).hexdigest() for name, build in cases().items()}
+    return {name: hashlib.sha256(build()).hexdigest() for name, build in cases(version).items()}
+
+
+def run_all():
+    """{builder version: its hashes}: every version a signed document may name."""
+    return {version: run(version) for version in BUILDERS}
 
 
 def answer():
     """`fill_form_101` {"ping", "selftest"}'s answer."""
     return {"ok": True, "warm": True, "builder": BUILDER_VERSION, "python": platform.python_version(), "pymupdf": pymupdf.VersionBind,
-            "mupdf": pymupdf.VersionFitz, "hashes": run()}
+            "mupdf": pymupdf.VersionFitz, "builders": run_all()}

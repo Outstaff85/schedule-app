@@ -1,19 +1,38 @@
-"""The worker's scanned pages laid out for a PDF (docs/documents-plan.md → S2, Q7): ONE A4 sheet with the
+"""The worker's scanned pages laid out for a PDF (docs/documents-plan.md → S2, Q7), the sheet's words in the viewer's
+language (`lang`, sent by the app): ONE A4 sheet with the
 worker's document — the ID card's front and back, or the passport — and the ספח, then each other page on an
 A4 of its own. Used by "Download data" (workerdocs.py) and the old `signing.bundle`, so the layout and the
-Hebrew captions are one copy. (S1 freezes a copy of this layout as `builders/sheets_b1.py` for the signed
-documents; this one serves only the previews and the bundle, which are never stored.)
+words are one copy. (`builders/sheets_b1.py` and `sheets_b2.py` are frozen copies for the signed documents; this one
+serves only the previews and the bundle, which are never stored.)
 
 The placement follows the pictures' shapes: every way of cutting the sheet's pictures into rows (or into
 columns), in their order, is tried, and the one whose smallest picture comes out largest is kept, so an ID
 card's two sides go side by side and a tall ספח beside or under them as fits. An ID card worker with no ספח
-gets its box left empty, with a Hebrew caption saying it is missing. A stored page that is a JPEG goes in
+gets its box left empty, with a caption saying it is missing. A stored page that is a JPEG goes in
 with its own bytes (no re-encode)."""
 
 import io
 
-HE_KINDS = {"id_front": "תעודת זהות", "id_back": "תעודת זהות (גב)", "passport": "דרכון", "sefach": "ספח", "other": "מסמך"}
-HE_MISSING_SEFACH = "ספח — חסר, לא נסרק"
+# The sheet's own words, by the language the viewer or the signer picked (English and Hebrew; any other language reads
+# English, as the app does with no translation). English is the key of i18n/he.json, as for every UI text, and
+# tests/auth/test_builder_determinism.py holds these equal to the dictionary. The server does not get the dictionaries: functions/ deploys alone.
+CAPTIONS = {
+    "en": {"id_front": "ID card", "id_back": "ID card (back)", "passport": "Passport", "sefach": "Appendix", "other": "Document",
+           "missing": "Appendix — missing, not scanned", "title_id": "ID card", "title_id_sefach": "ID card and appendix",
+           "title_passport": "Passport", "title_passport_sefach": "Passport and appendix"},
+    "he": {"id_front": "תעודת זהות", "id_back": "תעודת זהות (גב)", "passport": "דרכון", "sefach": "ספח", "other": "מסמך",
+           "missing": "ספח — חסר, לא נסרק", "title_id": "תעודת זהות", "title_id_sefach": "תעודת זהות וספח",
+           "title_passport": "דרכון", "title_passport_sefach": "דרכון וספח"},
+}
+
+
+def lang_of(value):
+    """The language of the sheet's words: Hebrew when asked for, English for anything else."""
+    return "he" if value == "he" else "en"
+
+
+# the Hebrew labels of the bundle's summary page, which stays Hebrew whatever the language (workerdocs.py)
+HE_KINDS = {k: CAPTIONS["he"][k] for k in ("id_front", "id_back", "passport", "sefach", "other")}
 SHEET_KINDS = ("id_front", "id_back", "passport", "sefach")
 
 A4 = (595, 842)
@@ -41,7 +60,7 @@ def picture_size(data):
         return None
 
 
-def split(pages, passport_worker):
+def split(pages, passport_worker, lang="en"):
     """The pages ([{kind, data}], in the scan's order) → (the sheet's items, the other pages). An item is
     {kind, data?, size?, caption, empty?}; the first page of each sheet kind goes on the sheet, any further
     one with the other pages. A passport worker's sheet: the passport (and a ספח when one was scanned); an ID
@@ -61,9 +80,10 @@ def split(pages, passport_worker):
         order = ["id_front", "id_back", "sefach"]
         if "passport" in first:
             others.insert(0, first["passport"])
-    items = [{"kind": k, "data": first[k]["data"], "caption": HE_KINDS[k]} for k in order if k in first]
+    words = CAPTIONS[lang]
+    items = [{"kind": k, "data": first[k]["data"], "caption": words[k]} for k in order if k in first]
     if not passport and items and "sefach" not in first:
-        items.append({"kind": "sefach", "caption": HE_MISSING_SEFACH, "empty": True})
+        items.append({"kind": "sefach", "caption": words["missing"], "empty": True})
     return items, others
 
 
@@ -155,6 +175,20 @@ class Writer:
         self.font = pymupdf.Font(fontfile=self.font_path)
         self.ready = set()  # the pages the font is already on
 
+    def left(self, page, x, y, text, size=11, color=(0.25, 0.25, 0.25)):
+        """English: from the left, as it reads."""
+        if (id(page.parent), page.number) not in self.ready:
+            page.insert_font(fontfile=self.font_path, fontname="Heebo")
+            self.ready.add((id(page.parent), page.number))
+        page.insert_text((x, y), str(text), fontname="Heebo", fontsize=size, color=color)
+
+    def line(self, page, x_left, x_right, y, text, lang, size=11, color=(0.25, 0.25, 0.25)):
+        """A line in the sheet's language: Hebrew from the right edge, English from the left one."""
+        if lang == "he":
+            self.text(page, x_right, y, text, size=size, color=color)
+        else:
+            self.left(page, x_left, y, text, size=size, color=color)
+
     def text(self, page, x_right, y, text, size=11, color=(0.25, 0.25, 0.25)):
         from bidi.algorithm import get_display
         if (id(page.parent), page.number) not in self.ready:
@@ -173,7 +207,7 @@ def _picture(page, rect, data):
         return False
 
 
-def add_sheet(doc, items, writer, title):
+def add_sheet(doc, items, writer, title, lang="en"):
     """One A4 page with the sheet's items (split above). → how many pictures could not be placed."""
     import pymupdf
     dropped = 0
@@ -191,12 +225,12 @@ def add_sheet(doc, items, writer, title):
         return dropped
     page = doc.new_page(width=A4[0], height=A4[1])
     W, H = A4[0] - 2 * MARGIN, A4[1] - 2 * MARGIN - TITLE_H
-    writer.text(page, A4[0] - MARGIN, MARGIN + 16, title, size=14, color=(0, 0, 0))
+    writer.line(page, MARGIN, A4[0] - MARGIN, MARGIN + 16, title, lang, size=14, color=(0, 0, 0))
     ox, oy = MARGIN, MARGIN + TITLE_H
     for i, x, y, w, h in layout([it["aspect"] for it in usable], [not it.get("empty") for it in usable], W, H):
         it = usable[i]
         rect = pymupdf.Rect(ox + x, oy + y, ox + x + w, oy + y + h)
-        writer.text(page, rect.x1, rect.y0 - 5, it["caption"], size=10, color=(0.7, 0.1, 0.1) if it.get("empty") else (0.3, 0.3, 0.3))
+        writer.line(page, rect.x0, rect.x1, rect.y0 - 5, it["caption"], lang, size=10, color=(0.7, 0.1, 0.1) if it.get("empty") else (0.3, 0.3, 0.3))
         if it.get("empty"):
             page.draw_rect(rect, color=(0.7, 0.7, 0.7), width=1, dashes="[4 3] 0")
             continue
@@ -206,14 +240,14 @@ def add_sheet(doc, items, writer, title):
     return dropped
 
 
-def add_page(doc, data, writer, caption):
+def add_page(doc, data, writer, caption, lang="he"):
     """One other page on an A4 of its own, its caption above it. → 1 when it could not be placed, else 0."""
     import pymupdf
     size = picture_size(data)
     if not size:
         return 1
     page = doc.new_page(width=A4[0], height=A4[1])
-    writer.text(page, A4[0] - MARGIN, MARGIN + 14, caption, size=12, color=(0.3, 0.3, 0.3))
+    writer.line(page, MARGIN, A4[0] - MARGIN, MARGIN + 14, caption, lang, size=12, color=(0.3, 0.3, 0.3))
     W, H = A4[0] - 2 * MARGIN, A4[1] - 2 * MARGIN - TITLE_H
     s = min(W / size[0], H / size[1])
     w, h = size[0] * s, size[1] * s
@@ -221,27 +255,28 @@ def add_page(doc, data, writer, caption):
     return 0 if _picture(page, rect, data) else 1
 
 
-def sheet_title(items):
-    """The sheet's Hebrew title: what is on it."""
+def sheet_title(items, lang="he"):
+    """The sheet's title: what is on it."""
     kinds = [it["kind"] for it in items if not it.get("empty")]
-    doc = "דרכון" if "passport" in kinds else "תעודת זהות"
-    return doc + (" וספח" if any(it["kind"] == "sefach" and not it.get("empty") for it in items) else "")
+    doc = "passport" if "passport" in kinds else "id"
+    return CAPTIONS[lang]["title_" + doc + ("_sefach" if "sefach" in kinds else "")]
 
 
-def add_scans(doc, pages, passport_worker, font_path):
-    """The sheet, then each other page. → (Hebrew labels of what was added, part keys, dropped count)."""
+def add_scans(doc, pages, passport_worker, font_path, lang="en"):
+    """The sheet, then each other page, in `lang`. → (Hebrew labels of what was added, for the summary page, part keys, dropped count)."""
+    lang = lang_of(lang)
     writer = Writer(font_path)
-    items, others = split(pages, passport_worker)
+    items, others = split(pages, passport_worker, lang)
     labels, keys, dropped = [], [], 0
     if items:
         before = doc.page_count
-        dropped += add_sheet(doc, items, writer, sheet_title(items))
+        dropped += add_sheet(doc, items, writer, sheet_title(items, lang), lang)
         if doc.page_count > before:
             labels.append(sheet_title(items))
             keys.append("id-sheet")
     for p in others:
         k = p.get("kind") if p.get("kind") in HE_KINDS else "other"
-        if add_page(doc, p["data"], writer, HE_KINDS[k]):
+        if add_page(doc, p["data"], writer, CAPTIONS[lang][k], lang):
             dropped += 1
         else:
             labels.append(HE_KINDS[k])

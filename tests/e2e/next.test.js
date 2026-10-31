@@ -672,7 +672,7 @@ async function theme(browser) {
     await theme(browser);
     // Figures in one line (Accounting): large sums are not cut off on a phone
     const sp = await browser.newPage({ viewport: { width: 360, height: 780 } });
-    await sp.goto(BASE + '#plate', { waitUntil: 'networkidle' });
+    await sp.goto(BASE + '#lists', { waitUntil: 'networkidle' }); // the plate demo's page: a hash that is no page opens Controls
     await sp.waitForSelector('[data-testid="figures-strip"] b');
     const strip = await sp.evaluate(() => [...document.querySelectorAll('[data-testid="figures-strip"] button')].map(b => { const n = b.querySelector('b'); return { w: n.getBoundingClientRect().width, room: b.clientWidth - 16, full: n.scrollWidth <= n.clientWidth + 1 }; }));
     ok(strip.length === 4 && strip.every(x => x.w <= x.room + 1 && x.full), 'figures in one line: the large sums fit at 360 px ' + JSON.stringify(strip));

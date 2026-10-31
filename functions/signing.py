@@ -12,15 +12,15 @@ record (`list` → the signed requests it has not taken yet, `applied`).
 
 Nothing reaches a signature that cannot become a document: `send` builds both documents strictly and throws the result
 away (not_ready), `view` shows only a strict build, and `sign` builds them once more with the signature before keeping
-it. `sign` freezes what was signed (`frozen`: today, the page list with each page's hash), and every later build uses only
-that: the pages never change under a signature, a rescan included. If a build still fails after the signature, the request
+it. `sign` freezes what was signed (`frozen`: today, the page list with each page's hash, the signer's language and the
+builder version), and every later build uses only that: the pages never change under a signature, a rescan included. If a build still fails after the signature, the request
 stays `signing` with `buildErrors`; `build` can be tried again from what was frozen, and when that cannot be built the way
 out is the manager's Withdraw and a new send, which the worker views and signs again. Withdraw deletes nothing: the
 signature and any part already built stay stored and on the request. Every status moves through moves.move, so a
 Withdraw, a replacing send or a second signature at the same moment cannot be overwritten.
 
 tenants/<t>/signRequests/<id>: workerId, hrId, status (sent → signing → signed; replaced,
-withdrawn), frozen {today, pages, workerName}, buildErrors {form101, contract: text | None}, way, templateId / templateName / templateVersion / templatePath (the frozen
+withdrawn), frozen {today, pages, workerName, lang, builder}, buildErrors {form101, contract: text | None}, way, templateId / templateName / templateVersion / templatePath (the frozen
 copy) / placed, values, form101, signDate (fixed, or None = the day of signing), seal
 {signature, stamp: the firm's pictures frozen at the send (seal.py) | None, everyPage: the
 template's tick} (a send made before it has none and draws no seal), sentAt, sentBy,
@@ -37,6 +37,7 @@ import re
 import time
 import uuid
 
+import builders
 import contracts
 from moves import move
 import seal as seal_mod
@@ -147,7 +148,7 @@ def _clean_values(values):
 def _clean_form101(p):
     if not isinstance(p, dict):
         return {}
-    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear")}
+    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear", "sheetLang", "builder")}
     import json
     return out if len(json.dumps(out, default=str)) < 30000 else {}
 
@@ -235,6 +236,12 @@ def _stored_pages(bucket, worker, strict=False):
     return read_pages(bucket, worker, strict)[0]
 
 
+def sheet_fields(lang, builder=None):
+    """What a Form 101 payload carries for the attached sheet: its language and the builder. A page that sent no language
+    (open since before b2), or a signature frozen without one, stays on b1's Hebrew."""
+    return {"sheetLang": lang, "builder": builder or builders.BUILDER_VERSION} if lang else {"builder": "b1"}
+
+
 def fill_contract(bucket, path, values, placed, signature, seal):
     """The contract filled from a template file → bytes. What cannot be filled is TemplateBroken; the file's own read and
     a Storage that does not answer are not: they stay what they are (problem)."""
@@ -269,7 +276,7 @@ def _current(db, tenant, wid):
     return best
 
 
-def _pdf(req, which, worker, bucket, build101, signature=None, date=None, strict=False):
+def _pdf(req, which, worker, bucket, build101, signature=None, date=None, strict=False, lang=None):
     """One of the two documents filled for this request → (bytes, file name). A document with the signature (or strict)
     is built strictly: a signature or a page that cannot be placed stops it (a ValueError), never a signed form without it."""
     date = date or req.get("signDate") or today_il()
@@ -282,7 +289,9 @@ def _pdf(req, which, worker, bucket, build101, signature=None, date=None, strict
     strict = strict or bool(signature)
     # after the signature only what it was given on: a rescan never changes it (an older request has no `frozen`)
     pages = frozen_pages(bucket, frozen["pages"]) if "pages" in frozen else _stored_pages(bucket, worker, strict)
-    p = dict(req.get("form101") or {}, signDate=date, extraPages=pages)
+    # the sheet's language: the signer's, frozen; before the signature the language it is being viewed in
+    sheet = sheet_fields(frozen.get("lang"), frozen.get("builder")) if frozen else sheet_fields(builders.sheet_lang(lang))
+    p = dict(req.get("form101") or {}, signDate=date, extraPages=pages, **sheet)
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
     return build101(p, strict=True) if strict else build101(p)
@@ -388,7 +397,10 @@ def run(db, bucket, claims, body, build101, server_time=None):
                 continue
             rows.append(_summary(d.id, x))
         rows.sort(key=lambda r: str(r.get("sentAt") or ""), reverse=True)
-        return {"ok": True, "requests": rows[:300]}
+        # whether a worker with no contract counts as missing one (workerDocStatus): a yes or no, nothing of the templates
+        templates = db.collection("tenants").document(tenant).collection("contractTemplates").stream()
+        default = any((d.to_dict() or {}).get("isDefault") and contracts._firm_of_kind(d.to_dict(), "worker") for d in templates)
+        return {"ok": True, "requests": rows[:300], "defaultContract": default}
 
     if action.startswith("client"):  # a client's contract (client_signing.py)
         import client_signing
@@ -527,7 +539,7 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
         if req.get("status") != "sent":
             return {"error": E_NO_REQUEST}
         try:
-            data, name = _pdf(req, which, worker, bucket, build101, strict=True)
+            data, name = _pdf(req, which, worker, bucket, build101, strict=True, lang=body.get("lang"))
         except Exception as e:
             return {"error": problem(which, e)}
         return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": name, "signDate": req.get("signDate") or today_il(),
@@ -547,7 +559,9 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             refs = read_pages(bucket, worker, strict=True)[1]
         except ValueError:
             return {"error": E_PAGE_DAMAGED}
-        frozen = {"today": today_il(), "pages": refs, "workerName": (worker.get("name") or "").strip()}
+        lang = builders.sheet_lang(body.get("lang"))
+        frozen = {"today": today_il(), "pages": refs, "workerName": (worker.get("name") or "").strip(), "lang": lang,
+                  "builder": builders.BUILDER_VERSION if lang else "b1"}
         error = not_ready(dict(req, frozen=frozen, signDate=date), worker, bucket, build101, signature=sig)
         if error:
             return {"error": error}
@@ -590,6 +604,8 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             b.metadata = {"hrId": req["hrId"], "workerId": req["workerId"], "kind": folder}
         b.upload_from_string(data, content_type="application/pdf")
         part = {"path": path, "name": name, "size": len(data)}
+        if which == "form101":  # the version that made it; the contract stays on contracts.fill until S4
+            part["builder"] = (req.get("frozen") or {}).get("builder") or "b1"
         # kept only while this request is still signing and has no such part: a Withdraw or another build won removes this file
         if not move(db, ref, lambda x: x.get("status") in ("signing", "signed") and which not in (x.get("parts") or {}),
                     {"parts." + which: part, "buildErrors." + which: None}):
