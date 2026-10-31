@@ -1,0 +1,24 @@
+{
+  "builders": {
+    "b1": {
+      "contract_client": "0fff40304a6258b6f5579be992cf8207ab0777f78e58254e7c15ff80984e00b2",
+      "contract_picture": "58ca5b9886bb8c6ecaf9597314feb0e3262151f09c78fcfd93f515fd3d06752b",
+      "contract_text": "7afb67a059663c1ed93078caec0268013b193182b189fcd791b0c02cf04d5979",
+      "contract_text_unsigned": "712fe25dd1c5ef500caf3c79e0691401f1765599664dc1a98ab3cb9c078be953",
+      "form101_by_kind": "0bc241eda0c43b160dd2b7accf3305a26686e385f82a1bb7f2b197454f017455",
+      "form101_empty_pages": "201c770e3c5611a03a994978a03712ce5dfa2628c6ce25e72df796ce1bc18edb",
+      "form101_no_sefach": "74dcf72d98791c895d6c864e6d9d084eb3dccbd388647bdcbf583750ccd636d1",
+      "form101_passport": "7fc35de65dff82d7411d59727256785ec720c817640025322f578245e27e3f0e",
+      "form101_positional": "25e4d6dcaab66c49ced4e66ff62983f32aa404e1ebe610db716b2c26d2fdffe1",
+      "sheet_id": "b7ca15d238f8a6222d40a5769ae8b658bafcbdeb31ded54e47bf187192a17857",
+      "sheet_passport": "1cf5760189417d58065e87bec9b2bfbc9aab2a10b0bf36551b63bbd295193ed8"
+    }
+  },
+  "files": {
+    "b1": {
+      "contract_b1.py": "d584a9c388eb6a42d8de2517860ebd01c4df898c2465db14126cad225657086f",
+      "form101_b1.py": "30cec3a0c5bd0b504d2df50618ad1003a2426cf7dd1239f54a86a8f3fbe1773c",
+      "sheets_b1.py": "be546d22cbe3a511f5db54153889075a44a109e24acb8011f873cd206b3e3bb2"
+    }
+  }
+}

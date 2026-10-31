@@ -86,7 +86,7 @@ def _drawn():
 
 def _pdfs(work):
     out = []
-    for folder in (gc.HERE.parents[1] / "functions" / "assets", work / "contracts"):
+    for folder in (gc.HERE.parents[1] / "functions" / "assets" / "form101", work / "contracts"):
         if folder.is_dir():
             for p in sorted(folder.glob("*.pdf")):
                 sha = gc.file_sha1(p)

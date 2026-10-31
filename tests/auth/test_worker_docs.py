@@ -34,7 +34,7 @@ F101 = {"given": "Avi", "surname": "Cohen", "employer": {"companyName": "Firm On
 P = "tenants/t1/workers/w1/"
 
 
-def build101(p):
+def build101(p, strict=False, report=None):
     """A stand-in for Form 101's build: two pages; the first says what it was given."""
     doc = pymupdf.open()
     doc.new_page().insert_text((50, 80), "F101 " + str(p.get("given")) + " date=" + str(p.get("signDate"))
@@ -326,3 +326,18 @@ def test_the_functions_settings(functions_main):
     ep = functions_main.worker_docs.__firebase_endpoint__
     assert ep.concurrency == 4 and ep.availableMemoryMb == 1024 and ep.timeoutSeconds == 120 and ep.cpu == 1
     assert ep.region == ["europe-west3"]
+
+
+def test_a_signature_the_preview_could_not_place_is_counted():
+    db, bucket = setup()
+
+    def build(p, report=None):
+        report["dropped"] = 1
+        return build101(p)
+
+    out = workerdocs.run(db, bucket, OWNER, {"action": "form101", "workerId": "w1", "form101": F101}, build)
+    assert out["dropped"] == 1 and out["pdf"]
+
+
+def test_the_values_sent_cannot_fix_a_preview_s_tax_year():
+    assert "taxYear" not in workerdocs._clean_form101({"given": "Avi", "taxYear": "2001"})

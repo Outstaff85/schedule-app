@@ -138,7 +138,7 @@ def resolve(params, work=None):
     import home
     work = pathlib.Path(work or home.WORK)
     out = dict(params)
-    assets = pathlib.Path(__file__).resolve().parents[3] / "functions" / "assets"
+    assets = pathlib.Path(__file__).resolve().parents[3] / "functions" / "assets" / "form101"
     for key, roots in (("pages", [work / "templates"]), ("photos", [work / "backgrounds", work / "backgrounds-own"]),
                        ("pdfs", [work / "contracts", assets]), ("occluders", [work / "occluders"]), ("real", [work / "img"]),
                        ("open", [work / "midv", work / "smartdoc"])):

@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ hashFiles('functions-auth/requirements.txt', 'scripts/scan-train/requirements-synth.txt') }}-scan-train-1
+          key: pip-${{ hashFiles('functions/requirements.lock', 'functions-auth/requirements.txt', 'scripts/scan-train/requirements-synth.txt') }}-scan-train-1
 
       # A failing login/user-management test stops the deploy. pytest goes
       # into a separate venv so it never reaches the deployed functions.
@@ -67,7 +67,8 @@ jobs:
       - name: Test login and user management on the emulators
         run: |
           python -m venv "$RUNNER_TEMP/testvenv"
-          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest Pillow pymupdf python-bidi flask opencv-python-headless onnx
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions/requirements.lock
+          "$RUNNER_TEMP/testvenv/bin/pip" install -q -r functions-auth/requirements.txt pytest flask opencv-python-headless onnx
           "$RUNNER_TEMP/testvenv/bin/pip" install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
           "$RUNNER_TEMP/testvenv/bin/pip" install -q onnxruntime timm onnx2torch albumentations==2.0.8 albucore==0.0.24
           firebase emulators:exec --only firestore,auth --project demo-schedule "$RUNNER_TEMP/testvenv/bin/python -m pytest tests/auth -q"
@@ -88,6 +89,41 @@ jobs:
           done
           exit 1
         continue-on-error: true
+
+      # The deployed builder against the golden hashes: no login, no secret (fill_form_101 {"ping", "selftest"}).
+      # A mismatch does not undo the deploy, it stops here and opens the issue below: nothing signed depends on it before S4.
+      - name: Production self-check
+        id: selfcheck
+        if: steps.deploy.outcome == 'success'
+        run: python scripts/builder_selfcheck.py https://europe-west3-schedule-odinson.cloudfunctions.net/fill_form_101 --tries 6
+        continue-on-error: true
+
+      - name: Open/update an issue if the self-check failed
+        if: steps.selfcheck.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          BODY="The deployed Form 101 builder does not give the bytes of \`tests/auth/builder_golden.json\` (docs/backend.md → The golden hashes). Run: $RUN_URL"
+          EXISTING=$(gh issue list --repo "$REPO" --search "Builder self-check failing in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$REPO" --body "$BODY"
+          else
+            gh issue create --repo "$REPO" --title "Builder self-check failing" --body "$BODY"
+          fi
+
+      - name: Close the self-check issue after a good self-check
+        if: steps.selfcheck.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          EXISTING=$(gh issue list --repo "$REPO" --search "Builder self-check failing in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --repo "$REPO" --comment "The deployed builder gives the golden bytes: $RUN_URL"
+          fi
 
       - name: Close the deploy-failure issue after a good deploy
         if: steps.deploy.outcome == 'success'
@@ -124,6 +160,6 @@ jobs:
             gh issue create --repo "$REPO" --title "Cloud Functions deploy failing" --body "$BODY"
           fi
 
-      - name: Fail job if deploy failed
-        if: steps.deploy.outcome == 'failure'
+      - name: Fail job if deploy or the self-check failed
+        if: steps.deploy.outcome == 'failure' || steps.selfcheck.outcome == 'failure'
         run: exit 1

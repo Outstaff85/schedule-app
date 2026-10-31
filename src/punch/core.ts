@@ -25,9 +25,9 @@ export interface PunchEntry {
 }
 export type Screen = 'none' | 'loading' | 'invalid' | 'punch' | 'schedule' | 'hours' | 'documents' | 'transfer';
 /** Another firm asks to take the worker's details (D6; sign.ts). */
-export interface TransferReq { id: string; firm: string; status: 'asked' | 'signing' }
+export interface TransferReq { id: string; firm: string; status: 'asked' | 'signing'; buildError?: string | null; stuck?: boolean; retry?: boolean }
 /** The worker's documents to sign, or signed (documents.ts; docs/contracts.md → Signing). */
-export interface SignReq { id: string; status: 'sent' | 'signing' | 'signed'; templateName?: string; signDate?: string | null; dateFixed?: boolean; signedAt?: string }
+export interface SignReq { id: string; status: 'sent' | 'signing' | 'signed'; templateName?: string; signDate?: string | null; dateFixed?: boolean; signedAt?: string; signedAtIso?: string; buildError?: string | null; stuck?: boolean; retry?: boolean }
 export type IconName = 'link' | 'link-off' | 'wifi-off' | 'alert-triangle';
 /** A day the worker can't work ('unavailable') or their shift offered to a colleague ('swap'), from the punch function's myRequests. */
 export interface ShiftReq { id: string; kind: 'unavailable' | 'swap'; date: string; start?: string; end?: string; toWorkerId?: string; toWorkerName?: string; note?: string; status: 'active' | 'pending' | 'confirmed' | 'declined' }
@@ -456,13 +456,19 @@ const blocked = (gpsBlock: 'denied' | 'off' | 'none', gpsCanAsk = false) => set(
   gpsBlock, gpsCanAsk, locOk: false, ...(showOnce(gpsBlock) ? { gpsHelp: true } : {}),
   loc: { cls: 'warn', t: gpsBlock === 'denied' ? 'GPS is blocked for this app' : gpsBlock === 'off' ? 'GPS is off on this phone' : 'GPS not available' },
 });
+/** Bumped by every check: a reading of an earlier check that answers late is dropped (owner, 2026-10-31: back from a
+ *  sheet the punch sometimes came unlocked, by a reading asked for before it, from where the phone was then). */
+let _gpsCheck = 0;
 /** One GPS reading → the location pill and whether a punch is allowed (locOk). */
 export async function getLocation() {
+  const check = ++_gpsCheck;
+  lastGps = null;
   set({ loc: { cls: 'loading', t: 'Checking GPS...' }, locOk: false });
   // A site without coordinates: the check is skipped and the punch allowed.
   if (SITE.lat == null || SITE.lng == null) { set({ loc: { cls: 'ok', t: 'Location check skipped' }, locOk: true, gpsBlock: null, gpsHelp: false }); return; }
   if (!navigator.geolocation) { blocked('none'); _askedByTap = false; return; }
   const perm = await gpsPermission();
+  if (check !== _gpsCheck) return;
   if (perm === 'denied') { blocked('denied'); _askedByTap = false; return; }
   // not asked yet: first say why, and ask from the window's button (a question out of nowhere is easily refused)
   if (!_askedByTap && (perm === 'prompt' || (perm == null && !gpsKnown()))) {
@@ -471,6 +477,7 @@ export async function getLocation() {
   }
   const t0 = Date.now();
   navigator.geolocation.getCurrentPosition(pos => {
+    if (check !== _gpsCheck) return;
     const elapsed = Date.now() - t0, a = analyseGps(pos);
     const dist = Math.round(haversine(a.lat, a.lng, SITE.lat!, SITE.lng!)); locDist = dist;
     const tooFast = elapsed < GPS_REQUEST_MS;
@@ -483,6 +490,7 @@ export async function getLocation() {
     else if (a.suspicious || tooFast) set({ locOk: false, loc: { cls: 'warn', t: 'Suspicious GPS: {0}', p: { 0: tooFast ? tr('instant response') : a.warnings[0] } } });
     else set({ locOk: true, loc: { cls: 'ok', t: 'On site · {0}m · ±{1}m', p: { 0: dist, 1: Math.round(a.acc) } } });
   }, err => {
+    if (check !== _gpsCheck) return;
     // 1: no permission (or, on an iPhone, Location Services off); 2: the phone's location is off; 3: no fix in time.
     // A refusal the browser does not keep (the question only closed) leaves the permission at "prompt": asking again works.
     if (err.code === 1) void gpsPermission().then(p => { blocked('denied', p === 'prompt'); _askedByTap = false; });

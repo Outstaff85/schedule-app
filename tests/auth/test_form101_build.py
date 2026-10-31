@@ -64,3 +64,17 @@ def test_the_built_pdf_is_flat_no_fillable_fields_and_the_values_on_the_page(fun
     assert not doc.is_form_pdf
     text = "".join(page.get_text() for page in doc).replace(" ", "").replace(chr(10), "")
     assert "012345678" in text
+
+
+def _tax_year(fmain, **extra):
+    pdf, _ = _build(fmain, **extra)
+    return _fields(pdf).get("tax_year")
+
+
+def test_the_tax_year_comes_from_the_inputs_and_only_then_from_the_clock(functions_main):
+    from datetime import date
+    assert _tax_year(functions_main, signDate="28/12/2025", taxYear="2027") == "2027"
+    assert _tax_year(functions_main, signDate="28/12/2025") == "2025"
+    assert _tax_year(functions_main, signDate="2024-02-01") == "2024"
+    assert _tax_year(functions_main, signDate="") == str(date.today().year)
+    assert _tax_year(functions_main, signDate="soon") == str(date.today().year)

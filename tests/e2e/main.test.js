@@ -1386,8 +1386,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(cfail.notice && cfail.bar === 'var(--bad)' && cfail.cleared, 'scan contract not saved: a red notice on the worker until a contract document is added ' + JSON.stringify(cfail));
   // Field search: the card's missing rows and the modal's marked fields search the saved scan
-  const fs = await p.evaluate(async () => {
-    const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:'SCAN', scanMediaType:'image/jpeg', sigPng:null, extraPages:[{b64:'SEF', mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
+  // real pictures: this worker signs later on, and a signed Form 101 is never built without a page it cannot place
+  const fs = await p.evaluate(async ({jpg, jpg2}) => {
+    const a = await uploadWorkerFile({action:'saveWorkerAssets', workerId:'w1', scanB64:jpg, scanMediaType:'image/jpeg', sigPng:null, extraPages:[{b64:jpg2, mediaType:'image/jpeg'}], fileNameBase:'x'}, ()=>{});
     const w = workers[0]; w.assetsFileId = a.id; w.docType = 'israeli_id'; w.city = ''; w.address = '';
     openWorkerCard(0);
     const rowsBefore = ['city','address'].map(k => !!document.getElementById('cardMiss_'+k));
@@ -1404,7 +1405,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.cleared = !T.scan('wAddress') && !T.hint('address');
     closeModal('workerOverlay');
     return r;
-  });
+  }, {jpg: JPG, jpg2: JPG2});
   await p.setViewportSize({width:420, height:900});
   await p.evaluate(() => { workers[0].city=''; workers[0].address=''; openWorkerCard(0); });
   await p.waitForTimeout(300);
@@ -1865,6 +1866,21 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   });
   await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  // A page the build could not place (fill_form_101's X-Dropped): the app says so.
+  await p.route(/cloudfunctions\.net\/fill_form_101$/, r => r.fulfill({status: 200, contentType: 'application/json',
+    headers: {'X-Dropped': '2', 'Access-Control-Expose-Headers': 'X-Dropped', 'Access-Control-Allow-Origin': '*'},
+    body: JSON.stringify({pdfBase64: btoa('%PDF-1.4 test'), fileName: 'f101.pdf'})}));
+  const dropNote = await p.evaluate(async () => {
+    const id = 'wdrop' + Date.now(), toastEl = document.getElementById('toast'), notes = [];
+    const seen = new MutationObserver(() => notes.push(toastEl.textContent)); seen.observe(toastEl, {childList: true, subtree: true, characterData: true});
+    workers.push({id, name: 'Dropped Test', docType: 'israeli_id', docGiven: 'Dropped', docSurname: 'Test', clientIds: [], schedule: [], docFileId: 'old-file', docUrl: 'https://old.example/f.pdf'});
+    await regenerateWorkerDoc(id); await T.tick(200); seen.disconnect();
+    ManagerBridge.deleteWorkers([id]);
+    await T.until(() => !workers.some(x => x.id === id), 5000);
+    return notes.join(' | ');
+  });
+  await p.unroute(/cloudfunctions\.net\/fill_form_101$/);
+  ok(/2 scanned pages could not be placed/.test(dropNote), 'form 101: a page the build left out of the stored form is told in a note ' + dropNote);
   ok(rpl.done && rpl.file && rpl.url && rpl.at && rpl.type === 'israeli_id', 'form 101: a rebuild finishing after a merged save replaced the worker objects writes the new PDF onto the live worker ' + JSON.stringify(rpl));
   ok(sp.ok1 && sp.kinds === 'id_front*,sefach' && sp.sig && sp.noSidecar && sp.paths && sp.sigPath && sp.hasSig === true && sp.extra === 1 && sp.back,
     'scan pages: a new worker from a scan stores each page as its own JPEG (with its kind, the ID card first) and the signature as a PNG, read back in one call ' + JSON.stringify(sp));
@@ -1980,6 +1996,64 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sgTook.docFile && sgTook.url && sgTook.contract && sgTook.signedAt && sgTook.sig && sgTook.regen && sgTook.kept && /Signed/.test(sgTook.chip),
     'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
+  // A signature whose documents could not be saved (docs/contracts.md → Signing): the worker's page never says Signed, retries by
+  // itself once and by Try again; the manager's card says Not saved, with the reason, Try again and Withdraw.
+  const STUCK = 'The signed documents could not be built: withdraw them and send the documents again';
+  const stuckCalls = [];
+  const stuckRoute = async r => {
+    const b = JSON.parse(r.request().postData() || '{}');
+    const answer = o => r.fulfill({status: 200, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'}, body: JSON.stringify(o)});
+    if (['build', 'withdraw', 'mine', 'list'].includes(b.action)) stuckCalls.push(b.action);
+    if (b.action === 'build') return answer({error: STUCK});
+    if (b.action === 'withdraw') return answer({ok: true});
+    if (b.action === 'mine') return answer({ok: true, request: {id: 'r-stuck', status: 'signing', templateName: 'Hourly contract', buildError: STUCK}});
+    if (b.action === 'list') return answer({ok: true, requests: [{id: 'r-stuck', workerId: 'w2', status: 'signing', signDate: '01/11/2026', sentAt: '2026-10-31T10:00:00.000Z',
+      signedAtIso: new Date().toISOString(), buildError: STUCK}]});
+    return r.fallback();
+  };
+  const spg = await page(ctx);
+  await spg.route(/cloudfunctions\.net\/sign_documents$/, stuckRoute);
+  await spg.goto(BASE + 'worker-punch.html?t=tok-avi');
+  await spg.waitForSelector('[data-testid="tile-documents"][data-state="signing"]', {timeout: 30000});
+  ok(await waitFor(spg, () => /could not be saved/.test(document.querySelector('[data-testid="tile-documents"]').innerText), 15000)
+    && !/Signed/.test(await spg.innerText('[data-testid="tile-documents"]')), "signing: a signature whose documents could not be saved: the worker's tile says so, not Signed");
+  await spg.click('[data-testid="tile-documents"]');
+  await spg.waitForSelector('[data-testid="documents-not-saved"]', {timeout: 10000});
+  const autoBuilds = stuckCalls.filter(x => x === 'build').length;
+  await spg.click('[data-testid="documents-retry"]');
+  ok(autoBuilds === 2 && await waitFor(spg, () => !document.querySelector('[data-testid="documents-retry"]')?.disabled, 10000) && stuckCalls.filter(x => x === 'build').length === 4
+    && !(await spg.$('[data-testid="documents-signed"]')), "signing: the worker's page built it again once by itself, and Try again builds it again " + JSON.stringify(stuckCalls));
+  await spg.close();
+  stuckCalls.length = 0;
+  await p.route(/cloudfunctions\.net\/sign_documents$/, stuckRoute);
+  const stuckCard = await p.evaluate(async () => {
+    await ManagerBridge.reloadSignRequests();
+    openWorkerCard(workers.findIndex(x => x.id === 'w2')); await T.tick(300);
+    const c = document.querySelector('#workerCardModal [data-testid="card-sign-state"]') || {dataset: {}};
+    return {state: c.dataset.state, text: c.innerText || '', why: (document.querySelector('[data-testid="card-sign-error"]') || {}).innerText || ''};
+  });
+  await p.click('[data-testid="card-sign-retry"]');
+  await waitFor(p, () => !document.querySelector('[data-testid="card-sign-retry"]')?.disabled, 8000);
+  await p.click('[data-testid="card-sign-withdraw"]');
+  await sleep(500);
+  ok(stuckCard.state === 'stuck' && /Not saved/.test(stuckCard.text) && !/Signed/.test(stuckCard.text) && /withdraw them/.test(stuckCard.why)
+    && stuckCalls.filter(x => x === 'build').length === 2 && stuckCalls.includes('withdraw'),
+    "signing: the manager's card says Not saved with the reason, offers Try again and Withdraw " + JSON.stringify({stuckCard, stuckCalls}));
+  await p.unroute(/cloudfunctions\.net\/sign_documents$/, stuckRoute);
+  // A date that cannot be read counts as stuck, as on the server (signing.stuck).
+  await p.route(/cloudfunctions\.net\/sign_documents$/, async r => {
+    const b = JSON.parse(r.request().postData() || '{}');
+    if (b.action !== 'list') return r.fallback();
+    return r.fulfill({status: 200, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'},
+      body: JSON.stringify({ok: true, requests: [{id: 'r-odd', workerId: 'w2', status: 'signing', sentAt: '2026-10-31T10:00:00.000Z', signedAtIso: 'not a date'}]})});
+  });
+  const oddDate = await p.evaluate(async () => {
+    await ManagerBridge.reloadSignRequests(); await T.tick(200);
+    return (document.querySelector('#workerCardModal [data-testid="card-sign-state"]') || {dataset: {}}).dataset.state;
+  });
+  await p.unroute(/cloudfunctions\.net\/sign_documents$/);
+  ok(oddDate === 'stuck', 'signing: a signature date that cannot be read counts as stuck, as on the server ' + oddDate);
+  await p.evaluate(async () => { closeModal('workerCardOverlay'); await ManagerBridge.reloadSignRequests(); });
   // Signed files are kept (documents plan S0b; docs/contracts.md → Signed files are kept).
   const keep = await p.evaluate(async () => {
     const w = workers.find(x => x.id === 'w1');
@@ -2189,10 +2263,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   for (let i = 1; i <= 10; i++) await p.mouse.move(sgBb2.x + 20 + i * 15, sgBb2.y + 30 + (i % 2 ? 15 : -10));
   await p.mouse.up();
   await p.click('[data-testid="sign-window"] [data-testid="sign-button"]');
-  // the card says Signed with this signing's date at once — not Sent to sign (nor an older date) while the PDFs are built
+  // the card says Being saved, then Signed with this signing's date once the documents exist — never Signed before them
   ok(await waitFor(p, () => { const c = document.querySelector('#workerCardModal [data-testid="card-sign-state"]');
-    return !document.querySelector('[data-testid="sign-window"]') && !!c && c.dataset.state === 'signed' && /\d{2}\/\d{2}\/\d{4}/.test(c.innerText); }, 15000),
-    'signing in person: the card shows Signed with the new date as soon as the window closes');
+    return !document.querySelector('[data-testid="sign-window"]') && !!c && c.dataset.state === 'signed' && /\d{2}\/\d{2}\/\d{4}/.test(c.innerText); }, 40000),
+    'signing in person: the card shows Signed with the new date once its documents are built');
   ok(await waitFor(p, () => { const w = workers.find(x => x.id === 'w2'); return !!(w && w.signedAt && (w.docs || []).some(d => d.signed)); }, 40000),
     'signing in person: the window closes at once, the two PDFs are built in the background and the worker gets them');
   ok(await p.evaluate(() => { const w = workers.find(x => x.id === 'w2'), c = document.querySelector('#workerCardModal [data-testid="card-sign-state"]');
@@ -4347,6 +4421,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       else { if (m === 'denied') localStorage.setItem('gpsPerm', 'denied'); err({code: m === 'off' ? 2 : 1, message: m}); }
     }, 900);
   };
+  // Back from a sheet: a reading asked for earlier that answers late does not unlock the punch.
+  const gpl = await page(ctx);
+  await gpl.setViewportSize({width: 390, height: 844});
+  await gpl.addInitScript(() => {
+    let n = 0;
+    navigator.geolocation.getCurrentPosition = ok => {
+      n++;
+      const at = n === 1 ? {coords: {latitude: 32.0, longitude: 34.8, accuracy: 10, speed: null, altitude: null}} : {coords: {latitude: 33.0, longitude: 34.8, accuracy: 10, speed: null, altitude: null}};
+      setTimeout(() => ok(Object.assign({}, at, {timestamp: Date.now()})), n === 1 ? 5000 : 1000);
+    };
+  });
+  await gpl.goto(BASE + 'worker-punch.html?t=tok-new');
+  await waitFor(gpl, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  await gpl.click('[data-testid="tile-schedule"]');
+  await waitFor(gpl, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
+  await gpl.keyboard.press('Escape');
+  await waitFor(gpl, () => /from site/.test(document.getElementById('locChip').textContent), 8000);
+  await sleep(5500);
+  const gpl1 = await gpl.evaluate(() => ({chip: document.getElementById('locChip').textContent, state: document.getElementById('bigPunchBtn').dataset.state}));
+  ok(/from site/.test(gpl1.chip) && gpl1.state === 'off', 'punch: back from a sheet, the reading asked for before it answers late and does not unlock the punch ' + JSON.stringify(gpl1));
+  await gpl.close();
   const gpw = await page(ctx);
   await gpw.setViewportSize({width: 390, height: 844});
   await gpw.addInitScript(gpsStub);
@@ -4420,9 +4515,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await waitFor(p, () => document.getElementById('screenSchedule').classList.contains('hidden'), 8000);
     await p.click('[data-testid="tile-schedule"]');
     await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
-    for (let i = 0; i < 2 && !(await p.$(`.sp-plate[data-date="${rqKey}"]`)); i++) { await p.click('#scheduleContent .sched-nav[aria-label="Next month"]'); await sleep(200); }
-    await p.click(`.sp-plate[data-date="${rqKey}"]`);
-    return waitFor(p, () => !!document.getElementById('naToggle'), 8000);
+    // ...and that may still happen after this check: the plate is found again until the tap lands
+    for (let tries = 0; tries < 5; tries++) {
+      for (let i = 0; i < 2 && !(await p.$(`.sp-plate[data-date="${rqKey}"]`)); i++) { await p.click('#scheduleContent .sched-nav[aria-label="Next month"]'); await sleep(200); }
+      try { await p.click(`.sp-plate[data-date="${rqKey}"]`, {timeout: 4000}); } catch (e) { continue; }
+      if (await waitFor(p, () => !!document.getElementById('naToggle'), 4000)) return true;
+    }
+    return false;
   };
   const plateText = () => p.evaluate(k => (document.querySelector(`.sp-plate[data-date="${k}"]`) || {}).innerText || '', rqKey);
   const rq5 = {open: await openDay()};

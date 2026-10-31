@@ -10,8 +10,17 @@ the server's time (`sign`), and the two signed PDFs are built at once, one call 
 stored under the worker and never built again; the manager app puts them on the worker
 record (`list` → the signed requests it has not taken yet, `applied`).
 
+Nothing reaches a signature that cannot become a document: `send` builds both documents strictly and throws the result
+away (not_ready), `view` shows only a strict build, and `sign` builds them once more with the signature before keeping
+it. `sign` freezes what was signed (`frozen`: today, the page list with each page's hash), and every later build uses only
+that: the pages never change under a signature, a rescan included. If a build still fails after the signature, the request
+stays `signing` with `buildErrors`; `build` can be tried again from what was frozen, and when that cannot be built the way
+out is the manager's Withdraw and a new send, which the worker views and signs again. Withdraw deletes nothing: the
+signature and any part already built stay stored and on the request. Every status moves through moves.move, so a
+Withdraw, a replacing send or a second signature at the same moment cannot be overwritten.
+
 tenants/<t>/signRequests/<id>: workerId, hrId, status (sent → signing → signed; replaced,
-withdrawn), way, templateId / templateName / templateVersion / templatePath (the frozen
+withdrawn), frozen {today, pages, workerName}, buildErrors {form101, contract: text | None}, way, templateId / templateName / templateVersion / templatePath (the frozen
 copy) / placed, values, form101, signDate (fixed, or None = the day of signing), seal
 {signature, stamp: the firm's pictures frozen at the send (seal.py) | None, everyPage: the
 template's tick} (a send made before it has none and draws no seal), sentAt, sentBy,
@@ -21,11 +30,15 @@ No client reads or writes it (firestore.rules grant nothing); a firm sees only i
 
 import base64
 import datetime
+import hashlib
+import io
+import json
 import re
 import time
 import uuid
 
 import contracts
+from moves import move
 import seal as seal_mod
 
 PAY_MARKS = contracts.PAY_MARKS
@@ -33,6 +46,7 @@ MANAGER_ROLES = ("superadmin", "tenant_admin", "staff", "hr")
 ADMIN_ROLES = ("superadmin", "tenant_admin")
 WHICH = ("form101", "contract")
 MAX_SIG = 400 * 1024
+STUCK_AFTER_S = 10 * 60  # a `signing` with no error recorded counts as stuck after this: a build still running is over by then
 
 E_NO_FIRM = "No firm"
 E_NO_RIGHT = "No rights to workers"
@@ -45,6 +59,10 @@ E_SIGNED = "Already signed"
 E_SIG = "No signature"
 E_LINK = "Unknown worker link"
 E_CLIENT_TEMPLATE = "This template is for clients"
+E_PAGE_DAMAGED = "A scanned page is damaged: it must be scanned again, then the documents sent again"
+E_CONTRACT_BROKEN = "The contract could not be filled: check its template, then send the documents again"
+E_NOT_BUILT = "The signed documents could not be built: withdraw them and send the documents again"
+E_STILL_SAVING = "The documents are still being saved: try again in a few minutes"
 
 
 def today_il():
@@ -129,33 +147,105 @@ def _clean_values(values):
 def _clean_form101(p):
     if not isinstance(p, dict):
         return {}
-    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate")}
+    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear")}
     import json
     return out if len(json.dumps(out, default=str)) < 30000 else {}
 
 
-def _stored_pages(bucket, worker):
-    """The worker's scanned pages for Form 101 (docs/contracts.md → Scanned pages): the ID card or
-    passport first, then the others; the old sidecar for a worker not split yet."""
-    pages = worker.get("scanPages") if isinstance(worker.get("scanPages"), list) else []
+class MissingPage(ValueError):
+    """Strict: a page the worker's record lists is not in Storage, or not the page that was signed."""
+
+
+class TemplateBroken(ValueError):
+    """The contract template itself cannot be filled (never a Storage that did not answer)."""
+
+
+def _sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def _caption(i):
+    return "Document scan" if i == 0 else "Document"
+
+
+def _sidecar_pages(raw):
+    """The pages of an old sidecar (no kinds)."""
+    d = json.loads(raw.decode("utf-8"))
     out = []
+    if d.get("scanB64"):
+        out.append({"b64": d["scanB64"], "mediaType": d.get("scanMediaType") or "image/jpeg", "caption": _caption(0)})
+    for x in d.get("extraPages") or []:
+        if x and x.get("b64"):
+            out.append({"b64": x["b64"], "mediaType": x.get("mediaType") or "image/jpeg", "caption": _caption(1)})
+    return out
+
+
+def read_pages(bucket, worker, strict=False):
+    """The worker's scanned pages for Form 101 (docs/contracts.md → Scanned pages), the ID card or passport first, each with
+    its kind → (pages, what freezes them: refs). The old sidecar (no kinds) for a worker not split yet, or, strict, one
+    whose listed pages are not all there; strict: a listed page with neither raises MissingPage."""
+    pages = worker.get("scanPages") if isinstance(worker.get("scanPages"), list) else []
     first = [p for p in pages if p.get("primary")] + [p for p in pages if not p.get("primary")]
-    for i, p in enumerate(first):
-        b = bucket.blob(str(p.get("fileId") or ""))
-        if p.get("fileId") and b.exists():
-            out.append({"b64": base64.b64encode(b.download_as_bytes()).decode(), "mediaType": "image/jpeg",
-                        "caption": "Document scan" if i == 0 else "Document"})
-    if not out and worker.get("assetsFileId"):
-        import json
+    out, refs, missing = [], [], False
+    for p in first:
+        file_id = p.get("fileId")
+        b = bucket.blob(str(file_id or ""))
+        if file_id and b.exists():
+            data = b.download_as_bytes()
+            page = {"b64": base64.b64encode(data).decode(), "mediaType": "image/jpeg", "caption": _caption(len(out))}
+            if p.get("kind"):  # the builder lays the pages out by their kind (the A4 ID sheet)
+                page["kind"] = p["kind"]
+            out.append(page)
+            refs.append({"fileId": file_id, "kind": p.get("kind"), "primary": bool(p.get("primary")), "sha256": _sha(data)})
+        elif file_id:
+            missing = True
+    if worker.get("assetsFileId") and (not out or (strict and missing)):
         b = bucket.blob(worker["assetsFileId"])
         if b.exists():
-            d = json.loads(b.download_as_bytes().decode("utf-8"))
-            if d.get("scanB64"):
-                out.append({"b64": d["scanB64"], "mediaType": d.get("scanMediaType") or "image/jpeg", "caption": "Document scan"})
-            for x in d.get("extraPages") or []:
-                if x and x.get("b64"):
-                    out.append({"b64": x["b64"], "mediaType": x.get("mediaType") or "image/jpeg", "caption": "Document"})
+            raw = b.download_as_bytes()
+            return _sidecar_pages(raw), [{"sidecar": worker["assetsFileId"], "sha256": _sha(raw)}]
+    if strict and missing:
+        raise MissingPage("a listed page is not in Storage")
+    return out, refs
+
+
+def frozen_pages(bucket, refs):
+    """The pages a signature was given on (read_pages' refs), these very files → pages; MissingPage when one is gone or changed."""
+    out = []
+    for r in refs:
+        path = r.get("sidecar") or r.get("fileId")
+        b = bucket.blob(str(path or ""))
+        if not path or not b.exists():
+            raise MissingPage(str(path))
+        data = b.download_as_bytes()
+        if _sha(data) != r.get("sha256"):
+            raise MissingPage(str(path))
+        if r.get("sidecar"):
+            out += _sidecar_pages(data)
+            continue
+        page = {"b64": base64.b64encode(data).decode(), "mediaType": "image/jpeg", "caption": _caption(len(out))}
+        if r.get("kind"):
+            page["kind"] = r["kind"]
+        out.append(page)
     return out
+
+
+def _stored_pages(bucket, worker, strict=False):
+    """The worker's scanned pages as they are now (read_pages)."""
+    return read_pages(bucket, worker, strict)[0]
+
+
+def fill_contract(bucket, path, values, placed, signature, seal):
+    """The contract filled from a template file → bytes. What cannot be filled is TemplateBroken; the file's own read and
+    a Storage that does not answer are not: they stay what they are (problem)."""
+    b = bucket.blob(path)
+    if not b.exists():
+        raise TemplateBroken("the template's file is gone")
+    tpl = b.download_as_bytes()
+    try:
+        return contracts.fill(tpl, values, placed, signature, seal=seal)
+    except Exception as e:
+        raise TemplateBroken(str(e)) from e
 
 
 def _req_ref(db, tenant, rid):
@@ -179,20 +269,53 @@ def _current(db, tenant, wid):
     return best
 
 
-def _pdf(req, which, worker, bucket, build101, signature=None, date=None):
-    """One of the two documents filled for this request → (bytes, file name)."""
+def _pdf(req, which, worker, bucket, build101, signature=None, date=None, strict=False):
+    """One of the two documents filled for this request → (bytes, file name). A document with the signature (or strict)
+    is built strictly: a signature or a page that cannot be placed stops it (a ValueError), never a signed form without it."""
     date = date or req.get("signDate") or today_il()
+    frozen = req.get("frozen") or {}
     if which == "contract":
-        tpl = bucket.blob(req["templatePath"]).download_as_bytes()
-        values = dict(req.get("values") or {}, sign_date=date, today=today_il())
-        data = contracts.fill(tpl, values, req.get("placed"), signature, seal=seal_mod.read_frozen(bucket, req.get("seal")))
-        name = (req.get("templateName") or "Contract") + " - " + (worker.get("name") or "").strip()
+        values = dict(req.get("values") or {}, sign_date=date, today=frozen.get("today") or today_il())
+        data = fill_contract(bucket, req["templatePath"], values, req.get("placed"), signature, seal_mod.read_frozen(bucket, req.get("seal")))
+        name = (req.get("templateName") or "Contract") + " - " + (frozen.get("workerName") or worker.get("name") or "").strip()
         return data, re.sub(r"[\\/:*?\"<>|]", " ", name).strip() + ".pdf"
-    p = dict(req.get("form101") or {}, signDate=date, extraPages=_stored_pages(bucket, worker))
+    strict = strict or bool(signature)
+    # after the signature only what it was given on: a rescan never changes it (an older request has no `frozen`)
+    pages = frozen_pages(bucket, frozen["pages"]) if "pages" in frozen else _stored_pages(bucket, worker, strict)
+    p = dict(req.get("form101") or {}, signDate=date, extraPages=pages)
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
-    data, name = build101(p)
-    return data, name
+    return build101(p, strict=True) if strict else build101(p)
+
+
+def problem(which, e):
+    """What a failed strict build of a document means, for the people who can act on it. A refusal is a ValueError (Form
+    101's pages, signature or date; a template that cannot be filled); anything else is no judgment on the documents
+    (Storage not answering): raised again, so the caller's own error says what happened."""
+    if not isinstance(e, ValueError):
+        raise e
+    return E_PAGE_DAMAGED if which == "form101" else E_CONTRACT_BROKEN
+
+
+def not_ready(req, worker, bucket, build101, signature=None):
+    """A dry run of both documents, strict, thrown away → None, or the error that stops the send or the signature."""
+    for which in WHICH:
+        try:
+            _pdf(req, which, worker, bucket, build101, signature=signature, strict=True)
+        except Exception as e:
+            return problem(which, e)
+    return None
+
+
+def picture_ok(data):
+    """A PNG that decodes whole (`_sig_bytes` reads only its first bytes)."""
+    from PIL import Image
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            im.load()
+        return True
+    except Exception:
+        return False
 
 
 def _sig_bytes(s):
@@ -209,8 +332,10 @@ def _sig_bytes(s):
 
 def _summary(rid, x):
     keys = ("workerId", "hrId", "status", "way", "templateId", "templateName", "templateVersion", "signDate", "sentAt", "sentBy",
-            "signedAt", "sigPath", "parts", "appliedAt", "dateFixed", "printHash", "printPay", "printMarks")
+            "signedAt", "signedAtIso", "sigPath", "parts", "appliedAt", "dateFixed", "printHash", "printPay", "printMarks")
     out = {k: x.get(k) for k in keys if k in x}
+    out["buildError"] = build_error(x)
+    out["stuck"] = stuck(x)
     if out.get("signedAt") is not None and not isinstance(out["signedAt"], str):
         try:
             out["signedAt"] = out["signedAt"].isoformat()
@@ -218,6 +343,29 @@ def _summary(rid, x):
             out["signedAt"] = str(out["signedAt"])
     out["id"] = rid
     return out
+
+
+def build_error(x):
+    """The first error of a document not built yet (`buildErrors`), or None."""
+    return next((v for v in (x.get("buildErrors") or {}).values() if v), None)
+
+
+def stuck(x, now=None):
+    """A `signing` nobody is finishing: a build failed, or it has been going for longer than any build takes."""
+    if x.get("status") != "signing":
+        return False
+    if build_error(x):
+        return True
+    try:
+        at = datetime.datetime.fromisoformat(str(x.get("signedAtIso")).replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return ((now or datetime.datetime.now(datetime.timezone.utc)) - at).total_seconds() > STUCK_AFTER_S
+
+
+def _both(x):
+    """Both documents are built."""
+    return all(k in (x.get("parts") or {}) for k in WHICH)
 
 
 def run(db, bucket, claims, body, build101, server_time=None):
@@ -278,6 +426,14 @@ def run(db, bucket, claims, body, build101, server_time=None):
             return {"error": E_NO_TEMPLATE}
         if contracts.kind_of(tpl) == "client":
             return {"error": E_CLIENT_TEMPLATE}
+        # Both documents built now and thrown away: a damaged page is the manager's to put right, before the worker signs.
+        rec = seal_mod.record(db, tenant)
+        error = not_ready({"templatePath": tpl["fileId"], "templateName": tpl.get("name") or "", "values": values, "placed": tpl.get("placed") or [],
+                           "form101": _clean_form101(body.get("form101")), "signDate": sign_date or None,
+                           "seal": {"signature": (rec.get("signature") or {}).get("path"), "stamp": (rec.get("stamp") or {}).get("path"),
+                                    "everyPage": contracts.seal_every_page(tpl)}}, worker, bucket, build101)
+        if error:
+            return {"error": error}
         rid = uuid.uuid4().hex[:20]
         frozen = f"tenants/{tenant}/workers/{wid}/sign/{rid}/contract-template.pdf"
         bucket.blob(frozen).upload_from_string(bucket.blob(tpl["fileId"]).download_as_bytes(), content_type="application/pdf")
@@ -286,7 +442,7 @@ def run(db, bucket, claims, body, build101, server_time=None):
                     everyPage=contracts.seal_every_page(tpl))
         prev_id, prev = _current(db, tenant, wid)
         if prev_id and prev.get("status") == "sent":
-            col.document(prev_id).update({"status": "replaced"})
+            move(db, col.document(prev_id), lambda x: x.get("status") == "sent", {"status": "replaced"})
         req = {"workerId": wid, "hrId": worker.get("hrId") or None, "status": "sent",
                "way": "person" if body.get("way") == "person" else "remote",
                "templateId": tsnap.id, "templateName": tpl.get("name") or "", "templateVersion": int(tpl.get("version") or 1),
@@ -311,7 +467,18 @@ def run(db, bucket, claims, body, build101, server_time=None):
 
     if action == "withdraw":
         if req.get("status") == "sent":
-            col.document(rid).update({"status": "withdrawn"})
+            if move(db, col.document(rid), lambda x: x.get("status") == "sent", {"status": "withdrawn"}):
+                return {"ok": True}
+            req = col.document(rid).get().to_dict() or {}  # signed in the meantime: as below
+        if req.get("status") == "signing":
+            # Nothing is deleted: the signature and any part built stay stored and on this request, kept as it is.
+            if move(db, col.document(rid), lambda x: stuck(x) and not _both(x),
+                    {"status": "withdrawn", "withdrawnWhy": "not built", "withdrawnAt": _now_iso(), "withdrawnBy": claims.get("uid", "")}):
+                return {"ok": True}
+            cur = col.document(rid).get().to_dict() or {}
+            if cur.get("status") == "signing" and not _both(cur):
+                return {"error": E_STILL_SAVING}
+            return {"error": E_SIGNED}
         return {"ok": True}
 
     worker = _worker(db, tenant, req["workerId"]) or {}
@@ -332,10 +499,16 @@ def run_worker(db, bucket, body, build101, server_time=None, finder=None):
         if not rid:
             return {"ok": True, "request": None}
         s = _summary(rid, req)
-        return {"ok": True, "request": {k: s.get(k) for k in ("id", "status", "templateName", "signDate", "dateFixed", "signedAt")}}
+        return {"ok": True, "request": {k: s.get(k) for k in ("id", "status", "templateName", "signDate", "dateFixed", "signedAt", "signedAtIso", "buildError", "stuck")}}
     if not rid:
         return {"error": E_NO_REQUEST}
     return _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time)
+
+
+def _finish(db, ref):
+    """Whoever sees both parts marks it signed, never a request withdrawn or replaced meanwhile → its status now."""
+    move(db, ref, lambda x: x.get("status") == "signing" and _both(x), {"status": "signed"})
+    return (ref.get().to_dict() or {}).get("status")
 
 
 def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time):
@@ -353,7 +526,10 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": part.get("name"), "signed": True}
         if req.get("status") != "sent":
             return {"error": E_NO_REQUEST}
-        data, name = _pdf(req, which, worker, bucket, build101)
+        try:
+            data, name = _pdf(req, which, worker, bucket, build101, strict=True)
+        except Exception as e:
+            return {"error": problem(which, e)}
         return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": name, "signDate": req.get("signDate") or today_il(),
                 "dateFixed": bool(req.get("dateFixed")), "signed": False}
 
@@ -363,16 +539,32 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
         if req.get("status") != "sent":
             return {"error": E_NO_REQUEST}
         sig = _sig_bytes(body.get("signaturePng"))
-        if not sig:
+        if not sig or not picture_ok(sig):
             return {"error": E_SIG}
-        path = f"tenants/{tenant}/workers/{req['workerId']}/signature/{int(time.time() * 1000)}-signature.png"
+        # The last gate: nothing changes until both documents are built with this signature, from what it freezes.
+        date = req.get("signDate") or today_il()
+        try:
+            refs = read_pages(bucket, worker, strict=True)[1]
+        except ValueError:
+            return {"error": E_PAGE_DAMAGED}
+        frozen = {"today": today_il(), "pages": refs, "workerName": (worker.get("name") or "").strip()}
+        error = not_ready(dict(req, frozen=frozen, signDate=date), worker, bucket, build101, signature=sig)
+        if error:
+            return {"error": error}
+        # two at once never share a file: the one that loses below removes its own
+        path = f"tenants/{tenant}/workers/{req['workerId']}/signature/{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}-signature.png"
         b = bucket.blob(path)
         if req.get("hrId"):
             b.metadata = {"hrId": req["hrId"], "workerId": req["workerId"], "kind": "signature"}
         b.upload_from_string(sig, content_type="image/png")
-        date = req.get("signDate") or today_il()
-        ref.update({"status": "signing", "signedAt": server_time if server_time is not None else _now_iso(),
-                    "signedAtIso": _now_iso(), "signDate": date, "sigPath": path})
+        # sent → signing only while it is still sent: a Withdraw, a replacing send or a second signature in the gate's seconds wins
+        if not move(db, ref, lambda x: x.get("status") == "sent",
+                    {"status": "signing", "signedAt": server_time if server_time is not None else _now_iso(),
+                     "signedAtIso": _now_iso(), "signDate": date, "sigPath": path, "frozen": frozen}):
+            b.delete()
+            now = ref.get()
+            cur = (now.to_dict() or {}) if now.exists else {}
+            return {"error": E_SIGNED if cur.get("status") in ("signing", "signed") else E_NO_REQUEST}
         return {"ok": True, "id": rid, "signDate": date}
 
     if action == "build":
@@ -382,9 +574,15 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             return {"error": E_NO_REQUEST}
         part = (req.get("parts") or {}).get(which)
         if part:
-            return {"ok": True, "part": part, "status": req.get("status")}
+            return {"ok": True, "part": part, "status": _finish(db, ref)}
         sig = bucket.blob(req["sigPath"]).download_as_bytes()
-        data, name = _pdf(req, which, worker, bucket, build101, signature=sig, date=req.get("signDate"))
+        try:
+            data, name = _pdf(req, which, worker, bucket, build101, signature=sig, date=req.get("signDate"))
+        except Exception as e:
+            problem(which, e)  # a Storage that did not answer goes up as it is, with no error kept: Try again finishes it
+            ref.update({"buildErrors." + which: E_NOT_BUILT})
+            contracts.log_error(db, tenant, f"A signed document could not be built ({which}, request {rid}): {e}", "signing.build")
+            return {"error": E_NOT_BUILT}
         folder = "form101" if which == "form101" else "docs"
         path = f"tenants/{tenant}/workers/{req['workerId']}/{folder}/{int(time.time() * 1000)}-{re.sub(r'[/#?]', '_', name)}"
         b = bucket.blob(path)
@@ -392,14 +590,17 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             b.metadata = {"hrId": req["hrId"], "workerId": req["workerId"], "kind": folder}
         b.upload_from_string(data, content_type="application/pdf")
         part = {"path": path, "name": name, "size": len(data)}
-        ref.update({"parts." + which: part})
-        # The other build may finish at the same moment: whoever sees both parts marks it signed.
-        cur = ref.get().to_dict() or {}
-        parts = cur.get("parts") or {}
-        if all(k in parts for k in WHICH) and cur.get("status") != "signed":
-            ref.update({"status": "signed"})
-            cur["status"] = "signed"
-        return {"ok": True, "part": part, "status": cur.get("status")}
+        # kept only while this request is still signing and has no such part: a Withdraw or another build won removes this file
+        if not move(db, ref, lambda x: x.get("status") in ("signing", "signed") and which not in (x.get("parts") or {}),
+                    {"parts." + which: part, "buildErrors." + which: None}):
+            kept = ref.get().to_dict() or {}
+            have = (kept.get("parts") or {}).get(which)
+            if not have or have.get("path") != path:
+                b.delete()
+            if not have or kept.get("status") not in ("signing", "signed"):
+                return {"error": E_NO_REQUEST}
+            part = have
+        return {"ok": True, "part": part, "status": _finish(db, ref)}
 
     return {"error": "Unknown action"}
 
