@@ -26,6 +26,7 @@ import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-
 import { undoDelete } from '@/components/shared/undo';
 import type { CardSnapshot, ManagerBridge, SignRequestView, WorkerDoc } from './bridge';
 import { SignWindow, takeSign } from './SignWindow';
+import { isStuck, signCall } from './logic/signing';
 import { contractDocDate, statusFromSwitch, statusSwitchOn } from './logic/workers';
 import { WORKER_DOCS_FN_URL, warmCloudFunctions } from './logic/functions';
 import { DownloadData } from './DownloadData';
@@ -160,12 +161,24 @@ function DocsBox({ snap, api }: { snap: CardSnapshot; api: ManagerBridge }) {
   );
 }
 
-/** Sent to sign (waiting for the worker) / Signed with its date — the latest signing's, also while its documents are
- * still being built ('signing') / Needs sending again (the template was deleted). */
-function SignChip({ req, signDate }: { req: SignRequestView | null; signDate?: string }) {
+/** Sent to sign (waiting for the worker) / Being saved (signed, its documents still being built) / Not saved (they could
+ * not be built: Try again, or Withdraw — the signature stays stored; docs/contracts.md → Signing) / Signed with its date,
+ * only once a document exists / Needs sending again (withdrawn, or the template was deleted). */
+function SignChip({ req, signDate, may, api }: { req: SignRequestView | null; signDate?: string; may: boolean; api: ManagerBridge }) {
+  const [busy, setBusy] = React.useState(false);
+  if (req && req.status === 'signing' && !isStuck(req as any)) return <Badge variant="info" data-testid="card-sign-state" data-state="signing"><IconLoader2 className="animate-spin" />{tr('Being saved')}</Badge>;
+  if (req && req.status === 'signing') {
+    const act = (fn: () => Promise<unknown>) => { setBusy(true); void fn().catch(e => api.toast(tr(String(e?.message || e)), 6000)).then(() => api.reloadSignRequests()).finally(() => setBusy(false)); };
+    return <>
+      <Badge variant="bad" data-testid="card-sign-state" data-state="stuck" title={req.buildError ? tr(req.buildError) : undefined}><IconAlertTriangle />{tr('Not saved')}</Badge>
+      {req.buildError && <span className="text-[11px] text-bad" data-testid="card-sign-error">{tr(req.buildError)}</span>}
+      {may && <Button size="sm" disabled={busy} data-testid="card-sign-retry" onClick={() => act(() => Promise.all(['form101', 'contract'].map(which => signCall({ action: 'build', id: req.id, which }))))}>{tr('Try again')}</Button>}
+      {may && <Button size="sm" disabled={busy} data-testid="card-sign-withdraw" onClick={() => act(() => signCall({ action: 'withdraw', id: req.id }))}>{tr('Withdraw')}</Button>}
+    </>;
+  }
   if (req && req.status === 'sent') return <Badge variant="info" data-testid="card-sign-state" data-state="sent"><IconSend />{tr('Sent to sign')}</Badge>;
   if (req && req.status === 'withdrawn') return <Badge variant="warn" data-testid="card-sign-state" data-state="withdrawn"><IconAlertTriangle />{tr('Needs sending again')}</Badge>;
-  const d = (req && (req.status === 'signed' || req.status === 'signing') && req.signDate) || signDate;
+  const d = (req && req.status === 'signed' && req.signDate) || signDate;
   return d ? <Badge variant="ok" data-testid="card-sign-state" data-state="signed"><IconSignature />{tr('Signed {0}', { 0: d })}</Badge> : null;
 }
 
@@ -229,7 +242,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
         <div className="mb-2 flex flex-wrap items-center gap-1.5 empty:hidden" data-testid="card-chips">
           <NoticeChipsAll notices={snap.notices} onOpen={() => { api.closeModal('workerCardOverlay'); api.openNotices(w.id); }} />
           <NewBadge createdAt={w.createdAt} />
-          <SignChip req={req} signDate={w.signDate as string | undefined} />
+          <SignChip req={req} signDate={w.signDate as string | undefined} may={can} api={api} />
           {!!w.movedToOtherFirm && <Badge variant="warn" data-testid="card-moved">{tr('Moved to another firm')}</Badge>}
         </div>
         {signing && <SignWindow workerId={w.id} api={api} onClose={() => setSigning(false)} />}

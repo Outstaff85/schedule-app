@@ -529,7 +529,7 @@ def test_no_pymupdf_skips_the_pdf_source_and_counts_it(monkeypatch, fonts):
 def test_form_101_renders_as_an_other_page_when_pymupdf_is_here():
     if not gp.has_pdf():
         pytest.skip("no PyMuPDF here")
-    form = HERE.parents[1] / "functions" / "assets" / "form101_fillable.pdf"
+    form = HERE.parents[1] / "functions" / "assets" / "form101" / "v1.pdf"
     p = gp.pdf(random.Random(0), str(form), "form101")
     assert p.doctype == "other" and p.source == "pdf" and p.template_sha1 is None and p.file_sha1
     assert abs(p.size_mm[0] - 210) < 2 and abs(p.size_mm[1] - 297) < 2

@@ -43,6 +43,7 @@ from urllib.parse import urlparse
 
 import contracts
 import seal as seal_mod
+from moves import move as _move
 import signing
 
 # The client's details the page shows and the client may change, and the marks they fill.
@@ -136,27 +137,6 @@ def _drop_token(db, req):
         _tokens(db).document(req["tokenHash"]).delete()
 
 
-def _move(db, ref, check, fields):
-    """ref updated with fields only while check(its data) still holds, read and written in one transaction (two calls at
-    once — a double tap, two tabs, a send while the client signs — never both pass) → the data as it was, or None.
-    A store without transactions (the tests' stand-in) does the same check and write in a row."""
-    def step(get, put):
-        snap = get()
-        cur = snap.to_dict() if snap.exists else None
-        if not cur or not check(cur):
-            return None
-        put(fields)
-        return cur
-    if not hasattr(db, "transaction"):
-        return step(ref.get, ref.update)
-    from firebase_admin import firestore
-
-    @firestore.transactional
-    def go(tx):
-        return step(lambda: ref.get(transaction=tx), lambda f: tx.update(ref, f))
-    return go(db.transaction())
-
-
 def _summary(rid, x):
     """What the manager app gets: never the token's hash or the values."""
     keys = ("clientId", "status", "way", "templateId", "templateName", "templateVersion", "signDate", "dateFixed", "sentAt", "sentBy",
@@ -195,7 +175,7 @@ def _pdf(req, bucket, details, signature=None, date=None):
     values = dict(req.get("values") or {})
     for k, mark in DETAIL_MARKS.items():
         values[mark] = str((details or {}).get(k) or "")
-    values.update(client_sign_date=date, sign_date=date, today=signing.today_il())
+    values.update(client_sign_date=date, sign_date=date, today=req.get("today") or signing.today_il())
     data = contracts.fill(tpl, values, req.get("placed"), signature, seal=seal_mod.read_frozen(bucket, req.get("seal")),
                           sign_mark="client_signature")
     return data, _name(req, details)
@@ -272,7 +252,7 @@ def _documents(db, bucket, tenant, rid, req, body, server_time):
         # sent → signing only while it is still sent: a second signature or a send replacing it at the same moment loses
         if not _move(db, ref, lambda x: x.get("status") == "sent",
                      {"status": "signing", "signedAt": server_time if server_time is not None else signing._now_iso(),
-                      "signedAtIso": signing._now_iso(), "signDate": date, "sigPath": path, "clientDetails": details}):
+                      "signedAtIso": signing._now_iso(), "today": signing.today_il(), "signDate": date, "sigPath": path, "clientDetails": details}):
             bucket.blob(path).delete()
             now = ref.get()
             cur = (now.to_dict() or {}) if now.exists else {}

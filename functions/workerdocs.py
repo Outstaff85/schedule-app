@@ -174,7 +174,7 @@ def _clean_form101(p):
     """The values the app sent, without what the server decides itself: no signature, no pages, no signing date."""
     if not isinstance(p, dict):
         return None
-    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate")}
+    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear")}
     import json
     return out if len(json.dumps(out, default=str)) < 30000 else None
 
@@ -201,20 +201,23 @@ def _mark_preview(pdf_bytes):
 
 def _form101_preview(w, payload, requests, reader, build101, with_pages):
     """→ (pymupdf document of the preview, dropped count): the sent values, the stored pages (with_pages) and a scan's
-    signature when allowed, built by build101 (functions/main.py build_form101_pdf) and marked as a preview."""
+    signature when allowed, built by build101 (builders/form101_b1.py build_form101_pdf, not strict: a signature it
+    could not place is counted) and marked as a preview."""
     import pymupdf
     p = dict(payload, extraPages=[])
     sig = preview_signature(w, requests, reader)
     if sig:
         p["signaturePngBase64"] = base64.b64encode(sig).decode()
-    data, _name = build101(p)
+    report = {}
+    data, _name = build101(p, report=report)
     doc = _mark_preview(data)
-    dropped = 0
+    dropped = report.get("dropped", 0)
     if with_pages:
         pages = _pages_of(w, reader)
         if pages:
             tail = pymupdf.open()
-            _l, _k, dropped = idsheet.add_scans(tail, pages, w.get("docType") == "passport", FONT)
+            _l, _k, lost = idsheet.add_scans(tail, pages, w.get("docType") == "passport", FONT)
+            dropped += lost
             doc.insert_pdf(tail)
     return doc, dropped
 
