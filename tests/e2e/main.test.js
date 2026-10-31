@@ -4347,6 +4347,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       else { if (m === 'denied') localStorage.setItem('gpsPerm', 'denied'); err({code: m === 'off' ? 2 : 1, message: m}); }
     }, 900);
   };
+  // Back from a sheet: a reading asked for earlier that answers late does not unlock the punch.
+  const gpl = await page(ctx);
+  await gpl.setViewportSize({width: 390, height: 844});
+  await gpl.addInitScript(() => {
+    let n = 0;
+    navigator.geolocation.getCurrentPosition = ok => {
+      n++;
+      const at = n === 1 ? {coords: {latitude: 32.0, longitude: 34.8, accuracy: 10, speed: null, altitude: null}} : {coords: {latitude: 33.0, longitude: 34.8, accuracy: 10, speed: null, altitude: null}};
+      setTimeout(() => ok(Object.assign({}, at, {timestamp: Date.now()})), n === 1 ? 5000 : 1000);
+    };
+  });
+  await gpl.goto(BASE + 'worker-punch.html?t=tok-new');
+  await waitFor(gpl, () => !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  await gpl.click('[data-testid="tile-schedule"]');
+  await waitFor(gpl, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
+  await gpl.keyboard.press('Escape');
+  await waitFor(gpl, () => /from site/.test(document.getElementById('locChip').textContent), 8000);
+  await sleep(5500);
+  const gpl1 = await gpl.evaluate(() => ({chip: document.getElementById('locChip').textContent, state: document.getElementById('bigPunchBtn').dataset.state}));
+  ok(/from site/.test(gpl1.chip) && gpl1.state === 'off', 'punch: back from a sheet, the reading asked for before it answers late and does not unlock the punch ' + JSON.stringify(gpl1));
+  await gpl.close();
   const gpw = await page(ctx);
   await gpw.setViewportSize({width: 390, height: 844});
   await gpw.addInitScript(gpsStub);
