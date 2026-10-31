@@ -3336,6 +3336,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {short, long, locked: getComputedStyle(document.body).overflow};
   });
   ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  // Salary on a phone: a worker's ⋮ deletes the period's punches through the Undo snack
+  const salPeriod = await p.evaluate(async () => { const was = ManagerBridge.accounting().period; switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod('all'); return was; });
+  await p.waitForSelector('[data-testid="sal-row"]');
+  const salWid = await p.evaluate(() => { const rows = [...document.querySelectorAll('[data-testid="sal-row"]')]; return rows.length ? rows[0].dataset.wid : ''; });
+  await p.click('[data-testid="sal-row"][data-wid="' + salWid + '"] button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  await p.click('[role="menuitem"]:has-text("Delete")');
+  const salDel = {hidden: await p.waitForSelector('[data-testid="sal-row"][data-wid="' + salWid + '"]', {state: 'detached', timeout: 3000}).then(() => true, () => false), snack: await p.waitForSelector('[data-testid="undo-snack"]', {timeout: 3000}).then(() => true, () => false)};
+  await p.click('[data-testid="undo-snack"] button');
+  salDel.back = await p.waitForSelector('[data-testid="sal-row"][data-wid="' + salWid + '"]', {timeout: 3000}).then(() => true, () => false);
+  await p.evaluate(was => ManagerBridge.setPeriod(was), salPeriod);
+  ok(salDel.hidden && salDel.snack && salDel.back, 'accounting: a worker's ⋮ deletes the period's punches, with Undo ' + JSON.stringify(salDel));
   const phc = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), w = workers[1], keep = w.notes;
     w.notes = Array(40).fill('a long note line').join('\n');

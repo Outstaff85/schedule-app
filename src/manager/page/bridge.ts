@@ -268,7 +268,7 @@ provideBridge({
     return {
       ready:__dataReady, period:accPeriod, locale:uiLocale(), payOnly,
       me:{uid:s.uid||'', commissionRate:Number(s.commissionRate)||0, commissionDayRate:Number(s.commissionDayRate)||0},
-      canExport:hasPermission('exports'), canApprove:firmAdmin,
+      canExport:hasPermission('exports'), canApprove:firmAdmin, canEditPunches:canChange('editPunches'),
       canPay:Object.fromEntries(workers.map((w?: any)=>[w.id, !!canEditPay(w)])),
       hrUsers:firmAdmin?hrUsers():[],
       waiting:batches.filter((b?: any)=>b.status==='pending').length, batchesKey:batches.map((b?: any)=>(b.id||b.batchId)+':'+b.status).join(),

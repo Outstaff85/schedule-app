@@ -620,6 +620,8 @@ export type AccountingSnapshot = {
   canExport: boolean;
   /** the owner / super-admin: approve or reject hours batches */
   canApprove: boolean;
+  /** Edit punches (the login's template): a worker's punches of the period can be deleted from Salary */
+  canEditPunches: boolean;
   /** `canEditPay(w)` per worker id */
   canPay: Record<string, boolean>;
   /** the HR logins with their commission (owner / super-admin; Payable by HR) */
