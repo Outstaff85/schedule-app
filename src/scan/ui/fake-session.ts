@@ -62,7 +62,7 @@ export class FakeScanSession implements ScanSessionLike {
   auto = true;
   /** What the screen asked for, in order ("snap", "keep p1", "remove p2", "fix p1 [[…]]", "done" …). */
   readonly calls: string[] = [];
-  private listeners: Listeners = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set(), preview: new Set() };
+  private listeners: Listeners = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set(), preview: new Set(), auto: new Set() };
   private pages = new Map<string, ShotPage>();
   private kinds = new Map<string, Doctype>();
   private photos = new Map<string, OffscreenCanvas>();
@@ -75,8 +75,9 @@ export class FakeScanSession implements ScanSessionLike {
   /** Called after each call is written (the gallery redraws its list). */
   onCall: (() => void) | null = null;
 
-  /** seed: how many fixture pages it starts with (FAKE_PAGES, in order). */
-  constructor(seed = 0) {
+  /** seed: how many fixture pages it starts with (FAKE_PAGES, in order); startMs: how long the "models" take after
+   *  the camera shows (nothing said until then, as a real session). */
+  constructor(seed = 0, private readonly startMs = 0) {
     for (let i = 0; i < seed; i++) this.addPage(FAKE_PAGES[i % FAKE_PAGES.length].kind, FAKE_PAGES[i % FAKE_PAGES.length].conf, false);
   }
 
@@ -132,14 +133,17 @@ export class FakeScanSession implements ScanSessionLike {
     this.camTimers.push(window.setInterval(draw, 100));
     const stream = (c as HTMLCanvasElement & { captureStream?: (fps: number) => MediaStream }).captureStream?.(10);
     if (stream) { video.srcObject = stream; void video.play().catch(() => {}); }
-    this.say({ key: 'finding' });
-    // the live frame: red while searching, green once it sticks; the status line with it
-    let ok = false, shown = false;
     const cam = (ms: number, fn: () => void) => this.camTimers.push(window.setTimeout(fn, ms));
-    this.camTimers.push(window.setInterval(() => { if (shown) this.emit('frame', this.liveQuad(), ok); }, 100));
-    cam(700, () => { shown = true; this.say({ key: 'corners_out', n: 1 }); });
-    cam(1500, () => { ok = true; this.say({ key: 'hold', seconds: 0.6 }); });
-    cam(2100, () => this.say({ key: 'found', count: 1 }));
+    const models = () => {
+      this.say({ key: 'finding' });
+      // the live frame: red while searching, green once it sticks; the status line with it
+      let ok = false, shown = false;
+      this.camTimers.push(window.setInterval(() => { if (shown) this.emit('frame', this.liveQuad(), ok); }, 100));
+      cam(700, () => { shown = true; this.say({ key: 'corners_out', n: 1 }); });
+      cam(1500, () => { ok = true; this.say({ key: 'hold', seconds: 0.6 }); });
+      cam(2100, () => this.say({ key: 'found', count: 1 }));
+    };
+    if (this.startMs) cam(this.startMs, models); else models();
   }
   private liveQuad(): Quad { return [[0.16, 0.3], [0.84, 0.32], [0.82, 0.66], [0.14, 0.64]]; }
 
@@ -153,6 +157,8 @@ export class FakeScanSession implements ScanSessionLike {
     return 1;
   }
   setAuto(on: boolean): void { this.auto = on; this.log('auto ' + (on ? 'on' : 'off')); }
+  /** Auto turning itself off, as a real session does after AUTO_MAX shots in a row (the gallery's button). */
+  autoStop(): void { this.auto = false; this.emit('auto', false); }
   wake(): void { this.log('wake'); this.say({ key: 'finding' }); this.later(800, () => this.say({ key: 'found', count: 1 })); }
   /** A page opened large over the camera: the drawn camera has nothing to pause (not written to calls). */
   hold(): void { /* nothing to pause */ }

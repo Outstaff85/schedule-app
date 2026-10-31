@@ -1,6 +1,8 @@
 // The scanner's engine (docs/scan-plan.md → S9): why a way of running the models failed on this device,
-// kept on it (the last 8, with the device's memory): shown in the errors when the scanner opens, so a way
-// that keeps failing — and why: memory, a hang, the GPU, another error — can be seen on the phone itself.
+// kept on it (the last 8, with the device's memory; localStorage scanWayFails): which way failed and why — memory,
+// a hang, the GPU, another error. Nothing in the app shows them or reads them any more (owner, 2026-10-31: the drawer
+// shows only this opening's errors, as they happen); they stay in the browser's storage, and failLines is the old
+// list's wording, held to the old page by tests/scan/engine.test.mjs.
 // Ported unchanged from the lab's former plain page (failKind, noteFail, showFails; tests/scan/engine.test.mjs).
 import type { KeyValue } from './types';
 
@@ -37,7 +39,7 @@ export function recordFail(store: KeyValue | null | undefined, way: string, text
 /** The errors' line for a failure as it happens. */
 export const failLine = (way: string, text: unknown): string => 'Failed — ' + way + ': ' + failKind(text) + ' (' + String(text || '').slice(0, 160) + ')';
 
-/** The earlier failures as the errors show them, top to bottom: the heading, then the newest first; [] when none. */
+/** The earlier failures as text, top to bottom: the heading, then the newest first; [] when none. */
 export function failLines(list: WayFail[]): string[] {
   if (!list.length) return [];
   const lines = list.map(f => '  ' + f.at.slice(0, 16).replace('T', ' ') + ' — ' + f.way + ': ' + f.kind + ' (' + f.text + ')' + (f.mem ? ', memory ' + f.mem + ' GB' : ''));

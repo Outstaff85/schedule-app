@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). Still open: the owner's answers Q1–Q6, Q9, Q10. Next: S1.
+Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. Next: S1.
 
 ## What and why
 
@@ -480,23 +480,26 @@ Each signing send also stops adding a template copy, and each firm profile edit 
 
 ## Open questions for the owner
 
-- **Q1 — keep a signed PDF at all?**
+- **Q1 — keep a signed PDF at all? — answered (owner, 2026-10-31):** option A, read from the owner's "yes" to the recommended option.
   - **A (recommended):** a small signed copy without the photos (S9a).
   - **B:** only the hashes and the manifest (S9b). This needs counsel and a library bump policy. If B, how many weeks of zero mismatches first?
-- **Q2 — keep earlier signed sets when a worker signs again?** The 2026-10-20 rule is "no archive", and `adoptSigned` deletes them today. S0b stops that delete anyway (keeping is the safe default); the question is whether they are later deleted on purpose or kept for Q4's period, held.
-- **Q3 — a rescan after signing.** The signed photos stay, held, beside the new ones (two sets of the worker's photos in Storage). Acceptable?
-- **Q4 — retention and the legal question, for counsel:**
+- **Q2 — keep earlier signed sets when a worker signs again? — answered (owner, 2026-10-31):** kept for Q4's period, held, read from the owner's "yes" (the safe reading: nothing is deleted). The 2026-10-20 rule is "no archive", and `adoptSigned` deletes them today. S0b stops that delete anyway (keeping is the safe default); the question is whether they are later deleted on purpose or kept for Q4's period, held.
+- **Q3 — a rescan after signing.** The signed photos stay, held, beside the new ones (two sets of the worker's photos in Storage). Acceptable? **Answered (owner, 2026-10-31):** every screen shows only the new photos (`scanPages`); the old ones stay hidden and held for the retention period, because Q1's slim copy holds no photos and they are the proof of what was signed.
+- **Q4 — retention and the legal question — the owner's answers (2026-10-31), checked on the web the same day; no lawyer has seen them:**
+  - **Retention: seven years, not the one year first answered** (owner's go after the check): at least seven years from the end of the tax year a document belongs to, or six from the filing of that year's report, whichever is later, counted from the worker's last year (Income Tax bookkeeping instructions, section 25(c)); a wage claim also runs seven years (Limitation Law, section 5). Whether a Form 101 is formally part of the accounting system was not found in a primary source; commercial sources say seven years.
+  - **The Tax Authority does have conditions for a digital Form 101** (the rules for 2026, 12 January 2026, no. 2026-000058): a system approved by the Authority; the worker's personal password, entered again before sending; mandatory fields and attachments enforced; the worker's declaration in its set wording; the form locked; the employer's check, then a PDF locked and signed with an approved electronic signature; the worker told and given the signed form; every earlier version kept; an archive that retrieves them. A form not completed this way is defective, which means the maximum tax deduction for the worker. An employer's own system applies at least four months before the end of the tax year before the year of use. Nothing in this repo shows this app registered, and its signature is a drawn PNG: this is open, for the owner (see Risks).
+  - A rebuilt PDF that matches its hash counts as the original, no outside timestamp and no copy to the worker, a slim copy is acceptable: the owner's own positions, not checked; the rules above speak of a locked signed PDF kept in the archive, so they are the ground to check before S9. The questions were:
   - how long Form 101 and signed contracts must be kept after a worker leaves or is deleted;
   - the Tax Authority's conditions for a digital Form 101;
   - whether a rebuilt PDF counts as the signed original under the Electronic Signature Law 2001;
   - whether an outside timestamp (RFC 3161) of the manifest hash, or emailing the worker a copy, is needed, since the server writes both the manifest and its hash;
   - whether a slim copy (S9a), whose view at signing shows the pages separately, is acceptable.
-- **Q5 — revoke the download links** already saved in Firestore (`docUrl`, `docs[].url`) once every download goes through the server?
-- **Q6 — scanned contracts.** Should the scanned contract photos (`saveScanContract`) become `scanPages` of kind `contract` in S6, or stay a PDF in `docs[]`?
+- **Q5 — revoke the download links — answered (owner, 2026-10-31): yes,** the links already saved in Firestore (`docUrl`, `docs[].url`) are revoked once every download goes through the server.
+- **Q6 — scanned contracts — put off (owner, 2026-10-31): they stay a PDF in `docs[]` for now.** Should the scanned contract photos (`saveScanContract`) become `scanPages` of kind `contract` in S6, or stay a PDF in `docs[]`?
 - **Q7 — the ID sheet layout — answered (owner, 2026-10-25):** the worker's document and the ספח on one A4 sheet — the ID card (front, and its back when scanned) or the passport, with the ספח on the same sheet. The exact placement (side by side or stacked) follows the pictures' shapes so each stays readable; a missing ספח leaves its box empty with a Hebrew caption.
 - **Q8 — the bundle's default ticks — answered (owner, 2026-10-25):** ticked by default: Form 101 and the ID sheet (the ID card or passport with the ספח); the contract and the other documents unticked. The summary page is always the first page and has no tick of its own.
-- **Q9 — deleting a firm.** What happens to its signed documents and template versions: the archive download then deletion (S3), or kept for Q4's period?
-- **Q10 — the safety net** (needs the owner's hands in the cloud console): turn on bucket soft delete (or object versioning) and Firestore point-in-time recovery or a scheduled export? Before S3b.
+- **Q9 — deleting a firm — answered (owner, 2026-10-31):** its signed documents and template versions are kept as a preserved archive for Q4's seven years (first answered as up to one year; raised with Q4's retention), then deleted.
+- **Q10 — the safety net — put off (owner, 2026-10-31).** It was to come before S3b; S3b does not depend on it technically, but until it is on, a deleted file or record is not recoverable. (Needs the owner's hands in the cloud console.) Turn on bucket soft delete (or object versioning) and Firestore point-in-time recovery or a scheduled export? Before S3b.
 
 ## Risks still open
 
@@ -510,4 +513,5 @@ Each signing send also stops adding a template copy, and each firm profile edit 
 - **Python 3.14 locally and the ubuntu CI runner against the python312 production image:** golden hashes come only from CI, and the production self-check compares them after each deploy.
 - **The signature itself is a drawn PNG plus a server time.** The manifest hash proves the inputs were not changed afterwards. It is not a cryptographic signature (counsel, Q4).
 - **The endpoint's rights checks are only as strong as the Storage read rule.** Until S10 narrows it, any manager can read worker files directly with a token link or the SDK.
+- **A digital Form 101 without the Tax Authority's approval (found 2026-10-31, Q4).** The rules ask for an approved system and the employer's approved electronic signature; a form that does not meet them counts as defective, with the maximum tax deduction for the worker. The owner's decision (2026-10-31): the signature stays as it is, as the working version, for now. The ways out, if this is taken up again: a form signed by hand, an approved system, or the app's own registration; the Authority also offers to consider easing the locking and signing (rule B3.e).
 - **Cold starts:** `min_instances=0`, so the first view after a quiet period takes a few seconds. The app sends `{ping}` warm-ups, as it does for the other functions.

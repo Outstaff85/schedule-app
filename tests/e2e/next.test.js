@@ -515,8 +515,21 @@ async function scanner(browser) {
   await p.locator('[data-testid=scanner-page]').screenshot({ path: path.join(OUT, 'scanner-screen-page.png') });
   await p.locator('[data-testid=scanner-fix]').screenshot({ path: path.join(OUT, 'scanner-screen-fix.png') });
 
+  // Auto turning itself off: the button goes off, the amber line says why, a tap on Auto takes both back
+  await press('[data-testid=scanner-auto-stop]'); await sleep(150);
+  const autoOff = { line: await p.locator(cam + ' [data-testid=scan-auto-stopped]').allInnerTexts(), pressed: await p.locator(cam + ' [data-testid=scan-auto]').getAttribute('aria-pressed') };
+  ok(autoOff.line.length === 1 && /Auto stopped after 5 shots in a row/.test(autoOff.line[0]) && autoOff.pressed === 'false', 'scanner: Auto that turned itself off shows off, with the amber line saying why ' + JSON.stringify(autoOff));
+  await press(cam + ' [data-testid=scan-auto]'); await sleep(150);
+  const autoBack = { line: await p.locator(cam + ' [data-testid=scan-auto-stopped]').count(), pressed: await p.locator(cam + ' [data-testid=scan-auto]').getAttribute('aria-pressed') };
+  ok(autoBack.line === 0 && autoBack.pressed === 'true' && /auto on/.test(await calls()), 'scanner: a tap on Auto turns it on and takes the line away ' + JSON.stringify(autoBack));
+
   // the full Window: the whole screen, closed by a swipe down from its top band or Escape
   await p.locator('[data-testid=open-scanner]').tap(); await sleep(500);
+  // its camera shows before its "models" are up: nothing behind the shutter yet, Photos/PDF on, the status says so
+  const fwShutter = '[data-testid=window][data-kind=full] [data-testid=scan-shutter]';
+  const loading = { shutter: await p.locator(fwShutter).isDisabled(), pick: await p.locator('[data-testid=window][data-kind=full] [data-testid=scan-pick]').isDisabled(), status: await p.locator('[data-testid=window][data-kind=full] [data-testid=scan-status]').innerText() };
+  ok(loading.shutter && !loading.pick && /Preparing the scanner/.test(loading.status), 'scanner: while the models start under the camera the shutter is off and Photos/PDF on ' + JSON.stringify(loading));
+  await p.waitForFunction(sel => !document.querySelector(sel).disabled, fwShutter, { timeout: 3000 });
   const full = await p.evaluate(() => { const w = document.querySelector('[data-testid=window][data-kind=full]'); if (!w) return null; const r = w.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, scanner: !!w.querySelector('[data-testid=scanner] [data-testid=scan-status]') }; });
   ok(!!full && full.x === 0 && full.y === 0 && full.w === 390 && full.h === 844 && full.scanner, 'scanner: Window full fills the screen with the scanner ' + JSON.stringify(full));
   const locked = await p.evaluate(() => ({ attr: document.body.hasAttribute('data-scroll-locked'), overflow: getComputedStyle(document.body).overflow }));

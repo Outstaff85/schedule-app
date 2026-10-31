@@ -8,11 +8,12 @@
 // button on its left (CornerEditor) and a round red Delete on its right (the Undo snack); a tap on it again or on
 // another shrinks it; the bottom bar — Photos/PDF, the big shutter, Done (CaptureBar; the lab: Show what the
 // models read — Models read on the button —, mode 'lab'). There is no Next: after a shot the live frame goes on by itself, and Auto does not
-// take the same document again (the session's rule, src/scan/engine/session.ts). While a page is opened large or
+// take the same document again (the session's rule, src/scan/engine/session.ts); once it has turned itself off
+// after AUTO_MAX shots in a row an amber line says so until Auto is tapped. While a page is opened large or
 // its corners are being fixed the live frame is paused under it (session.hold / resume: no follow, no Auto shot
 // behind it). A picked picture is shown in place of the camera the moment it is being worked on, with the frame
 // of each document found on it. The shutter is off while a shot is still in work (refining, looking for more
-// documents) or a pick is.
+// documents) or a pick is, and while the models start under the camera (Photos/PDF stays on: a pick waits for them).
 //
 // It fills the box it is put in (a full Window — Window full — in the app; a phone frame in the /next gallery)
 // and drives a ScanSessionLike (useScanSession.ts): the camera starts when the screen is shown (camera: false
@@ -33,6 +34,7 @@ import { tr } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { DOCTYPE_LABELS, type Doctype } from '../engine/doctypes';
+import { AUTO_MAX } from '../engine/steady';
 import type { Quad } from '../engine/types';
 import { BAR_SIDE, CaptureBar } from './CaptureBar';
 import { CornerEditor } from './CornerEditor';
@@ -239,11 +241,12 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
       {/* the bottom: the photos taken, and the bar */}
       <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background/85 to-transparent pt-6">
         {note && !page && <p data-testid="scan-note" role="alert" className="mx-4 mb-1 text-center text-[13px] text-[var(--amber-text)]">{note}</p>}
+        {s.autoStopped && !page && <p data-testid="scan-auto-stopped" role="alert" className="mx-4 mb-1 text-center text-[13px] text-[var(--amber-text)]">{tr('Auto stopped after {n} shots in a row — tap Auto to go on', { n: AUTO_MAX })}</p>}
         <Thumbs pages={s.pages} selected={selected} onSelect={setSelected} locked={finishing} note={thumbNote}
           onOpen={id => { if (!finishing) setOpen(id); }}
           onFix={id => { if (!finishing) startFix(id); }}
           onDelete={remove} />
-        <CaptureBar disabled={s.busy || s.picking} locked={finishing} onShutter={s.shutter} onPick={s.pick} done={done} />
+        <CaptureBar disabled={s.busy || s.picking || (camera && !s.ready)} locked={finishing} onShutter={s.shutter} onPick={s.pick} done={done} />
       </div>
 
       {page && (
