@@ -1,8 +1,8 @@
 # Form 101 field map
 
-What `build_form101_pdf()` in `functions/main.py` writes into each field of the PDF template `form101_fillable.pdf` (template revision 0101/130, 11.2025, two pages, A4 595.3 × 841.9 pt). Keep this file in sync with `functions/main.py`. The request that feeds it and where the PDF is stored are in [form101.md](form101.md).
+What `build_form101_pdf()` of **builder b1** (`functions/builders/form101_b1.py`) writes into each field of the PDF template `form101/v1.pdf` (template revision 0101/130, 11.2025, two pages, A4 595.3 × 841.9 pt). b1 is frozen ([form101.md](form101.md) → The builders): a field change is a new builder (`form101_b2.py`, a new template file when the PDF changes), and this file then describes the new one, its section for b1 kept. Keep this file in sync with the current builder. The request that feeds it and where the PDF is stored are in [form101.md](form101.md).
 
-The template file is `functions/assets/form101_fillable.pdf`, which the function reads — the only copy.
+The template file is `functions/assets/form101/v1.pdf`, which the builder reads — the only copy, checked by its hash at import (`FORM101_TEMPLATES`).
 
 ## How values are written
 
@@ -117,14 +117,14 @@ Spouse income (`SPOUSE_INCOME_CB` by `income`): `none` → `cb_p1_22` (אין ל
 | `id_top2` | 96.3,14.6,172.3,26.6 | `p.no` (the page header; an Israeli ID zero-padded to 9 like `employer_zeut_num`), `set_text` 10 |
 | `resident_h` | 510.5,39.9,520.5,49.9 | ח.1 "אני תושב/ת ישראל" — checked for an Israeli ID worker |
 | `cb_p2_1` … `cb_p2_16` | x ≈ 511, y 55–460 | the tax-relief declarations of ח and ט — never checked: a scan can't know them |
-| `sign_date` | 147.4,641.6,223.5,655.6 | `p.signDate` — the app sends the date the worker was first saved (`createdAt`), else today; `set_text` 10 |
+| `sign_date` | 147.4,641.6,223.5,655.6 | `p.signDate` — the app sends the date the worker was first saved (`createdAt`), else today; the signing sends the signing date; `set_text` 10 |
 | `sign` | 33.1,636.7,129.5,658.7 | not filled as text. The signature image (`p.signaturePngBase64`) is drawn into `SIG_RECT` = x 34.02, bottom 186, 87.99 × 15 (page y 640.9–655.9), downscaled by `_shrink_for_embed` |
 
 The section ט table of other employers has no fields and is left as printed.
 
 ## Pages after the form
 
-`p.extraPages` (`{b64, caption}`) are added as pages after page 2, each image downscaled to 150 DPI (`_shrink_for_embed`). The first two share one page, one above the other: usually the document and its ספח. Every other image gets a page of its own.
+`p.extraPages` (`{b64, caption, kind?}`) are added as pages after page 2. A JPEG of at most 2000 px goes in with its own bytes; anything else is downscaled to 150 DPI (`_shrink_for_embed`). With a `kind` on any entry: one A4 sheet with the ID card (front, back) or the passport and the ספח, then a page for each other image ([form101.md](form101.md) → Building the PDF). With none: the first two share one page, one above the other (usually the document and its ספח), and every other image gets a page of its own.
 
 ## File name
 
@@ -134,12 +134,12 @@ The section ט table of other employers has no fields and is left as printed.
 
 The fields' font is the PDF's own Helvetica (`/Helv`), with no font file in the template ([form101.md](form101.md) → Building the PDF). A new template saved from an editor that names an embedded font in its fields (Calibri, Arial…) is set back to `/Helv` the same way before it is committed.
 
-When `form101_fillable.pdf` is replaced, dump its fields and compare them with this file:
+A template is never replaced: a new one is a new file (`functions/assets/form101/v2.pdf`) with a new builder version. Dump its fields and compare them with this file:
 
 ```
 python - <<'PY'
 import pymupdf
-for i, page in enumerate(pymupdf.open('functions/assets/form101_fillable.pdf')):
+for i, page in enumerate(pymupdf.open('functions/assets/form101/v1.pdf')):
     page.get_pixmap(matrix=pymupdf.Matrix(2, 2)).save(f'page{i+1}.png')
     for w in page.widgets():
         print(i + 1, w.field_name, w.field_type_string, w.rect, w.text_maxlen)

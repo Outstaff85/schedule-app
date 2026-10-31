@@ -326,3 +326,18 @@ def test_the_functions_settings(functions_main):
     ep = functions_main.worker_docs.__firebase_endpoint__
     assert ep.concurrency == 4 and ep.availableMemoryMb == 1024 and ep.timeoutSeconds == 120 and ep.cpu == 1
     assert ep.region == ["europe-west3"]
+
+
+def test_a_signature_the_preview_could_not_place_is_counted():
+    db, bucket = setup()
+
+    def build(p, report=None):
+        report["dropped"] = 1
+        return build101(p)
+
+    out = workerdocs.run(db, bucket, OWNER, {"action": "form101", "workerId": "w1", "form101": F101}, build)
+    assert out["dropped"] == 1 and out["pdf"]
+
+
+def test_the_values_sent_cannot_fix_a_preview_s_tax_year():
+    assert "taxYear" not in workerdocs._clean_form101({"given": "Avi", "taxYear": "2001"})

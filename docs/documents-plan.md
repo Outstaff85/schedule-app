@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. Next: S1.
+Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). S1 (the frozen builders) is built on the branch `docs-s1`, waiting for the owner's yes to merge. Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. Next: S3.
 
 ## What and why
 
@@ -12,7 +12,7 @@ Today each worker stores heavy PDFs that are built once and kept:
 - **The signed Form 101 and the signed contract** (under `form101/` and `docs/`, built by `signing.build`).
 - **A copy of the contract template for every signing send** (`workers/<w>/sign/<rid>/contract-template.pdf`). It is never deleted, not even with the worker.
 
-The Form 101 PDFs embed the scan pages (re-encoded JPEGs) that are already stored once in `scanPages`, so a worker's photos are stored two or three times. The "Download data" bundle adds the stored Form 101 and then the photos again, so they appear twice there too. The templates themselves (`functions/assets/form101_fillable.pdf`, about 95 KiB; the firms' contract templates) never change per worker.
+The Form 101 PDFs embed the scan pages (re-encoded JPEGs) that are already stored once in `scanPages`, so a worker's photos are stored two or three times. The "Download data" bundle adds the stored Form 101 and then the photos again, so they appear twice there too. The templates themselves (`functions/assets/form101/v1.pdf`, about 95 KiB; the firms' contract templates) never change per worker.
 
 Signed files are also deleted today, and nothing stops it:
 
@@ -147,7 +147,22 @@ Keeping the files is the safe default, so this does not wait for Q2.
   - docs/backend.md: the lock file and the golden file.
   - docs/tests.md: the CI venv now installs from the lock.
 - Rollback: revert the PR. No data has changed.
-- Status: not started.
+- **As built** (where it differs from the above, or the above was written before S2):
+  - **Pinned to what production runs:** PyMuPDF 2.0 came out on 2026-10-19 and production moved to it on its own at the deploy of 2026-10-27 (nothing was pinned). The lock keeps 2.0; it brings `pymupdf-layout`, `pymupdf4llm`, `onnxruntime` and `networkx`, which the app does not use.
+  - **Font subsets:** nothing to fix. `doc.subset_fonts()` is MuPDF's own subsetter since PyMuPDF moved to it, and it names a subset from the font's data (two processes give the same name); `random.choices` is only in the old `fallback=True` path. fontTools is not needed and is not in the lock. The `/ID` was the one random thing: MuPDF writes a new one on every save.
+  - **The bytes do not depend on the machine:** the same hashes came out on Windows with Python 3.14, on ubuntu with 3.12 and on the Cloud Functions image, all with PyMuPDF 2.0. Golden hashes still come from CI only.
+  - **A check the plan did not have:** a `functions-image` job in `tests.yml` builds `functions/` with Google's buildpacks and runs it, so the lock's install and the bytes on the real image are proved on every PR, before a deploy. The buildpack installs functions-framework in a pip call of its own, so the hashes do not get in its way.
+  - **The trailer `/ID` with no manifest:** until S4 nothing has a manifest, so every build takes it from a hash of its own inputs (the payload; the template, the values and the pictures). `manifest_sha256` is the parameter S4 passes.
+  - **`fill_form_101` keeps printing this year:** the plan's rule (`taxYear`, else the year of `signDate`) would have moved the tax year of a stored unsigned form to the year the worker was added, because `form101Payload` sends `createdAt` as `signDate`. So the function passes this year as `taxYear`, and `signing` / `workerdocs` strip a sent `taxYear`. The rule then changes only a signed form whose signing date falls in another year than its build.
+  - **`concurrency=20`** on `fill_form_101`, as `contract_templates` and `sign_documents`: with `cpu=1` and none named it would be the platform's 80.
+  - **`dropped`** reaches the header through `report`, a dict the caller passes, so `build_form101_pdf` keeps returning `(bytes, name)`. `fill_form_101` sends it as a header too; its JSON body is unchanged.
+  - **Strict mode in the signing today:** `signing._pdf` and `transfer._pdf` build strictly whenever they carry a signature (`view` stays lenient). A strict failure leaves the request in `signing`; S4's page check (`E_DOCS_CHANGED`) is what stops it earlier.
+  - **`contract_b1` and `sheets_b1` have no live caller yet:** `signing._pdf` and `client_signing` still fill with `contracts.fill`, and the sheet in a Form 101 is the only use of `sheets_b1`. S4 moves the contract to the frozen builder, with its manifest. `contract_b1` was compared with `contracts.fill` on a text template, a picture template and a client's: the same bytes apart from the `/ID`.
+  - **The passport's place:** `sheets_b1` is S2's layout by shape (Q7, answered later than this stage was written), so a passport takes the room its shape needs rather than a fixed top half.
+  - **The sheet's title** said "ID card and ספח" over an empty ספח box. Fixed in `idsheet.py` and `sheets_b1.py` before freezing.
+  - **`extraPages` from the app carry no `kind`:** the stored unsigned form stays by position until S6 ends it. Only the signing sends kinds.
+  - **Self-check:** `{ping, selftest}` covers Form 101, the contract and the sheet (eleven fixed inputs), once per instance. The deploy reaches it with no secret; the step cannot run before the first deploy, so its first real run is the merge of this stage.
+- Status: **built**, on the branch `docs-s1`; not merged.
 
 ### S2 — "Download data" with the picker and one A4 ID sheet (the owner's visible win, no data change)
 - **New HTTP function `worker_docs`** in `functions/main.py`:
@@ -510,7 +525,7 @@ Each signing send also stops adding a template copy, and each firm profile edit 
   - rerunning apply.
 - **A refused worker fails its whole save batch.** An old device's batch with one refused worker loses every other edit in it until it reloads.
 - **Memory and response size of large bundles:** covered by `concurrency=4`, the 25 MiB cap and raw PDF responses.
-- **Python 3.14 locally and the ubuntu CI runner against the python312 production image:** golden hashes come only from CI, and the production self-check compares them after each deploy.
+- **Python 3.14 locally and the ubuntu CI runner against the python312 production image:** golden hashes come only from CI; the `functions-image` job checks them on that image on every PR, and the production self-check compares them after each deploy.
 - **The signature itself is a drawn PNG plus a server time.** The manifest hash proves the inputs were not changed afterwards. It is not a cryptographic signature (counsel, Q4).
 - **The endpoint's rights checks are only as strong as the Storage read rule.** Until S10 narrows it, any manager can read worker files directly with a token link or the SDK.
 - **A digital Form 101 without the Tax Authority's approval (found 2026-10-31, Q4).** The rules ask for an approved system and the employer's approved electronic signature; a form that does not meet them counts as defective, with the maximum tax deduction for the worker. The owner's decision (2026-10-31): the signature stays as it is, as the working version, for now. The ways out, if this is taken up again: a form signed by hand, an approved system, or the app's own registration; the Authority also offers to consider easing the locking and signing (rule B3.e).

@@ -52,7 +52,7 @@ def main():
             print(f"try {i + 1}: {problems[0]}", flush=True)
             continue
         problems = differences(answer, golden)
-        print(f"try {i + 1}: {json.dumps(answer)}", flush=True)
+        print(f"try {i + 1}: {json.dumps({k: v for k, v in answer.items() if k != 'hashes'})}, {len(problems)} differences", flush=True)
         if not problems:
             print("The builder's bytes are the golden ones.")
             return 0

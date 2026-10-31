@@ -2,7 +2,7 @@
 
 How a worker's Form 101 PDF is built, stored and rebuilt.
 - The client assembles a JSON payload: `aiFillForm101()` in `src/manager/page/form101.ts`, its values from `form101Payload(worker, isId, profile)` in `src/manager/logic/form101.ts` (pure; React migration 8f).
-- The Cloud Function `fill_form_101` (`functions/main.py`, PyMuPDF, region europe-west3) fills the template and returns the PDF. The call carries the manager's Firebase ID token (`Authorization: Bearer`); the function refuses any other caller (`functions/gate.py`, [backend.md](backend.md) → Cloud Functions).
+- The Cloud Function `fill_form_101` (`functions/main.py`, region europe-west3; 1 GiB, `cpu=1`, `concurrency=20`, 60 s), with the frozen builder `functions/builders/form101_b1.py` (PyMuPDF), fills the template and returns the PDF. The call carries the manager's Firebase ID token (`Authorization: Bearer`); the function refuses any other caller (`functions/gate.py`, [backend.md](backend.md) → Cloud Functions).
 - The client stores the PDF, and the scan's pages (one JPEG each) and the signature (a PNG) in Firebase Storage ([contracts.md](contracts.md) → Scanned pages).
 
 **Before touching field rects or the template:** read and update [form101-field-map.md](form101-field-map.md) (every AcroForm field: name, rect, Hebrew label, meaning).
@@ -41,15 +41,28 @@ Everything comes from the saved worker record, `targetWorker`:
 | `city`, `marital`, `workStart` (`workStartDate`), `healthFund`, `children` | worker — for both document types |
 | `spouse` | `{surname, given, idNo, dob, income}` when any spouse field is set |
 | `signaturePngBase64` | the pad of the worker window (the shared `SignaturePad`; its save hands the PNG to `window.__wCapturedSigPng`, which `getSignaturePng()` returns) or the stored signature (`sigFileId`); a signature drawn while editing an existing worker is passed to the rebuild (`regenerateWorkerDoc(id, newSigPng)`, `sigChanged`) |
-| `extraPages` | `[{b64, mediaType, caption}]`: the main scan first (`'Document scan'`), then the other pages (`'Document'`) |
+| `extraPages` | `[{b64, mediaType, caption}]`: the main scan first (`'Document scan'`), then the other pages (`'Document'`). The app sends no `kind`, so this stored unsigned form keeps the old rule by position; the signing (`signing._stored_pages`) sends each page's `kind` |
 
 Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after the save.
 
 **Rescan without new extra pages:** when a rescan in this session captured no extra pages, the stored ones (the ספח…) are loaded for the PDF and kept as they are stored, so they are not lost; the same for the signature.
 
-## Building the PDF (`build_form101_pdf`, functions/main.py)
+## The builders (`functions/builders/`)
 
-- **Template:** `functions/assets/form101_fillable.pdf`, with the Heebo font (`functions/assets/heebo-hebrew.ttf`). These are the only copies.
+A builder version gives the same bytes from the same inputs, for good, so that a signing can be proved by its inputs (docs/documents-plan.md → S1, S4). `BUILDER_VERSION` is `b1`.
+
+- **Frozen:** `form101_b1.py` (the Form 101 build, the only copy: `main.py` imports it), `contract_b1.py` (a copy of `contracts.fill` and every helper and mark it runs, the firm's signature and stamp and a client's `sign_mark` included; `contracts.py` stays free to change) and `sheets_b1.py` (a copy of the A4 ID sheet of `idsheet.py`, which stays free to change for the previews and the bundle). They are copies, never wrappers, and never edited: a change is a new file (`*_b2.py`), a new entry in `BUILDERS` and `LOCKED` (`builders/__init__.py`), new golden hashes. `contract_b1` and `sheets_b1` have no caller in the signing yet: S4 moves the signing to them; today `signing._pdf` still fills with `contracts.fill`.
+- **The fixed save:** `tobytes(..., no_new_id=True)`, with the trailer `/ID` set to the first 16 bytes of the input manifest's SHA-256 (`manifest_sha256`), or, with no manifest (nothing signed yet), of a hash of the inputs. Without it MuPDF writes a new random id on every save. A font subset's name needs nothing: `doc.subset_fonts()` is MuPDF's own subsetter, which names a subset from the font's data (`random.choices` is only in PyMuPDF's old `fallback=True` path, which needs fontTools and is not used).
+- **Inputs instead of the clock:** the tax year is `taxYear`, else the year of `signDate`, and only then this year. `contract_b1.fill` reads no clock: `{{today}}` comes from the caller's values.
+- **Strict mode:** `build_form101_pdf(p, strict=True)` raises `NotPlaced` (a `ValueError`) when the signature or a page cannot be placed. `signing._pdf` and `transfer._pdf` build the document that carries the signature this way, so the signed form is never made without it: `sign_documents` answers the error and the request stays in `signing`. A build without a signature stays lenient: what could not be placed is left out and counted in `report["dropped"]` (`report`: a dict the caller passes). `fill_form_101` sends it as the header `X-Dropped`; `worker_docs` adds it to its own `X-Dropped`.
+- **Template and font:** `FORM101_TEMPLATES` and `FONT_SHA256` (`builders/__init__.py`), checked at import: a wrong file stops the whole codebase from starting, which the tests see first.
+- **Pinned libraries:** `LOCKED` names the versions in a builder's bytes (pymupdf, MuPDF, python-bidi, Pillow), as `functions/requirements.lock` pins them; moving one is a new builder version ([backend.md](backend.md) → The lock file).
+- **The input manifest:** `builders/manifest.py` writes canonical JSON (sorted keys, no spaces, UTF-8) and hashes it; tested here, used from S4 on.
+- **The golden hashes:** `builders/selftest.py` holds fixed inputs (made-up values, constant pictures); `tests/auth/builder_golden.json` holds their output hashes ([backend.md](backend.md) → The golden hashes).
+
+## Building the PDF (`build_form101_pdf`, functions/builders/form101_b1.py)
+
+- **Template:** `functions/assets/form101/v1.pdf`, with the Heebo font (`functions/assets/heebo-hebrew.ttf`). These are the only copies. A new template is a new file beside it (`v2.pdf`), with a new builder version; a template is never replaced.
   - The template's fields use the PDF's own Helvetica (`/Helv` in their `DA` and the form's `DR`), so the template carries no font file for them: ~95 KB, and a filled form without scans ~170 KB. It once carried the whole Calibri for 47 fields (586 KB in every Form 101) that the `garbage` clean-up could not drop, because the fields named it. `tests/auth/test_form101_template.py` keeps the template under 200 KB.
 - **`Form101Builder`** addresses fields by their AcroForm names.
   - **Hebrew text:** `set_hebrew()` sets the value, blanks the field's own appearance, and draws the text by hand. PyMuPDF has no RTL shaping, so the text goes through `bidi.get_display()` and is right-aligned.
@@ -58,7 +71,7 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
   - **Checkboxes:** `check(name)` blanks the box and draws a blue tick inside the checkbox's own rectangle, with no offset.
   - **Positions:** every field is filled exactly at its rectangle in the template; fields are moved in the PDF itself (there is no position correction in code).
 - **What is filled:**
-  - **Header:** surname and given name; date of birth (`_ddmmyyyy` → 8 boxes, zero-padded); `id_top2` (an Israeli ID as below); tax year = the current year.
+  - **Header:** surname and given name; date of birth (`_ddmmyyyy` → 8 boxes, zero-padded); `id_top2` (an Israeli ID as below); the tax year (`_tax_year`, above). The stored unsigned form's `signDate` is the day the worker was added, not a signing, so `fill_form_101` sends the builder this year as `taxYear` and that form keeps printing the current year; a signing prints the year of its signing date; a preview has no `signDate` and prints this year.
   - **Employer:** name, address (street + number + city), phone, deductions file — digits only, the last 8 in the 8 boxes (the form prints the leading 9 itself).
   - **Sex:** `sex_male` / `sex_female`. Kibbutz member `cb_p1_1` is always ticked ("no").
   - **Israeli ID:**
@@ -78,16 +91,16 @@ Missing firm-profile fields (`firmProfileMissing`) are shown as a toast after th
     - income → `SPOUSE_INCOME_CB`: `none` → `cb_p1_22`; `work` → `cb_p1_23` + `cb_p1_24`; `other` → `cb_p1_23` + `cb_p1_25`.
   - **Worker phone, signing date, signature:** the signature image goes to page 2 in `SIG_RECT`.
 - **Scan pages:**
-  - the first two `extraPages` share one page, top and bottom halves (normally the ID front and the ספח);
-  - every further page gets its own page;
-  - each image is shrunk to 150 dpi for its box (`_shrink_for_embed` — JPEG 82, or PNG when the image has transparency);
-  - this happens only here: the stored page stays as it was kept (a JPEG of at most 2000 px).
+  - **by kind**, when an `extraPages` entry has a `kind` (`id_front`, `id_back`, `sefach`, `passport`, `other`; the signing sends them): the first page of each kind goes on one A4 sheet — the ID card's front and back and the ספח, or the passport and a ספח when scanned — placed by the pictures' shapes (`sheets_b1.layout`); an ID card worker with no ספח gets its box left empty, with a Hebrew caption saying it is missing; a worker's other pages get one page each, captioned in Hebrew;
+  - **by position**, when no entry has a `kind` (the app's unsigned form): the first two share one page, top and bottom halves (normally the ID front and the ספח), and every further page gets its own page;
+  - a JPEG of at most 2000 px, which is what a stored page is, goes in **with its own bytes** (a DCT passthrough: no Pillow in its chain, nothing re-encoded); anything else is shrunk to 150 dpi for its box (`shrink_for_embed` — JPEG 82, or PNG when the image has transparency). The signature always goes through it, so Pillow stays pinned. A form with scans is therefore larger than before: about the size of its pages.
 - **Output:**
   - the form is **flattened** (`doc.bake(widgets=True)`, owner 2026-10-27): every field's appearance becomes page content and the fields are removed, so a viewer shows a plain document, never a fillable form with blue boxes (`build_form101_pdf(p, flatten=False)` keeps the fields — only the tests use it, to read the values); files built before keep their fields;
-  - the file is saved with `garbage=4, deflate, clean`, and `NeedAppearances=false`;
+  - the file is saved with `garbage=4, deflate, clean, no_new_id` and the fixed `/ID` (The builders, above), and `NeedAppearances=false`;
   - the file name is `<given> <surname> - <ID or passport number> - <company>.pdf` ([form101-field-map.md](form101-field-map.md) → File name);
-  - `build_form101_pdf` returns `(pdf bytes, file name)`; the function returns `{pdfBase64, fileName}`.
+  - `build_form101_pdf(p, flatten=True, strict=False, manifest_sha256=None, report=None)` returns `(pdf bytes, file name)`; the function returns `{pdfBase64, fileName}`, with the header `X-Dropped`.
 - **Warm-up:** `{"ping":true}` gets an immediate answer (`_ping_response`). All three functions in `functions/main.py` do this; the client pings them when the worker modal opens and when a scan starts.
+- **Self-check:** `{"ping":true,"selftest":true}` to `fill_form_101` answers, with no login, the builder version, the Python and library versions and the hash of each fixed input (`builders/selftest.py`, built once per instance); nothing in it comes from a worker or a firm.
 
 ## Storing the result
 

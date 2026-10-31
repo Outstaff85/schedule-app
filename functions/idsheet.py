@@ -225,7 +225,7 @@ def sheet_title(items):
     """The sheet's Hebrew title: what is on it."""
     kinds = [it["kind"] for it in items if not it.get("empty")]
     doc = "דרכון" if "passport" in kinds else "תעודת זהות"
-    return doc + (" וספח" if any(it["kind"] == "sefach" for it in items) else "")
+    return doc + (" וספח" if any(it["kind"] == "sefach" and not it.get("empty") for it in items) else "")
 
 
 def add_scans(doc, pages, passport_worker, font_path):

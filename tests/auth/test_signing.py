@@ -245,3 +245,42 @@ def test_a_template_without_the_tick_draws_no_seal_and_values_never_carry_it():
     assert req["seal"]["everyPage"] is False and "stamp" not in req["values"] and "company_signature" not in req["values"]
     v = signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "contract"}, build101, finder=finder(db))
     assert _widths(v["pdfBase64"]) == [[]]
+
+
+def test_the_form_is_built_with_each_page_s_kind_and_the_signing_date_s_year():
+    db, bucket, t = _setup()
+    seen = []
+
+    def build(p, strict=False):
+        seen.append((p, strict))
+        return build101(p, strict)
+
+    assert "taxYear" not in signing._clean_form101({"given": "Avi", "taxYear": "2001"})
+    _send(db, bucket, OWNER, t, form101={"given": "Avi", "taxYear": "2001"})
+    f = finder(db)
+    assert signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "form101"}, build, finder=f)["ok"]
+    p, strict = seen[-1]
+    assert not strict and "taxYear" not in p and [x.get("kind") for x in p["extraPages"]] == ["id_front"]
+    signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": base64.b64encode(PNG).decode()}, build, finder=f)
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build, finder=f)["ok"]
+    assert seen[-1][1] is True  # the signed form: strict
+
+
+def test_a_form_that_cannot_be_built_stops_the_signing_and_keeps_it_open():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    f = finder(db)
+    signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": base64.b64encode(PNG).decode()}, build101, finder=f)
+
+    def broken(p, strict=False):
+        raise ValueError("The signature or a page could not be placed on Form 101")
+
+    try:
+        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, broken, finder=f)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a broken page must not give a signed form")
+    assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]["status"] == "signing"
+    # the page put right, the same request goes on
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)["part"]

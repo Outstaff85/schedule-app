@@ -169,6 +169,7 @@ def test_a_missing_sefach_leaves_its_box_with_a_caption():
     assert _doc(data).page_count == 3
     words = _doc(data)[2].get_text()
     assert "חסר" in words or "רסח" in words
+    assert not ("וספח" in words or "חפסו" in words)  # the title says only what is on the sheet
 
 
 def test_a_passport_needs_no_sefach_box_and_other_pages_get_their_own():
