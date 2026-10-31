@@ -43,9 +43,9 @@ export function FirmsPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   if (!snap.isSuper) return <OwnFirm snap={snap} api={api} />;
   return (
     <div data-testid="firms">
-      <div className="mb-2.5 flex flex-wrap justify-end gap-2" data-testid="firms-bar">
-        <PayableToggle api={api} />
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2" data-testid="firms-bar">
         <Button variant="primary" className="og-new" data-testid="firm-new" onClick={() => api.openFirmWindow('create')}><IconPlus className="size-4" />{tr('New firm')}</Button>
+        <PayableToggle api={api} />
       </div>
       <FirmsList snap={snap} api={api} />
     </div>
@@ -157,7 +157,7 @@ function PayableToggle({ api }: { api: ManagerBridge }) {
   const [open, setOpen] = React.useState(payableOpen);
   return (
     <>
-      <Button data-testid="firms-payable" aria-pressed={open} onClick={() => { payableOpen = !open; setOpen(!open); }}><IconCash className="size-4" />{tr('Payable summary (all firms)')}</Button>
+      <Button data-testid="firms-payable" aria-pressed={open} title={tr('Payable summary (all firms)')} aria-label={tr('Payable summary (all firms)')} onClick={() => { payableOpen = !open; setOpen(!open); }}><IconCash className="size-4" /><span className="min-[701px]:hidden">{tr('Payable')}</span><span className="max-[700px]:hidden">{tr('Payable summary (all firms)')}</span></Button>
       {open && <div className="order-last w-full"><Payable api={api} /></div>}
     </>
   );
