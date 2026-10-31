@@ -2909,8 +2909,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // every worker plate the same height, with or without a notice chip or a site (owner, 2026-10-27)
   const plateH = await p.evaluate(async () => {
     switchTab('workers'); await T.tick(100);
-    // a plate whose notices took a second line stands taller: up to three show, the others in +N
-    const hs = [...document.querySelectorAll('#workersRoot [data-testid="worker-plate"]')].filter(e => { const c = e.querySelector('[data-testid="worker-chip1"]'); return !c || c.getBoundingClientRect().height < 34; }).map(e => Math.round(e.getBoundingClientRect().height));
+    const hs = [...document.querySelectorAll('#workersRoot [data-testid="worker-plate"]')].map(e => Math.round(e.getBoundingClientRect().height));
     return {hs, chip: !!document.querySelector('#workersRoot [data-testid="worker-chip1"]'), chips: document.querySelectorAll('#workersRoot [data-testid="worker-chip1"]').length, space: !!document.querySelector('#workersRoot [data-testid="worker-chip-space"]')};
   });
   ok(plateH.hs.length > 1 && Math.max(...plateH.hs) - Math.min(...plateH.hs) <= 1 && (plateH.chip && plateH.chips < plateH.hs.length ? plateH.space : true),

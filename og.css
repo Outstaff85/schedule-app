@@ -338,6 +338,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .og-bell::after{display:none}
 .og-bell i{font-size:23px}
 .og-bell svg{width:23px;height:23px}
+/* "+N" on a worker's line: the bell's number, pulsing */
+.og-more{flex:none;min-width:20px;height:20px;padding:0 5px;border:0;border-radius:999px;background:var(--bad);color:#fff;font:700 11px 'DM Sans',Arial,sans-serif;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;animation:og-more 1.8s ease-in-out infinite}
+@keyframes og-more{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--bad) 60%,transparent)}50%{box-shadow:0 0 0 6px transparent}}
 .og-bell.has-new i,.og-bell.has-new svg{animation:og-ring 4s ease-in-out infinite;transform-origin:50% 10%}
 @keyframes og-ring{0%,88%,100%{transform:rotate(0)}90%{transform:rotate(14deg)}93%{transform:rotate(-12deg)}96%{transform:rotate(6deg)}}
 .og-bell-n{position:absolute;top:-4px;right:-4px;z-index:1;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--ground);animation:og-bump 2.4s ease-in-out infinite}

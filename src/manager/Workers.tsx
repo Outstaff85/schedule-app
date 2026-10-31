@@ -135,11 +135,11 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
       chips={<NewBadge createdAt={w.createdAt} />}
       sub={<>
         {/* every plate keeps the chip row and the site line, empty or not: the plates stand the same height (owner,
-            2026-10-27). Up to three notices are shown, the others in +N (owner, 2026-10-31); several may take a second line. */}
+            2026-10-27). Two notices are shown, the others in +N (owner, 2026-10-31). */}
         {w.notices.length > 0
-          ? <span className="mb-0.5 mt-[3px] flex flex-wrap gap-1 whitespace-normal" data-testid="worker-chip1">
-              {w.notices.slice(0, 3).map((n, i) => <NoticeChip key={i} n={n} onOpen={() => api.openNotices(w.id)} />)}
-              <MoreChip n={w.notices.length - 3} onOpen={() => api.openNotices(w.id)} />
+          ? <span className="mb-0.5 mt-[3px] flex items-center gap-1" data-testid="worker-chip1">
+              {w.notices.slice(0, 2).map((n, i) => <NoticeChip key={i} n={n} onOpen={() => api.openNotices(w.id)} />)}
+              <MoreChip n={w.notices.length - 2} onOpen={() => api.openNotices(w.id)} />
             </span>
           : <span className="invisible mb-0.5 mt-[3px] flex" aria-hidden data-testid="worker-chip-space"><Badge variant="warn"><IconAlertTriangle />—</Badge></span>}
         <span className="block min-h-[1lh]"><Line parts={[w.site, <TodayPin key="p" w={w} />]} /></span>
