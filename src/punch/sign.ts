@@ -3,7 +3,8 @@
 // and the contract are fetched at once and shown filled; one signature; the two signed PDFs are
 // then built by two calls at once; afterwards the page keeps them to read and download. A signature whose documents are
 // not built yet ('signing': the page was closed, or a build failed) is built again when the page opens, once, and by Try
-// again: the server keeps one copy of each, and the state read afterwards says what happened.
+// again, from what the server froze at the signature: it keeps one copy of each, and the state read afterwards says what
+// happened (`retry`: a call that failed with nothing recorded on the server, such as a timeout).
 import { getState, set, wpToken, type SignReq } from './core';
 
 export const SIGN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/sign_documents';
@@ -29,8 +30,10 @@ let builtFor = '';
 /** The two signed PDFs, built at once (a failure is read from the state afterwards: `buildError`). */
 export async function buildSigned(): Promise<void> {
   builtFor = getState().signReq?.id || '';
-  await Promise.allSettled(['form101', 'contract'].map(which => signFn({ action: 'build', which })));
+  const done = await Promise.allSettled(['form101', 'contract'].map(which => signFn({ action: 'build', which })));
   await loadSignState();
+  const cur = getState().signReq;
+  if (cur?.status === 'signing' && done.some(d => d.status === 'rejected')) set({ signReq: { ...cur, retry: true } });
 }
 
 export type Viewed = { pdfBase64: string; name: string; signDate?: string; signed: boolean };
@@ -69,8 +72,10 @@ let movedFor = '';
 /** The new firm's two PDFs, built at once; the copy follows. A failure is read from the state afterwards. */
 export async function buildTransfer(): Promise<void> {
   movedFor = getState().transfer?.id || '';
-  await Promise.allSettled(['form101', 'contract'].map(which => tr_({ action: 'build', which })));
+  const done = await Promise.allSettled(['form101', 'contract'].map(which => tr_({ action: 'build', which })));
   await loadTransferState();
+  const cur = getState().transfer;
+  if (cur?.status === 'signing' && done.some(d => d.status === 'rejected')) set({ transfer: { ...cur, retry: true } });
 }
 export const viewTransfer = (): Promise<Viewed[]> => Promise.all(['form101', 'contract'].map(which => tr_({ action: 'view', which }) as Promise<Viewed>));
 /** The consent and the signing in one: the signature, then the new firm's two PDFs — true once the copy is made. */

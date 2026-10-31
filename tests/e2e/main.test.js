@@ -1998,7 +1998,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
   // A signature whose documents could not be saved (docs/contracts.md → Signing): the worker's page never says Signed, retries by
   // itself once and by Try again; the manager's card says Not saved, with the reason, Try again and Withdraw.
-  const STUCK = 'A scanned page is damaged: it must be scanned again, then the documents sent again';
+  const STUCK = 'The signed documents could not be built: withdraw them and send the documents again';
   const stuckCalls = [];
   const stuckRoute = async r => {
     const b = JSON.parse(r.request().postData() || '{}');
@@ -2036,10 +2036,23 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await waitFor(p, () => !document.querySelector('[data-testid="card-sign-retry"]')?.disabled, 8000);
   await p.click('[data-testid="card-sign-withdraw"]');
   await sleep(500);
-  ok(stuckCard.state === 'stuck' && /Not saved/.test(stuckCard.text) && !/Signed/.test(stuckCard.text) && /damaged/.test(stuckCard.why)
+  ok(stuckCard.state === 'stuck' && /Not saved/.test(stuckCard.text) && !/Signed/.test(stuckCard.text) && /withdraw them/.test(stuckCard.why)
     && stuckCalls.filter(x => x === 'build').length === 2 && stuckCalls.includes('withdraw'),
     "signing: the manager's card says Not saved with the reason, offers Try again and Withdraw " + JSON.stringify({stuckCard, stuckCalls}));
   await p.unroute(/cloudfunctions\.net\/sign_documents$/, stuckRoute);
+  // A date that cannot be read counts as stuck, as on the server (signing.stuck).
+  await p.route(/cloudfunctions\.net\/sign_documents$/, async r => {
+    const b = JSON.parse(r.request().postData() || '{}');
+    if (b.action !== 'list') return r.fallback();
+    return r.fulfill({status: 200, contentType: 'application/json', headers: {'Access-Control-Allow-Origin': '*'},
+      body: JSON.stringify({ok: true, requests: [{id: 'r-odd', workerId: 'w2', status: 'signing', sentAt: '2026-10-31T10:00:00.000Z', signedAtIso: 'not a date'}]})});
+  });
+  const oddDate = await p.evaluate(async () => {
+    await ManagerBridge.reloadSignRequests(); await T.tick(200);
+    return (document.querySelector('#workerCardModal [data-testid="card-sign-state"]') || {dataset: {}}).dataset.state;
+  });
+  await p.unroute(/cloudfunctions\.net\/sign_documents$/);
+  ok(oddDate === 'stuck', 'signing: a signature date that cannot be read counts as stuck, as on the server ' + oddDate);
   await p.evaluate(async () => { closeModal('workerCardOverlay'); await ManagerBridge.reloadSignRequests(); });
   // Signed files are kept (documents plan S0b; docs/contracts.md → Signed files are kept).
   const keep = await p.evaluate(async () => {

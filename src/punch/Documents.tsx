@@ -23,18 +23,21 @@ export function DocumentsCard() {
       onClick={() => set({ screen: 'documents' })}>
       <span className="pp-tile-h">{sent ? <IconSignature className="ti" /> : <IconFileText className="ti" />} <span>{sent ? tr('Documents to sign') : tr('My documents')}</span></span>
       <span className="pp-tile-v">{sent ? tr('Form 101 and {0} — tap to read and sign', { 0: r.templateName || tr('the contract') })
-        : r.status === 'signing' ? (r.buildError ? tr('Your documents could not be saved') : tr('Saving your documents…')) : tr('Signed {0}', { 0: r.signDate || '' })}</span>
+        : r.status === 'signing' ? (notSaved(r) ? tr('Your documents could not be saved') : tr('Saving your documents…')) : tr('Signed {0}', { 0: r.signDate || '' })}</span>
     </button>
   );
 }
 
-/** A signature kept whose documents are not saved: what happened, and Try again (a rescan by the office puts it right). */
-function NotSaved({ failed, retry }: { failed: boolean; retry: () => Promise<void> }) {
+/** Nothing is saved yet and nothing is on its way: a recorded failure, a call that failed, or too long a wait. */
+const notSaved = (r: { buildError?: string | null; stuck?: boolean; retry?: boolean }) => !!(r.buildError || r.stuck || r.retry);
+
+/** A signature kept whose documents are not saved: what happened, and Try again (built only from what was signed). */
+function NotSaved({ failed, text, retry }: { failed: boolean; text: string; retry: () => Promise<void> }) {
   const [busy, setBusy] = React.useState(false);
   if (!failed) return <p style={{ color: 'var(--text2)', fontSize: 14 }} data-testid="documents-saving">{tr('Saving your documents…')}</p>;
   return (
     <div className="grid gap-2" data-testid="documents-not-saved">
-      <p style={{ color: 'var(--red)', fontSize: 14 }}><IconAlertTriangle className="ti" /> {tr('Your signature is kept, but your documents could not be saved. The office can see this and will put it right.')}</p>
+      <p style={{ color: 'var(--red)', fontSize: 14 }}><IconAlertTriangle className="ti" /> {text}</p>
       <button type="button" className="gbtn" disabled={busy} data-testid="documents-retry"
         onClick={() => { setBusy(true); void retry().finally(() => setBusy(false)); }}><IconRefresh className="ti" /> {tr('Try again')}</button>
     </div>
@@ -62,8 +65,9 @@ export function DocumentsSheet({ hidden }: { hidden: boolean }) {
       <div id="documentsContent" data-testid="documents" data-state={r?.status || ''} style={{ width: '100%', maxWidth: 640, textAlign: 'left' }}>
         {!r ? null : r.status === 'sent' ? (
           <SignDocuments docs={docs} signDate={views?.[0]?.signDate || r.signDate || '…'}
-            onSign={async png => { await signDocs(png); setViews(null); }} />
-        ) : r.status === 'signing' ? <NotSaved failed={!!r.buildError} retry={buildSigned} /> : (
+            onSign={async png => { try { await signDocs(png); setViews(null); } catch (e) { setErr(String((e as Error)?.message || e)); } }} />
+        ) : r.status === 'signing' ? <NotSaved failed={notSaved(r)} retry={buildSigned}
+          text={tr('Your signature is kept, but your documents could not be saved. The office can withdraw them and send them to you to sign again.')} /> : (
           <div className="grid gap-2" data-testid="documents-signed">
             <p style={{ color: 'var(--text2)', fontSize: 14 }}>{tr('Signed {0}', { 0: r.signDate || '' })}</p>
             {views && views.map((v, i) => (
@@ -90,7 +94,7 @@ export function TransferCard() {
     <button type="button" className="gbtn pp-tile" data-testid="tile-transfer" style={{ ['--c' as string]: 'var(--accent)', width: '100%', maxWidth: 500, marginBottom: 12 }}
       onClick={() => set({ screen: 'transfer' })}>
       <span className="pp-tile-h"><IconBuildingSkyscraper className="ti" /> <span>{tr('{0} asks to take your details', { 0: t.firm })}</span></span>
-      <span className="pp-tile-v">{tr('Read its Form 101 and contract, then approve with your signature')}</span>
+      <span className="pp-tile-v">{t.status === 'signing' ? (notSaved(t) ? tr('Your documents could not be saved') : tr('Saving your documents…')) : tr('Read its Form 101 and contract, then approve with your signature')}</span>
     </button>
   );
 }
@@ -102,6 +106,13 @@ export function TransferSheet({ hidden }: { hidden: boolean }) {
   const [views, setViews] = React.useState<Viewed[] | null>(null);
   const [err, setErr] = React.useState('');
   const [done, setDone] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  // a retry that finished the move ends here too, with what it did, never an empty sheet
+  const was = React.useRef(t);
+  React.useEffect(() => {
+    if (was.current?.status === 'signing' && !t && !busy) setDone(tr('Signed — your details were sent to {0}.', { 0: was.current.firm }));
+    was.current = t;
+  }, [t]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (hidden || !t || t.status === 'signing') return;
     let live = true;
@@ -118,11 +129,22 @@ export function TransferSheet({ hidden }: { hidden: boolean }) {
       <div data-testid="transfer" data-state={done ? 'done' : t ? t.status : ''} style={{ width: '100%', maxWidth: 640, textAlign: 'left' }}>
         {done ? <p style={{ color: 'var(--text2)', fontSize: 15 }} data-testid="transfer-done">{done}</p> : t && <>
           <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 12 }}>{tr('Your details are copied to {0} only if you sign. Nothing is copied if you decline.', { 0: t.firm })}</p>
-          {t.status === 'signing' ? <NotSaved failed={!!t.buildError} retry={buildTransfer} />
+          {t.status === 'signing' ? <NotSaved failed={notSaved(t)} retry={buildTransfer}
+            text={tr('Your signature is kept, but your documents could not be saved. Try again, or decline: nothing has been copied, and the new firm can ask again.')} />
             : <SignDocuments docs={docs} signDate={views?.[0]?.signDate || '…'}
-              onSign={async png => { const firm = t.firm; if (await signTransfer(png)) setDone(tr('Signed — your details were sent to {0}.', { 0: firm })); }} />}
-          <button type="button" className="gbtn" data-testid="transfer-decline" style={{ marginTop: 12 }}
-            onClick={() => { void declineTransfer().then(() => setDone(tr('Declined — nothing was copied.'))); }}>{tr('Decline')}</button>
+              onSign={async png => {
+                const firm = t.firm;
+                setBusy(true); setErr('');
+                try { if (await signTransfer(png)) setDone(tr('Signed — your details were sent to {0}.', { 0: firm })); }
+                catch (e) { setErr(String((e as Error)?.message || e)); }
+                finally { setBusy(false); }
+              }} />}
+          {err && t.status === 'signing' && <p style={{ color: 'var(--red)', fontSize: 14 }} data-testid="transfer-error">{tr(err)}</p>}
+          <button type="button" className="gbtn" data-testid="transfer-decline" style={{ marginTop: 12 }} disabled={busy}
+            onClick={() => {
+              setBusy(true); setErr('');
+              void declineTransfer().then(() => setDone(tr('Declined — nothing was copied.')), e => setErr(String(e?.message || e))).finally(() => setBusy(false));
+            }}>{tr('Decline')}</button>
         </>}
       </div>
     </Sheet>

@@ -243,8 +243,9 @@ def test_view_and_sign_refuse_a_damaged_page_and_keep_nothing():
 def test_a_failed_build_is_told_and_a_retry_finishes_the_move():
     db, bucket = _asked()
     assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
-    assert _call(db, bucket, _broken, action="build", which="form101") == {"error": signing.E_PAGE_DAMAGED}
-    assert _call(db, bucket, action="mine")["transfer"]["buildError"] == signing.E_PAGE_DAMAGED
+    assert _call(db, bucket, _broken, action="build", which="form101") == {"error": signing.E_NOT_BUILT}
+    t = _call(db, bucket, action="mine")["transfer"]
+    assert t["buildError"] == signing.E_NOT_BUILT and t["stuck"]
     for which in signing.WHICH:
         assert _call(db, bucket, action="build", which=which)["part"]
     assert _req(db)["status"] == "done" and _call(db, bucket, action="mine")["transfer"] is None
@@ -264,9 +265,12 @@ def test_decline_after_the_signature_leaves_nothing_under_the_worker_never_creat
 def test_decline_cannot_undo_a_move_being_copied():
     db, bucket = _asked()
     _call(db, bucket, action="sign", signaturePng=SIG)
-    rid = next(k[1] for k in db.data if k[0] == "transferRequests")
-    db.collection("transferLog").document(rid).create({"at": "now"})
+    _req(db)["copyClaimedAt"] = transfer._iso(transfer._now())
     assert _call(db, bucket, action="decline") == {"error": signing.E_SIGNED}
+    _req(db).update(copyClaimedAt=None, copyCreated=True)  # the new record is made: only finishing is left
+    assert _call(db, bucket, action="decline") == {"error": signing.E_SIGNED}
+    _req(db)["signedAtIso"] = "2020-01-01T00:00:00.000Z"
+    assert _call(db, bucket, action="mine")["transfer"]["status"] == "signing"  # and it does not expire either
 
 
 def test_a_signing_nobody_finishes_expires_after_its_days_with_its_signature():
@@ -287,3 +291,177 @@ def test_a_signing_kept_before_its_date_was_written_expires_by_the_request_s_dat
     assert _call(db, bucket, action="mine")["transfer"]  # within the 14 days
     r["expiresAt"] = "2020-01-01T00:00:00.000Z"
     assert _call(db, bucket, action="mine")["transfer"] is None and _req(db)["status"] == "expired"
+
+
+def _during_gate(action):
+    done = []
+
+    def build(p, strict=False, report=None):
+        if not done:
+            done.append(1)
+            action()
+        return build101(p, strict)
+
+    return build
+
+
+def _sigs(bucket):
+    return [p for p in bucket.store if "/signature/" in p or "contract-template-" in p]
+
+
+def test_a_decline_during_the_signature_s_gate_stays_and_nothing_is_copied():
+    db, bucket = _asked()
+    build = _during_gate(lambda: _call(db, bucket, action="decline"))
+    assert _call(db, bucket, build, action="sign", signaturePng=SIG) == {"error": signing.E_NO_REQUEST}
+    assert _req(db)["status"] == "declined" and _sigs(bucket) == [] and not _req(db).get("newWorkerId")
+
+
+def test_two_devices_signing_keep_one_signature_and_one_new_worker():
+    db, bucket = _asked()
+    build = _during_gate(lambda: _call(db, bucket, action="sign", signaturePng=SIG))
+    assert _call(db, bucket, build, action="sign", signaturePng=SIG) == {"error": signing.E_SIGNED}
+    r = _req(db)
+    assert sorted(_sigs(bucket)) == sorted([r["sigPath"], r["frozen"]["templatePath"]])
+
+
+def test_a_late_signature_does_not_undo_a_finished_move():
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    for which in signing.WHICH:
+        _call(db, bucket, action="build", which=which)
+    assert _req(db)["status"] == "done"
+    assert _call(db, bucket, action="sign", signaturePng=SIG) == {"error": signing.E_NO_REQUEST}
+    assert _req(db)["status"] == "done"
+
+
+def _template_doc(db):
+    return next(v for k, v in db.data.items() if k[:3] == ("tenants", "t2", "contractTemplates"))
+
+
+def test_a_retry_builds_only_what_the_worker_saw(monkeypatch):
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    r = _req(db)
+    seen = {}
+    real = contracts.fill
+    monkeypatch.setattr(contracts, "fill", lambda tpl, values, placed=None, *a, **k: seen.update(tpl=tpl, values=dict(values), placed=placed) or real(tpl, values, placed, *a, **k))
+    pages = []
+
+    def build(p, strict=False):
+        pages.append((p["given"], p["signDate"], base64.b64decode(p["extraPages"][0]["b64"])))
+        return build101(p, strict)
+
+    # everything moves afterwards: the firm's template and name, the worker, the pages, the date
+    frozen_template = bucket.store[r["frozen"]["templatePath"]]
+    t = _template_doc(db)
+    live = bucket.store.pop(t["fileId"])
+    db.data[("tenants", "t2")]["companyName"] = "Renamed"
+    w = db.data[("tenants", "t1", "workers", "w1")]
+    w["docGiven"] = "Changed"
+    bucket.store["tenants/t1/workers/w1/pages/9-0-id_front.jpg"] = b"\xff\xd8new"
+    w["scanPages"] = [{"fileId": "tenants/t1/workers/w1/pages/9-0-id_front.jpg", "kind": "id_front", "primary": True}]
+    monkeypatch.setattr(signing, "today_il", lambda: "30/12/2030")
+    assert _call(db, bucket, build, action="build", which="form101")["part"]
+    assert _call(db, bucket, build, action="build", which="contract")["part"]
+    assert seen["tpl"] == frozen_template == live
+    assert seen["values"]["given"] != "Changed" and seen["values"]["company"] != "Renamed" and seen["values"]["today"] != "30/12/2030"
+    assert pages[0][0] != "Changed" and pages[0][1] != "30/12/2030" and pages[0][2] == b"\xff\xd8jpeg"
+    moved = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t2", "workers"))
+    assert moved["docGiven"] != "Changed" and moved["scanPages"][0]["kind"] == "id_front" and "sha256" not in moved["scanPages"][0]
+
+
+def test_a_deleted_template_after_the_signature_does_not_stop_the_build():
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    for k in [k for k in db.data if k[:3] == ("tenants", "t2", "contractTemplates")]:
+        del db.data[k]
+    assert _call(db, bucket, action="build", which="contract")["part"]
+
+
+def test_an_older_signing_with_no_template_left_says_so_instead_of_failing():
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    _req(db).pop("frozen")
+    for k in [k for k in db.data if k[:3] == ("tenants", "t2", "contractTemplates")]:
+        del db.data[k]
+    assert _call(db, bucket, action="build", which="contract") == {"error": signing.E_NOT_BUILT}
+    assert _call(db, bucket, action="mine")["transfer"]["buildError"] == signing.E_NOT_BUILT
+    # the firm whose template it is hears of it
+    assert any(d.get("tenantId") == "t2" and "could not be built" in d.get("message", "") for k, d in db.data.items() if k[0] == "errors")
+
+
+def test_a_failed_copy_resumes_and_is_made_once(monkeypatch):
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    _call(db, bucket, action="build", which="form101")
+    real = transfer._download_url
+    fail = [1]
+
+    def flaky(*a):
+        if fail:
+            fail.pop()
+            raise ConnectionError("no storage")
+        return real(*a)
+
+    monkeypatch.setattr(transfer, "_download_url", flaky)
+    assert _call(db, bucket, action="build", which="contract") == {"error": signing.E_NOT_BUILT}
+    r = _req(db)
+    assert r["status"] == "signing" and not r.get("copyClaimedAt") and not r.get("copyDone")
+    assert _call(db, bucket, action="mine")["transfer"]["buildError"] == signing.E_NOT_BUILT
+    assert _call(db, bucket, action="build", which="contract")["status"] == "done"
+    r = _req(db)
+    assert r["copyDone"] and not signing.build_error(r) and _call(db, bucket, action="mine")["transfer"] is None
+    assert len([k for k in db.data if k[:3] == ("tenants", "t2", "workers")]) == 1
+
+
+def test_a_copy_that_died_is_taken_over_after_its_lease_and_a_new_record_is_not_written_over(monkeypatch):
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    _call(db, bucket, action="build", which="form101")
+    r = _req(db)
+    r["copyClaimedAt"] = transfer._iso(transfer._now())
+    assert _call(db, bucket, action="build", which="contract")["status"] == "signing"  # another build has it
+    assert _req(db)["status"] == "signing"
+    r = _req(db)
+    r["copyClaimedAt"] = "2020-01-01T00:00:00.000Z"
+    new = ("tenants", "t2", "workers", r["newWorkerId"])
+    db.data[new] = {"name": "edited since"}
+    assert _call(db, bucket, action="build", which="contract")["status"] == "done"
+    assert db.data[new] == {"name": "edited since"}
+
+
+def test_a_late_build_after_a_decline_keeps_nothing():
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+
+    def declined_during_the_build(p, strict=False):
+        assert _call(db, bucket, action="decline") == {"ok": True}
+        return build101(p, strict)
+
+    assert _call(db, bucket, declined_during_the_build, action="build", which="form101") == {"error": signing.E_NO_REQUEST}
+    r = _req(db)
+    assert r["status"] == "declined" and not r.get("parts") and not [p for p in bucket.store if "/form101/" in p or "/signature/" in p]
+
+
+def test_a_delete_that_fails_keeps_its_path_and_is_tried_again():
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    sig = _req(db)["sigPath"]
+    real = bucket.blob
+
+    def blob(path):
+        b = real(path)
+        if path == sig:
+            def no():
+                raise ConnectionError("no storage")
+            b.delete = no
+        return b
+
+    bucket.blob = blob
+    assert _call(db, bucket, action="decline") == {"ok": True}
+    r = _req(db)
+    assert r["status"] == "declined" and r["sigPath"] == sig and r["discardPending"] == [sig] and sig in bucket.store
+    bucket.blob = real
+    _call(db, bucket, action="mine")
+    r = _req(db)
+    assert not r["discardPending"] and not r["sigPath"] and sig not in bucket.store and not r["frozen"]

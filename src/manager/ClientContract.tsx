@@ -29,13 +29,15 @@ import {
   type SignedLine,
 } from './logic/client-contract';
 import { loadFirestoreBackend } from './data/api';
+import { isStuck } from './logic/signing';
 
 const DEFAULT = '-';
 const dateText = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString(uiLocale()) : '');
 
 /** The status line of the client's latest send. */
-export function clientContractStatus(r: ClientSignRequest | null): { text: string; state: string } {
+export function clientContractStatus(r: ClientSignRequest | null, failed = false): { text: string; state: string } {
   if (!r) return { text: '', state: 'none' };
+  if (r.status === 'signing' && !r.part && (failed || isStuck(r))) return { text: tr('Not saved'), state: 'stuck' };
   if (r.status === 'signing') return { text: tr('Being saved'), state: 'signing' };
   if (r.status === 'signed') return { text: tr('Signed {0}', { 0: r.signDate || dateText(r.signedAtIso) }), state: 'signed' };
   if (r.status === 'sent') return { text: tr('Sent to sign {0}', { 0: dateText(r.sentAt) }), state: 'sent' };
@@ -78,6 +80,7 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
   React.useEffect(() => { if (opened && reqs === null) loadReqs(); }, [opened, reqs, loadReqs]);
   // signed but its PDF not built (the build failed after the signature): built now, once per opening — the server keeps one
   const building = React.useRef(new Set<string>());
+  const [failed, setFailed] = React.useState<string[]>([]);
   React.useEffect(() => {
     if (!may) return;
     for (const r of reqs || []) {
@@ -86,8 +89,9 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
       clientCall<{ part: ClientSignRequest['part']; status: ClientSignRequest['status'] }>({ action: 'clientBuild', id: r.id })
         .then(b => {
           setReqs(cur => (cur || []).map(x => (x.id === r.id ? { ...x, part: b.part, status: b.status } : x)));
+          setFailed(cur => cur.filter(x => x !== r.id));
           clientCall<{ docs: ClientDoc[] }>({ action: 'clientDocs', clientId }).then(d => setDocs(d.docs || []), () => {});
-        }, () => {});
+        }, () => setFailed(cur => [...cur, r.id]));
     }
   }, [reqs, may]); // eslint-disable-line react-hooks/exhaustive-deps
   // a signing's details: the client's empty contact fields filled from them, once
@@ -108,7 +112,9 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
   const chosen = (list || []).find(t => t.id === contractTemplateId);
   const tpl = chosen || def;
   const latest = latestRequest(reqs || []);
-  const status = clientContractStatus(latest);
+  const status = clientContractStatus(latest, !!latest && failed.includes(latest.id));
+  // Try again: the build above once more
+  const buildAgain = (id: string) => { building.current.delete(id); setFailed(cur => cur.filter(x => x !== id)); setReqs(cur => (cur ? [...cur] : cur)); };
   const signed = signedLines(docs, reqs);
 
   const send = async (way: 'remote' | 'person') => {
@@ -152,6 +158,7 @@ export function ClientContractSection({ clientId, record, contractTemplateId, se
       </div>
       {list && !tpl && <p className="text-[11px] text-warn" data-testid="client-contract-none">{tr('No client contract template yet — add one in Admin → Contract templates (For clients), or a contract for this client only.')}</p>}
       {status.text && <p className="text-sm" data-testid="client-contract-status" data-state={status.state}>{status.text}</p>}
+      {status.state === 'stuck' && may && latest && <Button size="sm" className="justify-self-start" data-testid="client-contract-retry" onClick={() => buildAgain(latest.id)}>{tr('Try again')}</Button>}
       {err && <p className="text-sm text-bad" data-testid="client-contract-error">{tr(err)}</p>}
       {may && <>
         {!canSeeBilling() && <p className="text-[11px] text-ink-3" data-testid="client-contract-nobill">{tr('Billing is not filled in: this login does not see client billing.')}</p>}

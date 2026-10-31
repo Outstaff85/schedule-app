@@ -7,6 +7,8 @@ import base64
 import os
 import sys
 
+import pytest
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "functions"))  # after functions-auth: its main stays `main`
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -342,13 +344,13 @@ def _signing(db, bucket, t):
 def test_a_build_that_fails_after_the_signature_says_so_and_a_retry_finishes_it():
     db, bucket, t = _setup()
     f = _signing(db, bucket, t)
-    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _broken, finder=f) == {"error": signing.E_PAGE_DAMAGED}
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _broken, finder=f) == {"error": signing.E_NOT_BUILT}
     mine = signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]
-    assert mine["status"] == "signing" and mine["buildError"] == signing.E_PAGE_DAMAGED
+    assert mine["status"] == "signing" and mine["buildError"] == signing.E_NOT_BUILT and mine["stuck"] and mine["signedAtIso"]
     row = signing.run(db, bucket, OWNER, {"action": "list"}, build101)["requests"][0]
-    assert row["buildError"] == signing.E_PAGE_DAMAGED and not row.get("parts")
+    assert row["buildError"] == signing.E_NOT_BUILT and not row.get("parts")
     assert any("could not be built" in d.get("message", "") for k, d in db.data.items() if k and k[0] == "errors")  # Admin → Errors
-    # the page put right: the same request goes on, the error gone
+    # what failed was passing (the frozen pages are still there): the same request goes on, the error gone
     for which in signing.WHICH:
         assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)["part"]
     mine = signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]
@@ -360,7 +362,7 @@ def test_one_document_s_success_does_not_hide_the_other_s_failure():
     f = _signing(db, bucket, t)
     signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _broken, finder=f)
     assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)["part"]
-    assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]["buildError"] == signing.E_PAGE_DAMAGED
+    assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]["buildError"] == signing.E_NOT_BUILT
 
 
 def test_a_stuck_signing_can_be_withdrawn_and_nothing_built_is_lost():
@@ -391,3 +393,198 @@ def test_a_signing_with_no_error_counts_as_stuck_only_after_its_time():
     assert signing.stuck({"status": "signing", "signedAtIso": at(1), "buildErrors": {"form101": "x"}}, now)
     assert not signing.stuck({"status": "signing", "signedAtIso": at(1), "buildErrors": {"form101": None}}, now)
     assert not signing.stuck({"status": "signed", "signedAtIso": at(60)}, now)
+
+
+# ---- nothing overwrites a status, and a signature has only what it was given on ----
+
+def _other_first(db, bucket, t, action, then=build101):
+    """A stand-in build that, during sign's dry run, lets another call win the race once."""
+    done = []
+
+    def build(p, strict=False, report=None):
+        if not done:
+            done.append(1)
+            action()
+        return then(p, strict)
+
+    return build
+
+
+def _rid(db):
+    return signing.run(db, None, OWNER, {"action": "list"}, build101)["requests"][0]["id"]
+
+
+def _sign(db, bucket, build, token="tok-avi"):
+    return signing.run_worker(db, bucket, {"action": "sign", "token": token, "signaturePng": SIG}, build, finder=finder(db))
+
+
+def _sigs(bucket):
+    return [p for p in bucket.store if "/signature/" in p]
+
+
+def test_a_withdraw_during_the_signature_s_gate_stays_and_the_signature_is_removed():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    rid = _rid(db)
+    build = _other_first(db, bucket, t, lambda: signing.run(db, bucket, OWNER, {"action": "withdraw", "id": rid}, build101))
+    assert _sign(db, bucket, build) == {"error": signing.E_NO_REQUEST}
+    assert _status(db) == ["withdrawn"] and _sigs(bucket) == []
+
+
+def test_a_replacing_send_during_the_gate_wins():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    old = _rid(db)
+    build = _other_first(db, bucket, t, lambda: _send(db, bucket, OWNER, t, sentAt="later"))
+    assert "error" in _sign(db, bucket, build)
+    r = db.data[("tenants", "t1", "signRequests", old)]
+    assert r["status"] == "replaced" and not r.get("sigPath") and _sigs(bucket) == []
+
+
+def test_two_signatures_at_once_keep_one():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    build = _other_first(db, bucket, t, lambda: _sign(db, bucket, build101))
+    assert _sign(db, bucket, build) == {"error": signing.E_SIGNED}
+    rid = _rid(db)
+    assert _sigs(bucket) == [db.data[("tenants", "t1", "signRequests", rid)]["sigPath"]]
+
+
+def test_a_rescan_after_the_signature_changes_nothing_in_what_is_built():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    worker = db.data[("tenants", "t1", "workers", "w1")]
+    bucket.store["tenants/t1/workers/w1/pages/2-0-id_front.jpg"] = b"\xff\xd8other"
+    worker["scanPages"] = [{"fileId": "tenants/t1/workers/w1/pages/2-0-id_front.jpg", "kind": "id_front", "primary": True}]
+    seen = []
+
+    def build(p, strict=False):
+        seen.append(base64.b64decode(p["extraPages"][0]["b64"]))
+        return build101(p, strict)
+
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build, finder=f)["part"]
+    assert seen == [b"\xff\xd8jpeg"]
+
+
+@pytest.mark.parametrize("change", ["deleted", "changed"])
+def test_a_page_gone_or_changed_after_the_signature_is_not_built_and_withdraw_is_the_way_out(change):
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    page = "tenants/t1/workers/w1/pages/1-0-id_front.jpg"
+    if change == "deleted":
+        del bucket.store[page]
+    else:
+        bucket.store[page] = b"\xff\xd8other"
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f) == {"error": signing.E_NOT_BUILT}
+    assert signing.run(db, bucket, OWNER, {"action": "withdraw", "id": _rid(db)}, build101) == {"ok": True}
+    assert _status(db) == ["withdrawn"]
+
+
+def test_today_is_the_signature_s_day_on_every_build(monkeypatch):
+    db, bucket, t = _setup()
+    monkeypatch.setattr(signing, "today_il", lambda: "01/11/2026")
+    f = _signing(db, bucket, t)
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert r["frozen"]["today"] == "01/11/2026"
+    filled = {}
+    real = contracts.fill
+    monkeypatch.setattr(contracts, "fill", lambda tpl, values, *a, **k: filled.update(values) or real(tpl, values, *a, **k))
+    monkeypatch.setattr(signing, "today_il", lambda: "20/11/2026")
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)["part"]
+    assert filled["today"] == "01/11/2026"
+
+
+def test_a_signed_request_cannot_be_withdrawn_and_a_withdrawn_one_cannot_become_signed():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    rid = _rid(db)
+    for which in signing.WHICH:
+        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)
+    assert signing.run(db, bucket, OWNER, {"action": "withdraw", "id": rid}, build101) == {"ok": True}  # signed: nothing to withdraw
+    assert _status(db) == ["signed"]
+
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    rid = _rid(db)
+    signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _broken, finder=f)
+    built = []
+
+    def withdrawn_during_the_build(p, strict=False):
+        built.append(signing.run(db, bucket, OWNER, {"action": "withdraw", "id": rid}, build101))
+        return build101(p, strict)
+
+    before = set(bucket.store)
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, withdrawn_during_the_build, finder=f) == {"error": signing.E_NO_REQUEST}
+    assert built == [{"ok": True}] and _status(db) == ["withdrawn"] and set(bucket.store) == before  # the late part is not kept
+
+
+def test_try_again_finishes_a_request_whose_two_parts_are_stored():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    for which in signing.WHICH:
+        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    r["status"] = "signing"  # a call that died between the second part and its status
+    assert signing.run(db, bucket, OWNER, {"action": "withdraw", "id": _rid(db)}, build101) == {"error": signing.E_SIGNED}
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)["status"] == "signed"
+    assert _status(db) == ["signed"]
+
+
+class Blip(ConnectionError):
+    pass
+
+
+def test_a_storage_blip_on_the_template_is_no_judgment_on_it():
+    db, bucket, t = _setup()
+    file_id = db.data[("tenants", "t1", "contractTemplates", t["id"])]["fileId"]
+    real = bucket.blob
+
+    def blob(path):
+        b = real(path)
+        if path == file_id:
+            def down():
+                raise Blip("no storage")
+            b.download_as_bytes = down
+        return b
+
+    bucket.blob = blob
+    with pytest.raises(Blip):
+        _send(db, bucket, OWNER, t)
+    assert _status(db) == []
+
+
+def test_a_storage_blip_after_the_signature_records_nothing_and_try_again_finishes():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    real = bucket.blob
+
+    def blob(path):
+        b = real(path)
+        if path == r["templatePath"]:
+            def down():
+                raise Blip("no storage")
+            b.download_as_bytes = down
+        return b
+
+    bucket.blob = blob
+    with pytest.raises(Blip):
+        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)
+    assert not signing.build_error(r)
+    bucket.blob = real
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)["part"]
+
+
+def test_a_worker_on_an_old_sidecar_is_not_refused_for_a_page_listed_and_gone():
+    import json
+    db, bucket, t = _setup()
+    w = db.data[("tenants", "t1", "workers", "w1")]
+    del bucket.store["tenants/t1/workers/w1/pages/1-0-id_front.jpg"]
+    w["assetsFileId"] = "tenants/t1/workers/w1/assets/1.json"
+    bucket.store[w["assetsFileId"]] = json.dumps({"scanB64": "AAAA", "scanMediaType": "image/jpeg"}).encode()
+    assert _send(db, bucket, OWNER, t)["ok"]
+    f = finder(db)
+    assert _sign(db, bucket, build101)["ok"]
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert r["frozen"]["pages"][0]["sidecar"] == w["assetsFileId"]
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)["part"]

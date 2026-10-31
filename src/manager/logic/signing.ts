@@ -25,7 +25,8 @@ const STUCK_AFTER_MS = 10 * 60e3;
 /** A signature nobody is finishing: its build failed, or it has been waiting for longer than any build takes. */
 export function isStuck(r: Pick<SignRequest, 'status' | 'buildError' | 'signedAtIso'> | null | undefined): boolean {
   if (!r || r.status !== 'signing') return false;
-  return !!r.buildError || !r.signedAtIso || Date.now() - Date.parse(r.signedAtIso) > STUCK_AFTER_MS;
+  // a date that cannot be read counts as stuck, as on the server
+  return !!r.buildError || !(Date.now() - Date.parse(r.signedAtIso || '') <= STUCK_AFTER_MS);
 }
 
 /** A worker who signed (a request taken on, or an older signing / a move from another firm). */

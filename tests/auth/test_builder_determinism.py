@@ -216,6 +216,16 @@ def test_a_truncated_jpeg_is_refused_by_strict_mode(pages):
         form101_b1.build_form101_pdf(dict(selftest.FORM, extraPages=pages(base64.b64encode(cut).decode())), strict=True)
 
 
+def test_a_jpeg_with_no_end_marker_is_refused_since_it_cannot_be_told_from_a_cut_one():
+    # Pillow refuses both the same way, and an end marker added back makes even a 60 % file load with no error: nothing
+    # here can prove the picture whole. It stops at send, where a rescan is all it costs; canvas and Pillow always write the marker.
+    whole = _big_jpeg(600, 400)
+    assert whole[-2:] == b"\xff\xd9"
+    for cut in (whole[:-2], whole[:len(whole) * 99 // 100]):
+        with pytest.raises(form101_b1.NotPlaced):
+            form101_b1.build_form101_pdf(dict(selftest.FORM, extraPages=[{"b64": base64.b64encode(cut).decode(), "kind": "id_front"}]), strict=True)
+
+
 def test_a_truncated_signature_is_refused_by_strict_mode():
     with pytest.raises(form101_b1.NotPlaced):
         form101_b1.build_form101_pdf(dict(selftest.FORM, signaturePngBase64=base64.b64encode(PNG[:len(PNG) // 2]).decode()), strict=True)
