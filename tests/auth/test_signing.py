@@ -656,3 +656,32 @@ def test_a_signature_kept_before_the_language_stays_on_b1():
 
 def test_the_values_sent_cannot_choose_a_builder():
     assert signing._clean_form101({"given": "Avi", "sheetLang": "he", "builder": "b1"}) == {"given": "Avi"}
+
+
+# ---- whether the firm expects a contract ----
+
+def _templates(db):
+    return {k: v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "contractTemplates")}
+
+
+def test_the_list_says_whether_the_firm_has_a_default_worker_contract_and_nothing_more():
+    db, bucket, t = _setup()
+    out = signing.run(db, bucket, HR_OWN, {"action": "list"}, build101)
+    assert out["defaultContract"] is True and set(out) == {"ok", "requests", "defaultContract"}
+    for v in _templates(db).values():
+        v["isDefault"] = False
+    assert signing.run(db, bucket, OWNER, {"action": "list"}, build101)["defaultContract"] is False
+
+
+@pytest.mark.parametrize("other", [{"kind": "client"}, {"workerId": "w1"}, {"deletedAt": "x"}])
+def test_a_client_s_own_or_deleted_template_is_no_default_for_workers(other):
+    db, bucket, t = _setup()
+    for v in _templates(db).values():
+        v.update(other, isDefault=True)
+    assert signing.run(db, bucket, OWNER, {"action": "list"}, build101)["defaultContract"] is False
+
+
+def test_a_supplier_or_client_gets_no_answer_on_it():
+    db, bucket, t = _setup()
+    for role in ("supplier", "client"):
+        assert signing.run(db, bucket, {"role": role, "tenantId": "t1"}, {"action": "list"}, build101) == {"error": signing.E_NO_RIGHT}

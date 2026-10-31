@@ -397,7 +397,10 @@ def run(db, bucket, claims, body, build101, server_time=None):
                 continue
             rows.append(_summary(d.id, x))
         rows.sort(key=lambda r: str(r.get("sentAt") or ""), reverse=True)
-        return {"ok": True, "requests": rows[:300]}
+        # whether a worker with no contract counts as missing one (workerDocStatus): a yes or no, nothing of the templates
+        templates = db.collection("tenants").document(tenant).collection("contractTemplates").stream()
+        default = any((d.to_dict() or {}).get("isDefault") and contracts._firm_of_kind(d.to_dict(), "worker") for d in templates)
+        return {"ok": True, "requests": rows[:300], "defaultContract": default}
 
     if action.startswith("client"):  # a client's contract (client_signing.py)
         import client_signing

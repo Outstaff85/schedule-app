@@ -230,7 +230,7 @@ Form 101 and the worker's contract are signed **once**, with the same signature 
   - `withdraw` on a stuck `signing` sets `withdrawn` (`withdrawnWhy: 'not built'`) and **deletes nothing**: the signature, any part built and the request stay, and the card says Needs sending again. A `signing` still within its 10 minutes answers `E_STILL_SAVING`; one with both parts stored answers `E_SIGNED`. A build that loses to a Withdraw keeps nothing: its file is removed and the status stays `withdrawn`;
   - a Storage that did not answer is no judgment on the documents: no error is recorded and `send`, `view` and `sign` do not refuse with a false message (`problem`). A template that cannot be filled is `TemplateBroken`.
 - **The worker's page** calls `mine`, `view`, `sign`, `build` with the punch link's token only: the worker's own latest request (a token of another worker sees nothing).
-- `list`, `applied`, `withdraw` for the manager app.
+- `list`, `applied`, `withdraw` for the manager app; `list` also answers `defaultContract`, whether the firm has a default worker template ([workers.md](workers.md): a worker then counts as missing a contract).
 
 ### Tests (D3)
 

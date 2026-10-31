@@ -1998,6 +1998,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sgTook.docFile && sgTook.url && sgTook.contract && sgTook.signedAt && sgTook.sig && sgTook.regen && sgTook.kept && /Signed/.test(sgTook.chip),
     'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
+  // A firm with a default contract template expects a contract: Missing and Documents incomplete, the signed, added or scanned one counting.
+  const ctMiss = await p.evaluate(async () => {
+    await ManagerBridge.reloadSignRequests();
+    const w = workers[1], keep = JSON.stringify(w);
+    const full = {docId: '123456782', docUrl: 'https://x/f.pdf', scanPages: [{fileId: 'x/p.jpg', kind: 'id_front', primary: true}], docExtraPages: 1, docHasSignature: true, docExpiry: '', docUploadFailed: false};
+    Object.assign(w, full, {docs: []});
+    const st = workerDocStatus(w), n = workerNotices(w).find(x => x.title === 'Missing documents');
+    const r = {missing: st.missing.join(), level: st.level, line: st.lines.join(), act: n && n.act && n.act.label};
+    const counted = t => { w.docs = [{id: 'dx', type: 'contract', name: 'c', uploadedAt: '2026-01-01T00:00:00.000Z', ...t}]; return workerDocStatus(w).missing.length; };
+    r.signed = counted({signed: true}); r.added = counted({}); r.noDate = counted({uploadedAt: ''});
+    w.docs = [];
+    Object.keys(w).forEach(k => delete w[k]); Object.assign(w, JSON.parse(keep));
+    return r;
+  });
+  ok(ctMiss.missing === 'contract' && ctMiss.level === 'warn' && /Missing: contract/.test(ctMiss.line) && ctMiss.act === 'Add document' && ctMiss.signed === 0 && ctMiss.added === 0 && ctMiss.noDate === 0,
+    'documents: with a default contract template a worker with no contract shows Missing: contract, its notice opens Add document; any contract ends it ' + JSON.stringify(ctMiss));
   // A signature whose documents could not be saved (docs/contracts.md → Signing): the worker's page never says Signed, retries by
   // itself once and by Try again; the manager's card says Not saved, with the reason, Try again and Withdraw.
   const STUCK = 'The signed documents could not be built: withdraw them and send the documents again';
