@@ -50,7 +50,7 @@ export function Plate({
   title, sub, chips, right, color = 'var(--green)', size = 'md', icon,
   onOpen, onEdit, onDelete, actions,
   selecting, selected, onToggle,
-  expanded, children, className, ...rest
+  expanded, children, className, plain, ...rest
 }: {
   title: React.ReactNode;
   sub?: React.ReactNode;
@@ -61,6 +61,8 @@ export function Plate({
   size?: keyof typeof SIZES;
   /** an icon in the bar's colour before the name (a firm, an alert, a document) */
   icon?: React.ReactNode;
+  /** a line of a list that already stands on its own plate: no fill, no bar, the icon bare */
+  plain?: boolean;
   onOpen?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -158,14 +160,16 @@ export function Plate({
         onDoubleClick={e => { if (!selecting && onEdit && !inControl(e)) onEdit(); }}
         onContextMenu={e => { if (onEdit) e.preventDefault(); }}
         style={{ ['--bar' as string]: color, transform: `translateX(${dx}px)`, rowGap: 0 }}
-        className={cn('og-plate flex-wrap focus-visible:outline-2 focus-visible:outline-[var(--uline-2)]', s.pad, drag && 'drag', selected && 'on')}
+        className={cn('og-plate flex-wrap focus-visible:outline-2 focus-visible:outline-[var(--uline-2)]', s.pad, drag && 'drag', selected && 'on', plain && 'plain')}
       >
         {selecting && (
           <span aria-hidden className="flex items-center">
             <span className={cn('og-box', selected && '!border-ok !bg-ok after:![clip-path:inset(0)]')} />
           </span>
         )}
-        {icon && <span className="grid size-[30px] shrink-0 place-items-center rounded-[10px] [&_svg]:size-[17px]" style={{ color, background: `color-mix(in srgb, ${color} 16%, transparent)` }}>{icon}</span>}
+        {icon && (plain
+          ? <span className="grid w-[30px] shrink-0 place-items-center [&_svg]:size-[26px]" style={{ color }}>{icon}</span>
+          : <span className="grid size-[30px] shrink-0 place-items-center rounded-[10px] [&_svg]:size-[17px]" style={{ color, background: `color-mix(in srgb, ${color} 16%, transparent)` }}>{icon}</span>)}
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
             <b dir="auto" className={cn('min-w-0 truncate font-semibold', s.name)}><span style={nameScale(title)}>{title}</span></b>
