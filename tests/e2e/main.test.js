@@ -4416,6 +4416,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sd = new Date(Date.now() + 86400000), rqKey = sd.getFullYear() + '-' + String(sd.getMonth() + 1).padStart(2, '0') + '-' + String(sd.getDate()).padStart(2, '0');
   const openDay = async () => {
     await p.evaluate(k => { window.__rqKey = k; }, rqKey);
+    // a sheet still closing goes back to this month as it hides: a plate of the next month found now is gone a moment later
+    await waitFor(p, () => document.getElementById('screenSchedule').classList.contains('hidden'), 8000);
     await p.click('[data-testid="tile-schedule"]');
     await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
     for (let i = 0; i < 2 && !(await p.$(`.sp-plate[data-date="${rqKey}"]`)); i++) { await p.click('#scheduleContent .sched-nav[aria-label="Next month"]'); await sleep(200); }
@@ -4461,7 +4463,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(mp5.errs.length === 0, 'schedule: no page errors with the workers\' requests ' + mp5.errs.join(' | '));
   await mctx5.close();
   // Back on the punch page: the offer shows as handed over and the day as a day off.
-  await p.evaluate(() => document.querySelector('.sheet-grab').click());
+  await p.evaluate(() => document.querySelector('#screenSchedule .sheet-grab').click());
   const after5 = {open: await openDay()};
   after5.text = await waitFor(p, () => /Handed over to Dana Levi/.test((document.querySelector('.sp-plate[data-date="' + window.__rqKey + '"]') || {}).innerText || ''), 10000);
   after5.plate = await plateText();
