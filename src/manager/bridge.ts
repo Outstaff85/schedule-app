@@ -497,6 +497,8 @@ export type ManagerBridge = WorkerBridge & {
   payInfo(id: string): { w: AccWorker; ro: boolean; period: string } | null;
   /** writes the pay window's fields on the worker (a field undefined is removed), saves, closes the window; render() */
   savePay(id: string, patch: Record<string, unknown>): void;
+  /** The days set by hand for a period taken off a worker (a daily-paid worker's Delete in Salary) */
+  clearDays(id: string, period: string): void;
 
   // ── Admin (stage 6f-1: the section chooser and the punch log) ──
   admin(): AdminSnapshot;

@@ -13,7 +13,7 @@ import { ALL_PUNCHES_FROM, ensureAllPunches, ensurePunchesSince, getPunchLog, pe
 import { WORKER_DOC_TYPES, isActiveWorker, workerDocExpiryMap, workerDocId, workerDocStatus, workerExpiryStatus } from '../logic/workers';
 import { docIdKey } from '../worker';
 import { canChange, hasEditPay, hasPermission, hrPayOnly, isAccTab, isFirmAdminSession, isHrSession, staffPayEdit } from '../logic/access';
-import { isDailyPay, localYMD, wOwnRate } from '../logic/pay';
+import { isDailyPay, localYMD, salaryPeriodKey, wOwnRate } from '../logic/pay';
 import { getSundayOfWeek, loadXlsx } from '../logic/util';
 import { csvText } from '../../lib/utils';
 import { hasBillRate } from '../accounting';
@@ -293,6 +293,12 @@ provideBridge({
     autoSave(); closeModal('payOverlay');
     showToast(tr('Pay saved — {name}',{name:w.name||''}));
     render();
+  },
+  clearDays(id?: any,period?: any){
+    const w=workers.find((x?: any)=>x.id===id); if(!w || !canEditPay(w) || !w.dayOverrides) return;
+    const ov={...w.dayOverrides}; delete ov[salaryPeriodKey(period)];
+    if(Object.keys(ov).length) w.dayOverrides=ov; else delete w.dayOverrides;
+    autoSave(); render();
   },
   // ── Admin (stage 6f-1): the section tabs, the tiles and the Punch Log are
   // React; the punches, their saves and the server calls stay here.
