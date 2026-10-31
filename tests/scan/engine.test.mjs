@@ -554,6 +554,24 @@ await run('the Hebrew reader: heLogical, heIdOk, heLine and the layout pick', as
   return `${ids.length} IDs (${good} good), 60 lines, 80 cards`;
 });
 
+await run('Steady.sureFor: how long every answer was a real one; a frame held up by the sticky frame does not count', () => {
+  const clock = { t: 1000 }, st = new ST.Steady(() => clock.t), q = [[0.1, 0.1], [0.5, 0.1], [0.5, 0.5], [0.1, 0.5]];
+  const real = { pts: q, conf: 0.9 }, miss = { pts: [null, null, null, null], conf: 0.1 };
+  same(st.sureFor(), 0, 'nothing yet');
+  st.answer(real); clock.t += 400; st.answer(real);
+  same(st.sureFor(), 400, 'real answers count');
+  clock.t += 100;
+  same(st.answer(miss).held, true, 'held by the sticky frame');
+  same(st.sureFor(), 0, 'a held frame starts it again');
+  clock.t += 100;
+  const back = st.answer(real);
+  same(back.steady, 600, 'the steady frame went on');
+  clock.t += 300; st.answer(real);
+  same(st.sureFor(), 300, 'counted from the first real answer after it');
+  st.reset();
+  same(st.sureFor(), 0, 'reset');
+});
+
 // ── the way-failure log ──
 await run('the way-failure log: failKind, noteFail, showFails', () => {
   const texts = ['RangeError: Array buffer allocation failed', 'out of memory', 'bad_alloc', 'no answer in 8 s', 'the thread stopped answering', 'timed out', 'timeout',

@@ -10,6 +10,9 @@ import type { Corners, Pt, Quad } from './types';
 /** Green after 0.25 s on the edges, the shot after 1 s; a move over MOVE is not still. */
 export const STEADY_MS = 1000, MOVE = 0.02, LOCK_MS = 250;
 export const HOLD = 0.04, MISS_MS = 600, DRIFT = 0.03, JERK = 0.02;
+/** Auto turns itself off after this many of its shots in a row with no touch (owner, 2026-10-31: pointed at a
+ *  keyboard it went on shooting keys and the phone grew hot). */
+export const AUTO_MAX = 5;
 
 /** How far the farthest corner of a is from its corner in b. */
 export const farthest = (a: Quad, b: Quad): number => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
@@ -32,12 +35,18 @@ export class Steady {
   anchor: Quad | null = null;
   missSince = 0;
   smoothConf = 0;
+  /** Since when every answer was a real one (none outlived by the sticky frame); null: the last one was not. */
+  sureSince: number | null = null;
   private readonly now: () => number;
 
   /** now: the clock in ms (performance.now on the page, a fake one in the tests). */
   constructor(now: () => number = () => performance.now()) { this.now = now; }
 
-  reset(): void { this.smooth = this.anchor = null; this.steadySince = this.missSince = 0; this.smoothConf = 0; }
+  reset(): void { this.smooth = this.anchor = null; this.steadySince = this.missSince = 0; this.smoothConf = 0; this.sureSince = null; }
+
+  /** For how long the model has really found it, every answer (a frame held up by the sticky frame does not
+   *  count: Auto does not take what the model only flickers on — owner, 2026-10-31). */
+  sureFor(): number { return this.sureSince === null ? 0 : this.now() - this.sureSince; }
 
   /** The countdown starts again from now, the frame as it is now its anchor. */
   restart(now: number): void { this.steadySince = now; this.anchor = this.smooth && this.smooth.map(p => p.slice() as Pt); }
@@ -46,11 +55,13 @@ export class Steady {
   answer(res: Corners): SteadyAnswer {
     const now = this.now(), stuck = !!this.smooth && now - this.steadySince >= LOCK_MS;
     if (res.pts.some(p => !p) || res.conf < 0.5) {
+      this.sureSince = null;
       if (stuck && now - (this.missSince || (this.missSince = now)) < MISS_MS) return { pts: this.smooth!, conf: this.smoothConf, steady: now - this.steadySince, held: true };
       this.smooth = this.anchor = null; this.steadySince = this.missSince = 0; return res;
     }
     const pts = res.pts as Quad;
     this.missSince = 0; this.smoothConf = res.conf;
+    if (this.sureSince === null) this.sureSince = now;
     const move = this.smooth ? farthest(pts, this.smooth) : 1;
     if (move > MOVE * 3 || !this.smooth) { this.smooth = pts.map(p => p.slice() as Pt); this.restart(now); }
     else if (!(stuck && move <= HOLD)) { const s = this.smooth; this.smooth = s.map((q, i) => [q[0] * 0.6 + pts[i][0] * 0.4, q[1] * 0.6 + pts[i][1] * 0.4] as Pt); if (move > MOVE) this.restart(now); }

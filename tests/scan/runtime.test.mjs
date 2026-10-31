@@ -502,9 +502,8 @@ await run('a stopped thread: its calls fail, its watch is cleared, it is termina
 
 // ── the failures' log ──
 await run('noteFail: the kind of each failure (GPU / memory / hang / error), said in the errors, the last 8 kept', () => {
-  const store = memStore(), log = new LG.ScanLog(store, () => 6), errs = [], shown = [];
-  log.on('err', t => errs.push(t)); log.on('fails', l => shown.push(l));
-  log.showFails(); assert.equal(shown.length, 0, 'nothing shown with no failures');
+  const store = memStore(), log = new LG.ScanLog(store, () => 6), errs = [];
+  log.on('err', t => errs.push(t));
   const cases = [['WebGPU device was lost', 'GPU'], ['RangeError: Array buffer allocation failed', 'memory'], ['no answer for 25 s', 'hang'],
     ['stopped answering while scanning', 'hang'], ['it broke', 'error'], ['out of memory', 'memory'], ['shader compile failed', 'GPU'], ['weird', 'error']];
   for (const [t, k] of cases) assert.equal(log.noteFail('Way ' + t, t), k, t);
@@ -512,8 +511,6 @@ await run('noteFail: the kind of each failure (GPU / memory / hang / error), sai
   log.noteFail('Ninth', 'x'); log.noteFail('Tenth', 'GPU adapter gone');
   const kept = JSON.parse(store.getItem('scanWayFails'));
   assert.equal(kept.length, 8); assert.equal(kept[0].way, 'Way ' + cases[2][0]); assert.equal(kept.at(-1).kind, 'GPU'); assert.ok(kept.every(f => f.mem === 6));
-  log.showFails();
-  assert.equal(shown[0][0], 'Earlier failures on this device (last 8, newest on top):'); assert.match(shown[0][1], /Tenth: GPU/);
   // the loading lines that are failures go to the errors
   const sorted = { log: [], err: [] }; const l2 = new LG.ScanLog(memStore());
   l2.on('log', t => sorted.log.push(t)); l2.on('err', t => sorted.err.push(t));

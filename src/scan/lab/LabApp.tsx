@@ -15,10 +15,10 @@
 //    hand go with it (edgesFixed); "In queue" and "New for training" in the drawer;
 //  - the document types picked or ticked (kinds.ts), never an untouched answer — each with the face finder's turn
 //    (turnBy "face" when it set the page upright, else "model");
-//  - the resampling probe (probe.ts, Lab tools → Settings): its lines go to the Loading-and-work log.
+//  - the resampling probe (probe.ts, Lab tools → Settings): its lines go to the browser's console.
 // The lab's start order is the site's — the light model first (owner, 2026-10-27): the camera's models, then the
-// accurate model right after them (photos and PDFs picked meanwhile wait for it) — the camera waits for the camera's
-// models and any pick in work (startLab runs before the camera's start: the screen's effect runs before this page's). The session lives as long as the
+// accurate model right after them (photos and PDFs picked meanwhile wait for it) — the camera comes at once, beside the
+// models, and waits only for a pick in work (startLab runs before the camera's start: the screen's effect runs before this page's). The session lives as long as the
 // page (the lab's page reloads to start again: the CPU engine choice does); the phone's back goes one step back
 // inside it and does not leave it when it is the first page of its tab (ui/back.ts); only its newest KEEP_CANVASES pages
 // keep their full-size pixels (session keepCanvases), so a long lab session does not fill the phone's memory.
@@ -53,11 +53,11 @@ const LINES_KEPT = 400;
 /** The pages that keep their full-size pixels (the newest; the older ones keep their thumbnail and readouts). */
 const KEEP_CANVASES = 8;
 
-/** The Errors block, the Loading-and-work log (newest on top) and the pictures' timings, as the drawer shows them. */
-export interface LabRecordsSnap { errors: string[]; lines: string[]; timings: string[] }
+/** The Errors block (newest on top) and the pictures' timings, as the drawer shows them. */
+export interface LabRecordsSnap { errors: string[]; timings: string[] }
 
 export class LabRecords {
-  private snap: LabRecordsSnap = { errors: [], lines: [], timings: [] };
+  private snap: LabRecordsSnap = { errors: [], timings: [] };
   private listeners = new Set<() => void>();
   private set(s: Partial<LabRecordsSnap>): void {
     this.snap = { ...this.snap, ...s };
@@ -67,14 +67,13 @@ export class LabRecords {
   snapshot = (): LabRecordsSnap => this.snap;
   /** An error, with its time (the lab's logErr). */
   err(text: string): void { this.set({ errors: [new Date().toTimeString().slice(0, 8) + ' ' + text, ...this.snap.errors].slice(0, LINES_KEPT) }); }
-  /** A loading-and-work line (the lab's log); a picture's timing is kept apart for the readouts sheet too. */
+  /** A loading-and-work line: for the browser's console; a picture's timing is kept for the readouts sheet. */
   log(text: string): void {
-    this.set({ lines: [text, ...this.snap.lines].slice(0, LINES_KEPT), ...(/^Picture timing/.test(text) ? { timings: [text, ...this.snap.timings].slice(0, 50) } : {}) });
+    console.debug(text);
+    if (/^Picture timing/.test(text)) this.set({ timings: [text, ...this.snap.timings].slice(0, 50) });
   }
-  /** The earlier failures on this device, on top of the errors (the heading, then the newest first). */
-  fails(lines: string[]): void { this.set({ errors: [...lines, ...this.snap.errors].slice(0, LINES_KEPT) }); }
-  /** Both emptied (the browser tests, as the lab's test emptied its blocks). */
-  clear(): void { this.set({ errors: [], lines: [] }); }
+  /** Emptied (the browser tests, as the lab's test emptied its blocks). */
+  clear(): void { this.set({ errors: [] }); }
 }
 
 /** The lab's page-wide parts: one session for the page's life. */
@@ -85,12 +84,8 @@ interface Lab {
   records: LabRecords;
   kinds: Kinds;
   cpuDir: OrtDir;
-  /** The live frame's models' start settled (the camera waits for it — the light model first). */
-  liveReady: Promise<void>;
-  /** The accurate model's start settled (it starts right after the live frame's). */
-  capReady: Promise<void>;
   started: boolean;
-  /** Picks in work (the camera's models wait for them). */
+  /** Picks in work (the camera waits for them). */
   picking: number;
   /** A page deleted (its Undo over): the page's own view forgets it. */
   removed: (id: string) => void;
@@ -112,20 +107,19 @@ function getLab(): Lab {
   const surface = labSurface(idToken), log = new ScanLog(), records = new LabRecords();
   log.on('log', t => records.log(t));
   log.on('err', t => records.err(t));
-  log.on('fails', l => records.fails(l));
   window.addEventListener('error', e => log.err('Page error: ' + e.message));
   window.addEventListener('unhandledrejection', e => log.err('Error: ' + errText((e as PromiseRejectionEvent).reason)));
   const engines = new Engines(surface, log);
   engines.setSettings({ cpuDir });
   const session = new ScanSession(surface, { engines, log, keepCanvases: KEEP_CANVASES });
   const kinds = new Kinds(defaultKindsEnv((b, o) => session.attempts.post(b, o), () => session.readers?.info?.version || '', log.log, log.err));
-  const made: Lab = { session, engines, log, records, kinds, cpuDir, liveReady: Promise.resolve(), capReady: Promise.resolve(), started: false, picking: 0, removed: () => {}, lastStatus: null };
+  const made: Lab = { session, engines, log, records, kinds, cpuDir, started: false, picking: 0, removed: () => {}, lastStatus: null };
   log.on('status', st => { made.lastStatus = st; });
   return (lab = made);
 }
 
-/** The lab opened (once): what this device has, the earlier failures, then the light model first (owner,
- *  2026-10-27): the live frame's models, so the camera and its frame come as soon as they are ready, and the
+/** The lab opened (once): what this device has, then the light model first (owner, 2026-10-27): the live frame's
+ *  models, so the live frame comes as soon as they are ready (the camera does not wait for them), and the
  *  accurate model right after them (photos and PDFs picked meanwhile wait for it). */
 function startLab(l: Lab): void {
   if (l.started) return;
@@ -135,7 +129,6 @@ function startLab(l: Lab): void {
   log.log('CPU engine: ONNX Runtime ' + (l.cpuDir === GPU_ORT ? '1.30.0' : '1.22.0') + ', GPU engine: 1.30.0');
   log.log('GPU (WebGPU) in this browser: ' + (env.gpu ? 'yes' : 'no'));
   log.log('CPU: ' + (env.cores || '?') + ' cores' + (env.memory ? ', memory ' + env.memory + ' GB' : '') + '; several background threads of one thread each are used' + (env.isolated ? '' : ' (one core each: this page is not cross-origin isolated)'));
-  log.showFails();
   session.attempts.start();
   l.kinds.start();
   // the page left: the attempts still undecided go as kept (written to the queue on the phone first, sent now
@@ -145,8 +138,8 @@ function startLab(l: Lab): void {
   addEventListener('pagehide', () => keepUndecided(l));
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void session.attempts.flush(); });
   if (session.readers) void session.readers.load();
-  l.liveReady = engines.ensureSession().catch(e => log.log('Model: ' + errText(e)));
-  l.capReady = l.liveReady.then(() => engines.ensureCap()).then(() => {}, e => log.log('Accurate model: ' + errText(e)));
+  void engines.ensureSession().catch(e => log.log('Model: ' + errText(e)))
+    .then(() => engines.ensureCap()).catch(e => log.log('Accurate model: ' + errText(e)));
 }
 
 /** The attempts still undecided sent as kept (the lab has no Done; their pages are not marked looked at). */
@@ -155,7 +148,7 @@ function keepUndecided(l: Lab): void {
   if (ids.length) l.session.attempts.decide('kept', ids);
 }
 
-/** The session as the lab's screen drives it: the camera after the live frame's models and any pick in work, picks
+/** The session as the lab's screen drives it: the camera after any pick in work, picks
  *  counted (the attempts before a pick stay undecided, as on the site: fixable and deletable until Looks good,
  *  Delete or the page is left), a deleted page's type never sent. */
 function labView(l: Lab): ScanSessionLike {
@@ -166,8 +159,7 @@ function labView(l: Lab): ScanSessionLike {
     on: (ev, fn) => s.on(ev, fn),
     startCamera: async v => {
       const g = camGen;
-      startLab(l);  // before the wait: the screen's effect runs before LabApp's, which would start it too late
-      await l.liveReady;
+      startLab(l);  // the screen's effect runs before LabApp's, which would start it too late
       while (l.picking) await sleep(300);
       if (g !== camGen) return;  // put away meanwhile
       await s.startCamera(v);
@@ -269,7 +261,7 @@ export function LabApp() {
     <div className="fixed inset-0">
       <ScannerScreen mode="lab" session={view} statusText={engineText} onChoose={(id, k) => l.kinds.pick(id, k)}
         onDone={ps => setShown(ps)} kindTick={kindTick}>
-        <LabDrawer session={view} figuresNow={() => l.session.figures()} errors={rec.errors} lines={rec.lines}
+        <LabDrawer session={view} figuresNow={() => l.session.figures()} errors={rec.errors}
           settings={settings} onSettings={changeSettings} cpuDir={l.cpuDir} onCpuDir={changeCpu} train={train} pages={list}
           onProbe={files => { runProbe(files, t => l.log.log(t)).catch(e => l.log.err('Probe: ' + errText(e))); }} />
       </ScannerScreen>

@@ -56,13 +56,13 @@ export function statusEnglish(s: EngineStatus): string {
  *    frame's (the light model first); a shot is shown by the live frame's corners meanwhile;
  *  - refining: the accurate model is refining the corners;
  *  - looking_more: count documents so far, looking for more on the photo;
- *  - shot_failed: the shot failed (the log says why), the camera goes on;
+ *  - shot_failed: the shot failed (the errors say why), the camera goes on;
  *  - stopped: the live frame stopped after 5 failed frames;
- *  - camera_failed: the camera or the model could not start (the log says why);
+ *  - camera_failed: the camera or the model could not start (the errors say why);
  *  - picture_finding / picture_cutting: a picked picture (file of files, page of pages — a photo is page 1 of
  *    1) is being looked at / a document on it was found and is being cut out (files.ts);
  *  - picked: a pick is done — pages from files;
- *  - pick_failed: a picked file could not be worked on (the log says why; the ones after it are not shown);
+ *  - pick_failed: a picked file could not be worked on (the errors say why; the ones after it are not shown);
  *  - pick_open_failed: a picked file could not be opened (a PDF pdf.js could not read, pdf.js not loaded). */
 export type SessionStatus =
   | { key: 'finding' }

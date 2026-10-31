@@ -16,7 +16,8 @@
 // status line as a key (status.ts SessionStatus; the screen words it through tr()); figures — the lab's
 // figures; page — each cut page the moment it exists, and again under the same id when it is refined or its
 // readouts come, so the screen can delete or fix it at once; preview — the picked picture being worked on (its
-// url, which file and page, the frame of each document as it is found), so the preview switches to it at once.
+// url, which file and page, the frame of each document as it is found), so the preview switches to it at once;
+// auto — Auto turned itself off (AUTO_MAX shots in a row with no touch; a tap on the button is not told).
 //
 // Picked files (pick, files.ts): each pick is a batch of its own, its pages in the files' order. The training
 // attempts (attempts.ts): every shot and picked picture is one; it is kept once Looks good was tapped on every
@@ -38,7 +39,10 @@
 // red and flickering), and Auto does not take the same document again: the documents the shot took are kept
 // (steady.ts Taken, carried by the follow) and Auto waits until they have left the frame or the scene changed
 // enough (another document found away from them); the status line says `taken` meanwhile. The shutter is never
-// held by it (a person may take the same document again on purpose). After a pick the picked picture stays on
+// held by it (a person may take the same document again on purpose). Auto takes only what has a document's shape,
+// found by the model itself all through STEADY_MS (frames the sticky frame only held up do not count), and it turns
+// itself off after AUTO_MAX shots in a row (owner, 2026-10-31: pointed at a keyboard it shot keys and the phone grew
+// hot); the shutter, the Auto button, wake and hold start the count again. After a pick the picked picture stays on
 // the screen PICK_SHOWN_MS, then the live frame goes on too (a camera that gets ready meanwhile waits for it). hold() pauses the live frame (its follow, Auto)
 // while a page is opened large over the camera or its corners are being fixed — a shot or a pick in work goes
 // on, and the live frame does not go on after it while held — and resume() lets it go on again from a fresh
@@ -54,10 +58,11 @@ import { Live, trackFollower, type Bitmapper, type Figures, type Follower, type 
 import { ScanLog } from './log';
 import { Readers } from './readers';
 import { analyzePicture, defaultFilesEnv, pickedPictures, workPictures, type FilesEnv, type LaneEngine, type PickFile, type PictureStage } from './files';
+import { docShape, goodQuad } from './geometry';
 import { info, readPage, takeShot, toCanvas, type ShotPage, type ShotRecord } from './shot';
 import { mkCanvas } from './upright';
 import type { SessionStatus } from './status';
-import { autoShot, hintOf, type SteadyAnswer } from './steady';
+import { AUTO_MAX, STEADY_MS, autoShot, hintOf, type SteadyAnswer } from './steady';
 import type { ScanSurface } from './surface';
 import type { Corners, Pt, Quad } from './types';
 
@@ -78,6 +83,7 @@ export interface SessionEvents {
   figures: (f: Figures) => void;
   page: (p: ShotPage) => void;
   preview: (p: PreviewEvent) => void;
+  auto: (on: boolean) => void;
 }
 
 /** What the session takes of the browser (the tests give fakes). */
@@ -133,7 +139,7 @@ export class ScanSession {
   readonly live: Live;
   readonly attempts: Attempts;
   readonly env: SessionEnv;
-  /** Auto takes the shot once the frame is still for a second (the lab's Auto capture, on by default). */
+  /** Auto takes the shot once a document's frame is still for a second (on by default; off by itself after AUTO_MAX shots in a row). */
   auto = true;
   private shotId = 0;
   /** Bumped by sleep() / stop(): a camera start still waiting (the model loading, the permission asked) finds
@@ -142,6 +148,10 @@ export class ScanSession {
   /** A shot is in work (from its snap until it settles, or a wake / sleep): a second snap does nothing. */
   private shotInWork = false;
   private captureMs: number | null = null;
+  /** How long the first live frame took after the scanner opened (the lab's figure). */
+  private readyMs: number | null = null;
+  /** Auto's shots in a row with no touch (AUTO_MAX turns it off). */
+  private autoRun = 0;
   private batchSeq = 0;
   /** The pages given so far (by id), for fix / remove / keep; the ones removed or retaken are never given again
    *  (a late refine or readouts of a page deleted at once), nor a fixed one by the shot or pick that made it. */
@@ -174,7 +184,7 @@ export class ScanSession {
   private scanGen = 0;
   /** One pick at a time, in the order picked. */
   private pickChain: Promise<unknown> = Promise.resolve();
-  private listeners: { [K in keyof SessionEvents]: Set<SessionEvents[K]> } = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set(), preview: new Set() };
+  private listeners: { [K in keyof SessionEvents]: Set<SessionEvents[K]> } = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set(), preview: new Set(), auto: new Set() };
 
   constructor(readonly surface: ScanSurface, parts: SessionParts = {}) {
     this.env = { ...defaultSessionEnv(), ...parts.env };
@@ -221,7 +231,7 @@ export class ScanSession {
   /** The lab's figures now. */
   figures(): Figures {
     const st = this.engines.state;
-    return { ...this.live.fig, captureMs: this.captureMs, resolution: this.camera.resolution(), loadSeconds: st.loadSeconds, runsOn: st.label };
+    return { ...this.live.fig, captureMs: this.captureMs, readyMs: this.readyMs, resolution: this.camera.resolution(), loadSeconds: st.loadSeconds, runsOn: st.label };
   }
   private emitFigures(): void { this.emit('figures', this.figures()); }
 
@@ -255,7 +265,7 @@ export class ScanSession {
   private sleepMs(ms: number): Promise<void> { return new Promise<void>(r => this.env.setTimeout(r, ms)); }
 
   /** The models made ready on open — the light model first (owner, 2026-10-27): the live frame's model on its way,
-   *  so the camera and its frame come as soon as it is ready, then the accurate model right after it (photos and
+   *  so the live frame comes as soon as it is ready (the camera does not wait for it: startCamera), then the accurate model right after it (photos and
    *  PDFs picked meanwhile wait for it); the readers beside them. */
   //
   // early (the manager's new worker window, keep.ts prepareEarly): the same start with no scanner open yet — the
@@ -269,7 +279,7 @@ export class ScanSession {
   }
 
   /** When the scanner opened (env.now()), until its first live frame: "Ready: first frame after N ms" goes to the
-   *  log then (the lab's loading log; the owner's measure of Preparing…). */
+   *  log then, and the lab's figure "first frame, s" (readyMs; the owner's measure of Preparing…). */
   private openedAt: number | null = null;
   /** The scanner opened now (the site's window, the lab's page): the log's "Time:" lines count from here too. */
   markOpen(): void {
@@ -278,18 +288,21 @@ export class ScanSession {
     this.log.log('Time: scanner opened' + (this.engines.engine ? ' — its models kept from the last scan' : ''));
   }
 
-  /** The camera shown in video, once the model is ready; the live frame and its follow start. */
+  /** The camera shown in video at once, beside the models' start (owner, 2026-10-31: the screen stayed empty for
+   *  8 s of models that were already on the phone); once they are ready the live frame and its follow start. */
   async startCamera(video: VideoLike): Promise<void> {
     const gen = this.camGen;
     try {
       if (this.readers) void this.readers.load();
-      await this.engines.ensureSession();
-      if (gen !== this.camGen) return;  // put away while the model loaded: the camera is not turned on
+      const models = this.engines.ensureSession();
+      models.catch(() => {});  // its failure is met below, once the camera has started
       const tc = this.env.now();
       const started = await this.camera.start(video);
       if (started) this.log.log('Time: camera started — ' + Math.round(this.env.now() - tc) + ' ms');
       if (!started || gen !== this.camGen) return;  // put away while the camera started (camera.stop gave it back)
       this.emitFigures();
+      await models;
+      if (gen !== this.camGen) return;  // put away while the models loaded (sleep turned the camera off)
       this.live.show(video);
       // a picked picture on the screen (a pick in work, or just over) or a page opened over the camera: the live frame
       // goes on after them (goOn), not now — its first answer would put the camera back over the picture
@@ -298,18 +311,33 @@ export class ScanSession {
       this.live.start();
     } catch (e) {
       if (gen !== this.camGen) return;  // put away meanwhile: no error to show
+      this.camera.stop();  // no models: a camera on with nothing looking at it
       this.log.err('Camera / model error: ' + ((e as Error)?.message || e));
       this.emit('status', { key: 'camera_failed' });
     }
   }
 
   private answer(raw: Corners, res: SteadyAnswer): void {
-    if (this.openedAt !== null) { this.log.log('Ready: first frame after ' + Math.round(this.env.now() - this.openedAt) + ' ms'); this.openedAt = null; }
+    if (this.openedAt !== null) {
+      this.readyMs = this.env.now() - this.openedAt;
+      this.log.log('Ready: first frame after ' + Math.round(this.readyMs) + ' ms');
+      this.openedAt = null;
+      this.emitFigures();
+    }
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);
     this.emit('status', liveStatus(raw, res, waiting && this.auto));
-    if (this.auto && !waiting && autoShot(res)) void this.snap();
+    if (this.auto && !waiting && !this.shotInWork && this.autoTakes(res)) {
+      void this.shoot();
+      if (++this.autoRun >= AUTO_MAX) { this.auto = false; this.autoRun = 0; this.emit('auto', false); }
+    }
+  }
+
+  /** Auto takes it: still for a second, the model really finding it all that second, and a document's shape. */
+  private autoTakes(res: SteadyAnswer): boolean {
+    const v = this.live.video;
+    return autoShot(res) && this.live.steady.sureFor() >= STEADY_MS && goodQuad(res) && docShape(res.pts, (v && v.videoWidth) || 1, (v && v.videoHeight) || 1);
   }
 
   /** The live frame goes on by itself (after a shot settled, a pick, a page closed) from a fresh frame — unless
@@ -330,7 +358,9 @@ export class ScanSession {
 
   /** Take the shot (Capture, or Auto): the number of documents it held, 0 when nothing was taken — and 0 with
    *  nothing done while a shot is still in work (a shutter tap just after Auto would cut the same frame again). */
-  async snap(): Promise<number> {
+  snap(): Promise<number> { this.autoRun = 0; return this.shoot(); }
+
+  private async shoot(): Promise<number> {
     if (this.shotInWork) return 0;
     this.shotInWork = true;
     let id = -1, got = 0;
@@ -381,7 +411,7 @@ export class ScanSession {
     }
   }
 
-  setAuto(on: boolean): void { this.auto = on; }
+  setAuto(on: boolean): void { this.auto = on; this.autoRun = 0; }
   /** The follow between the model's answers on or off (the lab's tools). */
   setFollow(on: boolean): void { this.live.follow = on; }
 
@@ -427,6 +457,7 @@ export class ScanSession {
    *  again on the video it was shown in. */
   wake(video?: VideoLike): void {
     if (this.picking) return;  // a pick in work: its pictures are on the screen, the models busy with them
+    this.autoRun = 0;
     this.held = false;
     this.pickShown = false; this.pickShownGen++;
     this.shotId++;
@@ -455,6 +486,7 @@ export class ScanSession {
   /** The live frame paused while a page is opened large over the camera (its follow and Auto with it); a shot
    *  or a pick in work goes on, and the live frame does not go on after it until resume(). */
   hold(): void {
+    this.autoRun = 0;
     this.held = true;
     this.live.running = false;
   }

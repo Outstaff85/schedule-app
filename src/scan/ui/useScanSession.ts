@@ -132,6 +132,8 @@ export interface ScanScreenState {
    *  camera. */
   preview: ShownPicture | null;
   auto: boolean;
+  /** Auto turned itself off after AUTO_MAX shots in a row (the screen says so until Auto is tapped). */
+  autoStopped: boolean;
   /** A shot is still in work (refining, looking for more documents). */
   busy: boolean;
   /** A pick is in work. */
@@ -190,6 +192,7 @@ export function useScanSession(session: ScanSessionLike, opts: {
   const [hidden, setHidden] = React.useState<Record<string, true>>({});
   const [preview, setPreview] = React.useState<ShownPicture | null>(null);
   const [auto, setAutoState] = React.useState(session.auto);
+  const [autoStopped, setAutoStopped] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [picking, setPicking] = React.useState(0);
   // what is drawn now, so a status event that changes nothing draws nothing
@@ -242,6 +245,7 @@ export function useScanSession(session: ScanSessionLike, opts: {
         putBusy(SHOT_WORK.has(s.key));
         if (LIVE.has(s.key)) clearPreview();
       }),
+      session.on('auto', on => { setAutoState(on); setAutoStopped(!on); }),
       session.on('preview', p => { now.current.preview = true; setPreview(prev => nextShown(prev, p)); }),
       session.on('page', p => {
         setShots(m => ({ ...m, [p.id]: p }));
@@ -288,8 +292,8 @@ export function useScanSession(session: ScanSessionLike, opts: {
   const working = busy || picking > 0;
 
   return {
-    pages, preview, auto, busy, picking: picking > 0,
-    setAuto: on => { session.setAuto(on); setAutoState(on); },
+    pages, preview, auto, autoStopped, busy, picking: picking > 0,
+    setAuto: on => { session.setAuto(on); setAutoState(on); setAutoStopped(false); },
     shutter: () => {
       if (working) return;  // the shot finishes first (its other documents), the pick too
       void session.snap();

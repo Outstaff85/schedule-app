@@ -62,7 +62,7 @@ export class FakeScanSession implements ScanSessionLike {
   auto = true;
   /** What the screen asked for, in order ("snap", "keep p1", "remove p2", "fix p1 [[…]]", "done" …). */
   readonly calls: string[] = [];
-  private listeners: Listeners = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set(), preview: new Set() };
+  private listeners: Listeners = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set(), preview: new Set(), auto: new Set() };
   private pages = new Map<string, ShotPage>();
   private kinds = new Map<string, Doctype>();
   private photos = new Map<string, OffscreenCanvas>();

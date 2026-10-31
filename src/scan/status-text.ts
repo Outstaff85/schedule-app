@@ -29,7 +29,7 @@ export function engineStatusText(s: EngineStatus, lab: boolean): string {
     case 'face': return tr('Loading the face finder…');
     case 'ready_files': return tr('Ready for photos and PDFs — the camera\'s model is loading…');
     case 'ready': return tr('Model ready — scanning is available');
-    case 'failed': return tr('The model could not start — see the log in Lab tools');
+    case 'failed': return tr('The model could not start — see Errors in Lab tools');
   }
 }
 

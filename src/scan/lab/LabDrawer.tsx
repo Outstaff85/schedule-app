@@ -2,13 +2,14 @@
 // scanner (the design system's BottomSheet, ui/drawer) with what the lab's page showed under its camera — the
 // figures as glass tiles (where the models run, the camera's frames per second, the model's ms per frame, how
 // sure it is — 0.50 is found —, the model's load, the camera's resolution, the screen's frames per second, the
-// capture, the follow's frames per second and ms; drawn only while the drawer is open, useFigures), the training
+// capture, the follow's frames per second and ms, how long the first live frame took; drawn only while the drawer is open, useFigures), the training
 // queue ("In queue: n / 5") and the new attempts since the last training (a super-admin's), the settings (the
 // models; the CPU's ONNX Runtime build, which reloads the page with ?ort=130 as the lab's did; the backend —
 // switching clears the frame and the figures — and the resampling probe, probe.ts: frames.json and the frames of
 // `python -m gen profile --frames DIR` picked, probe.json saved), the readouts of every page, the errors (newest on top, with
-// their times, and the earlier failures on this device) and the loading-and-work log. The log and error lines
-// are the engine's own English text (data, like the error texts the functions return); the labels go through tr().
+// their times; this opening's only — owner, 2026-10-31: the old failures and the loading log only filled the sheet;
+// the log's lines go to the browser's console). The error lines are the engine's own English text (data, like the
+// error texts the functions return); the labels go through tr().
 import * as React from 'react';
 import { IconAdjustments } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
@@ -63,6 +64,7 @@ function figureItems(f: LiveFigures | null) {
     { key: 'cap', label: tr('capture, ms'), value: whole(f?.captureMs) },
     { key: 'track', label: tr('frame follows, frames/s'), value: whole(f?.followFps) },
     { key: 'trackMs', label: tr('follow, ms per frame'), value: whole(f?.followMs) },
+    { key: 'ready', label: tr('first frame, s'), value: fixed(f?.readyMs == null ? null : f.readyMs / 1000, 1) },
   ];
 }
 
@@ -79,13 +81,12 @@ function Choice<T extends string>({ value, choices, onChange, testid }: { value:
   );
 }
 
-export function LabDrawer({ session, figuresNow, errors, lines, settings, onSettings, cpuDir, onCpuDir, train, pages, onProbe }: {
+export function LabDrawer({ session, figuresNow, errors, settings, onSettings, cpuDir, onCpuDir, train, pages, onProbe }: {
   session: ScanSessionLike;
   /** the figures now (the tiles before the first figures event) */
   figuresNow: () => LiveFigures;
-  /** the Errors block and the Loading-and-work log, newest on top */
+  /** the Errors block, newest on top */
   errors: string[];
-  lines: string[];
   settings: EngineSettings;
   onSettings: (patch: Partial<EngineSettings>) => void;
   cpuDir: OrtDir;
@@ -156,9 +157,6 @@ export function LabDrawer({ session, figuresNow, errors, lines, settings, onSett
         <Head>{tr('Errors')}</Head>
         <pre data-testid="lab-errors" className="m-0 whitespace-pre-wrap break-words font-mono text-[12px] leading-4 text-[var(--red-text)]">{errors.length ? errors.join('\n') : ''}</pre>
         {!errors.length && <div className="text-[12px] text-ink-2">{tr('No errors')}</div>}
-
-        <Head>{tr('Loading and work')}</Head>
-        <pre data-testid="lab-log" className="m-0 whitespace-pre-wrap break-words font-mono text-[12px] leading-4 text-ink-2">{lines.join('\n')}</pre>
       </DrawerContent>
     </Drawer>
   );
