@@ -29,10 +29,11 @@ import { SelectBar, SelectHead, useSelection } from '@/components/shared/select-
 import { Window } from '@/components/shared/window';
 import { MonthPicker, monthsBack } from '@/components/ui/date-picker';
 import { HoursReview } from '@/hours-review/HoursReview';
+import { undoDelete } from '@/components/shared/undo';
 import type { AccountingSnapshot, ManagerBridge, PendingBatch } from './bridge';
 import {
   accAlerts, approvalDocsShown, clientBillable, clientBillDetail, daysByHand, hourApprovalSummary, hrCommission, hrPayable,
-  HOUR_KINDS, HOUR_STATES, periodOptions, rateShown, salaryEntriesFor, salaryMonthOf, salaryTotals, searchRows, supplierPayable, supplierPayDetail,
+  HOUR_KINDS, HOUR_STATES, periodOptions, periodPunches, rateShown, salaryEntriesFor, salaryMonthOf, salaryTotals, searchRows, supplierPayable, supplierPayDetail,
   type AccAlert, type AccData, type ApprovalDoc, type SalaryEntry,
 } from './accounting';
 import { exportAccountant, exportPayable, exportSalary } from './acc-export';
@@ -194,8 +195,9 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
   const [row, setRow] = React.useState<SalaryEntry | null>(null);
   const [, redraw] = React.useReducer((n: number) => n + 1, 0);
   const payOnly = snap.payOnly;
-  const rows = React.useMemo(() => searchRows(entries, q), [entries, q]);
-  const ids = React.useMemo(() => rows.map(e => String(e.workerId)), [rows]);
+  const [gone] = React.useState(() => new Set<string>());
+  const rows = searchRows(entries, q).filter(e => !gone.has(String(e.workerId)));
+  const ids = React.useMemo(() => rows.map(e => String(e.workerId)), [rows.map(e => e.workerId).join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = useSelection(ids);
   const tot = salaryTotals(rows);
   const myCom = (e: SalaryEntry) => hrCommission(d, e, snap.me.commissionRate, snap.me.commissionDayRate);
@@ -245,6 +247,28 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
   const warnIcon = (e: SalaryEntry) => e.warns.length > 0 && <IconAlertTriangle data-testid="sal-warn" className="size-3.5 shrink-0 text-warn" aria-label={e.warns.join('\n')}><title>{e.warns.join('\n')}</title></IconAlertTriangle>;
   const barOf = (e: SalaryEntry) => (e.warns.length ? 'var(--warn)' : e.total + e.travel > 0 ? 'var(--ok)' : 'var(--neutral)');
 
+  // Delete on a row: the worker's punches of the period shown and the days set by hand for it (owner, 2026-10-31), through
+  // the Undo snack. The punches need Edit punches, the days the right to edit that worker's pay.
+  const punchesOf = (id: string) => periodPunches(d.log, snap.period).filter(p => String(p.workerId) === id).map(p => String(p.id));
+  const handDays = (id: string) => {
+    const e = entries.find(x => String(x.workerId) === id);
+    return !!e && !!snap.canPay[id] && daysByHand(d, e, snap.period);
+  };
+  const deletable = (id: string) => (snap.canEditPunches && punchesOf(id).length > 0) || handDays(id);
+  const removeRows = (workers: string[]) => {
+    const which = workers.filter(deletable);
+    if (!which.length) return;
+    const ids = snap.canEditPunches ? which.flatMap(punchesOf) : [], days = which.filter(handDays);
+    which.forEach(id => gone.add(id)); redraw();
+    undoDelete(ids.length ? tr('{0} punches', { 0: ids.length }) : tr('Days set by hand'),
+      () => {
+        which.forEach(id => gone.delete(id));
+        if (ids.length) api.deletePunches(ids);
+        days.forEach(id => api.clearDays(id, snap.period));
+      },
+      () => { which.forEach(id => gone.delete(id)); redraw(); });
+  };
+
   const plate = (e: SalaryEntry) => {
     const t = e.total + e.travel, id = String(e.workerId);
     return (
@@ -254,6 +278,7 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
         expanded={opened.has(id)}
         onOpen={() => { if (opened.has(id)) opened.delete(id); else opened.add(id); redraw(); }}
         onEdit={() => api.openPay(id)}
+        onDelete={!payOnly && deletable(id) ? () => removeRows([id]) : undefined}
         selecting={sel.on} selected={sel.picked.has(id)} onToggle={() => sel.toggle(id)}>
         {details(e)}
       </Plate>
@@ -300,7 +325,7 @@ function SalaryTab({ snap, api, d, entries, onHelp, onExport }: {
         {row && details(row)}
       </Window>
       {!payOnly && (
-        <SelectBar sel={sel}>
+        <SelectBar sel={sel} onDelete={ids.some(deletable) ? removeRows : undefined}>
           <Button size="sm" disabled={!sel.picked.size} data-testid="sal-sel-excel" onClick={() => { void exportSalary(api, 'excel', snap.period, [...sel.picked]); sel.end(); }}><IconFileSpreadsheet className="size-4" />{tr('Excel')}</Button>
           <Button size="sm" disabled={!sel.picked.size} data-testid="sal-sel-pdf" onClick={() => { void exportSalary(api, 'pdf', snap.period, [...sel.picked]); sel.end(); }}><IconFileTypePdf className="size-4" />{tr('PDF')}</Button>
         </SelectBar>

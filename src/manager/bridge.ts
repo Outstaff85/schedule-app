@@ -497,6 +497,8 @@ export type ManagerBridge = WorkerBridge & {
   payInfo(id: string): { w: AccWorker; ro: boolean; period: string } | null;
   /** writes the pay window's fields on the worker (a field undefined is removed), saves, closes the window; render() */
   savePay(id: string, patch: Record<string, unknown>): void;
+  /** The days set by hand for a period taken off a worker (a daily-paid worker's Delete in Salary) */
+  clearDays(id: string, period: string): void;
 
   // ── Admin (stage 6f-1: the section chooser and the punch log) ──
   admin(): AdminSnapshot;
@@ -620,6 +622,8 @@ export type AccountingSnapshot = {
   canExport: boolean;
   /** the owner / super-admin: approve or reject hours batches */
   canApprove: boolean;
+  /** Edit punches (the login's template): a worker's punches of the period can be deleted from Salary */
+  canEditPunches: boolean;
   /** `canEditPay(w)` per worker id */
   canPay: Record<string, boolean>;
   /** the HR logins with their commission (owner / super-admin; Payable by HR) */
