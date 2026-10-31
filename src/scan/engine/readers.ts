@@ -199,6 +199,8 @@ export class Readers {
   he: OrtSession | null = null;
   layouts: HeLayouts | null = null;
   private ort: Ort | null = null;
+  /** The document type model's runs, one after another (Auto's look and a shot's readouts can meet on its session). */
+  private typeRuns: Promise<unknown> = Promise.resolve();
   private loading: Promise<ModelsInfo | null> | null = null;
   /** Bumped by release(): a load begun before it releases what it opens instead of keeping it. */
   private gen = 0;
@@ -278,7 +280,9 @@ export class Readers {
     const sess = this.doctype, sq = mkCanvas(256, 256), g = ctx(sq); g.drawImage(src, 0, 0, 256, 256);
     const d = g.getImageData(0, 0, 256, 256).data, n = 256 * 256, f = new Float32Array(3 * n);
     for (let i = 0; i < n; i++) { f[i] = d[i * 4] / 255; f[n + i] = d[i * 4 + 1] / 255; f[2 * n + i] = d[i * 4 + 2] / 255; }
-    const t0 = now(), r = await sess.run({ [sess.inputNames[0]]: tensor(this.ort, f, [1, 3, 256, 256]) });
+    const ort = this.ort, t0 = now(), run = this.typeRuns.then(() => sess.run({ [sess.inputNames[0]]: tensor(ort, f, [1, 3, 256, 256]) }));
+    this.typeRuns = run.catch(() => {});
+    const r = await run;
     const kp = Array.from(r.doctype.data), tp = Array.from(r.turn.data), k = kp.indexOf(Math.max(...kp)), t = tp.indexOf(Math.max(...tp));
     return { doctype: DOCTYPES[k], conf: kp[k], turn: t, turnConf: tp[t], ms: now() - t0, square: sq };
   }

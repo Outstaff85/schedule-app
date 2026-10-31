@@ -46,7 +46,14 @@
 // hot); the shutter, the Auto button, wake and hold start the count again, and a new open (markOpen: the site's session
 // outlives its window by 3 minutes) starts it again and brings back an Auto that turned itself off — not one a person
 // turned off. With Auto on the status line says what it waits for: `hold` until its second is over, `not_document`
-// for a green frame it will not take, so `found` means it is about to shoot. After a pick the picked picture stays on
+// for a green frame it will not take, so `found` means it is about to shoot. And Auto takes only documents (owner,
+// 2026-10-31: a key of a keyboard has a document's shape, and the edges model was 99 % sure of it): when autoTakes says
+// yes, the document type model is asked first (look): one question at a time, on the live frame cut flat by the frame's
+// corners, and only a sure answer of a document type shoots (documentAnswer); anything else takes nothing — no sound, no
+// accurate model, no attempt, nothing towards AUTO_MAX — and the status line says `not_document` (type) until the frame
+// has moved LOOK_MOVE or LOOK_AGAIN_MS has passed, when it asks again. With no such model in the surface's version, or one
+// that failed, Auto goes on as it did; while the readers load it waits, READERS_WAIT_MS at most (status `checking`). The
+// shutter and picked files never ask. After a pick the picked picture stays on
 // the screen PICK_SHOWN_MS, then the live frame goes on too (a camera that gets ready meanwhile waits for it). hold() pauses the live frame (its follow, Auto)
 // while a page is opened large over the camera or its corners are being fixed — a shot or a pick in work goes
 // on, and the live frame does not go on after it while held — and resume() lets it go on again from a fresh
@@ -60,15 +67,16 @@ import { Camera, type GetUserMedia, type VideoLike } from './camera';
 import { Engines, type EngineSettings } from './engines';
 import { Live, trackFollower, type Bitmapper, type Figures, type Follower, type SessionClock } from './live';
 import { ScanLog } from './log';
-import { Readers } from './readers';
+import { Readers, type DoctypeAnswer } from './readers';
 import { analyzePicture, defaultFilesEnv, pickedPictures, workPictures, type FilesEnv, type LaneEngine, type PickFile, type PictureStage } from './files';
 import { docShape, goodQuad } from './geometry';
-import { info, readPage, takeShot, toCanvas, type ShotPage, type ShotRecord } from './shot';
+import { freeze, info, readPage, takeShot, toCanvas, type ShotPage, type ShotRecord } from './shot';
 import { mkCanvas } from './upright';
 import type { SessionStatus } from './status';
-import { AUTO_MAX, LOCK_MS, STEADY_MS, autoShot, hintOf, type SteadyAnswer } from './steady';
+import { AUTO_MAX, LOCK_MS, LOOK_AGAIN_MS, LOOK_MOVE, READERS_WAIT_MS, STEADY_MS, autoShot, farthest, hintOf, type SteadyAnswer } from './steady';
 import type { ScanSurface } from './surface';
 import type { Corners, Pt, Quad } from './types';
+import { SURE } from '../turn';
 
 const copy = (q: Quad): Quad => q.map(p => p.slice() as Pt);
 /** How long a picked picture stays on the screen after its pick, with the frame of each document found on it,
@@ -115,6 +123,14 @@ export function defaultSessionEnv(): SessionEnv {
   };
 }
 
+/** Auto may take what the document type model answered: one of the document types, and sure of both its type and
+ *  its turn (SURE, as the scan window's Mixed takes the model's answer and the exam counts it sure). Not because the turn
+ *  matters here — a page at any turn is a document —, but a model that is lost is unsure of it too: measured on the lab's
+ *  v5 it took the frames taken on keyboards from 2.0 % to 0.4 % and on empty desks from 19.8 % to 3.5 %, real pages from
+ *  77 % to 74 % (docs/scan.md → What Auto takes). */
+export const documentAnswer = (a: Pick<DoctypeAnswer, 'doctype' | 'conf' | 'turnConf'>): boolean =>
+  a.doctype !== 'other' && a.conf >= SURE && a.turnConf >= SURE;
+
 /** The status line for a live answer: the steady frame's hint as the session's key — `taken` in place of the
  *  countdown and found while a document the last shot took is still in front of the camera (Auto waits). */
 export function liveStatus(raw: Corners, res: SteadyAnswer, waiting = false): SessionStatus {
@@ -158,6 +174,12 @@ export class ScanSession {
   private autoRun = 0;
   /** Auto turned itself off (a person did not): the next open brings it back. */
   private autoSelfOff = false;
+  /** Auto is asking the document type model about the frame (one question at a time). */
+  private looking = false;
+  /** The frame the model last refused, and when: not asked again until it moved or LOOK_AGAIN_MS has passed. */
+  private refused: { quad: Quad; at: number } | null = null;
+  /** When Auto stops waiting for readers that still load (READERS_WAIT_MS after its first look of this open). */
+  private readersBy: number | null = null;
   private batchSeq = 0;
   /** The pages given so far (by id), for fix / remove / keep; the ones removed or retaken are never given again
    *  (a late refine or readouts of a page deleted at once), nor a fixed one by the shot or pick that made it. */
@@ -293,6 +315,7 @@ export class ScanSession {
   markOpen(): void {
     this.openedAt = this.env.now();
     this.autoRun = 0;
+    this.refused = null; this.readersBy = null;
     if (this.autoSelfOff) { this.autoSelfOff = false; this.auto = true; this.emit('auto', true); }
     this.log.markOpen();
     this.log.log('Time: scanner opened' + (this.engines.engine ? ' — its models kept from the last scan' : ''));
@@ -337,11 +360,61 @@ export class ScanSession {
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);
+    const takes = this.auto && !waiting && !this.shotInWork && this.autoTakes(res);
+    if (takes && this.readers) this.look(res);  // first: the status line then says `checking`, never `found`, for it
     this.emit('status', this.autoStatus(liveStatus(raw, res, waiting && this.auto), res));
-    if (this.auto && !waiting && !this.shotInWork && this.autoTakes(res)) {
-      void this.shoot();
-      if (++this.autoRun >= AUTO_MAX) { this.auto = false; this.autoSelfOff = true; this.autoRun = 0; this.emit('auto', false); }
+    if (takes && !this.readers) this.autoShoot();
+  }
+
+  /** Auto's shot, counted towards AUTO_MAX. */
+  private autoShoot(): void {
+    void this.shoot();
+    if (++this.autoRun >= AUTO_MAX) { this.auto = false; this.autoSelfOff = true; this.autoRun = 0; this.emit('auto', false); }
+  }
+
+  /** The frame on the live answer is the one the model refused (it has not moved LOOK_MOVE from it). */
+  private refusedHere(res: SteadyAnswer): boolean {
+    const r = this.refused;
+    return !!r && !res.pts.some(p => !p) && farthest(res.pts as Quad, r.quad) <= LOOK_MOVE;
+  }
+
+  /** The document type model is asked about the live answer — unless a question is out, or it refused this frame
+   *  a moment ago. */
+  private look(res: SteadyAnswer): void {
+    if (this.looking || (this.refusedHere(res) && this.env.now() - (this.refused as { at: number }).at < LOOK_AGAIN_MS)) return;
+    this.looking = true;
+    this.lookAt(copy(res.pts as Quad)).catch(e => this.log.err('Auto: ' + errText(e))).finally(() => { this.looking = false; });
+  }
+
+  private async lookAt(pts: Quad): Promise<void> {
+    const R = this.readers as Readers;
+    // the readers still loading: Auto waits for them, but not for ever (a download that hangs must not stop it)
+    if (R.doctype === null) {
+      const by = this.readersBy ?? (this.readersBy = this.env.now() + READERS_WAIT_MS);
+      await Promise.race([R.load(), this.sleepMs(Math.max(0, by - this.env.now()))]);
     }
+    let sure = true;  // no model, or a failing one: Auto goes on as it did without it
+    if (R.doctype !== null) {
+      const v = this.live.video, engine = this.engines.engine;
+      if (!v || !engine) return;
+      try {
+        // the same pixels the shot's first cut is made of (the frozen video frame, the frame's corners), not set
+        // upright: the model answers at any turn, and the face finder's four looks would be heat for nothing
+        const { pix, w, h } = freeze(v);
+        const a = await R.doctypeAnswer(toCanvas(await engine.warp(pix, w, h, pts, false)));
+        if (a) {
+          sure = documentAnswer(a);
+          if (!sure) { this.refused = { quad: pts, at: this.env.now() }; this.log.log('Auto: not taken — the model says ' + a.doctype + ' ' + Math.round(a.conf * 100) + ' %, turn ' + Math.round(a.turnConf * 100) + ' %'); }
+        }
+      } catch (e) { this.log.err('Auto: the document type model failed: ' + errText(e)); }
+    }
+    if (!sure) return;
+    // still what was looked at: nothing took over meanwhile, and the frame is still here
+    const res = this.live.lastRes;
+    if (!this.auto || !this.live.running || this.shotInWork || this.live.taken.waiting || !res || !this.autoTakes(res) || farthest(res.pts as Quad, pts) > LOOK_MOVE) return;
+    this.refused = null;
+    this.emit('status', { key: 'found', count: 1 });
+    this.autoShoot();
   }
 
   /** A document's shape on the live answer. */
@@ -360,6 +433,8 @@ export class ScanSession {
   private autoStatus(st: SessionStatus, res: SteadyAnswer): SessionStatus {
     if (!this.auto || (st.key !== 'hold' && st.key !== 'found')) return st;
     if ((res.steady as number) >= LOCK_MS && !this.shaped(res)) return { key: 'not_document' };
+    if (this.refusedHere(res)) return { key: 'not_document', type: true };
+    if (this.looking) return { key: 'checking' };
     const left = (STEADY_MS - this.live.steady.sureFor()) / 1000, shown = st.key === 'hold' ? st.seconds : 0;
     return left > shown ? { key: 'hold', seconds: left } : st;
   }
@@ -435,7 +510,7 @@ export class ScanSession {
     }
   }
 
-  setAuto(on: boolean): void { this.auto = on; this.autoRun = 0; }
+  setAuto(on: boolean): void { this.auto = on; this.autoRun = 0; this.refused = null; }
   /** The follow between the model's answers on or off (the lab's tools). */
   setFollow(on: boolean): void { this.live.follow = on; }
 
@@ -482,6 +557,7 @@ export class ScanSession {
   wake(video?: VideoLike): void {
     if (this.picking) return;  // a pick in work: its pictures are on the screen, the models busy with them
     this.autoRun = 0;
+    this.refused = null;
     this.held = false;
     this.pickShown = false; this.pickShownGen++;
     this.shotId++;
