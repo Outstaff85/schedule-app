@@ -2299,6 +2299,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // login) — its details prefilled, one changed, the end of the contract, one signature → the signed PDF on the client and
   // its empty contact fields filled (never what the firm typed); Sign here in the window; a login without the right: no Send.
   const ccPdf = Buffer.from(await (await fetch('http://127.0.0.1:5055/clientContractPdf', {method: 'POST'})).arrayBuffer());
+  await p.click('[data-testid="contracts-view"] [data-kind="client"]');
   const [ccChooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-testid="contract-new-client"]')]);
   await ccChooser.setFiles({name: 'Service agreement.pdf', mimeType: 'application/pdf', buffer: ccPdf});
   await p.waitForSelector('[data-testid="contract-upload"][data-state="ready"]', {timeout: 60000});
