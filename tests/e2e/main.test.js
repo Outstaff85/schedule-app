@@ -3346,7 +3346,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('[data-testid="undo-snack"] button');
   salDel.back = await p.waitForSelector('[data-testid="sal-row"][data-wid="' + salWid + '"]', {timeout: 3000}).then(() => true, () => false);
   await p.evaluate(was => ManagerBridge.setPeriod(was), salPeriod);
-  ok(salDel.hidden && salDel.snack && salDel.back, 'accounting: a worker's ⋮ deletes the period's punches, with Undo ' + JSON.stringify(salDel));
+  ok(salDel.hidden && salDel.snack && salDel.back, "accounting: a worker's ⋮ deletes the period's punches, with Undo " + JSON.stringify(salDel));
   const phc = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), w = workers[1], keep = w.notes;
     w.notes = Array(40).fill('a long note line').join('\n');
