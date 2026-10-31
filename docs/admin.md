@@ -129,7 +129,7 @@ Both sections (`LogsPane` in `src/manager/Logs.tsx`) load one period at a time, 
 - each period has its own cache (`adminCache_errors:<key>`, `adminCache_timings:<key>`): the snapshot's `logs` is the cached rows (null until loaded, with the load error), drawn at once and again when the fresh rows arrive;
 - **Copy all** and **Print** take only the loaded period. Print opens a plain page with a table (for timings, the summary first) and prints it.
 
-The toolbar is the select and icon buttons in one line: Copy all, Print, Refresh and **Reset** (red; labelled in Timings). Times are shown as `04.10 10:18` (`shortWhen`). The lists page by 10. Copying goes through the page's `copyTextToClipboard` (`copyText`, with its toast).
+The toolbar is the select and icon buttons in one line: Copy all, Print, Refresh and **Reset** (a red bin at the right end). Times are shown as `04.10 10:18` (`shortWhen`). The lists page by 10. Copying goes through the page's `copyTextToClipboard` (`copyText`, with its toast).
 
 **Reset** (in both sections), **behind the Alert Dialog**: Delete → `resetLogs()` on the page deletes every error and every measurement — all firms, all periods ([backend.md](backend.md)) — drops the cached periods (`adminCache_errors…`, `adminCache_timings…`) and reloads the section; a toast gives the counts.
 
@@ -141,7 +141,7 @@ The count and the period on the section's line, then a red plate per error: the 
 
 The figures and the text forms are `src/manager/adminlogs.ts`:
 - **figures** on top: measurements, kinds, runs above their kind's 90%, aborted runs;
-- **by kind** (`timingsSummary`) — a plate per kind over the period, without aborted runs: the name with the count, the median of each step under it (the steps per kind; a slow AI call `gs:ai…` has: time at Anthropic, retry pauses), the median and 90th percentile of the total at the right. Every slow data call adds a kind (`gs:<action>`), so these page by 10 as well (in columns on a computer);
+- **by kind** (`timingsSummary`) — one plate over the period, without aborted runs, a line per kind: the name with the count, the median and 90th percentile of the total, and a bar on one scale for all (its length the median, a mark on it the 90%); a tap on a line shows the median of each step (the steps per kind; a slow AI call has: time at Anthropic, retry pauses). Every slow data call adds a kind (`gs:<action>`), so these page by 10 as well (in columns on a computer);
 - **all measurements**, newest first, paged by 10: a plate each — the kind, the steps under it (a slow AI call also `aiNote`: the `part`, tries, output / input / cache tokens and a stop reason other than `end_turn`), then time, firm (`firmNames` from the firms cache), user, device, pages and page kinds; the total at the right (amber, and an amber bar, when above its kind's 90%) and a copy button (`timingText`).
 
 "Copy all" copies the summary (`summaryText`) and every measurement of the period as text. Kinds and how they are measured: [app-core.md](app-core.md) → Telemetry.

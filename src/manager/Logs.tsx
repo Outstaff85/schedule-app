@@ -9,7 +9,7 @@
 import * as React from 'react';
 import { IconCopy, IconPrinter, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
-import { esc } from '@/lib/utils';
+import { cn, esc } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty, EmptyTitle } from '@/components/ui/empty';
@@ -74,6 +74,30 @@ function Errors({ rows, label, locale, api }: { rows: ErrorRow[]; label: string;
   );
 }
 
+/** The kinds in one plate, a line each (owner, 2026-10-31, variant 3): the bar is the median, the mark on it the 90%, on
+ *  one scale for all of them, so what is slow is seen at once; a tap on a line shows its steps. */
+function TimingKinds({ sum }: { sum: ReturnType<typeof timingsSummary> }) {
+  const [open, setOpen] = React.useState<string | null>(null);
+  const top = Math.max(...sum.map(x => x.p90 ?? 0), 1);
+  return (
+    <div data-testid="timing-kinds-plate" className="overflow-hidden rounded-[14px] border border-white/10" style={{ background: 'var(--plate-grad)', boxShadow: 'var(--shadow-plate)' }}>
+      <PagedList items={sum} render={(x, i) => (
+        <button key={x.kind} type="button" data-testid="timing-kind" aria-expanded={x.steps.length ? open === x.kind : undefined}
+          className={cn('grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2.5 gap-y-1 px-3 py-2 text-left', i > 0 && 'border-t border-white/10')}
+          onClick={() => setOpen(o => (o === x.kind ? null : x.kind))}>
+          <span className="min-w-0 break-words text-sm font-semibold">{x.label} <span className="font-normal text-ink-2">{x.count}×</span></span>
+          <span className="whitespace-nowrap font-mono text-xs text-ink-2"><b className="text-sm font-medium text-ink">{sec(x.median)}</b> · 90% {sec(x.p90)}</span>
+          <span aria-hidden data-testid="timing-bar" className="relative col-span-2 h-[5px] rounded-full bg-white/10">
+            <span className="absolute inset-y-0 left-0 rounded-full bg-info" style={{ width: ((x.median ?? 0) / top * 100) + '%' }} />
+            <span className="absolute -inset-y-0.5 w-0.5 bg-ink-2" style={{ left: ((x.p90 ?? 0) / top * 100) + '%' }} />
+          </span>
+          {open === x.kind && x.steps.length > 0 && <span className="col-span-2 text-xs text-ink-2">{stepsText(x.steps)}</span>}
+        </button>
+      )} />
+    </div>
+  );
+}
+
 function Timings({ rows, label, firm, locale, api }: { rows: TimingRow[]; label: string; firm: (id?: string) => string; locale: string; api: ManagerBridge }) {
   const sum = React.useMemo(() => timingsSummary(rows), [rows]);
   if (!rows.length) return <Empty data-testid="timings-empty"><EmptyTitle>{tr('No measurements')} — {label}.</EmptyTitle></Empty>;
@@ -90,12 +114,7 @@ function Timings({ rows, label, firm, locale, api }: { rows: TimingRow[]; label:
       ]} />
       {sum.length > 0 && (
         <Section label={tr('By kind · median / 90%')} count={sum.length} data-testid="timing-kinds">
-          <PagedList items={sum} columns render={x => (
-            <Plate key={x.kind} data-testid="timing-kind" className="mb-1.5" color="var(--accent)"
-              title={<span>{x.label} <span className="font-normal text-ink-3">{x.count}×</span></span>}
-              sub={x.steps.length ? <span className="whitespace-normal">{stepsText(x.steps)}</span> : undefined}
-              right={<span className="text-right text-xs text-ink-2"><b className="block text-sm text-ink">{sec(x.median)}</b>90% {sec(x.p90)}</span>} />
-          )} />
+          <TimingKinds sum={sum} />
         </Section>
       )}
       <Section label={tr('All measurements, newest first')} count={rows.length} data-testid="timing-rows">
