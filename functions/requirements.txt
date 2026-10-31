@@ -1,7 +1,3 @@
-firebase-functions
-firebase-admin
-pymupdf
-python-bidi
-Pillow
-huggingface_hub>=1.0  # the private training-data bucket (datastore.py), once the server has its token
-numpy  # the firm stamp's cleaning (seal.py)
+# The full resolved set with its hashes (made from requirements.in; docs/backend.md → The lock file). The deploy's
+# build reads this file: pip on the Cloud Functions image, and the deploy workflow's venv.
+-r requirements.lock

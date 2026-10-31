@@ -23,8 +23,9 @@ STAFF_RO = {"uid": "u4", "role": "staff", "tenantId": "t1", "rt": ["workers"]}
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 
 
-def build101(p):
+def build101(p, strict=False, report=None):
     """A stand-in for Form 101's build: a page with the date, the name and whether it is signed."""
+    assert strict == bool(p.get("signaturePngBase64"))  # a signed document is built strictly, an unsigned one not
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((50, 80), "F101 " + str(p.get("given")) + " " + str(p.get("signDate")) + (" SIGNED" if p.get("signaturePngBase64") else "")

@@ -189,8 +189,8 @@ def _pdf(db, bucket, req, worker, which, build101, signature=None):
     p = dict(form101_payload(worker, profile, date, start), extraPages=signing._stored_pages(bucket, worker))
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
-    data, name = build101(p)
-    return data, name
+        return build101(p, strict=True)
+    return build101(p)
 
 
 def _download_url(bucket, blob, path):

@@ -34,7 +34,7 @@ F101 = {"given": "Avi", "surname": "Cohen", "employer": {"companyName": "Firm On
 P = "tenants/t1/workers/w1/"
 
 
-def build101(p):
+def build101(p, strict=False, report=None):
     """A stand-in for Form 101's build: two pages; the first says what it was given."""
     doc = pymupdf.open()
     doc.new_page().insert_text((50, 80), "F101 " + str(p.get("given")) + " date=" + str(p.get("signDate"))

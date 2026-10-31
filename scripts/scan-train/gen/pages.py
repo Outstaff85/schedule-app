@@ -209,7 +209,7 @@ def pdf(rng, path, kind):
 def pdf_sources(work):
     """[(path, kind)]: the Form 101 template (functions/assets) and the firm's contract PDFs (<home>/contracts/)."""
     out = []
-    form = gc.HERE.parents[1] / "functions" / "assets" / "form101_fillable.pdf"
+    form = gc.HERE.parents[1] / "functions" / "assets" / "form101" / "v1.pdf"
     if form.exists():
         out.append((str(form), "form101"))
     folder = pathlib.Path(work) / "contracts"

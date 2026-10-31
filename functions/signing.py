@@ -129,22 +129,25 @@ def _clean_values(values):
 def _clean_form101(p):
     if not isinstance(p, dict):
         return {}
-    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate")}
+    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear")}
     import json
     return out if len(json.dumps(out, default=str)) < 30000 else {}
 
 
 def _stored_pages(bucket, worker):
     """The worker's scanned pages for Form 101 (docs/contracts.md → Scanned pages): the ID card or
-    passport first, then the others; the old sidecar for a worker not split yet."""
+    passport first, then the others, each with its kind; the old sidecar for a worker not split yet (no kinds)."""
     pages = worker.get("scanPages") if isinstance(worker.get("scanPages"), list) else []
     out = []
     first = [p for p in pages if p.get("primary")] + [p for p in pages if not p.get("primary")]
     for i, p in enumerate(first):
         b = bucket.blob(str(p.get("fileId") or ""))
         if p.get("fileId") and b.exists():
-            out.append({"b64": base64.b64encode(b.download_as_bytes()).decode(), "mediaType": "image/jpeg",
-                        "caption": "Document scan" if i == 0 else "Document"})
+            page = {"b64": base64.b64encode(b.download_as_bytes()).decode(), "mediaType": "image/jpeg",
+                    "caption": "Document scan" if i == 0 else "Document"}
+            if p.get("kind"):  # the builder lays the pages out by their kind (the A4 ID sheet)
+                page["kind"] = p["kind"]
+            out.append(page)
     if not out and worker.get("assetsFileId"):
         import json
         b = bucket.blob(worker["assetsFileId"])
@@ -180,7 +183,8 @@ def _current(db, tenant, wid):
 
 
 def _pdf(req, which, worker, bucket, build101, signature=None, date=None):
-    """One of the two documents filled for this request → (bytes, file name)."""
+    """One of the two documents filled for this request → (bytes, file name). A document with the signature is built
+    strictly: a signature or a page that cannot be placed stops it (a ValueError), never a signed form without it."""
     date = date or req.get("signDate") or today_il()
     if which == "contract":
         tpl = bucket.blob(req["templatePath"]).download_as_bytes()
@@ -191,8 +195,8 @@ def _pdf(req, which, worker, bucket, build101, signature=None, date=None):
     p = dict(req.get("form101") or {}, signDate=date, extraPages=_stored_pages(bucket, worker))
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
-    data, name = build101(p)
-    return data, name
+        return build101(p, strict=True)
+    return build101(p)
 
 
 def _sig_bytes(s):
