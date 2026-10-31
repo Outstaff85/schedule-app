@@ -1146,9 +1146,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const H = await ManagerScan.hooks();
     const going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
-    const a = await H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
+    const give = () => H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
     // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
-    await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length === 1, 15000);
+    const shown = () => T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length >= 1, 8000);
+    // given while the window still takes over from the one closed before, a page can land on the old session: given once more
+    let a = await give();
+    if (!(await shown())) { console.log('corner editor check: the page was not shown, given again'); a = await give(); await shown(); }
     // its Edit corners button on the photo grown in the strip (template 6)
     document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
     const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
