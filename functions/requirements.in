@@ -1,7 +1,7 @@
 # What the `functions/` codebase imports directly. Not read by any install: the installs use requirements.lock, the
-# full resolved set with hashes, made from this file for Python 3.12 on Linux (the Cloud Functions python312 image),
-# never from a PC's own environment (docs/backend.md → The lock file):
-#   uv pip compile functions/requirements.in --python-version 3.12 --python-platform linux --generate-hashes --output-file functions/requirements.lock
+# full resolved set with hashes, made from this file universal from Python 3.12 up (the Cloud Functions python312 image, a
+# Windows PC), never from a PC's own environment (docs/backend.md → The lock file):
+#   uv pip compile functions/requirements.in --universal --python-version 3.12 --generate-hashes --output-file functions/requirements.lock
 # A new version of pymupdf, python-bidi or Pillow changes the PDFs' bytes: it needs a new builder version (functions/builders/).
 firebase-functions
 firebase-admin

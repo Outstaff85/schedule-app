@@ -3,12 +3,12 @@
 // filled with the worker's data, to scroll through, the signing date shown fixed, one signature
 // (SignDocuments); after signing, the two signed documents to read and download.
 import * as React from 'react';
-import { IconBuildingSkyscraper, IconFileText, IconSignature } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBuildingSkyscraper, IconFileText, IconRefresh, IconSignature } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { SignDocuments } from '@/components/shared/sign-documents';
 import type { PdfDoc } from '@/components/shared/pdf-pages';
 import { set, usePunch } from './core';
-import { declineTransfer, openPdf, signDocs, signTransfer, viewBoth, viewTransfer, type Viewed } from './sign';
+import { buildSigned, buildTransfer, declineTransfer, openPdf, signDocs, signTransfer, viewBoth, viewTransfer, type Viewed } from './sign';
 import { Sheet } from './Sheets';
 
 /** The card above the tiles: documents wait for a signature, or were signed. */
@@ -23,8 +23,21 @@ export function DocumentsCard() {
       onClick={() => set({ screen: 'documents' })}>
       <span className="pp-tile-h">{sent ? <IconSignature className="ti" /> : <IconFileText className="ti" />} <span>{sent ? tr('Documents to sign') : tr('My documents')}</span></span>
       <span className="pp-tile-v">{sent ? tr('Form 101 and {0} — tap to read and sign', { 0: r.templateName || tr('the contract') })
-        : r.status === 'signing' ? tr('Signed — being saved…') : tr('Signed {0}', { 0: r.signDate || '' })}</span>
+        : r.status === 'signing' ? (r.buildError ? tr('Your documents could not be saved') : tr('Saving your documents…')) : tr('Signed {0}', { 0: r.signDate || '' })}</span>
     </button>
+  );
+}
+
+/** A signature kept whose documents are not saved: what happened, and Try again (a rescan by the office puts it right). */
+function NotSaved({ failed, retry }: { failed: boolean; retry: () => Promise<void> }) {
+  const [busy, setBusy] = React.useState(false);
+  if (!failed) return <p style={{ color: 'var(--text2)', fontSize: 14 }} data-testid="documents-saving">{tr('Saving your documents…')}</p>;
+  return (
+    <div className="grid gap-2" data-testid="documents-not-saved">
+      <p style={{ color: 'var(--red)', fontSize: 14 }}><IconAlertTriangle className="ti" /> {tr('Your signature is kept, but your documents could not be saved. The office can see this and will put it right.')}</p>
+      <button type="button" className="gbtn" disabled={busy} data-testid="documents-retry"
+        onClick={() => { setBusy(true); void retry().finally(() => setBusy(false)); }}><IconRefresh className="ti" /> {tr('Try again')}</button>
+    </div>
   );
 }
 
@@ -34,15 +47,15 @@ export function DocumentsSheet({ hidden }: { hidden: boolean }) {
   const [views, setViews] = React.useState<Viewed[] | null>(null);
   const [err, setErr] = React.useState('');
   React.useEffect(() => {
-    if (hidden || !r) return;
+    if (hidden || !r || r.status === 'signing') return; // nothing to show yet: no signed document exists
     let live = true;
     setViews(null); setErr('');
     viewBoth().then(v => { if (live) setViews(v); }, e => { if (live) setErr(String(e?.message || e)); });
     return () => { live = false; };
   }, [hidden, r?.id, r?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const docs: PdfDoc[] = [
-    { key: 'form101', title: tr('Form 101'), b64: views ? views[0].pdfBase64 : null, error: err || undefined },
-    { key: 'contract', title: r?.templateName || tr('Contract'), b64: views ? views[1].pdfBase64 : null, error: err || undefined },
+    { key: 'form101', title: tr('Form 101'), b64: views ? views[0].pdfBase64 : null, error: err ? tr(err) : undefined },
+    { key: 'contract', title: r?.templateName || tr('Contract'), b64: views ? views[1].pdfBase64 : null, error: err ? tr(err) : undefined },
   ];
   return (
     <Sheet id="screenDocuments" hidden={hidden} icon={<IconSignature className="ti" />} title={r?.status === 'sent' ? tr('Documents to sign') : tr('My documents')}>
@@ -50,9 +63,9 @@ export function DocumentsSheet({ hidden }: { hidden: boolean }) {
         {!r ? null : r.status === 'sent' ? (
           <SignDocuments docs={docs} signDate={views?.[0]?.signDate || r.signDate || '…'}
             onSign={async png => { await signDocs(png); setViews(null); }} />
-        ) : (
+        ) : r.status === 'signing' ? <NotSaved failed={!!r.buildError} retry={buildSigned} /> : (
           <div className="grid gap-2" data-testid="documents-signed">
-            <p style={{ color: 'var(--text2)', fontSize: 14 }}>{r.status === 'signing' ? tr('Signed — being saved…') : tr('Signed {0}', { 0: r.signDate || '' })}</p>
+            <p style={{ color: 'var(--text2)', fontSize: 14 }}>{tr('Signed {0}', { 0: r.signDate || '' })}</p>
             {views && views.map((v, i) => (
               <button key={i} type="button" className="gbtn pp-tile" data-testid="documents-open" style={{ ['--c' as string]: 'var(--green)' }}
                 onClick={() => openPdf(v.pdfBase64, v.name || 'document.pdf')}>
@@ -90,23 +103,24 @@ export function TransferSheet({ hidden }: { hidden: boolean }) {
   const [err, setErr] = React.useState('');
   const [done, setDone] = React.useState('');
   React.useEffect(() => {
-    if (hidden || !t) return;
+    if (hidden || !t || t.status === 'signing') return;
     let live = true;
     setViews(null); setErr('');
     viewTransfer().then(v => { if (live) setViews(v); }, e => { if (live) setErr(String(e?.message || e)); });
     return () => { live = false; };
-  }, [hidden, t?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hidden, t?.id, t?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const docs: PdfDoc[] = [
-    { key: 'form101', title: tr('Form 101'), b64: views ? views[0].pdfBase64 : null, error: err || undefined },
-    { key: 'contract', title: tr('Contract'), b64: views ? views[1].pdfBase64 : null, error: err || undefined },
+    { key: 'form101', title: tr('Form 101'), b64: views ? views[0].pdfBase64 : null, error: err ? tr(err) : undefined },
+    { key: 'contract', title: tr('Contract'), b64: views ? views[1].pdfBase64 : null, error: err ? tr(err) : undefined },
   ];
   return (
     <Sheet id="screenTransfer" hidden={hidden} icon={<IconBuildingSkyscraper className="ti" />} title={t ? tr('{0} asks to take your details', { 0: t.firm }) : tr('Done')}>
       <div data-testid="transfer" data-state={done ? 'done' : t ? t.status : ''} style={{ width: '100%', maxWidth: 640, textAlign: 'left' }}>
         {done ? <p style={{ color: 'var(--text2)', fontSize: 15 }} data-testid="transfer-done">{done}</p> : t && <>
           <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 12 }}>{tr('Your details are copied to {0} only if you sign. Nothing is copied if you decline.', { 0: t.firm })}</p>
-          <SignDocuments docs={docs} signDate={views?.[0]?.signDate || '…'}
-            onSign={async png => { const firm = t.firm; await signTransfer(png); setDone(tr('Signed — your details were sent to {0}.', { 0: firm })); }} />
+          {t.status === 'signing' ? <NotSaved failed={!!t.buildError} retry={buildTransfer} />
+            : <SignDocuments docs={docs} signDate={views?.[0]?.signDate || '…'}
+              onSign={async png => { const firm = t.firm; if (await signTransfer(png)) setDone(tr('Signed — your details were sent to {0}.', { 0: firm })); }} />}
           <button type="button" className="gbtn" data-testid="transfer-decline" style={{ marginTop: 12 }}
             onClick={() => { void declineTransfer().then(() => setDone(tr('Declined — nothing was copied.'))); }}>{tr('Decline')}</button>
         </>}

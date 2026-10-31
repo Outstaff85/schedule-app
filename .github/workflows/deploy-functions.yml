@@ -113,6 +113,18 @@ jobs:
             gh issue create --repo "$REPO" --title "Builder self-check failing" --body "$BODY"
           fi
 
+      - name: Close the self-check issue after a good self-check
+        if: steps.selfcheck.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          EXISTING=$(gh issue list --repo "$REPO" --search "Builder self-check failing in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --repo "$REPO" --comment "The deployed builder gives the golden bytes: $RUN_URL"
+          fi
+
       - name: Close the deploy-failure issue after a good deploy
         if: steps.deploy.outcome == 'success'
         env:

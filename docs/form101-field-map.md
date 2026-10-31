@@ -124,7 +124,7 @@ The section ט table of other employers has no fields and is left as printed.
 
 ## Pages after the form
 
-`p.extraPages` (`{b64, caption, kind?}`) are added as pages after page 2. A JPEG of at most 2000 px goes in with its own bytes; anything else is downscaled to 150 DPI (`_shrink_for_embed`). With a `kind` on any entry: one A4 sheet with the ID card (front, back) or the passport and the ספח, then a page for each other image ([form101.md](form101.md) → Building the PDF). With none: the first two share one page, one above the other (usually the document and its ספח), and every other image gets a page of its own.
+`p.extraPages` (`{b64, caption, kind?}`) are added as pages after page 2. Each image is downscaled to 150 DPI (`_shrink_for_embed`), decoded whole. With a `kind` on any entry: one A4 sheet with the ID card (front, back) or the passport and the ספח, then a page for each other image ([form101.md](form101.md) → Building the PDF). With none: the first two share one page, one above the other (usually the document and its ספח), and every other image gets a page of its own.
 
 ## File name
 

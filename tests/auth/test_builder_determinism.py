@@ -1,6 +1,7 @@
 """The frozen builders (functions/builders/, docs/documents-plan.md → S1, docs/backend.md → The golden hashes): the same
-inputs give the same bytes, in two processes and against builder_golden.json; strict mode; the ID sheet by kind; a stored
-JPEG goes in with its own bytes; the manifest is canonical; the locked versions are the builder's."""
+inputs give the same bytes, in two processes and against builder_golden.json; strict mode (a truncated picture, a date the
+tax year cannot come from); the ID sheet by kind; every picture re-encoded; the manifest is canonical; the locked versions
+are the builder's; the self-check runs once at a time and keeps a failure."""
 
 import base64
 import hashlib
@@ -12,6 +13,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import threading
 
 import pymupdf
 import pytest
@@ -188,7 +190,7 @@ def test_without_a_kind_the_old_rule_by_position_stays():
     assert d.page_count == 4 and "Document scan" in d[2].get_text() and "Document" in d[3].get_text()
 
 
-# ---- photos as they are ----
+# ---- photos: decoded whole and re-encoded ----
 
 def _big_jpeg(w, h):
     from PIL import Image
@@ -197,19 +199,43 @@ def _big_jpeg(w, h):
     return out.getvalue()
 
 
-@pytest.mark.parametrize("extra", [[{"b64": selftest.ID_JPEG, "caption": "Document scan"}], _kinds(("id_front", ID_JPEG), ("sefach", TALL))])
-def test_a_stored_jpeg_goes_in_with_its_own_bytes(extra):
-    data, _ = form101_b1.build_form101_pdf(dict(selftest.FORM, extraPages=extra))
-    assert ID_JPEG in _jpegs(data)
-
-
-def test_a_jpeg_over_the_stored_size_and_a_png_are_shrunk():
-    big = _big_jpeg(2100, 1400)
-    assert sheets_b1.plain_jpeg_size(big) is None
-    assert sheets_b1.plain_jpeg_size(_big_jpeg(2000, 1400)) == (2000, 1400)
-    data, _ = form101_b1.build_form101_pdf(dict(selftest.FORM, extraPages=[{"b64": base64.b64encode(big).decode(), "caption": "Document"}]))
+@pytest.mark.parametrize("pages", [lambda b: [{"b64": b, "caption": "Document"}], lambda b: [{"b64": b, "kind": "id_front"}]], ids=["by-position", "by-kind"])
+def test_a_large_stored_jpeg_is_re_encoded_so_the_form_stays_small(pages):
+    big = _big_jpeg(1600, 1000)
+    data, _ = form101_b1.build_form101_pdf(dict(selftest.FORM, extraPages=pages(base64.b64encode(big).decode())))
     assert big not in _jpegs(data) and len(data) < len(big)
-    assert sheets_b1.plain_jpeg_size(base64.b64decode(selftest.PAGE_PNG)) is None
+
+
+@pytest.mark.parametrize("pages", [lambda b: [{"b64": b, "caption": "Document"}], lambda b: [{"b64": b, "kind": "id_front"}]], ids=["by-position", "by-kind"])
+def test_a_truncated_jpeg_is_refused_by_strict_mode(pages):
+    # the header is whole, so only decoding the whole picture finds it
+    cut = _big_jpeg(600, 400)
+    cut = cut[:len(cut) * 6 // 10]
+    assert sheets_b1.picture_size(cut) == (600, 400)
+    with pytest.raises(form101_b1.NotPlaced):
+        form101_b1.build_form101_pdf(dict(selftest.FORM, extraPages=pages(base64.b64encode(cut).decode())), strict=True)
+
+
+def test_a_truncated_signature_is_refused_by_strict_mode():
+    with pytest.raises(form101_b1.NotPlaced):
+        form101_b1.build_form101_pdf(dict(selftest.FORM, signaturePngBase64=base64.b64encode(PNG[:len(PNG) // 2]).decode()), strict=True)
+
+
+def test_a_truncated_page_on_its_own_sheet_is_counted_by_a_lenient_build():
+    cut = _big_jpeg(600, 400)
+    report = {}
+    form101_b1.build_form101_pdf(dict(selftest.FORM, extraPages=[{"b64": base64.b64encode(cut[:len(cut) // 2]).decode(), "kind": "id_front"}]), report=report)
+    assert report["dropped"] == 1
+
+
+# ---- the tax year ----
+
+@pytest.mark.parametrize("sign_date", ["", "soon", None])
+def test_strict_mode_never_takes_the_tax_year_from_the_clock(sign_date):
+    with pytest.raises(form101_b1.NoTaxYear):
+        form101_b1.build_form101_pdf(dict(selftest.FORM, signDate=sign_date), strict=True)
+    assert form101_b1.build_form101_pdf(dict(selftest.FORM, signDate=sign_date, taxYear="2026"), strict=True)[0]
+    assert form101_b1.build_form101_pdf(dict(selftest.FORM, signDate=sign_date))[0]  # a preview has no signing date
 
 
 # ---- the manifest ----
@@ -252,8 +278,9 @@ def test_every_direct_requirement_is_locked_with_a_hash():
         name = re.match(r"^[A-Za-z0-9._-]+", line)
         if name:
             assert re.sub(r"[-_.]+", "-", name.group()).lower() in pins, line
-    assert lock.count("==") == len(pins) and len(re.findall(r"^[a-z0-9].*==.*\\$", lock, re.M | re.I)) == len(pins)  # each pin carries --hash lines
+    assert len(re.findall(r"^[a-z0-9].*==.*\\$", lock, re.M | re.I)) == len(pins)  # each pin carries --hash lines
     assert "--hash=sha256:" in lock
+    assert re.search(r"^colorama==.*sys_platform == 'win32'", lock, re.M)  # universal: it installs on the owner's PC too
     assert (FN / "requirements.txt").read_text(encoding="utf-8").splitlines()[-1] == "-r requirements.lock"
 
 
@@ -307,6 +334,30 @@ def test_fill_form_101_keeps_its_answer_and_prints_this_year(functions_main, mon
     assert set(out) == {"pdfBase64", "fileName"} and r.headers["X-Dropped"] == "1"
     doc = _doc(base64.b64decode(out["pdfBase64"]))
     assert functions_main._this_year() in doc[0].get_text().replace(" ", "").replace("\n", "")
+
+
+def test_the_self_check_is_built_once_at_a_time_and_a_failure_is_kept(functions_main, monkeypatch):
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("the secret path /x")
+
+    monkeypatch.setattr(functions_main, "_selftest_answer", None)
+    monkeypatch.setattr(selftest, "answer", boom)
+    got = []
+    threads = [threading.Thread(target=lambda: got.append(functions_main._selftest())) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(calls) == 1 and got == [{"ok": False, "error": "RuntimeError"}] * 8  # no message: the caller has no login
+    assert builder_selfcheck.differences(got[0], {"builders": {}})
+
+
+def test_the_dropped_count_is_readable_by_the_app(functions_main, monkeypatch):
+    r = _call(functions_main, dict(selftest.FORM), monkeypatch)
+    assert r.headers["Access-Control-Expose-Headers"] == "X-Dropped"
 
 
 def test_a_ping_alone_stays_a_ping(functions_main, monkeypatch):

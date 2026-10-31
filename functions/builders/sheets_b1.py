@@ -9,8 +9,8 @@ The placement follows the pictures' shapes (Q7): every way of cutting the sheet'
 in their order, is tried, and the one whose smallest picture comes out largest is kept. An ID card worker with no ספח
 gets its box left empty, with a Hebrew caption saying it is missing.
 
-A stored page that is a JPEG of at most PASS_PX on its long side goes in with its own bytes (no Pillow in its chain);
-anything else is shrunk for its box (`shrink_for_embed`, also used by form101_b1 for the signature)."""
+Every picture is decoded whole and shrunk for its box (`shrink_for_embed`, also used by form101_b1): the PDF stays
+small, Pillow (pinned) makes it deterministic, and a damaged picture is found here, never placed."""
 
 import hashlib
 import io
@@ -34,25 +34,15 @@ CAP_H = 18
 GAP = 14
 EMPTY_ASPECT = 1.58  # the box of a missing ספח: an ID card's shape
 
-PASS_PX = 2000            # a stored page is a JPEG of at most this on its long side: it goes in as it is
-EMBED_DPI = 150           # anything else is shrunk to this for its box…
+EMBED_DPI = 150           # a picture is shrunk to this for its box…
 EMBED_JPEG_QUALITY = 82   # …and saved at this quality
-
-
-def plain_jpeg_size(data):
-    """(width, height) of a picture that goes in with its own bytes: a JPEG of at most PASS_PX on its long side. Else None."""
-    try:
-        with Image.open(io.BytesIO(data)) as im:
-            return im.size if im.format == "JPEG" and max(im.size) <= PASS_PX else None
-    except Exception:
-        return None
 
 
 def shrink_for_embed(img_bytes, target_w_pt, target_h_pt, dpi=EMBED_DPI, jpeg_quality=EMBED_JPEG_QUALITY):
     """Downscales and recompresses an image to what looks sharp at `dpi` inside a `target_w_pt` × `target_h_pt` PDF box.
     Keeps transparency (a PNG) when the source has an alpha channel (the hand-drawn signature); else a JPEG. Never
-    upscales. → (bytes, width_px, height_px), or (img_bytes, None, None) unchanged on a decode failure: the caller
-    then tries the original bytes."""
+    upscales. The whole picture is decoded, so a truncated or damaged one fails here. → (bytes, width_px, height_px), or
+    (img_bytes, None, None) unchanged on a decode failure."""
     try:
         im = Image.open(io.BytesIO(img_bytes))
         has_alpha = im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info)
@@ -206,9 +196,11 @@ class Writer:
 
 
 def _picture(page, rect, data):
-    """A picture in rect: a stored JPEG with its own bytes, anything else shrunk for the box. False when it cannot be placed."""
+    """A picture in rect, shrunk for the box. False when it cannot be decoded whole or placed."""
     try:
-        embed = data if plain_jpeg_size(data) else shrink_for_embed(data, rect.width, rect.height)[0]
+        embed, width, _height = shrink_for_embed(data, rect.width, rect.height)
+        if width is None:
+            return False
         page.insert_image(rect, stream=embed, keep_proportion=True)
         return True
     except Exception:

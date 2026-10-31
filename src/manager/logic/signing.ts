@@ -14,9 +14,19 @@ import { SIGN_FN_URL } from './functions';
 export type SignRequest = {
   id: string; workerId: string; status: 'sent' | 'signing' | 'signed' | 'replaced' | 'withdrawn'; way?: string;
   templateId?: string; templateName?: string; templateVersion?: number; signDate?: string | null; dateFixed?: boolean;
-  sentAt?: string; signedAt?: string; sigPath?: string; appliedAt?: string; printHash?: string; printPay?: boolean; printMarks?: string[];
+  sentAt?: string; signedAt?: string; signedAtIso?: string; sigPath?: string; appliedAt?: string; printHash?: string; printPay?: boolean; printMarks?: string[];
+  /** why a document could not be built after the signature (the server's text) */
+  buildError?: string | null;
   parts?: Record<'form101' | 'contract', { path: string; name: string; size: number }>;
 };
+
+/** How long a signature may wait for its documents with no error: signing.STUCK_AFTER_S in functions/signing.py. */
+const STUCK_AFTER_MS = 10 * 60e3;
+/** A signature nobody is finishing: its build failed, or it has been waiting for longer than any build takes. */
+export function isStuck(r: Pick<SignRequest, 'status' | 'buildError' | 'signedAtIso'> | null | undefined): boolean {
+  if (!r || r.status !== 'signing') return false;
+  return !!r.buildError || !r.signedAtIso || Date.now() - Date.parse(r.signedAtIso) > STUCK_AFTER_MS;
+}
 
 /** A worker who signed (a request taken on, or an older signing / a move from another firm). */
 export function isSignedWorker(w: Rec | null | undefined): boolean {

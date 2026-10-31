@@ -207,3 +207,83 @@ def test_the_new_firms_seal_is_frozen_when_it_asks():
     db.data[tkey]["sealEveryPage"] = False
     v = w(db, bucket, {"action": "view", "which": "contract"})
     assert [i[2] for i in pymupdf.open(stream=base64.b64decode(v["pdfBase64"]))[0].get_images()] == []
+
+
+# ---- what cannot become a document never takes a signature, and a signing has a way out ----
+
+def _broken(p, strict=False):
+    raise ValueError("The signature or a page could not be placed on Form 101")
+
+
+def _asked():
+    db, bucket = _setup()
+    signing.run(db, bucket, ADMIN2, {"action": "transferAsk", "docNumber": "123456782"}, build101)
+    return db, bucket
+
+
+def _call(db, bucket, build=build101, **body):
+    return signing.run_worker(db, bucket, dict(body, token="tok-avi", transfer=True), build, finder=finder(db))
+
+
+SIG = base64.b64encode(PNG).decode()
+
+
+def _req(db):
+    return next(v for k, v in db.data.items() if k[0] == "transferRequests")
+
+
+def test_view_and_sign_refuse_a_damaged_page_and_keep_nothing():
+    db, bucket = _asked()
+    assert _call(db, bucket, _broken, action="view", which="form101") == {"error": signing.E_PAGE_DAMAGED}
+    before = set(bucket.store)
+    assert _call(db, bucket, _broken, action="sign", signaturePng=SIG) == {"error": signing.E_PAGE_DAMAGED}
+    assert set(bucket.store) == before and _req(db)["status"] == "asked"
+
+
+def test_a_failed_build_is_told_and_a_retry_finishes_the_move():
+    db, bucket = _asked()
+    assert _call(db, bucket, action="sign", signaturePng=SIG)["ok"]
+    assert _call(db, bucket, _broken, action="build", which="form101") == {"error": signing.E_PAGE_DAMAGED}
+    assert _call(db, bucket, action="mine")["transfer"]["buildError"] == signing.E_PAGE_DAMAGED
+    for which in signing.WHICH:
+        assert _call(db, bucket, action="build", which=which)["part"]
+    assert _req(db)["status"] == "done" and _call(db, bucket, action="mine")["transfer"] is None
+
+
+def test_decline_after_the_signature_leaves_nothing_under_the_worker_never_created():
+    db, bucket = _asked()
+    _call(db, bucket, action="sign", signaturePng=SIG)
+    part = _call(db, bucket, action="build", which="contract")["part"]
+    sig = _req(db)["sigPath"]
+    assert sig in bucket.store and part["path"] in bucket.store
+    assert _call(db, bucket, action="decline") == {"ok": True}
+    r = _req(db)
+    assert r["status"] == "declined" and not r["sigPath"] and sig not in bucket.store and part["path"] not in bucket.store
+
+
+def test_decline_cannot_undo_a_move_being_copied():
+    db, bucket = _asked()
+    _call(db, bucket, action="sign", signaturePng=SIG)
+    rid = next(k[1] for k in db.data if k[0] == "transferRequests")
+    db.collection("transferLog").document(rid).create({"at": "now"})
+    assert _call(db, bucket, action="decline") == {"error": signing.E_SIGNED}
+
+
+def test_a_signing_nobody_finishes_expires_after_its_days_with_its_signature():
+    db, bucket = _asked()
+    _call(db, bucket, action="sign", signaturePng=SIG)
+    sig = _req(db)["sigPath"]
+    assert _call(db, bucket, action="mine")["transfer"]["status"] == "signing"
+    _req(db)["signedAtIso"] = "2020-01-01T00:00:00.000Z"
+    assert _call(db, bucket, action="mine")["transfer"] is None
+    assert _req(db)["status"] == "expired" and sig not in bucket.store
+
+
+def test_a_signing_kept_before_its_date_was_written_expires_by_the_request_s_date():
+    db, bucket = _asked()
+    _call(db, bucket, action="sign", signaturePng=SIG)
+    r = _req(db)
+    r.pop("signedAtIso")
+    assert _call(db, bucket, action="mine")["transfer"]  # within the 14 days
+    r["expiresAt"] = "2020-01-01T00:00:00.000Z"
+    assert _call(db, bucket, action="mine")["transfer"] is None and _req(db)["status"] == "expired"

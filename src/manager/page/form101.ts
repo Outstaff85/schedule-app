@@ -127,6 +127,12 @@ async function aiFillForm101(isId?: any,workerId?: any,presetAssets?: any){
     const fnResp=keepSigned?new Response(JSON.stringify({pdfBase64:'',fileName:'signed.pdf'})):await fetch(FORM101_FN_URL,{method:'POST',headers:idToken?{'Content-Type':'application/json',Authorization:'Bearer '+idToken}:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const fnJson=await fnResp.json();
     if(!fnResp.ok||fnJson.error) throw new Error(fnJson.error||'Could not build the PDF');
+    // A page the build could not place is left out of this stored form: said at once, the scan is what puts it right.
+    const dropped=Number(fnResp.headers.get('X-Dropped'))||0;
+    if(dropped>0){
+      showToast(tr('{0} scanned pages could not be placed in Form 101: scan them again',{0:dropped}),6000);
+      reportError('form101: '+dropped+' pages dropped','aiFillForm101','');
+    }
     // Admin → Timings, kind "form101": what each generated form carried —
     // flags and counts only, no personal data.
     try{ reportTiming('form101',Date.now()-f101t0,{regen:isRegen,docType:isId?'israeli_id':'passport',

@@ -9,7 +9,7 @@ PyMuPDF's own appearance-stream generator does not shape / reorder RTL text, so 
 bidi.algorithm.get_display() and drawn by hand — see _draw_rtl_text().
 
 The same inputs give the same bytes: the save is fixed (`no_new_id`, the trailer /ID from the input manifest's hash, or
-a hash of the payload), the tax year comes from the inputs, and a stored JPEG page goes in with its own bytes."""
+a hash of the payload), the tax year comes from the inputs, and every picture goes through Pillow (pinned), decoded whole."""
 import base64
 import hashlib
 import json
@@ -28,10 +28,15 @@ FONT_PATH = ASSETS_DIR / "heebo-hebrew.ttf"
 FONT_NAME = "Heebo"
 
 E_NOT_PLACED = "The signature or a page could not be placed on Form 101"
+E_NO_YEAR = "Form 101 has no signing date to take its tax year from"
 
 
 class NotPlaced(ValueError):
     """Strict mode: the signature or a page could not be placed (a signed document never goes out without it)."""
+
+
+class NoTaxYear(ValueError):
+    """Strict mode: neither `taxYear` nor a readable `signDate` (a signed document never takes its year from the clock)."""
 
 
 HEALTH_FUND_HE = {"Clalit": "כללית", "Maccabi": "מכבי", "Meuhedet": "מאוחדת", "Leumit": "לאומית"}
@@ -226,25 +231,25 @@ def _split_street(addr):
 _shrink_for_embed = sheets_b1.shrink_for_embed
 
 
-def _draw_extra_page_image(page, extra, box, margin=40, cap_h=24, fontsize=13):
+def _draw_extra_page_image(page, extra, box, margin=40, cap_h=24, fontsize=13, strict=False):
     """Draws one extraPages entry (caption + bordered, fit-to-box image) inside
     `box` on `page`. Defaults match the original one-image-per-page sizing;
     the half-page stacked case (see build_form101_pdf's extraPages loop below)
-    passes smaller values since each box is half the page's height."""
+    passes smaller values since each box is half the page's height. strict: a picture
+    Pillow cannot decode whole raises instead of going in as MuPDF reads it."""
     img_bytes = base64.b64decode(extra["b64"])
     max_w, max_h = box.width - margin * 2, box.height - margin * 2 - cap_h
-    size = sheets_b1.plain_jpeg_size(img_bytes)
-    if size:  # a stored page: its own bytes, no Pillow in its chain
-        embed_bytes, iw, ih = img_bytes, size[0], size[1]
-    else:
-        embed_bytes, iw, ih = _shrink_for_embed(img_bytes, max_w, max_h)
+    embed_bytes, iw, ih = _shrink_for_embed(img_bytes, max_w, max_h)
     if iw is None:
+        if strict:
+            raise NotPlaced(E_NOT_PLACED)
         pix = pymupdf.Pixmap(img_bytes)
         embed_bytes, iw, ih = img_bytes, pix.width, pix.height
     fit = min(max_w / iw, max_h / ih, 1)
     w, h = iw * fit, ih * fit
     x = box.x0 + (box.width - w) / 2
     y = box.y0 + margin + cap_h
+    # An attached page, not one of the form's own two: the Hebrew-only rule does not reach it (owner, 2026-10-31)
     page.insert_text((box.x0 + margin, box.y0 + margin + 16), extra.get("caption", "Document scan"),
                       fontsize=fontsize, color=(0.3, 0.3, 0.3))
     page.draw_rect(pymupdf.Rect(x - 2, y - 2, x + w + 2, y + h + 2),
@@ -295,13 +300,17 @@ def _israeli_id(no):
     return ident.zfill(9) if re.fullmatch(r"\d{8}", ident) else ident
 
 
-def _tax_year(p):
-    """The tax year printed: `taxYear`, else the year of `signDate`, and only then this year."""
+def _tax_year(p, strict=False):
+    """The tax year printed: `taxYear`, else the year of `signDate`; then this year, but never in strict mode."""
     if p.get("taxYear"):
         return str(p["taxYear"])
     s = str(p.get("signDate") or "")
     m = re.fullmatch(r"\s*\d{1,2}\D\d{1,2}\D(\d{4})\s*", s) or re.fullmatch(r"\s*(\d{4})\D\d{1,2}\D\d{1,2}.*", s)
-    return m.group(1) if m else str(date.today().year)
+    if m:
+        return m.group(1)
+    if strict:
+        raise NoTaxYear(E_NO_YEAR)
+    return str(date.today().year)
 
 
 def _file_id(p, manifest_sha256):
@@ -324,8 +333,9 @@ def _add_pages_by_kind(b, extra_pages, passport_worker):
 
 def build_form101_pdf(p, flatten=True, strict=False, manifest_sha256=None, report=None):
     """→ (pdf bytes, file name). flatten=False keeps the form's fields (the tests read the values from them); every
-    caller gets a flat PDF. strict: raises NotPlaced when the signature or a page cannot be placed (signing and rebuilds);
-    otherwise what could not be placed is left out and counted in report["dropped"] (report: a dict, when given)."""
+    caller gets a flat PDF. strict: raises NotPlaced when the signature or a page cannot be placed, and NoTaxYear when
+    the tax year would come from the clock (signing and rebuilds); otherwise what could not be placed is left out and
+    counted in report["dropped"] (report: a dict, when given)."""
     dropped = 0
 
     def not_placed(e):
@@ -348,7 +358,7 @@ def build_form101_pdf(p, flatten=True, strict=False, manifest_sha256=None, repor
     b.set_comb("dob", _ddmmyyyy(dob), 8, 10)
     b.set_text("id_top2", no, 10)
 
-    tax_year = _tax_year(p)
+    tax_year = _tax_year(p, strict)
     b.set_comb("tax_year", tax_year, 4, 10)
 
     employer = p.get("employer") or {}
@@ -478,6 +488,8 @@ def build_form101_pdf(p, flatten=True, strict=False, manifest_sha256=None, repor
             rect = pdf_rect(page_h, *SIG_RECT)
             embed_bytes, sw, sh = _shrink_for_embed(sig_bytes, rect.width, rect.height)
             if sw is None:
+                if strict:
+                    raise NotPlaced(E_NOT_PLACED)
                 pix = pymupdf.Pixmap(sig_bytes)
                 embed_bytes, sw, sh = sig_bytes, pix.width, pix.height
             scale = min(rect.width / sw, rect.height / sh)
@@ -509,7 +521,7 @@ def build_form101_pdf(p, flatten=True, strict=False, manifest_sha256=None, repor
         for extra, box in ((extra_pages[0], pymupdf.Rect(0, 0, pw, half_h)),
                             (extra_pages[1], pymupdf.Rect(0, half_h, pw, ph))):
             try:
-                _draw_extra_page_image(combo_page, extra, box, margin=24, cap_h=20, fontsize=12)
+                _draw_extra_page_image(combo_page, extra, box, margin=24, cap_h=20, fontsize=12, strict=strict)
             except Exception as e:
                 not_placed(e)
         remaining_pages = extra_pages[2:]
@@ -519,7 +531,7 @@ def build_form101_pdf(p, flatten=True, strict=False, manifest_sha256=None, repor
     for extra in remaining_pages:
         try:
             new_page = b.doc.new_page(width=pw, height=ph)
-            _draw_extra_page_image(new_page, extra, pymupdf.Rect(0, 0, pw, ph))
+            _draw_extra_page_image(new_page, extra, pymupdf.Rect(0, 0, pw, ph), strict=strict)
         except Exception as e:
             not_placed(e)
 

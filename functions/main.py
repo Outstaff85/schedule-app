@@ -8,9 +8,9 @@ templates and the signing (contracts.py, signing.py) and the worker's documents 
 """
 import base64
 import datetime
-import functools
 import json
 import pathlib
+import threading
 
 import firebase_admin
 from firebase_admin import auth as fb_auth
@@ -56,11 +56,22 @@ def _ping_response(payload):
     return None
 
 
-@functools.lru_cache(maxsize=1)
+_selftest_lock = threading.Lock()
+_selftest_answer = None
+
+
 def _selftest():
-    """builders.selftest's answer, built once per instance: it is the same every time, and the call needs no login."""
-    from builders import selftest
-    return selftest.answer()
+    """builders.selftest's answer, built once per instance and only one at a time, a failure kept like an answer: the
+    call needs no login, so calls at once wait for the one build, and a failure is not built again by each caller."""
+    global _selftest_answer
+    with _selftest_lock:
+        if _selftest_answer is None:
+            try:
+                from builders import selftest
+                _selftest_answer = selftest.answer()
+            except Exception as e:
+                _selftest_answer = {"ok": False, "error": type(e).__name__}
+        return _selftest_answer
 
 
 def _this_year():
@@ -99,7 +110,7 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
             "pdfBase64": base64.b64encode(pdf_bytes).decode(),
             "fileName": file_name,
         })
-        return https_fn.Response(body, status=200, mimetype="application/json", headers={"X-Dropped": str(report.get("dropped", 0))})
+        return https_fn.Response(body, status=200, mimetype="application/json", headers={"X-Dropped": str(report.get("dropped", 0)), "Access-Control-Expose-Headers": "X-Dropped"})
     except Exception as e:
         return https_fn.Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 

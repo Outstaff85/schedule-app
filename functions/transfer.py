@@ -15,6 +15,11 @@ Moving to another firm, D6).
    they were, set Inactive with "Moved to another firm" (without the new firm's name). Each
    copy is logged in transferLog.
 
+Nothing reaches a signature that cannot become a document: `view` is a strict build and `sign` builds both once more with
+the signature (signing.not_ready). If a build still fails after it, the request stays `signing` with `buildErrors`, the
+worker's page retries `build`, and Decline or the 14 days (counted from the signature) end it: the signature and the parts,
+which sit under a worker that was never created, are deleted, since nothing was copied.
+
 transferRequests/<id> (top level — it joins two firms; no client rule opens it): fromTenant,
 fromWorker, toTenant, toName, status (asked → signing → done; declined, expired, replaced),
 askedAt, askedBy, expiresAt, seal {signature, stamp} (the new firm's signature and stamp frozen
@@ -157,8 +162,32 @@ def ask(db, claims, tenant, body, bucket=None):
     return {"ok": True, "message": E_SENT}
 
 
-def current(db, tenant, wid):
-    """The worker's open request from another firm: (id, dict) or (None, None); an old one is marked expired."""
+def _copied(db, rid):
+    """The copy has been claimed (`_claim`): the request is finishing, nothing may end it."""
+    return db.collection("transferLog").document(rid).get().exists
+
+
+def _discard(bucket, req):
+    """A signing that will never be copied: its signature and parts, under a worker that was never created, are deleted."""
+    for path in [req.get("sigPath")] + [p.get("path") for p in (req.get("parts") or {}).values()]:
+        if path:
+            try:
+                bucket.blob(path).delete()
+            except Exception:
+                pass
+
+
+def _signing_over(x, now):
+    """A `signing` older than EXPIRE_DAYS from its signature (one kept before that date was written: its request's own date)."""
+    since = x.get("signedAtIso")
+    if not since:
+        return str(x.get("expiresAt") or "") < now
+    return str(since) < _iso(_now() - datetime.timedelta(days=EXPIRE_DAYS))
+
+
+def current(db, tenant, wid, bucket=None):
+    """The worker's open request from another firm: (id, dict) or (None, None); an old one is marked expired, also a
+    signing nobody finished."""
     now = _iso(_now())
     best = (None, None)
     for d in db.collection("transferRequests").stream():
@@ -168,12 +197,17 @@ def current(db, tenant, wid):
         if x.get("status") == "asked" and str(x.get("expiresAt") or "") < now:
             db.collection("transferRequests").document(d.id).update({"status": "expired"})
             continue
+        if x.get("status") == "signing" and _signing_over(x, now) and not _copied(db, d.id):
+            if bucket is not None:
+                _discard(bucket, x)
+            db.collection("transferRequests").document(d.id).update({"status": "expired", "expiredWhy": "not built", "sigPath": None, "parts": {}})
+            continue
         if best[1] is None or str(x.get("askedAt")) > str(best[1].get("askedAt")):
             best = (d.id, x)
     return best
 
 
-def _pdf(db, bucket, req, worker, which, build101, signature=None):
+def _pdf(db, bucket, req, worker, which, build101, signature=None, strict=False):
     profile = db.collection("tenants").document(req["toTenant"]).get().to_dict() or {}
     date = req.get("signDate") or signing.today_il()
     start = req.get("start") or datetime.date.today().isoformat()
@@ -186,11 +220,11 @@ def _pdf(db, bucket, req, worker, which, build101, signature=None):
         seal = seal_mod.read_frozen(bucket, dict(frozen, everyPage=contracts.seal_every_page(tpl))) if isinstance(frozen, dict) else None
         data = contracts.fill(bucket.blob(tpl["fileId"]).download_as_bytes(), values, tpl.get("placed"), signature, seal=seal)
         return data, (tpl.get("name") or "Contract") + " - " + (worker.get("name") or "").strip() + ".pdf"
-    p = dict(form101_payload(worker, profile, date, start), extraPages=signing._stored_pages(bucket, worker))
+    strict = strict or bool(signature)
+    p = dict(form101_payload(worker, profile, date, start), extraPages=signing._stored_pages(bucket, worker, strict))
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
-        return build101(p, strict=True)
-    return build101(p)
+    return build101(p, strict=True) if strict else build101(p)
 
 
 def _download_url(bucket, blob, path):
@@ -208,20 +242,29 @@ def _download_url(bucket, blob, path):
 def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None):
     """The worker's own page: mine / view / sign / build / decline for a request of another firm."""
     action = str(body.get("action") or "")
-    rid, req = current(db, tenant, wid)
+    rid, req = current(db, tenant, wid, bucket)
     if action == "mine":
-        return {"ok": True, "transfer": {"id": rid, "firm": req.get("toName"), "status": req.get("status")} if rid else None}
+        return {"ok": True, "transfer": {"id": rid, "firm": req.get("toName"), "status": req.get("status"), "buildError": signing.build_error(req)} if rid else None}
     if not rid:
         return {"error": signing.E_NO_REQUEST}
     ref = db.collection("transferRequests").document(rid)
     which = str(body.get("which") or "")
     if action == "decline":
+        if req.get("status") == "signing":
+            if _copied(db, rid):
+                return {"error": signing.E_SIGNED}
+            _discard(bucket, req)
+            ref.update({"status": "declined", "answeredAt": _iso(_now()), "sigPath": None, "parts": {}})
+            return {"ok": True}
         ref.update({"status": "declined", "answeredAt": _iso(_now())})
         return {"ok": True}
     if action == "view":
         if which not in signing.WHICH:
             return {"error": "Which document?"}
-        data, name = _pdf(db, bucket, req, worker, which, build101)
+        try:
+            data, name = _pdf(db, bucket, req, worker, which, build101, strict=True)
+        except Exception as e:
+            return {"error": signing.problem(which, e)}
         if data is None:
             return {"error": "The new firm has no contract template yet"}
         return {"ok": True, "pdfBase64": base64.b64encode(data).decode(), "name": name, "signDate": req.get("signDate") or signing.today_il(), "signed": False}
@@ -229,15 +272,21 @@ def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None
         if req.get("status") != "asked":
             return {"error": signing.E_SIGNED}
         sig = signing._sig_bytes(body.get("signaturePng"))
-        if not sig:
+        if not sig or not signing.picture_ok(sig):
             return {"error": signing.E_SIG}
         if _template(db, req["toTenant"])[1] is None:
             return {"error": "The new firm has no contract template yet"}
+        # The last gate: nothing is kept until both documents are built with this signature.
+        for w in signing.WHICH:
+            try:
+                _pdf(db, bucket, req, worker, w, build101, signature=sig)
+            except Exception as e:
+                return {"error": signing.problem(w, e)}
         new_id = "w" + uuid.uuid4().hex[:12]
         path = f"tenants/{req['toTenant']}/workers/{new_id}/signature/{int(time.time() * 1000)}-signature.png"
         bucket.blob(path).upload_from_string(sig, content_type="image/png")
         ref.update({"status": "signing", "newWorkerId": new_id, "sigPath": path, "signDate": signing.today_il(),
-                    "start": datetime.date.today().isoformat(),
+                    "start": datetime.date.today().isoformat(), "signedAtIso": _iso(_now()),
                     "signedAt": server_time if server_time is not None else _iso(_now())})
         return {"ok": True}
     if action == "build":
@@ -245,12 +294,18 @@ def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None
             return {"error": signing.E_NO_REQUEST}
         part = (req.get("parts") or {}).get(which)
         if not part:
-            data, name = _pdf(db, bucket, req, worker, which, build101, signature=bucket.blob(req["sigPath"]).download_as_bytes())
+            try:
+                data, name = _pdf(db, bucket, req, worker, which, build101, signature=bucket.blob(req["sigPath"]).download_as_bytes())
+            except Exception as e:
+                error = signing.problem(which, e)
+                ref.update({"buildErrors." + which: error})
+                contracts.log_error(db, req.get("fromTenant"), f"A signed document could not be built ({which}, transfer {rid}): {e}", "transfer.build")
+                return {"error": error}
             folder = "form101" if which == "form101" else "docs"
             path = f"tenants/{req['toTenant']}/workers/{req['newWorkerId']}/{folder}/{int(time.time() * 1000)}-{re.sub(r'[/#?]', '_', name)}"
             bucket.blob(path).upload_from_string(data, content_type="application/pdf")
             part = {"path": path, "name": name, "size": len(data)}
-            ref.update({"parts." + which: part})
+            ref.update({"parts." + which: part, "buildErrors." + which: None})
         cur = ref.get().to_dict() or {}
         # The two builds may finish at the same moment and both see both parts: only the one that creates
         # the log entry (transferLog/<request id> — create() fails when it is there) makes the copy.

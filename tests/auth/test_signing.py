@@ -25,7 +25,6 @@ PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4
 
 def build101(p, strict=False, report=None):
     """A stand-in for Form 101's build: a page with the date, the name and whether it is signed."""
-    assert strict == bool(p.get("signaturePngBase64"))  # a signed document is built strictly, an unsigned one not
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((50, 80), "F101 " + str(p.get("given")) + " " + str(p.get("signDate")) + (" SIGNED" if p.get("signaturePngBase64") else "")
@@ -260,27 +259,135 @@ def test_the_form_is_built_with_each_page_s_kind_and_the_signing_date_s_year():
     f = finder(db)
     assert signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "form101"}, build, finder=f)["ok"]
     p, strict = seen[-1]
-    assert not strict and "taxYear" not in p and [x.get("kind") for x in p["extraPages"]] == ["id_front"]
+    assert strict and "taxYear" not in p and [x.get("kind") for x in p["extraPages"]] == ["id_front"]  # what is shown can be signed
     signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": base64.b64encode(PNG).decode()}, build, finder=f)
     assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build, finder=f)["ok"]
     assert seen[-1][1] is True  # the signed form: strict
 
 
-def test_a_form_that_cannot_be_built_stops_the_signing_and_keeps_it_open():
+def _broken(p, strict=False):
+    raise ValueError("The signature or a page could not be placed on Form 101")
+
+
+SIG = base64.b64encode(PNG).decode()
+
+
+def _status(db):
+    return [r["status"] for r in signing.run(db, None, OWNER, {"action": "list"}, build101)["requests"]]
+
+
+def test_a_damaged_page_stops_the_send_and_nothing_reaches_the_worker():
+    db, bucket, t = _setup()
+    before = set(bucket.store)
+    r = signing.run(db, bucket, OWNER, {"action": "send", "workerId": "w1", "templateId": t["id"], "form101": {"given": "Avi"}}, _broken)
+    assert r == {"error": signing.E_PAGE_DAMAGED}
+    assert set(bucket.store) == before and _status(db) == []
+
+
+def test_a_listed_page_missing_from_storage_stops_the_send():
+    db, bucket, t = _setup()
+    del bucket.store["tenants/t1/workers/w1/pages/1-0-id_front.jpg"]
+    assert _send(db, bucket, OWNER, t) == {"error": signing.E_PAGE_DAMAGED}
+
+
+def test_a_broken_template_stops_the_send():
+    db, bucket, t = _setup()
+    file_id = db.data[("tenants", "t1", "contractTemplates", t["id"])]["fileId"]
+    bucket.store[file_id] = b"not a pdf"
+    assert _send(db, bucket, OWNER, t) == {"error": signing.E_CONTRACT_BROKEN}
+
+
+def test_the_send_sees_the_real_page_and_form_refusal_only():
+    # Storage not answering is no judgment on the documents: the error stays what it is
+    db, bucket, t = _setup()
+
+    def down(p, strict=False):
+        raise ConnectionError("no storage")
+
+    try:
+        _send_with(db, bucket, t, down)
+    except ConnectionError:
+        return
+    raise AssertionError("expected the failure to pass through")
+
+
+def _send_with(db, bucket, t, build):
+    return signing.run(db, bucket, OWNER, {"action": "send", "workerId": "w1", "templateId": t["id"], "form101": {"given": "Avi"}}, build)
+
+
+def test_view_and_sign_are_the_last_gates_and_nothing_is_kept():
     db, bucket, t = _setup()
     _send(db, bucket, OWNER, t)
     f = finder(db)
-    signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": base64.b64encode(PNG).decode()}, build101, finder=f)
+    assert signing.run_worker(db, bucket, {"action": "view", "token": "tok-avi", "which": "form101"}, _broken, finder=f) == {"error": signing.E_PAGE_DAMAGED}
+    before = set(bucket.store)
+    assert signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": SIG}, _broken, finder=f) == {"error": signing.E_PAGE_DAMAGED}
+    assert set(bucket.store) == before and _status(db) == ["sent"]
 
-    def broken(p, strict=False):
-        raise ValueError("The signature or a page could not be placed on Form 101")
 
-    try:
-        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, broken, finder=f)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("a broken page must not give a signed form")
-    assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]["status"] == "signing"
-    # the page put right, the same request goes on
-    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)["part"]
+def test_a_png_that_does_not_decode_is_no_signature():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    cut = base64.b64encode(PNG[:30]).decode()
+    assert signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": cut}, build101, finder=finder(db)) == {"error": signing.E_SIG}
+
+
+def _signing(db, bucket, t):
+    _send(db, bucket, OWNER, t)
+    f = finder(db)
+    assert signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": SIG}, build101, finder=f)["ok"]
+    return f
+
+
+def test_a_build_that_fails_after_the_signature_says_so_and_a_retry_finishes_it():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _broken, finder=f) == {"error": signing.E_PAGE_DAMAGED}
+    mine = signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]
+    assert mine["status"] == "signing" and mine["buildError"] == signing.E_PAGE_DAMAGED
+    row = signing.run(db, bucket, OWNER, {"action": "list"}, build101)["requests"][0]
+    assert row["buildError"] == signing.E_PAGE_DAMAGED and not row.get("parts")
+    assert any("could not be built" in d.get("message", "") for k, d in db.data.items() if k and k[0] == "errors")  # Admin → Errors
+    # the page put right: the same request goes on, the error gone
+    for which in signing.WHICH:
+        assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)["part"]
+    mine = signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]
+    assert mine["status"] == "signed" and not mine["buildError"]
+
+
+def test_one_document_s_success_does_not_hide_the_other_s_failure():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _broken, finder=f)
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)["part"]
+    assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"]["buildError"] == signing.E_PAGE_DAMAGED
+
+
+def test_a_stuck_signing_can_be_withdrawn_and_nothing_built_is_lost():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    rid = signing.run(db, bucket, OWNER, {"action": "list"}, build101)["requests"][0]["id"]
+    # still being built: not yet
+    assert signing.run(db, bucket, OWNER, {"action": "withdraw", "id": rid}, build101) == {"error": signing.E_STILL_SAVING}
+    contract = signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)["part"]
+    signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _broken, finder=f)
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    sig = r["sigPath"]
+    assert signing.run(db, bucket, STAFF_RO, {"action": "withdraw", "id": rid}, build101) == {"error": signing.E_NO_RIGHT}
+    assert signing.run(db, bucket, OWNER, {"action": "withdraw", "id": rid}, build101) == {"ok": True}
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert r["status"] == "withdrawn" and r["withdrawnWhy"] == "not built" and r["sigPath"] == sig and r["parts"]["contract"] == contract
+    assert sig in bucket.store and contract["path"] in bucket.store  # the signature and the part built stay
+    assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=f)["request"] is None
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f) == {"error": signing.E_NO_REQUEST}
+
+
+def test_a_signing_with_no_error_counts_as_stuck_only_after_its_time():
+    import datetime
+    now = datetime.datetime(2026, 10, 31, 12, tzinfo=datetime.timezone.utc)
+    at = lambda m: (now - datetime.timedelta(minutes=m)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    assert not signing.stuck({"status": "signing", "signedAtIso": at(5)}, now)
+    assert signing.stuck({"status": "signing", "signedAtIso": at(11)}, now)
+    assert signing.stuck({"status": "signing", "signedAtIso": at(1), "buildErrors": {"form101": "x"}}, now)
+    assert not signing.stuck({"status": "signing", "signedAtIso": at(1), "buildErrors": {"form101": None}}, now)
+    assert not signing.stuck({"status": "signed", "signedAtIso": at(60)}, now)

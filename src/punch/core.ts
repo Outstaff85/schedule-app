@@ -25,9 +25,9 @@ export interface PunchEntry {
 }
 export type Screen = 'none' | 'loading' | 'invalid' | 'punch' | 'schedule' | 'hours' | 'documents' | 'transfer';
 /** Another firm asks to take the worker's details (D6; sign.ts). */
-export interface TransferReq { id: string; firm: string; status: 'asked' | 'signing' }
+export interface TransferReq { id: string; firm: string; status: 'asked' | 'signing'; buildError?: string | null }
 /** The worker's documents to sign, or signed (documents.ts; docs/contracts.md → Signing). */
-export interface SignReq { id: string; status: 'sent' | 'signing' | 'signed'; templateName?: string; signDate?: string | null; dateFixed?: boolean; signedAt?: string }
+export interface SignReq { id: string; status: 'sent' | 'signing' | 'signed'; templateName?: string; signDate?: string | null; dateFixed?: boolean; signedAt?: string; buildError?: string | null }
 export type IconName = 'link' | 'link-off' | 'wifi-off' | 'alert-triangle';
 /** A day the worker can't work ('unavailable') or their shift offered to a colleague ('swap'), from the punch function's myRequests. */
 export interface ShiftReq { id: string; kind: 'unavailable' | 'swap'; date: string; start?: string; end?: string; toWorkerId?: string; toWorkerName?: string; note?: string; status: 'active' | 'pending' | 'confirmed' | 'declined' }

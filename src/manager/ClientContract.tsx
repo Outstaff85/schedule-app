@@ -36,7 +36,8 @@ const dateText = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateStrin
 /** The status line of the client's latest send. */
 export function clientContractStatus(r: ClientSignRequest | null): { text: string; state: string } {
   if (!r) return { text: '', state: 'none' };
-  if (r.status === 'signed' || r.status === 'signing') return { text: tr('Signed {0}', { 0: r.signDate || dateText(r.signedAtIso) }), state: 'signed' };
+  if (r.status === 'signing') return { text: tr('Being saved'), state: 'signing' };
+  if (r.status === 'signed') return { text: tr('Signed {0}', { 0: r.signDate || dateText(r.signedAtIso) }), state: 'signed' };
   if (r.status === 'sent') return { text: tr('Sent to sign {0}', { 0: dateText(r.sentAt) }), state: 'sent' };
   return { text: tr('Needs sending again'), state: 'withdrawn' };
 }

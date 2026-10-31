@@ -225,10 +225,10 @@ All answer `{"ping":true}` at once (warm-up, no sign-in needed) and parse the bo
 
 ### The lock file
 
-`functions/requirements.txt` is one line, `-r requirements.lock`, so the deploy workflow's venv and pip on the Cloud Functions image both install `functions/requirements.lock`: the full resolved set, every package pinned with its hashes. It is made from `functions/requirements.in` (the direct requirements) for Python 3.12 on Linux, never from a PC's own environment:
+`functions/requirements.txt` is one line, `-r requirements.lock`, so the deploy workflow's venv and pip on the Cloud Functions image both install `functions/requirements.lock`: the full resolved set, every package pinned with its hashes. It is made from `functions/requirements.in` (the direct requirements), universal from Python 3.12 up, never from a PC's own environment, so it installs on the Cloud Functions image and on a Windows PC alike (`colorama`, which `tqdm` needs on Windows, is pinned with its marker):
 
 ```
-uv pip compile functions/requirements.in --python-version 3.12 --python-platform linux --generate-hashes --output-file functions/requirements.lock
+uv pip compile functions/requirements.in --universal --python-version 3.12 --generate-hashes --output-file functions/requirements.lock
 ```
 
 A version of pymupdf, python-bidi or Pillow changes the PDFs' bytes: moving one is a new builder version ([form101.md](form101.md) → The builders; `tests/auth/test_builder_determinism.py` fails otherwise). PyMuPDF 2.0 needs `pymupdf-layout` and `pymupdf4llm`, which bring `onnxruntime` and `networkx`; production has run them since it moved to 2.0 on its own (2026-10-27), which is why the lock keeps 2.0. fontTools is not in the lock: `doc.subset_fonts()` uses MuPDF's own subsetter. Because of the hashes, pip takes the lock alone in a call: anything else in the same `pip install` is refused for having no hash, so the test venvs install it first and the rest in a second call. `functions-auth/` has no lock.
@@ -239,7 +239,7 @@ A version of pymupdf, python-bidi or Pillow changes the PDFs' bytes: moving one 
 
 - `tests/auth/test_builder_determinism.py` on CI (ubuntu, the lock installed);
 - the Tests workflow's `functions-image` job: `functions/` built by Google's buildpacks on the Cloud Functions image, as a deploy builds it, and run, so a lock that would not install there, or bytes that differ there, stop the PR;
-- the deploy workflow's **Production self-check**, after each deploy: `scripts/builder_selfcheck.py` calls the real `fill_form_101` with `{ping, selftest}`. It needs no secret. A mismatch cannot undo the deploy: it opens the issue "Builder self-check failing" and fails the run.
+- the deploy workflow's **Production self-check**, after each deploy: `scripts/builder_selfcheck.py` calls the real `fill_form_101` with `{ping, selftest}`. It needs no secret. A mismatch cannot undo the deploy: it opens the issue "Builder self-check failing" and fails the run; the next good self-check closes that issue. The call builds once per instance and one at a time, and a failure is kept like an answer, with no message, since it needs no login.
 
 ## Cloud Run — `services/docx2pdf` (europe-west3)
 

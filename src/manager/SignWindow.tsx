@@ -31,7 +31,7 @@ const ymdToDmy = (s: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
 export function buildSigned(id: string, api: { reloadSignRequests: () => Promise<void>; toast: (m: string, ms?: number) => void }): void {
   void Promise.all(['form101', 'contract'].map(which => signCall({ action: 'build', id, which })))
     .then(() => api.reloadSignRequests())
-    .catch(e => api.toast(tr('The signed documents could not be built: {0}', { 0: String(e?.message || e) }), 6000));
+    .catch(e => { api.toast(tr('The signed documents could not be built: {0}', { 0: tr(String(e?.message || e)) }), 6000); void api.reloadSignRequests(); });
 }
 
 export function SignWindow({ workerId, api, onClose }: { workerId: string; api: ManagerBridge; onClose: () => void }) {
@@ -80,8 +80,8 @@ export function SignWindow({ workerId, api, onClose }: { workerId: string; api: 
     if (!sent) return;
     try {
       const r = await signCall<{ signDate?: string }>({ action: 'sign', id: sent.id, signaturePng: png });
-      // signed now: the card shows Signed with this signing's date at once (its documents are built in the background)
-      rememberRequest({ ...sent, status: 'signing', signDate: r.signDate || signDate || sent.signDate || null });
+      // signed now: the card says the documents are being saved (they are built in the background), Signed once they are
+      rememberRequest({ ...sent, status: 'signing', signedAtIso: new Date().toISOString(), signDate: r.signDate || signDate || sent.signDate || null });
       api.toast(tr('Signed — the documents are being saved'));
       buildSigned(sent.id, api);
       onClose();

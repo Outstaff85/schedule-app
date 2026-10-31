@@ -1799,5 +1799,14 @@
   "This login may not see client billing — the contract has billing marks; send it from a login that sees billing": "משתמש זה לא רשאי לראות את חיוב הלקוחות — בחוזה יש סימוני חיוב; שלחו אותו ממשתמש שרואה את החיוב",
   "This template is for workers": "התבנית הזו מיועדת לעובדים",
   "This template is for clients": "התבנית הזו מיועדת ללקוחות",
-  "A template is for a worker or for a client": "תבנית מיועדת לעובד או ללקוח"
+  "A template is for a worker or for a client": "תבנית מיועדת לעובד או ללקוח",
+  "A scanned page is damaged: it must be scanned again, then the documents sent again": "עמוד סרוק פגום: יש לסרוק אותו מחדש ולשלוח שוב את המסמכים",
+  "The contract could not be filled: check its template, then send the documents again": "לא ניתן למלא את החוזה: יש לבדוק את התבנית ולשלוח שוב את המסמכים",
+  "The documents are still being saved: try again in a few minutes": "המסמכים עדיין נשמרים: נסו שוב בעוד כמה דקות",
+  "Saving your documents…": "המסמכים שלך נשמרים…",
+  "Your documents could not be saved": "לא ניתן היה לשמור את המסמכים שלך",
+  "Your signature is kept, but your documents could not be saved. The office can see this and will put it right.": "החתימה שלך נשמרה, אבל לא ניתן היה לשמור את המסמכים. המשרד רואה זאת ויטפל בכך.",
+  "Being saved": "נשמר",
+  "Withdraw": "ביטול הבקשה",
+  "{0} scanned pages could not be placed in Form 101: scan them again": "לא ניתן היה להכניס {0} עמודים סרוקים לטופס 101: יש לסרוק אותם מחדש"
 }
