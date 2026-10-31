@@ -47,8 +47,8 @@ export function Section({ label, count, folded, onFold, tools, children, classNa
  * Figures on top of a screen as glass tiles (V7: the number 28px, its label
  * under it; four in a row on a phone too); with `onPick` a figure is a filter
  * and the picked one carries the highlight line. A zero stays readable (ink-2).
- * `strip`: one glass plate, the figures side by side in one line, the numbers sized to fit (owner, 2026-10-31:
- * Accounting's sums were cut off in the tiles).
+ * `strip`: one glass plate, the figures side by side in one line, the numbers sized to fit and each column as wide
+ * as its figure, so a long sum takes what a short one leaves (owner, 2026-10-31: Accounting's sums were cut off in the tiles).
  */
 export function Figures({ items, active, onPick, className, strip }: {
   items: { key: string; label: React.ReactNode; value: React.ReactNode; color?: string }[];
@@ -58,7 +58,7 @@ export function Figures({ items, active, onPick, className, strip }: {
   strip?: boolean;
 }) {
   if (strip) return (
-    <div data-slot="figures" data-strip className={cn('mb-3 grid grid-flow-col auto-cols-fr rounded-[14px] border border-white/12 bg-white/[.06] py-2 backdrop-blur-md', className)}>
+    <div data-slot="figures" data-strip className={cn('mb-3 grid grid-flow-col auto-cols-auto rounded-[14px] border border-white/12 bg-white/[.06] py-2 backdrop-blur-md', className)}>
       {items.map((f, i) => (
         <button
           key={f.key}
