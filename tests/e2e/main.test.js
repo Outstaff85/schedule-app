@@ -4421,9 +4421,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await waitFor(p, () => document.getElementById('screenSchedule').classList.contains('hidden'), 8000);
     await p.click('[data-testid="tile-schedule"]');
     await waitFor(p, () => !document.getElementById('screenSchedule').classList.contains('hidden'));
-    for (let i = 0; i < 2 && !(await p.$(`.sp-plate[data-date="${rqKey}"]`)); i++) { await p.click('#scheduleContent .sched-nav[aria-label="Next month"]'); await sleep(200); }
-    await p.click(`.sp-plate[data-date="${rqKey}"]`);
-    return waitFor(p, () => !!document.getElementById('naToggle'), 8000);
+    // ...and that may still happen after this check: the plate is found again until the tap lands
+    for (let tries = 0; tries < 5; tries++) {
+      for (let i = 0; i < 2 && !(await p.$(`.sp-plate[data-date="${rqKey}"]`)); i++) { await p.click('#scheduleContent .sched-nav[aria-label="Next month"]'); await sleep(200); }
+      try { await p.click(`.sp-plate[data-date="${rqKey}"]`, {timeout: 4000}); } catch (e) { continue; }
+      if (await waitFor(p, () => !!document.getElementById('naToggle'), 4000)) return true;
+    }
+    return false;
   };
   const plateText = () => p.evaluate(k => (document.querySelector(`.sp-plate[data-date="${k}"]`) || {}).innerText || '', rqKey);
   const rq5 = {open: await openDay()};
