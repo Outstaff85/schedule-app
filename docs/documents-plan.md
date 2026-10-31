@@ -418,7 +418,7 @@ Shipped on its own, before S4, so reverting S4 can never take the lock enforceme
 
 ### S10 — deletion and cleanup
 - **Deleting a worker moves to the server:** `users_admin deleteWorker` replaces the loop of client deletes in `src/manager/page/worker-window.ts:224–233` (which already deletes each file through `deleteWorkerDoc`, one call per file). It removes the worker's unsigned files and old unheld signatures in one call, with the HR scope.
-  - **Until Q4 is answered, the default is to keep** every signed request, its manifest, its inputs and its template version: they stay with `deletedWorker: true` and a lifecycle date. A worker's `signRequests` are the only place a signing's snapshot lives, so they are never deleted with a signed worker.
+  - **Kept for Q4's seven years, compressed (Q11):** every signed request, its manifest, its inputs and its template version stay with `deletedWorker: true` and a lifecycle date; a super-admin's real delete is the only exception. A worker's `signRequests` are the only place a signing's snapshot lives, so they are never deleted with a signed worker.
   - `supplierDeleteWorker` goes through the same server delete.
   - `firestore.rules`: a browser cannot delete a worker that has `signed` / `signedAt` (the `saveSchedule` delete of a missing worker, line 344, is refused for it).
 - **One-off `scripts/migrate/sign_copies.py`** (dry-run / apply):
@@ -500,6 +500,7 @@ Each signing send also stops adding a template copy, and each firm profile edit 
 - **Q8 — the bundle's default ticks — answered (owner, 2026-10-25):** ticked by default: Form 101 and the ID sheet (the ID card or passport with the ספח); the contract and the other documents unticked. The summary page is always the first page and has no tick of its own.
 - **Q9 — deleting a firm — answered (owner, 2026-10-31):** its signed documents and template versions are kept as a preserved archive for Q4's seven years (first answered as up to one year; raised with Q4's retention), then deleted.
 - **Q10 — the safety net — put off (owner, 2026-10-31).** It was to come before S3b; S3b does not depend on it technically, but until it is on, a deleted file or record is not recoverable. (Needs the owner's hands in the cloud console.) Turn on bucket soft delete (or object versioning) and Firestore point-in-time recovery or a scheduled export? Before S3b.
+- **Q11 — a person's delete of a signed file against the locks — answered (owner, 2026-10-31):** Remove and Delete worker take the document off every screen, and its file stays hidden and held for Q4's seven years. Hidden files go into compressed storage: a lossless archive whose unpacked bytes still match their hashes, in the cheapest storage class that keeps the hold (photos and PDFs barely shrink when zipped, so the class is most of the saving; S3b settles the format). After the seven years a sweep deletes them; its first run needs the owner's yes. The one exception: a super-admin may delete a file for real at once (a wrong person's document), confirmed and logged. Until S3b and S10 are built, a person's delete still deletes for real (S0b).
 
 ## Risks still open
 
