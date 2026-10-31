@@ -19,13 +19,18 @@ GOLDEN = pathlib.Path(__file__).resolve().parents[1] / "tests" / "auth" / "build
 
 def differences(answer, golden):
     """What differs between a self-check's answer and the golden file → [text]; [] when they agree."""
-    if not isinstance(answer, dict) or not isinstance(answer.get("hashes"), dict):
+    if not isinstance(answer, dict) or not isinstance(answer.get("builders"), dict) or not answer["builders"]:
         return ["no self-check in the answer (an older deploy?)"]
-    want = (golden.get("builders") or {}).get(answer.get("builder"))
-    if not want:
-        return [f"no golden hashes for builder {answer.get('builder')}"]
-    have = answer["hashes"]
-    return [f"{k}: {have.get(k)} is not the golden {want.get(k)}" for k in sorted(set(want) | set(have)) if have.get(k) != want.get(k)]
+    if answer.get("builder") not in answer["builders"]:
+        return [f"the answer has no hashes for its builder {answer.get('builder')}"]
+    out = []
+    for version, have in answer["builders"].items():
+        want = (golden.get("builders") or {}).get(version)
+        if not want:
+            out.append(f"no golden hashes for builder {version}")
+            continue
+        out += [f"{version} {k}: {have.get(k)} is not the golden {want.get(k)}" for k in sorted(set(want) | set(have)) if have.get(k) != want.get(k)]
+    return out
 
 
 def ask(url):
@@ -52,7 +57,7 @@ def main():
             print(f"try {i + 1}: {problems[0]}", flush=True)
             continue
         problems = differences(answer, golden)
-        print(f"try {i + 1}: {json.dumps({k: v for k, v in answer.items() if k != 'hashes'})}, {len(problems)} differences", flush=True)
+        print(f"try {i + 1}: {json.dumps({k: v for k, v in answer.items() if k != 'builders'})}, {len(problems)} differences", flush=True)
         if not problems:
             print("The builder's bytes are the golden ones.")
             return 0

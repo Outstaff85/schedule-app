@@ -1814,5 +1814,10 @@
   "Already signed": "כבר נחתם",
   "Nothing to sign": "אין מה לחתום",
   "Which document?": "איזה מסמך?",
-  "The new firm has no contract template yet": "לחברה החדשה עדיין אין תבנית חוזה"
+  "The new firm has no contract template yet": "לחברה החדשה עדיין אין תבנית חוזה",
+  "ID card (back)": "תעודת זהות (גב)",
+  "Appendix": "ספח",
+  "Appendix — missing, not scanned": "ספח — חסר, לא נסרק",
+  "ID card and appendix": "תעודת זהות וספח",
+  "Passport and appendix": "דרכון וספח"
 }

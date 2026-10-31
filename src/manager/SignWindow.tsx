@@ -7,6 +7,7 @@
 import * as React from 'react';
 import { IconBrandWhatsapp, IconClipboardText, IconLoader2, IconSend, IconSignature } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
+import { storedLanguage } from './logic/i18n';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { FieldRow } from '@/components/ui/form';
@@ -44,6 +45,8 @@ export function SignWindow({ workerId, api, onClose }: { workerId: string; api: 
   const [sent, setSent] = React.useState<SignRequest | null>(null);
   const [docs, setDocs] = React.useState<PdfDoc[] | null>(null);
   const [signDate, setSignDate] = React.useState('');
+  // the language the documents were shown in is the language they are signed in: the attached ID sheet's, frozen at `sign`
+  const viewLang = React.useRef('');
   React.useEffect(() => {
     let live = true;
     Promise.all([api.signContext(workerId), listTemplates(workerId)]).then(([c, l]) => {
@@ -69,7 +72,8 @@ export function SignWindow({ workerId, api, onClose }: { workerId: string; api: 
       // in person: both documents filled, on this phone
       const name = list?.find(t => t.id === tid)?.name || tr('Contract');
       setDocs([{ key: 'form101', title: tr('Form 101'), b64: null }, { key: 'contract', title: name, b64: null }]);
-      const views = await Promise.all(['form101', 'contract'].map(which => signCall<{ pdfBase64: string; signDate: string }>({ action: 'view', id: r.id, which })));
+      viewLang.current = storedLanguage();
+      const views = await Promise.all(['form101', 'contract'].map(which => signCall<{ pdfBase64: string; signDate: string }>({ action: 'view', id: r.id, which, lang: viewLang.current })));
       setSignDate(views[0].signDate);
       setDocs([{ key: 'form101', title: tr('Form 101'), b64: views[0].pdfBase64 }, { key: 'contract', title: name, b64: views[1].pdfBase64 }]);
       setSent({ ...r.request, id: r.id });
@@ -79,7 +83,7 @@ export function SignWindow({ workerId, api, onClose }: { workerId: string; api: 
   const signHere = async (png: string) => {
     if (!sent) return;
     try {
-      const r = await signCall<{ signDate?: string }>({ action: 'sign', id: sent.id, signaturePng: png });
+      const r = await signCall<{ signDate?: string }>({ action: 'sign', id: sent.id, signaturePng: png, lang: viewLang.current || storedLanguage() });
       // signed now: the card says the documents are being saved (they are built in the background), Signed once they are
       rememberRequest({ ...sent, status: 'signing', signedAtIso: new Date().toISOString(), signDate: r.signDate || signDate || sent.signDate || null });
       api.toast(tr('Signed — the documents are being saved'));

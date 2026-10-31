@@ -1979,6 +1979,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sgCtr = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/contract', {method: 'POST'})).json();
   ok(sg.locked && sgR2.status === 'signed' && sgR2.signedAt && sgR2.signDate && sgF101.text.includes(sgR2.signDate) && sgF101.images >= 1 && sgCtr.text.includes(sgR2.signDate) && sgCtr.images === 1 && !/\{\{/.test(sgCtr.text.replace(/tpyo/, '')) && sg.opens === 2 && !wpg.errs.length,
     'signing: the signature opens only after both documents; one signature and the same date in both signed PDFs; afterwards the page keeps them to read ' + JSON.stringify({sg, status: sgR2.status, signDate: sgR2.signDate, sgF101: {i: sgF101.images, p: sgF101.pages}, sgCtr: {i: sgCtr.images, p: sgCtr.pages}, errs: wpg.errs}));
+  ok(sgR2.frozen && sgR2.frozen.lang === 'en' && sgR2.frozen.builder === 'b2' && sgR2.parts.form101.builder === 'b2',
+    "signing: the attached sheet's language is the signing page's, frozen at the signature, with the builder version " + JSON.stringify({lang: (sgR2.frozen || {}).lang, builder: (sgR2.frozen || {}).builder}));
   await wpg.close();
   // The manager app takes the signed documents onto the worker; Form 101 is never built again.
   const sgTook = await p.evaluate(async () => {
@@ -2135,6 +2137,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const d5r = await d5resp;
   const d5h = {pages: Number(d5r.headers()['x-pages']), parts: d5r.headers()['x-parts'], type: d5r.headers()['content-type'],
     body: JSON.parse(d5r.request().postData())};
+  ok(d5h.body.lang === 'en', "download data: the call sends the language picked in the app, for the attached sheet's words " + d5h.body.lang);
   ok(await waitFor(p, () => window.__opened.length === 1, 30000), 'download data: the PDF opens');
   const d5 = await p.evaluate(async () => {
     const buf = await (await fetch(window.__opened[0])).arrayBuffer();

@@ -588,3 +588,71 @@ def test_a_worker_on_an_old_sidecar_is_not_refused_for_a_page_listed_and_gone():
     r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
     assert r["frozen"]["pages"][0]["sidecar"] == w["assetsFileId"]
     assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)["part"]
+
+
+# ---- the attached sheet's language is the signer's ----
+
+def _seen(out):
+    def build(p, strict=False):
+        out.append(p)
+        return build101(p, strict)
+    return build
+
+
+def _view(db, bucket, build, lang=None):
+    body = {"action": "view", "token": "tok-avi", "which": "form101"}
+    return signing.run_worker(db, bucket, dict(body, lang=lang) if lang else body, build, finder=finder(db))
+
+
+def test_view_sign_and_a_retry_after_the_language_changed_all_use_the_signer_s():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    seen = []
+    build = _seen(seen)
+    assert _view(db, bucket, build, "he")["ok"]
+    assert (seen[-1]["sheetLang"], seen[-1]["builder"]) == ("he", "b2")
+    assert signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": SIG, "lang": "he"}, build, finder=finder(db))["ok"]
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert (r["frozen"]["lang"], r["frozen"]["builder"]) == ("he", "b2")
+    # the worker's page is now in English: nothing a later call sends reaches what was signed
+    for which in signing.WHICH:
+        b = signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which, "lang": "en"}, build, finder=finder(db))
+    assert (seen[-1]["sheetLang"], seen[-1]["builder"]) == ("he", "b2")
+    assert r["parts"]["form101"]["builder"] == "b2" and "builder" not in r["parts"]["contract"]  # the contract is contracts.fill until S4
+
+
+def test_russian_at_the_signature_freezes_english():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    assert signing.run_worker(db, bucket, {"action": "sign", "token": "tok-avi", "signaturePng": SIG, "lang": "ru"}, build101, finder=finder(db))["ok"]
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert r["frozen"]["lang"] == "en"
+
+
+def test_a_page_with_no_language_stays_on_b1_s_hebrew():
+    db, bucket, t = _setup()
+    _send(db, bucket, OWNER, t)
+    seen = []
+    build = _seen(seen)
+    assert _view(db, bucket, build)["ok"]
+    assert seen[-1]["builder"] == "b1" and "sheetLang" not in seen[-1]
+    f = finder(db)
+    assert _sign(db, bucket, build)["ok"]
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert not r["frozen"]["lang"] and r["frozen"]["builder"] == "b1"
+    signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build, finder=f)
+    assert seen[-1]["builder"] == "b1" and r["parts"]["form101"]["builder"] == "b1"
+
+
+def test_a_signature_kept_before_the_language_stays_on_b1():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    r = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    r["frozen"].pop("lang"), r["frozen"].pop("builder")
+    seen = []
+    assert signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, _seen(seen), finder=f)["part"]
+    assert seen[-1]["builder"] == "b1"
+
+
+def test_the_values_sent_cannot_choose_a_builder():
+    assert signing._clean_form101({"given": "Avi", "sheetLang": "he", "builder": "b1"}) == {"given": "Avi"}

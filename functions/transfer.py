@@ -17,8 +17,8 @@ Moving to another firm, D6).
 
 Nothing reaches a signature that cannot become a document: `view` is a strict build and `sign` builds both once more with
 the signature. `sign` freezes everything the worker saw (`frozen`: the template's file copied, the values, Form 101's
-values, the marks placed, the page list with hashes, the worker's personal fields, today), and every later build and the
-copy use only that. If a build still fails, the request stays `signing` with `buildErrors`, the worker's page retries
+values, the marks placed, the page list with hashes, the worker's personal fields, today, the signer's language and the
+builder version), and every later build and the copy use only that. If a build still fails, the request stays `signing` with `buildErrors`, the worker's page retries
 `build`, and Decline or the 14 days (counted from the signature) end it: the signature and the parts, which sit under a
 worker that was never created, are deleted, since nothing was copied; a path stays on the request until its delete is
 confirmed (`discardPending`, tried again by `current`).
@@ -43,6 +43,7 @@ import re
 import time
 import uuid
 
+import builders
 import contracts
 from moves import move
 import seal as seal_mod
@@ -251,7 +252,7 @@ def current(db, tenant, wid, bucket=None):
     return best
 
 
-def _freeze(db, bucket, req, worker):
+def _freeze(db, bucket, req, worker, lang):
     """Everything this signature is given on (see the module's text). The template's file is still the firm's own here:
     `sign` copies it once the gate has passed."""
     from_tpl = _template(db, req["toTenant"])[1]
@@ -260,7 +261,7 @@ def _freeze(db, bucket, req, worker):
     refs = signing.read_pages(bucket, worker, strict=True)[1]
     personal = {k: worker[k] for k in PERSONAL if k in worker}
     personal["name"] = worker.get("name") or ""
-    return {"today": date, "date": date, "start": start, "pages": refs, "personal": personal, "form101": form101_payload(worker, profile, date, start),
+    return {"today": date, "date": date, "start": start, "pages": refs, "personal": personal, "lang": lang, "builder": builders.BUILDER_VERSION if lang else "b1", "form101": form101_payload(worker, profile, date, start),
             "values": contract_values(worker, profile, start), "templatePath": from_tpl["fileId"], "placed": from_tpl.get("placed") or [],
             "everyPage": contracts.seal_every_page(from_tpl), "contractName": (from_tpl.get("name") or "Contract") + " - " + (worker.get("name") or "").strip() + ".pdf"}
 
@@ -273,13 +274,13 @@ def _frozen_pdf(bucket, req, which, build101, signature):
         frozen_seal = req.get("seal")
         seal = seal_mod.read_frozen(bucket, dict(frozen_seal, everyPage=fz["everyPage"])) if isinstance(frozen_seal, dict) else None
         return signing.fill_contract(bucket, fz["templatePath"], values, fz["placed"], signature, seal), fz["contractName"]
-    p = dict(fz["form101"], extraPages=signing.frozen_pages(bucket, fz["pages"]))
+    p = dict(fz["form101"], extraPages=signing.frozen_pages(bucket, fz["pages"]), **signing.sheet_fields(fz.get("lang"), fz.get("builder")))
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
     return build101(p, strict=True)
 
 
-def _pdf(db, bucket, req, worker, which, build101, signature=None, strict=False):
+def _pdf(db, bucket, req, worker, which, build101, signature=None, strict=False, lang=None):
     if req.get("frozen"):
         return _frozen_pdf(bucket, req, which, build101, signature)
     profile = db.collection("tenants").document(req["toTenant"]).get().to_dict() or {}
@@ -295,7 +296,8 @@ def _pdf(db, bucket, req, worker, which, build101, signature=None, strict=False)
         data = signing.fill_contract(bucket, tpl["fileId"], values, tpl.get("placed"), signature, seal)
         return data, (tpl.get("name") or "Contract") + " - " + (worker.get("name") or "").strip() + ".pdf"
     strict = strict or bool(signature)
-    p = dict(form101_payload(worker, profile, date, start), extraPages=signing._stored_pages(bucket, worker, strict))
+    p = dict(form101_payload(worker, profile, date, start), extraPages=signing._stored_pages(bucket, worker, strict),
+             **signing.sheet_fields(builders.sheet_lang(lang)))
     if signature:
         p["signaturePngBase64"] = base64.b64encode(signature).decode()
     return build101(p, strict=True) if strict else build101(p)
@@ -336,7 +338,7 @@ def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None
         if which not in signing.WHICH:
             return {"error": "Which document?"}
         try:
-            data, name = _pdf(db, bucket, req, worker, which, build101, strict=True)
+            data, name = _pdf(db, bucket, req, worker, which, build101, strict=True, lang=body.get("lang"))
         except Exception as e:
             return {"error": signing.problem(which, e)}
         if data is None:
@@ -352,7 +354,7 @@ def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None
             return {"error": "The new firm has no contract template yet"}
         # The last gate: nothing is kept until both documents are built with this signature, from what it freezes.
         try:
-            frozen = _freeze(db, bucket, req, worker)
+            frozen = _freeze(db, bucket, req, worker, builders.sheet_lang(body.get("lang")))
         except ValueError:
             return {"error": signing.E_PAGE_DAMAGED}
         for w in signing.WHICH:
@@ -397,6 +399,8 @@ def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None
             b = bucket.blob(path)
             b.upload_from_string(data, content_type="application/pdf")
             part = {"path": path, "name": name, "size": len(data)}
+            if which == "form101":
+                part["builder"] = (req.get("frozen") or {}).get("builder") or "b1"
             # kept only while the request is still signing: after a Decline this file is removed by the build that made it
             if not move(db, ref, lambda x: x.get("status") == "signing" and which not in (x.get("parts") or {}),
                         {"parts." + which: part, "buildErrors." + which: None}):

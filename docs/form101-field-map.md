@@ -1,6 +1,6 @@
 # Form 101 field map
 
-What `build_form101_pdf()` of **builder b1** (`functions/builders/form101_b1.py`) writes into each field of the PDF template `form101/v1.pdf` (template revision 0101/130, 11.2025, two pages, A4 595.3 × 841.9 pt). b1 is frozen ([form101.md](form101.md) → The builders): a field change is a new builder (`form101_b2.py`, a new template file when the PDF changes), and this file then describes the new one, its section for b1 kept. Keep this file in sync with the current builder. The request that feeds it and where the PDF is stored are in [form101.md](form101.md).
+What `build_form101_pdf()` of **builders b1 and b2** (`functions/builders/form101_b1.py`, `form101_b2.py`: the same on the two form pages) writes into each field of the PDF template `form101/v1.pdf` (template revision 0101/130, 11.2025, two pages, A4 595.3 × 841.9 pt). b1 is frozen ([form101.md](form101.md) → The builders): a field change is a new builder (`form101_b2.py`, a new template file when the PDF changes), and this file then describes the new one, its section for b1 kept. Keep this file in sync with the current builder. The request that feeds it and where the PDF is stored are in [form101.md](form101.md).
 
 The template file is `functions/assets/form101/v1.pdf`, which the builder reads — the only copy, checked by its hash at import (`FORM101_TEMPLATES`).
 
@@ -124,7 +124,7 @@ The section ט table of other employers has no fields and is left as printed.
 
 ## Pages after the form
 
-`p.extraPages` (`{b64, caption, kind?}`) are added as pages after page 2. Each image is downscaled to 150 DPI (`_shrink_for_embed`), decoded whole. With a `kind` on any entry: one A4 sheet with the ID card (front, back) or the passport and the ספח, then a page for each other image ([form101.md](form101.md) → Building the PDF). With none: the first two share one page, one above the other (usually the document and its ספח), and every other image gets a page of its own.
+`p.extraPages` (`{b64, caption, kind?}`) are added as pages after page 2. Each image is downscaled to 150 DPI (`_shrink_for_embed`), decoded whole. With a `kind` on any entry: one A4 sheet with the ID card (front, back) or the passport and the ספח, then a page for each other image, its words in `p.sheetLang` from b2 on ([form101.md](form101.md) → Building the PDF). With none: the first two share one page, one above the other (usually the document and its ספח), and every other image gets a page of its own.
 
 ## File name
 
