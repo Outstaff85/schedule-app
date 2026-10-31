@@ -6,6 +6,7 @@ import * as React from 'react';
 import { tr } from '@/lib/i18n';
 import { useVersionWatch } from '@/lib/version-watch';
 import { init, reportError, showInvalidLink, usePunch } from './core';
+import { LoadingScreen } from './LoadingScreen';
 import { PunchScreen } from './PunchScreen';
 import { HoursSheet, ScheduleSheet, useSheetClose } from './Sheets';
 import { DocumentsSheet, TransferSheet } from './Documents';
@@ -33,11 +34,7 @@ export function App() {
   }, []);
   return (
     <>
-      {s.screen === 'loading' && (
-        <div id="loadingScreen" style={{ position: 'fixed', inset: 0, background: 'var(--surface)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--text2)', fontFamily: '"DM Sans",-apple-system,sans-serif', zIndex: 999 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📡</div><div style={{ fontSize: 16 }}>{tr('Verifying...')}</div>
-        </div>
-      )}
+      {s.screen === 'loading' && <LoadingScreen />}
       {s.screen !== 'none' && s.screen !== 'loading' && <PunchScreen hidden={s.screen !== 'punch' && s.screen !== 'invalid'} />}
       {s.worker && s.screen !== 'invalid' && <ScheduleSheet hidden={s.screen !== 'schedule'} />}
       {s.worker && s.screen !== 'invalid' && <HoursSheet hidden={s.screen !== 'hours'} />}

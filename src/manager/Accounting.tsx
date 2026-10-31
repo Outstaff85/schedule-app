@@ -148,7 +148,7 @@ export function Accounting({ snap, api }: { snap: AccountingSnapshot; api: Manag
           ))}
         </div>
       )}
-      <div data-testid="acc-figs"><Figures onPick={simple ? undefined : k => { if (k === 'wait') setTab('approvals'); }} items={[
+      <div data-testid="acc-figs"><Figures strip onPick={simple ? undefined : k => { if (k === 'wait') setTab('approvals'); }} items={[
         { key: 'pay', label: tr('Pay'), value: money2(tot.pay) },
         { key: 'travel', label: tr('Travel ₪'), value: tot.travel > 0 ? money2(tot.travel) : '—' },
         { key: 'total', label: tr('Total Pay'), value: money2(tot.total) },

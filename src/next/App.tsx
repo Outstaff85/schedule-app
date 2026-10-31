@@ -290,6 +290,7 @@ function Lists() {
           active={filter}
           onPick={k => setFilter(f => (f === k || k !== 'notes' ? null : k))}
         />
+        <div data-testid="figures-strip"><Figures strip items={[{ key: 'pay', label: tr('Pay'), value: '₪124,560.55' }, { key: 'travel', label: tr('Travel ₪'), value: '₪8,940' }, { key: 'total', label: tr('Total Pay'), value: '₪133,500.55' }, { key: 'wait', label: tr('To approve'), value: 0, color: 'var(--ink)' }]} /></div>
         <Section label={tr('Active')} count={shown.length} folded={folded} onFold={() => setFolded(f => !f)} tools={<SelectHead sel={sel} testid="plate-select" />}>
           <AnimatePresence initial={false}>
             <PagedList

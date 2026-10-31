@@ -2237,6 +2237,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // D6: a worker of firm two moves to this firm — the request, the worker's consent and signing in their own page, the copy.
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });
+  await p.click('[data-testid="workers-new-more"]');
   await p.click('[data-testid="workers-transfer"]');
   await p.waitForSelector('#transferNo');
   ok(await p.evaluate(() => !document.querySelector('[data-testid="transfer-pick"]')), 'transfer: a firm\'s own admin gets no list of the other firms\' workers — only the number field');
@@ -3152,19 +3153,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // Filters: hidden until the button, its count, the open state kept on this device
     const fb = document.querySelector('#workersRoot [data-testid="workers-filters-btn"]');
     r.filtersHidden = !document.querySelector('#workersRoot [data-testid="workers-filters"]');
+    r.sameLine = !!fb.closest('[data-testid="workers-head"]');
     fb.click(); await wait(50);
     r.filtersOpen = document.querySelectorAll('#workersRoot [data-testid="workers-filters"] [data-testid^="wf-"]').length === 5 && localStorage.getItem('workersFiltersOpen') === '1';
     fb.click(); await wait(50);
     return r;
   });
-  // The menu: Scan passport and Enter by hand — the second opens the worker window, empty.
+  // The menu: Enter by hand (the worker window, empty), and From another firm for a firm's admin. Filters stand in the create button's line.
   await p.click('#workersRoot [data-testid="workers-new-more"]'); await p.waitForSelector('[role="menuitem"]');
   wh.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
   await p.click('[role="menuitem"]:has-text("Enter by hand")');
   wh.byHand = await waitFor(p, () => document.getElementById('workerOverlay').classList.contains('open'), 3000);
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); }); await sleep(200);
-  ok(wh.count === 'Workers' && wh.noTabs && wh.create && wh.scan && wh.menu === 'Scan passport,Enter by hand' && wh.byHand && wh.filtersHidden && wh.filtersOpen,
-    'workers: Workers lit in the menu (no breadcrumb), no status tabs, one create button (New worker scans; its menu: Scan passport, Enter by hand — the worker window), the Filters open on their button ' + JSON.stringify(wh));
+  ok(wh.count === 'Workers' && wh.noTabs && wh.create && wh.scan && /^Enter by hand(,From another firm)?$/.test(wh.menu) && wh.byHand && wh.sameLine && wh.filtersHidden && wh.filtersOpen,
+    'workers: Workers lit in the menu (no breadcrumb), no status tabs, one create button (New worker scans; its menu: Enter by hand — the worker window — and From another firm), the Filters at the right of its line open on their button ' + JSON.stringify(wh));
   // Workers filters (stage 6c-1): a filter picked in its select shows as a chip; Group by client draws a section per
   // site; the list view is a table on a computer — a tap on a row opens the worker card.
   await p.evaluate(() => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-filters-btn"]').click(); });
@@ -3620,7 +3622,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // with an ID / passport, a search on top (name or ID), five in view at a time — and fills the number sent.
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { switchTab('workers'); });
-  await p.click('#workersRoot [data-testid="workers-transfer"]');
+  await p.click('#workersRoot [data-testid="workers-new-more"]');
+  await p.click('[data-testid="workers-transfer"]');
   await p.waitForSelector('[data-testid="transfer-pick"] #transferPick:not([disabled])', {timeout: 20000});
   await p.click('#transferPick'); await p.waitForSelector('[cmdk-item]');
   const tp = await p.evaluate(() => {
@@ -4440,6 +4443,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       else { if (m === 'denied') localStorage.setItem('gpsPerm', 'denied'); err({code: m === 'off' ? 2 : 1, message: m}); }
     }, 900);
   };
+  // The first load on a phone with nothing kept: the punch screen's shape with the logo in the ring, then the page.
+  const gpo = await page(ctx);
+  await gpo.setViewportSize({width: 390, height: 844});
+  await gpo.addInitScript(() => {
+    localStorage.removeItem('punchWorkers_v1');
+    const f = window.fetch;
+    window.fetch = (u, o) => /\/punch(\?|$)/.test(String(u)) ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o);
+  });
+  await gpo.goto(BASE + 'worker-punch.html?t=tok-new');
+  const gpo1 = {shown: await waitFor(gpo, () => !!document.querySelector('[data-testid="punch-loading"] .pl-ring svg'), 4000)};
+  gpo1.text = await gpo.textContent('[data-testid="punch-loading"] .pl-step');
+  gpo1.gone = await waitFor(gpo, () => !document.querySelector('[data-testid="punch-loading"]') && !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  ok(gpo1.shown && /Checking your link/.test(gpo1.text) && gpo1.gone, 'punch: the first load shows the logo in its ring and a line of what is happening, then the page ' + JSON.stringify(gpo1));
+  await gpo.close();
   // Back from a sheet: a reading asked for earlier that answers late does not unlock the punch.
   const gpl = await page(ctx);
   await gpl.setViewportSize({width: 390, height: 844});
