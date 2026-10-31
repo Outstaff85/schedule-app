@@ -24,6 +24,13 @@
 //    goes red, then green, and is taken;
 //  - the status keys come out in order (finding, hold with the seconds, found with the count, then the shot's);
 //  - put away while the model loads or the camera starts, the camera is not left on; two starts share a stream;
+//  - the camera comes at once, beside the models; the live frame starts once they are ready; a model failure turns
+//    the camera off;
+//  - Auto takes only what has a document's shape and the model really found for a full second (not a flicker held
+//    up by the sticky frame; a lone miss does not start it again), the status line saying what it waits for, and stops
+//    after AUTO_MAX shots in a row (the 'auto' event); a touch or a new open starts the count again, and a new open
+//    brings back an Auto that stopped itself;
+//  - a reader that cannot load goes to the errors;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
 //  - the refined page is read again on its own cut; a page's pixels are kept once;
 //  - the camera asks for 1280×720 at 30 frames a second and nothing else about the rate;
@@ -159,12 +166,12 @@ function fakeVideo() {
   return v;
 }
 /** A session on the fakes; follow: the scripted follow's step (null: it cannot tell). */
-function setup(script, { follow = () => null, auto = true, delay = null, size = 1, readers = null, getUserMedia = null, ensureSession = null, lab = false, attemptsEnv = undefined } = {}) {
+function setup(script, { follow = () => null, auto = true, delay = null, size = 1, readers = null, realReaders = false, getUserMedia = null, ensureSession = null, lab = false, attemptsEnv = undefined } = {}) {
   const clock = fakeClock(), engine = fakeEngine(script, clock, delay), engines = fakeEngines(engine), asked = [], steps = [];
   if (ensureSession) engines.ensureSession = ensureSession;
   const follower = { resets: 0, reset() { this.resets++; }, since: (t0, pts) => pts, step: async (v, q) => { steps.push(v); return follow(q, clock.t); } };
   let ids = 0;
-  const s = new Sess.ScanSession(lab ? Surf.labSurface(async () => 'tok') : Surf.siteSurface(), { engines, readers, attemptsEnv, env: {
+  const s = new Sess.ScanSession(lab ? Surf.labSurface(async () => 'tok') : Surf.siteSurface(), { engines, readers: realReaders ? undefined : readers, attemptsEnv, env: {
     now: clock.now, raf: clock.raf, setTimeout: clock.setTimeout, bitmap: null, follower, newId: () => 'att' + (++ids),
     getUserMedia: getUserMedia ? c => { asked.push(c); return getUserMedia(c); } : async c => { asked.push(c); return { getTracks: () => [{ stop() {} }] }; },
   } });
@@ -502,8 +509,8 @@ await run('put away while the model loads or the camera starts: the camera is no
   let loaded; const a = setup(steadyLive(Q), { auto: false, ensureSession: () => new Promise(r => { loaded = r; }) });
   const p = a.s.startCamera(a.video);
   await flush(); a.s.sleep(); loaded(); await p; await a.clock.runFor(200);
-  assert.equal(a.asked.length, 0, 'the camera was never asked for');
-  assert.equal(a.s.camera.on, false); assert.equal(a.s.live.running, false);
+  assert.equal(a.asked.length, 1, 'the camera was asked for beside the models');
+  assert.equal(a.s.camera.on, false); assert.equal(a.video.srcObject, null, 'and not left on'); assert.equal(a.s.live.running, false);
   assert.ok(!a.log.status.some(x => x.key === 'finding' || x.key === 'camera_failed'), 'no status after the close');
   // the permission prompt open when the window closes
   let answer; const stopped = [];
@@ -529,6 +536,38 @@ await run('put away while the model loads or the camera starts: the camera is no
   await d.s.startCamera(d.video);
   assert.equal(ds.length, 1, 'stopped when it cannot play'); assert.equal(d.s.camera.on, false);
   assert.equal(d.log.status[d.log.status.length - 1].key, 'camera_failed');
+});
+
+await run('the camera comes at once, beside the models; the live frame starts once they are ready; a model failure turns the camera off', async () => {
+  let loaded; const a = setup(steadyLive(Q), { auto: false, ensureSession: () => new Promise(r => { loaded = r; }) });
+  a.s.markOpen();
+  const p = a.s.startCamera(a.video);
+  await a.clock.runFor(200);
+  assert.equal(a.asked.length, 1, 'the camera asked for at once');
+  assert.equal(a.s.camera.on, true); assert.equal(a.video.played, 1, 'the camera shown');
+  assert.equal(a.s.live.running, false, 'no live frame yet'); assert.equal(a.engine.calls.length, 0, 'no frames sent');
+  assert.ok(!a.log.status.some(x => x.key === 'finding'), 'nothing said to find yet');
+  loaded(); await p;
+  assert.equal(a.s.live.running, true, 'the live frame starts once the models are ready');
+  assert.equal(a.log.status[0].key, 'finding');
+  await a.clock.runFor(200);
+  assert.ok(a.engine.calls.length > 0, 'frames sent'); assert.ok(a.s.figures().readyMs >= 200, 'the first frame timed from the open: ' + a.s.figures().readyMs);
+  a.s.stop();
+  let fail; const stopped = [];
+  const b = setup(steadyLive(Q), { auto: false, ensureSession: () => new Promise((_, no) => { fail = no; }), getUserMedia: async () => ({ getTracks: () => [{ stop() { stopped.push(1); } }] }) });
+  const q = b.s.startCamera(b.video);
+  await flush();
+  assert.equal(b.s.camera.on, true, 'on before the models are ready');
+  fail(new Error('no model')); await q;
+  assert.equal(b.s.camera.on, false, 'off again when they fail'); assert.equal(stopped.length, 1, 'its stream stopped'); assert.equal(b.video.srcObject, null);
+  assert.equal(b.s.live.running, false); assert.equal(b.log.status.at(-1).key, 'camera_failed');
+  // the models failing while the camera is still asked for: the same, with no failure left unmet
+  let give, fail2;
+  const c = setup(steadyLive(Q), { auto: false, ensureSession: () => new Promise((_, no) => { fail2 = no; }), getUserMedia: () => new Promise(r => { give = r; }) });
+  const r = c.s.startCamera(c.video);
+  await flush(); fail2(new Error('no model')); await flush();
+  give({ getTracks: () => [{ stop() {} }] }); await r;
+  assert.equal(c.s.camera.on, false); assert.equal(c.log.status.at(-1).key, 'camera_failed');
 });
 
 await run('the follow starts again after sleep when the scanner is shown on a new video', async () => {
@@ -766,6 +805,140 @@ await run('after a shot the frame stays on the document taken, green while it is
   assert.equal(attemptsOf(log), 2, 'the new document is taken');
   s.stop();
   return 'green ' + (firstGreen.t - firstRed.t) + ' ms after the new document was seen';
+});
+
+/** Auto's shot on the document in the scene: put in, taken, taken away (Auto may shoot again). */
+async function autoShoots(clock, log, scene) {
+  const before = attemptsOf(log);
+  scene.now = 'doc';
+  await clock.runFor(2500, () => attemptsOf(log) > before);
+  await clock.runFor(400);
+  scene.now = 'none';
+  await clock.runFor(St.AWAY_MS + 200);
+}
+
+await run('Auto does not take a flicker: frames only held up by the sticky frame do not count towards its second', async () => {
+  for (const every of [2, 3]) {
+    let n = 0, from = null, clockNow = () => 0;
+    // the frame sticks on real answers first; from then on the model finds it only now and then
+    const flicker = call => {
+      if (call.which !== 'live') return NONE;
+      if (from === null) from = clockNow();
+      return clockNow() - from > 300 && ++n % every === 0 ? NONE : { pts: Q, conf: 0.9 };
+    };
+    const { s, clock, log, video } = setup(flicker);
+    clockNow = () => clock.t;
+    await s.startCamera(video);
+    await clock.runFor(4000);
+    assert.ok(log.frames.some(f => f.ok), 'the sticky frame went green');
+    assert.ok(s.live.steady.smooth && clock.t - s.live.steady.steadySince > 2 * St.STEADY_MS, 'and stayed still for over a second');
+    assert.equal(log.pages.length, 0, 'Auto took nothing');
+    assert.ok(!log.status.some(x => x.key === 'found'), 'and the status line never said found');
+    assert.ok(log.status.some(x => x.key === 'hold'), 'it went on counting down');
+    s.stop();
+  }
+});
+
+await run('a lone miss does not start Auto\'s second again: a real card that dips once in ten answers is taken', async () => {
+  let n = 0;
+  const glare = call => call.which !== 'live' ? NONE : (++n % 10 === 0 ? NONE : { pts: Q, conf: 0.9 });
+  const { s, clock, log, video } = setup(glare);
+  await s.startCamera(video);
+  await clock.runFor(4000, () => log.pages.length > 0);
+  assert.ok(log.pages.length, 'taken');
+  assert.ok(log.pages[0].t - firstAnswer(log) >= St.STEADY_MS, 'after its full second (' + (log.pages[0].t - firstAnswer(log)) + ' ms)');
+  assert.ok(log.pages[0].t - firstAnswer(log) < 2 * St.STEADY_MS, 'and not much later');
+  s.stop();
+});
+
+await run('Auto takes only a document\'s shape: a sliver or a speck stays, the status line says so, the shutter still takes it', async () => {
+  const SLIVER = [[0.02, 0.1], [0.98, 0.1], [0.98, 0.16], [0.02, 0.16]], SPECK = [[0.1, 0.1], [0.2, 0.1], [0.2, 0.2], [0.1, 0.2]];
+  for (const shape of [SLIVER, SPECK]) {
+    const { s, clock, log, video } = setup(steadyLive(shape));
+    await s.startCamera(video);
+    await clock.runFor(2500);
+    assert.ok(log.frames.some(f => f.ok), 'the frame is green');
+    assert.equal(log.status.at(-1).key, 'not_document', 'the status line says why Auto waits');
+    assert.ok(!log.status.some(x => x.key === 'found'), 'it never promised a shot');
+    assert.equal(log.pages.length, 0, 'Auto took nothing');
+    await s.snap();
+    assert.ok(log.pages.length, 'the shutter is not held by it');
+    s.stop();
+    const off = setup(steadyLive(shape), { auto: false });
+    await off.s.startCamera(off.video);
+    await off.clock.runFor(2500);
+    assert.ok(off.log.status.some(x => x.key === 'found') && !off.log.status.some(x => x.key === 'not_document'), 'with Auto off the shutter is the person\'s: found');
+    off.s.stop();
+  }
+});
+
+await run('Auto turns itself off after AUTO_MAX shots in a row, told by the auto event; the Auto button lets it go on', async () => {
+  assert.equal(St.AUTO_MAX, 5);
+  const scene = { now: 'doc' };
+  const { s, clock, log, video } = setup(sceneLive(scene), { auto: true }), said = [];
+  s.on('auto', on => said.push(on));
+  await s.startCamera(video);
+  for (let i = 0; i < St.AUTO_MAX - 1; i++) await autoShoots(clock, log, scene);
+  assert.equal(attemptsOf(log), St.AUTO_MAX - 1); assert.equal(s.auto, true); assert.deepEqual(said, []);
+  await autoShoots(clock, log, scene);
+  assert.equal(attemptsOf(log), St.AUTO_MAX, 'the last shot of the run is taken');
+  assert.equal(s.auto, false); assert.deepEqual(said, [false]);
+  await autoShoots(clock, log, scene);
+  assert.equal(attemptsOf(log), St.AUTO_MAX, 'none after it');
+  s.setAuto(true);
+  assert.deepEqual(said, [false], 'the button is not told back to the screen');
+  for (let i = 0; i < St.AUTO_MAX - 1; i++) await autoShoots(clock, log, scene);
+  assert.equal(s.auto, true, 'the button started the count again');
+});
+
+await run('a touch starts Auto\'s count again: the shutter, wake, hold', async () => {
+  const touches = { shutter: s => s.snap(), wake: s => s.wake(), hold: s => { s.hold(); s.resume(); } };
+  for (const [name, touch] of Object.entries(touches)) {
+    const scene = { now: 'doc' };
+    const { s, clock, log, video } = setup(sceneLive(scene), { auto: true }), said = [];
+    s.on('auto', on => said.push(on));
+    await s.startCamera(video);
+    for (let i = 0; i < St.AUTO_MAX - 1; i++) await autoShoots(clock, log, scene);
+    await touch(s);
+    await clock.runFor(100);
+    for (let i = 0; i < St.AUTO_MAX - 1; i++) await autoShoots(clock, log, scene);
+    assert.equal(s.auto, true, name + ': still on after ' + (2 * St.AUTO_MAX - 2) + ' Auto shots around it');
+    await autoShoots(clock, log, scene);
+    assert.equal(s.auto, false, name + ': the fifth since the touch stops it'); assert.deepEqual(said, [false]);
+  }
+});
+
+await run('a new open is a new run for Auto: the count starts again, an Auto that stopped itself is back on, one turned off by hand stays off', async () => {
+  const scene = { now: 'doc' };
+  const { s, clock, log, video } = setup(sceneLive(scene), { auto: true }), said = [];
+  s.on('auto', on => said.push(on));
+  const reopen = async () => { s.sleep(); await s.prepare(); await s.startCamera(video); };
+  await s.startCamera(video);
+  for (let i = 0; i < St.AUTO_MAX - 1; i++) await autoShoots(clock, log, scene);
+  await reopen();
+  for (let i = 0; i < St.AUTO_MAX - 1; i++) await autoShoots(clock, log, scene);
+  assert.equal(s.auto, true, 'the shots of the last scan do not count');
+  assert.deepEqual(said, []);
+  await autoShoots(clock, log, scene);
+  assert.equal(s.auto, false); assert.deepEqual(said, [false]);
+  await reopen();
+  assert.equal(s.auto, true, 'back on'); assert.deepEqual(said, [false, true], 'and the screen told');
+  const before = attemptsOf(log);
+  await autoShoots(clock, log, scene);
+  assert.equal(attemptsOf(log), before + 1, 'it shoots again');
+  s.setAuto(false);
+  await reopen();
+  assert.equal(s.auto, false, 'a person\'s off stays off'); assert.deepEqual(said, [false, true]);
+  s.stop();
+});
+
+await run('a reader that cannot load is an error, not only a log line (Errors in Lab tools)', async () => {
+  const { s, engines } = setup(steadyLive(Q), { realReaders: true }), errs = [];
+  engines.log.on('err', t => errs.push(t));
+  await s.readers.load();
+  assert.equal(errs.length, 1);
+  assert.match(errs[0], /^Document type model \/ passport zone reader/);
+  s.stop();
 });
 
 await run('a corner out of the frame is not gone; Auto turned on later does not take the document taken; wake forgets it', async () => {

@@ -15,7 +15,7 @@ const ms = (v: number): string => String(Math.round(v));
 
 /** How the face set the page upright (the turn the cut gave: -1 no face, -2 the face finder failed). */
 export function turnNote(turn: number): string {
-  if (turn === -2) return tr('The face finder failed (see the log) — not turned');
+  if (turn === -2) return tr('The face finder failed (see Errors) — not turned');
   if (turn > 0) return tr('Turned {deg}° by the face', { deg: turn * 90 });
   if (turn === 0) return tr('Upright by the face');
   return tr('No face to set it upright');

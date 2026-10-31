@@ -48,6 +48,8 @@ export function statusEnglish(s: EngineStatus): string {
  *  - edges_unclear: the edges are not clear — more light, a darker background;
  *  - hold: still for seconds more before the shot (the lab's "Hold still… 0.6 s");
  *  - found: count documents found (1 on the live frame once it is steady; after a shot, how many it held);
+ *  - not_document: with Auto on, a green frame that has no document's shape (goodQuad, docShape): Auto will not take
+ *    it — straighten the phone, or use the shutter;
  *  - taken: the live frame went on after a shot and a document it took is still in front of the camera — Auto
  *    waits until it has left the frame (or another document comes);
  *  - no_frame: Capture tapped with no frame to take yet;
@@ -56,13 +58,13 @@ export function statusEnglish(s: EngineStatus): string {
  *    frame's (the light model first); a shot is shown by the live frame's corners meanwhile;
  *  - refining: the accurate model is refining the corners;
  *  - looking_more: count documents so far, looking for more on the photo;
- *  - shot_failed: the shot failed (the log says why), the camera goes on;
+ *  - shot_failed: the shot failed (the errors say why), the camera goes on;
  *  - stopped: the live frame stopped after 5 failed frames;
- *  - camera_failed: the camera or the model could not start (the log says why);
+ *  - camera_failed: the camera or the model could not start (the errors say why);
  *  - picture_finding / picture_cutting: a picked picture (file of files, page of pages — a photo is page 1 of
  *    1) is being looked at / a document on it was found and is being cut out (files.ts);
  *  - picked: a pick is done — pages from files;
- *  - pick_failed: a picked file could not be worked on (the log says why; the ones after it are not shown);
+ *  - pick_failed: a picked file could not be worked on (the errors say why; the ones after it are not shown);
  *  - pick_open_failed: a picked file could not be opened (a PDF pdf.js could not read, pdf.js not loaded). */
 export type SessionStatus =
   | { key: 'finding' }
@@ -70,6 +72,7 @@ export type SessionStatus =
   | { key: 'edges_unclear' }
   | { key: 'hold'; seconds: number }
   | { key: 'found'; count: number }
+  | { key: 'not_document' }
   | { key: 'taken' }
   | { key: 'no_frame' }
   | { key: 'captured'; ms: number }

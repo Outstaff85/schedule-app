@@ -57,6 +57,8 @@ export function trackFollower(now: () => number): Follower {
  *  follow's frames per second and ms, the capture ms, the camera's resolution, the model's load seconds and
  *  where it runs — null (or '') until known. */
 export interface Figures {
+  /** How long the first live frame took after the scanner opened (given by the session). */
+  readyMs?: number | null;
   modelMs: number | null;
   fps: number | null;
   uiFps: number | null;
@@ -162,7 +164,7 @@ export class Live {
 
   /** Everything learnt about the frame forgotten (a new way: no frame, no figures from the old one). */
   forget(): void {
-    this.target = this.shown = this.steady.smooth = this.lastRes = null; this.steady.steadySince = 0; this.follower.reset(); this.taken.clear();
+    this.target = this.shown = this.steady.smooth = this.lastRes = this.steady.sureSince = null; this.steady.steadySince = 0; this.follower.reset(); this.taken.clear();
     this.times.length = this.frames.length = this.followTimes.length = this.followMs.length = 0;
     this.fig = { ...this.fig, modelMs: null, fps: null, conf: null, followFps: null, followMs: null };
     this.hooks.figures();

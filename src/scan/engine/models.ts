@@ -32,7 +32,7 @@ const hasGpu = (): boolean => !!((globalThis as { navigator?: { gpu?: unknown } 
 export interface FetchOpts {
   /** The model file's stamp from models.json (modelStamp); null or unset: unknown (the ETag check). */
   stamp?: string | null;
-  /** How the model was got and how long it took (the lab's loading log). */
+  /** How the model was got and how long it took (the lab's console log). */
   said?: (text: string) => void;
 }
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -144,7 +144,7 @@ export function newGpuPass(o: Opened, stamp: string | null, ort: string, ua: str
 // first — a phone whose GPU gets one layout wrong then skips starting, warming and checking it on every open.
 // opts (the engine's threads and the page way): the model's bytes fetched already (beside ONNX Runtime's load —
 // started with downloadProgress, so the status line is the same), its stamp for the kept copy, and `time`: the
-// "Time: …" line of each step for the lab's loading log (none without it).
+// "Time: …" line of each step for the lab's console log (none without it).
 // passed: the GPU layout whose check passed before on this device with the same key (gpuPassed): it is tried first
 // and its check skipped — "Time: GPU check skipped — passed before on this device (<layout>)".
 export interface OpenOpts { bytes?: Promise<Uint8Array>; stamp?: string | null; time?: OnLog; passed?: GpuLayout | null }

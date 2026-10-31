@@ -336,7 +336,8 @@ const READS = {
   ok(look.w === 390 && look.h === 844 && look.statusTop && look.autoTopRight && look.doneBottomRight && look.stripAboveBar && look.barBottom && look.noScroll && look.bar === 'scan-pick,scan-shutter,scan-done' && look.video,
     'site, screen 1 at 390×844 (template 6): the camera fills the screen, the status line at the top centre, Auto at the top right, the photos\' strip above the bottom bar (Photos/PDF, the shutter, Done at the bottom right) ' + JSON.stringify(look));
   const fr = (asked[0] || {}).video || {};
-  ok(asked.length === 1 && fr.frameRate && fr.frameRate.ideal === 30 && fr.facingMode === 'environment' && !/60/.test(JSON.stringify(asked))
+  // twice: at once on the open, off again when the real models failed here (no models in the tests), then the stand-ins' wake
+  ok(asked.length === 2 && JSON.stringify(asked[0]) === JSON.stringify(asked[1]) && fr.frameRate && fr.frameRate.ideal === 30 && fr.facingMode === 'environment' && !/60/.test(JSON.stringify(asked))
     && fr.width && fr.width.ideal === 1280 && fr.height && fr.height.ideal === 720,
     'site: the camera is asked for the back camera at 1280×720 and 30 frames a second (no 60, no 1920×1080) ' + JSON.stringify(asked));
 
@@ -655,7 +656,7 @@ const READS = {
     'lab: Show what the models read lists every page with its readouts ' + JSON.stringify(lshow));
 
   // Screen 3: the Lab tools drawer pulled up over the scanner — the figures, the readouts (the type, the passport
-  // zone's check digits counted, the Hebrew ID's tick), Errors, the log, Settings
+  // zone's check digits counted, the Hebrew ID's tick), Errors, Settings
   await p.locator('[data-testid="lab-tools"]').tap();
   await p.waitForSelector('[data-testid="lab-drawer"]');
   await sleep(600);
@@ -664,16 +665,15 @@ const READS = {
     const fig = label => { const t = [...d.querySelectorAll('[data-testid="lab-figures"] button')].find(e => e.querySelector(':scope > span').textContent === label); return t ? t.querySelector('b').textContent : null; };
     return {label: ScanLab.session.engines.state.label, up: r.bottom >= 843 && r.top < 844 && r.top > 40, scanner: !!T.q('[data-testid="scanner"][data-mode="lab"]'),
       blocks: ['lab-figures', 'lab-settings', 'lab-readouts', 'lab-errors', 'lab-log'].filter(t => d.querySelector('[data-testid="' + t + '"]')).join(),
-      runs: fig('runs on'), ms: fig('ms per frame (model)'), conf: fig('confidence (≥ 0.50 = found)'), fps: fig('camera frames/s'), res: fig('camera resolution'),
+      tiles: d.querySelectorAll('[data-testid="lab-figures"] button').length, first: fig('first frame, s'), runs: fig('runs on'), ms: fig('ms per frame (model)'), conf: fig('confidence (≥ 0.50 = found)'), fps: fig('camera frames/s'), res: fig('camera resolution'),
       type: (d.querySelector('[data-testid="lab-readout-type"]') || {}).textContent || '', mrz: (d.querySelector('[data-testid="lab-readout-mrz"]') || {}).textContent || '',
-      he: (d.querySelector('[data-testid="lab-readout-he"]') || {}).textContent || '', heOk: !!(d.querySelector('[data-testid="lab-readout-he"] .text-ok')),
-      log: /test stand-in/.test((d.querySelector('[data-testid="lab-log"]') || {}).textContent || '')};
+      he: (d.querySelector('[data-testid="lab-readout-he"]') || {}).textContent || '', heOk: !!(d.querySelector('[data-testid="lab-readout-he"] .text-ok'))};
   });
   await p.screenshot({path: SP + '/scanner-lab-drawer.png'});
-  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors,lab-log' && drawer.runs === drawer.label && / bg\b| bg threads/.test(drawer.runs || '') && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
+  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors' && drawer.tiles === 11 && /^\d+\.\d$/.test(drawer.first || '') && drawer.runs === drawer.label && / bg\b| bg threads/.test(drawer.runs || '') && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
     && /^\d+(\.\d)?$/.test(drawer.fps || '') && drawer.res === '720×1280' && /ID card 97%/.test(drawer.type) && /2\/3 check digits right/.test(drawer.mrz) && /L898902C36UTO/.test(drawer.mrz)
-    && /ID 1 2345678 2/.test(drawer.he) && /✓/.test(drawer.he) && drawer.heOk && drawer.log,
-    'lab, screen 3 at 390×844: the Lab tools drawer pulled up over the scanner — the figures of the camera run (runs on, ms per frame, confidence, frames/s, resolution), the readouts (the type with its %, the passport zone with 2 of 3 check digits right, the Hebrew ID\'s tick), Errors, the log and Settings '
+    && /ID 1 2345678 2/.test(drawer.he) && /✓/.test(drawer.he) && drawer.heOk,
+    'lab, screen 3 at 390×844: the Lab tools drawer pulled up over the scanner — the figures of the camera run (11 tiles: runs on, ms per frame, confidence, frames/s, resolution, the first frame), the readouts (the type with its %, the passport zone with 2 of 3 check digits right, the Hebrew ID\'s tick), Errors and Settings, no loading log '
     + JSON.stringify(drawer));
 
   // Settings: another backend starts the models again — the figures of the old way go (—)

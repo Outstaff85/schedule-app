@@ -1169,8 +1169,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     'scan corner editor: Fix corners opens the editor on the page\'s photo; a dragged corner is the attempt\'s answer (edgesFixed), sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
   // The scanner lab (/scan-lab/, src/scan/lab/; docs/scan-plan.md → S9): the same
   // full-screen scanner in lab mode, on the lab's own surface (/scan-lab/ and its models — never the site's /scan/),
-  // with the Lab tools drawer — the figures, the Errors block (why a way to run the models failed, kept on the
-  // phone: the last 8) apart from the loading log — and the lab's training collection: a page's document type is
+  // with the Lab tools drawer — the figures, the Errors block (this opening's only; why a way to run the models
+  // failed stays kept on the phone, the last 8) — and the lab's training collection: a page's document type is
   // the model's answer, sent only when the user ticks it (keep) or picks another (once, later or when the page is
   // left), never untouched and never with no model; Looks good sends the attempt at once (no Done in the lab).
   const labPage = await page(ctx);
@@ -1185,6 +1185,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       body: JSON.stringify({ok: true, dirs: Object.fromEntries((body.attempts || []).map(a => [a.id, 'attempts/new/' + a.source + '/2026-10-20/' + a.id]))})});
     return r.fulfill({status:200, contentType:'application/json', headers:CORS, body: JSON.stringify(body.action === 'stats' ? {ok: true, attemptsSince: 3, attemptsAt: 15} : {ok: true})});
   });
+  // a failure of an earlier opening, on the phone before this page's code runs: Errors must not show it
+  await labPage.addInitScript(() => {
+    if (sessionStorage.getItem('oldFailSeeded')) return;
+    sessionStorage.setItem('oldFailSeeded', '1');
+    localStorage.setItem('scanWayFails', JSON.stringify([{at: '2026-10-01T10:00:00.000Z', way: 'A way of an earlier opening', kind: 'GPU', text: 'an old failure', mem: null}]));
+    window.oldFailSeeded = true;
+  });
   await labPage.goto(BASE + 'scan-lab/');
   await labPage.waitForFunction(() => window.ScanLab && document.querySelector('[data-testid="scanner"][data-mode="lab"] [data-testid="scan-status"]'), null, {timeout: 20000}).catch(() => {});
   const labLook = await labPage.evaluate(async () => {
@@ -1197,15 +1204,16 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     document.querySelector('[data-testid="lab-tools"]').click();
     r.open = await T.until(() => document.querySelector('[data-testid="lab-drawer"]'), 4000);
     r.blocks = ['lab-figures', 'lab-errors', 'lab-log', 'lab-settings', 'lab-readouts'].filter(t => document.querySelector('[data-testid="' + t + '"]')).join();
+    r.first = [...document.querySelectorAll('[data-testid="lab-figures"] [data-slot="figures"] > button')].some(b => /first frame, s/.test(b.textContent));
     r.tiles = document.querySelectorAll('[data-testid="lab-figures"] [data-slot="figures"] > button').length;
-    r.logged = await T.until(() => /GPU \(WebGPU\) in this browser/.test((document.querySelector('[data-testid="lab-log"]') || {}).textContent || ''), 4000);
     return r;
   }).catch(e => ({error: e.message}));
   ok(labLook.full && labLook.noScroll && labLook.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done,lab-tools' && labLook.show === 'Show what the models read'
-    && labLook.surface === '/scan-lab/,scan-lab-models,lab' && labLook.open && labLook.blocks === 'lab-figures,lab-errors,lab-log,lab-settings,lab-readouts' && labLook.tiles === 10 && labLook.logged,
-    'scanner lab (/scan-lab/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (10 tiles), Errors, the loading log, Settings and the readouts ' + JSON.stringify(labLook));
+    && labLook.surface === '/scan-lab/,scan-lab-models,lab' && labLook.open && labLook.blocks === 'lab-figures,lab-errors,lab-settings,lab-readouts' && labLook.tiles === 11 && labLook.first,
+    'scanner lab (/scan-lab/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (11 tiles, the first frame among them), Errors, Settings and the readouts — no loading log ' + JSON.stringify(labLook));
   const wayFails = await labPage.evaluate(async () => {
-    const L = ScanLab, ls = localStorage;
+    const L = ScanLab, ls = localStorage, atOpen = document.querySelector('[data-testid="lab-errors"]').textContent;
+    const seeded = window.oldFailSeeded === true;
     ls.removeItem('scanWayFails');
     for (let i = 0; i < 9; i++) L.log.noteFail('CPU ×1 · bg', 'no answer for 25 s');
     L.log.noteFail('GPU live + CPU capture · bg', 'WebGPU device was lost');
@@ -1213,18 +1221,22 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const list = JSON.parse(ls.getItem('scanWayFails'));
     L.clearLogs();
     L.log.noteFail('CPU ×1 · bg', 'no answer for 25 s');
-    L.log.showFails();
     await T.tick(300);
-    const errs = document.querySelector('[data-testid="lab-errors"]').textContent, loading = document.querySelector('[data-testid="lab-log"]').textContent;
+    const errs = document.querySelector('[data-testid="lab-errors"]').textContent, stored = JSON.parse(ls.getItem('scanWayFails')).length;
     ls.removeItem('scanWayFails');
-    const lines = errs.split('\n'), head = lines.findIndex(x => /^Earlier failures on this device \(last 8, newest on top\):/.test(x));
-    return {n: list.length, kinds: [...new Set(list.map(f => f.kind))].sort().join(), last: list[7].kind, head,
-      listed: lines.slice(head + 1, head + 9).filter(x => /^ {2}\d{4}-\d\d-\d\d \d\d:\d\d — /.test(x)).length,
-      gpu: /GPU live \+ CPU capture · bg: GPU \(/.test(errs), memory: /bg threads \+ 1: memory \(/.test(errs), hang: /CPU ×1 · bg: hang \(/.test(errs),
-      now: /^\d\d:\d\d:\d\d Failed — CPU ×1 · bg: hang/m.test(errs), apart: !/Fail/.test(loading)};
+    // the probe's words reach the screen (a phone has no console): a pick with no frames.json
+    const probeFiles = new DataTransfer(), probeInput = document.querySelector('[data-testid="lab-probe"] input');
+    probeFiles.items.add(new File(['x'], 'frame.png', {type: 'image/png'}));
+    probeInput.files = probeFiles.files;
+    probeInput.dispatchEvent(new Event('change', {bubbles: true}));
+    await T.until(() => document.querySelector('[data-testid="lab-probe-line"]'), 3000);
+    const probe = (document.querySelector('[data-testid="lab-probe-line"]') || {}).textContent;
+    return {n: list.length, kinds: [...new Set(list.map(f => f.kind))].sort().join(), last: list[7].kind, stored, seeded, probe,
+      earlier: /Earlier failures|an old failure|earlier opening/.test(atOpen + errs), older: /GPU live \+ CPU capture|bg threads \+ 1/.test(errs),
+      now: /^\d\d:\d\d:\d\d Failed — CPU ×1 · bg: hang/m.test(errs)};
   }).catch(e => ({error: e.message}));
-  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,hang,memory' && wayFails.last === 'memory' && wayFails.head >= 0 && wayFails.listed === 8 && wayFails.gpu && wayFails.memory && wayFails.hang && wayFails.now && wayFails.apart,
-    'scanner lab (/scan-lab/): a way that failed is kept with its reason (GPU, memory, hang), the last 8, and shown in the drawer\'s Errors block — "Earlier failures on this device (last 8" and each failure with its time —, apart from the loading log ' + JSON.stringify(wayFails));
+  ok(wayFails.n === 8 && wayFails.kinds === 'GPU,hang,memory' && wayFails.last === 'memory' && wayFails.stored === 8 && wayFails.seeded && !wayFails.earlier && !wayFails.older && wayFails.now && /^Probe: pick frames\.json/.test(wayFails.probe),
+    'scanner lab (/scan-lab/): a way that failed is kept with its reason (GPU, memory, hang), the last 8, in the phone\'s storage; the drawer\'s Errors block shows only this opening\'s, with its time — a failure kept from an earlier opening not among them; the resampling probe\'s line shows under its button ' + JSON.stringify(wayFails));
   // the types: the model's answer on each page; only the user's tick (keep) or pick is sent, once — never an
   // untouched answer, no tick with no model; then Show what the models read, and Looks good sending the attempt
   const labKinds = await labPage.evaluate(async jpg => {
