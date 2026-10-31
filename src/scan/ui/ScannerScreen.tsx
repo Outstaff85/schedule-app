@@ -13,7 +13,7 @@
 // its corners are being fixed the live frame is paused under it (session.hold / resume: no follow, no Auto shot
 // behind it). A picked picture is shown in place of the camera the moment it is being worked on, with the frame
 // of each document found on it. The shutter is off while a shot is still in work (refining, looking for more
-// documents) or a pick is.
+// documents) or a pick is, and while the models start under the camera (Photos/PDF stays on: a pick waits for them).
 //
 // It fills the box it is put in (a full Window — Window full — in the app; a phone frame in the /next gallery)
 // and drives a ScanSessionLike (useScanSession.ts): the camera starts when the screen is shown (camera: false
@@ -246,7 +246,7 @@ export function ScannerScreen({ mode, session, onDone, onChoose, camera = true, 
           onOpen={id => { if (!finishing) setOpen(id); }}
           onFix={id => { if (!finishing) startFix(id); }}
           onDelete={remove} />
-        <CaptureBar disabled={s.busy || s.picking} locked={finishing} onShutter={s.shutter} onPick={s.pick} done={done} />
+        <CaptureBar disabled={s.busy || s.picking || (camera && !s.ready)} locked={finishing} onShutter={s.shutter} onPick={s.pick} done={done} />
       </div>
 
       {page && (

@@ -30,7 +30,8 @@
 // After a shot or a pick the live frame goes on by itself (the session's rule, owner 2026-10-26: no Next to tap;
 // Auto does not take the same document twice — it waits until the document taken has left the frame). The
 // shutter is off while a shot is still in work (refining, looking for more documents: `busy`) or a pick is
-// (`picking`), so the shot finishes and gives its other documents.
+// (`picking`), so the shot finishes and gives its other documents; and until the session's first status (`ready`):
+// the camera shows beside the models' start, with nothing behind the shutter yet.
 import * as React from 'react';
 import { finishUndo, undoDelete } from '@/components/shared/undo';
 import { tr } from '@/lib/i18n';
@@ -107,7 +108,7 @@ export interface UiPage {
 export const kindOf = (p: UiPage): Doctype | null => p.chosen || (p.typed !== undefined ? p.typed : p.model);
 
 /** The statuses of a live frame running again (the picked picture shown gives way to the camera). */
-const LIVE = new Set<SessionStatus['key']>(['finding', 'corners_out', 'edges_unclear', 'hold', 'taken', 'shot_failed', 'camera_failed', 'stopped']);
+const LIVE = new Set<SessionStatus['key']>(['finding', 'corners_out', 'edges_unclear', 'hold', 'not_document', 'taken', 'shot_failed', 'camera_failed', 'stopped']);
 /** The statuses of a shot still in work (cut, being refined, looking for more documents); any other ends it. */
 const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
 
@@ -134,6 +135,8 @@ export interface ScanScreenState {
   auto: boolean;
   /** Auto turned itself off after AUTO_MAX shots in a row (the screen says so until Auto is tapped). */
   autoStopped: boolean;
+  /** The session has said something: until then the models are starting and there is nothing to shoot with. */
+  ready: boolean;
   /** A shot is still in work (refining, looking for more documents). */
   busy: boolean;
   /** A pick is in work. */
@@ -193,10 +196,11 @@ export function useScanSession(session: ScanSessionLike, opts: {
   const [preview, setPreview] = React.useState<ShownPicture | null>(null);
   const [auto, setAutoState] = React.useState(session.auto);
   const [autoStopped, setAutoStopped] = React.useState(false);
+  const [ready, setReady] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [picking, setPicking] = React.useState(0);
   // what is drawn now, so a status event that changes nothing draws nothing
-  const now = React.useRef({ busy: false, preview: false });
+  const now = React.useRef({ busy: false, preview: false, ready: false });
   // the pages deleted whose Undo is still offered (told when the snack ends, or at Done, or when the screen goes)
   const pendingDeletes = React.useRef(new Set<string>());
   // each page's canvas its URL was made from, and the URLs to let go
@@ -241,6 +245,7 @@ export function useScanSession(session: ScanSessionLike, opts: {
     let alive = true;
     const offs = [
       session.on('status', s => {
+        if (!now.current.ready) { now.current.ready = true; setReady(true); }
         if (s.key === 'captured') playShutter();   // the shot's click and buzz (shutter.ts)
         putBusy(SHOT_WORK.has(s.key));
         if (LIVE.has(s.key)) clearPreview();
@@ -292,7 +297,7 @@ export function useScanSession(session: ScanSessionLike, opts: {
   const working = busy || picking > 0;
 
   return {
-    pages, preview, auto, autoStopped, busy, picking: picking > 0,
+    pages, preview, auto, autoStopped, ready, busy, picking: picking > 0,
     setAuto: on => { session.setAuto(on); setAutoState(on); setAutoStopped(false); },
     shutter: () => {
       if (working) return;  // the shot finishes first (its other documents), the pick too

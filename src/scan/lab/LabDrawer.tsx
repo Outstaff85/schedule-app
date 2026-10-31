@@ -6,7 +6,7 @@
 // queue ("In queue: n / 5") and the new attempts since the last training (a super-admin's), the settings (the
 // models; the CPU's ONNX Runtime build, which reloads the page with ?ort=130 as the lab's did; the backend —
 // switching clears the frame and the figures — and the resampling probe, probe.ts: frames.json and the frames of
-// `python -m gen profile --frames DIR` picked, probe.json saved), the readouts of every page, the errors (newest on top, with
+// `python -m gen profile --frames DIR` picked, probe.json saved, its latest line under it), the readouts of every page, the errors (newest on top, with
 // their times; this opening's only — owner, 2026-10-31: the old failures and the loading log only filled the sheet;
 // the log's lines go to the browser's console). The error lines are the engine's own English text (data, like the
 // error texts the functions return); the labels go through tr().
@@ -81,7 +81,7 @@ function Choice<T extends string>({ value, choices, onChange, testid }: { value:
   );
 }
 
-export function LabDrawer({ session, figuresNow, errors, settings, onSettings, cpuDir, onCpuDir, train, pages, onProbe }: {
+export function LabDrawer({ session, figuresNow, errors, settings, onSettings, cpuDir, onCpuDir, train, pages, onProbe, probeLine }: {
   session: ScanSessionLike;
   /** the figures now (the tiles before the first figures event) */
   figuresNow: () => LiveFigures;
@@ -96,6 +96,8 @@ export function LabDrawer({ session, figuresNow, errors, settings, onSettings, c
   pages: ShotPage[];
   /** the resampling probe's files picked (frames.json and its frames) */
   onProbe?: (files: File[]) => void;
+  /** the probe's latest line, as the errors its own English text (data) */
+  probeLine?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   useBack(open, () => setOpen(false));  // the phone's back closes it (ui/back.ts)
@@ -140,6 +142,7 @@ export function LabDrawer({ session, figuresNow, errors, settings, onSettings, c
                 </label>
               </Button>
               <span className="text-[12px] text-ink-2">{tr('Pick frames.json and the frames of python -m gen profile --frames DIR; saves probe.json')}</span>
+              {probeLine && <div data-testid="lab-probe-line" role="status" className="w-full break-words text-[12px] text-ink">{probeLine}</div>}
             </div>
           )}
         </div>

@@ -13,6 +13,10 @@ export const HOLD = 0.04, MISS_MS = 600, DRIFT = 0.03, JERK = 0.02;
 /** Auto turns itself off after this many of its shots in a row with no touch (owner, 2026-10-31: pointed at a
  *  keyboard it went on shooting keys and the phone grew hot). */
 export const AUTO_MAX = 5;
+/** Auto's second counts while at least this share of the answers of the last STEADY_MS are the model's own: a lone
+ *  blur or glare does not start it again (a real card under a lamp dips every 10–20 answers on a fast phone), a
+ *  model that only flickers on something never gets there. */
+export const SURE_SHARE = 0.8;
 
 /** How far the farthest corner of a is from its corner in b. */
 export const farthest = (a: Quad, b: Quad): number => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
@@ -35,18 +39,29 @@ export class Steady {
   anchor: Quad | null = null;
   missSince = 0;
   smoothConf = 0;
-  /** Since when every answer was a real one (none outlived by the sticky frame); null: the last one was not. */
+  /** Since when the model has been finding it (SURE_SHARE of its answers); null: it is not. */
   sureSince: number | null = null;
+  /** The answers of the last STEADY_MS since sureSince: when, and whether it was the model's own. */
+  private recent: { t: number; real: boolean }[] = [];
   private readonly now: () => number;
 
   /** now: the clock in ms (performance.now on the page, a fake one in the tests). */
   constructor(now: () => number = () => performance.now()) { this.now = now; }
 
-  reset(): void { this.smooth = this.anchor = null; this.steadySince = this.missSince = 0; this.smoothConf = 0; this.sureSince = null; }
+  reset(): void { this.smooth = this.anchor = null; this.steadySince = this.missSince = 0; this.smoothConf = 0; this.sureSince = null; this.recent = []; }
 
-  /** For how long the model has really found it, every answer (a frame held up by the sticky frame does not
-   *  count: Auto does not take what the model only flickers on — owner, 2026-10-31). */
+  /** For how long the model has really found it (a frame only held up by the sticky frame does not count: Auto does
+   *  not take what the model only flickers on — owner, 2026-10-31; a lone miss among its answers does not end it). */
   sureFor(): number { return this.sureSince === null ? 0 : this.now() - this.sureSince; }
+
+  /** One answer counted towards sureFor. */
+  private noteAnswer(now: number, real: boolean): void {
+    if (real && this.sureSince === null) { this.sureSince = now; this.recent = []; }
+    if (this.sureSince === null) return;
+    this.recent.push({ t: now, real });
+    while (this.recent[0].t <= now - STEADY_MS) this.recent.shift();
+    if (this.recent.filter(a => a.real).length < SURE_SHARE * this.recent.length) { this.sureSince = null; this.recent = []; }
+  }
 
   /** The countdown starts again from now, the frame as it is now its anchor. */
   restart(now: number): void { this.steadySince = now; this.anchor = this.smooth && this.smooth.map(p => p.slice() as Pt); }
@@ -54,14 +69,14 @@ export class Steady {
   /** One model answer (already carried to now by the follow) → the frame to show. */
   answer(res: Corners): SteadyAnswer {
     const now = this.now(), stuck = !!this.smooth && now - this.steadySince >= LOCK_MS;
-    if (res.pts.some(p => !p) || res.conf < 0.5) {
-      this.sureSince = null;
+    const real = !res.pts.some(p => !p) && res.conf >= 0.5;
+    this.noteAnswer(now, real);
+    if (!real) {
       if (stuck && now - (this.missSince || (this.missSince = now)) < MISS_MS) return { pts: this.smooth!, conf: this.smoothConf, steady: now - this.steadySince, held: true };
       this.smooth = this.anchor = null; this.steadySince = this.missSince = 0; return res;
     }
     const pts = res.pts as Quad;
     this.missSince = 0; this.smoothConf = res.conf;
-    if (this.sureSince === null) this.sureSince = now;
     const move = this.smooth ? farthest(pts, this.smooth) : 1;
     if (move > MOVE * 3 || !this.smooth) { this.smooth = pts.map(p => p.slice() as Pt); this.restart(now); }
     else if (!(stuck && move <= HOLD)) { const s = this.smooth; this.smooth = s.map((q, i) => [q[0] * 0.6 + pts[i][0] * 0.4, q[1] * 0.6 + pts[i][1] * 0.4] as Pt); if (move > MOVE) this.restart(now); }

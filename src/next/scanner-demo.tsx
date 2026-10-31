@@ -5,7 +5,8 @@
 // Delete); a page opened large with its type chips; the corner editor — and the scanner in a full Window (with a
 // page its host kept from before, first in the strip). The first screen plays: the status changes, the shutter
 // takes a page, a tap grows a photo, its type opens it, Fix corners / Delete / Looks good work; what it asked the
-// session for is listed under it.
+// session for is listed under it, and a button under it plays Auto turning itself off. The full window's "models"
+// take a moment after its camera shows, with the shutter off meanwhile.
 import * as React from 'react';
 import { toast } from 'sonner';
 import { IconScan } from '@tabler/icons-react';
@@ -42,7 +43,7 @@ export function ScannerDemo() {
   const fixSession = React.useMemo(() => new FakeScanSession(3), []);
   const growSession = React.useMemo(() => new FakeScanSession(3), []);
   const [full, setFull] = React.useState(false);
-  const fullSession = React.useMemo(() => (full ? new FakeScanSession(2) : null), [full]);
+  const fullSession = React.useMemo(() => (full ? new FakeScanSession(2, 1200) : null), [full]);
   // the full window's host keeps a page from before (a contract on the phone): first in the strip, counted in Done
   const [kept, setKept] = React.useState<KeptPage[]>([]);
   React.useEffect(() => { if (full) setKept([{ id: 'kept1', src: keptPicture(), kind: 'contract' }]); }, [full]);
@@ -67,7 +68,10 @@ export function ScannerDemo() {
         </PhoneFrame>
       </div>
       <p data-testid="scanner-calls" className="font-mono text-[12px] text-ink-2">{calls.length ? calls.join(' · ') : tr('Nothing asked yet')}</p>
-      <div><Button variant="primary" onClick={() => setFull(true)} data-testid="open-scanner"><IconScan className="size-[18px]" />{tr('Open the scanner full screen')}</Button></div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary" onClick={() => setFull(true)} data-testid="open-scanner"><IconScan className="size-[18px]" />{tr('Open the scanner full screen')}</Button>
+        <Button onClick={() => live.autoStop()} data-testid="scanner-auto-stop">{tr('Auto stops itself')}</Button>
+      </div>
       <Window full open={full} onOpenChange={setFull} title={tr('Scanner')}>
         {fullSession && <ScannerScreen back={false} mode="site" session={fullSession} kept={kept} onRemoveKept={id => setKept(k => k.filter(x => x.id !== id))}
           onDone={p => { setFull(false); done(p.length); }} />}

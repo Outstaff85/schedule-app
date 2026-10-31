@@ -950,6 +950,14 @@ await run('the GPU check through the page way (the same code as a thread): the f
   } finally { ortFor = () => Promise.reject(new Error('no ONNX Runtime here')); }
 }));
 
+await run('a shape Auto will not take: its status, an amber tone, and what to do', async () => {
+  const st = { key: 'not_document' }, hint = small => STT.sessionHint(st, { small, mrzMissing: false });
+  assert.equal(STT.sessionStatusText(st), 'Not a document\'s shape — Auto waits');
+  assert.equal(STT.sessionStatusTone(st), 'warn');
+  assert.equal(hint(false), 'straight'); assert.equal(hint(true), 'closer');
+  assert.equal(STT.hintText('straight'), 'Hold the phone straight over it, or tap the shutter');
+});
+
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

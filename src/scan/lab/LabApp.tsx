@@ -15,7 +15,8 @@
 //    hand go with it (edgesFixed); "In queue" and "New for training" in the drawer;
 //  - the document types picked or ticked (kinds.ts), never an untouched answer — each with the face finder's turn
 //    (turnBy "face" when it set the page upright, else "model");
-//  - the resampling probe (probe.ts, Lab tools → Settings): its lines go to the browser's console.
+//  - the resampling probe (probe.ts, Lab tools → Settings): its latest line (how far, a file missing, saved) under
+//    its button — the phone has no console.
 // The lab's start order is the site's — the light model first (owner, 2026-10-27): the camera's models, then the
 // accurate model right after them (photos and PDFs picked meanwhile wait for it) — the camera comes at once, beside the
 // models, and waits only for a pick in work (startLab runs before the camera's start: the screen's effect runs before this page's). The session lives as long as the
@@ -199,6 +200,7 @@ export function LabApp() {
   const [settings, setSettings] = React.useState<EngineSettings>(l.engines.settings);
   const [kindsSeen, setKindsSeen] = React.useState(0);
   const [shown, setShown] = React.useState<UiPage[] | null>(null);
+  const [probeLine, setProbeLine] = React.useState('');
   // the phone's back (ui/back.ts): the sheet of what the models read closed; with nothing open the lab stays (its
   // guard) unless it was opened from a page of the site in this tab
   useBack(!!shown, () => setShown(null));
@@ -263,7 +265,8 @@ export function LabApp() {
         onDone={ps => setShown(ps)} kindTick={kindTick}>
         <LabDrawer session={view} figuresNow={() => l.session.figures()} errors={rec.errors}
           settings={settings} onSettings={changeSettings} cpuDir={l.cpuDir} onCpuDir={changeCpu} train={train} pages={list}
-          onProbe={files => { runProbe(files, t => l.log.log(t)).catch(e => l.log.err('Probe: ' + errText(e))); }} />
+          probeLine={probeLine}
+          onProbe={files => { setProbeLine(''); runProbe(files, setProbeLine).catch(e => { setProbeLine('Probe: ' + errText(e)); l.log.err('Probe: ' + errText(e)); }); }} />
       </ScannerScreen>
       <Window open={!!shown} onOpenChange={o => { if (!o) setShown(null); }} title={tr('What the models read')}
         description={tr('Each page\'s readouts and how long they took')}>

@@ -14,7 +14,7 @@ export interface ScanLogEvents {
 }
 
 /** A line from the models' loading (the page's or a background thread's): its failures go to the errors. */
-export const isErrLine = (t: string): boolean => /^Could not start|wrong on this GPU|^WebGPU is not available/.test(t);
+export const isErrLine = (t: string): boolean => /^Could not start|wrong on this GPU|^WebGPU is not available|^Document type model \/ passport zone reader/.test(t);
 
 function safeStorage(): KeyValue | null {
   try { return (globalThis as { localStorage?: KeyValue }).localStorage || null; } catch { return null; }

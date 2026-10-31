@@ -17,7 +17,8 @@
 // figures; page — each cut page the moment it exists, and again under the same id when it is refined or its
 // readouts come, so the screen can delete or fix it at once; preview — the picked picture being worked on (its
 // url, which file and page, the frame of each document as it is found), so the preview switches to it at once;
-// auto — Auto turned itself off (AUTO_MAX shots in a row with no touch; a tap on the button is not told).
+// auto — Auto turned itself off (AUTO_MAX shots in a row with no touch: false) or came back with a new open (true);
+// a tap on the button is not told.
 //
 // Picked files (pick, files.ts): each pick is a batch of its own, its pages in the files' order. The training
 // attempts (attempts.ts): every shot and picked picture is one; it is kept once Looks good was tapped on every
@@ -42,7 +43,10 @@
 // held by it (a person may take the same document again on purpose). Auto takes only what has a document's shape,
 // found by the model itself all through STEADY_MS (frames the sticky frame only held up do not count), and it turns
 // itself off after AUTO_MAX shots in a row (owner, 2026-10-31: pointed at a keyboard it shot keys and the phone grew
-// hot); the shutter, the Auto button, wake and hold start the count again. After a pick the picked picture stays on
+// hot); the shutter, the Auto button, wake and hold start the count again, and a new open (markOpen: the site's session
+// outlives its window by 3 minutes) starts it again and brings back an Auto that turned itself off — not one a person
+// turned off. With Auto on the status line says what it waits for: `hold` until its second is over, `not_document`
+// for a green frame it will not take, so `found` means it is about to shoot. After a pick the picked picture stays on
 // the screen PICK_SHOWN_MS, then the live frame goes on too (a camera that gets ready meanwhile waits for it). hold() pauses the live frame (its follow, Auto)
 // while a page is opened large over the camera or its corners are being fixed — a shot or a pick in work goes
 // on, and the live frame does not go on after it while held — and resume() lets it go on again from a fresh
@@ -62,7 +66,7 @@ import { docShape, goodQuad } from './geometry';
 import { info, readPage, takeShot, toCanvas, type ShotPage, type ShotRecord } from './shot';
 import { mkCanvas } from './upright';
 import type { SessionStatus } from './status';
-import { AUTO_MAX, STEADY_MS, autoShot, hintOf, type SteadyAnswer } from './steady';
+import { AUTO_MAX, LOCK_MS, STEADY_MS, autoShot, hintOf, type SteadyAnswer } from './steady';
 import type { ScanSurface } from './surface';
 import type { Corners, Pt, Quad } from './types';
 
@@ -139,7 +143,7 @@ export class ScanSession {
   readonly live: Live;
   readonly attempts: Attempts;
   readonly env: SessionEnv;
-  /** Auto takes the shot once a document's frame is still for a second (on by default; off by itself after AUTO_MAX shots in a row). */
+  /** Auto takes the shot once a document's frame is still for a second (on by default; off by itself after AUTO_MAX shots in a row, back on with the next open). */
   auto = true;
   private shotId = 0;
   /** Bumped by sleep() / stop(): a camera start still waiting (the model loading, the permission asked) finds
@@ -152,6 +156,8 @@ export class ScanSession {
   private readyMs: number | null = null;
   /** Auto's shots in a row with no touch (AUTO_MAX turns it off). */
   private autoRun = 0;
+  /** Auto turned itself off (a person did not): the next open brings it back. */
+  private autoSelfOff = false;
   private batchSeq = 0;
   /** The pages given so far (by id), for fix / remove / keep; the ones removed or retaken are never given again
    *  (a late refine or readouts of a page deleted at once), nor a fixed one by the shot or pick that made it. */
@@ -191,7 +197,7 @@ export class ScanSession {
     this.log = parts.log || parts.engines?.log || new ScanLog();
     this.engines = parts.engines || new Engines(surface, this.log);
     // the readers share the engines' one read of models.json per open
-    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.log, this.engines.settings.cpuDir, () => this.engines.modelsInfo());
+    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.any, this.engines.settings.cpuDir, () => this.engines.modelsInfo());
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
     this.keepCanvases = parts.keepCanvases ?? null;
@@ -281,9 +287,13 @@ export class ScanSession {
   /** When the scanner opened (env.now()), until its first live frame: "Ready: first frame after N ms" goes to the
    *  log then, and the lab's figure "first frame, s" (readyMs; the owner's measure of Preparing…). */
   private openedAt: number | null = null;
-  /** The scanner opened now (the site's window, the lab's page): the log's "Time:" lines count from here too. */
+  /** The scanner opened now (the site's window, the lab's page): the log's "Time:" lines count from here too. A new
+   *  open is a new run for Auto: its count starts again, and an Auto that turned itself off in the last scan (the site
+   *  keeps its session KEEP_MS) is back on — the amber line that said why went with that window. */
   markOpen(): void {
     this.openedAt = this.env.now();
+    this.autoRun = 0;
+    if (this.autoSelfOff) { this.autoSelfOff = false; this.auto = true; this.emit('auto', true); }
     this.log.markOpen();
     this.log.log('Time: scanner opened' + (this.engines.engine ? ' — its models kept from the last scan' : ''));
   }
@@ -327,17 +337,31 @@ export class ScanSession {
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);
-    this.emit('status', liveStatus(raw, res, waiting && this.auto));
+    this.emit('status', this.autoStatus(liveStatus(raw, res, waiting && this.auto), res));
     if (this.auto && !waiting && !this.shotInWork && this.autoTakes(res)) {
       void this.shoot();
-      if (++this.autoRun >= AUTO_MAX) { this.auto = false; this.autoRun = 0; this.emit('auto', false); }
+      if (++this.autoRun >= AUTO_MAX) { this.auto = false; this.autoSelfOff = true; this.autoRun = 0; this.emit('auto', false); }
     }
+  }
+
+  /** A document's shape on the live answer. */
+  private shaped(res: SteadyAnswer): boolean {
+    const v = this.live.video;
+    return goodQuad(res) && docShape(res.pts, (v && v.videoWidth) || 1, (v && v.videoHeight) || 1);
   }
 
   /** Auto takes it: still for a second, the model really finding it all that second, and a document's shape. */
   private autoTakes(res: SteadyAnswer): boolean {
-    const v = this.live.video;
-    return autoShot(res) && this.live.steady.sureFor() >= STEADY_MS && goodQuad(res) && docShape(res.pts, (v && v.videoWidth) || 1, (v && v.videoHeight) || 1);
+    return autoShot(res) && this.live.steady.sureFor() >= STEADY_MS && this.shaped(res);
+  }
+
+  /** With Auto on the status line does not promise a shot Auto will not take: a green frame with no document's
+   *  shape says so, and the countdown lasts until Auto's own second is over (found: it shoots now). */
+  private autoStatus(st: SessionStatus, res: SteadyAnswer): SessionStatus {
+    if (!this.auto || (st.key !== 'hold' && st.key !== 'found')) return st;
+    if ((res.steady as number) >= LOCK_MS && !this.shaped(res)) return { key: 'not_document' };
+    const left = (STEADY_MS - this.live.steady.sureFor()) / 1000, shown = st.key === 'hold' ? st.seconds : 0;
+    return left > shown ? { key: 'hold', seconds: left } : st;
   }
 
   /** The live frame goes on by itself (after a shot settled, a pick, a page closed) from a fresh frame — unless

@@ -18,7 +18,7 @@ export const BAR_SIDE = '!h-auto max-w-full flex-col !gap-0.5 !px-2.5 !py-1.5 !t
 export function CaptureBar({ onShutter, onPick, disabled, locked, done }: {
   onShutter: () => void;
   onPick: (files: PickFile[]) => void;
-  /** the shutter off (a shot or a pick in work) */
+  /** the shutter off (a shot or a pick in work, the models still starting) */
   disabled?: boolean;
   /** the whole bar off (Done at work) */
   locked?: boolean;

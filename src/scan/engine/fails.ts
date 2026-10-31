@@ -1,8 +1,8 @@
 // The scanner's engine (docs/scan-plan.md → S9): why a way of running the models failed on this device,
-// kept on it (the last 8, with the device's memory; localStorage scanWayFails), so a way that keeps failing —
-// and why: memory, a hang, the GPU, another error — can be looked up on the phone itself. The drawer no longer
-// shows them (owner, 2026-10-31: only this opening's errors); failLines is the old list's wording, held to the old
-// page by tests/scan/engine.test.mjs.
+// kept on it (the last 8, with the device's memory; localStorage scanWayFails): which way failed and why — memory,
+// a hang, the GPU, another error. Nothing in the app shows them or reads them any more (owner, 2026-10-31: the drawer
+// shows only this opening's errors, as they happen); they stay in the browser's storage, and failLines is the old
+// list's wording, held to the old page by tests/scan/engine.test.mjs.
 // Ported unchanged from the lab's former plain page (failKind, noteFail, showFails; tests/scan/engine.test.mjs).
 import type { KeyValue } from './types';
 
