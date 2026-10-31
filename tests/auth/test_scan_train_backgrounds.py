@@ -88,14 +88,11 @@ def test_check_rejects_small_near_duplicate_and_document_photos(bank):
 
 def test_text_without_a_document_is_a_hard_negative(tmp_path):
     from PIL import Image, ImageDraw, ImageFont
-    import synth_docs as sd
-    fonts = sd.latin_fonts()
-    if not fonts:
-        pytest.skip("no Latin font here")
+    # the repo's own font: the system's first one depends on the machine (a mono or light face scored under TEXT_MIN and stopped a deploy)
     plain = texture(9, 1700, 1200)
     im = Image.fromarray(plain.copy())
     d = ImageDraw.Draw(im)
-    f = ImageFont.truetype(fonts[0], 30)
+    f = ImageFont.truetype(str(HERE / "fonts" / "OCRB.otf"), 30)
     for k in range(3):
         d.text((300, 300 + k * 44), "Fresh coffee beans roasted daily", font=f, fill=(15, 15, 15))
     assert gb.text_score(np.asarray(im)) >= gb.TEXT_MIN
