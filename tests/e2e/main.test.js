@@ -2116,7 +2116,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     try { localStorage.removeItem('downloadDataPicks'); } catch (e) {}
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openWorkerCard(workers.findIndex(w => w.id === 'w1')); });
   await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
-  await p.click('[role="menuitem"]:has-text("Download data")');
+  await p.click('[role="menuitem"]:has-text("Download documents")');
   await p.waitForSelector('[data-testid="download-window"]', {timeout: 10000});
   // the window slides in: measured once it stands still over the card
   await waitFor(p, () => T.onTop('[data-testid="download-window"]'), 5000);
@@ -3003,7 +3003,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && wcd.order === 'id,clients,hr,supplier,start,shift,address,income,docs-status,hours-sent' && wcd.equal && wcd.pairs && wcd.docsWide && wcd.saved
     && wcd.hrUnknown === 'HR|Assigned' && wcd.noCity === 'Address|Herzl 5',
     'worker card: no month\'s hours at the top; the boxes in equal pairs (ID | Clients, HR | Supplier — "—" when none, an HR not known to the login "Assigned", Start date | Shift today, Address city over street, the street alone on the first line without a city | Income, Documents | Hours sent); the documents box across both with + Add; Saved at the bottom left, Edit and ⋮ at the right ' + JSON.stringify(wcd));
-  ok(/Upload hours/.test(wcd.menu) && /Export hours/.test(wcd.menu) && /Download data/.test(wcd.menu) && !/Add document/.test(wcd.menu) && wcd.add,
+  ok(/Upload hours/.test(wcd.menu) && /Export hours/.test(wcd.menu) && /Download documents/.test(wcd.menu) && !/Download document(?!s)/.test(wcd.menu) && !/Add document/.test(wcd.menu) && wcd.add,
     'worker card: the hours actions under ⋮; + Add in the documents box opens Add document ' + JSON.stringify({menu: wcd.menu, add: wcd.add}));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {

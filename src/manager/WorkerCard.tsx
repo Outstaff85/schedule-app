@@ -215,8 +215,7 @@ export function WorkerCard({ snap, api }: { snap: CardSnapshot; api: ManagerBrid
   const control = (t: EventTarget) => !!(t as HTMLElement).closest?.('button, a, input, select, textarea, label, [role="button"], [role="radio"], [role="switch"], [data-slot="plate"]');
   const more = [
     ...(snap.canPay ? [{ icon: <IconCash />, label: tr('Pay'), run: () => api.payFromCard(w.id) }] : []),
-    ...(w.docUrl ? [{ icon: <IconDownload />, label: tr('Download document'), run: () => window.open(w.docUrl, '_blank', 'noopener') }] : []),
-    { icon: <IconFileDownload />, label: tr('Download data'), run: () => setDownloading(true) },
+    { icon: <IconFileDownload />, label: tr('Download documents'), run: () => setDownloading(true) },
     ...(can ? [{ icon: <IconFileUpload />, label: tr('Upload hours'), run: () => api.openHoursImport(w.id) }] : []),
     ...(can && snap.canExport ? [{ icon: <IconFileExport />, label: tr('Export hours'), run: () => api.openHoursExport(w.id) }] : []),
     ...(can ? [{ icon: <IconLink />, label: tr('Punch link'), run: () => api.copyLink(w.id) }] : []),
