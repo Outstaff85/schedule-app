@@ -1146,6 +1146,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const H = await ManagerScan.hooks();
     const going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const before = H.session();
     const give = () => H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
     // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
     // a page given while the window takes over from the one closed before can land on the old session, or go with it
@@ -1157,6 +1158,10 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       await T.until(() => { const t = thumb(); return t && t.dataset.kind; }, 6000);
       mine = await T.until(thumb, 1000);
     }
+    if (!thumb()) throw new Error('corner editor check: no page of ' + a.attempt + ' in the strip ' + JSON.stringify({
+      scanner: !!document.querySelector('[data-testid="scanner"]'), status: (document.querySelector('[data-testid="scan-status"]') || {}).textContent,
+      held: [...H.session().pages.keys()].slice(-4), same: H.session() === before,
+      thumbs: [...document.querySelectorAll('[data-testid="scan-thumb"]')].slice(-4).map(t => [t.dataset.id, t.dataset.kept || '', t.dataset.kind || '']) }));
     // its Edit corners button on the photo grown in the strip (template 6)
     thumb().click();
     const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
