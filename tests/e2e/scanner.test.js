@@ -692,10 +692,10 @@ const READS = {
       he: (d.querySelector('[data-testid="lab-readout-he"]') || {}).textContent || '', heOk: !!(d.querySelector('[data-testid="lab-readout-he"] .text-ok'))};
   });
   await p.screenshot({path: SP + '/scanner-lab-drawer.png'});
-  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors' && drawer.tiles === 11 && /^\d+\.\d$/.test(drawer.first || '') && drawer.runs === drawer.label && / bg\b| bg threads/.test(drawer.runs || '') && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
+  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors' && drawer.tiles === 12 && /^\d+\.\d$/.test(drawer.first || '') && drawer.runs === drawer.label && / bg\b| bg threads/.test(drawer.runs || '') && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
     && /^\d+(\.\d)?$/.test(drawer.fps || '') && drawer.res === '720×1280' && /ID card 97%/.test(drawer.type) && /2\/3 check digits right/.test(drawer.mrz) && /L898902C36UTO/.test(drawer.mrz)
     && /ID 1 2345678 2/.test(drawer.he) && /✓/.test(drawer.he) && drawer.heOk,
-    'lab, screen 3 at 390×844: the Lab tools drawer pulled up over the scanner — the figures of the camera run (11 tiles: runs on, ms per frame, confidence, frames/s, resolution, the first frame), the readouts (the type with its %, the passport zone with 2 of 3 check digits right, the Hebrew ID\'s tick), Errors and Settings, no loading log '
+    'lab, screen 3 at 390×844: the Lab tools drawer pulled up over the scanner — the figures of the camera run (12 tiles: runs on, ms per frame, confidence, frames/s, resolution, the first frame), the readouts (the type with its %, the passport zone with 2 of 3 check digits right, the Hebrew ID\'s tick), Errors and Settings, no loading log '
     + JSON.stringify(drawer));
 
   // Settings: another backend starts the models again — the figures of the old way go (—)
