@@ -1633,6 +1633,7 @@
   "Not an ID, passport or contract — Auto waits": "לא תעודה, דרכון או חוזה — הצילום האוטומטי ממתין",
   "Another paper? Tap the shutter to take it": "מסמך אחר? הקישו על כפתור הצילום כדי לצלם אותו",
   "first frame, s": "פריים ראשון, שניות",
+  "GPU took over, s": "מעבר ל-GPU, שניות",
   "{n} pages done": "{n} עמודים הסתיימו",
   "The scanner on a fake session: no camera and no models. The first screen plays — the shutter takes a page, a tap on a photo makes it grow, its type opens it.": "הסורק על סשן מדומה: בלי מצלמה ובלי מודלים. המסך הראשון פועל — כפתור הצילום מוסיף עמוד, הקשה על תמונה מגדילה אותה, והקשה על הסוג שלה פותחת אותה.",
   "A photo grown in the strip": "תמונה מוגדלת בפס",

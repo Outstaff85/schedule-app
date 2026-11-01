@@ -1319,10 +1319,10 @@ const feed = async (eng, n) => { for (let i = 0; i < n; i++) await eng.engine.de
 /** Frames in turn until the trial is over: its threads take every fifth to second frame. */
 const trialOver = async (eng, seen = 40) => { for (let i = 0; i < seen && eng.gpuStop; i++) await eng.engine.detect('live', FRAME()).catch(() => {}); await flush(5); };
 
-await run('the GPU joins: after 20 answers with the capture thread up, one 1.30 thread loads in the background inside the same pool, a trial of 10, accepted; the CPU threads stop, the engine object stays', async () => {
-  const { eng, said } = await pooled({}, 19), pool = eng.engine, states = [];
+await run('the GPU joins: after 8 answers with the capture thread up, one 1.30 thread loads in the background inside the same pool, a trial of 5, accepted; the CPU threads stop, the engine object stays', async () => {
+  const { eng, said } = await pooled({}, 7), pool = eng.engine, states = [];
   eng.gpuJoin();
-  assert.equal(gpuThreads().length, 0, 'not before 20 answers');
+  assert.equal(gpuThreads().length, 0, 'not before 8 answers');
   await feed(eng, 1);
   eng.onChange(s => states.push(s.label));
   assert.equal(eng.engine.size, 3);
@@ -1330,8 +1330,10 @@ await run('the GPU joins: after 20 answers with the capture thread up, one 1.30 
   assert.equal(gpuThreads().length, 1, 'one thread, one start');
   assert.deepEqual(gpuThreads().map(w => { const m = w.sent[0]; return [m.ort, m.want, m.live, m.cap, m.face]; }), [['ort130', 'webgpu', 'lite.onnx', null, true]]);
   assert.equal(eng.engine.size, 3, 'no frame for them while they load');
+  assert.ok(eng.gpuLoading, 'the live frame eases off beside the load');
   await flush(10);
   assert.equal(eng.engine.size, 4, 'it joins the turn for the trial');
+  assert.ok(!eng.gpuLoading, 'loaded: the frames go at their full rate');
   assert.equal(eng.engineWay, 'bg-pool', 'still the pool on trial');
   await trialOver(eng);
   assert.equal(eng.engine, pool, 'the same object'); assert.equal(eng.engineWay, 'bg-gpulive');
@@ -1344,14 +1346,37 @@ await run('the GPU joins: after 20 answers with the capture thread up, one 1.30 
   const before = gpuThreads().map(w => w.sent.filter(m => m.type === 'detect').length);
   await feed(eng, 4);
   assert.deepEqual(gpuThreads().map((w, i) => w.sent.filter(m => m.type === 'detect').length - before[i]), [4], 'every frame on it');
-  for (const line of [/^GPU joins: started — \d+ answers given, the capture thread up; lite\.onnx on one thread/, /^Time: GPU thread ready beside the CPU pool — \d+ ms/, /^GPU joins: a trial of 10 answers$/,
+  for (const line of [/^GPU joins: started — \d+ answers given; lite\.onnx on one thread/, /^Time: GPU thread ready beside the CPU pool — \d+ ms/, /^GPU joins: a trial of 5 answers$/,
     /^GPU joins: trial — GPU 100 ms \(100–100\); CPU 400 ms on 3, 133 ms a frame$/, /^GPU joins: accepted — /]) assert.ok(said.log.some(t => line.test(t)), line + ' in ' + said.log.join(' | '));
   assert.deepEqual(Object.keys(eng.gpuPasses()), ['lite.onnx'], 'the check that passed is kept, as on the GPU way');
   eng.stopAll();
   assert.ok(workers.every(w => w.dead), 'nothing left');
 });
 
-await run('the GPU does not join: no capture thread, the lab\'s explicit backends, no WebGPU, a stuck way', async () => {
+await run('no join while the accurate model loads, and it starts only after the load of the GPU; on trial a frame goes to the GPU', async () => {
+  const a = await pooled();
+  a.eng.capBusy = new Promise(() => {});
+  a.eng.gpuJoin(); await flush(5);
+  assert.equal(gpuThreads().length, 0);
+  a.eng.capBusy = null;
+  a.eng.stopAll();
+  await flush(10);
+  workers.length = 0; timeline.length = 0; policy = joinPolicy();
+  const b = newEngines(SU.siteSurface(), {});
+  let open = () => {};
+  const held = new Promise(r => { open = () => r('held'); });
+  b.eng.capHold = () => held;
+  await b.eng.ensureSession();
+  await feed(b.eng, 8); b.eng.gpuJoin(); await flush(10);
+  assert.equal(gpuThreads().length, 1, 'the GPU came first');
+  await feed(b.eng, 5); await flush(5);
+  assert.equal(b.eng.engineWay, 'bg-gpulive', 'five frames, one at a time, end the trial');
+  open(); await flush(10);
+  assert.ok(workers.some(w => w.sent[0].live === 'sa24_w16.onnx'), 'the accurate model after it');
+  b.eng.stopAll();
+});
+
+await run('the GPU does not join: the lab\'s explicit backends, no WebGPU, a stuck way', async () => {
   await flush(10);
   const none = async (setUp, env = {}, cap = true) => {
     workers.length = 0; policy = joinPolicy();
@@ -1363,7 +1388,7 @@ await run('the GPU does not join: no capture thread, the lab\'s explicit backend
     n.eng.stopAll();
     return [on, way];
   };
-  assert.deepEqual(await none(e => { e.capHold = () => new Promise(() => {}); }, {}, false), [0, 'bg-pool'], 'the capture thread not up');
+  assert.deepEqual(await none(e => { e.capHold = () => new Promise(() => {}); }, {}, false), [1, 'bg-pool'], 'the accurate model not up: the GPU does not wait for it');
   assert.deepEqual(await none(e => e.setSettings({ backend: 'wasm' })), [0, 'bg-pool'], 'the lab\'s wasm');
   assert.deepEqual(await none(e => e.setSettings({ backend: 'webgpu' })), [1, 'bg-gpu'], 'the lab\'s webgpu: its one thread, no hand-over');
   assert.deepEqual(await none(() => {}, { gpu: false }), [0, 'bg-pool'], 'no WebGPU');
@@ -1490,7 +1515,9 @@ await run('the hand-over loses no frame: a CPU thread at work stops when its ans
   const { eng } = await pooled({ cpuDetect: (w, m) => (held === false ? ((held = [w, m]), undefined) : { ...NOTHING, ms: 400 }) });
   eng.gpuJoin(); await flush(10);
   held = false;
-  const late = eng.engine.detect('live', FRAME());  // goes to the first CPU thread, whose answer is held
+  const onGpuNow = eng.engine.detect('live', FRAME());
+  const late = eng.engine.detect('live', FRAME());  // the GPU busy: it goes to the first CPU thread, whose answer is held
+  await onGpuNow;
   await flush(5);
   const [w, m] = held;
   await trialOver(eng);

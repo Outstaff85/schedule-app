@@ -184,6 +184,9 @@ export class ScanSession {
   private captureMs: number | null = null;
   /** How long the first live frame took after the scanner opened (the lab's figure). */
   private readyMs: number | null = null;
+  /** From the scanner opening to the GPU taking the live frame over (the lab's figure "GPU took over, s"). */
+  private handMs: number | null = null;
+  private startedAt = 0;
   /** Auto's shots in a row with no touch (AUTO_MAX turns it off). */
   private autoRun = 0;
   /** Auto turned itself off (a person did not): the next open brings it back. */
@@ -247,7 +250,8 @@ export class ScanSession {
     // the readers share the engines' one read of models.json per open
     this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.any, this.engines.settings.cpuDir, () => this.engines.modelsInfo(), () => this.gateWait());
     this.engines.capHold = () => this.capHold();
-    this.engines.handed = () => { this.live.times.length = 0; };  // the model's figure shows the GPU's from now on
+    // the model's figure shows the GPU's from now on
+    this.engines.handed = () => { this.live.times.length = 0; this.handMs = this.env.now() - this.startedAt; };
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
     this.keepCanvases = parts.keepCanvases ?? null;
@@ -256,7 +260,7 @@ export class ScanSession {
       engine: () => this.engines.engine,
       ensureSession: () => this.engines.ensureSession(),
       cameraOn: () => this.camera.on,
-      easeOff: () => this.engines.capLoads,
+      easeOff: () => this.engines.capLoads || this.engines.gpuLoading,
       log: this.log,
       answer: (raw, res) => this.answer(raw, res),
       frame: (quad, ok) => this.emit('frame', quad, ok),
@@ -288,7 +292,7 @@ export class ScanSession {
   /** The lab's figures now. */
   figures(): Figures {
     const st = this.engines.state;
-    return { ...this.live.fig, captureMs: this.captureMs, readyMs: this.readyMs, resolution: this.camera.resolution(), loadSeconds: st.loadSeconds, runsOn: st.label };
+    return { ...this.live.fig, captureMs: this.captureMs, readyMs: this.readyMs, handMs: this.handMs, resolution: this.camera.resolution(), loadSeconds: st.loadSeconds, runsOn: st.label };
   }
   private emitFigures(): void { this.emit('figures', this.figures()); }
 
@@ -390,7 +394,8 @@ export class ScanSession {
    *  open is a new run for Auto: its count starts again, and an Auto that turned itself off in the last scan (the site
    *  keeps its session KEEP_MS) is back on — the amber line that said why went with that window. */
   markOpen(): void {
-    this.openedAt = this.env.now();
+    this.openedAt = this.startedAt = this.env.now();
+    this.handMs = null;
     this.autoRun = 0;
     this.refused = null; this.readersBy = null;
     if (this.autoSelfOff) { this.autoSelfOff = false; this.auto = true; this.emit('auto', true); }

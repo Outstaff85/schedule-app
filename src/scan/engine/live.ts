@@ -62,6 +62,7 @@ export function trackFollower(now: () => number): Follower {
 export interface Figures {
   /** How long the first live frame took after the scanner opened (given by the session). */
   readyMs?: number | null;
+  handMs?: number | null;
   modelMs: number | null;
   fps: number | null;
   uiFps: number | null;
