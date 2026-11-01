@@ -160,7 +160,7 @@ const WATCH_MS = 25000;
  *  device rejects every run; 2, or the live frame's own stop after 5 failed frames comes first on two threads). */
 export const GPU_ERRORS = 2;
 /** The GPU's live threads when it is the way itself (the pool could not start). */
-export const GPU_THREADS = 2;
+export const GPU_THREADS = 1;
 /** The GPU joining the pool: one live thread (the owner's phone, 2026-11-01: one thread gave the screen 20-26 frames/s
  *  and the follow 21-24, two on one GPU the screen 9-10 and the follow 10), how many times slower a frame than the
  *  pool's it may be and still be taken (one thread never matches three on answers: what it gives back is the page's
@@ -653,9 +653,6 @@ export class Engines {
     if (!this.env.gpu) ways = ways.filter(w => w.ep !== 'webgpu' && !w.gpuLive);
     if (want === 'webgpu') ways = inWorker ? [{ id: 'bg-gpu', label: 'GPU · bg', worker: true, ep: 'webgpu', threads: 1 }] : [{ id: 'page-gpu', label: 'GPU · page', worker: false, ep: 'webgpu', threads: 1 }];
     if (want === 'wasm') ways = ways.filter(w => !w.gpuLive);
-    // the frame first (2026-11-01): the CPU pool comes up in about a third of the GPU's time, the GPU stays its fall
-    // back. Only with a light model apart: a pool of one model would hold three copies of the accurate one.
-    if (want === 'auto' && this.settings.model.includes('+')) ways = [...ways.filter(w => w.pool), ...ways.filter(w => !w.pool)];
     if (ways.some(w => !this.stuckWays.has(w.id))) ways = ways.filter(w => !this.stuckWays.has(w.id));
     return ways;
   }
