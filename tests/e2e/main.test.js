@@ -68,6 +68,13 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         tap(sel){ const el = (T.el(sel) || {}).classList && T.el(sel).classList.contains('og-plate') ? T.el(sel) : T.el(sel) && T.el(sel).querySelector('.og-plate'); if(!el) return false;
           for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new PointerEvent(t, {bubbles: true, pointerType: 'touch', isPrimary: true})); return true; },
         esc: () => document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})),
+        // the scan window really gone before the next one opens: off the screen (the next check waits for a scanner, and
+        // the one closing would answer it), and its history entry off too. Closed by hand, that entry goes in a history.go a
+        // moment later (src/scan/ui/back.ts), and a window opened meanwhile was closed by that step's popstate.
+        async scanClosed(){
+          await T.until(() => !document.querySelector('[data-testid="scanner"]'), 5000);
+          await T.until(() => !(history.state || {}).scanBack, 5000);
+        },
         // a photo in the scanner's strip opened large (template 6): a tap grows it, a tap on its type and % opens it
         async openThumb(el){ if (!el.dataset.selected) el.click(); await T.until(() => el.querySelector('[data-testid="scan-thumb-open"]'), 3000); el.querySelector('[data-testid="scan-thumb-open"]').click(); },
         fill(sel, v){ const el = T.el(sel); const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -965,7 +972,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.autoOn = await T.until(() => H.session().auto === true, 3000);
     r.done = document.querySelector('[data-testid="scan-done"]').textContent;
     await T.tick(700); // kept on the phone a moment after a change
-    T.esc(); await going; r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000);
+    T.esc(); await going; r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000); await T.scanClosed();
     r.camOff = !H.session().camera.on;
     await T.tick(500); // the window gone, as a person opens it again
     going = startNewScan();
@@ -973,7 +980,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.restored = await T.until(() => thumbs('[data-kept]') === 2, 4000);
     r.keptKinds = [...document.querySelectorAll('[data-testid="scan-thumb"][data-kept]')].map(e => e.dataset.kind).sort().join();
     r.same2 = H.session() === s0;
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
     return r;
   }, [JPG, JPG2]);
@@ -1018,7 +1025,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   };
   alignTurn = 0;
   await p.evaluate(async () => {
-    T.esc(); await window.__turnGoing;
+    T.esc(); await window.__turnGoing; await T.scanClosed();
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
   });
   const tc = t => [t.typed ? 'typed' : 'untyped', t.size, t.corner, 'haiku' + t.haiku].join(' ');
@@ -1056,7 +1063,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await T.until(() => !document.querySelector('[data-testid="scan-shutter"]').disabled, 10000);
     document.querySelector('[data-testid="scan-shutter"]').click();
     await T.tick(1000);
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     return r;
   }, [JPG, PDF2]);
   ctx.off('request', onScanReq);
@@ -1106,7 +1113,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     A.done();
     r.sent = await T.until(() => A.attemptDirs.has(b), 8000);
     await A.pageDeleted(b, 1);
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     return r;
   });
   const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
@@ -1133,9 +1140,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const H = await ManagerScan.hooks(), A = H.attempts();
     await A.flush();
     const r = {gone: await T.until(() => !document.querySelector('[data-testid="scan-queue"]'), 8000), waiting: (await A.queued()).length};
-    T.esc(); await window.__queueGoing;
-    // really gone: the next check waits for a scanner on the screen, and the one closing here would answer it
-    await T.until(() => !document.querySelector('[data-testid="scanner"]'), 5000);
+    T.esc(); await window.__queueGoing; await T.scanClosed();
     return r;
   });
   ok(queue.shown && queue.waiting === 5 && online.gone && online.waiting === 0,
@@ -1176,7 +1181,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.id = a.attempt;
     H.attempts().done();
     r.sent = await T.until(() => H.attempts().attemptDirs.has(a.attempt), 8000);
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     return r;
   }, JPG);
   const sentFix = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts).find(x => x.id === fixed.id) || {};
