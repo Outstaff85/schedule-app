@@ -1,7 +1,9 @@
 // The scanner's engine (docs/scan-plan.md → S9): the live frame on the camera — ported unchanged from the
 // lab's former plain page (loop, runOnce, frameInput, smallRGBA, followLoop, animate, the figures):
-//  - up to engine.size frames are worked on at once, sent evenly spaced (the mean model time / n); 5 failed
-//    frames in a row stop it; with no engine (a way that stuck was dropped) the model starts again first;
+//  - up to engine.size frames are worked on at once, sent evenly spaced (the mean model time / n), one at a time
+//    while the accurate model loads (hooks.easeOff: its warm-up has a time limit, and a pool at full load on a slow
+//    phone would pass it); 5 failed frames in a row stop it; with no engine (a way that stuck was dropped) the model
+//    starts again first;
 //  - each frame is scaled to S×S on the GPU (createImageBitmap) and handed to the model's thread as is — no
 //    full-size copy in the page —, drawn through a small canvas where that is not possible; an answer that
 //    comes after a later frame's is dropped (seq), a late one is carried to now by the follow (since);
@@ -77,6 +79,8 @@ export interface LiveHooks {
   ensureSession(): Promise<void>;
   /** Whether the camera is still on (a dropped engine started again resumes only then). */
   cameraOn(): boolean;
+  /** Whether to work on one frame at a time for now (the accurate model loads). */
+  easeOff(): boolean;
   log: ScanLog;
   /** A model answer after the sticky frame: the status line and Auto. */
   answer(raw: Corners, res: SteadyAnswer): void;
@@ -152,15 +156,16 @@ export class Live {
     this.video = video;
     if (!this.animating) { this.animating = true; this.clock.raf(() => this.animate()); }
   }
-  /** The video put away (the scanner closed): no frame, the loops end. */
+  /** The video put away (the scanner closed): no frame, the loops end, and no answer left for the next open's shot
+   *  (a kept session points at something else by then). */
   hide(): void {
-    this.video = null; this.running = false; this.target = this.shown = null;
+    this.video = null; this.running = false; this.target = this.shown = this.lastRes = null;
     this.following = false; this.followGen++; this.follower.reset();
     this.hooks.frame(null, false);
   }
 
   /** The live frame and its follow start (again). */
-  start(): void { this.running = true; this.loop(++this.loopGen); this.startFollow(); }
+  start(): void { this.running = true; this.fails = 0; this.loop(++this.loopGen); this.startFollow(); }
 
   /** The frame starts again from nothing (the lab's Looks good / Retake). */
   clearFrame(): void { this.steady.reset(); this.target = this.shown = null; }
@@ -263,7 +268,7 @@ export class Live {
         .catch(e => this.hooks.log.log('Model: ' + ((e as Error)?.message || e)));
       return;
     }
-    const v = this.video, n = engine.size || 1, now = this.clock.now();
+    const v = this.video, n = this.hooks.easeOff() ? 1 : engine.size || 1, now = this.clock.now();
     const avg = this.times.length ? mean(this.times) : 300;
     if (v && this.inFlight < n && v.readyState >= 2 && now - this.lastSent >= avg / n) {
       this.inFlight++; this.lastSent = now;

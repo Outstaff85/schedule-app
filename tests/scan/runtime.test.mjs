@@ -145,6 +145,7 @@ const ids = ways => ways.map(w => w.id);
 /** The next start goes to the GPU live way, as when the CPU pool has failed on this open. */
 const afterPool = e => { e.stuckWays.add('bg-pool'); return e; };
 const loadOk = (w, m) => (m.type === 'load' ? { ep: m.want === 'webgpu' ? 'webgpu' : 'wasm', layout: m.want === 'webgpu' ? 'NHWC' : null } : undefined);
+const afterPoolNew = () => { const n = newEngines(SU.siteSurface()); afterPool(n.eng); return n; };
 
 // ── the ways ──
 await run('the ways in the lab\'s order: auto / webgpu / wasm, with and without WebGPU, in a thread or the page', () => {
@@ -163,6 +164,9 @@ await run('the ways in the lab\'s order: auto / webgpu / wasm, with and without 
   const { eng: small } = newEngines(SU.siteSurface(), { cores: 2, isolated: true });
   assert.equal(small.POOL, 1); assert.equal(small.THREADS, 2);
   assert.equal(newEngines(SU.siteSurface(), { cores: 0 }).eng.POOL, 1);
+  // under 4 GB of memory one thread less (each holds its own ONNX Runtime); unknown counts as 4
+  assert.equal(newEngines(SU.siteSurface(), { cores: 8, memory: 3 }).eng.POOL, 2);
+  assert.equal(newEngines(SU.siteSurface(), { cores: 8, memory: 0 }).eng.POOL, 3);
   assert.equal(newEngines(SU.siteSurface(), { cores: 16, isolated: true }).eng.THREADS, 4);
   // minus the stuck ways, unless every way is stuck
   eng.stuckWays.add('bg-gpulive'); eng.stuckWays.add('bg-pool');
@@ -1132,7 +1136,9 @@ await run('a GPU way that hangs while it starts: dropped by the watchdog after 2
   assert.ok(workers.filter(w => w.sent[0].want === 'webgpu').every(w => w.dead), 'the GPU threads stopped');
   fire(); await ready;
   oneAtATime(timeline.filter(t => !/lite/.test(t)));
-  assert.deepEqual(timeline.slice(-2), ['load sa24_w16.onnx', 'up sa24_w16.onnx']);
+  // that way holds the accurate model itself: no second copy of it, on the phone that just showed it is short of room
+  assert.ok(eng.capInLive()); assert.equal(eng.capThread, null);
+  assert.ok(!timeline.includes('load sa24_w16.onnx'));
   session.stop();
 }));
 
@@ -1183,6 +1189,128 @@ await run('closed in mid-start: at the live models and at the gate — no thread
   b.session.stop();
   assert.ok(workers.every(w => w.dead));
 }));
+
+await run('the capture thread stops answering at work: it alone goes and starts again, the live pool and its way stay, and the pool takes the new thread', async () => {
+  workers.length = 0; timeline.length = 0;
+  policy = loadOk;  // loads answer, a detect never does
+  const { eng, clock, said } = newEngines(SU.siteSurface());
+  await eng.ensureSession();
+  const pool = eng.engine;
+  assert.equal(await pool.capWait(), true);
+  const old = eng.capThread, lives = workers.slice(0, 3);
+  const shot = pool.detect('cap', { rgba: new Uint8ClampedArray(256 * 256 * 4) }).catch(e => e.message);
+  await clock.advance(26000); await flush(20);
+  assert.equal(await shot, 'no answer for 25 s');
+  assert.ok(workers[3].dead, 'the capture thread stopped');
+  assert.equal(eng.engine, pool, 'the live pool stays'); assert.equal(eng.engineWay, 'bg-pool');
+  assert.equal(eng.stuckWays.size, 0, 'no way blamed');
+  assert.ok(lives.every(w => !w.dead), 'the live threads are healthy');
+  assert.ok(eng.capThread && eng.capThread !== old, 'a new capture thread');
+  assert.ok(pool.capUp() && pool.hasCap(), 'and the pool takes it');
+  assert.ok(said.err.includes('The capture thread stopped answering — it starts again'), said.err.join(' | '));
+  eng.stopAll();
+});
+
+await run('the capture thread\'s load stops answering: started again once this open, not for ever; the next ask (a pick) still tries, and the pool takes it', async () => {
+  workers.length = 0; timeline.length = 0;
+  let hang = true;
+  policy = (w, m) => (m.type === 'load' && m.live === 'sa24_w16.onnx' && hang ? undefined : loadOk(w, m));
+  const { eng, clock, said } = newEngines(SU.siteSurface());
+  const loads = () => timeline.filter(t => t === 'load sa24_w16.onnx').length;
+  await eng.ensureSession(); await flush(10);
+  const pool = eng.engine;
+  assert.equal(loads(), 1);
+  await clock.advance(26000); await flush(20);
+  assert.equal(loads(), 2, 'started again');
+  assert.equal(eng.engine, pool, 'the live pool stays'); assert.equal(eng.stuckWays.size, 0);
+  await clock.advance(26000); await flush(20);
+  assert.equal(loads(), 2, 'not a third time by itself');
+  assert.ok(said.err.includes('The capture thread stopped answering'), said.err.join(' | '));
+  assert.ok(!pool.hasCap(), 'the shots keep the live frame\'s corners');
+  hang = false;
+  await eng.ensureCap();
+  assert.ok(pool.hasCap() && pool.capUp(), 'a later start reaches the pool');
+  eng.stopAll();
+});
+
+await run('the accurate model failed to start: the shots go on without it, and a later ensureCap (a new open, a pick) reaches the pool', async () => {
+  workers.length = 0; timeline.length = 0;
+  let n = 0;
+  policy = (w, m) => (m.type === 'load' && m.live === 'sa24_w16.onnx' && ++n === 1 ? { error: 'a blip' } : loadOk(w, m));
+  const { eng, said } = newEngines(SU.siteSurface());
+  await eng.ensureSession();
+  const pool = eng.engine;
+  assert.equal(await pool.capWait(), false);
+  assert.equal(pool.hasCap(), false, 'no refine for the shots');
+  assert.equal(await pool.capWait(), false, 'a failed start is not tried again by each shot');
+  assert.equal(n, 1);
+  assert.ok(said.log.some(t => t.startsWith('The accurate model could not start for the shots (a blip)')), said.log.join(' | '));
+  await eng.ensureCap();
+  assert.ok(pool.hasCap() && pool.capUp(), 'up now: the pool uses it');
+  assert.equal(await pool.capWait(), true);
+  const c = workers.find(w => w.sent[0].live === 'sa24_w16.onnx' && !w.dead);
+  policy = (w, m) => (m.type === 'detect' ? { res: { pts: [null, null, null, null], conf: 0 }, ms: 1 } : undefined);
+  await pool.detect('cap', { rgba: new Uint8ClampedArray(256 * 256 * 4) });
+  assert.ok(c.sent.some(m => m.type === 'detect'), 'the shot went to it');
+  eng.stopAll();
+});
+
+await run('a GPU that keeps failing (a lost device rejects every run): the way is left for the next, a success in between starts the count again; with no other way it stays', async () => {
+  workers.length = 0;
+  const load = (w, m) => (m.type === 'load' ? { ...loadOk(w, m), gpu: m.want === 'webgpu' ? ['lite.onnx'] : [] } : undefined);
+  let ok = false;
+  policy = (w, m) => (m.type === 'detect' ? (ok ? { res: { pts: [null, null, null, null], conf: 0 }, ms: 1 } : { error: 'the device was lost' }) : load(w, m));
+  const { eng, said } = afterPoolNew();
+  await eng.ensureSession();
+  assert.equal(eng.engineWay, 'bg-gpulive');
+  const detect = () => eng.engine.detect('live', { rgba: new Uint8ClampedArray(256 * 256 * 4) }).then(() => 'ok', e => e.message);
+  await detect(); await detect();  // one on each of the two threads
+  ok = true; await detect(); await detect(); ok = false;  // answers on both: the count starts again
+  await detect();
+  assert.ok(eng.engine, 'a failure after answers is no lost device');
+  await detect(); await detect();
+  assert.equal(eng.engine, null, 'left'); assert.ok(eng.stuckWays.has('bg-gpulive'));
+  assert.ok(said.err.some(t => t.startsWith('The model kept failing on the GPU on "GPU live + CPU capture · bg"')), said.err.join(' | '));
+  await eng.ensureSession();
+  assert.equal(eng.engineWay, 'bg-cpu', 'the next way that is not stuck');
+  eng.stopAll();
+  // the lab's GPU alone: no other way, so it stays (the live frame's own stop after 5 failed frames says so)
+  const b = newEngines(SU.siteSurface());
+  b.eng.setSettings({ backend: 'webgpu' });
+  await b.eng.ensureSession();
+  const e = b.eng.engine;
+  for (let i = 0; i < 4; i++) await e.detect('live', { rgba: new Uint8ClampedArray(256 * 256 * 4) }).catch(() => {});
+  assert.equal(b.eng.engine, e);
+  b.eng.stopAll();
+});
+
+await run('Readers.settled with no time left: at once, though the load hangs', async () => {
+  const rd = new RD.Readers(SU.siteSurface(), () => {}, 'ort', () => new Promise(() => {}));
+  void rd.load();
+  let over = false; void rd.settled(0).then(() => { over = true; });
+  await flush(2);
+  assert.equal(over, true);
+});
+
+await run('the accurate model\'s wait in the log: what it waited for and how long, nothing when it did not wait', async () => {
+  workers.length = 0; timeline.length = 0;
+  policy = loadOk;
+  const a = newEngines(SU.siteSurface());
+  a.eng.capHold = async () => 'the gate';
+  await a.eng.ensureCap();
+  assert.ok(!a.said.log.some(t => t.startsWith('Time: the accurate model waited')), a.said.log.join(' | '));
+  a.eng.stopAll();
+  const b = newEngines(SU.siteSurface());
+  let open = null;
+  b.eng.capHold = () => new Promise(r => { open = r; });
+  const cap = b.eng.ensureCap();
+  await flush(5);
+  await b.clock.advance(700);
+  open('the gate (a pick went past the readers)');
+  await cap;
+  assert.ok(b.said.log.includes('Time: the accurate model waited for the gate (a pick went past the readers) — 700 ms'), b.said.log.join(' | '));
+  b.eng.stopAll();
+});
 
 await run('the model changed while the accurate model waits at the gate: the old one never loads, the new one loads after the new live models, one at a time', async () => {
   workers.length = 0; timeline.length = 0;

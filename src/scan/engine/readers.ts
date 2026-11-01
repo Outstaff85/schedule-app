@@ -219,7 +219,7 @@ export class Readers {
    *  load the readers again, as load() would. */
   settled(ms: number): Promise<void> {
     const p = this.loading;
-    if (!p) return Promise.resolve();
+    if (!p || ms <= 0) return Promise.resolve();
     return new Promise(resolve => {
       const t = setTimeout(resolve, ms), done = (): void => { clearTimeout(t); resolve(); };
       p.then(done, done);

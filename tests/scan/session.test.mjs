@@ -12,7 +12,9 @@
 //    refined once it is up (kept as it is when it cannot start);
 //  - the gate: the readers' sessions and the accurate model wait for the first answer, or FIRST_WAIT_MS after the live
 //    frame's models ended (up or failed), or a pick (which goes past the readers too); closing at it loads nothing
-//    again and arms it anew; a shutter tap before the readers are up still gives the type;
+//    again and arms it anew; a shutter tap before the readers are up still gives the type; readers that hang cost one
+//    READERS_WAIT_MS per open, shared by every wait; it counts from the camera's end too (a permission prompt);
+//  - the live frame goes one frame at a time while the accurate model loads; the last scan's corners reach no next open;
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
 //  - Looks good while the shot still looks for more documents: the attempt goes once the search is over, with
 //    every document the shot gave;
@@ -165,7 +167,7 @@ function fakeEngine(script, clock, delay) {
 function fakeEngines(engine) {
   return {
     engine, engineWay: 'bg-pool', state: { phase: 'ready', label: 'CPU · 2 bg threads + 1', worker: true, loadSeconds: 1.5 }, settings: { cpuDir: 'ort' },
-    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, onChange: () => () => {}, stopAll() { this.stopped = true; },
+    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, capInLive: () => false, onChange: () => () => {}, stopAll() { this.stopped = true; },
   };
 }
 function fakeVideo() {
@@ -1466,6 +1468,113 @@ await run('a shutter tap right after the first frame, the readers still loading:
   up();
   await clock.runFor(1000, () => done !== null);
   assert.equal(log.pages.at(-1).readouts.doctype.doctype, 'passport', 'and it has its type');
+  s.stop();
+});
+
+await run('readers that hang: one deadline per open, shared by every wait: the first shot waits READERS_WAIT_MS, its other reads and the next shots go on at once', async () => {
+  const a = gated();
+  a.engines.modelsInfo = () => new Promise(() => {});  // models.json never answers
+  const real = globalThis.setTimeout, waits = [];
+  // the readers' own timer (a real one) runs on the fake clock
+  globalThis.setTimeout = (fn, ms, ...r) => { if (ms < 1000) return real(fn, ms, ...r); waits.push(ms); a.clock.t += ms; return real(fn, 0); };
+  try {
+    await a.s.startCamera(a.video);
+    await a.clock.runFor(200);
+    const shot = async () => { let n = null; a.s.snap().then(x => { n = x; }); for (let i = 0; i < 500 && n === null; i++) await a.clock.tick(); return n; };
+    assert.equal(await shot(), 1, 'the shot went on without the readers');
+    assert.deepEqual(waits, [St.READERS_WAIT_MS], 'one wait');
+    await a.clock.runFor(200);
+    assert.equal(await shot(), 1);
+    assert.deepEqual(waits, [St.READERS_WAIT_MS], 'none for the next shot');
+    assert.ok(a.log.pages.at(-1).readouts, 'its page has its (empty) readouts');
+  } finally { globalThis.setTimeout = real; a.done(); }
+});
+
+await run('a new open has a deadline of its own, and what is left of it is what a later wait gets', async () => {
+  const given = [];
+  const r = { doctype: null, info: { version: 't' }, release() {}, mrzRead: async () => null, heRead: async () => null, doctypeAnswer: async () => null,
+    load: () => new Promise(() => {}), settled: async ms => { given.push(ms); } };
+  const { s, clock, video } = setup(steadyLive(Q), { auto: false, readers: r });
+  await s.startCamera(video);
+  await clock.runFor(200);
+  await s.snap();
+  const first = given[0];
+  assert.equal(first, St.READERS_WAIT_MS);
+  await clock.runFor(1000);
+  await s.snap();
+  assert.ok(given.at(-1) <= first - 1000, 'what is left: ' + given.join());
+  s.markOpen();
+  await clock.runFor(200);
+  await s.snap();
+  assert.equal(given.at(-1), St.READERS_WAIT_MS, 'a new open');
+  s.stop();
+});
+
+await run('the last scan\'s corners do not reach a kept session\'s next open, nor a wake: a shutter tap before the first new answer takes nothing', async () => {
+  const { s, clock, log, video } = setup(steadyLive(Q), { auto: false });
+  await s.startCamera(video);
+  await clock.runFor(200);
+  assert.ok(s.live.lastRes, 'it had an answer');
+  s.sleep();
+  assert.equal(s.live.lastRes, null);
+  await s.startCamera(video);
+  assert.equal(await s.snap(), 0);
+  assert.equal(log.status.at(-1).key, 'no_frame'); assert.equal(log.pages.length, 0);
+  await clock.runFor(200);
+  assert.ok(s.live.lastRes);
+  s.wake();
+  assert.equal(s.live.lastRes, null);
+  assert.equal(await s.snap(), 0);
+  assert.equal(log.pages.length, 0);
+  s.stop();
+});
+
+await run('the live frame eases off while the accurate model loads: one frame at a time, the pool\'s size again after it', async () => {
+  const { s, clock, engine, engines, video } = setup(steadyLive(Q), { auto: false, size: 3, delay: () => 200 });
+  engines.capLoads = true;
+  await s.startCamera(video);
+  let most = 0;
+  await clock.runFor(1000, () => { most = Math.max(most, engine.pendingLive); return false; });
+  assert.equal(most, 1, 'one at a time');
+  engines.capLoads = false;
+  most = 0;
+  await clock.runFor(1000, () => { most = Math.max(most, engine.pendingLive); return false; });
+  assert.equal(most, 3, 'all of them again');
+  s.stop();
+});
+
+await run('the gate counts from the camera too: a permission prompt over FIRST_WAIT_MS keeps it shut, and the first answer opens it; a camera refused opens it FIRST_WAIT_MS later', async () => {
+  let give = null;
+  const a = gated(steadyLive(Q), { getUserMedia: () => new Promise(r => { give = r; }) });
+  const start = a.s.startCamera(a.video);
+  await a.clock.runFor(Sess.FIRST_WAIT_MS * 3);
+  assert.ok(!a.said.some(t => t.startsWith('Time: next loads begin')), a.said.join(' | '));
+  give({ getTracks: () => [{ stop() {} }] });
+  await start;
+  await a.clock.runFor(300);
+  assert.ok(a.said.some(t => /^Time: next loads begin \(first frame\)/.test(t)), a.said.join(' | '));
+  a.done();
+  let no = null;
+  const b = gated(steadyLive(Q), { getUserMedia: () => new Promise((_, r) => { no = r; }) });
+  const open = b.s.startCamera(b.video);
+  await b.clock.runFor(Sess.FIRST_WAIT_MS * 2);
+  assert.ok(!b.said.some(t => t.startsWith('Time: next loads begin')));
+  no(new Error('refused'));
+  await open;
+  await b.clock.runFor(Sess.FIRST_WAIT_MS - 100);
+  assert.ok(!b.said.some(t => t.startsWith('Time: next loads begin')), 'FIRST_WAIT_MS from the camera\'s end');
+  await b.clock.runFor(200);
+  assert.ok(b.said.some(t => /^Time: next loads begin \(no frame\)/.test(t)), b.said.join(' | '));
+  b.done();
+});
+
+await run('a way that holds the accurate model itself: prepare starts no second copy of it', async () => {
+  const { s, engines } = setup(steadyLive(Q), { auto: false });
+  let asked = 0;
+  engines.ensureCap = async () => { asked++; };
+  engines.capInLive = () => true;
+  await s.prepare();
+  assert.equal(asked, 0);
   s.stop();
 });
 

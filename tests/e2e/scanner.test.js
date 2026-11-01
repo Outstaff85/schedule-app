@@ -815,7 +815,7 @@ async function realRuntime(b) {
     p.on('request', r => reqs.push(r.url()));
     await p.goto(BASE + 'scan-lab/' + (dir === 'ort130' ? '?ort=130' : ''));
     await p.waitForFunction(() => window.ScanLab, null, {timeout: 20000});
-    const r = await p.evaluate(async dir => {
+    const cpu = await p.evaluate(async dir => {
       const out = {}, w = ScanLab.session.engines.workerEngine(1, dir, () => {});
       try {
         out.ep = await w.load('lite.onnx', null, 'wasm', false);
@@ -825,7 +825,12 @@ async function realRuntime(b) {
         out.black = (await w.detect('live', {rgba: black})).res;
       } catch (e) { out.err = String(e && e.message || e); }
       w.stop();
-      const all = ScanLab.session.engines.workerEngine(1, dir, () => {});
+      return out;
+    }, dir).catch(e => ({error: e.message}));
+    // up to here only CPU threads ran (the readers' page import does not tell, it is the same file): the big build unasked
+    const allFile = '/scan-lab/' + dir + '/ort.all.min.mjs', plainOnly = !served.includes(allFile);
+    const r = await p.evaluate(async dir => {
+      const out = {}, all = ScanLab.session.engines.workerEngine(1, dir, () => {});
       try {
         out.allEp = await all.load('lite.onnx', null, 'auto', false);
         const grey = new Uint8ClampedArray(256 * 256 * 4).fill(128);
@@ -838,7 +843,7 @@ async function realRuntime(b) {
       g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, 256, 256);
       try { const a = await R.doctypeAnswer(c); out.doctype = a && [a.doctype, a.conf.toFixed(2), a.turn, a.turnConf.toFixed(2)].join(); } catch (e) { out.readErr = String(e && e.message || e); }
       return out;
-    }, dir).catch(e => ({error: e.message}));
+    }, dir).catch(e => ({error: e.message})).then(o => ({...cpu, ...o}));
     const near = (pts, want) => Array.isArray(pts) && pts.every((q, i) => q && Math.abs(q[0] - want[i][0]) < 0.01 && Math.abs(q[1] - want[i][1]) < 0.01);
     const got = [...new Set(served)], own = f => got.includes('/scan-lab/' + dir + '/' + f);
     const files = {module: own('ort.wasm.min.mjs'), gpuModule: own('ort.all.min.mjs'), loader: got.some(f => f.startsWith('/scan-lab/' + dir + '/ort-wasm-simd-threaded') && f.endsWith('.mjs')),
@@ -846,9 +851,9 @@ async function realRuntime(b) {
     const site = reqs.filter(u => /\/scan\//.test(u));
     ok(!r.error && !r.err && r.ep === 'wasm' && near(r.grey && r.grey.pts, SPOTS) && r.grey.conf > 0.7 && !!r.black && r.black.pts.every(q => q === null)
       && !r.allErr && r.allEp === 'wasm' && near(r.allGrey && r.allGrey.pts, SPOTS)
-      && files.module && files.gpuModule && files.loader && files.wasm && site.length === 0,
+      && files.module && files.gpuModule && plainOnly && files.loader && files.wasm && site.length === 0,
       'the real ONNX Runtime ' + (dir === 'ort' ? '1.22 (ort/)' : '1.30 (ort130/)') + ' in the engine\'s module worker: the corners model loads on the CPU (wasm) and detect answers the planted corners on a grey frame, none on a black one, through ort.wasm.min.mjs and through ort.all.min.mjs; both, their loader .mjs and .wasm come from the lab\'s own folder '
-      + JSON.stringify({r: {ep: r.ep, err: r.err || r.error || r.allErr, allEp: r.allEp, grey: r.grey, allGrey: r.allGrey, black: r.black && r.black.conf}, files, site: site.slice(0, 3)}));
+      + JSON.stringify({r: {ep: r.ep, err: r.err || r.error || r.allErr, allEp: r.allEp, grey: r.grey, allGrey: r.allGrey, black: r.black && r.black.conf}, plainOnly, files, site: site.slice(0, 3)}));
     ok(r.version === 'tiny' && r.doctype === 'passport,0.90,1,0.80' && !r.readErr,
       'the real ONNX Runtime ' + (dir === 'ort' ? '1.22' : '1.30') + ' in the page: the readers load the document type model from models.json and answer on a grey page ' + JSON.stringify({version: r.version, doctype: r.doctype, err: r.readErr}));
     ok(errs.length === 0, 'the real ONNX Runtime ' + dir + ': no page errors ' + errs.join(' | '));

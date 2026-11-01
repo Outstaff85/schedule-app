@@ -15,7 +15,6 @@
 import { MAX_DOCS, docShape, goodQuad, insideDoc, quadIoU } from './geometry';
 import type { Engine, LoadableEngine } from './engines';
 import { smallRGBA, type Live } from './live';
-import { READERS_WAIT_MS } from './steady';
 import { mrzZone, type DoctypeAnswer, type HeRead, type Readers } from './readers';
 import type { SessionStatus } from './status';
 import { mkCanvas, type Upright } from './upright';
@@ -111,18 +110,20 @@ export interface ShotCtx {
   /** Whether the session still holds the page (not deleted, the scan not ended): a page given by a shot that a
    *  newer one took over is still read then. */
   has(pageId: string): boolean;
+  /** Readers still loading are waited for, up to the open's one deadline (session.ts readersWait): their sessions
+   *  start after the first frame, and a shot right after it went without its type. */
+  readersWait(): Promise<void>;
   status(s: SessionStatus): void;
   page(p: ShotPage): void;
   captured(ms: number): void;
   log: { log(t: string): void; err(t: string): void };
 }
 
-/** The readers on a page, each apart (one failing leaves the others). Readers still loading are waited for
- *  (READERS_WAIT_MS at most): their sessions start after the first frame, and a shot right after it went without its type. */
+/** The readers on a page, each apart (one failing leaves the others). The caller waits for readers still loading
+ *  first (session.ts readersWait), so this is the reading alone. */
 export async function readPage(readers: Readers | null, canvas: OffscreenCanvas, now: () => number): Promise<Readouts> {
   const r: Readouts = { doctype: null, mrz: null, he: null, errors: [] };
   if (!readers) return r;
-  await readers.settled(READERS_WAIT_MS);
   try { r.doctype = await readers.doctypeAnswer(canvas); } catch (e) { r.errors.push({ reader: 'doctype', text: errText(e) }); }
   try {
     const t0 = now(), lines = await readers.mrzRead(canvas);
@@ -152,6 +153,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   const id = c.begin(), t0 = c.now(), { frame, pix, w, h } = freeze(v);
   const record: ShotRecord = { shot: id, batch: c.batch(), attempt: c.newId(), input: 'camera', w, h, edgesModel: null, edgesMore: [], pages: 1, way: c.way(), model: c.modelVersion() };
   let first: ShotPage | null = null;
+  const read = async (canvas: OffscreenCanvas): Promise<Readouts> => { await c.readersWait(); return readPage(c.readers, canvas, c.now); };
   const put = async (pts: Quad, refined: boolean): Promise<boolean> => {
     const out = await engine.warp(pix.slice(), w, h, pts, true);
     if (out.turnError) c.log.err('Face finder: ' + out.turnError);
@@ -167,7 +169,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   const ms = Math.round(c.now() - t0); c.captured(ms); c.status({ key: 'captured', ms });
   const p0 = first as ShotPage | null;
   if (!p0) return 0;
-  const readouts = await readPage(c.readers, p0.canvas, c.now);
+  const readouts = await read(p0.canvas);
   if (id !== c.current()) { if (c.has(p0.id)) c.page({ ...p0, readouts }); return 0; }
   first = { ...p0, readouts }; c.page(first);
   if (!engine.hasCap()) { c.status({ key: 'found', count: 1 }); return 1; }
@@ -194,7 +196,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
       // the readouts read again on the refined cut (its edges, where the zone and the fields lie, moved)
       const p1 = first as ShotPage | null;
       if (!p1) return 0;
-      const r1 = await readPage(c.readers, p1.canvas, c.now);
+      const r1 = await read(p1.canvas);
       if (id !== c.current()) { if (c.has(p1.id)) c.page({ ...p1, readouts: r1 }); return 0; }
       first = { ...p1, readouts: r1 }; c.page(first);
     }
@@ -237,7 +239,7 @@ export async function takeShot(c: ShotCtx): Promise<number> {
   // took over: the pages given are on the screen, each still held is read
   for (const p of more) {
     if (!c.has(p.id)) continue;
-    const r = await readPage(c.readers, p.canvas, c.now);
+    const r = await read(p.canvas);
     if (c.has(p.id)) c.page({ ...p, readouts: r });
   }
   return whole ? found.length : 0;

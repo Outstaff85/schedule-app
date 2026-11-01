@@ -1688,7 +1688,7 @@
   "Light only (5 MB)": "קל בלבד (5 MB)",
   "CPU engine: ONNX Runtime 1.22": "מנוע מעבד: ONNX Runtime 1.22",
   "CPU engine: ONNX Runtime 1.30": "מנוע מעבד: ONNX Runtime 1.30",
-  "Auto (GPU, else CPU)": "אוטומטי (מעבד גרפי, אחרת מעבד)",
+  "Auto (CPU threads, else GPU)": "אוטומטי (ערוצי מעבד, אחרת מעבד גרפי)",
   "GPU (WebGPU)": "מעבד גרפי (WebGPU)",
   "CPU (WASM)": "מעבד (WASM)",
   "runs on": "רץ על",
