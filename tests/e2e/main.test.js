@@ -1148,12 +1148,15 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
     const give = () => H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
     // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
-    const shown = () => T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length >= 1, 8000);
-    // given while the window still takes over from the one closed before, a page can land on the old session: given once more
-    let a = await give();
-    const thumb = () => document.querySelector('[data-testid="scan-thumb"]:not([data-kept])');
-    // (the old window going can also take a page shown a moment ago with it)
-    if (!(await shown()) || !(await T.until(thumb, 1000))) { console.log('corner editor check: the page was not shown, given again'); a = await give(); await shown(); await T.until(thumb, 8000); }
+    // a page given while the window takes over from the one closed before can land on the old session, or go with it
+    // a moment after it was shown: given again, and only the page given last counts
+    let a = null, mine = null;
+    const thumb = () => document.querySelector(`[data-testid="scan-thumb"][data-id^="${a.attempt}:"]:not([data-kept])`);
+    for (let i = 0; i < 3 && !mine; i++) {
+      a = await give();
+      await T.until(() => { const t = thumb(); return t && t.dataset.kind; }, 6000);
+      mine = await T.until(thumb, 1000);
+    }
     // its Edit corners button on the photo grown in the strip (template 6)
     thumb().click();
     const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
