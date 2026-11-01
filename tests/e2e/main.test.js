@@ -2335,6 +2335,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="contract-marks"]');
   const ctMarks = await p.evaluate(() => [...document.querySelectorAll('[data-testid="contract-mark"]')].map(b => b.dataset.mark));
   ok(ctMarks.length === 53 && new Set(ctMarks).size === 53 && ctMarks.includes('client_name') && ctMarks.includes('terms_5'), 'contract templates: the { } button lists every mark once ' + ctMarks.length);
+  await p.type('[data-testid="contract-marks-search"]', 'client_rate');
+  await waitFor(p, () => document.querySelectorAll('[data-testid="contract-mark"]').length === 1, 3000);
+  ok(await p.evaluate(() => document.querySelector('[data-testid="contract-mark"]').dataset.mark === 'client_rate'), 'contract templates: the search finds a mark');
   await p.keyboard.press('Escape');
   await waitFor(p, () => !document.querySelector('[data-testid="contract-marks"]'), 3000);
   await p.click('[data-testid="contracts-view"] [data-kind="client"]');
