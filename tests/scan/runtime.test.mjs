@@ -1319,7 +1319,7 @@ const feed = async (eng, n) => { for (let i = 0; i < n; i++) await eng.engine.de
 /** Frames in turn until the trial is over: its threads take every fifth to second frame. */
 const trialOver = async (eng, seen = 40) => { for (let i = 0; i < seen && eng.gpuStop; i++) await eng.engine.detect('live', FRAME()).catch(() => {}); await flush(5); };
 
-await run('the GPU joins: after 20 answers with the capture thread up, two 1.30 threads load in the background inside the same pool, a trial of 10, accepted; the CPU threads stop, the engine object stays', async () => {
+await run('the GPU joins: after 20 answers with the capture thread up, one 1.30 thread loads in the background inside the same pool, a trial of 10, accepted; the CPU threads stop, the engine object stays', async () => {
   const { eng, said } = await pooled({}, 19), pool = eng.engine, states = [];
   eng.gpuJoin();
   assert.equal(gpuThreads().length, 0, 'not before 20 answers');
@@ -1327,25 +1327,25 @@ await run('the GPU joins: after 20 answers with the capture thread up, two 1.30 
   eng.onChange(s => states.push(s.label));
   assert.equal(eng.engine.size, 3);
   eng.gpuJoin(); eng.gpuJoin();
-  assert.equal(gpuThreads().length, 2, 'two threads, one start');
-  assert.deepEqual(gpuThreads().map(w => { const m = w.sent[0]; return [m.ort, m.want, m.live, m.cap, m.face]; }), [['ort130', 'webgpu', 'lite.onnx', null, true], ['ort130', 'webgpu', 'lite.onnx', null, false]]);
+  assert.equal(gpuThreads().length, 1, 'one thread, one start');
+  assert.deepEqual(gpuThreads().map(w => { const m = w.sent[0]; return [m.ort, m.want, m.live, m.cap, m.face]; }), [['ort130', 'webgpu', 'lite.onnx', null, true]]);
   assert.equal(eng.engine.size, 3, 'no frame for them while they load');
   await flush(10);
-  assert.equal(eng.engine.size, 5, 'they join the turn for the trial');
+  assert.equal(eng.engine.size, 4, 'it joins the turn for the trial');
   assert.equal(eng.engineWay, 'bg-pool', 'still the pool on trial');
   await trialOver(eng);
   assert.equal(eng.engine, pool, 'the same object'); assert.equal(eng.engineWay, 'bg-gpulive');
   assert.equal(eng.state.label, 'GPU live + CPU capture · bg'); assert.deepEqual(states, ['GPU live + CPU capture · bg'], 'runs-on changed, once');
-  assert.equal(eng.engine.size, 2);
+  assert.equal(eng.engine.size, 1);
   const lives = workers.filter(w => w.sent[0].live === 'lite.onnx' && !onGpu(w));
   assert.ok(lives.length === 3 && lives.every(w => w.dead), 'the CPU threads stopped');
   assert.ok(!workers.find(w => w.sent[0].live === 'sa24_w16.onnx').dead, 'the capture thread stays');
   assert.ok(eng.engine.capUp(), 'a shot still has the accurate model');
   const before = gpuThreads().map(w => w.sent.filter(m => m.type === 'detect').length);
   await feed(eng, 4);
-  assert.deepEqual(gpuThreads().map((w, i) => w.sent.filter(m => m.type === 'detect').length - before[i]), [2, 2], 'the frames in turn on the two');
-  for (const line of [/^GPU joins: started — \d+ answers given, the capture thread up; lite\.onnx on 2 threads/, /^Time: GPU threads ready beside the CPU pool — \d+ ms/, /^GPU joins: a trial of 10 answers$/,
-    /^GPU joins: trial — GPU 100 ms \(100–100\) on 2 threads, 50 ms a frame; CPU 400 ms on 3, 133 ms a frame$/, /^GPU joins: accepted — /]) assert.ok(said.log.some(t => line.test(t)), line + ' in ' + said.log.join(' | '));
+  assert.deepEqual(gpuThreads().map((w, i) => w.sent.filter(m => m.type === 'detect').length - before[i]), [4], 'every frame on it');
+  for (const line of [/^GPU joins: started — \d+ answers given, the capture thread up; lite\.onnx on one thread/, /^Time: GPU thread ready beside the CPU pool — \d+ ms/, /^GPU joins: a trial of 10 answers$/,
+    /^GPU joins: trial — GPU 100 ms \(100–100\); CPU 400 ms on 3, 133 ms a frame$/, /^GPU joins: accepted — /]) assert.ok(said.log.some(t => line.test(t)), line + ' in ' + said.log.join(' | '));
   assert.deepEqual(Object.keys(eng.gpuPasses()), ['lite.onnx'], 'the check that passed is kept, as on the GPU way');
   eng.stopAll();
   assert.ok(workers.every(w => w.dead), 'nothing left');
@@ -1377,12 +1377,30 @@ await run('the trial refused by the numbers: the GPU\'s threads stop, the pool c
   assert.equal(eng.engine, pool); assert.equal(eng.engineWay, 'bg-pool'); assert.equal(eng.state.label, 'CPU · 3 bg threads + 1');
   assert.equal(eng.engine.size, 3); assert.ok(gpuThreads().every(w => w.dead), 'the GPU threads stopped');
   assert.ok(workers.filter(w => !onGpu(w)).every(w => !w.dead), 'the CPU threads go on');
-  assert.ok(said.log.some(t => t === 'GPU joins: refused — the GPU is no faster; the CPU pool carries on'), said.log.join(' | '));
+  assert.ok(said.log.some(t => t === 'GPU joins: refused — the GPU is too slow; the CPU pool carries on'), said.log.join(' | '));
+  assert.ok(said.err.includes('GPU joins: refused — the GPU is too slow'), 'the Errors block says so');
   assert.equal(eng.stuckWays.size, 0, 'no fault of the way');
   await feed(eng, 30); eng.gpuJoin(); await flush(5);
-  assert.equal(gpuThreads().length, 2, 'no retry');
+  assert.equal(gpuThreads().length, 1, 'no retry');
   assert.deepEqual(Object.keys(eng.gpuPasses()), ['lite.onnx'], 'a slow GPU is no wrong GPU');
   eng.stopAll();
+});
+
+await run('the margin of the trial: one GPU thread up to twice the time a frame of the pool is taken, over that it is not; a weak phone is not tried', async () => {
+  const near = await pooled({ gpu: 260, cpu: 400 });
+  near.eng.gpuJoin(); await flush(10); await trialOver(near.eng);
+  assert.equal(near.eng.engineWay, 'bg-gpulive', '260 ms against 133 a frame');
+  near.eng.stopAll();
+  const far = await pooled({ gpu: 270, cpu: 400 });
+  far.eng.gpuJoin(); await flush(10); await trialOver(far.eng);
+  assert.equal(far.eng.engineWay, 'bg-pool', '270 ms against 133 a frame');
+  far.eng.stopAll();
+  for (const env of [{ memory: 3 }, { cores: 3 }]) {
+    const weak = await pooled({}, 20, env);
+    weak.eng.gpuJoin(); await flush(5);
+    assert.equal(gpuThreads().length, 0, JSON.stringify(env));
+    weak.eng.stopAll();
+  }
 });
 
 await run('a GPU load that fails or hangs takes nothing with it: the CPU pool goes on untouched, the check forgotten, a hang marks the way stuck, no retry', async () => {
@@ -1394,7 +1412,7 @@ await run('a GPU load that fails or hangs takes nothing with it: the CPU pool go
   a.eng.stopAll();
   const b = await pooled({ gpuLoad: () => undefined }), pool2 = b.eng.engine, cpu = workers.filter(w => !onGpu(w));
   b.eng.gpuJoin(); await flush(5);
-  assert.equal(gpuThreads().length, 2);
+  assert.equal(gpuThreads().length, 1);
   await feed(b.eng, 2);
   await b.clock.advance(26000); await flush(10);
   assert.equal(b.eng.engine, pool2, 'its own onHang: the pool is not taken with it'); assert.equal(b.eng.engineWay, 'bg-pool');
@@ -1402,7 +1420,7 @@ await run('a GPU load that fails or hangs takes nothing with it: the CPU pool go
   assert.ok(b.eng.stuckWays.has('bg-gpulive'), 'the way marked'); assert.ok(!b.eng.stuckWays.has('bg-pool'));
   await feed(b.eng, 3);
   b.eng.gpuJoin(); await flush(5);
-  assert.equal(gpuThreads().length, 2, 'no retry');
+  assert.equal(gpuThreads().length, 1, 'no retry');
   b.eng.stopAll();
 });
 
@@ -1433,19 +1451,19 @@ await run('the trial fails: an answer over 3 s, a detect error, 3 s of silence �
 await run('closing while the GPU comes: its threads stop at once, nothing is left, nothing is noted against the GPU, and the next open tries again', async () => {
   const a = await pooled({ gpuLoad: () => undefined });
   a.eng.gpuJoin(); await flush(5);
-  assert.equal(gpuThreads().length, 2);
+  assert.equal(gpuThreads().length, 1);
   a.eng.stopAll(); await flush(10);
   assert.ok(workers.every(w => w.dead), 'closed in the load'); assert.equal(a.clock.timers.size, 0, 'no watch left');
   assert.ok(!a.said.err.length, a.said.err.join(' | '));
   const b = await pooled();
   b.eng.gpuJoin(); await flush(10);
-  assert.equal(b.eng.engine.size, 5, 'on trial');
+  assert.equal(b.eng.engine.size, 4, 'on trial');
   b.eng.stopAll(); await flush(10);
   assert.ok(workers.every(w => w.dead), 'closed in the trial'); assert.equal(b.clock.timers.size, 0);
   await b.eng.ensureSession(); await b.eng.engine.capWait();
   assert.equal(b.eng.engineWay, 'bg-pool');
   await feed(b.eng, 20); b.eng.gpuJoin(); await flush(10);
-  assert.equal(b.eng.engine.size, 5, 'tried again on the next open');
+  assert.equal(b.eng.engine.size, 4, 'tried again on the next open');
   await trialOver(b.eng);
   assert.equal(b.eng.engineWay, 'bg-gpulive');
   b.eng.stopAll();
@@ -1458,7 +1476,7 @@ await run('put away while the GPU comes (the kept session): it stops with no fau
   assert.ok(gpuThreads().every(w => w.dead)); assert.equal(a.eng.engine, pool); assert.equal(a.eng.engine.size, 3);
   assert.ok(a.said.log.includes('GPU joins: stopped — the scanner was put away'), a.said.log.join(' | ')); assert.equal(a.eng.stuckWays.size, 0);
   await feed(a.eng, 1); a.eng.gpuJoin(); await flush(5);
-  assert.equal(gpuThreads().length, 4, 'tried again');
+  assert.equal(gpuThreads().length, 2, 'tried again');
   a.eng.stopAll();
   const b = await pooled();
   b.eng.gpuJoin(); await flush(10); await trialOver(b.eng);
@@ -1478,7 +1496,7 @@ await run('the hand-over loses no frame: a CPU thread at work stops when its ans
   await trialOver(eng);
   assert.equal(eng.engineWay, 'bg-gpulive');
   assert.ok(!w.dead, 'its frame still in work');
-  assert.equal(eng.engine.size, 2, 'but out of the turn');
+  assert.equal(eng.engine.size, 1, 'but out of the turn');
   const sent = w.sent.length;
   await feed(eng, 6);
   assert.equal(w.sent.length, sent, 'no new frame for it');
@@ -1506,7 +1524,7 @@ await run('after the hand-over: any detect error or 3 s of silence leaves the wa
   assert.equal(timeline.filter(t => t === 'load sa24_w16.onnx').length, loaded, 'the accurate model not loaded again');
   assert.ok(a.eng.engine.capUp(), 'and the new pool takes it');
   await feed(a.eng, 30); a.eng.gpuJoin(); await flush(5);
-  assert.equal(gpuThreads().length, 2, 'no second join');
+  assert.equal(gpuThreads().length, 1, 'no second join');
   a.eng.stopAll();
   let quiet = false;
   const b = await pooled({ gpuDetect: () => (quiet ? undefined : { ...NOTHING, ms: 100 }) });

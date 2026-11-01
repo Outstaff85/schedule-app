@@ -12,9 +12,9 @@
 //  - the GPU joins the pool (stage 2, 2026-11-01; docs/scan-plan.md → The CPU first): the CPU gives the first frame, but
 //    three CPU threads starve the page's thread (the owner's phone: the screen and the follow at half the GPU's rate).
 //    So once the capture thread is up and GPU_AFTER answers were given, on `auto` with WebGPU there, the way not stuck
-//    and no pick in work (gpuJoin, asked at each answer), two ONNX Runtime 1.30 threads load in the background inside
-//    the same pool and take turns with the CPU's for a trial of GPU_TRIAL answers. Accepted if the GPU's time per frame
-//    beats the CPU's (GPU_ms / 2 < CPU_ms / POOL): the CPU threads leave the turn and stop when their frames are done,
+//    and no pick in work (gpuJoin, asked at each answer; not under 4 GB of memory or 4 cores), one ONNX Runtime 1.30
+//    thread loads in the background inside the same pool and takes turns with the CPU's for a trial of GPU_TRIAL
+//    answers. Accepted if its frame is not over GPU_MARGIN times the pool's (GPU_ms < CPU_ms / POOL * 2): the CPU threads leave the turn and stop when their frames are done,
 //    the way becomes bg-gpulive; the `engine` object stays, so a shot, the file threads and the live frame see nothing
 //    (no live.forget()). Refused, failed or hung: the GPU's threads stop and the pool carries on, not tried again until
 //    the settings change or the scanner closes (a put-away during it is no refusal: the next open tries again). Accepted,
@@ -158,9 +158,15 @@ const WATCH_MS = 25000;
 /** Detects in a row a thread that runs a model on the GPU may fail before its way is left for the next (a lost GPU
  *  device rejects every run; 2, or the live frame's own stop after 5 failed frames comes first on two threads). */
 export const GPU_ERRORS = 2;
-/** The GPU joining the pool: its live threads, the answers given before it starts, the trial's GPU answers, and the
- *  silence (or the one answer's time) that fails it — after the hand-over too, where the way is left. */
+/** The GPU's live threads when it is the way itself (the pool could not start). */
 export const GPU_THREADS = 2;
+/** The GPU joining the pool: one live thread (the owner's phone, 2026-11-01: one thread gave the screen 20-26 frames/s
+ *  and the follow 21-24, two on one GPU the screen 9-10 and the follow 10), how many times slower a frame than the
+ *  pool's it may be and still be taken (one thread never matches three on answers: what it gives back is the page's
+ *  thread), the answers given before it starts, the trial's GPU answers, and the silence (or the one answer's time)
+ *  that fails it — after the hand-over too, where the way is left. */
+export const GPU_JOIN = 1;
+export const GPU_MARGIN = 2;
 export const GPU_AFTER = 20;
 export const GPU_TRIAL = 10;
 export const GPU_SILENT_MS = 3000;
@@ -704,6 +710,7 @@ export class Engines {
     if (!e || !hand || this.gpuTried || this.gpuStop || this.engineWay !== 'bg-pool' || hand.answers() < GPU_AFTER) return;
     const { backend, model } = this.settings;
     if (backend !== 'auto' || !model.includes('+') || !this.env.gpu || !this.inWorkerNow() || this.stuckWays.has('bg-gpulive') || !this.capReady()) return;
+    if ((this.env.memory || 4) < 4 || (this.env.cores || 2) < 4) return;  // a weak phone: no third model beside the pool's
     this.gpuTried = true;
     void this.gpuCome(e, hand);
   }
@@ -720,7 +727,7 @@ export class Engines {
       hand.refuse();
       log.log('GPU joins: ' + said);
     };
-    const refused = (why: string): void => over('refused — ' + why + '; the CPU pool carries on');
+    const refused = (why: string): void => { over('refused — ' + why + '; the CPU pool carries on'); log.err('GPU joins: refused — ' + why); };
     const hung = (why = 'stopped answering'): void => {
       if (stage === 'on') { this.onStuck(why); return; }
       if (stage !== 'coming') return;
@@ -728,8 +735,8 @@ export class Engines {
       refused(why);
     };
     this.gpuStop = why => { over('stopped — ' + why); this.gpuTried = false; };
-    log.log('GPU joins: started — ' + hand.answers() + ' answers given, the capture thread up; ' + live + ' on ' + GPU_THREADS + ' threads beside the CPU pool');
-    const threads = Array.from({ length: GPU_THREADS }, () => this.workerEngine(1, GPU_ORT, why => hung(why)));
+    log.log('GPU joins: started — ' + hand.answers() + ' answers given, the capture thread up; ' + live + ' on one thread beside the CPU pool');
+    const threads = Array.from({ length: GPU_JOIN }, () => this.workerEngine(1, GPU_ORT, why => hung(why)));
     hand.coming(threads);
     try {
       const loads = threads.map((e, i) => this.track(e, e.load(live, null, 'webgpu', i === 0)));
@@ -738,15 +745,15 @@ export class Engines {
       await Promise.all(loads);
       if (stage !== 'coming') return;
       up = true;
-      log.log('Time: GPU threads ready beside the CPU pool — ' + Math.round(this.env.now() - t0) + ' ms');
+      log.log('Time: GPU thread ready beside the CPU pool — ' + Math.round(this.env.now() - t0) + ' ms');
       for (const e of threads) if (e.strict) e.strict(GPU_SILENT_MS);
       log.log('GPU joins: a trial of ' + GPU_TRIAL + ' answers');
       const { gpu, cpu } = await hand.trial(GPU_TRIAL, GPU_SILENT_MS);
       if (stage !== 'coming') return;
       const mean = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length, gpuMs = mean(gpu), cpuMs = mean(cpu);
-      const perGpu = gpuMs / GPU_THREADS, perCpu = cpuMs / this.POOL;
-      log.log('GPU joins: trial — GPU ' + Math.round(gpuMs) + ' ms (' + Math.round(Math.min(...gpu)) + '–' + Math.round(Math.max(...gpu)) + ') on ' + GPU_THREADS + ' threads, ' + Math.round(perGpu) + ' ms a frame; CPU ' + Math.round(cpuMs) + ' ms on ' + this.POOL + ', ' + Math.round(perCpu) + ' ms a frame');
-      if (!(perGpu < perCpu)) { refused('the GPU is no faster'); return; }
+      const perCpu = cpuMs / this.POOL;
+      log.log('GPU joins: trial — GPU ' + Math.round(gpuMs) + ' ms (' + Math.round(Math.min(...gpu)) + '–' + Math.round(Math.max(...gpu)) + '); CPU ' + Math.round(cpuMs) + ' ms on ' + this.POOL + ', ' + Math.round(perCpu) + ' ms a frame');
+      if (!(gpuMs < perCpu * GPU_MARGIN)) { refused('the GPU is too slow'); return; }
       stage = 'on'; this.gpuStop = null;
       hand.accept();
       this.engineWay = way.id;
