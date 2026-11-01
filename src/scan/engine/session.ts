@@ -66,6 +66,9 @@
 // which does not wait for the readers either. It opens once per session (stop arms it anew); the log says when and by what
 // ("Time: next loads begin").
 //
+// The GPU joins (stage 2; engines.ts gpuJoin): each live answer asks whether it is due, unless a pick is in work; sleep
+// stops a GPU still coming (a joined one stays with the kept session, and any failure on waking leaves it for a new pool).
+//
 // keepCanvases (the lab, which has no Done and keeps its session for the page's life): only the newest that
 // many pages read keep their full-size pixels; an older one is given again `released` (a 1×1 canvas: its
 // thumbnail, made already, and its readouts stay), so a long lab session does not hold every cut page.
@@ -244,6 +247,7 @@ export class ScanSession {
     // the readers share the engines' one read of models.json per open
     this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.any, this.engines.settings.cpuDir, () => this.engines.modelsInfo(), () => this.gateWait());
     this.engines.capHold = () => this.capHold();
+    this.engines.handed = () => { this.live.times.length = 0; };  // the model's figure shows the GPU's from now on
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
     this.keepCanvases = parts.keepCanvases ?? null;
@@ -436,6 +440,7 @@ export class ScanSession {
       this.emitFigures();
     }
     this.openGate('first frame');
+    if (!this.picking) this.engines.gpuJoin();  // the frame's on the CPU: the GPU may join once it is due
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);
@@ -660,6 +665,7 @@ export class ScanSession {
     this.camGen++;
     this.live.running = false;
     this.live.taken.clear();
+    this.engines.gpuCancel('the scanner was put away');  // no threads kept loading, or on trial with no frames
     this.camera.stop();
     this.live.hide();
   }

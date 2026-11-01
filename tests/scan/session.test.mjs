@@ -167,7 +167,7 @@ function fakeEngine(script, clock, delay) {
 function fakeEngines(engine) {
   return {
     engine, engineWay: 'bg-pool', state: { phase: 'ready', label: 'CPU · 2 bg threads + 1', worker: true, loadSeconds: 1.5 }, settings: { cpuDir: 'ort' },
-    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, capInLive: () => false, onChange: () => () => {}, stopAll() { this.stopped = true; },
+    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, capInLive: () => false, onChange: () => () => {}, gpuJoin() { this.gpuAsked = (this.gpuAsked || 0) + 1; }, gpuCancel(why) { this.gpuCancelled = why; }, stopAll() { this.stopped = true; },
   };
 }
 function fakeVideo() {
@@ -213,6 +213,32 @@ await run('a steady document turns green after 250 ms and Auto takes the shot af
   assert.equal(log.pages[0].pg, 0); assert.equal(log.pages[0].refined, false);
   near(log.pages[0].quad, Q, 'cut by the live frame');
   return 'green at ' + (green.t - t0) + ' ms, the shot at ' + (shotAt - t0) + ' ms';
+});
+
+await run('the GPU joining, as the session sees it: each answer asks, not in a pick; put away stops it; at the hand-over the frame stays and the model figure shows the new way\'s', async () => {
+  let ms = 400;
+  const { s, clock, video, engines, engine } = setup(steadyLive(Q), { auto: false });
+  const detect = engine.detect;
+  engine.detect = async (w, i) => ({ ...(await detect(w, i)), ms });
+  await s.startCamera(video);
+  await clock.runFor(3000, () => (engines.gpuAsked || 0) > 3);
+  assert.ok(engines.gpuAsked > 3, 'asked at each answer');
+  const quad = s.live.target.pts, smooth = s.live.steady.smooth, taken = s.live.lastRes;
+  assert.ok(quad && taken, 'a frame on the document');
+  assert.equal(s.live.fig.modelMs, 400);
+  engines.handed();
+  ms = 130;
+  assert.equal(s.live.target.pts, quad, 'the frame stays'); assert.equal(s.live.steady.smooth, smooth); assert.equal(s.live.lastRes, taken, 'a shot still has its answer');
+  await clock.runFor(1000, () => s.live.fig.modelMs === 130);
+  assert.equal(s.live.fig.modelMs, 130, 'the figure is the new way\'s, not a mean with the old');
+  // a pick in work asks nothing
+  const asked = engines.gpuAsked;
+  s.picking = 1;
+  await clock.runFor(1000);
+  assert.equal(engines.gpuAsked, asked, 'a pick: no start');
+  s.picking = 0;
+  s.sleep();
+  assert.equal(engines.gpuCancelled, 'the scanner was put away');
 });
 
 await run('a tremble under JERK does not start the countdown again; a drift over DRIFT does', async () => {

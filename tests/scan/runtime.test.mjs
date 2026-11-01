@@ -8,6 +8,8 @@
 //    the accurate model, never two at once; the gate after no camera and failed models, a pick past the readers; a
 //    pool that fails, a GPU way that fails or hangs, closing in mid-start, a model changed at the gate; the plain ONNX
 //    Runtime build for the CPU, the one with the GPU otherwise;
+//  - the GPU joins the CPU pool (stage 2): when it is due and when not, the trial accepted or refused, a load that fails
+//    or hangs, closing and putting away during it, no frame lost at the hand-over, a failure after it, no second heavy load;
 //  - the light model first (owner, 2026-10-27): the live frame's threads load, then the accurate model's capture
 //    thread right after them — never both loading at once; the live frame is ready before it is up;
 //  - the GPU check remembered on success only: a pass kept with the model's stamp, the ONNX Runtime version and the
@@ -1282,6 +1284,277 @@ await run('a GPU that keeps failing (a lost device rejects every run): the way i
   for (let i = 0; i < 4; i++) await e.detect('live', { rgba: new Uint8ClampedArray(256 * 256 * 4) }).catch(() => {});
   assert.equal(b.eng.engine, e);
   b.eng.stopAll();
+});
+
+// ── the GPU joins the pool (docs/scan-plan.md → The CPU first, stage 2) ──
+const FRAME = () => ({ rgba: new Uint8ClampedArray(256 * 256 * 4) });
+const NOTHING = { res: { pts: [null, null, null, null], conf: 0 } };
+const onGpu = w => w.sent[0].want === 'webgpu';
+const gpuThreads = () => workers.filter(onGpu);
+/** The threads' answers: a detect's time by where it runs; load / detect (by thread and message) may hold or fail. */
+const joinPolicy = (o = {}) => (w, m) => {
+  if (m.type === 'load') {
+    if (onGpu(w) && o.gpuLoad) return o.gpuLoad(w, m);
+    return { ...loadOk(w, m), gpu: onGpu(w) ? ['lite.onnx'] : [], passes: onGpu(w) ? { 'lite.onnx': { stamp: 's', ort: 'o', ua: 'u', layout: 'NHWC' } } : {} };
+  }
+  if (m.type === 'detect') {
+    if (onGpu(w) && o.gpuDetect) return o.gpuDetect(w, m);
+    if (!onGpu(w) && o.cpuDetect) return o.cpuDetect(w, m);
+    return { ...NOTHING, ms: onGpu(w) ? (o.gpu ?? 100) : (o.cpu ?? 400) };
+  }
+  return m.type === 'warp' ? { out: {} } : undefined;
+};
+/** A pool on the phone's numbers: up, its capture thread up, `answers` given. */
+async function pooled(o = {}, answers = 20, env = {}) {
+  await flush(10);
+  workers.length = 0; timeline.length = 0;
+  policy = joinPolicy(o);
+  const n = newEngines(SU.siteSurface(), env);
+  await n.eng.ensureSession();
+  await n.eng.engine.capWait();
+  await feed(n.eng, answers);
+  return n;
+}
+const feed = async (eng, n) => { for (let i = 0; i < n; i++) await eng.engine.detect('live', FRAME()); };
+/** Frames in turn until the trial is over: its threads take every fifth to second frame. */
+const trialOver = async (eng, seen = 40) => { for (let i = 0; i < seen && eng.gpuStop; i++) await eng.engine.detect('live', FRAME()).catch(() => {}); await flush(5); };
+
+await run('the GPU joins: after 20 answers with the capture thread up, two 1.30 threads load in the background inside the same pool, a trial of 10, accepted; the CPU threads stop, the engine object stays', async () => {
+  const { eng, said } = await pooled({}, 19), pool = eng.engine, states = [];
+  eng.gpuJoin();
+  assert.equal(gpuThreads().length, 0, 'not before 20 answers');
+  await feed(eng, 1);
+  eng.onChange(s => states.push(s.label));
+  assert.equal(eng.engine.size, 3);
+  eng.gpuJoin(); eng.gpuJoin();
+  assert.equal(gpuThreads().length, 2, 'two threads, one start');
+  assert.deepEqual(gpuThreads().map(w => { const m = w.sent[0]; return [m.ort, m.want, m.live, m.cap, m.face]; }), [['ort130', 'webgpu', 'lite.onnx', null, true], ['ort130', 'webgpu', 'lite.onnx', null, false]]);
+  assert.equal(eng.engine.size, 3, 'no frame for them while they load');
+  await flush(10);
+  assert.equal(eng.engine.size, 5, 'they join the turn for the trial');
+  assert.equal(eng.engineWay, 'bg-pool', 'still the pool on trial');
+  await trialOver(eng);
+  assert.equal(eng.engine, pool, 'the same object'); assert.equal(eng.engineWay, 'bg-gpulive');
+  assert.equal(eng.state.label, 'GPU live + CPU capture · bg'); assert.deepEqual(states, ['GPU live + CPU capture · bg'], 'runs-on changed, once');
+  assert.equal(eng.engine.size, 2);
+  const lives = workers.filter(w => w.sent[0].live === 'lite.onnx' && !onGpu(w));
+  assert.ok(lives.length === 3 && lives.every(w => w.dead), 'the CPU threads stopped');
+  assert.ok(!workers.find(w => w.sent[0].live === 'sa24_w16.onnx').dead, 'the capture thread stays');
+  assert.ok(eng.engine.capUp(), 'a shot still has the accurate model');
+  const before = gpuThreads().map(w => w.sent.filter(m => m.type === 'detect').length);
+  await feed(eng, 4);
+  assert.deepEqual(gpuThreads().map((w, i) => w.sent.filter(m => m.type === 'detect').length - before[i]), [2, 2], 'the frames in turn on the two');
+  for (const line of [/^GPU joins: started — \d+ answers given, the capture thread up; lite\.onnx on 2 threads/, /^Time: GPU threads ready beside the CPU pool — \d+ ms/, /^GPU joins: a trial of 10 answers$/,
+    /^GPU joins: trial — GPU 100 ms \(100–100\) on 2 threads, 50 ms a frame; CPU 400 ms on 3, 133 ms a frame$/, /^GPU joins: accepted — /]) assert.ok(said.log.some(t => line.test(t)), line + ' in ' + said.log.join(' | '));
+  assert.deepEqual(Object.keys(eng.gpuPasses()), ['lite.onnx'], 'the check that passed is kept, as on the GPU way');
+  eng.stopAll();
+  assert.ok(workers.every(w => w.dead), 'nothing left');
+});
+
+await run('the GPU does not join: no capture thread, the lab\'s explicit backends, no WebGPU, a stuck way', async () => {
+  await flush(10);
+  const none = async (setUp, env = {}, cap = true) => {
+    workers.length = 0; policy = joinPolicy();
+    const n = newEngines(SU.siteSurface(), env); setUp(n.eng);
+    await n.eng.ensureSession();
+    if (cap && n.eng.engine.capWait) await n.eng.engine.capWait();
+    await feed(n.eng, 30); n.eng.gpuJoin(); await flush(5);
+    const on = gpuThreads().length, way = n.eng.engineWay;
+    n.eng.stopAll();
+    return [on, way];
+  };
+  assert.deepEqual(await none(e => { e.capHold = () => new Promise(() => {}); }, {}, false), [0, 'bg-pool'], 'the capture thread not up');
+  assert.deepEqual(await none(e => e.setSettings({ backend: 'wasm' })), [0, 'bg-pool'], 'the lab\'s wasm');
+  assert.deepEqual(await none(e => e.setSettings({ backend: 'webgpu' })), [1, 'bg-gpu'], 'the lab\'s webgpu: its one thread, no hand-over');
+  assert.deepEqual(await none(() => {}, { gpu: false }), [0, 'bg-pool'], 'no WebGPU');
+  assert.deepEqual(await none(e => e.stuckWays.add('bg-gpulive')), [0, 'bg-pool'], 'the way stuck');
+});
+
+await run('the trial refused by the numbers: the GPU\'s threads stop, the pool carries on as it was, no second try in the open; a change of settings may try again', async () => {
+  const { eng, said } = await pooled({ gpu: 900, cpu: 400 }), pool = eng.engine;
+  eng.gpuJoin(); await flush(10);
+  await trialOver(eng);
+  assert.equal(eng.engine, pool); assert.equal(eng.engineWay, 'bg-pool'); assert.equal(eng.state.label, 'CPU · 3 bg threads + 1');
+  assert.equal(eng.engine.size, 3); assert.ok(gpuThreads().every(w => w.dead), 'the GPU threads stopped');
+  assert.ok(workers.filter(w => !onGpu(w)).every(w => !w.dead), 'the CPU threads go on');
+  assert.ok(said.log.some(t => t === 'GPU joins: refused — the GPU is no faster; the CPU pool carries on'), said.log.join(' | '));
+  assert.equal(eng.stuckWays.size, 0, 'no fault of the way');
+  await feed(eng, 30); eng.gpuJoin(); await flush(5);
+  assert.equal(gpuThreads().length, 2, 'no retry');
+  assert.deepEqual(Object.keys(eng.gpuPasses()), ['lite.onnx'], 'a slow GPU is no wrong GPU');
+  eng.stopAll();
+});
+
+await run('a GPU load that fails or hangs takes nothing with it: the CPU pool goes on untouched, the check forgotten, a hang marks the way stuck, no retry', async () => {
+  const a = await pooled({ gpuLoad: () => ({ error: 'WebGPU adapter not found' }) }), pool = a.eng.engine;
+  a.eng.gpuJoin(); await flush(10);
+  assert.equal(a.eng.engine, pool); assert.equal(a.eng.engineWay, 'bg-pool'); assert.ok(gpuThreads().every(w => w.dead));
+  assert.ok(a.said.log.some(t => t === 'GPU joins: refused — WebGPU adapter not found; the CPU pool carries on'), a.said.log.join(' | '));
+  await feed(a.eng, 3);
+  a.eng.stopAll();
+  const b = await pooled({ gpuLoad: () => undefined }), pool2 = b.eng.engine, cpu = workers.filter(w => !onGpu(w));
+  b.eng.gpuJoin(); await flush(5);
+  assert.equal(gpuThreads().length, 2);
+  await feed(b.eng, 2);
+  await b.clock.advance(26000); await flush(10);
+  assert.equal(b.eng.engine, pool2, 'its own onHang: the pool is not taken with it'); assert.equal(b.eng.engineWay, 'bg-pool');
+  assert.ok(gpuThreads().every(w => w.dead), 'the hung threads stopped'); assert.ok(cpu.every(w => !w.dead), 'the CPU threads go on');
+  assert.ok(b.eng.stuckWays.has('bg-gpulive'), 'the way marked'); assert.ok(!b.eng.stuckWays.has('bg-pool'));
+  await feed(b.eng, 3);
+  b.eng.gpuJoin(); await flush(5);
+  assert.equal(gpuThreads().length, 2, 'no retry');
+  b.eng.stopAll();
+});
+
+await run('the trial fails: an answer over 3 s, a detect error, 3 s of silence — the GPU\'s threads stop, the pool carries on', async () => {
+  const slow = await pooled({ gpu: 3500 });
+  slow.eng.gpuJoin(); await flush(10); await trialOver(slow.eng);
+  assert.equal(slow.eng.engineWay, 'bg-pool'); assert.equal(slow.eng.engine.size, 3); assert.ok(gpuThreads().every(w => w.dead));
+  assert.ok(slow.said.log.some(t => t === 'GPU joins: refused — an answer took 3.5 s; the CPU pool carries on'), slow.said.log.join(' | '));
+  slow.eng.stopAll();
+  const err = await pooled({ gpuDetect: () => ({ error: 'the device was lost' }) });
+  err.eng.gpuJoin(); await flush(10); await trialOver(err.eng);
+  assert.equal(err.eng.engineWay, 'bg-pool'); assert.equal(err.eng.engine.size, 3); assert.ok(gpuThreads().every(w => w.dead));
+  assert.ok(err.eng.stuckWays.has('bg-gpulive'));
+  assert.deepEqual(err.eng.gpuPasses(), {}, 'a failing GPU session\'s check goes');
+  err.eng.stopAll();
+  const mute = await pooled({ gpuDetect: () => undefined }), pool = mute.eng.engine;
+  mute.eng.gpuJoin(); await flush(10);
+  for (let i = 0; i < 5; i++) void mute.eng.engine.detect('live', FRAME()).catch(() => {});  // the frames on the GPU threads wait
+  await flush(5);
+  await mute.clock.advance(2000);
+  assert.equal(gpuThreads().filter(w => w.dead).length, 0, 'not before 3 s');
+  await mute.clock.advance(3000); await flush(10);
+  assert.equal(mute.eng.engine, pool); assert.equal(mute.eng.engineWay, 'bg-pool'); assert.ok(gpuThreads().every(w => w.dead));
+  await feed(mute.eng, 3);
+  mute.eng.stopAll();
+});
+
+await run('closing while the GPU comes: its threads stop at once, nothing is left, nothing is noted against the GPU, and the next open tries again', async () => {
+  const a = await pooled({ gpuLoad: () => undefined });
+  a.eng.gpuJoin(); await flush(5);
+  assert.equal(gpuThreads().length, 2);
+  a.eng.stopAll(); await flush(10);
+  assert.ok(workers.every(w => w.dead), 'closed in the load'); assert.equal(a.clock.timers.size, 0, 'no watch left');
+  assert.ok(!a.said.err.length, a.said.err.join(' | '));
+  const b = await pooled();
+  b.eng.gpuJoin(); await flush(10);
+  assert.equal(b.eng.engine.size, 5, 'on trial');
+  b.eng.stopAll(); await flush(10);
+  assert.ok(workers.every(w => w.dead), 'closed in the trial'); assert.equal(b.clock.timers.size, 0);
+  await b.eng.ensureSession(); await b.eng.engine.capWait();
+  assert.equal(b.eng.engineWay, 'bg-pool');
+  await feed(b.eng, 20); b.eng.gpuJoin(); await flush(10);
+  assert.equal(b.eng.engine.size, 5, 'tried again on the next open');
+  await trialOver(b.eng);
+  assert.equal(b.eng.engineWay, 'bg-gpulive');
+  b.eng.stopAll();
+});
+
+await run('put away while the GPU comes (the kept session): it stops with no fault, the pool stays, the next open tries again; a GPU already joined stays', async () => {
+  const a = await pooled({ gpuLoad: () => undefined }), pool = a.eng.engine;
+  a.eng.gpuJoin(); await flush(5);
+  a.eng.gpuCancel('the scanner was put away'); await flush(10);
+  assert.ok(gpuThreads().every(w => w.dead)); assert.equal(a.eng.engine, pool); assert.equal(a.eng.engine.size, 3);
+  assert.ok(a.said.log.includes('GPU joins: stopped — the scanner was put away'), a.said.log.join(' | ')); assert.equal(a.eng.stuckWays.size, 0);
+  await feed(a.eng, 1); a.eng.gpuJoin(); await flush(5);
+  assert.equal(gpuThreads().length, 4, 'tried again');
+  a.eng.stopAll();
+  const b = await pooled();
+  b.eng.gpuJoin(); await flush(10); await trialOver(b.eng);
+  b.eng.gpuCancel('the scanner was put away');
+  assert.equal(b.eng.engineWay, 'bg-gpulive'); assert.ok(gpuThreads().every(w => !w.dead));
+  b.eng.stopAll();
+});
+
+await run('the hand-over loses no frame: a CPU thread at work stops when its answer is in, and a late answer still comes back', async () => {
+  let held = null;
+  const { eng } = await pooled({ cpuDetect: (w, m) => (held === false ? ((held = [w, m]), undefined) : { ...NOTHING, ms: 400 }) });
+  eng.gpuJoin(); await flush(10);
+  held = false;
+  const late = eng.engine.detect('live', FRAME());  // goes to the first CPU thread, whose answer is held
+  await flush(5);
+  const [w, m] = held;
+  await trialOver(eng);
+  assert.equal(eng.engineWay, 'bg-gpulive');
+  assert.ok(!w.dead, 'its frame still in work');
+  assert.equal(eng.engine.size, 2, 'but out of the turn');
+  const sent = w.sent.length;
+  await feed(eng, 6);
+  assert.equal(w.sent.length, sent, 'no new frame for it');
+  w.reply(m, { ...NOTHING, ms: 400 });
+  const r = await late; await flush(3);
+  assert.equal(r.ms, 400, 'the answer came back'); assert.ok(w.dead, 'then it stopped');
+  eng.stopAll();
+});
+
+await run('after the hand-over: any detect error or 3 s of silence leaves the way, a new pool comes up with the capture thread kept; a frozen page is no silence; no second join', async () => {
+  let bad = false;
+  const a = await pooled({ gpuDetect: () => (bad ? { error: 'the device was lost' } : { ...NOTHING, ms: 100 }) });
+  a.eng.gpuJoin(); await flush(10); await trialOver(a.eng);
+  assert.equal(a.eng.engineWay, 'bg-gpulive');
+  const cap = a.eng.capThread, capWorker = workers.find(w => w.sent[0].live === 'sa24_w16.onnx'), loaded = timeline.filter(t => t === 'load sa24_w16.onnx').length;
+  bad = true;
+  await assert.rejects(a.eng.engine.detect('live', FRAME()), /the device was lost/);
+  await flush(3);
+  assert.equal(a.eng.engine, null, 'one error is enough'); assert.ok(a.eng.stuckWays.has('bg-gpulive'));
+  assert.deepEqual(a.eng.gpuPasses(), {}); assert.ok(gpuThreads().every(w => w.dead));
+  assert.ok(a.said.err.some(t => t.startsWith('The model failed on the GPU (the device was lost) on "GPU live + CPU capture · bg"')), a.said.err.join(' | '));
+  await a.eng.ensureSession(); await a.eng.engine.capWait();
+  assert.equal(a.eng.engineWay, 'bg-pool'); assert.equal(a.eng.engine.size, 3);
+  assert.equal(a.eng.capThread, cap, 'the capture thread kept'); assert.ok(!capWorker.dead);
+  assert.equal(timeline.filter(t => t === 'load sa24_w16.onnx').length, loaded, 'the accurate model not loaded again');
+  assert.ok(a.eng.engine.capUp(), 'and the new pool takes it');
+  await feed(a.eng, 30); a.eng.gpuJoin(); await flush(5);
+  assert.equal(gpuThreads().length, 2, 'no second join');
+  a.eng.stopAll();
+  let quiet = false;
+  const b = await pooled({ gpuDetect: () => (quiet ? undefined : { ...NOTHING, ms: 100 }) });
+  b.eng.gpuJoin(); await flush(10); await trialOver(b.eng);
+  quiet = true;
+  void b.eng.engine.detect('live', FRAME()).catch(() => {});
+  await flush(3);
+  // the page frozen for a minute (a phone's screen off): the timers stood still, the thread too
+  b.clock.t += 60000; for (const x of b.clock.timers.values()) x.next = b.clock.t + 1000;
+  await b.clock.advance(1000);
+  assert.ok(b.eng.engine, 'no silence counted across a frozen page');
+  await b.clock.advance(4500); await flush(3);
+  assert.equal(b.eng.engine, null, 'silence on a live page leaves the way');
+  assert.ok(b.said.err.some(t => t.startsWith('The model stopped answering on "GPU live + CPU capture · bg"')), b.said.err.join(' | '));
+  b.eng.stopAll();
+  // a warp may take longer than a detect: no 3 s limit while one is out
+  const c = await pooled({});
+  c.eng.gpuJoin(); await flush(10); await trialOver(c.eng);
+  const pool = c.eng.engine;
+  c.eng.capThread = null;  // the capture thread gone for a moment: the first live thread cuts, with its face finder
+  policy = (w, m) => (m.type === 'warp' ? undefined : joinPolicy()(w, m));
+  const warped = pool.warp(new Uint8ClampedArray(16), 2, 2, [[0, 0], [1, 0], [1, 1], [0, 1]], true).catch(e => e.message);
+  await flush(3);
+  await c.clock.advance(5000);
+  assert.equal(c.eng.engine, pool, 'not taken for a hang');
+  c.eng.stopAll(); assert.equal(await warped, 'the model was stopped');
+});
+
+await run('while the GPU comes no second heavy load: no file thread, and the accurate model started again waits for its load', async () => {
+  let release = [];
+  const { eng } = await pooled({ gpuLoad: (w, m) => { release.push([w, m]); return undefined; } });
+  eng.gpuJoin(); await flush(5);
+  const before = workers.length, lanes = [];
+  eng.growFiles(k => lanes.push(k)); await flush(5);
+  assert.equal(workers.length, before, 'no second sa24 beside it');
+  // a capture thread lost meanwhile starts again only after it
+  eng.capThread = null;
+  const cap = eng.ensureCap(); await flush(5);
+  const mark = timeline.length;
+  assert.equal(timeline.filter(t => t === 'load sa24_w16.onnx').length, 1, 'waits');
+  for (const [w, m] of release) w.reply(m, { ep: 'webgpu', layout: 'NHWC', gpu: ['lite.onnx'] });
+  await cap; await flush(5);
+  assert.ok(timeline.slice(mark).indexOf('load sa24_w16.onnx') > timeline.slice(mark).indexOf('up lite.onnx'), timeline.join(', '));
+  await trialOver(eng);
+  assert.equal(eng.engineWay, 'bg-gpulive');
+  eng.growFiles(k => lanes.push(k)); await flush(5);
+  assert.deepEqual(lanes, [1], 'a file thread once it is over, on the same engine');
+  eng.stopAll();
 });
 
 await run('Readers.settled with no time left: at once, though the load hangs', async () => {
