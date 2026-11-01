@@ -463,7 +463,7 @@ provideBridge({
   liveScan:()=>!!window.__aiScanImage,
   rescannedId:()=>window.__aiRescannedWorkerId||null,
   setRescanned:(id?: any)=>{ window.__aiRescannedWorkerId=id; },
-  sendScanDocument(workerId?: any,saved?: any){ const d=scanDocument(saved||{}); if(d) void sendScanDocument({workerId:String(workerId||''),...d}); },
+  sendScanDocument(workerId?: any,saved?: any){ const d=scanDocument(saved||{}); if(d) void sendScanDocument({workerId:String(workerId||''),...d,...gsAuth()}); },
   // An edit: the form over the record. Moved to a new client that has a rate: that client's rate is the
   // default again — an hourly worker's own rate is cleared (user decision 2026-10-05), only by a login
   // that may change pay. An HR change moves the worker's punches too (assignWorkersToHr).

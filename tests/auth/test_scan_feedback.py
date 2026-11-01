@@ -591,3 +591,12 @@ def test_the_loop_reports_come_with_the_stats(functions_main):
     assert j["loop"]["latest"] == {"id": "c0", "state": "rejected"} and len(j["loop"]["history"]) == 20
     assert main._scan_stats(Db(None), current)["loop"] == {"latest": None, "history": []}
     assert feedback.loop_reports({"latest": "x", "history": ["y", {"id": "a"}]}) == {"latest": None, "history": [{"id": "a"}]}
+
+
+def test_a_super_admins_full_document_belongs_to_the_firm_it_views(functions_main, monkeypatch):
+    asked = []
+    monkeypatch.setattr(functions_main, "collects_documents", lambda db, tenant: asked.append(tenant) or False)
+    functions_main._scan_document({"asTenantId": "t1"}, {"role": "superadmin"}, None, None, None)
+    functions_main._scan_document({"asTenantId": "t1"}, {"role": "tenant_admin", "tenantId": "t2"}, None, None, None)
+    functions_main._scan_document({"asTenantId": "t1"}, {"role": "staff"}, None, None, None)
+    assert asked == ["t1", "t2", ""]
