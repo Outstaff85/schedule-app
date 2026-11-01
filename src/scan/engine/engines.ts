@@ -84,9 +84,9 @@ export interface PoolHand {
   answers(): number;
   /** The GPU's threads, still loading: from now on they stop with the pool. */
   coming(threads: LoadableEngine[]): void;
-  /** They join the frames' turn; resolves with n GPU answers' ms and the last CPU answers' ms, rejects on an answer
-   *  over maxMs, or when they leave or the pool stops. */
-  trial(n: number, maxMs: number): Promise<{ gpu: number[]; cpu: number[] }>;
+  /** They join the frames' turn; resolves with the last n GPU answers' ms and the last CPU answers' ms once `good` says
+   *  so of them, or after `most` GPU answers; rejects on an answer over maxMs, or when they leave or the pool stops. */
+  trial(n: number, most: number, good: (gpu: number[], cpu: number[]) => boolean, maxMs: number): Promise<{ gpu: number[]; cpu: number[] }>;
   /** Accepted: the CPU threads leave the turn, each stopped when its work is done. */
   accept(): void;
   /** Refused: the GPU's threads leave, each stopped when its work is done; the pool goes on as it was. */
@@ -170,6 +170,9 @@ export const GPU_JOIN = 1;
 export const GPU_MARGIN = 2;
 export const GPU_AFTER = 8;
 export const GPU_TRIAL = 5;
+/** The trial goes on this long while the GPU is not fast enough yet: its first answers come beside the accurate model's
+ *  load (the owner's phone, 2026-11-01: refused on them, and never tried again). */
+export const GPU_TRIAL_MOST = 30;
 export const GPU_SILENT_MS = 3000;
 // How long a model start waits for models.json's stamps before it checks its kept copy by ETag instead (engines.stampsFor).
 export const STAMPS_WAIT_MS = 4000;
@@ -486,7 +489,7 @@ export class Engines {
     const lives = Array.from({ length: nLive }, thread);
     const free = lives.slice();
     let two = false, capFailed = false, stopped = false, given = 0;
-    let gpus: LoadableEngine[] = [], trial: { n: number; maxMs: number; ok: (r: { gpu: number[]; cpu: number[] }) => void; no: (e: Error) => void } | null = null;
+    let gpus: LoadableEngine[] = [], trial: { n: number; most: number; good: (gpu: number[], cpu: number[]) => boolean; maxMs: number; ok: (r: { gpu: number[]; cpu: number[] }) => void; no: (e: Error) => void } | null = null;
     const cpuMs: number[] = [], gpuMs: number[] = [];
     const cap = (): LoadableEngine | null => (two && this.capReady() && this.capThread ? this.capThread.raw as LoadableEngine : null);
     const ask = (): Promise<LoadableEngine | null> => (capOf as () => Promise<LoadableEngine>)().then(e => { capFailed = false; return stopped ? null : e; }, err => {
@@ -511,7 +514,8 @@ export class Engines {
       if (!trial) return;
       if (ms > trial.maxMs) { endTrial('an answer took ' + (ms / 1000).toFixed(1) + ' s'); return; }
       gpuMs.push(ms);
-      if (gpuMs.length >= trial.n) { const t = trial; trial = null; t.ok({ gpu: gpuMs.slice(), cpu: cpuMs.slice() }); }
+      const last = gpuMs.slice(-trial.n);
+      if (gpuMs.length >= trial.n && (gpuMs.length >= trial.most || trial.good(last, cpuMs))) { const t = trial; trial = null; t.ok({ gpu: last, cpu: cpuMs.slice() }); }
     };
     return {
       get size() { return lives.length; },
@@ -519,9 +523,9 @@ export class Engines {
       hand: {
         answers: () => given,
         coming: threads => { gpus = threads; },
-        trial: (n, maxMs) => new Promise((ok, no) => {
+        trial: (n, most, good, maxMs) => new Promise((ok, no) => {
           if (stopped) { no(new Error('the model was stopped')); return; }
-          trial = { n, maxMs, ok, no };
+          trial = { n, most, good, maxMs, ok, no };
           lives.push(...gpus); free.push(...gpus);
         }),
         accept: () => { for (const e of lives.filter(x => !gpus.includes(x))) leave(e); },
@@ -754,12 +758,14 @@ export class Engines {
       log.log('Time: GPU thread ready beside the CPU pool — ' + Math.round(this.env.now() - t0) + ' ms');
       for (const e of threads) if (e.strict) e.strict(GPU_SILENT_MS);
       log.log('GPU joins: a trial of ' + GPU_TRIAL + ' answers');
-      const { gpu, cpu } = await hand.trial(GPU_TRIAL, GPU_SILENT_MS);
+      const middle = (a: number[]): number => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+      const mean = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length;
+      const limit = (cpu: number[]): number => mean(cpu) / this.POOL * GPU_MARGIN;
+      const { gpu, cpu } = await hand.trial(GPU_TRIAL, GPU_TRIAL_MOST, (g, c) => middle(g) < limit(c), GPU_SILENT_MS);
       if (stage !== 'coming') return;
-      const mean = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length, gpuMs = mean(gpu), cpuMs = mean(cpu);
-      const perCpu = cpuMs / this.POOL;
+      const gpuMs = middle(gpu), cpuMs = mean(cpu), perCpu = cpuMs / this.POOL;
       log.log('GPU joins: trial — GPU ' + Math.round(gpuMs) + ' ms (' + Math.round(Math.min(...gpu)) + '–' + Math.round(Math.max(...gpu)) + '); CPU ' + Math.round(cpuMs) + ' ms on ' + this.POOL + ', ' + Math.round(perCpu) + ' ms a frame');
-      if (!(gpuMs < perCpu * GPU_MARGIN)) { refused('the GPU is too slow'); return; }
+      if (!(gpuMs < limit(cpu))) { refused('the GPU is too slow: ' + Math.round(gpuMs) + ' ms a frame, the limit ' + Math.round(limit(cpu))); return; }
       stage = 'on'; this.gpuStop = null;
       hand.accept();
       this.engineWay = way.id;

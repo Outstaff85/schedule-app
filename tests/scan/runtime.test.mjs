@@ -1353,6 +1353,15 @@ await run('the GPU joins: after 8 answers with the capture thread up, one 1.30 t
   assert.ok(workers.every(w => w.dead), 'nothing left');
 });
 
+await run('the trial goes on while the GPU is not fast enough yet: its first slow answers refuse nothing', async () => {
+  let k = 0;
+  const { eng } = await pooled({ gpuDetect: () => ({ ...NOTHING, ms: ++k <= 12 ? 900 : 100 }) });
+  eng.gpuJoin(); await flush(10);
+  await trialOver(eng);
+  assert.equal(eng.engineWay, 'bg-gpulive');
+  eng.stopAll();
+});
+
 await run('no join while the accurate model loads, and it starts only after the load of the GPU; on trial a frame goes to the GPU', async () => {
   const a = await pooled();
   a.eng.capBusy = new Promise(() => {});
@@ -1402,8 +1411,8 @@ await run('the trial refused by the numbers: the GPU\'s threads stop, the pool c
   assert.equal(eng.engine, pool); assert.equal(eng.engineWay, 'bg-pool'); assert.equal(eng.state.label, 'CPU · 3 bg threads + 1');
   assert.equal(eng.engine.size, 3); assert.ok(gpuThreads().every(w => w.dead), 'the GPU threads stopped');
   assert.ok(workers.filter(w => !onGpu(w)).every(w => !w.dead), 'the CPU threads go on');
-  assert.ok(said.log.some(t => t === 'GPU joins: refused — the GPU is too slow; the CPU pool carries on'), said.log.join(' | '));
-  assert.ok(said.err.includes('GPU joins: refused — the GPU is too slow'), 'the Errors block says so');
+  assert.ok(said.log.some(t => t === 'GPU joins: refused — the GPU is too slow: 900 ms a frame, the limit 267; the CPU pool carries on'), said.log.join(' | '));
+  assert.ok(said.err.includes('GPU joins: refused — the GPU is too slow: 900 ms a frame, the limit 267'), 'the Errors block says so');
   assert.equal(eng.stuckWays.size, 0, 'no fault of the way');
   await feed(eng, 30); eng.gpuJoin(); await flush(5);
   assert.equal(gpuThreads().length, 1, 'no retry');
