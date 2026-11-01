@@ -9,7 +9,11 @@
 //    pool that fails, a GPU way that fails or hangs, closing in mid-start, a model changed at the gate; the plain ONNX
 //    Runtime build for the CPU, the one with the GPU otherwise;
 //  - one GPU thread on every path, a weak phone on the pool for good, no adapter, no GPU retry after a failed start in an
-//    open, a frozen page no silence on any thread, a pick waiting for the live start;
+//    open, a frozen page no silence on any thread;
+//  - a pick while the live frame's start loads stops it as no failure (the GPU pass kept), the accurate model starts at
+//    once, the same way starts again after the pick and the live frame comes back; closing during it leaves nothing, picks
+//    in a row start nothing twice, a running engine or a start with the accurate model up is left alone, and the page's
+//    own thread, which cannot be stopped, is waited for;
 //  - the light model first (owner, 2026-10-27): the live frame's threads load, then the accurate model's capture
 //    thread right after them — never both loading at once; the live frame is ready before it is up;
 //  - the GPU check remembered on success only: a pass kept with the model's stamp, the ONNX Runtime version and the
@@ -1120,7 +1124,7 @@ function openOn(env = {}) {
   const e = newEngines(SU.siteSurface(), env), timers = [];
   const session = new SS.ScanSession(SU.siteSurface(), { engines: e.eng,
     attemptsEnv: { setTimeout: () => {}, onOnline: () => () => {} },
-    env: { now: e.clock.now, raf: () => {}, setTimeout: (fn, ms) => { timers.push({ fn, ms }); }, bitmap: null, newId: () => 'x', follower: { reset() {}, since: (t, p) => p, step: async () => null } } });
+    env: { now: e.clock.now, raf: () => {}, setTimeout: (fn, ms) => { timers.push({ fn, ms }); }, bitmap: null, newId: () => 'x', getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }), follower: { reset() {}, since: (t, p) => p, step: async () => null } } });
   // the session's timers that are due: FIRST_WAIT_MS after the live frame's models ended
   const fire = () => { for (const t of timers.splice(0)) t.fn(); };
   return { ...e, session, fire };
@@ -1243,19 +1247,216 @@ await run('the accurate model waits for readers that hang, READERS_WAIT_MS at mo
   } finally { globalThis.setTimeout = realST; }
 }));
 
-await run('a pick while the live frame\'s model loads: the gate opens, but the readers and the accurate model wait for it', () => withReaders(async () => {
-  const held = [];
-  policy = (w, m) => (m.type === 'load' && m.live === 'lite.onnx' ? (held.push([w, m]), undefined) : loadOk(w, m));
-  const { session, said } = openOn();
-  void session.prepare(true); await flush(20);
-  assert.deepEqual(timeline, ['load lite.onnx']);
-  const picked = session.pick([]); await flush(20);
+/** A real pick on this session: in work until over() (its picture then cannot be opened: what these checks look at is
+ *  the threads), so a check sees what starts during it and after it. */
+function picker(session) {
+  let over = () => {};
+  const held = new Promise((_, no) => { over = () => no(new Error('this picture cannot be opened')); });
+  held.catch(() => {});
+  session.env.files = { objectUrl: f => 'blob:' + f.name, pdfPages: async function* () {}, decode: () => held };
+  return { file: { name: 'a.jpg', type: 'image/jpeg', arrayBuffer: async () => new ArrayBuffer(0) }, over: () => over() };
+}
+const countOf = (what, line = timeline) => line.filter(t => t === what).length;
+const LITE_LOAD = 'load lite.onnx', SA24_LOAD = 'load sa24_w16.onnx';
+/** The light model's loads held while `hold()` says so, each kept in `held` as [thread, message]; the rest as loadOk. */
+const holdLite = (held, hold = () => true) => (w, m) => (m.type === 'load' && m.live === 'lite.onnx' && hold(m) ? (held.push([w, m]), undefined) : loadOk(w, m));
+
+await run('a pick while the live frame\'s model loads stops that load as no failure, the accurate model starts at once, and the same way starts again after the pick, with the camera and the live frame after it', () => withReaders(async () => {
+  const held = [], PASS = { stamp: 'sha:l1', ort: '1.30.0', ua: 'x', layout: 'NHWC' };
+  let holding = true;
+  policy = holdLite(held, () => holding);
+  const { session, eng, said, store, failStore, fire } = openOn();
+  store.setItem('scanGpuPassed:scan-models', JSON.stringify({ 'lite.onnx': PASS }));
+  const stats = []; session.on('status', st => stats.push(st.key));
+  const video = { srcObject: null, videoWidth: 64, videoHeight: 48, readyState: 4, play: async () => {} };
+  const { file, over } = picker(session);
+  const ready = session.prepare(true); let up = false; void ready.then(() => { up = true; });
+  const cam = session.startCamera(video); await flush(20);
+  assert.deepEqual(timeline, [LITE_LOAD]);
+  assert.equal(workers.length, 1, 'one GPU thread');
+  const picked = session.pick([file]); await flush(20);
+  // stopped, as a close stops it
+  assert.equal(workers[0].dead, true, 'its thread stopped');
   assert.ok(said.log.some(t => t.startsWith('Time: next loads begin (a pick)')), said.log.join(' | '));
-  assert.deepEqual(timeline, ['load lite.onnx'], 'nothing beside it: ' + timeline.join(', '));
-  for (const [w, m] of held) w.reply(m, loadOk(w, m));
-  await flush(30); await picked; await flush(10);
-  assert.equal(timeline[1], 'up lite.onnx');
-  assert.ok(timeline.includes('load reader') && timeline.includes('load sa24_w16.onnx'), 'then the next loads: ' + timeline.join(', '));
+  // the accurate model at once, on the CPU, the readers beside it as after any pick
+  assert.deepEqual(workers[1].sent[0].live, 'sa24_w16.onnx');
+  assert.ok(eng.capReady(), 'the accurate model up: ' + timeline.join(', '));
+  assert.ok(timeline.includes('load reader'), 'the readers do not wait for a start the pick holds: ' + timeline.join(', '));
+  // no failure of the way or of the GPU
+  assert.equal(eng.stuckWays.size, 0, 'nothing in stuckWays');
+  assert.equal(failStore.getItem('scanWayFails'), null, 'no failure noted');
+  assert.ok(!said.err.some(t => t.startsWith('Failed')), said.err.join(' | '));
+  assert.deepEqual(eng.gpuPasses(), { 'lite.onnx': PASS }, 'the GPU pass kept');
+  assert.ok(!said.log.some(t => t.includes('Trying the next way')), 'the next way does not start in the background');
+  assert.equal(eng.state.phase, 'loading');
+  // while the pick is in work nothing else starts, and what waits for the start does not see an end
+  await flush(20);
+  assert.equal(countOf(LITE_LOAD), 1, 'the light model waits for the pick: ' + timeline.join(', '));
+  assert.equal(workers.length, 2, 'no pool in the background');
+  assert.equal(up, false); assert.ok(!stats.includes('camera_failed'));
+  const before = countOf(SA24_LOAD);
+  holding = false;
+  over(); await picked; await flush(20);
+  // the same way, the normal order, the accurate model not again
+  assert.equal(countOf(LITE_LOAD), 2, timeline.join(', '));
+  assert.equal(timeline.at(-1), 'up lite.onnx');
+  assert.equal(countOf(SA24_LOAD), before, 'the accurate model not started twice');
+  assert.equal(eng.engineWay, 'bg-gpulive'); assert.equal(eng.state.phase, 'ready');
+  assert.equal(workers.at(-1).sent[0].want, 'webgpu');
+  assert.equal(eng.engine.capUp(), true, 'the live way shares the accurate model');
+  await ready; await cam;
+  assert.ok(!stats.includes('camera_failed'), stats.join());
+  assert.equal(session.live.running, false, 'the picked picture stays on the screen for its time');
+  fire();  // PICK_SHOWN_MS
+  await flush(10);
+  assert.equal(session.live.running, true, 'the live frame is back');
+  assert.ok(said.log.some(t => /^Time: live frame's models ready on GPU live/.test(t)));
+  session.stop();
+  assert.ok(workers.every(w => w.dead));
+}));
+
+await run('closing during that: while the accurate model loads and while the pick holds the start — no thread left, nothing starts after it, queued picks neither, and the next open goes the whole way', () => withReaders(async () => {
+  const held = [];
+  // while the accurate model loads
+  policy = (w, m) => (m.type === 'load' ? (held.push([w, m]), undefined) : undefined);
+  const a = openOn(), one = picker(a.session);
+  const threads = () => timeline.filter(t => !/reader/.test(t));
+  const camStart = a.session.prepare(true); await flush(20);
+  const p1 = a.session.pick([one.file]), p2 = a.session.pick([one.file]); await flush(20);
+  assert.deepEqual(threads(), [LITE_LOAD, SA24_LOAD]);
+  a.session.stop(); await flush(20);
+  assert.ok(workers.every(w => w.dead), 'every thread stopped');
+  one.over(); await p1; await p2; await camStart; await flush(20);
+  assert.deepEqual(threads(), [LITE_LOAD, SA24_LOAD], 'nothing after the close: ' + timeline.join(', '));
+  assert.ok(workers.every(w => w.dead)); assert.equal(a.eng.state.phase, 'idle');
+  assert.equal(a.eng.stuckWays.size, 0);
+  // while the pick holds it: the accurate model up, the picture in work
+  workers.length = 0; timeline.length = 0; held.length = 0;
+  policy = holdLite(held);
+  const b = openOn(), two = picker(b.session);
+  const started = b.session.prepare(true); await flush(20);
+  const p3 = b.session.pick([two.file]); await flush(20);
+  assert.ok(b.eng.capReady());
+  b.session.stop(); await flush(20);
+  assert.ok(workers.every(w => w.dead), 'every thread stopped');
+  two.over(); await p3; await started; await flush(20);
+  assert.equal(countOf(LITE_LOAD), 1, 'the light model does not start after the close: ' + timeline.join(', '));
+  assert.equal(countOf(SA24_LOAD), 1, 'nor the accurate model again for a picture that failed by it: ' + timeline.join(', '));
+  assert.ok(workers.every(w => w.dead));
+  assert.ok(!b.said.err.some(t => /Picked|Accurate/.test(t)), 'a close is no error: ' + b.said.err.join(' | '));
+  // the same session opened again: the whole order
+  workers.length = 0; timeline.length = 0; policy = loadOk;
+  const next = b.session.prepare(true); await flush(20);
+  assert.deepEqual(timeline, LITE1);
+  b.fire(); await next;
+  assert.ok(b.eng.engine && b.eng.capReady());
+  b.session.stop();
+  assert.ok(workers.every(w => w.dead));
+}));
+
+await run('several picks in a row start nothing twice: one accurate model, the light model once after the last of them; a pick with the accurate model up stops no start, a running engine never, an empty pick nothing', () => withReaders(async () => {
+  const held = [];
+  let holding = true;
+  policy = holdLite(held, () => holding);
+  const { session, eng, fire } = openOn(), { file, over } = picker(session);
+  void session.prepare(true); await flush(20);
+  assert.equal((await session.pick([]), workers[0].dead), false, 'an empty pick stops nothing');
+  const p1 = session.pick([file]), p2 = session.pick([file]); await flush(20);
+  const p3 = session.pick([file]); await flush(20);
+  assert.equal(countOf(SA24_LOAD), 1); assert.equal(countOf(LITE_LOAD), 1);
+  holding = false;
+  over(); await p1; await p2; await p3; await flush(20);
+  assert.equal(countOf(LITE_LOAD), 2, timeline.join(', ')); assert.equal(countOf(SA24_LOAD), 1, timeline.join(', '));
+  const threads = workers.filter(w => !w.dead);
+  assert.equal(threads.length, 2, 'the live thread and the capture thread');
+  // the engine up: nothing is stopped
+  const after = picker(session);
+  const p4 = session.pick([after.file]); await flush(10);
+  assert.ok(threads.every(w => !w.dead), 'a running engine is never stopped');
+  after.over(); await p4; await flush(10);
+  fire();
+  // a start that runs while the accurate model is up: nothing to start for a pick, so it is left alone
+  const live = eng.engine, stopped = workers.length;
+  eng.onStuck('test'); await flush(5);
+  assert.equal(eng.engine, null); assert.ok(live);
+  policy = holdLite(held);
+  const again = eng.ensureSession(); await flush(10);
+  assert.equal(workers.length, stopped + 3, 'the pool: its three threads loading');
+  const later = picker(session);
+  const p5 = session.pick([later.file]); await flush(10);
+  assert.ok(workers.slice(stopped).every(w => !w.dead), 'the accurate model is up: the pool loads on');
+  later.over(); await p5;
+  for (const [w, m] of held.splice(0)) if (!w.dead) w.reply(m, loadOk(w, m));
+  await again;
+  assert.equal(eng.engineWay, 'bg-pool');
+  session.stop();
+}));
+
+await run('a pick on the failing paths: the GPU\'s late failure on a stopped way counts for nothing, the same way then fails for real and the pool follows in the normal order; a pool loading gets the same; a start still asking for the adapter starts nothing during the pick', () => withReaders(async () => {
+  const held = [];
+  let gpuFails = false;
+  policy = (w, m) => (m.type !== 'load' ? undefined : m.live === 'lite.onnx' && m.want === 'webgpu' ? (gpuFails ? { error: 'out of memory' } : (held.push([w, m]), undefined)) : m.live === 'lite.onnx' ? (held.push([w, m]), undefined) : loadOk(w, m));
+  const { session, eng, failStore, said } = openOn(), first = picker(session);
+  void session.prepare(true); await flush(20);
+  const p1 = session.pick([first.file]); await flush(20);
+  const [gw, gm] = held[0];
+  assert.equal(gw.dead, true);
+  gw.reply(gm, { error: 'out of memory' }); await flush(10);  // an answer of the thread stopped
+  assert.equal(eng.stuckWays.size, 0, 'it counts for nothing'); assert.equal(failStore.getItem('scanWayFails'), null);
+  gpuFails = true;
+  first.over(); await p1; await flush(20);
+  // the same way again, it fails for real: noted as ever; the pool next, loading; the pick that comes now finds the accurate model up
+  assert.ok(eng.stuckWays.has('bg-gpulive'));
+  assert.deepEqual(JSON.parse(failStore.getItem('scanWayFails')).map(f => f.way), ['GPU live + CPU capture · bg'], 'noted once');
+  assert.ok(said.log.includes('Trying the next way'));
+  assert.equal(countOf(LITE_LOAD), 1 + 1 + 3, 'one stopped, one that failed, the pool: ' + timeline.join(', '));
+  session.stop();
+  // a weak phone's pool loading: the same treatment, every thread of it stopped, and it comes back whole
+  workers.length = 0; timeline.length = 0; held.length = 0;
+  let holding = true;
+  policy = holdLite(held, () => holding);
+  const w = openOn({ memory: 3 }), wp = picker(w.session);
+  void w.session.prepare(true); await flush(20);
+  assert.equal(countOf(LITE_LOAD), 2);
+  const pw = w.session.pick([wp.file]); await flush(20);
+  assert.ok(workers.slice(0, 2).every(t => t.dead), 'both pool threads stopped');
+  assert.equal(countOf(SA24_LOAD), 1); assert.equal(w.failStore.getItem('scanWayFails'), null); assert.equal(w.eng.stuckWays.size, 0);
+  holding = false;
+  wp.over(); await pw; await flush(20);
+  assert.equal(w.eng.engineWay, 'bg-pool'); assert.equal(countOf(LITE_LOAD), 4, timeline.join(', '));
+  w.session.stop();
+  // the adapter still being asked for: nothing to stop, the start stays held
+  workers.length = 0; timeline.length = 0; held.length = 0;
+  let answer = null;
+  policy = loadOk;
+  const adapter = () => new Promise(r => { answer = r; });
+  const c = openOn({ adapter }), cp = picker(c.session);
+  void c.session.prepare(true); await flush(20);
+  assert.deepEqual(timeline, []);
+  const pc = c.session.pick([cp.file]); await flush(20);
+  assert.ok(c.eng.capReady(), 'the accurate model at once');
+  answer(true); await flush(20);
+  assert.equal(countOf(LITE_LOAD), 0, 'the start waits for the pick: ' + timeline.join(', '));
+  cp.over(); await pc; await flush(20);
+  assert.equal(c.eng.engineWay, 'bg-gpulive');
+  c.session.stop();
+}));
+
+await run('the live frame\'s models on the page\'s own thread cannot be stopped: the pick waits for them, as before, and the accurate model comes after them', () => withReaders(async () => {
+  let release = null;
+  const ort = fakeOrt([]), gate = new Promise(r => { release = () => r(ort); });
+  ortFor = () => gate; OR.setOrtImport(url => ortFor(url));
+  policy = loadOk;
+  const { session, eng, fire } = openOn(), { file, over } = picker(session);
+  eng.setSettings({ inWorker: false });
+  void session.prepare(true); await flush(20);
+  const picked = session.pick([file]); await flush(20);
+  assert.equal(countOf(SA24_LOAD), 0, 'it waits for the page way');
+  assert.equal(eng.starting, true);
+  release(); await flush(30);  // this model file reaches no session here: the start ends all the same
+  assert.equal(eng.starting, false);
+  assert.equal(countOf(SA24_LOAD), 1, 'then the accurate model: ' + timeline.join(', '));
+  over(); await picked; fire();
   session.stop();
 }));
 

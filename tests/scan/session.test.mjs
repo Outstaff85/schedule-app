@@ -169,7 +169,7 @@ function fakeEngine(script, clock, delay) {
 function fakeEngines(engine) {
   return {
     engine, engineWay: 'bg-pool', state: { phase: 'ready', label: 'CPU · 2 bg threads + 1', worker: true, loadSeconds: 1.5 }, settings: { cpuDir: 'ort' },
-    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, capInLive: () => false, onChange: () => () => {}, stopAll() { this.stopped = true; },
+    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, capInLive: () => false, onChange: () => () => {}, stopAll() { this.stopped = true; }, yieldToPick() {}, pickOver() {},
   };
 }
 function fakeVideo() {
@@ -1438,6 +1438,37 @@ await run('the gate: a pick opens it at once, and the accurate model does not wa
   await b.s.pick([]); await flush(20);
   assert.equal(held3, true, 'a pick while it waits for them');
   a.s.stop(); b.s.stop();
+});
+
+await run('a pick and the live start: the engines are told of a pick with files at once, and that it is over only when the last pick in work settled; a pick queued behind a scan that ended starts nothing', async () => {
+  const a = setup(steadyLive(Q), { auto: false }), said = [];
+  a.engines.yieldToPick = () => said.push('yield');
+  a.engines.pickOver = () => said.push('over');
+  let caps = 0, end = null;
+  a.engines.capReady = () => false;
+  a.engines.ensureCap = () => { caps++; return new Promise((_, no) => { end = () => no(new Error('it stopped')); }); };
+  await a.s.pick([]);
+  assert.deepEqual(said, ['over'], 'an empty pick stops nothing');
+  said.length = 0;
+  const file = { name: 'a.jpg', type: 'image/jpeg', arrayBuffer: async () => new ArrayBuffer(0) };
+  const p1 = a.s.pick([file]), p2 = a.s.pick([file]);
+  assert.deepEqual(said, ['yield', 'yield'], 'at once, before the accurate model is asked for');
+  await flush();
+  assert.equal(caps, 1);
+  end(); await p1; await flush();
+  assert.equal(caps, 2, 'the next pick in the row');
+  assert.deepEqual(said, ['yield', 'yield'], 'not over while one is in work');
+  end(); await p2; await flush();
+  assert.deepEqual(said, ['yield', 'yield', 'over']);
+  // closed with a pick in work and one behind it: the one behind asks for nothing
+  caps = 0; said.length = 0; a.log.status.length = 0;
+  const p3 = a.s.pick([file]), p4 = a.s.pick([file]);
+  await flush();
+  assert.equal(caps, 1);
+  a.s.stop();
+  end(); await p3; await p4; await flush();
+  assert.equal(caps, 1, 'nothing started after the close');
+  assert.ok(!a.log.status.some(st => st.key === 'pick_failed'), 'a close is no failure of the pick');
 });
 
 await run('closing at the gate: what waits leaves, the readers do not load again, and the gate is armed anew', async () => {

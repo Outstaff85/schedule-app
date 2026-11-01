@@ -5,7 +5,8 @@
 // that fails or hangs. A tool to run by hand on a Windows PC, not a test of CI:
 //   cd tests/e2e && npm install --no-save --no-package-lock playwright@1.56.1
 //   node scripts/scan-sim/sim.mjs --out <folder outside the repo> [--profiles 1-weak,4-strong] [--runs 3] [--watch 62]
-//   the same with --picks: Photos/PDF during the start and once everything is loaded (results-picks.json, .md)
+//   the same with --picks: Photos/PDF during the start and once everything is loaded (results-picks.json, .md; --results
+//   gives those two another name, so a run beside earlier results overwrites nothing)
 // It never signs in and blocks every host but its own and the one pdf.js comes from, so nothing reaches scan_feedback.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -26,7 +27,7 @@ const PREVIEW = arg('preview', 'https://schedule-odinson--scan-test-rtl82jvf.web
 const CHANNEL = arg('channel', 'chrome');
 // a first open's run with a warm one after it is watched less: its figures are the warm run's, what it shows is the start
 const COLD_WATCH_S = +arg('cold-watch', 32);
-const WATCH_S = +arg('watch', 62), ONLY = arg('profiles', ''), RUNS = arg('runs', ''), DBG_PORT = +arg('port', 9477);
+const WATCH_S = +arg('watch', 62), ONLY = arg('profiles', ''), RUNS = arg('runs', ''), DBG_PORT = +arg('port', 9477), PICK_RESULTS = arg('results', 'results-picks');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // rate: every thread of the page slowed by it (brake 'os', the default) or only the main thread (brake 'cdp');
@@ -112,8 +113,10 @@ const collector = () => {
     s.on('page', p => S.pages.push([Math.round(now()), p.id, !!p.readouts, !!p.refined, p.record && p.record.input]));
     document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.testid === 'scan-files') S.pickAt = Math.round(now()); }, true);
     setInterval(() => {
-      if (S.pickAt == null || S.pickEnd != null) return;
-      if (s.picking) S.sawPicking = true; else if (S.sawPicking) S.pickEnd = Math.round(now());
+      if (S.pickAt == null) return;
+      if (S.pickEnd == null) { if (s.picking) S.sawPicking = true; else if (S.sawPicking) S.pickEnd = Math.round(now()); return; }
+      // the live frame back: running again, with a model answer since the pick took it off
+      if (S.liveBack == null && s.live.running && s.live.lastRes) S.liveBack = Math.round(now());
     }, 25);
     s.on('auto', on => { if (!on && S.autoOff === null) S.autoOff = Math.round(now()); });
     setInterval(() => {
@@ -312,6 +315,8 @@ async function pickRun(R, p, runNo, spec, url, mirror) {
     if (Date.now() > by) break;
   }
   await sleep(6000);  // the picture stays on the screen 2.5 s, then the live frame should go on
+  // a live frame's model started again after the pick takes its load's time more
+  for (const until = Date.now() + 120000; Date.now() < until; await sleep(500)) if ((await read(() => window.__sim.liveBack)) != null) break;
   const sim = await read(() => window.__sim);
   await Promise.race([page.close({ runBeforeUnload: false }), sleep(8000)]).catch(() => {});
   if (!sim) return { profile: p.id, run: runNo, what: spec.what, when: spec.when, cache: spec.cache, failed: 'the page did not answer', consoleErrors };
@@ -323,16 +328,16 @@ async function pickRun(R, p, runNo, spec, url, mirror) {
     pickAtS: sim.pickAt != null ? +(sim.pickAt / 1000).toFixed(2) : null, beforeFirstFrame: !!(sim.pickAt != null && (!firstLine || firstLine[0] > sim.pickAt)), firstFrameS: sim.first != null ? +(sim.first / 1000).toFixed(1) : null,
     pages: new Set(got.map(x => x[1])).size, firstPageS: got.length ? s(got[0][0]) : null, lastPageS: got.length ? s(Math.max(...got.map(x => x[0]))) : null,
     firstReadyS: got.some(x => x[2]) ? s(got.find(x => x[2])[0]) : null, allReadyS: got.some(x => x[2]) ? s(Math.max(...got.filter(x => x[2]).map(x => x[0]))) : null, pickEndS: s(sim.pickEnd),
-    liveBack: after.some(x => x.running), statuses: sim.statuses.filter(x => sim.pickAt == null || x[0] >= sim.pickAt).map(x => x[1]), errors: sim.errors.map(e => (e[0] / 1000).toFixed(1) + ' s ' + e[1]), pageFaults: sim.boot, consoleErrors: [...new Set(consoleErrors)],
+    liveBack: after.some(x => x.running) || sim.liveBack != null, liveBackS: s(sim.liveBack), liveAfterPickS: sim.liveBack != null && sim.pickEnd != null ? +((sim.liveBack - sim.pickEnd) / 1000).toFixed(2) : null, statuses: sim.statuses.filter(x => sim.pickAt == null || x[0] >= sim.pickAt).map(x => x[1]), errors: sim.errors.map(e => (e[0] / 1000).toFixed(1) + ' s ' + e[1]), pageFaults: sim.boot, consoleErrors: [...new Set(consoleErrors)],
     timeLines: sim.logs.filter(x => /^(Time:|Ready:|Picked|Picture timing|Model:|Accurate model:|Trying)/.test(x[1])).map(x => (x[0] / 1000).toFixed(1) + ' s ' + x[1]),
   };
 }
 
 function picksMarkdown(meta, rows) {
   const out = ['# Photos/PDF during the start', '', `Chrome ${meta.browser} · ${meta.when}. Seconds from the pick (the file input's change). GPU figures are the PC's.`, '',
-    '| profile | run | file | when | cache | runs on | picked at s | before first frame | first frame s | pages | first page s | all pages s | ready (read) s | pick over s | live back | errors |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
+    '| profile | run | file | when | cache | runs on | picked at s | before first frame | first frame s | pages | first page s | all pages s | ready (read) s | pick over s | live back | live back s | after pick over s | errors |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of rows) out.push(r.failed ? `| ${r.profile} | ${r.run} | ${r.what} | ${r.when} | ${r.cache} | **${r.failed}** |||||||||||` :
-    `| ${r.profile} | ${r.run} | ${r.what} | ${r.when} | ${r.cache} | ${r.runsOn} | ${fmt(r.pickAtS, 2)} | ${r.beforeFirstFrame ? 'yes' : 'no'} | ${fmt(r.firstFrameS)} | ${r.pages} | ${fmt(r.firstPageS, 2)} | ${fmt(r.lastPageS, 2)} | ${fmt(r.allReadyS, 2)} | ${fmt(r.pickEndS, 2)} | ${r.liveBack ? 'yes' : 'NO'} | ${r.errors.length} |`);
+    `| ${r.profile} | ${r.run} | ${r.what} | ${r.when} | ${r.cache} | ${r.runsOn} | ${fmt(r.pickAtS, 2)} | ${r.beforeFirstFrame ? 'yes' : 'no'} | ${fmt(r.firstFrameS)} | ${r.pages} | ${fmt(r.firstPageS, 2)} | ${fmt(r.lastPageS, 2)} | ${fmt(r.allReadyS, 2)} | ${fmt(r.pickEndS, 2)} | ${r.liveBack ? 'yes' : 'NO'} | ${fmt(r.liveBackS, 2)} | ${fmt(r.liveAfterPickS, 2)} | ${r.errors.length} |`);
   out.push('', '## Every error line', '');
   for (const r of rows) for (const e of [...(r.errors || []), ...(r.consoleErrors || []).map(x => 'console: ' + x), ...(r.pageFaults || []).map(x => 'page: ' + x[1])]) out.push(`- ${r.profile} #${r.run} ${r.what} ${r.when} ${r.cache}: ${e}`);
   return out.join('\n') + '\n';
@@ -340,7 +345,7 @@ function picksMarkdown(meta, rows) {
 
 async function picks(base, brake, video, meta, setCurrent, mirror) {
   const { photo, pdf } = await makePicks(chromium, video + '.first.jpg', OUT), rows = [], n = RUNS ? +RUNS : 2, url = base + '/scan-lab/';
-  const save = () => { fs.writeFileSync(path.join(OUT, 'results-picks.json'), JSON.stringify({ meta, rows }, null, 1)); fs.writeFileSync(path.join(OUT, 'results-picks.md'), picksMarkdown(meta, rows)); };
+  const save = () => { fs.writeFileSync(path.join(OUT, PICK_RESULTS + '.json'), JSON.stringify({ meta, rows }, null, 1)); fs.writeFileSync(path.join(OUT, PICK_RESULTS + '.md'), picksMarkdown(meta, rows)); };
   for (const id of PICK_PROFILES) {
     const p = PROFILES.find(x => x.id === id);
     const specs = [{ what: 'photo', file: photo, when: 'early', cache: 'cold' }, { what: 'photo', file: photo, when: 'early', cache: 'warm' }, { what: 'photo', file: photo, when: 'loaded', cache: 'warm' }];

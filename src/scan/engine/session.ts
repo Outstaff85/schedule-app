@@ -64,15 +64,18 @@
 // the readers' sessions and then the accurate model wait for its opening — the first model answer, or FIRST_WAIT_MS after
 // the live frame's models ended, up or failed, and the camera came, or could not (no camera, an early start), or a pick,
 // which does not wait for the readers either. It opens once per session (stop arms it anew); the log says when and by what
-// ("Time: next loads begin"). The readers also wait for a start of the live frame's models still running (readersHold):
-// a pick opens the gate at once, and nothing loads beside them.
+// ("Time: next loads begin"). The readers also wait for a start of the live frame's models still at work (readersHold):
+// a pick opens the gate at once, and nothing loads beside them. A pick while that start loads stops it, and the accurate
+// model starts at once (engines.ts yieldToPick; the readers then go on too, as after any pick); the start stays open, so
+// the camera and whatever else wait for it never see a failure, and goes on when the last pick in work settled (pickOver),
+// which brings the live frame back.
 //
 // keepCanvases (the lab, which has no Done and keeps its session for the page's life): only the newest that
 // many pages read keep their full-size pixels; an older one is given again `released` (a 1×1 canvas: its
 // thumbnail, made already, and its readouts stay), so a long lab session does not hold every cut page.
 import { Attempts, type AttemptsEnv } from './attempts';
 import { Camera, type GetUserMedia, type VideoLike } from './camera';
-import { Engines, type EngineSettings } from './engines';
+import { Engines, latch, type EngineSettings } from './engines';
 import { Live, trackFollower, type Bitmapper, type Figures, type Follower, type SessionClock } from './live';
 import { ScanLog } from './log';
 import { Readers, type DoctypeAnswer } from './readers';
@@ -93,8 +96,6 @@ export const PICK_SHOWN_MS = 2500;
 /** How long after the live frame's models ended the next loads wait for a first answer (ms). */
 export const FIRST_WAIT_MS = 1500;
 const errText = (e: unknown): string => String((e as Error)?.message || e);
-/** A promise opened once from outside. */
-const latch = (): { p: Promise<void>; open: () => void } => { let open = (): void => {}; const p = new Promise<void>(r => { open = r; }); return { p, open }; };
 
 /** The picked picture being worked on: its pick (batch), its place in the pick (n, 1-based), its url, which file
  *  and page it is, what is being done — finding the document, cutting one out (quad: its frame on the picture),
@@ -331,10 +332,11 @@ export class ScanSession {
     this.gate.open();
   }
   private gateWait(): Promise<void> { return this.gateState === 'armed' ? this.gate.p : Promise.resolve(); }
-  /** What the readers' sessions wait for: the gate, then the live frame's models (a pick opens the gate while they load). */
+  /** What the readers' sessions wait for: the gate, then the live frame's models at work (a pick opens the gate and
+   *  stops their load; on the page's own thread, which cannot be stopped, the pick waits with them). */
   private async readersHold(): Promise<void> {
     await this.gateWait();
-    while (this.engines.starting) await this.engines.startEnd();
+    while (this.engines.liveLoading) await this.engines.startEnd();
   }
   /** The wait for readers still loading, one deadline per open shared by every wait: readers that hang cost
    *  READERS_WAIT_MS once, not per page or per shot. */
@@ -827,35 +829,43 @@ export class ScanSession {
   /** Picked photos and PDFs (files.ts): a batch of its own, worked on the lanes, its pages given in the files'
    *  order; the pages before it are left as they are (nothing is marked looked at). The live frame goes on by
    *  itself PICK_SHOWN_MS after the last pick in work settled (the picked picture shown that long). Returns how
-   *  many pages it gave. */
+   *  many pages it gave. A start of the live frame's models still loading gives way to it, until the last pick
+   *  in work settled (engines.ts yieldToPick). */
   pick(files: PickFile[]): Promise<number> {
     this.rush.open();
     this.openGate('a pick');
+    if (files.length) this.engines.yieldToPick();
     this.picking++;
-    const run = this.pickChain.then(() => this.runPick(files));
+    const gen = this.scanGen;
+    const run = this.pickChain.then(() => this.runPick(files, gen));
     this.pickChain = run.catch(() => 0);
     const settled = (): void => {
       if (--this.picking) return;
-      const gen = ++this.pickShownGen;
+      this.engines.pickOver();
+      const shown = ++this.pickShownGen;
       this.pickShown = true;
-      this.env.setTimeout(() => { if (gen !== this.pickShownGen || this.picking) return; this.pickShown = false; this.goOn(); }, PICK_SHOWN_MS);
+      this.env.setTimeout(() => { if (shown !== this.pickShownGen || this.picking) return; this.pickShown = false; this.goOn(); }, PICK_SHOWN_MS);
     };
     run.then(settled, settled);
     return run;
   }
 
-  private async runPick(files: PickFile[]): Promise<number> {
-    if (!files.length) return 0;
-    const batch = ++this.batchSeq, t0 = this.env.now(), log = this.log, gen = this.scanGen;
+  private async runPick(files: PickFile[], gen: number): Promise<number> {
+    if (!files.length || gen !== this.scanGen) return 0;  // the scan ended while it waited for the pick before it
+    const batch = ++this.batchSeq, t0 = this.env.now(), log = this.log;
     this.shotId++; this.shotInWork = false;  // a shot in work is dropped (the lab's pick bumped it too)
     this.live.running = false;
     this.live.lastRes = null;  // the picked picture replaces the camera: no shot from the frame found before it
     while (this.live.inFlight) await this.sleepMs(10);
-    // picked files go only to the accurate model: one picked before it is up waits for it (it starts right after
-    // the live frame's model), the status line says so
+    if (gen !== this.scanGen) return 0;
+    // picked files go only to the accurate model: one picked before it is up waits for it (it starts at once: a start
+    // of the live frame's model has given way to the pick), the status line says so
     if (!this.engines.capReady()) { this.emit('status', { key: 'preparing_accurate' }); log.log('Picked files wait for the accurate model'); }
     try { await this.engines.ensureCap(); }
-    catch (e) { log.err('Accurate model: ' + errText(e)); this.emit('status', { key: 'pick_failed' }); return 0; }
+    catch (e) {
+      if (gen !== this.scanGen) return 0;  // closed meanwhile: no error to show
+      log.err('Accurate model: ' + errText(e)); this.emit('status', { key: 'pick_failed' }); return 0;
+    }
     let pages = 0;
     // the readouts (type, passport zone, Hebrew) one page after another, apart from the list: a picture's pages
     // are all given at once and the next picture is not held up by them
@@ -865,6 +875,8 @@ export class ScanSession {
       // only the accurate model's threads: the capture thread (lane 0, shared with the live frame's pool) and a
       // file thread — never the live frame's (a picked picture sent to the light model's GPU thread hung, 2026-10-20)
       engineOf: async (k): Promise<LaneEngine> => {
+        // the scan ended: nothing is started for it (a thread stopped by a close comes here to be started again)
+        if (gen !== this.scanGen) throw new Error('the scan ended');
         const t = k ? this.engines.fileThreads[k - 1] : undefined;
         if (t && !t.dead) return t;
         return this.engines.ensureCap();
@@ -908,9 +920,10 @@ export class ScanSession {
       },
       sleep: ms => this.sleepMs(ms),
       log: log.log,
-      err: log.err,
+      err: t => { if (gen === this.scanGen) log.err(t); },
     });
     await reads;
+    if (gen !== this.scanGen) return pages;  // the scan ended: nothing to say of it
     if (res.failed) this.emit('status', { key: 'pick_failed' });
     else if (res.openFailed) this.emit('status', { key: 'pick_open_failed' });
     else this.emit('status', { key: 'picked', pages, files: files.length });

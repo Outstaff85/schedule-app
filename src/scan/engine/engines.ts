@@ -22,7 +22,13 @@
 //    frame's model on its way, so the camera and its frame come as soon as it is ready; the accurate model's
 //    capture thread (on the CPU) after it, never beside it — never two models loading at once —, and after the
 //    session's gate too (capHold: the first answer, then the readers; a pick goes past the readers). Picked photos
-//    and PDFs go only to the accurate model and wait for it; the live frame's pool shares it — one copy of it.
+//    and PDFs go only to the accurate model; the live frame's pool shares it — one copy of it. A pick while the live
+//    frame's start still loads comes first (the owner's wish, 2026-11-01; docs/scan-plan.md → A pick stops the live
+//    start): yieldToPick stops that start's threads, as a close does and as no failure of the way (nothing in
+//    stuckWays, no noteFail, no forgetGpuPasses); the accurate model starts at once, so the rule above holds; the same
+//    start stays open, waits for pickOver, and tries the same way again, so what waits for it never sees a failure. A
+//    running engine is never stopped, a way on the page's own thread cannot be (the pick waits for it), and a pick
+//    with the accurate model up has nothing to start and stops nothing.
 //  - picked files: at most one more thread with the accurate model, none under 4 GB of memory or 4 cores.
 //  - the pool: at most 3 live threads, 2 under 4 GB of memory (each holds its own ONNX Runtime).
 //  - models.json read once per open (modelsInfo, shared with the readers): each thread's 'load' carries the
@@ -130,6 +136,8 @@ const GPU_LAYOUT_KEY = 'scanGpuLayout';
  *  are apart (scanGpuPassed:scan-models, scanGpuPassed:scan-lab-models). */
 export const GPU_PASS_KEY = 'scanGpuPassed';
 const WATCH_MS = 25000;
+/** A promise opened once from outside. */
+export const latch = (): { p: Promise<void>; open: () => void } => { let open = (): void => {}; const p = new Promise<void>(r => { open = r; }); return { p, open }; };
 /** Detects in a row a thread that runs a model on the GPU may fail before its way is left for the next (a lost GPU
  *  device rejects every run; 2, or the live frame's own stop after 5 failed frames comes first on two threads). */
 export const GPU_ERRORS = 2;
@@ -186,6 +194,14 @@ export class Engines {
   fileThreads: ThreadEngine[] = [];
   private fileThreadsFor: LoadableEngine | null = null;
   private ensuring: Promise<void> | null = null;
+  /** A pick holds the start running (yieldToPick): it starts no way until pickOver. */
+  private pickHold: ReturnType<typeof latch> | null = null;
+  /** Opened when a pick begins to hold the start: what waits for that start's end goes on (startEnd). */
+  private holdBegun = latch();
+  /** The way the start is loading now; yielded: a pick stopped it, which is no failure of it. */
+  private trying: { cand: LoadableEngine; worker: boolean; yielded: boolean } | null = null;
+  /** A file thread's load running now: a start after a pick waits for it too. */
+  private fileBusy: Promise<unknown> | null = null;
   private changes = new Set<(s: EngineState) => void>();
   private fileThreadsCap = '';
 
@@ -494,8 +510,9 @@ export class Engines {
   }
 
   // The accurate model's thread, on the CPU — the light model first (owner, 2026-10-27; it replaced "the accurate
-  // model first", 2026-10-22): it starts after the live frame's models (a start of them running is waited for
-  // — never two models loading at once: on the owner's phone that made the capture thread stop answering) and after
+  // model first", 2026-10-22): it starts after the live frame's models (a start of them running is waited for, unless
+  // a pick holds it, yieldToPick — never two models loading at once: on the owner's phone that made the capture thread
+  // stop answering) and after
   // capHold (the session's gate: a load beside the first frame was the suspect in the gap between ready and that
   // frame), so the camera and its frame come first; picked photos and PDFs need only this thread and wait for it; the live frame's
   // pool shares it for the shot — one copy of the accurate model. ensureCap() → the thread (a capture-only engine
@@ -511,9 +528,9 @@ export class Engines {
       let lives = false, held = '';
       // the hold over, a start of the live frame's models begun meanwhile (a model changed) is waited for too
       do {
-        while (this.ensuring) { lives = true; await this.ensuring.catch(() => {}); }
+        while (this.liveLoading) { lives = true; await this.startEnd(); }
         if (this.capHold) held = await this.capHold();
-      } while (this.ensuring);
+      } while (this.liveLoading);
       const gone = this.closed(g);
       if (gone) throw gone;
       if (this.capFor !== key) throw new Error('the model was changed');
@@ -558,10 +575,44 @@ export class Engines {
   /** Under 4 GB of memory or 4 cores (unknown counts as 4 GB and 2 cores). */
   private weak(): boolean { return (this.env.memory || 4) < 4 || (this.env.cores || 2) < 4; }
 
-  /** A start of the model is running (on the settings it began with). */
+  /** A start of the model is running (on the settings it began with), a pick holding it or not. */
   get starting(): boolean { return !!this.ensuring; }
-  /** The end of the start running now, whichever way it ended (at once when none runs). */
-  startEnd(): Promise<void> { return this.ensuring ? this.ensuring.catch(() => {}) : Promise.resolve(); }
+  /** A start of the model is at work: one a pick does not hold. */
+  get liveLoading(): boolean { return !!this.ensuring && !this.pickHold; }
+  /** The end of the start at work, whichever way it ended, or a pick that holds it (at once when none runs). */
+  startEnd(): Promise<void> { return this.ensuring ? Promise.race([this.ensuring.catch(() => {}), this.holdBegun.p]) : Promise.resolve(); }
+
+  /** A pick came (session.pick; the head of this file): a start of the live frame's models still loading gives way to
+   *  the accurate model. Its threads are stopped at once and it starts no way until pickOver; its promise stays open.
+   *  Nothing is done with no start running, with the accurate model up, or on the page's own thread, which cannot be
+   *  stopped; a second pick finds it held already. */
+  yieldToPick(): void {
+    const t = this.trying;
+    if (!this.ensuring || this.pickHold || this.capReady() || (t && !t.worker)) return;
+    this.pickHold = latch();
+    const begun = this.holdBegun;
+    this.holdBegun = latch();
+    begun.open();
+    this.log.log('A pick came first: the live frame\'s start ' + (t ? 'stopped' : 'held') + ', it starts again after the pick');
+    if (!t) return;
+    t.yielded = true; this.trying = null;
+    try { t.cand.stop(); } catch { /* gone already */ }
+  }
+  /** The last pick in work settled: a start it held goes on. */
+  pickOver(): void {
+    const h = this.pickHold;
+    this.pickHold = null;
+    if (h) h.open();
+  }
+  /** What a way waits for before it starts: a pick that holds the start, and the accurate model's thread or a file thread
+   *  loading now — never two models loading at once. */
+  private async mayStart(): Promise<void> {
+    for (;;) {
+      const w: Promise<unknown> | null = this.pickHold ? this.pickHold.p : this.capBusy || this.fileBusy;
+      if (!w) return;
+      await w.catch(() => {});
+    }
+  }
 
   // One start of the model at a time (the live frame and a picked file may both ask).
   ensureSession(): Promise<void> {
@@ -590,37 +641,45 @@ export class Engines {
     if (this.engine) this.engine.stop();
     this.dropFileThreads();
     this.engine = null; this.setState({ phase: 'loading', label: 'loading…', loadSeconds: null }); log.status({ key: 'preparing' }, 0);
-    const t0 = this.env.now();
+    let t0 = this.env.now();
     let e: LoadableEngine | null = null, used: Way | null = null;
     // the pool ways share the accurate model's capture thread, asked for once their live threads are loaded
     const capOf = cap ? () => this.ensureCap().then(t => t.raw as LoadableEngine) : null;
     let ways = this.waysFor(want, inWorker);
     if (ways[0] && ways[0].gpuLive && !(await this.adapterUp())) ways = ways.filter(w => !w.gpuLive);
-    for (const w of ways) {
-      // the accurate model's thread loading now (a pick, or the way before this one): waited for — never two
-      // models loading at once
-      if (this.capBusy) await this.capBusy.catch(() => {});
-      let gone = this.closed(g);
-      if (gone) throw gone;  // closed while the capture thread loaded
-      log.status({ key: 'trying_way', way: w.label }, 0);
-      const cand = w.gpuLive ? this.poolEngine(GPU_THREADS, 'webgpu', capOf) : w.pool ? this.poolEngine(this.POOL, null, capOf) : w.worker ? this.workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : cpuDir) : this.pageEngine();
-      try { await this.track(cand, cand.load(live, cap || null, w.ep)); } catch (err) {
-        cand.stop();
-        gone = this.closed(g); if (gone) throw gone;
-        // a GPU way that failed: its models' remembered GPU checks go (the next open checks again)
-        if (w.gpuLive || w.ep === 'webgpu') this.forgetGpuPasses([live, ...(cap ? [cap] : [])], 'its way failed: ' + errText(err));
-        // not tried again in this open: a later start (a pool that hung) would wait for the GPU once more with no frame
-        if (w.gpuLive) this.stuckWays.add(w.id);
-        log.noteFail(w.label, errText(err)); log.log('Trying the next way'); continue;
+    ways: for (const w of ways) {
+      // a way a pick stopped is tried again after it: its time starts again, and no failure was noted
+      for (let again = false; ; again = true) {
+        // a pick holding this start, or the accurate model's thread loading now (a pick, or the way before this one):
+        // waited for — never two models loading at once
+        await this.mayStart();
+        let gone = this.closed(g);
+        if (gone) throw gone;  // closed while a pick held it or the capture thread loaded
+        if (again) t0 = this.env.now();
+        log.status({ key: 'trying_way', way: w.label }, 0);
+        const cand = w.gpuLive ? this.poolEngine(GPU_THREADS, 'webgpu', capOf) : w.pool ? this.poolEngine(this.POOL, null, capOf) : w.worker ? this.workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : cpuDir) : this.pageEngine();
+        const trial = { cand, worker: w.worker, yielded: false };
+        this.trying = trial;
+        try { await this.track(cand, cand.load(live, cap || null, w.ep)); } catch (err) {
+          cand.stop();
+          gone = this.closed(g); if (gone) throw gone;
+          if (trial.yielded) continue;  // stopped by a pick: no failure, the same way once the pick is over
+          // a GPU way that failed: its models' remembered GPU checks go (the next open checks again)
+          if (w.gpuLive || w.ep === 'webgpu') this.forgetGpuPasses([live, ...(cap ? [cap] : [])], 'its way failed: ' + errText(err));
+          // not tried again in this open: a later start (a pool that hung) would wait for the GPU once more with no frame
+          if (w.gpuLive) this.stuckWays.add(w.id);
+          log.noteFail(w.label, errText(err)); log.log('Trying the next way'); continue ways;
+        } finally { if (this.trying === trial) this.trying = null; }
+        gone = this.closed(g);
+        if (gone) { cand.stop(); throw gone; }  // closed while it loaded: its threads and sessions go
+        e = cand; used = w; break ways;
       }
-      gone = this.closed(g);
-      if (gone) { cand.stop(); throw gone; }  // closed while it loaded: its threads and sessions go
-      e = cand; used = w; break;
     }
     if (!e || !used) { this.setState({ phase: 'failed', label: 'failed' }); log.status({ key: 'failed' }); throw new Error('no way to run the model'); }
     log.log('Live ' + live + (cap ? ', capture ' + cap : '') + ' running as ' + used.label);
     log.log('Time: live frame\'s models ready on ' + used.label + ' — ' + Math.round(this.env.now() - t0) + ' ms');
     this.engine = e; this.engineWay = used.id;
+    if (!this.fileThreadsFor) this.fileThreadsFor = e;  // a file thread started for a pick that came first is this engine's
     // a start that fell back to the page stays there until the scanner closes (the lab unticked its
     // "background threads"); the key then matches the next asks, so the model is not started again each use
     if (inWorker && !used.worker) this.pageOnly = true;
@@ -644,13 +703,14 @@ export class Engines {
     let me: ThreadEngine | null = null;
     const e: LoadableEngine = this.workerEngine(1, this.settings.cpuDir, () => { log.err('The file thread stopped answering — its pictures go to the main thread'); if (me) me.dead = true; e.stop(); });
     const forEngine = this.engine;
-    this.track(e, e.load(name, null, 'wasm', true)).then(() => {
+    const busy: Promise<void> = this.track(e, e.load(name, null, 'wasm', true)).then(() => {
       if (this.closed(g) || this.fileThreadsFor !== forEngine || this.fileThreadsCap !== key) { e.stop(); return; }  // closed or changed meanwhile
       me = { detect: (_which, input) => e.detect('live', input), warp: e.warp, hasCap: () => false, stop: () => e.stop(), label: 'the file thread' };
       this.fileThreads = [me];
       log.log('Picked files: a second thread is working too');
       onLane(1);
-    }, err => { e.stop(); if (!this.closed(g)) log.noteFail('File thread', errText(err)); });
+    }, err => { e.stop(); if (!this.closed(g)) log.noteFail('File thread', errText(err)); }).finally(() => { if (this.fileBusy === busy) this.fileBusy = null; });
+    this.fileBusy = busy;
   }
 
   /** Everything stopped (the scanner closed): every thread and session, every start and thread load still
@@ -660,7 +720,8 @@ export class Engines {
     this.gen++;
     for (const e of this.inFlight) { try { e.stop(); } catch { /* gone */ } }
     this.inFlight.clear();
-    this.ensuring = null; this.capLoading = null; this.capBusy = null;
+    this.ensuring = null; this.capLoading = null; this.capBusy = null; this.fileBusy = null; this.trying = null;
+    this.pickOver();  // a start a pick held leaves: it finds the scanner closed
     this.dropFileThreads();
     if (this.engine) { try { this.engine.stop(); } catch { /* gone */ } this.engine = null; this.engineKey = ''; }
     if (this.capThread) { this.capThread.stop(); this.capThread = null; }
