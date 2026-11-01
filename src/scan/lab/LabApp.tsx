@@ -17,8 +17,9 @@
 //    (turnBy "face" when it set the page upright, else "model");
 //  - the resampling probe (probe.ts, Lab tools → Settings): its latest line (how far, a file missing, saved) under
 //    its button — the phone has no console.
-// The lab's start order is the site's — the light model first (owner, 2026-10-27): the camera's models, then the
-// accurate model right after them (photos and PDFs picked meanwhile wait for it) — the camera comes at once, beside the
+// The lab's start order is the site's, the session's own (session.prepare) — the light model first (owner, 2026-10-27):
+// the camera's models, then behind the gate the readers and the accurate model (photos and PDFs picked meanwhile wait for
+// it) — the camera comes at once, beside the
 // models, and waits only for a pick in work (startLab runs before the camera's start: the screen's effect runs before this page's). The session lives as long as the
 // page (the lab's page reloads to start again: the CPU engine choice does); the phone's back goes one step back
 // inside it and does not leave it when it is the first page of its tab (ui/back.ts); only its newest KEEP_CANVASES pages
@@ -119,9 +120,9 @@ function getLab(): Lab {
   return (lab = made);
 }
 
-/** The lab opened (once): what this device has, then the light model first (owner, 2026-10-27): the live frame's
- *  models, so the live frame comes as soon as they are ready (the camera does not wait for them), and the
- *  accurate model right after them (photos and PDFs picked meanwhile wait for it). */
+/** The lab opened (once): what this device has, then the session's own start (prepare, as on the site): the live
+ *  frame's models, so the live frame comes as soon as they are ready (the camera does not wait for them), and behind
+ *  the gate the readers, then the accurate model (photos and PDFs picked meanwhile wait for it). */
 function startLab(l: Lab): void {
   if (l.started) return;
   l.started = true;
@@ -130,7 +131,6 @@ function startLab(l: Lab): void {
   log.log('CPU engine: ONNX Runtime ' + (l.cpuDir === GPU_ORT ? '1.30.0' : '1.22.0') + ', GPU engine: 1.30.0');
   log.log('GPU (WebGPU) in this browser: ' + (env.gpu ? 'yes' : 'no'));
   log.log('CPU: ' + (env.cores || '?') + ' cores' + (env.memory ? ', memory ' + env.memory + ' GB' : '') + '; several background threads of one thread each are used' + (env.isolated ? '' : ' (one core each: this page is not cross-origin isolated)'));
-  session.attempts.start();
   l.kinds.start();
   // the page left: the attempts still undecided go as kept (written to the queue on the phone first, sent now
   // or on the next open). A phone often gives no pagehide (the tab swiped away, the browser killed): each
@@ -138,9 +138,7 @@ function startLab(l: Lab): void {
   // (attempts.ts flush); hidden (fired more reliably than pagehide) sends what is decided and waiting
   addEventListener('pagehide', () => keepUndecided(l));
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void session.attempts.flush(); });
-  if (session.readers) void session.readers.load();
-  void engines.ensureSession().catch(e => log.log('Model: ' + errText(e)))
-    .then(() => engines.ensureCap()).catch(e => log.log('Accurate model: ' + errText(e)));
+  void session.prepare(true);  // the attempts' start too; the open was marked above
 }
 
 /** The attempts still undecided sent as kept (the lab has no Done; their pages are not marked looked at). */

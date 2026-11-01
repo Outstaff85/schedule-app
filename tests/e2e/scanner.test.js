@@ -775,7 +775,8 @@ const READS = {
 // Vite-built module worker, src/scan/engine/worker.ts) loads the corners model on the CPU (wasm) and answers
 // detect on a grey frame with the planted corners and on a black one with none, and the page's readers
 // (readers.ts: loadOrt + cpuSession in the page) load the document type model from models.json and answer on a
-// grey page — the import() of ort.all.min.mjs, wasmPaths from the surface, the loaders and the .wasm all real.
+// grey page — the import() of ort.wasm.min.mjs (the CPU alone) and of ort.all.min.mjs (a load that may use the GPU,
+// on the CPU here: no WebGPU in the tests), wasmPaths from the surface, the loaders and the .wasm all real.
 async function realRuntime(b) {
   const { execSync } = require('child_process');
   const path = require('path');
@@ -824,6 +825,13 @@ async function realRuntime(b) {
         out.black = (await w.detect('live', {rgba: black})).res;
       } catch (e) { out.err = String(e && e.message || e); }
       w.stop();
+      const all = ScanLab.session.engines.workerEngine(1, dir, () => {});
+      try {
+        out.allEp = await all.load('lite.onnx', null, 'auto', false);
+        const grey = new Uint8ClampedArray(256 * 256 * 4).fill(128);
+        out.allGrey = (await all.detect('live', {rgba: grey})).res;
+      } catch (e) { out.allErr = String(e && e.message || e); }
+      all.stop();
       const R = ScanLab.session.readers;
       out.version = ((await R.load()) || {}).version;
       const c = new OffscreenCanvas(256, 256), g = c.getContext('2d');
@@ -833,13 +841,14 @@ async function realRuntime(b) {
     }, dir).catch(e => ({error: e.message}));
     const near = (pts, want) => Array.isArray(pts) && pts.every((q, i) => q && Math.abs(q[0] - want[i][0]) < 0.01 && Math.abs(q[1] - want[i][1]) < 0.01);
     const got = [...new Set(served)], own = f => got.includes('/scan-lab/' + dir + '/' + f);
-    const files = {module: own('ort.all.min.mjs'), loader: got.some(f => f.startsWith('/scan-lab/' + dir + '/ort-wasm-simd-threaded') && f.endsWith('.mjs')),
+    const files = {module: own('ort.wasm.min.mjs'), gpuModule: own('ort.all.min.mjs'), loader: got.some(f => f.startsWith('/scan-lab/' + dir + '/ort-wasm-simd-threaded') && f.endsWith('.mjs')),
       wasm: got.some(f => f.startsWith('/scan-lab/' + dir + '/') && f.endsWith('.wasm'))};
     const site = reqs.filter(u => /\/scan\//.test(u));
     ok(!r.error && !r.err && r.ep === 'wasm' && near(r.grey && r.grey.pts, SPOTS) && r.grey.conf > 0.7 && !!r.black && r.black.pts.every(q => q === null)
-      && files.module && files.loader && files.wasm && site.length === 0,
-      'the real ONNX Runtime ' + (dir === 'ort' ? '1.22 (ort/)' : '1.30 (ort130/)') + ' in the engine\'s module worker: the corners model loads on the CPU (wasm) and detect answers the planted corners on a grey frame, none on a black one; ort.all.min.mjs, its loader .mjs and .wasm come from the lab\'s own folder '
-      + JSON.stringify({r: {ep: r.ep, err: r.err || r.error, grey: r.grey, black: r.black && r.black.conf}, files, site: site.slice(0, 3)}));
+      && !r.allErr && r.allEp === 'wasm' && near(r.allGrey && r.allGrey.pts, SPOTS)
+      && files.module && files.gpuModule && files.loader && files.wasm && site.length === 0,
+      'the real ONNX Runtime ' + (dir === 'ort' ? '1.22 (ort/)' : '1.30 (ort130/)') + ' in the engine\'s module worker: the corners model loads on the CPU (wasm) and detect answers the planted corners on a grey frame, none on a black one, through ort.wasm.min.mjs and through ort.all.min.mjs; both, their loader .mjs and .wasm come from the lab\'s own folder '
+      + JSON.stringify({r: {ep: r.ep, err: r.err || r.error || r.allErr, allEp: r.allEp, grey: r.grey, allGrey: r.allGrey, black: r.black && r.black.conf}, files, site: site.slice(0, 3)}));
     ok(r.version === 'tiny' && r.doctype === 'passport,0.90,1,0.80' && !r.readErr,
       'the real ONNX Runtime ' + (dir === 'ort' ? '1.22' : '1.30') + ' in the page: the readers load the document type model from models.json and answer on a grey page ' + JSON.stringify({version: r.version, doctype: r.doctype, err: r.readErr}));
     ok(errs.length === 0, 'the real ONNX Runtime ' + dir + ': no page errors ' + errs.join(' | '));

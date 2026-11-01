@@ -1,10 +1,13 @@
 // The scanner's engine (docs/scan-plan.md → S9): the ways the models run, ported unchanged from the lab's
 // former plain page (pageEngine, workerEngine, poolEngine, capOnly, WAYS, startSession / ensureSession,
 // ensureCap, onStuck, growFiles / dropFileThreads) into one class per scanner, Engines(surface, log):
-//  - the ways, best first: the GPU's live frame beside a CPU capture thread, a pool of CPU threads, one
-//    background thread with several CPU threads, one with one, the page itself. Each is tried in turn: a way
-//    that fails or goes silent for 25 s is dropped (with its throwaway background thread) and the next starts
-//    clean; a way whose thread stopped answering while scanning is not tried again until the scanner closes.
+//  - the ways: a pool of CPU threads first (2026-11-01: the frame in about 4 s; a session on the owner's phone's GPU
+//    took 6 s, on its CPU 2 s — it replaced "every open tries the best way first", 2026-10-22), the GPU's live frame
+//    beside a CPU capture thread as its fall back, then one background thread with several CPU threads, one with one,
+//    the page itself; one model for both keeps the GPU first (the pool would hold three copies of the accurate model).
+//    Each is tried in turn: a way that fails or goes silent for 25 s is dropped (with its throwaway background thread)
+//    and the next starts clean; a way whose thread stopped answering while scanning is not tried again until the
+//    scanner closes.
 //    Nothing is remembered between opens (owner, 2026-10-22) but the GPU layout that worked, the failures' log and
 //    a GPU check that passed (owner, 2026-10-27: kept with the model's stamp, the ONNX Runtime version and the
 //    browser — the same three skip the check next time; removed by a run-time failure of that GPU session; a
@@ -14,7 +17,8 @@
 //  - every session is released when its way stops (the page way's sessions live in the page's own heap).
 //  - the light model first (owner, 2026-10-27 — it replaced "the accurate model first", 2026-10-22): the live
 //    frame's model on its way, so the camera and its frame come as soon as it is ready; the accurate model's
-//    capture thread (on the CPU) right after it, never beside it — never two models loading at once. Picked photos
+//    capture thread (on the CPU) after it, never beside it — never two models loading at once —, and after the
+//    session's gate too (capHold: the first answer, then the readers; a pick goes past the readers). Picked photos
 //    and PDFs go only to the accurate model and wait for it; the live frame's pool shares it — one copy of it.
 //  - picked files: at most one more thread with the accurate model, none under 4 GB of memory or 4 cores.
 //  - models.json read once per open (modelsInfo, shared with the readers): each thread's 'load' carries the
@@ -158,6 +162,9 @@ export class Engines {
   /** The capture thread's own load running now (past its wait for the live frame's models): a start of the live
    *  frame's models waits for it — never two models loading at once. */
   private capBusy: Promise<unknown> | null = null;
+  /** What the accurate model waits for once the live frame's models are up (the session's gate: session.ts capHold);
+   *  unset: nothing. */
+  capHold: (() => Promise<void>) | null = null;
   fileThreads: ThreadEngine[] = [];
   private fileThreadsFor: LoadableEngine | null = null;
   private ensuring: Promise<void> | null = null;
@@ -269,7 +276,7 @@ export class Engines {
         // as in a thread (worker.ts): ONNX Runtime at once; beside it the stamps, then the first model's file and the
         // face finder's; the sessions in turn
         const dir = this.settings.cpuDir, t0 = this.env.now();
-        const ortP = loadOrt(this.ref, dir, this.THREADS).then(o => { log.log('Time: ONNX Runtime (' + dir + ') loaded for ' + liveName + ' (page) — ' + Math.round(this.env.now() - t0) + ' ms'); return o; });
+        const ortP = loadOrt(this.ref, dir, this.THREADS, want !== 'wasm').then(o => { log.log('Time: ONNX Runtime (' + dir + ') loaded for ' + liveName + ' (page) — ' + Math.round(this.env.now() - t0) + ' ms'); return o; });
         ortP.catch(() => {});  // its failure is the load's, below
         const stamps = await this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace !== false ? ['yunet.onnx'] : [])]);
         const stamp = (n: string): string | null => (stamps && stamps[n]) || null;
@@ -440,9 +447,10 @@ export class Engines {
   capReady(): boolean { return !!this.capThread && this.capFor === this.capKey().key; }
 
   // The accurate model's thread, on the CPU — the light model first (owner, 2026-10-27; it replaced "the accurate
-  // model first", 2026-10-22): it starts right after the live frame's models (a start of them running is waited for
-  // — never two models loading at once: on the owner's phone that made the capture thread stop answering), so the
-  // camera and its frame come first; picked photos and PDFs need only this thread and wait for it; the live frame's
+  // model first", 2026-10-22): it starts after the live frame's models (a start of them running is waited for
+  // — never two models loading at once: on the owner's phone that made the capture thread stop answering) and after
+  // capHold (the session's gate: a load beside the first frame was the suspect in the gap between ready and that
+  // frame), so the camera and its frame come first; picked photos and PDFs need only this thread and wait for it; the live frame's
   // pool shares it for the shot — one copy of the accurate model. ensureCap() → the thread (a capture-only engine
   // for a picked picture), started again when it failed or the model was changed.
   ensureCap(): Promise<ThreadEngine> {
@@ -454,11 +462,15 @@ export class Engines {
     const run = async (): Promise<ThreadEngine> => {
       const tw = this.env.now();
       let waited = false;
-      while (this.ensuring) { waited = true; await this.ensuring.catch(() => {}); }
+      // the hold over, a start of the live frame's models begun meanwhile (a model changed) is waited for too
+      do {
+        while (this.ensuring) { waited = true; await this.ensuring.catch(() => {}); }
+        if (this.capHold) { waited = true; await this.capHold(); }
+      } while (this.ensuring);
       const gone = this.closed(g);
       if (gone) throw gone;
       if (this.capFor !== key) throw new Error('the model was changed');
-      if (waited) log.log('Time: the accurate model waited for the live frame\'s models — ' + Math.round(this.env.now() - tw) + ' ms');
+      if (waited) log.log('Time: the accurate model waited for the live frame and the readers — ' + Math.round(this.env.now() - tw) + ' ms');
       if (!this.engine) log.status({ key: 'preparing_accurate' }, 0);
       const t0 = this.env.now();
       const e: LoadableEngine = this.workerEngine(1, dir, () => {
@@ -493,6 +505,9 @@ export class Engines {
     if (!this.env.gpu) ways = ways.filter(w => w.ep !== 'webgpu' && !w.gpuLive);
     if (want === 'webgpu') ways = inWorker ? [{ id: 'bg-gpu', label: 'GPU · bg', worker: true, ep: 'webgpu', threads: 1 }] : [{ id: 'page-gpu', label: 'GPU · page', worker: false, ep: 'webgpu', threads: 1 }];
     if (want === 'wasm') ways = ways.filter(w => !w.gpuLive);
+    // the frame first (2026-11-01): the CPU pool comes up in about a third of the GPU's time, the GPU stays its fall
+    // back. Only with a light model apart: a pool of one model would hold three copies of the accurate one.
+    if (want === 'auto' && this.settings.model.includes('+')) ways = [...ways.filter(w => w.pool), ...ways.filter(w => !w.pool)];
     if (ways.some(w => !this.stuckWays.has(w.id))) ways = ways.filter(w => !this.stuckWays.has(w.id));
     return ways;
   }

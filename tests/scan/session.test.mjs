@@ -10,6 +10,9 @@
 //  - the light model first: prepare (and the early start) starts the accurate model only once the live frame's
 //    models are up; a shot before the accurate model is up is shown by the live frame's corners at once and
 //    refined once it is up (kept as it is when it cannot start);
+//  - the gate: the readers' sessions and the accurate model wait for the first answer, or FIRST_WAIT_MS after the live
+//    frame's models ended (up or failed), or a pick (which goes past the readers too); closing at it loads nothing
+//    again and arms it anew; a shutter tap before the readers are up still gives the type;
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
 //  - Looks good while the shot still looks for more documents: the attempt goes once the search is over, with
 //    every document the shot gave;
@@ -262,7 +265,7 @@ for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
   await run(`the refined corners ${replaced ? 'replace' : 'do not replace'} the live page when they moved ${moved}`, async () => {
     const exact = shift(Q, moved);
     // readers that tell which cut they read
-    const readers = { info: { version: 't' }, load: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, turnConf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
+    const readers = { info: { version: 't' }, load: async () => {}, settled: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, turnConf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
     const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false, readers, delay: call => call.which === 'live' ? 30 : 0 });
     // the frame shown when the shot says what it found (the live frame goes on by itself once it settled)
     let shownAtFound = null;
@@ -677,7 +680,7 @@ for (const at of [0, 1]) {
     };
     // readers that take 50 ms a page
     const clockRef = {};
-    const readers = { info: { version: 't' }, load: async () => {}, release() {},
+    const readers = { info: { version: 't' }, load: async () => {}, settled: async () => {}, release() {},
       doctypeAnswer: () => new Promise(r => clockRef.c.setTimeout(() => r({ doctype: 'passport', conf: 1 }), 50)), mrzRead: async () => null, heRead: async () => null };
     const { s, clock, log, video, engine } = setup(script, { auto: false, readers });
     clockRef.c = clock;
@@ -879,7 +882,7 @@ await run('Auto takes only a document\'s shape: a sliver or a speck stays, the s
 
 // readers whose document type model answers by the test's script; doctype: its session (null: none in this version)
 function typeReaders(answer, { doctype = {}, load = async () => {} } = {}) {
-  const r = { doctype, info: { version: 't' }, asked: 0, load: () => load(r), release() {}, mrzRead: async () => null, heRead: async () => null,
+  const r = { doctype, info: { version: 't' }, asked: 0, load: () => load(r), settled: async () => {}, release() {}, mrzRead: async () => null, heRead: async () => null,
     doctypeAnswer: async c => { r.asked++; return answer(c, r.asked); } };
   return r;
 }
@@ -1315,6 +1318,175 @@ await run('the Workers tab (owner, 2026-10-27): its first opening starts the ses
     const b = openWorkersTab(); assert.ok(b && b !== a && made.length === 2);
     fire(); assert.equal(b.stopped, 1); assert.equal(K.keptSession(), null);
   } finally { globalThis.setTimeout = realST; globalThis.clearTimeout = realCT; }
+});
+
+// ── the gate (the frame first, docs/scan-plan.md → The CPU first) ──
+/** Real readers on a fake ONNX Runtime: `created` holds a line per session, at the time it started. */
+function gated(script = steadyLive(Q), o = {}) {
+  const a = setup(script, { auto: false, realReaders: true, ...o }), created = [];
+  a.engines.modelsInfo = async () => ({ version: 'v5', doctype: true, mrz: false, he: false });
+  a.created = created;
+  const said = []; a.engines.log.on('log', t => said.push(t)); a.said = said;
+  const ort = {
+    env: { wasm: {} }, Tensor: function Tensor(type, data, dims) { this.data = data; this.dims = dims; },
+    InferenceSession: { create: async () => { created.push(a.clock.t); return { inputNames: ['x'], outputNames: ['y'], release: async () => {},
+      run: async () => ({ doctype: { data: [0.9, 0.1] }, turn: { data: [1, 0, 0, 0] } }) }; } },
+  };
+  M.ort.setOrtImport(async url => { a.imported = url; return ort; });
+  a.realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(new Uint8Array(4), { status: 200, headers: { etag: '"e"' } });
+  a.done = () => { globalThis.fetch = a.realFetch; a.s.stop(); };
+  return a;
+}
+
+await run('the gate: the readers\' sessions wait for the first answer, on the plain ONNX Runtime; the log tells when, with the first frame\'s parts', async () => {
+  let up = null;
+  const a = gated(steadyLive(Q), { ensureSession: () => new Promise(r => { up = r; }) });
+  const v = a.video, start = a.s.startCamera(v);
+  await flush(20);
+  await a.clock.runFor(3000);
+  assert.deepEqual(a.created, [], 'no session while the live frame\'s models load');
+  assert.match(a.imported, /ort\.wasm\.min\.mjs$/);
+  assert.equal(a.s.readers.info.version, 'v5', 'a shot knows the model version meanwhile');
+  a.s.markOpen();  // the "Ready" line counts from the open
+  up(); await start;
+  await a.clock.runFor(200, () => a.created.length > 0);
+  assert.equal(a.created.length, 1, 'once answered');
+  assert.ok(a.said.some(t => /^Ready: first frame after \d+ ms$/.test(t)), a.said.join(' | '));
+  assert.ok(a.said.some(t => /^First frame: bitmap \d+ ms, model 40 ms, back \d+ ms$/.test(t)), a.said.join(' | '));
+  const line = a.said.filter(t => t.startsWith('Time: next loads begin'));
+  assert.equal(line.length, 1, 'once');
+  assert.match(line[0], /^Time: next loads begin \(first frame\) — \d+ ms \(at \d+ ms\)$/);
+  a.done();
+});
+
+await run('the gate: with no answer it opens FIRST_WAIT_MS after the live frame\'s models ended — up with no camera, or failed', async () => {
+  assert.equal(Sess.FIRST_WAIT_MS, 1500);
+  for (const fail of [false, true]) {
+    let end = null;
+    const a = gated(steadyLive(Q), { ensureSession: () => new Promise((yes, no) => { end = () => (fail ? no(new Error('no way')) : yes()); }) });
+    const p = a.s.prepare(true);
+    await flush(20);
+    await a.clock.runFor(5000);
+    assert.deepEqual(a.created, [], 'not while they load, however long');
+    end(); await flush(20);
+    await a.clock.runFor(Sess.FIRST_WAIT_MS - 100);
+    assert.deepEqual(a.created, [], 'not before FIRST_WAIT_MS (failed ' + fail + ')');
+    await a.clock.runFor(200);
+    await flush(20);
+    assert.equal(a.created.length, 1, 'then at once (failed ' + fail + ')');
+    assert.ok(a.said.some(t => /^Time: next loads begin \(no frame\) — \d+ ms$/.test(t)), a.said.join(' | '));
+    await p;
+    a.done();
+  }
+});
+
+await run('the gate: a pick opens it at once, and the accurate model does not wait for the readers; without a pick it does, the gate first', async () => {
+  let end = null;
+  const order = [], load = new Promise(() => {});  // readers that never end
+  const readers = { info: { version: 't' }, load: () => load, release() {}, settled: () => { order.push('readers'); return new Promise(r => { end = r; }); }, doctypeAnswer: async () => null, mrzRead: async () => null, heRead: async () => null };
+  const a = setup(steadyLive(Q), { auto: false, readers, ensureSession: () => new Promise(() => {}) });
+  void a.s.startCamera(a.video);
+  await flush(20);
+  const said = []; a.engines.log.on('log', t => said.push(t));
+  let held = false; a.engines.capHold().then(() => { held = true; order.push('cap'); });
+  await a.clock.runFor(3000);
+  assert.deepEqual(order, [], 'the gate first');
+  await a.s.pick([]);
+  await flush(20);
+  assert.ok(held, 'the pick goes past the gate and the readers: ' + order.join());
+  assert.ok(said.some(t => /^Time: next loads begin \(a pick\) — \d+ ms/.test(t)), said.join(' | '));
+  // a gate opened by the first answer: the accurate model waits for the readers, until a pick comes
+  const b = setup(steadyLive(Q), { auto: false, readers });
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(200);
+  order.length = 0;
+  let held2 = false; b.engines.capHold().then(() => { held2 = true; });
+  await flush(20);
+  assert.deepEqual(order, ['readers']); assert.equal(held2, false, 'it waits for them');
+  end(); await flush(20);
+  assert.equal(held2, true, 'their end lets it go');
+  let held3 = false; b.engines.capHold().then(() => { held3 = true; });
+  await flush(20);
+  assert.equal(held3, false);
+  await b.s.pick([]); await flush(20);
+  assert.equal(held3, true, 'a pick while it waits for them');
+  a.s.stop(); b.s.stop();
+});
+
+await run('closing at the gate: what waits leaves, the readers do not load again, and the gate is armed anew', async () => {
+  const a = gated(steadyLive(Q));
+  void a.s.prepare(true);
+  await flush(20);
+  const first = a.s.readers.settled(60000);
+  let capGone = false; a.engines.capHold().then(() => { capGone = true; });
+  let asked = 0; const load = a.s.readers.load.bind(a.s.readers); a.s.readers.load = () => { asked++; return load(); };
+  a.s.stop();
+  await first; await flush(20);
+  assert.equal(capGone, true, 'the accurate model\'s wait ended');
+  assert.deepEqual(a.created, [], 'no session opened');
+  assert.equal(asked, 0, 'no load begun again'); assert.equal(a.s.readers.doctype, null);
+  assert.ok(!a.said.some(t => t.startsWith('Time: next loads begin')), 'a close is no opening');
+  await a.clock.runFor(3000);  // the closed open's timer
+  assert.deepEqual(a.created, []);
+  // the next open: armed again, the readers wait again
+  void a.s.prepare(true);
+  await flush(20);
+  assert.deepEqual(a.created, [], 'armed anew');
+  await a.clock.runFor(Sess.FIRST_WAIT_MS + 100); await flush(20);
+  assert.equal(a.created.length, 1, 'and opened');
+  a.done();
+});
+
+await run('the gate stays open for the rest of the session: sleep and a new start do not arm it again, nothing is opened twice', async () => {
+  const a = gated();
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(200, () => a.created.length > 0);
+  assert.equal(a.created.length, 1);
+  a.s.sleep();
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(300);
+  assert.equal(a.said.filter(t => t.startsWith('Time: next loads begin')).length, 1);
+  a.done();
+});
+
+await run('a shutter tap right after the first frame, the readers still loading: the page waits for them and carries its type', async () => {
+  let up = null;
+  const r = { doctype: null, info: { version: 't' }, release() {}, mrzRead: async () => null, heRead: async () => null,
+    load: () => new Promise(() => {}),
+    settled: () => new Promise(res => { up = () => { r.doctype = {}; res(); }; }),
+    doctypeAnswer: async () => (r.doctype ? { doctype: 'passport', conf: 1, turnConf: 1, turn: 0, ms: 1 } : null) };
+  const { s, clock, log, video } = setup(steadyLive(Q), { auto: false, readers: r });
+  await s.startCamera(video);
+  await clock.runFor(200);
+  let done = null; s.snap().then(n => { done = n; });
+  await clock.runFor(200, () => !!up);
+  assert.ok(up, 'it waits for the readers');
+  assert.ok(log.pages.length >= 1 && log.pages[0].readouts === null, 'the page is out at once, its readouts to come');
+  up();
+  await clock.runFor(1000, () => done !== null);
+  assert.equal(log.pages.at(-1).readouts.doctype.doctype, 'passport', 'and it has its type');
+  s.stop();
+});
+
+await run('the settings changed at the gate (the lab): the first answer on the new way opens it', async () => {
+  const a = gated();
+  a.engines.setSettings = function (p) { this.settings = { ...this.settings, ...p }; };
+  let n = 0;
+  const hold = []; a.engines.ensureSession = () => { n++; return new Promise(r => hold.push(r)); };
+  void a.s.startCamera(a.video);
+  await flush(20);
+  const sw = a.s.switchWay({ backend: 'webgpu' });
+  await flush(20);
+  assert.deepEqual(a.created, [], 'still at the gate');
+  for (const r of hold.splice(0)) r();
+  await flush(20);
+  for (const r of hold.splice(0)) r();
+  await sw;
+  await a.clock.runFor(300, () => a.created.length > 0);
+  assert.equal(a.created.length, 1);
+  assert.ok(a.said.some(t => /^Time: next loads begin \(first frame\)/.test(t)), a.said.join(' | '));
+  a.done();
 });
 
 fs.rmSync(TMP, { recursive: true, force: true });

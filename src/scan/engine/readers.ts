@@ -206,13 +206,24 @@ export class Readers {
   private gen = 0;
 
   /** modelsInfo: where models.json comes from — the session's engines' one read per open (Engines.modelsInfo), so
-   *  it is read once; unset: read here. */
+   *  it is read once; unset: read here. hold: what the sessions wait for (the session's gate: the first frame comes
+   *  before them — they start on the page's own thread); the files and ONNX Runtime's script do not wait for it. */
   constructor(readonly surface: SurfaceRef, private log: (text: string) => void = () => {}, private cpuDir: OrtDir = CPU_ORT,
-    private modelsInfo: () => Promise<ModelsInfo> = () => readModels(surface)) {}
+    private modelsInfo: () => Promise<ModelsInfo> = () => readModels(surface), private hold: () => Promise<void> = () => Promise.resolve()) {}
 
   /** models.json read and the readers it names loaded (once); null when that failed (said in the log). */
   load(): Promise<ModelsInfo | null> {
     return this.loading || (this.loading = this.loadNow());
+  }
+  /** The load running ended, or ms passed; at once when none runs. Starts nothing, so a wait after release() does not
+   *  load the readers again, as load() would. */
+  settled(ms: number): Promise<void> {
+    const p = this.loading;
+    if (!p) return Promise.resolve();
+    return new Promise(resolve => {
+      const t = setTimeout(resolve, ms), done = (): void => { clearTimeout(t); resolve(); };
+      p.then(done, done);
+    });
   }
   private async loadNow(): Promise<ModelsInfo | null> {
     const s = this.surface, g = this.gen;
@@ -238,7 +249,11 @@ export class Readers {
       if (layoutsP) layoutsP.catch(() => {});
       const time = (what: string, t: number): void => this.log('Time: ' + what + ' — ' + Math.round(now() - t) + ' ms');
       let t1 = now();
-      if (mj.doctype || mj.mrz || mj.he) { this.ort = await loadOrt(s, this.cpuDir); time('ONNX Runtime (' + this.cpuDir + ') loaded for readers', t1); }
+      if (mj.doctype || mj.mrz || mj.he) {
+        this.ort = await loadOrt(s, this.cpuDir, undefined, false); time('ONNX Runtime (' + this.cpuDir + ') loaded for readers', t1);
+        await this.hold();
+        if (g !== this.gen) return null;
+      }
       const ort = this.ort as Ort;
       t1 = now();
       if (bytes.doctype) { this.doctype = keep(await cpuSession(ort, s, 'doctype.onnx', bytes.doctype)); this.log('Document type model loaded'); time('document type model ready', t1); }

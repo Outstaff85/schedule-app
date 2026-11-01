@@ -15,6 +15,7 @@
 import { MAX_DOCS, docShape, goodQuad, insideDoc, quadIoU } from './geometry';
 import type { Engine, LoadableEngine } from './engines';
 import { smallRGBA, type Live } from './live';
+import { READERS_WAIT_MS } from './steady';
 import { mrzZone, type DoctypeAnswer, type HeRead, type Readers } from './readers';
 import type { SessionStatus } from './status';
 import { mkCanvas, type Upright } from './upright';
@@ -116,10 +117,12 @@ export interface ShotCtx {
   log: { log(t: string): void; err(t: string): void };
 }
 
-/** The readers on a page, each apart (one failing leaves the others). */
+/** The readers on a page, each apart (one failing leaves the others). Readers still loading are waited for
+ *  (READERS_WAIT_MS at most): their sessions start after the first frame, and a shot right after it went without its type. */
 export async function readPage(readers: Readers | null, canvas: OffscreenCanvas, now: () => number): Promise<Readouts> {
   const r: Readouts = { doctype: null, mrz: null, he: null, errors: [] };
   if (!readers) return r;
+  await readers.settled(READERS_WAIT_MS);
   try { r.doctype = await readers.doctypeAnswer(canvas); } catch (e) { r.errors.push({ reader: 'doctype', text: errText(e) }); }
   try {
     const t0 = now(), lines = await readers.mrzRead(canvas);

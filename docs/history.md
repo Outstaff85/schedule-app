@@ -335,3 +335,12 @@ Measured on v5 before choosing, with the model on the PC: type ≥ 0.5 alone wou
 
 The real fix for keyboards and desks is more examples of them as `other` in the next training (the exam has no `other` or `contract` pages of its own: `byDoctype` null in the v5 report).
 
+## The scanner's frame, 8–10 s on the owner's phone (2026-11-01)
+
+The camera picture already came at once; the wait was for the document frame. Measured in the lab's log, two opens: the two `lite.onnx` sessions on the GPU 6.1–6.2 s, each warm-up 0.8–1.8 s, the live models ready at 7.3–8.0 s, the first frame at 8.5–10.4 s, with the readers' sessions (ready at 4.1 s) loading beside them. The same model on the CPU, three threads, when the GPU way had failed: a session 1.7–2.1 s, ready at 3.7 s in all. The files take 20–180 ms: the kept copies were not the cost. So "every open tries the best way first" (2026-10-22) was what cost the phone its first 4 s, for about 140 ms a frame that three CPU threads may come near.
+
+Stage 1 of the design (docs/scan-plan.md → The CPU first), not yet tried on the phone: the CPU pool first; the plain ONNX Runtime build for the CPU threads and the readers; the readers' sessions and the accurate model behind a gate that opens with the first answer. Stage 2, the GPU joining the pool with a hand-over, has a numeric criterion and is **not built**: rejected for now were a single thread at the start growing later (about 2 answers a second upsets Auto), a `gpuFirst` setting (the lab's `backend: webgpu` compares already), a trial of the GPU on copies of frames and a spare CPU thread after a hand-over.
+
+One-off check before the change (Chrome on the PC, the v5 files, the same pseudo-random input, one CPU thread): the output bytes of `lite`, `sa24_w16`, `doctype`, `mrz` and the face finder are the same on `ort.all.min.mjs` and `ort.wasm.min.mjs`, in 1.22 and in 1.30; a session took 192 ms against 410 ms for `lite` on 1.22, 306 against 564 for `sa24_w16`, the first run 118 against 138 and 464 against 487. The lab's v5 has no `he.onnx`, so that reader was not compared.
+
+Found on the way: the lab called `readers.load()` and `ensureSession` itself, past the session, so it would have shown another order than the site's: it now starts through `session.prepare(true)`. And `prepare` asked for the accurate model after a live start that a close had failed, so a capture thread started after the close and outlived it; it now stops there.

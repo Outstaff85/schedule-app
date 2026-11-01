@@ -529,7 +529,7 @@ await run('session.fix and session.remove: corners by hand recut under the same 
 });
 
 await run('session: a page deleted or fixed right after it is found is not brought back by its late readouts', async () => {
-  const readers = { info: { version: 'v5' }, load() {}, release() {},
+  const readers = { info: { version: 'v5' }, load() {}, settled: async () => {}, release() {},
     doctypeAnswer: async () => { await new Promise(r => setTimeout(r, 25)); return { doctype: 'passport', conf: 0.9, turn: 0, turnConf: 1, ms: 25, square: null }; },
     mrzRead: async () => null, heRead: async () => null };
   const { s, log, file1 } = pickSession({ main: fakeEngine('main', 1), file: null, readers });
@@ -624,7 +624,7 @@ await run('session.done / discard: the pages let go; a scan closed without Done 
 
 await run('session.pick: a picture\'s pages are not held up by the readouts of the one before; a page deleted before its turn is not read', async () => {
   let reads = 0;
-  const readers = { info: { version: 'v5' }, load() {}, release() {},
+  const readers = { info: { version: 'v5' }, load() {}, settled: async () => {}, release() {},
     doctypeAnswer: async () => { reads++; await new Promise(r => setTimeout(r, 150)); return { doctype: 'passport', conf: 0.9, turn: 0, turnConf: 1, ms: 150, square: null }; },
     mrzRead: async () => null, heRead: async () => null };
   const { s, log, file1 } = pickSession({ main: fakeEngine('main', 1), file: null, readers });

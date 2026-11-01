@@ -116,6 +116,9 @@ export class Live {
   shown: Quad | null = null;
   /** The latest answer (after the sticky frame): what a shot takes. */
   lastRes: SteadyAnswer | null = null;
+  /** Where the latest answer's time went (the log's First frame line): scaling the frame, the model, and the rest
+   *  of the way there and back (the wait in the thread, its messages). */
+  answerMs: { bitmap: number; model: number; back: number } | null = null;
   readonly steady: Steady;
   /** The documents the last shot took (Auto waits while they are still in front of the camera). */
   readonly taken: Taken;
@@ -203,10 +206,13 @@ export class Live {
     const t0 = this.clock.now();  // when this frame was taken: the answer is carried forward from here
     const input = await this.frameInput(v, v.videoWidth, v.videoHeight);
     if (!input) return;  // the video had no frame (being hidden or stopped)
+    const t1 = this.clock.now();
     const { res: raw0, ms } = await engine.detect('live', input);
+    const t2 = this.clock.now();
     let raw = raw0;
     if (!this.running || my < this.applied || !this.video) return;  // a later frame already answered, or a capture began
     this.applied = my;
+    this.answerMs = { bitmap: t1 - t0, model: ms, back: Math.max(0, t2 - t1 - ms) };
     if (this.follow && !raw.pts.some(p => !p)) raw = { ...raw, pts: this.follower.since(t0, raw.pts as Quad) };
     const res = this.steady.answer(raw);
     const times = this.times, frames = this.frames;

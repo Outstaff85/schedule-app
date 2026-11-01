@@ -59,6 +59,11 @@
 // on, and the live frame does not go on after it while held — and resume() lets it go on again from a fresh
 // frame. wake() starts it at once and forgets the documents taken (Retake: the same document again).
 //
+// The gate (the frame first, 2026-11-01; docs/scan-plan.md → The CPU first): on open only the live frame's models start;
+// the readers' sessions and then the accurate model wait for its opening — the first model answer, or FIRST_WAIT_MS after
+// the live frame's models ended, up or failed (no camera, an early start), or a pick, which does not wait for the readers
+// either. It opens once per session (stop arms it anew); the log says when and by what ("Time: next loads begin").
+//
 // keepCanvases (the lab, which has no Done and keeps its session for the page's life): only the newest that
 // many pages read keep their full-size pixels; an older one is given again `released` (a 1×1 canvas: its
 // thumbnail, made already, and its readouts stay), so a long lab session does not hold every cut page.
@@ -82,7 +87,11 @@ const copy = (q: Quad): Quad => q.map(p => p.slice() as Pt);
 /** How long a picked picture stays on the screen after its pick, with the frame of each document found on it,
  *  before the live frame goes on (ms; owner, 2026-10-27: 1.5 s was too short to see the frames). */
 export const PICK_SHOWN_MS = 2500;
+/** How long after the live frame's models ended the next loads wait for a first answer (ms). */
+export const FIRST_WAIT_MS = 1500;
 const errText = (e: unknown): string => String((e as Error)?.message || e);
+/** A promise opened once from outside. */
+const latch = (): { p: Promise<void>; open: () => void } => { let open = (): void => {}; const p = new Promise<void>(r => { open = r; }); return { p, open }; };
 
 /** The picked picture being worked on: its pick (batch), its place in the pick (n, 1-based), its url, which file
  *  and page it is, what is being done — finding the document, cutting one out (quad: its frame on the picture),
@@ -212,6 +221,14 @@ export class ScanSession {
   private scanGen = 0;
   /** One pick at a time, in the order picked. */
   private pickChain: Promise<unknown> = Promise.resolve();
+  /** The gate (the head of this file): not armed yet (nothing waits), armed, or open. */
+  private gateState: 'idle' | 'armed' | 'open' = 'idle';
+  private gate = latch();
+  private gateFrom = 0;
+  /** Bumped by stop(): a wait for the first answer of an earlier open does nothing. */
+  private gateGen = 0;
+  /** A pick: the accurate model does not wait for the readers. */
+  private rush = latch();
   private listeners: { [K in keyof SessionEvents]: Set<SessionEvents[K]> } = { frame: new Set(), status: new Set(), figures: new Set(), page: new Set(), preview: new Set(), auto: new Set() };
 
   constructor(readonly surface: ScanSurface, parts: SessionParts = {}) {
@@ -219,7 +236,8 @@ export class ScanSession {
     this.log = parts.log || parts.engines?.log || new ScanLog();
     this.engines = parts.engines || new Engines(surface, this.log);
     // the readers share the engines' one read of models.json per open
-    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.any, this.engines.settings.cpuDir, () => this.engines.modelsInfo());
+    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.any, this.engines.settings.cpuDir, () => this.engines.modelsInfo(), () => this.gateWait());
+    this.engines.capHold = () => this.capHold();
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
     this.keepCanvases = parts.keepCanvases ?? null;
@@ -292,17 +310,47 @@ export class ScanSession {
   private modelVersion(): string { return this.readers && this.readers.info ? this.readers.info.version : ''; }
   private sleepMs(ms: number): Promise<void> { return new Promise<void>(r => this.env.setTimeout(r, ms)); }
 
+  /** The gate armed (once per open), the next loads waiting for it. */
+  private armGate(): void {
+    if (this.gateState !== 'idle') return;
+    this.gateState = 'armed';
+    this.gateFrom = this.env.now();
+  }
+  /** The gate opened, once; the line says by what and after how long. */
+  private openGate(why: 'first frame' | 'no frame' | 'a pick'): void {
+    if (this.gateState === 'armed') this.log.log('Time: next loads begin (' + why + ') — ' + Math.round(this.env.now() - this.gateFrom) + ' ms');
+    this.gateState = 'open';
+    this.gate.open();
+  }
+  private gateWait(): Promise<void> { return this.gateState === 'armed' ? this.gate.p : Promise.resolve(); }
+  /** The accurate model's wait: the gate, then the readers, whose load comes first (not after a pick). */
+  private async capHold(): Promise<void> {
+    await this.gateWait();
+    if (this.readers) await Promise.race([this.readers.settled(READERS_WAIT_MS), this.rush.p]);
+  }
+  /** The live frame's models asked for; FIRST_WAIT_MS after they end, up or failed, the gate opens with no first answer. */
+  private models(): Promise<void> {
+    const p = this.engines.ensureSession(), gen = this.gateGen;
+    const later = (): void => { this.env.setTimeout(() => { if (gen === this.gateGen && this.gateState === 'armed') this.openGate('no frame'); }, FIRST_WAIT_MS); };
+    p.then(later, later);
+    return p;
+  }
+
   /** The models made ready on open — the light model first (owner, 2026-10-27): the live frame's model on its way,
-   *  so the live frame comes as soon as it is ready (the camera does not wait for it: startCamera), then the accurate model right after it (photos and
-   *  PDFs picked meanwhile wait for it); the readers beside them. */
+   *  so the live frame comes as soon as it is ready (the camera does not wait for it: startCamera); behind the gate
+   *  the readers' sessions, then the accurate model (photos and PDFs picked meanwhile go past the readers and wait
+   *  for it). */
   //
   // early (the manager's new worker window, keep.ts prepareEarly): the same start with no scanner open yet — the
   // scanner's open is not marked (its "Ready" line counts from the open that takes the session).
   async prepare(early = false): Promise<void> {
     if (!early) this.markOpen();
     this.attempts.start();
+    this.armGate();
     if (this.readers) void this.readers.load();
-    await this.engines.ensureSession().catch(e => this.log.log('Model: ' + ((e as Error)?.message || e)));
+    const gen = this.gateGen;
+    await this.models().catch(e => this.log.log('Model: ' + ((e as Error)?.message || e)));
+    if (gen !== this.gateGen) return;  // stopped meanwhile: a capture thread started now would outlive the close
     await this.engines.ensureCap().catch(e => this.log.log('Accurate model: ' + ((e as Error)?.message || e)));
   }
 
@@ -326,8 +374,9 @@ export class ScanSession {
   async startCamera(video: VideoLike): Promise<void> {
     const gen = this.camGen;
     try {
+      this.armGate();
       if (this.readers) void this.readers.load();
-      const models = this.engines.ensureSession();
+      const models = this.models();
       models.catch(() => {});  // its failure is met below, once the camera has started
       const tc = this.env.now();
       const started = await this.camera.start(video);
@@ -354,9 +403,12 @@ export class ScanSession {
     if (this.openedAt !== null) {
       this.readyMs = this.env.now() - this.openedAt;
       this.log.log('Ready: first frame after ' + Math.round(this.readyMs) + ' ms');
+      const t = this.live.answerMs;
+      if (t) this.log.log('First frame: bitmap ' + Math.round(t.bitmap) + ' ms, model ' + Math.round(t.model) + ' ms, back ' + Math.round(t.back) + ' ms');
       this.openedAt = null;
       this.emitFigures();
     }
+    this.openGate('first frame');
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);
@@ -741,6 +793,8 @@ export class ScanSession {
    *  itself PICK_SHOWN_MS after the last pick in work settled (the picked picture shown that long). Returns how
    *  many pages it gave. */
   pick(files: PickFile[]): Promise<number> {
+    this.rush.open();
+    this.openGate('a pick');
     this.picking++;
     const run = this.pickChain.then(() => this.runPick(files));
     this.pickChain = run.catch(() => 0);
@@ -835,5 +889,9 @@ export class ScanSession {
     this.sleep();
     this.engines.stopAll();
     if (this.readers) this.readers.release();
+    // only now: what waits at the gate finds the scanner closed, and leaves; the next open arms it anew
+    this.gateGen++; this.gateState = 'idle';
+    this.gate.open(); this.rush.open();
+    this.gate = latch(); this.rush = latch();
   }
 }

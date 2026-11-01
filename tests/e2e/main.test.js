@@ -32,8 +32,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await ctx.route('**/*', async r => {
       const u = r.request().url();
       // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose models never
-      // start — the ES module each surface's scanner imports (<base>ort(130)/ort.all.min.mjs, src/scan/engine/ort.ts)
-      if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.mjs$/.test(u)) return r.fulfill({status:200, contentType:'text/javascript',
+      // start — the ES modules each surface's scanner imports (<base>ort(130)/ort.all.min.mjs and ort.wasm.min.mjs, src/scan/engine/ort.ts)
+      if (/\/scan(-lab)?\/ort(130)?\/ort\.(all|wasm)\.min\.mjs$/.test(u)) return r.fulfill({status:200, contentType:'text/javascript',
         body:"export const env={wasm:{},webgpu:{}};export function Tensor(){};export const InferenceSession={create:async()=>{throw new Error('no models in the tests')}};"});
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});

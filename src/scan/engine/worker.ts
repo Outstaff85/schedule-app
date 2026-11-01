@@ -62,7 +62,7 @@ scope.onmessage = async ({ data: m }) => {
       // file and the face finder's (0.2 MB) — files only, no session: the sessions still start one after the
       // other, the second model's file is fetched after the first model's session (one heavy model in memory at a time)
       let t0 = performance.now();
-      const ortP = loadOrt(m.surface, m.ort, m.threads).then(o => {
+      const ortP = loadOrt(m.surface, m.ort, m.threads, m.want !== 'wasm').then(o => {
         onLog('Time: ONNX Runtime (' + m.ort + ') loaded for ' + m.live + ' — ' + Math.round(performance.now() - t0) + ' ms');
         return o;
       });
