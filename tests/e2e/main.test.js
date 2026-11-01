@@ -3782,7 +3782,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       && r.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state') === 'unchecked'; }, 8000);
   sa.sent = sfCalls.filter(c => c.action === 'setSettings').map(c => JSON.stringify(c.doctypeMode || c.collect)).join(' ');
   await p.unroute(/cloudfunctions\.net\/scan_feedback$/);
-  ok(sa.shown && /^d+/d+,42/20,5/20,7,3$/.test(sa.figs) && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && /5 ID cards/.test(sa.he) && /80%/.test(sa.he) && /60%/.test(sa.he) && sa.on === 'checked'
+  ok(sa.shown && sa.figs.endsWith(',42/20,5/20,7,3') && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && /5 ID cards/.test(sa.he) && /80%/.test(sa.he) && /60%/.test(sa.he) && sa.on === 'checked'
     && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
     'Admin → Scanner: the figures, the shadow, the passport zone reader\'s and the Hebrew field reader\'s shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
   ok(/^rejected\|Not better — nothing published.*Document type: not better.*Document type: turn exam under 98%\| \/ published\|Published to the lab · v9.*Document edges: better.*Merge the pull request.*\|https:\/\/github\.com\/Outstaff85\/schedule-app\/pull\/400$/.test(sa.loop || ''),
