@@ -311,6 +311,28 @@ const READS = {
   // nothing more on the table: the camera shows an empty table from now on (the live frame has nothing more for
   // Auto to take)
   await p.evaluate(() => { window.__scene = []; });
+  // Auto takes only documents (owner, 2026-10-31): a card of a document's shape the document type model calls "other"
+  // is held still in the frame — the status line and the hint say so, nothing is taken, no click; the shutter would.
+  const refused = await p.evaluate(async () => {
+    const H = await ManagerScan.hooks(), s = H.session(), R = s.readers, was = R.doctypeAnswer;
+    await T.until(() => !s.live.taken.waiting, 8000);
+    const thumbs = () => T.all('[data-testid="scan-thumb"]').length, shutters = () => document.documentElement.dataset.shutters || '0';
+    const pill = () => (T.q('[data-testid="scanner"] [data-testid="scan-status"]') || {}).textContent || '';
+    const r = {before: [thumbs(), shutters()]};
+    R.doctypeAnswer = async src => { const a = await was.call(R, src); return a && {...a, doctype: 'other', conf: 0.99}; };
+    window.__scene = [[0.2, 0.3, 0.8, 0.62]];
+    r.said = await T.until(() => /Not an ID, passport or contract/.test(pill()), 10000);
+    r.tip = await T.until(() => (T.q('[data-testid="scan-tip"]') || {dataset: {}}).dataset.hint === 'shutter', 4000);
+    r.tipText = (T.q('[data-testid="scan-tip"]') || {}).textContent;
+    await T.tick(1500);
+    r.after = [thumbs(), shutters()];
+    window.__scene = [];
+    R.doctypeAnswer = was;
+    await T.until(() => !/Not an ID/.test(pill()), 4000);
+    return r;
+  });
+  ok(refused.said && refused.tip && /Tap the shutter/.test(refused.tipText || '') && JSON.stringify(refused.after) === JSON.stringify(refused.before),
+    'site: Auto does not take what the document type model calls other: the status line and the hint say so, no page, no click ' + JSON.stringify(refused));
   const said = shot.said || [];
   ok(siteStart.before === 'failed' && shot.two && shot.kinds === 'id_front,sefach' && /^camera:\d+,camera:\d+$/.test(shot.camera) && /Done · 2/.test(shot.done)
     && said.includes('Finding the document…') && said.some(t => /^Hold still · \d\.\d s$/.test(t)) && said.includes('2 documents found')

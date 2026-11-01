@@ -47,14 +47,14 @@ export function DownloadData({ w, api, onClose }: { w: WorkerRecord; api: Manage
     setBusy(true); setErr('');
     try {
       const r = await api.downloadData(w.id, include);
-      api.toast(tr('Download data: {0} pages', { 0: r.pages }) + (r.withheld.includes('contract') ? ' — ' + tr('the contract was left out: it may hold pay') : '')
+      api.toast(tr('Download documents: {0} pages', { 0: r.pages }) + (r.withheld.includes('contract') ? ' — ' + tr('the contract was left out: it may hold pay') : '')
         + (r.dropped ? ' — ' + tr('{0} files could not be added', { 0: r.dropped }) : ''), r.withheld.length || r.dropped ? 6000 : undefined);
       onClose();
     } catch (e: any) { setErr(tr('Download failed: {0}', { 0: String(e?.message || e) })); }
     finally { setBusy(false); }
   };
   return (
-    <Window open onOpenChange={o => { if (!o) onClose(); }} title={tr('Download data')} description={w.name}
+    <Window open onOpenChange={o => { if (!o) onClose(); }} title={tr('Download documents')} description={w.name}
       footer={<Button variant="primary" data-testid="download-go" disabled={busy} onClick={download}>
         {busy ? <IconLoader2 className="size-4 animate-spin" /> : <IconFileDownload className="size-4" />}{busy ? tr('Putting the documents together…') : tr('Download')}</Button>}>
       <div className="grid gap-3 px-1 pb-2" data-testid="download-window">

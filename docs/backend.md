@@ -235,7 +235,7 @@ A version of pymupdf, python-bidi or Pillow changes the PDFs' bytes: moving one 
 
 ### The golden hashes
 
-`tests/auth/builder_golden.json` holds, for each builder version, the SHA-256 of what each fixed input of `functions/builders/selftest.py` builds, and of the frozen sources (a second tripwire). They come **only from CI** on Python 3.12: the check fails printing the file's right content (`test_the_output_hashes_are_the_golden_ones`), which is copied in once for a new builder version. Three places compare with them:
+`tests/auth/builder_golden.json` holds, for each builder version (every one stays in `BUILDERS`), the SHA-256 of what each fixed input of `functions/builders/selftest.py` builds, and of each version's frozen sources (a second tripwire). They come **only from CI** on Python 3.12: the check fails printing the file's right content (`test_the_output_hashes_are_the_golden_ones`), which is copied in once for a new builder version. Three places compare with them:
 
 - `tests/auth/test_builder_determinism.py` on CI (ubuntu, the lock installed);
 - the Tests workflow's `functions-image` job: `functions/` built by Google's buildpacks on the Cloud Functions image, as a deploy builds it, and run, so a lock that would not install there, or bytes that differ there, stop the PR;

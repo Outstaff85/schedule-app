@@ -108,7 +108,7 @@ export interface UiPage {
 export const kindOf = (p: UiPage): Doctype | null => p.chosen || (p.typed !== undefined ? p.typed : p.model);
 
 /** The statuses of a live frame running again (the picked picture shown gives way to the camera). */
-const LIVE = new Set<SessionStatus['key']>(['finding', 'corners_out', 'edges_unclear', 'hold', 'not_document', 'taken', 'shot_failed', 'camera_failed', 'stopped']);
+const LIVE = new Set<SessionStatus['key']>(['finding', 'corners_out', 'edges_unclear', 'hold', 'checking', 'not_document', 'taken', 'shot_failed', 'camera_failed', 'stopped']);
 /** The statuses of a shot still in work (cut, being refined, looking for more documents); any other ends it. */
 const SHOT_WORK = new Set<SessionStatus['key']>(['captured', 'refining', 'looking_more']);
 

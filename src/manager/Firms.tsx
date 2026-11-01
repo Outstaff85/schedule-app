@@ -10,7 +10,7 @@
 // shows its signature and stamp (FirmSeal.tsx), saved on their own.
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconRubberStamp, IconCash, IconCheck, IconLogout, IconPencil, IconPlayerPause, IconPlayerPlay, IconPlus,
+  IconAlertTriangle, IconBrandWhatsapp, IconBuildingSkyscraper, IconRubberStamp, IconCash, IconCheck, IconLogout, IconPlayerPause, IconPlayerPlay, IconPlus,
 } from '@tabler/icons-react';
 import { tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -43,9 +43,9 @@ export function FirmsPane({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   if (!snap.isSuper) return <OwnFirm snap={snap} api={api} />;
   return (
     <div data-testid="firms">
-      <div className="mb-2.5 flex flex-wrap justify-end gap-2" data-testid="firms-bar">
-        <PayableToggle api={api} />
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2" data-testid="firms-bar">
         <Button variant="primary" className="og-new" data-testid="firm-new" onClick={() => api.openFirmWindow('create')}><IconPlus className="size-4" />{tr('New firm')}</Button>
+        <PayableToggle api={api} />
       </div>
       <FirmsList snap={snap} api={api} />
     </div>
@@ -109,7 +109,6 @@ function FirmsList({ snap, api }: { snap: AdminSnapshot; api: ManagerBridge }) {
           <Plate key={t.tenantId} data-testid="firm-row" data-tid={t.tenantId} className={cn('mb-1.5', off && 'opacity-70')}
             color={off || t.missing.length ? 'var(--warn)' : 'var(--ok)'} icon={<IconBuildingSkyscraper />}
             title={t.companyName || tr('(no name)')} sub={<Line parts={[counts, ...flags]} />}
-            right={<Button size="icon-sm" variant="ghost" data-testid="firm-edit" title={tr('Edit')} aria-label={tr('Edit')} onClick={() => api.openFirmWindow('edit', t.tenantId)}><IconPencil className="size-4" /></Button>}
             onPointerDown={tap(t.tenantId).onPointerDown} onOpen={tap(t.tenantId).onOpen}
             onEdit={() => api.openFirmWindow('edit', t.tenantId)}
             actions={[{ label: off ? tr('Enable') : tr('Disable'), icon: off ? <IconPlayerPlay /> : <IconPlayerPause />, onSelect: () => void api.setFirmsActive([t.tenantId], off) }]}
@@ -157,7 +156,7 @@ function PayableToggle({ api }: { api: ManagerBridge }) {
   const [open, setOpen] = React.useState(payableOpen);
   return (
     <>
-      <Button data-testid="firms-payable" aria-pressed={open} onClick={() => { payableOpen = !open; setOpen(!open); }}><IconCash className="size-4" />{tr('Payable summary (all firms)')}</Button>
+      <Button data-testid="firms-payable" aria-pressed={open} title={tr('Payable summary (all firms)')} aria-label={tr('Payable summary (all firms)')} onClick={() => { payableOpen = !open; setOpen(!open); }}><IconCash className="size-4" /><span className="min-[701px]:hidden">{tr('Payable')}</span><span className="max-[700px]:hidden">{tr('Payable summary (all firms)')}</span></Button>
       {open && <div className="order-last w-full"><Payable api={api} /></div>}
     </>
   );

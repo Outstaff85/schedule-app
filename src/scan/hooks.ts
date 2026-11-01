@@ -216,6 +216,8 @@ export function stubReaders(s: ScanSession, r: StubReads): void {
   const R = s.readers;
   if (!R) throw new Error('the session has no readers');
   const wide = (c: { width: number; height: number }): boolean => c.width > c.height;
+  // a session stands there, as with a version that has the model: Auto asks it before a shot
+  if (r.wide || r.tall) R.doctype = { release: async () => {} } as unknown as typeof R.doctype;
   R.doctypeAnswer = async (src): Promise<DoctypeAnswer | null> => {
     if (!src) return null;
     const a = wide(src) ? r.wide : r.tall;

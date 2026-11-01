@@ -1134,6 +1134,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await A.flush();
     const r = {gone: await T.until(() => !document.querySelector('[data-testid="scan-queue"]'), 8000), waiting: (await A.queued()).length};
     T.esc(); await window.__queueGoing;
+    // really gone: the next check waits for a scanner on the screen, and the one closing here would answer it
+    await T.until(() => !document.querySelector('[data-testid="scanner"]'), 5000);
     return r;
   });
   ok(queue.shown && queue.waiting === 5 && online.gone && online.waiting === 0,
@@ -1144,9 +1146,12 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const H = await ManagerScan.hooks();
     const going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
-    const a = await H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
+    const give = () => H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
     // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
-    await T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length === 1, 15000);
+    const shown = () => T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length >= 1, 8000);
+    // given while the window still takes over from the one closed before, a page can land on the old session: given once more
+    let a = await give();
+    if (!(await shown())) { console.log('corner editor check: the page was not shown, given again'); a = await give(); await shown(); }
     // its Edit corners button on the photo grown in the strip (template 6)
     document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
     const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
@@ -1979,6 +1984,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const sgCtr = await (await fetch('http://127.0.0.1:5055/signedPdf/' + sgR2.id + '/contract', {method: 'POST'})).json();
   ok(sg.locked && sgR2.status === 'signed' && sgR2.signedAt && sgR2.signDate && sgF101.text.includes(sgR2.signDate) && sgF101.images >= 1 && sgCtr.text.includes(sgR2.signDate) && sgCtr.images === 1 && !/\{\{/.test(sgCtr.text.replace(/tpyo/, '')) && sg.opens === 2 && !wpg.errs.length,
     'signing: the signature opens only after both documents; one signature and the same date in both signed PDFs; afterwards the page keeps them to read ' + JSON.stringify({sg, status: sgR2.status, signDate: sgR2.signDate, sgF101: {i: sgF101.images, p: sgF101.pages}, sgCtr: {i: sgCtr.images, p: sgCtr.pages}, errs: wpg.errs}));
+  ok(sgR2.frozen && sgR2.frozen.lang === 'en' && sgR2.frozen.builder === 'b2' && sgR2.parts.form101.builder === 'b2',
+    "signing: the attached sheet's language is the signing page's, frozen at the signature, with the builder version " + JSON.stringify({lang: (sgR2.frozen || {}).lang, builder: (sgR2.frozen || {}).builder}));
   await wpg.close();
   // The manager app takes the signed documents onto the worker; Form 101 is never built again.
   const sgTook = await p.evaluate(async () => {
@@ -1996,6 +2003,27 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   });
   ok(sgTook.docFile && sgTook.url && sgTook.contract && sgTook.signedAt && sgTook.sig && sgTook.regen && sgTook.kept && /Signed/.test(sgTook.chip),
     'signing: the manager app puts the signed Form 101 and contract on the worker (and the signature); a rebuild leaves the signed Form 101 as it is; the card says Signed with the date ' + JSON.stringify(sgTook));
+  // A firm with a default contract template expects a contract: Missing and Documents incomplete, the signed, added or scanned one counting.
+  const ctMiss = await p.evaluate(async () => {
+    await ManagerBridge.reloadSignRequests();
+    const w = workers[1], keep = JSON.stringify(w);
+    const full = {docId: '123456782', docUrl: 'https://x/f.pdf', scanPages: [{fileId: 'x/p.jpg', kind: 'id_front', primary: true}], docExtraPages: 1, docHasSignature: true, docExpiry: '', docUploadFailed: false};
+    Object.assign(w, full, {docs: []});
+    const st = workerDocStatus(w), n = workerNotices(w).find(x => x.title === 'Missing documents');
+    const r = {missing: st.missing.join(), level: st.level, line: st.lines.join(), act: n && n.act && n.act.label};
+    const counted = t => { w.docs = [{id: 'dx', type: 'contract', name: 'c', uploadedAt: '2026-01-01T00:00:00.000Z', ...t}]; return workerDocStatus(w).missing.length; };
+    r.signed = counted({signed: true}); r.added = counted({}); r.noDate = counted({uploadedAt: ''});
+    w.docs = [];
+    // a saved Form 101 with no signature and no contract: Sign, as with the signature alone; the Missing line names both
+    Object.assign(w, {docHasSignature: false});
+    const n2 = workerNotices(w).find(x => x.title === 'Missing documents');
+    r.both = {act: n2 && n2.act && n2.act.label, detail: n2 && n2.detail};
+    Object.keys(w).forEach(k => delete w[k]); Object.assign(w, JSON.parse(keep));
+    return r;
+  });
+  ok(ctMiss.missing === 'contract' && ctMiss.level === 'warn' && /Missing: contract/.test(ctMiss.line) && ctMiss.act === 'Add document' && ctMiss.signed === 0 && ctMiss.added === 0 && ctMiss.noDate === 0
+    && ctMiss.both.act === 'Sign' && /signature/.test(ctMiss.both.detail) && /contract/.test(ctMiss.both.detail),
+    'documents: with a default contract template a worker with no contract shows Missing: contract, its notice opens Add document; any contract ends it ' + JSON.stringify(ctMiss));
   // A signature whose documents could not be saved (docs/contracts.md → Signing): the worker's page never says Signed, retries by
   // itself once and by Try again; the manager's card says Not saved, with the reason, Try again and Withdraw.
   const STUCK = 'The signed documents could not be built: withdraw them and send the documents again';
@@ -2116,7 +2144,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     try { localStorage.removeItem('downloadDataPicks'); } catch (e) {}
     document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); openWorkerCard(workers.findIndex(w => w.id === 'w1')); });
   await p.click('#workerCardModal [data-testid="card-more"]'); await sleep(200);
-  await p.click('[role="menuitem"]:has-text("Download data")');
+  await p.click('[role="menuitem"]:has-text("Download documents")');
   await p.waitForSelector('[data-testid="download-window"]', {timeout: 10000});
   // the window slides in: measured once it stands still over the card
   await waitFor(p, () => T.onTop('[data-testid="download-window"]'), 5000);
@@ -2135,6 +2163,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const d5r = await d5resp;
   const d5h = {pages: Number(d5r.headers()['x-pages']), parts: d5r.headers()['x-parts'], type: d5r.headers()['content-type'],
     body: JSON.parse(d5r.request().postData())};
+  ok(d5h.body.lang === 'en', "download data: the call sends the language picked in the app, for the attached sheet's words " + d5h.body.lang);
   ok(await waitFor(p, () => window.__opened.length === 1, 30000), 'download data: the PDF opens');
   const d5 = await p.evaluate(async () => {
     const buf = await (await fetch(window.__opened[0])).arrayBuffer();
@@ -2218,6 +2247,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // D6: a worker of firm two moves to this firm — the request, the worker's consent and signing in their own page, the copy.
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); switchTab('workers'); });
+  await p.click('[data-testid="workers-new-more"]');
   await p.click('[data-testid="workers-transfer"]');
   await p.waitForSelector('#transferNo');
   ok(await p.evaluate(() => !document.querySelector('[data-testid="transfer-pick"]')), 'transfer: a firm\'s own admin gets no list of the other firms\' workers — only the number field');
@@ -2298,6 +2328,14 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // login) — its details prefilled, one changed, the end of the contract, one signature → the signed PDF on the client and
   // its empty contact fields filled (never what the firm typed); Sign here in the window; a login without the right: no Send.
   const ccPdf = Buffer.from(await (await fetch('http://127.0.0.1:5055/clientContractPdf', {method: 'POST'})).arrayBuffer());
+  // Every mark is listed once, with what fills it: the list of the upload window's marks and this window are one set
+  await p.click('[data-testid="contract-marks-open"]');
+  await p.waitForSelector('[data-testid="contract-marks"]');
+  const ctMarks = await p.evaluate(() => [...document.querySelectorAll('[data-testid="contract-mark"]')].map(b => b.dataset.mark));
+  ok(ctMarks.length === 53 && new Set(ctMarks).size === 53 && ctMarks.includes('client_name') && ctMarks.includes('terms_5'), 'contract templates: the { } button lists every mark once ' + ctMarks.length);
+  await p.keyboard.press('Escape');
+  await waitFor(p, () => !document.querySelector('[data-testid="contract-marks"]'), 3000);
+  await p.click('[data-testid="contracts-view"] [data-kind="client"]');
   const [ccChooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-testid="contract-new-client"]')]);
   await ccChooser.setFiles({name: 'Service agreement.pdf', mimeType: 'application/pdf', buffer: ccPdf});
   await p.waitForSelector('[data-testid="contract-upload"][data-state="ready"]', {timeout: 60000});
@@ -2838,7 +2876,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     switchTab('workers'); render(); await wait(200);
     const plate = document.querySelector('#workersRoot [data-testid="worker-plate"][data-wid="w1"]'), r = {};
     const chip = plate.querySelector('[data-testid="worker-chip1"] [data-testid="notice-chip"]');
-    r.chip = chip && chip.dataset.lvl; r.more = !!plate.querySelector('[data-testid="notice-more"]'); r.bar = plate.querySelector('.og-plate').style.getPropertyValue('--bar');
+    r.chip = chip && chip.dataset.lvl; r.more = !plate.querySelector('[data-testid="notice-more"]') && plate.querySelectorAll('[data-testid="notice-chip"]').length === 2; r.bar = plate.querySelector('.og-plate').style.getPropertyValue('--bar');
     chip.click(); await wait(150);
     r.sheet = document.getElementById('noticesOverlay').classList.contains('open'); r.notices = [...document.querySelectorAll('#noticesModal [data-testid="notice"] b')].map(b => b.textContent);
     r.head = document.querySelector('#noticesModal [data-testid="worker-head-name"]').textContent; r.card0 = document.getElementById('workerCardOverlay').classList.contains('open');
@@ -2994,7 +3032,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     && wcd.order === 'id,clients,hr,supplier,start,shift,address,income,docs-status,hours-sent' && wcd.equal && wcd.pairs && wcd.docsWide && wcd.saved
     && wcd.hrUnknown === 'HR|Assigned' && wcd.noCity === 'Address|Herzl 5',
     'worker card: no month\'s hours at the top; the boxes in equal pairs (ID | Clients, HR | Supplier — "—" when none, an HR not known to the login "Assigned", Start date | Shift today, Address city over street, the street alone on the first line without a city | Income, Documents | Hours sent); the documents box across both with + Add; Saved at the bottom left, Edit and ⋮ at the right ' + JSON.stringify(wcd));
-  ok(/Upload hours/.test(wcd.menu) && /Export hours/.test(wcd.menu) && /Download data/.test(wcd.menu) && !/Add document/.test(wcd.menu) && wcd.add,
+  ok(/Upload hours/.test(wcd.menu) && /Export hours/.test(wcd.menu) && /Download documents/.test(wcd.menu) && !/Download document(?!s)/.test(wcd.menu) && !/Add document/.test(wcd.menu) && wcd.add,
     'worker card: the hours actions under ⋮; + Add in the documents box opens Add document ' + JSON.stringify({menu: wcd.menu, add: wcd.add}));
   // Editors as section plates (redesign stage 4): worker, client, supplier, user.
   const ed = await p.evaluate(async () => {
@@ -3133,19 +3171,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     // Filters: hidden until the button, its count, the open state kept on this device
     const fb = document.querySelector('#workersRoot [data-testid="workers-filters-btn"]');
     r.filtersHidden = !document.querySelector('#workersRoot [data-testid="workers-filters"]');
+    r.sameLine = !!fb.closest('[data-testid="workers-head"]');
     fb.click(); await wait(50);
     r.filtersOpen = document.querySelectorAll('#workersRoot [data-testid="workers-filters"] [data-testid^="wf-"]').length === 5 && localStorage.getItem('workersFiltersOpen') === '1';
     fb.click(); await wait(50);
     return r;
   });
-  // The menu: Scan passport and Enter by hand — the second opens the worker window, empty.
+  // The menu: Enter by hand (the worker window, empty), and From another firm for a firm's admin. Filters stand in the create button's line.
   await p.click('#workersRoot [data-testid="workers-new-more"]'); await p.waitForSelector('[role="menuitem"]');
   wh.menu = await p.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map(b => b.innerText.trim()).join());
   await p.click('[role="menuitem"]:has-text("Enter by hand")');
   wh.byHand = await waitFor(p, () => document.getElementById('workerOverlay').classList.contains('open'), 3000);
   await p.evaluate(() => { document.querySelectorAll('.overlay.open').forEach(o => closeModal(o.id)); }); await sleep(200);
-  ok(wh.count === 'Workers' && wh.noTabs && wh.create && wh.scan && wh.menu === 'Scan passport,Enter by hand' && wh.byHand && wh.filtersHidden && wh.filtersOpen,
-    'workers: Workers lit in the menu (no breadcrumb), no status tabs, one create button (New worker scans; its menu: Scan passport, Enter by hand — the worker window), the Filters open on their button ' + JSON.stringify(wh));
+  ok(wh.count === 'Workers' && wh.noTabs && wh.create && wh.scan && /^Enter by hand(,From another firm)?$/.test(wh.menu) && wh.byHand && wh.sameLine && wh.filtersHidden && wh.filtersOpen,
+    'workers: Workers lit in the menu (no breadcrumb), no status tabs, one create button (New worker scans; its menu: Enter by hand — the worker window — and From another firm), the Filters at the right of its line open on their button ' + JSON.stringify(wh));
   // Workers filters (stage 6c-1): a filter picked in its select shows as a chip; Group by client draws a section per
   // site; the list view is a table on a computer — a tap on a row opens the worker card.
   await p.evaluate(() => { switchTab('workers'); document.querySelector('#workersRoot [data-testid="workers-filters-btn"]').click(); });
@@ -3306,6 +3345,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // Phone: a swipe down on a window closes it the same way as a tap outside; a short one does not.
   await p.setViewportSize({width: 390, height: 844});
   await p.evaluate(() => openWorkerCard(1)); await sleep(400);
+  // the element under the finger is drawn again in the middle of the swipe: its end still ends it, the window is not left half way
+  const swipeLost = await p.evaluate(async () => {
+    const m = document.getElementById('workerCardModal'), r = m.getBoundingClientRect(), x = r.left + 40, y = r.top + 20, c = document.createElement('div');
+    m.prepend(c);
+    const t = (type, dy) => { const tp = new Touch({identifier: 1, target: c, clientX: x, clientY: y + dy}); c.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
+    t('touchstart', 0); for (let d = 10; d <= 50; d += 20) t('touchmove', d);
+    const down = m.style.transform; c.remove(); t('touchend', 50);
+    await new Promise(r => setTimeout(r, 300));
+    return {down, after: m.style.transform};
+  });
+  ok(/translateY/.test(swipeLost.down) && swipeLost.after === '', 'phone: a swipe whose element is drawn again leaves no window half way down ' + JSON.stringify(swipeLost));
   const swipe = await p.evaluate(async () => {
     const m = document.getElementById('workerCardModal'), r = m.getBoundingClientRect(), x = r.left + 40, y = r.top + 20;
     const t = (type, dy) => { const tp = new Touch({identifier: 1, target: m, clientX: x, clientY: y + dy}); m.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [tp], changedTouches: [tp]})); };
@@ -3315,6 +3365,17 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return {short, long, locked: getComputedStyle(document.body).overflow};
   });
   ok(swipe.short && !swipe.long, 'phone: a swipe down closes a window, a short one does not ' + JSON.stringify(swipe));
+  // Salary on a phone: a worker's ⋮ deletes the period's punches through the Undo snack
+  const salPeriod = await p.evaluate(async () => { const was = ManagerBridge.accounting().period; switchTab('accounting'); setAccTab('salary'); await ManagerBridge.setPeriod('all'); return was; });
+  await p.waitForSelector('[data-testid="sal-row"]');
+  const salWid = await p.evaluate(() => { const rows = [...document.querySelectorAll('[data-testid="sal-row"]')]; return rows.length ? rows[0].dataset.wid : ''; });
+  await p.click('[data-testid="sal-row"][data-wid="' + salWid + '"] button[aria-label="Actions"]'); await p.waitForSelector('[role="menuitem"]');
+  await p.click('[role="menuitem"]:has-text("Delete")');
+  const salDel = {hidden: await p.waitForSelector('[data-testid="sal-row"][data-wid="' + salWid + '"]', {state: 'detached', timeout: 3000}).then(() => true, () => false), snack: await p.waitForSelector('[data-testid="undo-snack"]', {timeout: 3000}).then(() => true, () => false)};
+  await p.click('[data-testid="undo-snack"] button');
+  salDel.back = await p.waitForSelector('[data-testid="sal-row"][data-wid="' + salWid + '"]', {timeout: 3000}).then(() => true, () => false);
+  await p.evaluate(was => ManagerBridge.setPeriod(was), salPeriod);
+  ok(salDel.hidden && salDel.snack && salDel.back, "accounting: a worker's ⋮ deletes the period's punches, with Undo " + JSON.stringify(salDel));
   const phc = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), w = workers[1], keep = w.notes;
     w.notes = Array(40).fill('a long note line').join('\n');
@@ -3524,9 +3585,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   const fl = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     const row = () => document.querySelector('#firmsScreenRoot [data-testid="firm-row"][data-tid="tenant-two"]');
-    const out = {pencil: !!row().querySelector('[data-testid="firm-edit"]'), select: !!document.querySelector('#firmsScreenRoot [data-testid="firms-select"] button'),
+    const out = {pencil: !row().querySelector('[data-testid="firm-edit"]'), select: !!document.querySelector('#firmsScreenRoot [data-testid="firms-select"] button'),
       incomplete: /profile incomplete/.test(row().innerText) === (firmProfileMissing(__firmsCache.find(t => t.tenantId === 'tenant-two')).length > 0)};
-    row().querySelector('[data-testid="firm-edit"]').click(); await wait(300);
+    window.ManagerBridge.openFirmWindow('edit', 'tenant-two'); await wait(300);
     const win = document.querySelector('#firmModal [data-testid="firm-window"]');
     out.edit = document.getElementById('editFirmOverlay').classList.contains('open') && !!win && win.dataset.mode === 'edit' && document.getElementById('fCompanyName').value === 'Firm Two' && !document.querySelector('#firmModal [data-testid="firm-wa"]');
     out.hebrew = /שם המעסיק/.test(win.innerText) && /מספר תיק ניכויים/.test(win.innerText);
@@ -3601,7 +3662,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   // with an ID / passport, a search on top (name or ID), five in view at a time — and fills the number sent.
   await fetch('http://127.0.0.1:5055/transferSetup', {method: 'POST'});
   await p.evaluate(() => { switchTab('workers'); });
-  await p.click('#workersRoot [data-testid="workers-transfer"]');
+  await p.click('#workersRoot [data-testid="workers-new-more"]');
+  await p.click('[data-testid="workers-transfer"]');
   await p.waitForSelector('[data-testid="transfer-pick"] #transferPick:not([disabled])', {timeout: 20000});
   await p.click('#transferPick'); await p.waitForSelector('[cmdk-item]');
   const tp = await p.evaluate(() => {
@@ -4421,6 +4483,20 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       else { if (m === 'denied') localStorage.setItem('gpsPerm', 'denied'); err({code: m === 'off' ? 2 : 1, message: m}); }
     }, 900);
   };
+  // The first load on a phone with nothing kept: the punch screen's shape with the logo in the ring, then the page.
+  const gpo = await page(ctx);
+  await gpo.setViewportSize({width: 390, height: 844});
+  await gpo.addInitScript(() => {
+    localStorage.removeItem('punchWorkers_v1');
+    const f = window.fetch;
+    window.fetch = (u, o) => /\/punch(\?|$)/.test(String(u)) ? new Promise(r => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o);
+  });
+  await gpo.goto(BASE + 'worker-punch.html?t=tok-new');
+  const gpo1 = {shown: await waitFor(gpo, () => !!document.querySelector('[data-testid="punch-loading"] .pl-ring svg'), 4000)};
+  gpo1.text = await gpo.textContent('[data-testid="punch-loading"] .pl-step');
+  gpo1.gone = await waitFor(gpo, () => !document.querySelector('[data-testid="punch-loading"]') && !document.getElementById('screenPunch').classList.contains('hidden'), 15000);
+  ok(gpo1.shown && /Checking your link/.test(gpo1.text) && gpo1.gone, 'punch: the first load shows the logo in its ring and a line of what is happening, then the page ' + JSON.stringify(gpo1));
+  await gpo.close();
   // Back from a sheet: a reading asked for earlier that answers late does not unlock the punch.
   const gpl = await page(ctx);
   await gpl.setViewportSize({width: 390, height: 844});

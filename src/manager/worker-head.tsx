@@ -30,7 +30,7 @@ export const initials = (n: string) => String(n || '?').trim().split(/\s+/).map(
 export function WorkerHeadLine({ head, title, right }: { head: Head; title?: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="mb-2.5 flex items-center gap-3" data-testid="worker-head" style={{ ['--c' as string]: head.color }}>
-      <div className="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-ink" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(var(--tint),.06))', boxShadow: '0 0 0 2px var(--c)' }}>
+      <div className="grid size-11 shrink-0 place-items-center rounded-full text-base font-bold text-ink" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(var(--tint),.06))', boxShadow: 'inset 0 0 0 2px var(--c)' }}>
         {initials(head.name)}
       </div>
       <div className="min-w-0 flex-1">

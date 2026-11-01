@@ -7,11 +7,11 @@
 // uploads a worker's own template from the worker window (`workerId`). A template may have the
 // firm's signature and stamp drawn at the bottom right of every page (its tick, on for a new one;
 // the plate's Stamp chip; ⋮ turns it on or off); "Signature and stamp" opens the firm's (FirmSeal.tsx).
-// The templates are in two sections, For workers and For clients (a template's kind: picked on upload, fixed
+// One list at a time, Workers or Clients (a template's kind: picked on upload, fixed
 // on a replace); the client window uploads a client's own template through the same window (`clientId`).
 import * as React from 'react';
 import {
-  IconAlertTriangle, IconBuilding, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX, IconRubberStamp,
+  IconAlertTriangle, IconBraces, IconFileText, IconLoader2, IconPlus, IconRefresh, IconStar, IconTag, IconEye, IconX, IconRubberStamp,
 } from '@tabler/icons-react';
 import { tr, uiLocale } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -21,16 +21,15 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FieldRow } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { CheckGrid, CheckTile } from '@/components/ui/checkbox';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Window } from '@/components/shared/window';
 import { Plate } from '@/components/shared/plate';
-import { Section } from '@/components/shared/section';
 import { PagedList } from '@/components/shared/paged-list';
 import { undoDelete } from '@/components/shared/undo';
 import { Field } from './ClientEditor';
 import { readFileB64 } from './logic/uploads';
+import { MarksWindow } from './ContractMarks';
 import { FirmSealWindow } from './FirmSeal';
 import {
   MARKS, TEMPLATE_ACCEPT, deleteTemplate, isWordFile, kindOf, listTemplates, marksNotFilled, openPdf, prepareTemplate, sampleTemplate, saveTemplate, sealOn, sizeText,
@@ -82,6 +81,8 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   const kindFor = React.useRef<TemplateKind>('worker');
   const [pending, setPending] = React.useState<Pending[]>([]);
   const [seal, setSeal] = React.useState(false);
+  const [marks, setMarks] = React.useState(false);
+  const [view, setView] = React.useState<TemplateKind>('worker');
   if (error && !list) return <p className="text-[13px] text-bad" data-testid="contracts-error">{tr(error)}</p>;
   if (!list) return <div className="grid gap-2" aria-busy="true" data-testid="contracts-loading">{[0, 1].map(i => <Skeleton key={i} className="h-[62px]" />)}</div>;
   const firm = list.filter(t => !t.workerId && !t.clientId && !hidden.has(t.id));
@@ -105,12 +106,12 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   const row = (t: ContractTemplate) => (
     <Plate key={t.id} data-testid="contract-row" data-id={t.id} className="mb-1.5" color={t.isDefault ? 'var(--ok)' : 'var(--info)'}
       icon={<IconFileText />}
-      title={<span>{t.name}{t.version && t.version > 1 ? <span className="text-[11px] font-normal text-ink-2"> v{t.version}</span> : null}</span>}
-      chips={<>{t.category && <Badge variant="default" data-testid="contract-category">{t.category}</Badge>}
+      title={<span className="block whitespace-normal break-words">{t.name}{t.version && t.version > 1 ? <span className="text-[11px] font-normal text-ink-2"> v{t.version}</span> : null}</span>}
+      sub={<span className="grid gap-1 whitespace-normal">
+        <span className="flex flex-wrap gap-1">{t.category && <Badge variant="default" data-testid="contract-category">{t.category}</Badge>}
         {t.isDefault && <Badge variant="ok" data-testid="contract-default">{tr('Default')}</Badge>}
         <Badge variant={kindOf(t) === 'client' ? 'info' : 'default'} data-testid="contract-kind" data-kind={kindOf(t)}>{kindOf(t) === 'client' ? tr('For a client') : tr('For a worker')}</Badge>
-        {sealOn(t) && <Badge variant="default" data-testid="contract-seal">{tr('Stamp')}</Badge>}</>}
-      sub={<span className="grid whitespace-normal">
+        {sealOn(t) && <Badge variant="default" data-testid="contract-seal">{tr('Stamp')}</Badge>}</span>
         <span>{[sizeText(t.size), dateText(t.createdAt), tr('{0} signed', { 0: t.signedCount || 0 })].join(' · ')}</span>
         {!!t.unknown?.length && <span className="inline-flex items-center gap-1 text-warn"><IconAlertTriangle className="size-3.5" />{tr('Unknown marks: {0}', { 0: t.unknown.join(', ') })}</span>}
       </span>}
@@ -126,37 +127,38 @@ export function ContractTemplatesPane({ api }: { api: Api }) {
   );
   return (
     <div data-testid="contracts">
-      <Section label={<span className="inline-flex items-center gap-1.5"><IconFileText className="size-4" />{tr('For workers')}</span>} count={forWorkers.length}
-        data-testid="contracts-workers"
-        tools={<>
-          <Button size="sm" data-testid="contract-seal-open" onClick={() => setSeal(true)}><IconRubberStamp className="size-4" />{tr('Signature and stamp')}</Button>
-          <Button variant="primary" size="sm" className="og-new" data-testid="contract-new" onClick={() => pickFile('worker')}>
-            <IconPlus className="size-4" />{tr('New template')}</Button></>}>
-        <input ref={pick} type="file" accept={TEMPLATE_ACCEPT} multiple className="hidden" data-testid="contract-file"
-          onChange={e => {
-            const files = [...(e.target.files || [])]; e.target.value = '';
-            // one file: the upload window; several: each prepared and saved in the background (D7)
-            if (files.length === 1) setUpload({ file: files[0], replace: replaceFor.current || undefined, kind: kindFor.current });
-            else if (files.length > 1) prepareInBackground(files, api, setPending, load, kindFor.current);
-          }} />
-        {pending.map(p => (
-          <Plate key={p.key} data-testid="contract-pending" data-state={p.error ? 'error' : 'busy'} className="mb-1.5" color={p.error ? 'var(--bad)' : 'var(--neutral)'}
-            icon={p.error ? <IconAlertTriangle /> : <IconLoader2 className="animate-spin" />} title={p.name}
-            sub={p.error ? <span className="whitespace-normal text-bad">{tr(p.error)}</span> : tr('Preparing…')}
-            onDelete={p.error ? () => setPending(list => list.filter(x => x.key !== p.key)) : undefined} />
-        ))}
-        <PagedList items={forWorkers} render={row}
-          empty={<Empty data-testid="contracts-empty"><EmptyMedia><IconFileText /></EmptyMedia><EmptyTitle>{tr('No contract templates yet. Save the contract from Word as PDF, with marks like {{given}}, and add it here.')}</EmptyTitle></Empty>} />
-      </Section>
-      <Section label={<span className="inline-flex items-center gap-1.5"><IconBuilding className="size-4" />{tr('For clients')}</span>} count={forClients.length}
-        data-testid="contracts-clients"
-        tools={<Button variant="primary" size="sm" className="og-new" data-testid="contract-new-client" onClick={() => pickFile('client')}>
-          <IconPlus className="size-4" />{tr('New template')}</Button>}>
-        <PagedList items={forClients} render={row}
-          empty={<Empty data-testid="contracts-clients-empty"><EmptyMedia><IconBuilding /></EmptyMedia><EmptyTitle>{tr('No client contract templates yet. Marks like {{client_name}} are filled from the client, {{client_signature}} is where the client signs.')}</EmptyTitle></Empty>} />
-      </Section>
+      {/* One list at a time (owner, 2026-10-31, variant 1): Workers / Clients, the firm's signature and New as icons, at the right */}
+      <div className="mb-2 flex items-center gap-2">
+        <ToggleGroup type="single" value={view} onValueChange={v => { if (v) setView(v as TemplateKind); }} aria-label={tr('Contract templates')} data-testid="contracts-view" className="min-w-0">
+          <ToggleGroupItem value="worker" data-kind="worker">{tr('Workers')} · {forWorkers.length}</ToggleGroupItem>
+          <ToggleGroupItem value="client" data-kind="client">{tr('Clients')} · {forClients.length}</ToggleGroupItem>
+        </ToggleGroup>
+        <span className="min-w-0 flex-1" />
+        <Button size="icon-sm" data-testid="contract-marks-open" aria-label={tr('Marks for a contract')} title={tr('Marks for a contract')} onClick={() => setMarks(true)}><IconBraces className="size-4" /></Button>
+        <Button size="icon-sm" data-testid="contract-seal-open" aria-label={tr('Signature and stamp')} title={tr('Signature and stamp')} onClick={() => setSeal(true)}><IconRubberStamp className="size-4" /></Button>
+        <Button variant="primary" size="icon-sm" className="og-new" data-testid={view === 'client' ? 'contract-new-client' : 'contract-new'} aria-label={tr('New template')} title={tr('New template')} onClick={() => pickFile(view)}><IconPlus className="size-4" /></Button>
+      </div>
+      <input ref={pick} type="file" accept={TEMPLATE_ACCEPT} multiple className="hidden" data-testid="contract-file"
+        onChange={e => {
+          const files = [...(e.target.files || [])]; e.target.value = '';
+          // one file: the upload window; several: each prepared and saved in the background (D7)
+          if (files.length === 1) setUpload({ file: files[0], replace: replaceFor.current || undefined, kind: kindFor.current });
+          else if (files.length > 1) prepareInBackground(files, api, setPending, load, kindFor.current);
+        }} />
+      {pending.map(p => (
+        <Plate key={p.key} data-testid="contract-pending" data-state={p.error ? 'error' : 'busy'} className="mb-1.5" color={p.error ? 'var(--bad)' : 'var(--neutral)'}
+          icon={p.error ? <IconAlertTriangle /> : <IconLoader2 className="animate-spin" />} title={p.name}
+          sub={p.error ? <span className="whitespace-normal text-bad">{tr(p.error)}</span> : tr('Preparing…')}
+          onDelete={p.error ? () => setPending(list => list.filter(x => x.key !== p.key)) : undefined} />
+      ))}
+      <div data-testid={view === 'client' ? 'contracts-clients' : 'contracts-workers'}>
+        <PagedList items={view === 'client' ? forClients : forWorkers} render={row}
+          empty={<p data-testid={view === 'client' ? 'contracts-clients-empty' : 'contracts-empty'} className="m-0 rounded-[12px] border border-dashed border-white/20 px-3 py-2.5 text-[13px] text-ink-2">
+            {view === 'client' ? tr('No client contract templates yet. Marks like {{client_name}} are filled from the client, {{client_signature}} is where the client signs.') : tr('No contract templates yet. Save the contract from Word as PDF, with marks like {{given}}, and add it here.')}</p>} />
+      </div>
       {upload && <UploadWindow file={upload.file} replace={upload.replace} kind={upload.kind} categories={categories} api={api}
         onClose={() => setUpload(null)} onSaved={() => { setUpload(null); load(); }} />}
+      {marks && <MarksWindow toast={api.toast} onClose={() => setMarks(false)} />}
       {seal && <FirmSealWindow toast={api.toast} onClose={() => setSeal(false)} />}
       {edit && <EditWindow t={edit.t} what={edit.what} categories={categories} api={api} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
     </div>

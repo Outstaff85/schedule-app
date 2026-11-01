@@ -356,7 +356,7 @@ export function WorkerEditor({ props, info, api }: { props: EditorProps; info: E
   return (
     <div data-testid="worker-editor" data-edit={editId || ''} className="grid gap-2">
       <div className="mb-1 flex flex-wrap items-center gap-3" id="wAvatarWrap" style={{ ['--c' as string]: editing ? info.color : 'var(--neutral)' }}>
-        <div className="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-ink" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(var(--tint),.06))', boxShadow: '0 0 0 2px var(--c)' }}>
+        <div className="grid size-11 shrink-0 place-items-center rounded-full text-base font-bold text-ink" style={{ background: 'color-mix(in srgb, var(--c) 34%, rgba(var(--tint),.06))', boxShadow: 'inset 0 0 0 2px var(--c)' }}>
           {initials(w.name || '?')}
         </div>
         <div className="min-w-0 flex-1">

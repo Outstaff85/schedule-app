@@ -11,6 +11,8 @@ the `worker_docs` function's actions, and the old `signing.bundle` (kept for a d
              page (idsheet.py) — left out when the stored signed Form 101 is in the bundle (it holds them already);
           5. the other documents (`docs[]`: visa, work permit, other, an older contract).
   form101 {workerId, form101}  — the preview alone, with its pages.
+Both take `lang`, the language picked in the app: it sets the words of the attached sheet (idsheet.py) and nothing else;
+the summary page, the two form pages and the other documents' captions stay Hebrew. None sent: English.
 
 Who: a manager-side login (functions/gate.py) of the firm with the Workers right (the owner always; a super-admin
 in the firm it views, `asTenantId`); an own-workers HR only its own workers. A supplier, a client or a worker's
@@ -171,10 +173,10 @@ def _pages_of(w, reader):
 
 
 def _clean_form101(p):
-    """The values the app sent, without what the server decides itself: no signature, no pages, no signing date."""
+    """The values the app sent, without what the server decides itself: no signature, no pages, no signing date, no builder."""
     if not isinstance(p, dict):
         return None
-    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear")}
+    out = {k: v for k, v in p.items() if k not in ("signaturePngBase64", "extraPages", "signDate", "taxYear", "sheetLang", "builder")}
     import json
     return out if len(json.dumps(out, default=str)) < 30000 else None
 
@@ -199,7 +201,7 @@ def _mark_preview(pdf_bytes):
     return doc
 
 
-def _form101_preview(w, payload, requests, reader, build101, with_pages):
+def _form101_preview(w, payload, requests, reader, build101, with_pages, lang=None):
     """→ (pymupdf document of the preview, dropped count): the sent values, the stored pages (with_pages) and a scan's
     signature when allowed, built by build101 (builders/form101_b1.py build_form101_pdf, not strict: a signature it
     could not place is counted) and marked as a preview."""
@@ -216,7 +218,7 @@ def _form101_preview(w, payload, requests, reader, build101, with_pages):
         pages = _pages_of(w, reader)
         if pages:
             tail = pymupdf.open()
-            _l, _k, lost = idsheet.add_scans(tail, pages, w.get("docType") == "passport", FONT)
+            _l, _k, lost = idsheet.add_scans(tail, pages, w.get("docType") == "passport", FONT, lang)
             dropped += lost
             doc.insert_pdf(tail)
     return doc, dropped
@@ -312,9 +314,9 @@ def _pdf_or_page(out, data, writer, caption):
     return idsheet.add_page(out, data, writer, caption)
 
 
-def build_bundle(db, bucket, tenant, claims, wid, w, include, payload, build101, old_device=False):
+def build_bundle(db, bucket, tenant, claims, wid, w, include, payload, build101, old_device=False, lang=None):
     """The bundle (see the module's text). old_device: the old `signing.bundle` — no values are sent, so Form 101
-    is the stored `docFileId` whatever it is. → {pdf, name, pages, parts (keys), labels (Hebrew), dropped, withheld}."""
+    is the stored `docFileId` whatever it is. lang: the sheet's language, the viewer's (English when none is sent). → {pdf, name, pages, parts (keys), labels (Hebrew), dropped, withheld}."""
     import pymupdf
     from signing import may_see_pay
     reader = Reader(bucket, tenant, wid)
@@ -341,7 +343,7 @@ def build_bundle(db, bucket, tenant, claims, wid, w, include, payload, build101,
         elif not old_device:
             if payload is None:
                 raise Refused(400, E_NO_FORM101)
-            doc, d = _form101_preview(w, payload, requests, reader, build101, with_pages=not include.get("scans"))
+            doc, d = _form101_preview(w, payload, requests, reader, build101, with_pages=not include.get("scans"), lang=lang)
             dropped += d
             sections.append(("טופס 101 (טיוטה)", "form101-preview", doc))
 
@@ -370,7 +372,7 @@ def build_bundle(db, bucket, tenant, claims, wid, w, include, payload, build101,
         pages = _pages_of(w, reader)
         if pages:
             one = pymupdf.open()
-            labels, keys, d = idsheet.add_scans(one, pages, w.get("docType") == "passport", FONT)
+            labels, keys, d = idsheet.add_scans(one, pages, w.get("docType") == "passport", FONT, lang)
             dropped += d
             if one.page_count:
                 sections.append((" · ".join(labels), ",".join(keys), one))
@@ -400,12 +402,12 @@ def build_bundle(db, bucket, tenant, claims, wid, w, include, payload, build101,
             "labels": [s[0] for s in sections], "dropped": dropped + reader.dropped, "withheld": sorted(set(withheld))}
 
 
-def build_preview(db, bucket, tenant, wid, w, payload, build101):
+def build_preview(db, bucket, tenant, wid, w, payload, build101, lang=None):
     """The Form 101 preview alone, with its pages. → as build_bundle."""
     if payload is None:
         raise Refused(400, E_NO_FORM101)
     reader = Reader(bucket, tenant, wid)
-    doc, dropped = _form101_preview(w, payload, _requests(db, tenant, wid), reader, build101, with_pages=True)
+    doc, dropped = _form101_preview(w, payload, _requests(db, tenant, wid), reader, build101, with_pages=True, lang=lang)
     data = doc.tobytes(garbage=4, deflate=True)
     if len(data) > MAX_BYTES:
         raise Refused(413, E_TOO_BIG)
@@ -425,10 +427,10 @@ def run(db, bucket, claims, body, build101):
         w = worker_of(db, tenant, claims, wid)
         payload = _clean_form101(body.get("form101"))
         if action == "form101":
-            return build_preview(db, bucket, tenant, wid, w, payload, build101)
+            return build_preview(db, bucket, tenant, wid, w, payload, build101, body.get("lang"))
         raw = body.get("include") if isinstance(body.get("include"), dict) else {}
         include = {k: raw.get(k) is True for k in INCLUDE}
-        return build_bundle(db, bucket, tenant, claims, wid, w, include, payload, build101)
+        return build_bundle(db, bucket, tenant, claims, wid, w, include, payload, build101, lang=body.get("lang"))
     except Refused as e:
         return {"error": e.error, "status": e.status}
 

@@ -47,13 +47,33 @@ export function Section({ label, count, folded, onFold, tools, children, classNa
  * Figures on top of a screen as glass tiles (V7: the number 28px, its label
  * under it; four in a row on a phone too); with `onPick` a figure is a filter
  * and the picked one carries the highlight line. A zero stays readable (ink-2).
+ * `strip`: one glass plate, the figures side by side in one line, the numbers sized to fit and each column as wide
+ * as its figure: a sum is never squeezed, only a label gives way (`truncate`), so a long sum takes what a short one leaves (owner, 2026-10-31: Accounting's sums were cut off in the tiles).
  */
-export function Figures({ items, active, onPick, className }: {
+export function Figures({ items, active, onPick, className, strip }: {
   items: { key: string; label: React.ReactNode; value: React.ReactNode; color?: string }[];
   active?: string | null;
   onPick?: (key: string) => void;
   className?: string;
+  strip?: boolean;
 }) {
+  if (strip) return (
+    <div data-slot="figures" data-strip className={cn('mb-3 grid grid-flow-col auto-cols-auto rounded-[14px] border border-white/12 bg-white/[.06] py-2 backdrop-blur-md', className)}>
+      {items.map((f, i) => (
+        <button
+          key={f.key}
+          type="button"
+          disabled={!onPick}
+          onClick={() => onPick?.(f.key)}
+          aria-pressed={onPick ? active === f.key : undefined}
+          className={cn('relative grid gap-0.5 px-2 text-left disabled:cursor-default', i > 0 && 'border-l border-white/12', onPick && 'hover:bg-white/10')}
+        >
+          <b className="whitespace-nowrap text-[clamp(13px,3.7vw,20px)] font-semibold leading-tight tabular-nums" style={{ color: f.color || 'var(--fig)' }}>{f.value}</b>
+          <span className="truncate text-[11px] text-ink-2 min-[701px]:text-[13px]">{f.label}</span>
+        </button>
+      ))}
+    </div>
+  );
   return (
     <div data-slot="figures" className={cn('mb-3 grid grid-cols-[repeat(auto-fit,minmax(70px,1fr))] gap-1.5 min-[701px]:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] min-[701px]:gap-2', className)}>
       {items.map(f => (

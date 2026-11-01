@@ -82,7 +82,7 @@ def setup(**over):
 
 
 def call(db, bucket, claims, include=None, action="bundle", **body):
-    b = {"action": action, "workerId": "w1", "form101": F101}
+    b = {"action": action, "workerId": "w1", "form101": F101, "lang": "he"}
     if include is not None:
         b["include"] = include
     b.update(body)
@@ -341,3 +341,54 @@ def test_a_signature_the_preview_could_not_place_is_counted():
 
 def test_the_values_sent_cannot_fix_a_preview_s_tax_year():
     assert "taxYear" not in workerdocs._clean_form101({"given": "Avi", "taxYear": "2001"})
+
+
+# ---- the sheet's words are the viewer's language; everything else stays ----
+
+def _sheet_text(out):
+    pages, _d = text(out)
+    return pages
+
+
+def test_the_sheet_follows_the_language_sent_and_the_summary_stays_hebrew():
+    db, bucket = setup()
+    en = _sheet_text(call(db, bucket, OWNER, {"scans": True}, lang="en"))
+    he = _sheet_text(call(db, bucket, OWNER, {"scans": True}, lang="he"))
+    assert "ID card and appendix" in en[1] and "ID card (back)" in en[1] and "Appendix" in en[1] and "Document" in en[2]
+    assert not any("\u0590" <= c <= "\u05ff" for c in en[1] + en[2])
+    assert "ID card" not in he[1] and any("\u0590" <= c <= "\u05ff" for c in he[1])
+    assert en[0] == he[0] and any("\u0590" <= c <= "\u05ff" for c in en[0])  # the summary page, the sheet's name in its list too
+
+
+def test_no_language_sent_and_russian_read_english():
+    db, bucket = setup()
+    for lang in (None, "ru"):
+        out = workerdocs.run(db, bucket, OWNER, {"action": "bundle", "workerId": "w1", "form101": F101, "include": {"scans": True}, "lang": lang}, build101)
+        assert "ID card and appendix" in _sheet_text(out)[1]
+
+
+def test_the_preview_s_attached_sheet_follows_the_language():
+    db, bucket = setup()
+    out = call(db, bucket, OWNER, action="form101", lang="en")
+    pages = _sheet_text(out)
+    assert any("ID card" in t for t in pages[2:])
+
+
+def test_another_document_s_caption_stays_hebrew():
+    db, bucket = setup()
+    bucket.store[P + "docs/1-visa.pdf"] = OTHER  # a picture among the documents: a page of its own, captioned
+    pages = _sheet_text(call(db, bucket, OWNER, {"docs": True}, lang="en"))
+    assert any("\u0590" <= c <= "\u05ff" for c in "".join(pages[1:]))
+
+
+def test_a_caller_cannot_pick_the_builder_of_a_preview():
+    assert workerdocs._clean_form101({"given": "Avi", "builder": "b9", "sheetLang": "he"}) == {"given": "Avi"}
+    db, bucket = setup()
+    seen = []
+
+    def build(p, report=None):
+        seen.append(p)
+        return build101(p)
+
+    out = workerdocs.run(db, bucket, OWNER, {"action": "form101", "workerId": "w1", "form101": dict(F101, builder="b9", sheetLang="he")}, build)
+    assert out["pdf"] and "builder" not in seen[-1] and "sheetLang" not in seen[-1]

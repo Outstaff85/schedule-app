@@ -5,6 +5,7 @@
 // not built yet ('signing': the page was closed, or a build failed) is built again when the page opens, once, and by Try
 // again, from what the server froze at the signature: it keeps one copy of each, and the state read afterwards says what
 // happened (`retry`: a call that failed with nothing recorded on the server, such as a timeout).
+import { storedLanguage } from '@/lib/i18n';
 import { getState, set, wpToken, type SignReq } from './core';
 
 export const SIGN_FN_URL = 'https://europe-west3-schedule-odinson.cloudfunctions.net/sign_documents';
@@ -37,12 +38,15 @@ export async function buildSigned(): Promise<void> {
 }
 
 export type Viewed = { pdfBase64: string; name: string; signDate?: string; signed: boolean };
+// The language the documents were shown in is the language they are signed in: the attached ID sheet's, frozen at `sign`.
+let shownIn = '';
+const showLang = (): string => { shownIn = storedLanguage(); return shownIn; };
 /** Both documents at once, Form 101 first. */
-export const viewBoth = (): Promise<Viewed[]> => Promise.all(['form101', 'contract'].map(which => signFn<Viewed>({ action: 'view', which })));
+export const viewBoth = (): Promise<Viewed[]> => { const lang = showLang(); return Promise.all(['form101', 'contract'].map(which => signFn<Viewed>({ action: 'view', which, lang }))); };
 
 /** The signature, then the two signed PDFs built at once. */
 export async function signDocs(png: string): Promise<void> {
-  await signFn({ action: 'sign', signaturePng: png });
+  await signFn({ action: 'sign', signaturePng: png, lang: shownIn || storedLanguage() });
   const cur = getState().signReq;
   if (cur) set({ signReq: { ...cur, status: 'signing' } });
   await buildSigned();
@@ -77,10 +81,10 @@ export async function buildTransfer(): Promise<void> {
   const cur = getState().transfer;
   if (cur?.status === 'signing' && done.some(d => d.status === 'rejected')) set({ transfer: { ...cur, retry: true } });
 }
-export const viewTransfer = (): Promise<Viewed[]> => Promise.all(['form101', 'contract'].map(which => tr_({ action: 'view', which }) as Promise<Viewed>));
+export const viewTransfer = (): Promise<Viewed[]> => { const lang = showLang(); return Promise.all(['form101', 'contract'].map(which => tr_({ action: 'view', which, lang }) as Promise<Viewed>)); };
 /** The consent and the signing in one: the signature, then the new firm's two PDFs — true once the copy is made. */
 export async function signTransfer(png: string): Promise<boolean> {
-  await tr_({ action: 'sign', signaturePng: png });
+  await tr_({ action: 'sign', signaturePng: png, lang: shownIn || storedLanguage() });
   await buildTransfer();
   return !getState().transfer;
 }

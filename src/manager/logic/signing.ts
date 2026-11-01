@@ -62,10 +62,13 @@ export function loadSignRequests(force?: boolean, maxAge = 60e3): Promise<void> 
   at = Date.now();
   busy = (async () => {
     try {
-      const j = await signCall<{ requests: SignRequest[] }>({ action: 'list' });
+      const j = await signCall<{ requests: SignRequest[]; defaultContract?: boolean }>({ action: 'list' });
       reqs = j.requests || [];
       await adoptSigned();
+      const had = state.firmDefaultContract;
+      state.firmDefaultContract = !!j.defaultContract;
       emit('requests');
+      if (had !== state.firmDefaultContract) emit('data'); // the workers' Missing lines change
     } catch { /* kept as it was: no network, or a login without workers */ }
     finally { busy = null; }
   })();

@@ -30,6 +30,11 @@
 //    up by the sticky frame; a lone miss does not start it again), the status line saying what it waits for, and stops
 //    after AUTO_MAX shots in a row (the 'auto' event); a touch or a new open starts the count again, and a new open
 //    brings back an Auto that stopped itself;
+//  - Auto takes only documents: the document type model is asked on the frame cut flat before the shot — other, or no
+//    sure answer, takes nothing (no shot, no accurate model, no attempt, the status line says so), a document type
+//    shoots; one question at a time, at most once per frame change or LOOK_AGAIN_MS; refused looks do not count
+//    towards AUTO_MAX; with no model, a model that fails or readers that hang Auto goes on as before; while they load
+//    it waits; the shutter never asks;
 //  - a reader that cannot load goes to the errors;
 //  - the follow starts again after sleep on a new video; a shutter tap during a shot does nothing;
 //  - the refined page is read again on its own cut; a page's pixels are kept once;
@@ -257,7 +262,7 @@ for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
   await run(`the refined corners ${replaced ? 'replace' : 'do not replace'} the live page when they moved ${moved}`, async () => {
     const exact = shift(Q, moved);
     // readers that tell which cut they read
-    const readers = { info: { version: 't' }, load: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
+    const readers = { info: { version: 't' }, load: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, turnConf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
     const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false, readers, delay: call => call.which === 'live' ? 30 : 0 });
     // the frame shown when the shot says what it found (the live frame goes on by itself once it settled)
     let shownAtFound = null;
@@ -870,6 +875,175 @@ await run('Auto takes only a document\'s shape: a sliver or a speck stays, the s
     assert.ok(off.log.status.some(x => x.key === 'found') && !off.log.status.some(x => x.key === 'not_document'), 'with Auto off the shutter is the person\'s: found');
     off.s.stop();
   }
+});
+
+// readers whose document type model answers by the test's script; doctype: its session (null: none in this version)
+function typeReaders(answer, { doctype = {}, load = async () => {} } = {}) {
+  const r = { doctype, info: { version: 't' }, asked: 0, load: () => load(r), release() {}, mrzRead: async () => null, heRead: async () => null,
+    doctypeAnswer: async c => { r.asked++; return answer(c, r.asked); } };
+  return r;
+}
+const SAID = (doctype, conf = 0.99, turnConf = 0.99) => ({ doctype, conf, turn: 0, turnConf, ms: 3, square: null });
+
+await run('Auto refuses what the document type model does not call a document: no shot, no sound, no accurate model, no attempt; the shutter still takes it', async () => {
+  for (const said of [SAID('other'), SAID('other', 0.5), SAID('id_front', 0.6), SAID('contract', 0.89), SAID('passport', 0.99, 0.5)]) {
+    const readers = typeReaders(() => said), { s, clock, log, video, engine } = setup(steadyLive(Q), { readers });
+    let attempts = 0; const was = s.attempts.newAttempt.bind(s.attempts); s.attempts.newAttempt = (...a) => { attempts++; return was(...a); };
+    await s.startCamera(video);
+    await clock.runFor(2500);
+    assert.equal(readers.asked, 1, 'asked');
+    assert.equal(log.pages.length, 0, 'nothing taken on ' + JSON.stringify(said));
+    assert.equal(attempts, 0, 'no training attempt');
+    assert.ok(!engine.calls.some(c => c.which === 'cap'), 'no accurate model');
+    assert.ok(!log.status.some(x => x.key === 'captured' || x.key === 'found'), 'no shutter sound (it plays at captured), no promise of a shot');
+    assert.deepEqual({ key: log.status.at(-1).key, type: log.status.at(-1).type }, { key: 'not_document', type: true }, 'the status line says it');
+    assert.equal(engine.warps.length, 1); assert.equal(engine.warps[0].upright, false, 'cut flat: no face finder for it');
+    near(engine.warps[0].pts, Q, 'cut by the frame');
+    await s.snap();
+    assert.ok(log.pages.length && attempts === 1, 'a person\'s tap shoots anything');
+    s.stop();
+  }
+});
+
+await run('Auto takes a document type: hold, checking, found, captured — a sure id_front is shot on the frame looked at', async () => {
+  const readers = typeReaders(() => SAID('id_front', 0.9, 0.9)), { s, clock, log, video, engine } = setup(steadyLive(Q), { readers });
+  await s.startCamera(video);
+  await clock.runFor(1500, () => log.pages.length > 0);
+  await clock.runFor(100);
+  assert.ok(log.pages.length, 'taken');
+  assert.ok(log.pages[0].t - firstAnswer(log) < St.STEADY_MS + 100, 'with no wait of its own (' + (log.pages[0].t - firstAnswer(log)) + ' ms)');
+  const keys = log.status.map(x => x.key), i = keys.indexOf('checking');
+  assert.ok(i > keys.indexOf('hold') && keys.indexOf('found') > i && keys.indexOf('captured') > keys.indexOf('found'), keys.join());
+  assert.equal(engine.warps[0].upright, false); assert.equal(engine.warps[1].upright, true, 'then the shot\'s own cut');
+  s.stop();
+});
+
+await run('Auto asks at most once per frame change: one question at a time, again only when the frame moved or after LOOK_AGAIN_MS', async () => {
+  assert.equal(St.LOOK_AGAIN_MS, 3000);
+  const place = { q: Q }, slow = typeReaders(() => new Promise(r => clock0.c.setTimeout(() => r(SAID('other')), 400)));
+  const clock0 = {}, a = setup(call => call.which === 'live' ? { pts: place.q, conf: 0.9 } : NONE, { readers: slow });
+  clock0.c = a.clock;
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(1350);
+  assert.equal(slow.asked, 1, 'one question out, the answers going on under it');
+  assert.equal(a.log.status.at(-1).key, 'checking', 'the status line says it is being asked');
+  await a.clock.runFor(1500);
+  assert.equal(slow.asked, 1, 'refused: the same frame is not asked again at once');
+  await a.clock.runFor(2300);
+  assert.equal(slow.asked, 2, 'asked again after LOOK_AGAIN_MS');
+  assert.equal(a.log.status.at(-1).key, 'not_document', 'the line stays while it asks again');
+  a.s.stop();
+  const readers = typeReaders(() => SAID('other')), b = setup(call => call.which === 'live' ? { pts: place.q, conf: 0.9 } : NONE, { readers });
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(1500);
+  assert.equal(readers.asked, 1);
+  place.q = shift(Q, 0.1);  // another place: a new frame, its own second, its own question
+  await b.clock.runFor(1500);
+  assert.equal(readers.asked, 2, 'the frame moved: asked after its new second, not at once');
+  place.q = shift(Q, 0.11);  // a nudge under LOOK_MOVE
+  await b.clock.runFor(1500);
+  assert.equal(readers.asked, 2, 'a nudge is the same frame');
+  b.s.stop();
+  place.q = Q;
+});
+
+await run('the frame gone, or a shutter tap, while the model answers: Auto takes nothing more', async () => {
+  const scene = { q: Q }, late = {}, readers = typeReaders(() => new Promise(r => { late.go = () => r(SAID('id_front')); }));
+  const a = setup(call => call.which === 'live' ? { pts: scene.q, conf: 0.9 } : NONE, { readers });
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(1200, () => !!late.go);
+  scene.q = shift(Q, 0.3);
+  await a.clock.runFor(100);
+  late.go();
+  await a.clock.runFor(100);
+  assert.equal(a.log.pages.length, 0, 'the document left while it was asked about');
+  a.s.stop();
+  const b = setup(steadyLive(Q), { readers: typeReaders((c, n) => n === 1 ? new Promise(r => { late.go2 = () => r(SAID('id_front')); }) : SAID('id_front')) });
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(1200, () => !!late.go2);
+  await b.s.snap();
+  const shots = new Set(b.log.pages.map(p => p.record.attempt)).size;
+  late.go2();
+  await b.clock.runFor(100);
+  assert.equal(shots, 1); assert.equal(new Set(b.log.pages.map(p => p.record.attempt)).size, 1, 'one shot: the look found the document taken');
+  b.s.stop();
+});
+
+await run('Auto keeps working as before with no document type model, one that failed to load, or one that fails', async () => {
+  const none = typeReaders(() => { throw new Error('never asked'); }, { doctype: null });
+  const failed = typeReaders(() => { throw new Error('never asked'); }, { doctype: null, load: async () => null });  // Readers.load says a failure in the log and gives null
+  const nothing = typeReaders(() => null);
+  const failing = typeReaders(() => { throw new Error('the session died'); });
+  for (const readers of [none, failed, nothing, failing]) {
+    const { s, clock, log, video, engine } = setup(steadyLive(Q), { readers });
+    await s.startCamera(video);
+    await clock.runFor(1500, () => log.pages.length > 0);
+    assert.ok(log.pages.length, 'taken');
+    assert.ok(log.pages[0].t - firstAnswer(log) < St.STEADY_MS + 100, 'on time');
+    if (readers.doctype === null) assert.ok(engine.warps.every(w => w.upright), 'no model: no cut made to ask it');
+    s.stop();
+  }
+});
+
+await run('while the readers load Auto waits; readers that hang are waited for READERS_WAIT_MS, then Auto goes on', async () => {
+  let done = null;
+  const readers = typeReaders(() => SAID('other'), { doctype: null, load: r => new Promise(res => { done = () => { r.doctype = {}; res(); }; }) });
+  const { s, clock, log, video } = setup(steadyLive(Q), { readers });
+  await s.startCamera(video);
+  await clock.runFor(4000);
+  assert.equal(log.pages.length, 0, 'not taken while they load');
+  assert.equal(log.status.at(-1).key, 'checking', 'the status line does not promise a shot');
+  done();
+  await clock.runFor(200);
+  assert.equal(readers.asked, 1, 'the model, once up, is asked');
+  assert.equal(log.pages.length, 0, 'and it refused');
+  s.stop();
+  const hung = typeReaders(() => SAID('other'), { doctype: null, load: () => new Promise(() => {}) });
+  const b = setup(steadyLive(Q), { readers: hung });
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(St.READERS_WAIT_MS - 500);
+  assert.equal(b.log.pages.length, 0, 'waiting');
+  await b.clock.runFor(2500);
+  assert.ok(b.log.pages.length, 'gone on without them');
+  b.s.stop();
+});
+
+await run('refused looks do not count towards AUTO_MAX: after many of them Auto is on, and its next run is whole', async () => {
+  const said = { now: SAID('other') }, scene = { now: 'doc' }, readers = typeReaders(() => said.now);
+  const { s, clock, log, video } = setup(sceneLive(scene), { readers }), off = [];
+  s.on('auto', on => off.push(on));
+  await s.startCamera(video);
+  await clock.runFor(1500 + St.LOOK_AGAIN_MS * (St.AUTO_MAX + 2));
+  assert.ok(readers.asked > St.AUTO_MAX, 'asked ' + readers.asked + ' times');
+  assert.equal(attemptsOf(log), 0); assert.equal(s.auto, true); assert.deepEqual(off, []);
+  said.now = SAID('id_front');
+  await clock.runFor(St.LOOK_AGAIN_MS + 100, () => attemptsOf(log) > 0);
+  assert.equal(attemptsOf(log), 1, 'the frame read better on a new look: taken');
+  await clock.runFor(400);
+  scene.now = 'none';
+  await clock.runFor(St.AWAY_MS + 200);
+  for (let i = 0; i < St.AUTO_MAX - 2; i++) await autoShoots(clock, log, scene);
+  assert.equal(attemptsOf(log), St.AUTO_MAX - 1); assert.equal(s.auto, true, 'only the shots counted');
+  await autoShoots(clock, log, scene);
+  assert.equal(s.auto, false); assert.deepEqual(off, [false]);
+  s.stop();
+});
+
+await run('the document type model runs one question at a time: Auto\'s look and a shot\'s readouts never meet on its session', async () => {
+  let out = 0, most = 0, runs = 0;
+  const sess = { inputNames: ['img'], run: async () => {
+    most = Math.max(most, ++out); runs++;
+    await flush(2); out--;
+    return { doctype: { data: [0.9, 0, 0, 0, 0, 0.1] }, turn: { data: [1, 0, 0, 0] } };
+  } };
+  const R = new M.readers.Readers(Surf.siteSurface()).use({ Tensor: class {} }, { doctype: sess });
+  const page = new StubCanvas(20, 12), got = await Promise.all([R.doctypeAnswer(page), R.doctypeAnswer(page), R.doctypeAnswer(page)]);
+  assert.equal(runs, 3); assert.equal(most, 1, 'one at a time');
+  assert.ok(got.every(a => a.doctype === 'id_front' && a.conf === 0.9));
+  sess.run = async () => { throw new Error('gone'); };
+  await assert.rejects(R.doctypeAnswer(page), /gone/);
+  sess.run = async () => ({ doctype: { data: [0, 1, 0, 0, 0, 0] }, turn: { data: [1, 0, 0, 0] } });
+  assert.equal((await R.doctypeAnswer(page)).doctype, 'id_back', 'a failed run does not stop the next');
 });
 
 await run('Auto turns itself off after AUTO_MAX shots in a row, told by the auto event; the Auto button lets it go on', async () => {

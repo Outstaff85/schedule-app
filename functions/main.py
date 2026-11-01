@@ -1,5 +1,5 @@
 """The `functions/` codebase's entry points. Form 101 (docs/form101.md): `fill_form_101` returns the PDF as base64 JSON;
-the build itself, `build_form101_pdf`, is the frozen builder of the current version (builders/form101_b1.py), fed by the
+the build itself, `build_form101_pdf`, is the frozen builder of the version its payload names, else the current one (builders/), fed by the
 worker / employer values the manager app sends (`form101Payload`, src/manager/logic/form101.ts) and the scanned pages
 and signature the app keeps in Storage (`scanPages`, docs/contracts.md → Scanned pages).
 
@@ -18,7 +18,7 @@ from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
 import builders
-from builders.form101_b1 import build_form101_pdf
+from builders import build_form101 as build_form101_pdf
 import contracts
 import signing
 import datastore
@@ -105,7 +105,9 @@ def fill_form_101(req: https_fn.Request) -> https_fn.Response:
             return denied
         # This form's `signDate` is the day the worker was added, not a signing: it keeps printing this year's tax year.
         report = {}
-        pdf_bytes, file_name = build_form101_pdf({"taxYear": _this_year(), **payload}, report=report)
+        # the builder is the server's to pick: a caller's `builder` or `sheetLang` never reaches it
+        values = {k: v for k, v in payload.items() if k not in ("builder", "sheetLang")}
+        pdf_bytes, file_name = build_form101_pdf({"taxYear": _this_year(), **values}, report=report)
         body = json.dumps({
             "pdfBase64": base64.b64encode(pdf_bytes).decode(),
             "fileName": file_name,

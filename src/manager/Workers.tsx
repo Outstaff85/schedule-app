@@ -132,11 +132,15 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
     <Plate key={w.id} data-testid="worker-plate" data-wid={w.id} className="mb-1.5"
       color={barColor(w)}
       title={<span title={w.name} data-testid="worker-name">{w.name}</span>}
-      chips={<><MoreChip n={w.notices.length - 1} onOpen={() => api.openNotices(w.id)} /><NewBadge createdAt={w.createdAt} /></>}
+      chips={<NewBadge createdAt={w.createdAt} />}
       sub={<>
-        {/* every plate keeps the chip row and the site line, empty or not: the plates stand the same height (owner, 2026-10-27) */}
+        {/* every plate keeps the chip row and the site line, empty or not: the plates stand the same height (owner,
+            2026-10-27). Two notices are shown, the others in +N (owner, 2026-10-31). */}
         {w.notices.length > 0
-          ? <span className="mb-0.5 mt-[3px] flex" data-testid="worker-chip1"><NoticeChip n={w.notices[0]} onOpen={() => api.openNotices(w.id)} /></span>
+          ? <span className="mb-0.5 mt-[3px] flex items-center gap-1" data-testid="worker-chip1">
+              {w.notices.slice(0, 2).map((n, i) => <NoticeChip key={i} n={n} onOpen={() => api.openNotices(w.id)} />)}
+              <MoreChip n={w.notices.length - 2} onOpen={() => api.openNotices(w.id)} />
+            </span>
           : <span className="invisible mb-0.5 mt-[3px] flex" aria-hidden data-testid="worker-chip-space"><Badge variant="warn"><IconAlertTriangle />—</Badge></span>}
         <span className="block min-h-[1lh]"><Line parts={[w.site, <TodayPin key="p" w={w} />]} /></span>
       </>}
@@ -194,8 +198,8 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
     <div data-testid="workers">
       <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="workers-head">
         {can && (
-          // One create button (owner, 2026-10-26): its main part scans a new worker's passport / ID,
-          // its menu also adds a worker by hand, without a scan.
+          // One create button (owner, 2026-10-26): its main part scans a new worker's passport / ID, its menu
+          // adds a worker by hand, or from another firm (owner, 2026-10-31; Filters stand at the right of this line).
           <ButtonGroup attached data-testid="workers-create">
             <Button variant="primary" className="og-new" data-testid="workers-new" title={tr('Scan a passport / ID')} onClick={api.scanNew}><IconScan />{tr('New worker')}</Button>
             <DropdownMenu>
@@ -203,13 +207,17 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
                 <Button variant="primary" className="og-new" size="icon" data-testid="workers-new-more" aria-label={tr('More ways to add a worker')}><IconChevronDown /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem data-testid="workers-new-scan" onSelect={api.scanNew}><IconScan />{tr('Scan passport')}</DropdownMenuItem>
                 <DropdownMenuItem data-testid="workers-new-hand" onSelect={api.addWorker}><IconUserPlus />{tr('Enter by hand')}</DropdownMenuItem>
+                {isFirmAdminSession() && <DropdownMenuItem data-testid="workers-transfer" onSelect={() => setTransfer(true)}><IconTransfer />{tr('From another firm')}</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
           </ButtonGroup>
         )}
-        {can && isFirmAdminSession() && <Button data-testid="workers-transfer" onClick={() => setTransfer(true)}><IconTransfer />{tr('From another firm')}</Button>}
+        <Button data-testid="workers-filters-btn" aria-expanded={open} className={cn('ml-auto', open && 'border-info text-info')} onClick={toggleOpen}>
+          <IconFilter />{tr('Filters')}
+          {chips.length > 0 && <span data-testid="workers-filters-n" className="rounded-full bg-info px-1.5 font-mono text-[11px] text-[#fff]">{chips.length}</span>}
+          {open ? <IconChevronUp /> : <IconChevronDown />}
+        </Button>
       </div>
       {transfer && <TransferAskWindow onClose={() => setTransfer(false)} toast={(m, ms) => api.toast(m, ms)} />}
 
@@ -217,11 +225,6 @@ export function Workers({ snap, api }: { snap: WorkersSnapshot; api: ManagerBrid
         <div className="flex items-stretch gap-2">
           <Input data-testid="workers-search" className="min-w-0 flex-1" value={f.q} onChange={e => set({ q: e.target.value })}
             placeholder={tr('Search: name, ID / passport, phone, client...')} />
-          <Button data-testid="workers-filters-btn" aria-expanded={open} className={cn(open && 'border-info text-info')} onClick={toggleOpen}>
-            <IconFilter />{tr('Filters')}
-            {chips.length > 0 && <span data-testid="workers-filters-n" className="rounded-full bg-info px-1.5 font-mono text-[11px] text-[#fff]">{chips.length}</span>}
-            {open ? <IconChevronUp /> : <IconChevronDown />}
-          </Button>
           <ToggleGroup type="single" value={view} onValueChange={v => { if (v) pickView(v as 'cards' | 'list'); }} aria-label={tr('Layout')} data-testid="workers-view">
             <ToggleGroupItem value="list" aria-label={tr('List')} title={tr('List')}><IconList /></ToggleGroupItem>
             <ToggleGroupItem value="cards" aria-label={tr('Cards')} title={tr('Cards')}><IconLayoutGrid /></ToggleGroupItem>

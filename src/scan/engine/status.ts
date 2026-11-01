@@ -48,8 +48,11 @@ export function statusEnglish(s: EngineStatus): string {
  *  - edges_unclear: the edges are not clear — more light, a darker background;
  *  - hold: still for seconds more before the shot (the lab's "Hold still… 0.6 s");
  *  - found: count documents found (1 on the live frame once it is steady; after a shot, how many it held);
+ *  - checking: with Auto on, the document type model is being asked about the steady frame (or Auto waits for it
+ *    to load);
  *  - not_document: with Auto on, a green frame that has no document's shape (goodQuad, docShape): Auto will not take
- *    it — straighten the phone, or use the shutter;
+ *    it — straighten the phone, or use the shutter; with type, the shape is fine but the document type model does not
+ *    say a document type (session.ts documentAnswer): a person takes it with the shutter;
  *  - taken: the live frame went on after a shot and a document it took is still in front of the camera — Auto
  *    waits until it has left the frame (or another document comes);
  *  - no_frame: Capture tapped with no frame to take yet;
@@ -72,7 +75,8 @@ export type SessionStatus =
   | { key: 'edges_unclear' }
   | { key: 'hold'; seconds: number }
   | { key: 'found'; count: number }
-  | { key: 'not_document' }
+  | { key: 'checking' }
+  | { key: 'not_document'; type?: boolean }
   | { key: 'taken' }
   | { key: 'no_frame' }
   | { key: 'captured'; ms: number }

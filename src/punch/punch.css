@@ -554,3 +554,19 @@ svg.ti{display:inline-block;width:1em;height:1em;flex:none;vertical-align:-.125e
 .gps-notice span{flex:1}
 .gps-notice .go{flex:none;opacity:.85;font-size:12px;white-space:nowrap}
 .big-punch-btn.disabled.gps{cursor:pointer;color:var(--red-text);border-color:var(--bad)}
+
+/* The first load (LoadingScreen.tsx): the punch screen's shape waiting under a moving glow, the logo in the ring. */
+#loadingScreen{position:fixed;inset:0;z-index:50;background:var(--surface);display:flex;flex-direction:column;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 18px) 20px 40px;gap:18px;animation:pl-in .25s ease both}
+.pl-top{width:100%;max-width:420px;display:flex;justify-content:space-between;align-items:center}
+.pl-bone{display:block;height:14px;width:120px;border-radius:8px;background:linear-gradient(100deg,rgba(var(--tint),.06) 30%,rgba(var(--tint),.16) 50%,rgba(var(--tint),.06) 70%) 0 0/250% 100%;animation:pl-glow 1.4s linear infinite}
+.pl-short{width:64px}.pl-wide{width:min(240px,70%);height:22px;margin-top:14vh}
+.pl-ring{position:relative;width:176px;height:176px;margin-top:24px;border-radius:50%;display:grid;place-items:center;background:rgba(var(--tint),.04);box-shadow:inset 0 0 0 1px rgba(var(--tint),.1)}
+.pl-ring::before{content:'';position:absolute;inset:-5px;border-radius:50%;background:conic-gradient(from 0deg,transparent 62%,var(--accent));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));animation:pl-spin 1.1s linear infinite}
+.pl-mark{display:contents}.pl-ring svg{width:76px;height:76px;position:static;animation:pl-breathe 1.8s ease-in-out infinite}
+.pl-step{margin:14px 0 0;max-width:300px;text-align:center;font-size:15px;line-height:1.35;color:var(--ink-2);animation:pl-in .3s ease both}
+#screenPunch{animation:pl-in .25s ease both}
+@keyframes pl-glow{to{background-position:-250% 0}}
+@keyframes pl-spin{to{transform:rotate(360deg)}}
+@keyframes pl-breathe{50%{transform:scale(1.05);opacity:.85}}
+@keyframes pl-in{from{opacity:0;transform:translateY(4px)}}
+@media (prefers-reduced-motion:reduce){.pl-bone,.pl-ring::before,.pl-ring svg{animation:none}}
