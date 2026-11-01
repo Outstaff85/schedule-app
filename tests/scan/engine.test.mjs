@@ -33,6 +33,7 @@ const res = await build({
 const engineCode = (Array.isArray(res) ? res : [res]).flatMap(r => r.output).find(o => o.type === 'chunk').code;
 const E = new Function(engineCode + ';return ScanEngine;')();
 const { geometry: G, steady: ST, track: TR, pictures: PI, readers: RD, fails: FA } = E;
+Object.assign(ST.TIMING, { shot: 1000, hold: 0.04, drift: 0.03, jerk: 0.02 });  // the logic's checks run on the old lab's figures
 
 // ── the lab's code (its former plain page, frozen) ──
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -358,7 +359,7 @@ await run('the sticky frame: Steady vs smoothen and the follow\'s restart rule, 
     }
   }
   assert.ok(greens && shots && holds, `the sequences never went green (${greens}), shot (${shots}) or held (${holds})`);
-  same(['STEADY_MS', 'MOVE', 'LOCK_MS', 'HOLD', 'MISS_MS', 'DRIFT', 'JERK'].map(k => vm.runInContext(k, page)), [ST.STEADY_MS, ST.MOVE, ST.LOCK_MS, ST.HOLD, ST.MISS_MS, ST.DRIFT, ST.JERK], 'constants');
+  same(['STEADY_MS', 'MOVE', 'LOCK_MS', 'HOLD', 'MISS_MS', 'DRIFT', 'JERK'].map(k => vm.runInContext(k, page)), [ST.STEADY_MS, ST.MOVE, ST.LOCK_MS, ST.TIMING.hold, ST.MISS_MS, ST.TIMING.drift, ST.TIMING.jerk], 'constants');
   return `${events} events, ${greens} green, ${shots} shots, ${holds} held`;
 });
 // The documents a shot took (steady.ts Taken — new with the scanner's template 6, no counterpart in the lab's old

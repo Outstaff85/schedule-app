@@ -123,6 +123,8 @@ globalThis.ImageData = StubImageData;
 
 const M = await import(pathToFileURL(path.join(TMP, 'session.js')).href);
 const { session: Sess, steady: St, camera: Cam, log: Log, surface: Surf } = M;
+const TIMING_NOW = { ...St.TIMING };
+Object.assign(St.TIMING, { shot: 1000, hold: 0.04, drift: 0.03, jerk: 0.02 });  // the logic's checks run on the old lab's figures
 
 // ── a fake clock: screen frames every 16 ms, timers ──
 const flush = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r)); };
@@ -241,6 +243,28 @@ await run('the GPU joining, as the session sees it: each answer asks, not in a p
   assert.equal(engines.gpuCancelled, 'the scanner was put away');
 });
 
+await run('the green frame sticks: on the figures in use Auto shoots after 3 s through a shaking hand, a camera gone far starts it again', async () => {
+  const old = { ...St.TIMING };
+  Object.assign(St.TIMING, TIMING_NOW);
+  try {
+    assert.deepEqual(TIMING_NOW, { shot: 3000, hold: 0.06, drift: 0.06, jerk: 0.04 });
+    let k = 0;
+    const shake = q => { const dx = (k++ % 2 ? -1 : 1) * 0.03; return { pts: shift(q, dx), apply: p => shift(p, dx), moved: 0.03, points: 16 }; };
+    const a = setup(steadyLive(Q), { follow: shake });
+    await a.s.startCamera(a.video);
+    await a.clock.runFor(2800, () => a.log.pages.length > 0);
+    assert.equal(a.log.pages.length, 0, 'not before 3 s');
+    await a.clock.runFor(1200, () => a.log.pages.length > 0);
+    assert.ok(a.log.pages.length, 'taken, the hand shaking');
+    const t = a.log.pages[0].t - firstAnswer(a.log);
+    assert.ok(t >= 3000 && t < 3400, 'on time, the frame sticking only from 250 ms (' + t + ' ms)');
+    const c = new St.Steady(() => 0); c.answer({ pts: Q, conf: 0.9 });
+    assert.equal(c.follow(p => p, 0.039), false); assert.equal(c.follow(p => p, 0.041), true, 'a jump');
+    const d = new St.Steady(() => 0); d.answer({ pts: Q, conf: 0.9 });
+    assert.equal(d.follow(p => shift(p, 0.05), 0.01), false); assert.equal(d.follow(p => shift(p, 0.02), 0.01), true, 'gone far from where it stuck');
+  } finally { Object.assign(St.TIMING, old); }
+});
+
 await run('a tremble under JERK does not start the countdown again; a drift over DRIFT does', async () => {
   // a tremble: ±0.005 a camera frame
   let k = 0;
@@ -264,7 +288,7 @@ await run('a tremble under JERK does not start the countdown again; a drift over
   assert.ok(restarts.length >= 3, 'the countdown started again (' + restarts.length + ' times)');
   assert.ok(b.log.status.filter(x => x.key === 'found').length === 0, 'never found as still');
   // a jump over JERK in one camera frame starts it again too
-  assert.equal(St.JERK, 0.02); assert.equal(St.DRIFT, 0.03); assert.equal(St.HOLD, 0.04);
+  assert.equal(St.TIMING.jerk, 0.02); assert.equal(St.TIMING.drift, 0.03); assert.equal(St.TIMING.hold, 0.04);
   const c = new St.Steady(() => 0); c.answer({ pts: Q, conf: 0.9 });
   assert.equal(c.follow(p => p, 0.019), false); assert.equal(c.follow(p => p, 0.021), true);
   return restarts.length + ' restarts in 2 s of drift';
