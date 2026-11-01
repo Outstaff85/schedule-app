@@ -353,8 +353,8 @@ const READS = {
   ok(lightFirst(shot.loads || [], shot.models || []),
     'site: the light model first — the live frame\'s threads loaded, then the accurate model\'s capture thread right after them, never both loading at once ' + JSON.stringify(shot.loads));
   const ps = shot.passes || {};
-  ok(eng.way === 'bg-gpulive' ? !!ps.site && JSON.parse(ps.site)[(shot.models || [])[0]] && !ps.lab : !ps.site && !ps.lab,
-    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); none without the GPU way ' + JSON.stringify({way: eng.way, ...ps}));
+  ok(!ps.lab && (ps.site ? !!JSON.parse(ps.site)[(shot.models || [])[0]] : eng.way !== 'bg-gpulive'),
+    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); the GPU joins the pool in the background, so it may be kept while the way is still the pool; none on the GPU way without it ' + JSON.stringify({way: eng.way, ...ps}));
   ok(look.w === 390 && look.h === 844 && look.statusTop && look.autoTopRight && look.doneBottomRight && look.stripAboveBar && look.barBottom && look.noScroll && look.bar === 'scan-pick,scan-shutter,scan-done' && look.video,
     'site, screen 1 at 390×844 (template 6): the camera fills the screen, the status line at the top centre, Auto at the top right, the photos\' strip above the bottom bar (Photos/PDF, the shutter, Done at the bottom right) ' + JSON.stringify(look));
   const fr = (asked[0] || {}).video || {};
