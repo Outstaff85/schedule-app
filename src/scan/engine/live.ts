@@ -1,6 +1,6 @@
 // The scanner's engine (docs/scan-plan.md → S9): the live frame on the camera — ported unchanged from the
 // lab's former plain page (loop, runOnce, frameInput, smallRGBA, followLoop, animate, the figures):
-//  - up to engine.size frames are worked on at once (asked each time: it changes when the GPU joins the pool), sent
+//  - up to engine.size frames are worked on at once (one on the GPU's way, the threads on a pool), sent
 //    evenly spaced (the mean model time / n), one at a time
 //    while the accurate model loads (hooks.easeOff: its warm-up has a time limit, and a pool at full load on a slow
 //    phone would pass it); 5 failed frames in a row stop it; with no engine (a way that stuck was dropped) the model
@@ -62,7 +62,6 @@ export function trackFollower(now: () => number): Follower {
 export interface Figures {
   /** How long the first live frame took after the scanner opened (given by the session). */
   readyMs?: number | null;
-  handMs?: number | null;
   modelMs: number | null;
   fps: number | null;
   uiFps: number | null;

@@ -44,5 +44,5 @@ export const layoutsUrl = (s: SurfaceRef): string => s.base + 'he-layouts.json';
 export const ortDirUrl = (s: SurfaceRef, dir: OrtDir): string => s.base + dir + '/';
 /** The ONNX Runtime build's ES module: `ort.all.min.mjs`, with the GPU, or — gpu false, a model asked for on the CPU
  *  alone — the plain `ort.wasm.min.mjs` (measured on a PC: a session and its first run take half the time, the same
- *  answers; docs/scan-plan.md → The CPU first). */
+ *  answers; docs/scan-plan.md → The GPU first). */
 export const ortModuleUrl = (s: SurfaceRef, dir: OrtDir, gpu = true): string => ortDirUrl(s, dir) + (gpu ? 'ort.all.min.mjs' : 'ort.wasm.min.mjs');

@@ -1224,8 +1224,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     return r;
   }).catch(e => ({error: e.message}));
   ok(labLook.full && labLook.noScroll && labLook.parts === 'scan-status,scan-bar,scan-shutter,scan-pick,scan-auto,scan-done,lab-tools' && labLook.show === 'Show what the models read'
-    && labLook.surface === '/scan-lab/,scan-lab-models,lab' && labLook.open && labLook.blocks === 'lab-figures,lab-errors,lab-settings,lab-readouts' && labLook.tiles === 12 && labLook.first,
-    'scanner lab (/scan-lab/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (12 tiles, the first frame among them), Errors, Settings and the readouts — no loading log ' + JSON.stringify(labLook));
+    && labLook.surface === '/scan-lab/,scan-lab-models,lab' && labLook.open && labLook.blocks === 'lab-figures,lab-errors,lab-settings,lab-readouts' && labLook.tiles === 11 && labLook.first,
+    'scanner lab (/scan-lab/): the full-screen scanner in lab mode at 390×844 on the lab\'s surface; Show what the models read in Done\'s place; the Lab tools drawer opens with the figures (11 tiles, the first frame among them), Errors, Settings and the readouts — no loading log ' + JSON.stringify(labLook));
   const wayFails = await labPage.evaluate(async () => {
     const L = ScanLab, ls = localStorage, atOpen = document.querySelector('[data-testid="lab-errors"]').textContent;
     const seeded = window.oldFailSeeded === true;

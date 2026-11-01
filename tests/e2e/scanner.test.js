@@ -341,9 +341,9 @@ const READS = {
     + JSON.stringify({siteStart, ...shot, greenPixels: green}));
   ok(shot.shutters === '1', 'site: the Auto shot sounds the shutter once (a click and a buzz at "captured") ' + JSON.stringify({shutters: shot.shutters}));
   const eng = shot.engine || {}, th = shot.threads || {};
-  ok(eng.worker === true && /^bg-(pool|gpulive)$/.test(eng.way || '') && eng.size > 1 && eng.shared === true && th.spawned >= eng.size + 1
-    && th.bitmaps > 0 && th.copied === 0 && th.maxInFlight >= 2 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,
-    'site: the models run in background threads as on a phone — a pool of live threads (several frames at once) beside the shared capture thread, which found and cut the shot\'s pages; every frame handed over as a bitmap (none copied) '
+  ok(eng.worker === true && /^bg-(pool|gpulive)$/.test(eng.way || '') && (eng.way === 'bg-pool' ? eng.size > 1 && th.maxInFlight >= 2 : eng.size === 1) && eng.shared === true && th.spawned >= eng.size + 1
+    && th.bitmaps > 0 && th.copied === 0 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,
+    'site: the models run in background threads as on a phone — one live thread on the GPU where this browser gives an adapter, else a pool of live threads (several frames at once), beside the shared capture thread, which found and cut the shot\'s pages; every frame handed over as a bitmap (none copied) '
     + JSON.stringify({engine: eng, threads: th}));
   const lightFirst = (loads, [live, cap]) => {
     const at = loads.indexOf('load ' + cap); if (at < 0) return false;
@@ -354,7 +354,7 @@ const READS = {
     'site: the light model first — the live frame\'s threads loaded, then the accurate model\'s capture thread right after them, never both loading at once ' + JSON.stringify(shot.loads));
   const ps = shot.passes || {};
   ok(!ps.lab && (ps.site ? !!JSON.parse(ps.site)[(shot.models || [])[0]] : eng.way !== 'bg-gpulive'),
-    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); the GPU joins the pool in the background, so it may be kept while the way is still the pool; none on the GPU way without it ' + JSON.stringify({way: eng.way, ...ps}));
+    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); none on the GPU way without it ' + JSON.stringify({way: eng.way, ...ps}));
   ok(look.w === 390 && look.h === 844 && look.statusTop && look.autoTopRight && look.doneBottomRight && look.stripAboveBar && look.barBottom && look.noScroll && look.bar === 'scan-pick,scan-shutter,scan-done' && look.video,
     'site, screen 1 at 390×844 (template 6): the camera fills the screen, the status line at the top centre, Auto at the top right, the photos\' strip above the bottom bar (Photos/PDF, the shutter, Done at the bottom right) ' + JSON.stringify(look));
   const fr = (asked[0] || {}).video || {};
@@ -692,10 +692,10 @@ const READS = {
       he: (d.querySelector('[data-testid="lab-readout-he"]') || {}).textContent || '', heOk: !!(d.querySelector('[data-testid="lab-readout-he"] .text-ok'))};
   });
   await p.screenshot({path: SP + '/scanner-lab-drawer.png'});
-  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors' && drawer.tiles === 12 && /^\d+\.\d$/.test(drawer.first || '') && drawer.runs === drawer.label && / bg\b| bg threads/.test(drawer.runs || '') && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
+  ok(drawer.up && drawer.scanner && drawer.blocks === 'lab-figures,lab-settings,lab-readouts,lab-errors' && drawer.tiles === 11 && /^\d+\.\d$/.test(drawer.first || '') && drawer.runs === drawer.label && / bg\b| bg threads/.test(drawer.runs || '') && /^\d+$/.test(drawer.ms || '') && /^\d\.\d\d$/.test(drawer.conf || '')
     && /^\d+(\.\d)?$/.test(drawer.fps || '') && drawer.res === '720×1280' && /ID card 97%/.test(drawer.type) && /2\/3 check digits right/.test(drawer.mrz) && /L898902C36UTO/.test(drawer.mrz)
     && /ID 1 2345678 2/.test(drawer.he) && /✓/.test(drawer.he) && drawer.heOk,
-    'lab, screen 3 at 390×844: the Lab tools drawer pulled up over the scanner — the figures of the camera run (12 tiles: runs on, ms per frame, confidence, frames/s, resolution, the first frame), the readouts (the type with its %, the passport zone with 2 of 3 check digits right, the Hebrew ID\'s tick), Errors and Settings, no loading log '
+    'lab, screen 3 at 390×844: the Lab tools drawer pulled up over the scanner — the figures of the camera run (11 tiles: runs on, ms per frame, confidence, frames/s, resolution, the first frame), the readouts (the type with its %, the passport zone with 2 of 3 check digits right, the Hebrew ID\'s tick), Errors and Settings, no loading log '
     + JSON.stringify(drawer));
 
   // Settings: another backend starts the models again — the figures of the old way go (—)

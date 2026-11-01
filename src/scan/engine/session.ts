@@ -60,14 +60,12 @@
 // on, and the live frame does not go on after it while held — and resume() lets it go on again from a fresh
 // frame. wake() starts it at once and forgets the documents taken (Retake: the same document again).
 //
-// The gate (the frame first, 2026-11-01; docs/scan-plan.md → The CPU first): on open only the live frame's models start;
+// The gate (the frame first, 2026-11-01; docs/scan-plan.md → The GPU first): on open only the live frame's models start;
 // the readers' sessions and then the accurate model wait for its opening — the first model answer, or FIRST_WAIT_MS after
 // the live frame's models ended, up or failed, and the camera came, or could not (no camera, an early start), or a pick,
 // which does not wait for the readers either. It opens once per session (stop arms it anew); the log says when and by what
-// ("Time: next loads begin").
-//
-// The GPU joins (stage 2; engines.ts gpuJoin): each live answer asks whether it is due, unless a pick is in work; sleep
-// stops a GPU still coming (a joined one stays with the kept session, and any failure on waking leaves it for a new pool).
+// ("Time: next loads begin"). The readers also wait for a start of the live frame's models still running (readersHold):
+// a pick opens the gate at once, and nothing loads beside them.
 //
 // keepCanvases (the lab, which has no Done and keeps its session for the page's life): only the newest that
 // many pages read keep their full-size pixels; an older one is given again `released` (a 1×1 canvas: its
@@ -184,9 +182,6 @@ export class ScanSession {
   private captureMs: number | null = null;
   /** How long the first live frame took after the scanner opened (the lab's figure). */
   private readyMs: number | null = null;
-  /** From the scanner opening to the GPU taking the live frame over (the lab's figure "GPU took over, s"). */
-  private handMs: number | null = null;
-  private startedAt = 0;
   /** Auto's shots in a row with no touch (AUTO_MAX turns it off). */
   private autoRun = 0;
   /** Auto turned itself off (a person did not): the next open brings it back. */
@@ -248,10 +243,8 @@ export class ScanSession {
     this.log = parts.log || parts.engines?.log || new ScanLog();
     this.engines = parts.engines || new Engines(surface, this.log);
     // the readers share the engines' one read of models.json per open
-    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.any, this.engines.settings.cpuDir, () => this.engines.modelsInfo(), () => this.gateWait());
+    this.readers = parts.readers !== undefined ? parts.readers : new Readers(surface, this.log.any, this.engines.settings.cpuDir, () => this.engines.modelsInfo(), () => this.readersHold());
     this.engines.capHold = () => this.capHold();
-    // the model's figure shows the GPU's from now on
-    this.engines.handed = () => { this.live.times.length = 0; this.handMs = this.env.now() - this.startedAt; };
     this.camera = new Camera(this.env.getUserMedia);
     this.attempts = parts.attempts || new Attempts(surface, this.log, parts.attemptsEnv);
     this.keepCanvases = parts.keepCanvases ?? null;
@@ -260,7 +253,7 @@ export class ScanSession {
       engine: () => this.engines.engine,
       ensureSession: () => this.engines.ensureSession(),
       cameraOn: () => this.camera.on,
-      easeOff: () => this.engines.capLoads || this.engines.gpuLoading,
+      easeOff: () => this.engines.capLoads,
       log: this.log,
       answer: (raw, res) => this.answer(raw, res),
       frame: (quad, ok) => this.emit('frame', quad, ok),
@@ -292,7 +285,7 @@ export class ScanSession {
   /** The lab's figures now. */
   figures(): Figures {
     const st = this.engines.state;
-    return { ...this.live.fig, captureMs: this.captureMs, readyMs: this.readyMs, handMs: this.handMs, resolution: this.camera.resolution(), loadSeconds: st.loadSeconds, runsOn: st.label };
+    return { ...this.live.fig, captureMs: this.captureMs, readyMs: this.readyMs, resolution: this.camera.resolution(), loadSeconds: st.loadSeconds, runsOn: st.label };
   }
   private emitFigures(): void { this.emit('figures', this.figures()); }
 
@@ -338,6 +331,11 @@ export class ScanSession {
     this.gate.open();
   }
   private gateWait(): Promise<void> { return this.gateState === 'armed' ? this.gate.p : Promise.resolve(); }
+  /** What the readers' sessions wait for: the gate, then the live frame's models (a pick opens the gate while they load). */
+  private async readersHold(): Promise<void> {
+    await this.gateWait();
+    while (this.engines.starting) await this.engines.startEnd();
+  }
   /** The wait for readers still loading, one deadline per open shared by every wait: readers that hang cost
    *  READERS_WAIT_MS once, not per page or per shot. */
   private readersWait(): Promise<void> {
@@ -394,8 +392,7 @@ export class ScanSession {
    *  open is a new run for Auto: its count starts again, and an Auto that turned itself off in the last scan (the site
    *  keeps its session KEEP_MS) is back on — the amber line that said why went with that window. */
   markOpen(): void {
-    this.openedAt = this.startedAt = this.env.now();
-    this.handMs = null;
+    this.openedAt = this.env.now();
     this.autoRun = 0;
     this.refused = null; this.readersBy = null;
     if (this.autoSelfOff) { this.autoSelfOff = false; this.auto = true; this.emit('auto', true); }
@@ -445,7 +442,6 @@ export class ScanSession {
       this.emitFigures();
     }
     this.openGate('first frame');
-    if (!this.picking) this.engines.gpuJoin();  // the frame's on the CPU: the GPU may join once it is due
     // a document the last shot took still in front of the camera: Auto waits (told even with Auto off, so turning
     // it on does not take it again)
     const waiting = this.live.taken.still(raw);
@@ -670,7 +666,6 @@ export class ScanSession {
     this.camGen++;
     this.live.running = false;
     this.live.taken.clear();
-    this.engines.gpuCancel('the scanner was put away');  // no threads kept loading, or on trial with no frames
     this.camera.stop();
     this.live.hide();
   }

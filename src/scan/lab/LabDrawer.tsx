@@ -65,7 +65,6 @@ function figureItems(f: LiveFigures | null) {
     { key: 'track', label: tr('frame follows, frames/s'), value: whole(f?.followFps) },
     { key: 'trackMs', label: tr('follow, ms per frame'), value: whole(f?.followMs) },
     { key: 'ready', label: tr('first frame, s'), value: fixed(f?.readyMs == null ? null : f.readyMs / 1000, 1) },
-    { key: 'hand', label: tr('GPU took over, s'), value: fixed(f?.handMs == null ? null : f.handMs / 1000, 1) },
   ];
 }
 

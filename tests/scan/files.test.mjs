@@ -381,7 +381,7 @@ function pickSession({ main, file, grow = true, source = 'site', readers = null,
     engine: null, engineWay: 'bg-pool', state: { phase: 'ready', label: 'x', worker: true, loadSeconds: 1 }, settings: { cpuDir: 'ort' },
     log: new Log.ScanLog(null, () => null), fileThreads: [], grown: 0, capAsked: 0,
     capReady: () => up, capUpNow() { up = true; upNow(); },
-    ensureSession, ensureCap: async () => { engines.capAsked++; if (!up) await capP; return main; }, onChange: () => () => {}, gpuJoin() {}, gpuCancel() {}, stopAll() {},
+    ensureSession, ensureCap: async () => { engines.capAsked++; if (!up) await capP; return main; }, onChange: () => () => {}, stopAll() {},
     growFiles(addLane) { this.grown++; if (grow && file) { this.fileThreads = [file]; setImmediate(() => addLane(1)); } },
   };
   const pics = new Map();
@@ -948,7 +948,7 @@ await run('session.switchWay: a change while the models still load starts them a
   let release, running = null;
   const engines = {
     engine: null, engineWay: 'bg-pool', engineKey: '', state: { phase: 'loading', label: 'x', worker: true, loadSeconds: null }, settings: { cpuDir: 'ort', model: 'old', backend: 'auto' },
-    log: new Log.ScanLog(null, () => null), fileThreads: [], onChange: () => () => {}, gpuJoin() {}, gpuCancel() {}, stopAll() {}, ensureCap: async () => null, capReady: () => true, growFiles() {},
+    log: new Log.ScanLog(null, () => null), fileThreads: [], onChange: () => () => {}, stopAll() {}, ensureCap: async () => null, capReady: () => true, growFiles() {},
     get starting() { return !!running; },
     setSettings(p) { this.settings = { ...this.settings, ...p }; },
     ensureSession() {
