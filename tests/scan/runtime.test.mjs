@@ -1437,8 +1437,10 @@ await run('a pick on the failing paths: the GPU\'s late failure on a stopped way
   assert.ok(c.eng.capReady(), 'the accurate model at once');
   answer(true); await flush(20);
   assert.equal(countOf(LITE_LOAD), 0, 'the start waits for the pick: ' + timeline.join(', '));
+  await c.clock.advance(5000);
   cp.over(); await pc; await flush(20);
   assert.equal(c.eng.engineWay, 'bg-gpulive');
+  assert.equal(c.eng.state.loadSeconds, 0, 'the time the pick held it is not the start\'s');
   c.session.stop();
 }));
 

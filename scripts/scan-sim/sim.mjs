@@ -346,16 +346,18 @@ function picksMarkdown(meta, rows) {
 async function picks(base, brake, video, meta, setCurrent, mirror) {
   const { photo, pdf } = await makePicks(chromium, video + '.first.jpg', OUT), rows = [], n = RUNS ? +RUNS : 2, url = base + '/scan-lab/';
   const save = () => { fs.writeFileSync(path.join(OUT, PICK_RESULTS + '.json'), JSON.stringify({ meta, rows }, null, 1)); fs.writeFileSync(path.join(OUT, PICK_RESULTS + '.md'), picksMarkdown(meta, rows)); };
-  for (const id of PICK_PROFILES) {
+  for (const id of PICK_PROFILES.filter(x => !ONLY || ONLY.split(',').includes(x))) {
     const p = PROFILES.find(x => x.id === id);
     const specs = [{ what: 'photo', file: photo, when: 'early', cache: 'cold' }, { what: 'photo', file: photo, when: 'early', cache: 'warm' }, { what: 'photo', file: photo, when: 'loaded', cache: 'warm' }];
     if (id === '4-strong') specs.push({ what: 'pdf 3 pages', file: pdf, when: 'early', cache: 'warm' }, { what: 'pdf 3 pages', file: pdf, when: 'loaded', cache: 'warm' });
     for (let run = 1; run <= n; run++) {
       setCurrent(p);
       const R = await rig(p, video, brake, { url: base });
+      const seen = { main: +(meta.baseline.main / R.rate.main).toFixed(1), worker: +(meta.baseline.worker / R.rate.worker).toFixed(1) };
+      console.log(id, '#' + run, 'measured slowdown page x' + seen.main + ', worker x' + seen.worker);
       for (const spec of specs) {
         const r = await pickRun(R, p, run, spec, url, mirror).catch(e => ({ profile: id, run, what: spec.what, when: spec.when, cache: spec.cache, failed: e.message.slice(0, 200) }));
-        rows.push(r); save();
+        rows.push({ ...r, speed: seen }); save();
         console.log(id, '#' + run, spec.what, spec.when, spec.cache, r.failed || `at ${r.pickAtS} (before first: ${r.beforeFirstFrame}) first page ${r.firstPageS}, ready ${r.allReadyS}, pages ${r.pages}, live back ${r.liveBack}, errors ${r.errors.length}`);
         for (const e of r.errors || []) console.log('   !', e);
       }

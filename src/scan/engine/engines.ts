@@ -648,14 +648,15 @@ export class Engines {
     let ways = this.waysFor(want, inWorker);
     if (ways[0] && ways[0].gpuLive && !(await this.adapterUp())) ways = ways.filter(w => !w.gpuLive);
     ways: for (const w of ways) {
-      // a way a pick stopped is tried again after it: its time starts again, and no failure was noted
-      for (let again = false; ; again = true) {
+      // a way a pick stopped is tried again after it, no failure noted
+      for (;;) {
         // a pick holding this start, or the accurate model's thread loading now (a pick, or the way before this one):
         // waited for — never two models loading at once
+        const held = !!this.pickHold;
         await this.mayStart();
         let gone = this.closed(g);
         if (gone) throw gone;  // closed while a pick held it or the capture thread loaded
-        if (again) t0 = this.env.now();
+        if (held) t0 = this.env.now();  // the time of this start begins after the pick
         log.status({ key: 'trying_way', way: w.label }, 0);
         const cand = w.gpuLive ? this.poolEngine(GPU_THREADS, 'webgpu', capOf) : w.pool ? this.poolEngine(this.POOL, null, capOf) : w.worker ? this.workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : cpuDir) : this.pageEngine();
         const trial = { cand, worker: w.worker, yielded: false };
