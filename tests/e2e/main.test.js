@@ -1151,9 +1151,11 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const shown = () => T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length >= 1, 8000);
     // given while the window still takes over from the one closed before, a page can land on the old session: given once more
     let a = await give();
-    if (!(await shown())) { console.log('corner editor check: the page was not shown, given again'); a = await give(); await shown(); }
+    const thumb = () => document.querySelector('[data-testid="scan-thumb"]:not([data-kept])');
+    // (the old window going can also take a page shown a moment ago with it)
+    if (!(await shown()) || !(await T.until(thumb, 1000))) { console.log('corner editor check: the page was not shown, given again'); a = await give(); await shown(); await T.until(thumb, 8000); }
     // its Edit corners button on the photo grown in the strip (template 6)
-    document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
+    thumb().click();
     const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
     document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]').click();
     r.editor = await T.until(() => document.querySelector('[data-testid="corner-canvas"][data-fit]'), 4000);
