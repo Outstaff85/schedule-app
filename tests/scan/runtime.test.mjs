@@ -177,11 +177,13 @@ await run('the ways in the lab\'s order: auto / webgpu / wasm, with and without 
   for (const w of eng.WAYS) eng.stuckWays.add(w.id);
   assert.deepEqual(ids(eng.waysFor('auto', true)), ['bg-gpulive', 'bg-pool', 'bg-cpu', 'bg-cpu1', 'page-cpu']);
   eng.stuckWays.clear();
-  // a weak phone: the pool first — under 4 GB, under 4 cores, unknown cores (counted as 2); unknown memory alone (counted
-  // as 4 GB) is no weak phone
+  // a weak phone: the pool first — under 4 GB, under 4 cores; unknown memory (counted as 4 GB) or unknown cores (a phone
+  // that hides them) alone is no weak phone, and the pool's size for unknown cores stays the safe 1
   const WEAK = ['bg-pool', 'bg-gpulive', 'bg-cpu', 'bg-cpu1', 'page-cpu'];
-  for (const env of [{ memory: 3 }, { cores: 3 }, { cores: 0 }]) assert.deepEqual(ids(newEngines(SU.siteSurface(), env).eng.waysFor('auto', true)), WEAK, JSON.stringify(env));
+  for (const env of [{ memory: 3 }, { cores: 3 }, { memory: 3, cores: 0 }]) assert.deepEqual(ids(newEngines(SU.siteSurface(), env).eng.waysFor('auto', true)), WEAK, JSON.stringify(env));
   assert.deepEqual(ids(newEngines(SU.siteSurface(), { memory: 0 }).eng.waysFor('auto', true))[0], 'bg-gpulive');
+  assert.deepEqual(ids(newEngines(SU.siteSurface(), { cores: 0 }).eng.waysFor('auto', true))[0], 'bg-gpulive');
+  assert.deepEqual(ids(newEngines(SU.siteSurface(), { cores: 0, memory: 0 }).eng.waysFor('auto', true))[0], 'bg-gpulive');
   assert.deepEqual(ids(newEngines(SU.siteSurface(), { memory: 4, cores: 4 }).eng.waysFor('auto', true))[0], 'bg-gpulive');
   // only on auto with a light model apart: one model for both keeps the GPU first (a pool of it would hold three copies
   // of the accurate model), and the lab's explicit backends stay what they are

@@ -572,8 +572,9 @@ export class Engines {
     return ways;
   }
 
-  /** Under 4 GB of memory or 4 cores (unknown counts as 4 GB and 2 cores). */
-  private weak(): boolean { return (this.env.memory || 4) < 4 || (this.env.cores || 2) < 4; }
+  /** Under 4 GB of memory or 4 cores (unknown memory counts as 4 GB, unknown cores as not weak: a phone that hides its
+   *  cores is as likely an 8-core one, and the pool's size for it stays the safe one, POOL). */
+  private weak(): boolean { return (this.env.memory || 4) < 4 || (!!this.env.cores && this.env.cores < 4); }
 
   /** A start of the model is running (on the settings it began with), a pick holding it or not. */
   get starting(): boolean { return !!this.ensuring; }
