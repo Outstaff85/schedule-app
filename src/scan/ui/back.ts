@@ -4,9 +4,11 @@
 // hand: back to where it was opened from) — and never leave the site. One history entry per step that is open
 // (pushed when it opens, its state { scanBack: its depth }); on popstate every step above the depth landed on is
 // closed, the top first. A step closed by hand (a tap, Cancel, Done, a swipe down) takes its entry back off: the
-// entries above the open steps go in one history.go(-n) a moment later — its popstate lands on the depth of the
-// steps still open, so it closes nothing — and a step opened again before that reuses the stale top entry
-// (React's StrictMode mounting an effect twice), so the history never grows nor keeps stale entries.
+// entries above the open steps go in one history.go(-n) a moment later, and a step opened again before that reuses the
+// stale top entry (React's StrictMode mounting an effect twice), so the history never grows nor keeps stale entries.
+// That history.go is on its way for a moment: its popstate is ours and closes nothing, and a step opened meanwhile gets
+// its entry only when it has landed (settle), as a pushState under a traversal under way is what that traversal then
+// lands below, which closed the new step (a window opened right after the last one closed by hand).
 //
 // The lab (/scan-lab/ is the scanner page itself, opened in a tab of its own by Admin → Scanner lab): with nothing
 // open, back goes to the page it was opened from when that is in this tab's history (a same-site page before it);
@@ -17,8 +19,11 @@ import * as React from 'react';
 
 type Step = { close: () => void };
 const KEY = 'scanBack';
+/** How long our own history.go may stay unanswered before the history is taken as landed (ms). */
+const GO_WAIT_MS = 1000;
 const steps: Step[] = [];
-let stale = 0;          // our entries above the open steps, still to be gone back over
+let entries = 0;        // our entries in the history, once a history.go under way has landed
+let going: number | null = null;  // our own history.go under way (its give-up timer)
 let timer: number | null = null;
 let listening = false;
 
@@ -31,8 +36,31 @@ const stateAt = (depth: number): Record<string, unknown> => {
   return { ...cur, [KEY]: depth };
 };
 
+/** The history made to match the steps open: entries too many gone back over at once, the missing ones pushed — not
+ *  while a history.go of ours is under way (its popstate comes back here). */
+function settle(): void {
+  if (going != null) return;
+  if (entries > steps.length) {
+    const n = entries - steps.length;
+    entries = steps.length;
+    going = window.setTimeout(landed, GO_WAIT_MS);
+    history.go(-n);
+    return;
+  }
+  while (entries < steps.length) history.pushState(stateAt(++entries), '');
+}
+
+function landed(): void {
+  if (going != null) window.clearTimeout(going);
+  going = null;
+  settle();
+}
+
 function onPop(e: PopStateEvent): void {
   const depth = depthOf(e.state);
+  // our own history.go landed: nothing to close, and a step opened on its way gets its entry now
+  if (going != null) { entries = depth; landed(); return; }
+  entries = depth;
   // landed lower than the steps open: each above it closed, the top first (a close may close others: ours too)
   while (steps.length > depth) {
     const top = steps.pop()!;
@@ -48,10 +76,7 @@ function listen(): void {
 
 function flush(): void {
   timer = null;
-  if (!stale) return;
-  const n = stale;
-  stale = 0;
-  history.go(-n);
+  settle();
 }
 
 /** A step opened: its history entry pushed (or the stale top one reused); the function given back takes it off
@@ -61,13 +86,11 @@ export function pushBack(close: () => void): () => void {
   listen();
   const step: Step = { close };
   steps.push(step);
-  if (stale === 1) { stale = 0; history.replaceState(stateAt(steps.length), ''); }
-  else history.pushState(stateAt(steps.length), '');
+  if (timer == null) settle();  // else the entries left over are gone over a moment later: a stale one stays this step's
   return () => {
     const i = steps.indexOf(step);
     if (i < 0) return;  // closed by back: its entry is gone already
     // it and every step above it (closed with it) taken off
-    stale += steps.length - i;
     steps.length = i;
     if (timer == null) timer = window.setTimeout(flush, 0);
   };
@@ -98,7 +121,7 @@ export function labGuard(): void {
   let armed = false;
   const arm = () => {
     // the guard is the bottom step: armed only while no step is open (tried again on the next touch)
-    if (armed || steps.length || stale) return;
+    if (armed || steps.length || entries || going != null) return;
     armed = true;
     pushBack(() => { armed = false; });
   };
