@@ -667,6 +667,12 @@ await run('a stopped thread: its calls fail, its watch is cleared, it is termina
   assert.equal(clock.timers.size, 0); assert.ok(workers[before].dead);
 });
 
+// ── the shutter (ui/useScanSession.ts ready): a pick before the first answer does not turn it on ──
+await run('a pick\'s statuses say nothing of the live frame; every other status does', () => {
+  for (const key of ['preparing_accurate', 'picture_finding', 'picture_cutting', 'picked', 'pick_failed', 'pick_open_failed']) assert.equal(ST.pickStatus({ key }), true, key);
+  for (const key of ['finding', 'corners_out', 'edges_unclear', 'hold', 'found', 'checking', 'not_document', 'taken', 'no_frame', 'captured', 'refining', 'looking_more', 'shot_failed', 'stopped', 'camera_failed']) assert.equal(ST.pickStatus({ key }), false, key);
+});
+
 // ── the failures' log ──
 await run('noteFail: the kind of each failure (GPU / memory / hang / error), said in the errors, the last 8 kept', () => {
   const store = memStore(), log = new LG.ScanLog(store, () => 6), errs = [];

@@ -69,6 +69,11 @@ export function statusEnglish(s: EngineStatus): string {
  *  - picked: a pick is done — pages from files;
  *  - pick_failed: a picked file could not be worked on (the errors say why; the ones after it are not shown);
  *  - pick_open_failed: a picked file could not be opened (a PDF pdf.js could not read, pdf.js not loaded). */
+/** The statuses of a pick: they say nothing of the live frame, so a pick before its first answer does not turn the
+ *  shutter on (ui/useScanSession.ts ready). */
+export const pickStatus = (s: Pick<SessionStatus, 'key'>): boolean =>
+  s.key === 'preparing_accurate' || s.key === 'picture_finding' || s.key === 'picture_cutting' || s.key === 'picked' || s.key === 'pick_failed' || s.key === 'pick_open_failed';
+
 export type SessionStatus =
   | { key: 'finding' }
   | { key: 'corners_out'; n: number }
