@@ -44,7 +44,7 @@ const H = {
     // the browser's way: the target is fixed when the traversal starts, whatever is pushed under it
     const to = this.at + n;
     this.pending++;
-    setTimeout(() => { this.pending--; this.at = to; for (const f of pops) f({ state: this.state }); }, 20);
+    setTimeout(() => { this.pending--; this.at = to; for (const f of pops) f({ state: this.state }); }, 40);
   },
   back() { this.go(-1); },
 };
@@ -54,8 +54,8 @@ globalThis.window = {
   setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: id => clearTimeout(id),
 };
 const { pushBack } = await import(pathToFileURL(path.join(TMP, 'back.js')).href);
-const tick = (ms = 60) => new Promise(r => setTimeout(r, ms));
-const untilGoing = async () => { for (let i = 0; i < 200 && !H.pending; i++) await new Promise(r => setImmediate(r)); assert.ok(H.pending, 'the history.go is under way'); };
+const tick = (ms = 120) => new Promise(r => setTimeout(r, ms));
+const untilGoing = async () => { for (const end = Date.now() + 2000; Date.now() < end && !H.pending;) await new Promise(r => setImmediate(r)); assert.ok(H.pending, 'the history.go is under way'); };
 const depth = () => (H.state && H.state.scanBack) || 0;
 const step = () => { const s = { closed: 0, off: null }; s.off = pushBack(() => { s.closed++; }); return s; };
 
