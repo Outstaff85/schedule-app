@@ -225,8 +225,15 @@ def _gen(*a):
     return ["-m", "gen", *a]
 
 
+def _finished(pattern):
+    """The newest set drawn to its end: gen build writes run.json last, so a set whose drawing was stopped (a reboot, the
+    PC out of memory — the smoke run of 2026-11-02) is not taken as there, and its step draws it again."""
+    got = sorted((p for p in work().glob(pattern) if (p / "run.json").exists()), key=lambda p: p.stat().st_mtime)
+    return got[-1] if got else None
+
+
 def _exam_cuts():
-    return _newest("gen/runs/cuts-*-exam")
+    return _finished("gen/runs/cuts-*-exam")
 
 
 def _midv(part):
@@ -249,7 +256,7 @@ STEPS = [
     ("build_cuts", None, lambda c: _gen("build", "--model", "doctype,mrz,he,face", "--count", str(size("cuts")), "--seed", str(c["seed"]),
                                         "--out", str(run_dir(c, "cuts")), *focus_args()), None),
     ("qa_cuts", None, lambda c: _gen("qa", "--run", str(run_dir(c, "cuts"))), None),
-    ("exam_e2", "edges", lambda c: None if _newest("gen/runs/edges-*-exam") else _gen("build", "--model", "edges", "--exam"), None),
+    ("exam_e2", "edges", lambda c: None if _finished("gen/runs/edges-*-exam") else _gen("build", "--model", "edges", "--exam"), None),
     ("exam_docs", ("edges", "doctype"), lambda c: None if _exists(work() / "synth" / "docs-exam" / "examples.json")
      else ["synth_docs.py", "--templates", "--exam"], None),
     ("exam_cuts", None, lambda c: None if _exam_cuts() else _gen("build", "--model", "doctype,mrz,he,face", "--exam",

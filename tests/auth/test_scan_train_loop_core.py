@@ -423,8 +423,9 @@ def test_part_fours_commands_skipped_when_missing(work):
 
 def test_exam_sets_drawn_only_when_missing(work):
     clock = Clock(T(2026, 10, 25, 2, 0))
-    (work / "gen" / "runs" / "edges-s7-n300-exam").mkdir(parents=True)
-    (work / "gen" / "runs" / "cuts-s7-n300-exam").mkdir(parents=True)
+    for folder in ("edges-s7-n300-exam", "cuts-s7-n300-exam"):   # drawn to the end: run.json written
+        (work / "gen" / "runs" / folder).mkdir(parents=True)
+        (work / "gen" / "runs" / folder / "run.json").write_text("{}")
     (work / "synth" / "docs-exam").mkdir(parents=True)
     (work / "synth" / "docs-exam" / "examples.json").write_text("[]")
     r = Runner(clock)
@@ -588,3 +589,17 @@ def test_a_smoke_run_draws_small_trains_one_epoch_and_keeps_its_own_state(monkey
     assert loop.state_path(True).name == "state-dry-run.json"
     # train_he.py refuses fewer than 1000 fields (synth_fields.py: about 20 a page; 50 pages gave 998)
     assert loop.SMOKE_SIZES["he"] * 15 >= 1000
+
+
+def test_an_exam_set_stopped_while_drawn_is_drawn_again(work):
+    """An exam set is there only once gen build wrote its run.json (last): the 2026-11-02 smoke run was stopped inside
+    exam_cuts, went on with the half-drawn folder taken as there, and train_he failed on it ("not an exam run")."""
+    steps = {name: argv for name, _, argv, _ in loop.STEPS}
+    c = {"id": "c1", "seed": 11}
+    for name, folder in (("exam_cuts", "cuts-s7-n300-exam"), ("exam_e2", "edges-s7-n300-exam")):
+        d = work / "gen" / "runs" / folder
+        (d / "img").mkdir(parents=True)
+        assert steps[name](c) is not None, name + ": a half-drawn set is drawn again"
+        (d / "run.json").write_text("{}")
+        assert steps[name](c) is None, name + ": a finished set is kept"
+    assert loop._exam_cuts() == work / "gen" / "runs" / "cuts-s7-n300-exam"
