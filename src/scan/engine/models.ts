@@ -166,6 +166,28 @@ export function newGpuPass(o: Opened, stamp: string | null, ort: string, ua: str
 // passed: the GPU layout whose check passed before on this device with the same key (gpuPassed): it is tried first
 // and its check skipped — "Time: GPU check skipped — passed before on this device (<layout>)".
 export interface OpenOpts { bytes?: Promise<Uint8Array>; stamp?: string | null; time?: OnLog; passed?: GpuLayout | null }
+/** A step given up after 20 s of running time: a page the phone froze meanwhile (the screen off, another app) does not
+ *  count, or a thaw would read as a hang, and a hang keeps the GPU away for a day (engines.ts gpuHang). */
+export function stepLimit<T>(p: Promise<T>, what: string): Promise<T> {
+  const clock = (): number => performance.now();
+  let last = clock(), frozen = 0;
+  const seen = (): void => { const t = clock(); if (t - last > 3000) frozen += t - last; last = t; };
+  const tick = setInterval(seen, 1000);
+  const late = new Promise<never>((_, no) => {
+    const arm = (ms: number): void => {
+      setTimeout(() => {
+        seen();
+        if (!frozen) { no(new Error(what + ' took over 20 s')); return; }
+        const more = frozen;
+        frozen = 0;
+        arm(more);
+      }, ms);
+    };
+    arm(20000);
+  });
+  return Promise.race([p, late]).finally(() => clearInterval(tick));
+}
+
 /** The error of a step given up on (openSession's limit). */
 export const isStepHang = (text: string): boolean => / took over 20 s$/.test(text);
 export const downloadProgress = (model: string, onStatus: OnStatus) => (got: number, total: number): void => onStatus({ key: 'downloading', model, got, total }, total ? got / total : 0);
@@ -187,7 +209,7 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
       onStatus({ key: 'starting', model, ...on }, 1);
       // A step that hangs (seen on a phone) is given up after 20 s. No download counts: the model's bytes are here, and a
       // thread fetched ONNX Runtime's .wasm before it came here (fetchRuntime).
-      const limit = <T>(p: Promise<T>, what: string): Promise<T> => Promise.race([p, new Promise<never>((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
+      const limit = stepLimit;
       const provider: ExecutionProvider = ep === 'webgpu' ? { name: 'webgpu', preferredLayout: layout as GpuLayout } : ep;
       let t0 = now();
       const sess = await limit(ort.InferenceSession.create(bytes, { executionProviders: [provider], graphOptimizationLevel: 'all' }), 'starting');

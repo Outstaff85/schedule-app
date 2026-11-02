@@ -1555,6 +1555,16 @@ await run('openSession: a step that hangs on the GPU tries no second layout; on 
   p.catch(() => {});
   await fire();
   await assert.rejects(p, /warm-up took over 20 s/);
+  // a page frozen meanwhile is no hang: the limit waits for the time lost, the step ends by itself
+  let done = () => {}, over = false;
+  const step = MO.stepLimit(new Promise(r => { done = r; }), 'starting');
+  step.catch(() => { over = true; });
+  const realNow = performance.now, jump = realNow.call(performance) + 60000;
+  performance.now = () => jump;
+  await fire();
+  performance.now = realNow;
+  assert.equal(over, false, 'not given up on the thaw');
+  done('up'); assert.equal(await step, 'up');
   // an error on the first layout: the second is tried, as ever
   made = [];
   const failing = fakeOrt(made, n => (n === 'webgpu:NHWC' ? 'broken' : null));
