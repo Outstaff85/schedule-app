@@ -136,7 +136,7 @@ def classes_of(model, rows):
 
 SOURCES = {"edges": ("drawn", "template", "washed", "pdf", "none"), "doctype": ("drawn", "template", "midv", "smartdoc"),
            "he": ("template",), "cuts": ("drawn", "template", "washed", "pdf", "attempt", "none")}
-RECIPES = ("single", "pair", "card_on_sheet", "painted", "none", "partial")   # gen/scene.py's
+RECIPES = ("single", "pair", "card_on_sheet", "painted", "none", "partial", "twins")   # gen/scene.py's
 
 
 def _table(rows, key_row, key_col, rows_order, cols_order, link=None):

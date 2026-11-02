@@ -436,18 +436,47 @@ function pictures() {
   return out;
 }
 
+// Where the white-page split left the lab's former page on purpose (owner, 2026-11-02: the solid blocks):
+// a pale photo the bands missed is now one photo; two photos 42 % and 24 % of the page wide, which no band held, two.
+const PHOTOS_CHANGED = { 'a photo fading to white': b => b.length === 1, 'random 4': b => b.length === 2 };
+
 await run('photosOnPage and whiteEdges on the same pictures', () => {
   let withPhotos = 0, whites = 0;
   for (const [label, img] of pictures()) {
     const { w, h } = PI.photosSize(img.naturalWidth, img.naturalHeight);
     const a = page.photosOnPage(img), b = PI.photosOnPagePixels({ data: img.px(w, h), width: w, height: h }, img.naturalWidth, img.naturalHeight);
-    same(a, b, label + ' photos'); if (b.length) withPhotos++;
+    if (PHOTOS_CHANGED[label]) assert.ok(PHOTOS_CHANGED[label](b), label + ' photos: ' + JSON.stringify(b)); else same(a, b, label + ' photos');
+    if (b.length) withPhotos++;
     const eh = Math.max(1, Math.round(PI.EDGES_W * img.naturalHeight / img.naturalWidth));
     const c = !!page.whiteEdges(img), d = PI.whiteEdgesPixels({ data: img.px(PI.EDGES_W, eh), width: PI.EDGES_W, height: eh });
     same(c, d, label + ' white edges'); if (d) whites++;
   }
   assert.ok(withPhotos >= 2 && whites >= 1, `photos found on ${withPhotos} pictures, ${whites} white to the edges`);
   return `${withPhotos} with photos, ${whites} white to the edges`;
+});
+
+// Two sides of an ID card scanned at their real size on an A4 page (85.6 mm of 210: 41 % of its width, under the
+// bands' 45 %), side by side, a form's framed tables (white inside: no photo), a card as pale as the paper (left to
+// the edges model) — each photo found is the card it covers.
+await run('the white-page split: cards at their real size, side by side, framed tables', () => {
+  const white = [250, 250, 250], A4 = [2480, 3508], cw = 85.6 / 210, ch = 54 / 297;
+  const card = (x, y, c) => [x, y, x + cw, y + ch, ...c];
+  const frame = (x0, y0, x1, y1) => { const t = 0.002; return [[x0, y0, x1, y0 + t, 30, 30, 30], [x0, y1 - t, x1, y1, 30, 30, 30], [x0, y0, x0 + t, y1, 30, 30, 30], [x1 - t, y0, x1, y1, 30, 30, 30]]; };
+  const cases = [
+    ['two sides one above the other', [card(0.3, 0.15, [120, 140, 170]), card(0.3, 0.4, [150, 130, 120])], 2],
+    ['two sides side by side', [card(0.06, 0.15, [120, 140, 170]), card(0.52, 0.15, [150, 130, 120])], 2],
+    ['one card on a page', [card(0.3, 0.3, [90, 100, 120])], 1],
+    ['framed tables with text', [...frame(0.05, 0.1, 0.95, 0.4), ...frame(0.05, 0.45, 0.95, 0.9), [0.1, 0.15, 0.6, 0.165, 40, 40, 40], [0.1, 0.5, 0.8, 0.515, 40, 40, 40]], 0],
+    ['a card as pale as the paper', [card(0.3, 0.3, [246, 246, 246])], 0],
+  ];
+  for (const [label, boxes, n] of cases) {
+    const img = picture(A4[0], A4[1], white, boxes, 90 + n), { w, h } = PI.photosSize(A4[0], A4[1]);
+    const got = PI.photosOnPagePixels({ data: img.px(w, h), width: w, height: h }, A4[0], A4[1]);
+    assert.equal(got.length, n, label + ': ' + JSON.stringify(got));
+    // each found photo lies on its card (shares of the page, within 2 % of the page)
+    got.forEach((b, k) => { const c = boxes[k]; assert.ok([b[0] / A4[0] - c[0], b[1] / A4[1] - c[1], b[2] / A4[0] - c[2], b[3] / A4[1] - c[3]].every(v => Math.abs(v) < 0.02), label + ' photo ' + k + ': ' + JSON.stringify(b)); });
+  }
+  return cases.length + ' pages';
 });
 
 // ── the readers ──

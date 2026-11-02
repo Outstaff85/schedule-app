@@ -49,7 +49,9 @@ RESERVE = 0.2   # the share of the free memory a drawing run leaves to the syste
 
 
 def memory():
-    """(free, total) bytes of the PC's memory; (None, None) when it cannot be read."""
+    """(free, total) bytes of the PC's memory; (None, None) when it cannot be read. On Windows free is the smaller of
+    the free physical memory and the commit still available (memory plus page file): a cycle's edges build failed on
+    2026-11-01 with "the paging file is too small" (WinError 1455) though the physical memory held it."""
     try:
         if sys.platform == "win32":
             import ctypes
@@ -64,7 +66,7 @@ def memory():
             st.dwLength = ctypes.sizeof(Status)
             if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
                 return None, None
-            return st.ullAvailPhys, st.ullTotalPhys
+            return min(st.ullAvailPhys, st.ullAvailPageFile), st.ullTotalPhys
         page = os.sysconf("SC_PAGE_SIZE")
         return os.sysconf("SC_AVPHYS_PAGES") * page, os.sysconf("SC_PHYS_PAGES") * page
     except (OSError, ValueError, AttributeError):

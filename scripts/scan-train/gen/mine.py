@@ -12,7 +12,7 @@ manifest id — a phone cut's page id <scene>-d<j> is stripped to it —: its ba
 and camera tilt), and gen real's index (<home>/real, --real) for the real pictures people corrected.
 
 1. focus.json — per model (edges, doctype, mrz, he, face: the exam row's model file), a sampling multiplier for each
-   value of each axis: the background category (bgCategory), the configuration (recipe: single, pair, card_on_sheet,
+   value of each axis: the background category (bgCategory), the configuration (recipe: single, pair, card_on_sheet, twins,
    painted, none, partial), the document kind (class), the camera's tilt bucket (tilt: 0-15, 15-30, 30-45 degrees) and
    the stage in the phone's search (stage: answer — the first page found, next — a page found after others were painted
    over, inside — a card found inside its sheet). Only the newest model examined counts (new/, else the lab's, else
@@ -62,7 +62,7 @@ FLOOR_SHARE = 0.5
 PHASH_NEAR = 10            # pHash bits (of 64) at most: a candidate this close to an exam picture is left out
 TILT_BUCKETS = ((0, 15), (15, 30), (30, 45))
 WHICH_ORDER = ("new", "lab", "parent")
-STAGE_RECIPES = {"next": ("pair", "painted"), "inside": ("card_on_sheet",)}   # every scene has a first answer: no recipe of its own
+STAGE_RECIPES = {"next": ("pair", "painted", "twins"), "inside": ("card_on_sheet",)}   # every scene has a first answer: no recipe of its own
 SYNTH_MAX = 200            # matching made-up examples kept per model
 PICTURES = (".jpg", ".jpeg", ".png")
 FOCUS, POOL, NOTE = "focus.json", "pool.jsonl", "note.txt"

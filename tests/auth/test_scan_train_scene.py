@@ -298,7 +298,7 @@ def test_the_background_and_a_document_share_one_homography():
 
 # ---------- the labels are where the pixels are ----------
 @pytest.mark.parametrize("recipe,bend", [("single", None), ("pair", None), ("card_on_sheet", None), ("painted", None),
-                                         ("single", "bend"), ("single", "fold")])
+                                         ("twins", None), ("single", "bend"), ("single", "fold")])
 def test_corners_and_field_boxes_reproject_within_half_a_pixel(recipe, bend):
     worst, measured, fields = 0.0, 0, 0
     for sc in scenes(recipe, N, force_bend=bend):
@@ -383,6 +383,28 @@ def test_a_pair_writes_the_next_page_with_the_answer_painted_over():
         c = q.mean(0).astype(int)
         patch = nxt[c[1] - 3:c[1] + 4, c[0] - 3:c[0] + 4]
         assert patch.std(axis=(0, 1)).max() < 6          # the answer painted over in one colour
+
+
+def test_twin_cards_lie_close_and_the_upper_or_left_one_is_the_answer():
+    """Two ID-1 cards 0.5–15 mm apart, nearly one turn, never overlapping; the answer the upper one (the left one side
+    by side), the other next — never a frame round both (owner, 2026-11-02)."""
+    stacked = beside = 0
+    for sc in scenes("twins", 60, seed=13):
+        assert len(sc.docs) == 2 and all(d.page.material == "card" for d in sc.docs)
+        a, b = (d.corners() for d in sc.docs)
+        assert gs.separated(a, b, 0.0) and not gs.separated(a, b, gs.TWIN_GAP[1] + 0.01)
+        labels = gs.doc_labels(sc)
+        roles = gs.roles(sc, labels)
+        assert [r for _, r in roles] == ["answer", "next"]
+        ans, nxt = (np.asarray(l["quadDoc"]) for l, _ in roles)
+        share = min(ans[:, 1].max(), nxt[:, 1].max()) - max(ans[:, 1].min(), nxt[:, 1].min())
+        if share > 0.5 * min(np.ptp(ans[:, 1]), np.ptp(nxt[:, 1])):
+            beside += 1
+            assert ans[:, 0].min() <= nxt[:, 0].min()
+        else:
+            stacked += 1
+            assert ans[:, 1].min() <= nxt[:, 1].min()
+    assert stacked >= 10 and beside >= 5, (stacked, beside)
 
 
 def test_next_pictures_and_the_painted_recipe_paint_as_the_lab_on_the_final_frame():
