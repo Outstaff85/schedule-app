@@ -373,6 +373,9 @@ function fakeEngine(label, delay, log) {
     async warp(rgba, w, h, pts, upright) { this.warps.push({ w, h, pts, upright }); if (log && upright) log.push(label + ' warp ' + w + 'x' + h); return { data: new Uint8ClampedArray(6 * 4 * 4), width: 6, height: 4, turn: upright ? 0 : -1 }; } };
 }
 // capLater: the accurate model not up yet — ensureCap waits until engines.capUpNow() is called (the light model first)
+// raf: a screen frame every 16 ms, as a browser gives it. On setImmediate the live frame's animate ran millions of times a
+// second while a test's camera was on, and its last second of frames (Live.uiFrames, shifted one by one) grew so long
+// that one test held the thread 80 s here and 40 minutes on a CI runner (2026-11-02).
 function pickSession({ main, file, grow = true, source = 'site', readers = null, getUserMedia = undefined, ensureSession = async () => {}, capLater = false } = {}) {
   const server = fakeServer();
   let up = !capLater, upNow = null;
@@ -388,7 +391,7 @@ function pickSession({ main, file, grow = true, source = 'site', readers = null,
   let ids = 0;
   const s = new Sess.ScanSession((source === 'site' ? Surf.siteSurface : Surf.labSurface)(async () => 'tok'), { engines, readers,
     attemptsEnv: { idb: fakeIDB(), fetch: server.fetch, now: () => Date.now(), online: () => true, encode: async c => 'j' + c.width, setTimeout: () => {}, onOnline: () => () => {} },
-    env: { now: () => performance.now(), raf: fn => setImmediate(fn), ...(getUserMedia ? { getUserMedia } : {}), setTimeout: (fn, ms) => { setTimeout(fn, ms); }, bitmap: null, newId: () => 'p' + (++ids),
+    env: { now: () => performance.now(), raf: fn => setTimeout(fn, 16), ...(getUserMedia ? { getUserMedia } : {}), setTimeout: (fn, ms) => { setTimeout(fn, ms); }, bitmap: null, newId: () => 'p' + (++ids),
       follower: { reset() {}, since: (t, p) => p, step: async () => null },
       files: { objectUrl: f => 'blob:' + f.name, pdfPages: async function* () {}, decode: async url => pics.get(url) } } });
   const log = { pages: [], preview: [], status: [], lines: [] };
@@ -962,7 +965,7 @@ await run('session.switchWay: a change while the models still load starts them a
   };
   const s = new Sess.ScanSession(Surf.labSurface(async () => 'tok'), { engines, readers: null,
     attemptsEnv: { idb: fakeIDB(), fetch: async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }), now: () => Date.now(), online: () => true, encode: async () => 'j', setTimeout: () => {}, onOnline: () => () => {} },
-    env: { now: () => performance.now(), raf: fn => setImmediate(fn), setTimeout: (fn, ms) => { setTimeout(fn, ms); }, bitmap: null, newId: () => 'x', follower: { reset() {}, since: (t, p) => p, step: async () => null } } });
+    env: { now: () => performance.now(), raf: fn => setTimeout(fn, 16), setTimeout: (fn, ms) => { setTimeout(fn, ms); }, bitmap: null, newId: () => 'x', follower: { reset() {}, since: (t, p) => p, step: async () => null } } });
   void engines.ensureSession();  // the camera's models loading since the lab opened
   const sw = s.switchWay({ model: 'new' });
   await settle();

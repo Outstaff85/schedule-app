@@ -220,6 +220,21 @@ Packages (one commit each):
 - Removed: `scan-pipeline.js` (its frozen copy stays only as the test's `tests/scan/legacy.js`), the page's `#aiScanOverlay` with its queue and review screens, the corner editor, the client-side alignment and tightening (`autoPreAlignScan`, `refineQuadCorners`, `finalTightenPass`), the photo twin for zoomed crops, the "ספח only" and multi-file paths, their CSS and loader (`ensureScanPipelineLoaded`). What they did is now the scanner's (the server's cut, the corners, the kinds, adding / removing pages) or the scan process's. A blurry page is marked in the window instead of stopping the reading. `preprocess_scan`'s old enhance-only request and its dormant OpenCV document finder were removed too (owner, 2026-10-19); such a request now gets 400.
 - With it: a scanned contract that could not be saved marks the worker (`contractUploadFailed`, a red notice until a contract document is added; docs/scan.md → Contracts).
 
+## Open decisions (the owner's, put off on 2026-11-02)
+
+Not decided yet; each keeps today's behaviour until the owner chooses. When one is decided, it is written here with the
+owner's word and date, then built.
+
+1. **Weak phones (under 4 GB of memory or 4 cores):** today they keep the CPU pool instead of GPU first (the guard). Keep
+   the guard, or let them try the GPU first too? The owner wants a weak-phone simulation first (`scripts/scan-sim/`).
+2. **A broken GPU remembered on the phone?** Today it is not (the 2026-10-22 rule): a phone whose GPU fails pays up to
+   25 s at every open before the CPU takes over. Remembering it saves that wait but keeps a phone off the GPU after a
+   one-off failure.
+3. **The weak phone's first open:** in the simulator's 1-weak profile (4 cores, 6× slower, no GPU) the frame follows at
+   2–3 fps for the first 10 s of a first open (the code before the fast start: 21–22); from 30 s on it is as before,
+   and the owner's phone is fine. Not studied; likely the accurate model and the readers loading at once on a weak
+   CPU after the first frame.
+
 ## Expected time
 
 - ID + appendix (ספח): from ~45–90 s to ~20–35 s; passport: from ~35–60 s to ~15–25 s.
