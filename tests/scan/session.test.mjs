@@ -1372,12 +1372,13 @@ await run('the gate: the readers\' sessions wait for the first answer, on the pl
   await flush(20);
   await a.clock.runFor(3000);
   assert.deepEqual(a.created, [], 'no session while the live frame\'s models load');
-  assert.match(a.imported, /ort\.wasm\.min\.mjs$/);
+  assert.ok(!a.imported, 'nor ONNX Runtime');
   assert.equal(a.s.readers.info.version, 'v5', 'a shot knows the model version meanwhile');
   a.s.markOpen();  // the "Ready" line counts from the open
   up(); await start;
   await a.clock.runFor(200, () => a.created.length > 0);
   assert.equal(a.created.length, 1, 'once answered');
+  assert.match(a.imported, /ort\.wasm\.min\.mjs$/);
   assert.ok(a.said.some(t => /^Ready: first frame after \d+ ms$/.test(t)), a.said.join(' | '));
   assert.ok(a.said.some(t => /^First frame: bitmap \d+ ms, model 40 ms, back \d+ ms$/.test(t)), a.said.join(' | '));
   const line = a.said.filter(t => t.startsWith('Time: next loads begin'));

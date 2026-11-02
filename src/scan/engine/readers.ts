@@ -206,8 +206,9 @@ export class Readers {
   private gen = 0;
 
   /** modelsInfo: where models.json comes from — the session's engines' one read per open (Engines.modelsInfo), so
-   *  it is read once; unset: read here. hold: what the sessions wait for (the session's gate: the first frame comes
-   *  before them — they start on the page's own thread); the files and ONNX Runtime's script do not wait for it. */
+   *  it is read once; unset: read here. hold: what everything but models.json waits for (the session's gate: the first
+   *  frame comes before their sessions, which start on the page's own thread, and before their files too: on a slow
+   *  first open their downloads beside the light model took it past its first frame). */
   constructor(readonly surface: SurfaceRef, private log: (text: string) => void = () => {}, private cpuDir: OrtDir = CPU_ORT,
     private modelsInfo: () => Promise<ModelsInfo> = () => readModels(surface), private hold: () => Promise<void> = () => Promise.resolve()) {}
 
@@ -238,7 +239,11 @@ export class Readers {
       const mj = await this.modelsInfo();
       if (g !== this.gen) return null;
       this.info = mj;
-      // the readers' files (small) and the page's ONNX Runtime at once; their sessions one after the other
+      if (mj.doctype || mj.mrz || mj.he) {
+        await this.hold();
+        if (g !== this.gen) return null;
+      }
+      // the gate open: the readers' files and the page's ONNX Runtime at once; their sessions one after the other
       const files = (name: string): Promise<Uint8Array> => {
         const p = fetchModel(s, name, () => {}, { stamp: modelStamp(mj, name), said: this.log });
         p.catch(() => {});  // its failure is the session's, below
@@ -251,7 +256,6 @@ export class Readers {
       let t1 = now();
       if (mj.doctype || mj.mrz || mj.he) {
         this.ort = await loadOrt(s, this.cpuDir, undefined, false); time('ONNX Runtime (' + this.cpuDir + ') loaded for readers', t1);
-        await this.hold();
         if (g !== this.gen) return null;
       }
       const ort = this.ort as Ort;

@@ -7,6 +7,8 @@
 //    with one, the page itself. A weak phone (weak(): under 4 GB of memory or 4 cores) starts on the pool and stays
 //    there on `auto` with a light model apart (one model for both keeps the GPU first: the pool would hold three copies
 //    of the accurate model). No GPU adapter (asked before the ways, adapterUp): the GPU's ways are left out of that start.
+//    Every CPU way in a background thread with a light model apart gives the frame after that model alone, the accurate
+//    one following on the capture thread (a one-thread way is a pool of one); only the page way loads both before it replies.
 //    Each is tried in turn: a way that fails or goes silent for 25 s is dropped (with its throwaway background thread)
 //    and the next starts clean; a GPU way that failed its start, a way whose live thread stopped answering while
 //    scanning, or whose GPU keeps failing, is not tried again until the scanner closes. The capture thread is no way:
@@ -39,7 +41,7 @@
 // from /scan-lab/.
 import { S, warpRGBA } from './geometry';
 import type { ScanLog } from './log';
-import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, gpuPassed, modelStamps, newGpuPass, openSession, ortVersion, readModels, userAgent, WRONG_GPU, type Ep, type GpuPasses, type ModelsInfo, type Opened, type Want } from './models';
+import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, fetchRuntime, gpuPassed, modelStamps, newGpuPass, openSession, ortVersion, readModels, userAgent, WRONG_GPU, type Ep, type GpuPasses, type ModelsInfo, type Opened, type Want } from './models';
 import { loadOrt, type Ort, type OrtSession } from './ort';
 import { CPU_ORT, GPU_ORT, surfaceRef, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas, uprightRGBA, type Upright } from './upright';
@@ -312,12 +314,14 @@ export class Engines {
         const dir = this.settings.cpuDir, t0 = this.env.now();
         const ortP = loadOrt(this.ref, dir, this.THREADS, want !== 'wasm').then(o => { log.log('Time: ONNX Runtime (' + dir + ') loaded for ' + liveName + ' (page) — ' + Math.round(this.env.now() - t0) + ' ms'); return o; });
         ortP.catch(() => {});  // its failure is the load's, below
+        const runtime = fetchRuntime(this.ref, dir, want !== 'wasm', () => {}, log.log);
         const stamps = await this.stampsFor([liveName, ...(capName ? [capName] : []), ...(withFace !== false ? ['yunet.onnx'] : [])]);
         const stamp = (n: string): string | null => (stamps && stamps[n]) || null;
         const firstBytes = fetchModel(this.ref, liveName, downloadProgress(liveName, log.status), { stamp: stamp(liveName), said: log.log });
         const faceBytes = withFace !== false ? fetchModel(this.ref, 'yunet.onnx', () => {}, { stamp: stamp('yunet.onnx'), said: log.log }) : null;
         firstBytes.catch(() => {}); if (faceBytes) faceBytes.catch(() => {});
         ort = await ortP;
+        await runtime;
         // the GPU checks remembered on this device (as in a thread, worker.ts)
         const ov = ortVersion(ort, dir), ua = userAgent(), known = this.gpuPasses(), passes: GpuPasses = {}, gpu: string[] = [];
         const passed = (n: string) => gpuPassed(known[n], stamp(n), ov, ua);
@@ -443,10 +447,11 @@ export class Engines {
   // by the live frame's corners at once (on the first live thread, which has the face finder for that) and waits
   // for it to refine them (capWait); one that could not start leaves the shot with the live frame's corners, until a
   // later ensureCap (a pick, the next open) brings it up. The pool never stops the shared thread, and asks for it
-  // each time (cap): a thread started again is its thread at once.
-  poolEngine(nLive: number = this.POOL, liveEp: Ep | null = null, capOf: (() => Promise<LoadableEngine>) | null = null): LoadableEngine {
+  // each time (cap): a thread started again is its thread at once. threads: each live thread's CPU threads (the one
+  // thread of a `bg-cpu` way, which is a pool of one, so its frame does not wait for the accurate model either).
+  poolEngine(nLive: number = this.POOL, liveEp: Ep | null = null, capOf: (() => Promise<LoadableEngine>) | null = null, threads = 1): LoadableEngine {
     const { log } = this;
-    const lives = Array.from({ length: nLive }, () => this.workerEngine(1, liveEp === 'webgpu' ? GPU_ORT : this.settings.cpuDir));
+    const lives = Array.from({ length: nLive }, () => this.workerEngine(threads, liveEp === 'webgpu' ? GPU_ORT : this.settings.cpuDir));
     const free = lives.slice();
     let two = false, capFailed = false, stopped = false;
     const cap = (): LoadableEngine | null => (two && this.capReady() && this.capThread ? this.capThread.raw as LoadableEngine : null);
@@ -659,7 +664,10 @@ export class Engines {
         if (gone) throw gone;  // closed while a pick held it or the capture thread loaded
         if (held) t0 = this.env.now();  // the time of this start begins after the pick
         log.status({ key: 'trying_way', way: w.label }, 0);
-        const cand = w.gpuLive ? this.poolEngine(GPU_THREADS, 'webgpu', capOf) : w.pool ? this.poolEngine(this.POOL, null, capOf) : w.worker ? this.workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : cpuDir) : this.pageEngine();
+        // a CPU way with a light model apart replies after that model, the accurate one following on the capture thread
+        const cand = w.gpuLive ? this.poolEngine(GPU_THREADS, 'webgpu', capOf) : w.pool ? this.poolEngine(this.POOL, null, capOf)
+          : w.worker && capOf && w.ep === 'wasm' ? this.poolEngine(1, null, capOf, w.threads)
+          : w.worker ? this.workerEngine(w.threads, w.ep === 'webgpu' ? GPU_ORT : cpuDir) : this.pageEngine();
         const trial = { cand, worker: w.worker, yielded: false };
         this.trying = trial;
         try { await this.track(cand, cand.load(live, cap || null, w.ep)); } catch (err) {

@@ -6,7 +6,7 @@
 import { corners, S } from './geometry';
 import { tensor, type ExecutionProvider, type GpuLayout, type Ort, type OrtSession } from './ort';
 import type { EngineStatus, StatusOn } from './status';
-import { modelUrl, modelsJsonUrl, type SurfaceRef } from './surface';
+import { modelUrl, modelsJsonUrl, ortWasmUrl, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas } from './upright';
 import type { Corners, Pt } from './types';
 
@@ -89,6 +89,24 @@ export async function fetchModel(s: SurfaceRef, name: string, onProgress: (got: 
   throw failed;
 }
 
+// ONNX Runtime fetches its .wasm inside the first InferenceSession.create, under the step's limit (openSession): on a slow
+// first open that download alone used up the 20 s and the way was left. So the thread fetches it first, and create then
+// finds it in the browser's HTTP cache (one revalidation): the runtime's own streaming compile stays, which
+// env.wasm.wasmBinary would lose, and a thread's limit counts no download. Beside the model's file, with nothing shown
+// (the model's progress is the line), onBytes telling the page the thread is alive. Never fails: with no answer here
+// the runtime fetches it itself, as before.
+export async function fetchRuntime(s: SurfaceRef, dir: OrtDir, gpu: boolean, onBytes: () => void, said?: OnLog): Promise<void> {
+  const t0 = now();
+  try {
+    const res = await fetch(ortWasmUrl(s, dir, gpu));
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    const reader = res.body.getReader();
+    let got = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; got += value.length; onBytes(); }
+    if (said) said('Time: ONNX Runtime\'s wasm (' + dir + ') fetched first, ' + mb(got) + ' — ' + Math.round(now() - t0) + ' ms');
+  } catch (e) { if (said) said('Time: ONNX Runtime\'s wasm (' + dir + ') not fetched first (' + errText(e) + ') — it fetches it itself'); }
+}
+
 /** A model file's stamp from models.json: its fingerprint when the file list has it ("sha:" + 16 hex), else the
  *  surface's version ("v:" + version); null when neither is known (the ETag check). */
 export function modelStamp(info: ModelsInfo | null | undefined, name: string): string | null {
@@ -164,7 +182,8 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
     const on: StatusOn = ep === 'webgpu' ? { on: 'gpu', layout: layout as GpuLayout } : { on: 'cpu' };
     try {
       onStatus({ key: 'starting', model, ...on }, 1);
-      // A step that hangs (seen on a phone) is given up after 20 s.
+      // A step that hangs (seen on a phone) is given up after 20 s. No download counts: the model's bytes are here, and a
+      // thread fetched ONNX Runtime's .wasm before it came here (fetchRuntime).
       const limit = <T>(p: Promise<T>, what: string): Promise<T> => Promise.race([p, new Promise<never>((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
       const provider: ExecutionProvider = ep === 'webgpu' ? { name: 'webgpu', preferredLayout: layout as GpuLayout } : ep;
       let t0 = now();

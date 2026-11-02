@@ -335,6 +335,10 @@ Measured on v5 before choosing, with the model on the PC: type ≥ 0.5 alone wou
 
 The real fix for keyboards and desks is more examples of them as `other` in the next training (the exam has no `other` or `contract` pages of its own: `byDoctype` null in the v5 report).
 
+## A slow first open took 326 s to the first frame (2026-11-02)
+
+The weak-phone simulator's profile 10 (2 GB, 4 cores, x6, 1.5 Mbit/s, first open) gave its first frame after 326 s where the files it needs would take about 85 s. Three causes one after the other. The readers' file downloads ran beside the light model (only their sessions waited at the gate), so `lite.onnx` took 60 s; ONNX Runtime's `.wasm` then came inside `InferenceSession.create`, under the 20 s limit meant for a hung step, and a healthy pool was left ("starting took over 20 s"); and the next way, `bg-cpu`, was one thread loading both models that replied after both, so the frame waited for `sa24_w16` (235 s). Fixed in that order: docs/scan-plan.md → A slow first open. The `.wasm` is fetched ahead into the HTTP cache rather than handed over through `env.wasm.wasmBinary`, which would lose the streaming compile.
+
 ## The scanner's frame, 8–10 s on the owner's phone (2026-11-01)
 
 The camera picture already came at once; the wait was for the document frame. Measured in the lab's log, two opens: the two `lite.onnx` sessions on the GPU 6.1–6.2 s, each warm-up 0.8–1.8 s, the live models ready at 7.3–8.0 s, the first frame at 8.5–10.4 s, with the readers' sessions (ready at 4.1 s) loading beside them. The same model on the CPU, three threads, when the GPU way had failed: a session 1.7–2.1 s, ready at 3.7 s in all. The files take 20–180 ms: the kept copies were not the cost. So "every open tries the best way first" (2026-10-22) was what cost the phone its first 4 s, for about 140 ms a frame that three CPU threads may come near.

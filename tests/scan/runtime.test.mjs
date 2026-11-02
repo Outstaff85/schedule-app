@@ -16,6 +16,9 @@
 //    own thread, which cannot be stopped, is waited for;
 //  - the light model first (owner, 2026-10-27): the live frame's threads load, then the accurate model's capture
 //    thread right after them — never both loading at once; the live frame is ready before it is up;
+//  - a slow first open: the readers fetch nothing but models.json before the gate, a thread fetches ONNX Runtime's .wasm
+//    before its first session (so the 20 s limit counts no download) and a failed fetch of it stops nothing, and a
+//    one-thread CPU way replies after the light model, the accurate one following on the capture thread;
 //  - the GPU check remembered on success only: a pass kept with the model's stamp, the ONNX Runtime version and the
 //    browser, the same three skip it (the session still started and warmed up), any one changed checks again, a
 //    failure is never kept, a run-time failure (an error, a hang, a wrong answer, a failed GPU way) removes it, the
@@ -1208,10 +1211,11 @@ await run('a whole open: the light model on one GPU thread, then the readers one
   await flush(20);
   assert.deepEqual(timeline, LITE1, 'nothing beside the light model: ' + timeline.join(', '));
   assert.equal(eng.engineWay, 'bg-gpulive');
-  assert.ok(imports.includes('/scan/ort/ort.wasm.min.mjs'), 'the readers\' ONNX Runtime script on its way at once, on the plain build: ' + imports.join());
+  assert.ok(!imports.includes('/scan/ort/ort.wasm.min.mjs'), 'nothing of the readers before the gate: ' + imports.join());
   assert.equal(eng.state.phase, 'ready');
   fire();  // FIRST_WAIT_MS over, no camera
   await ready;
+  assert.ok(imports.includes('/scan/ort/ort.wasm.min.mjs'), 'the readers\' ONNX Runtime on the plain build: ' + imports.join());
   const AFTER = ['load reader', 'up reader', 'load reader', 'up reader', 'load sa24_w16.onnx', 'up sa24_w16.onnx'];
   assert.deepEqual(timeline, [...LITE1, ...AFTER]);
   oneAtATime(timeline);
@@ -1505,11 +1509,103 @@ await run('a GPU way that hangs while it starts: dropped by the watchdog after 2
   assert.ok(workers.filter(w => w.sent[0].want === 'webgpu').every(w => w.dead), 'the GPU threads stopped');
   fire(); await ready;
   oneAtATime(timeline.filter(t => !/lite/.test(t)));
-  // that way holds the accurate model itself: no second copy of it, on the phone that just showed it is short of room
-  assert.ok(eng.capInLive()); assert.equal(eng.capThread, null);
-  assert.ok(!timeline.includes('load sa24_w16.onnx'));
+  // the one thread of that way holds the light model alone, the accurate one follows on the capture thread
+  assert.ok(!eng.capInLive()); assert.ok(eng.capReady());
+  assert.equal(timeline.at(-1), 'up sa24_w16.onnx');
   session.stop();
 }));
+
+await run('a slow first open: a one-thread CPU way gives the frame after the light model, the accurate one following on the capture thread; the page way and one model for both as before', async () => {
+  await flush(10);
+  workers.length = 0; timeline.length = 0;
+  let pool = 0;
+  policy = (w, m) => (m.type === 'load' ? (m.ort === 'ort130' || (m.live === 'lite.onnx' && ++pool <= 3) ? { error: 'it broke' } : loadOk(w, m)) : undefined);
+  const { eng, said } = newEngines(SU.siteSurface());
+  await eng.ensureSession();
+  assert.equal(eng.engineWay, 'bg-cpu');
+  assert.equal(eng.engine.size, 1); assert.ok(eng.engine.shared);
+  assert.ok(!eng.capInLive(), 'the capture thread is the accurate model\'s');
+  const load = workers.at(-1).sent.find(m => m.type === 'load');
+  assert.deepEqual([load.live, load.cap, load.face, load.threads], ['lite.onnx', null, true, 1]);
+  assert.ok(!eng.engine.capUp(), 'ready with the accurate model not up');
+  assert.ok(said.log.some(t => /^Time: live frame's models ready on CPU ×1 · bg/.test(t)));
+  assert.equal(await eng.engine.capWait(), true);
+  assert.deepEqual(timeline.slice(-2), ['load sa24_w16.onnx', 'up sa24_w16.onnx']);
+  eng.stopAll();
+  // isolated: its CPU threads go with it
+  await flush(10); workers.length = 0; pool = 0;
+  const iso = newEngines(SU.siteSurface(), { isolated: true });
+  await iso.eng.ensureSession();
+  assert.equal(iso.eng.engineWay, 'bg-cpu');
+  assert.equal(workers.at(-1).sent.find(m => m.type === 'load').threads, 4);
+  iso.eng.stopAll();
+  // one model for both: its one thread holds it
+  await flush(10); workers.length = 0; pool = 0;
+  policy = (w, m) => (m.type === 'load' ? (m.ort === 'ort130' || ++pool <= 3 ? { error: 'it broke' } : loadOk(w, m)) : undefined);
+  const one = newEngines(SU.siteSurface());
+  one.eng.setSettings({ model: 'sa24_w16.onnx' });
+  await one.eng.ensureSession();
+  assert.equal(one.eng.engineWay, 'bg-cpu');
+  assert.ok(one.eng.engine.size === undefined);
+  one.eng.stopAll();
+});
+
+await run('a slow first open: the readers fetch nothing but models.json before the gate, then their files and ONNX Runtime at once; released at the gate, nothing is fetched', async () => {
+  files = { ...READER_FILES };
+  const ort = fakeOrt([]);
+  ortFor = async () => ort; OR.setOrtImport(url => { imports.push(url); return ortFor(url); });
+  try {
+    let open = null;
+    fetched.length = 0; imports.length = 0;
+    const rd = new RD.Readers(SU.siteSurface(), () => {}, 'ort', undefined, () => new Promise(r => { open = r; }));
+    const p = rd.load();
+    await flush(20);
+    assert.deepEqual(fetched, ['GET /scan/models.json']);
+    assert.deepEqual(imports, [], 'not ONNX Runtime either');
+    open(); await p;
+    assert.deepEqual(fetched.slice(1).sort(), ['GET /scan/doctype.onnx', 'GET /scan/mrz.onnx']);
+    assert.deepEqual(imports, ['/scan/ort/ort.wasm.min.mjs']);
+    assert.ok(rd.doctype && rd.mrz);
+    fetched.length = 0;
+    const r2 = new RD.Readers(SU.siteSurface(), () => {}, 'ort', undefined, () => new Promise(r => { open = r; }));
+    const q = r2.load(); await flush(20); r2.release(); open();
+    assert.equal(await q, null);
+    assert.deepEqual(fetched, ['GET /scan/models.json']);
+  } finally { ortFor = () => Promise.reject(new Error('no ONNX Runtime here')); }
+});
+
+await run('a slow first open: ONNX Runtime\'s .wasm fetched before the first session, by its build; bytes tell the page the thread is alive; a fetch that fails stops nothing', async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const s = SU.siteSurface(), said = [], asked = [];
+    let beats = 0;
+    globalThis.fetch = async url => { asked.push(url); return new Response(new Uint8Array(70000), { status: 200 }); };
+    await MO.fetchRuntime(s, 'ort', false, () => { beats++; }, t => said.push(t));
+    await MO.fetchRuntime(s, 'ort130', true, () => {}, t => said.push(t));
+    await MO.fetchRuntime(SU.labSurface(), 'ort', false, () => {});
+    assert.deepEqual(asked, ['/scan/ort/ort-wasm-simd-threaded.wasm', '/scan/ort130/ort-wasm-simd-threaded.jsep.wasm', '/scan-lab/ort/ort-wasm-simd-threaded.wasm']);
+    assert.ok(beats >= 1); assert.match(said[0], /^Time: ONNX Runtime's wasm \(ort\) fetched first, 0\.1 MB — \d+ ms$/);
+    globalThis.fetch = async () => new Response('no', { status: 404 });
+    await MO.fetchRuntime(s, 'ort', false, () => {}, t => said.push(t));
+    assert.match(said.at(-1), /not fetched first \(HTTP 404\) — it fetches it itself/);
+    globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+    await MO.fetchRuntime(s, 'ort', false, () => {}, t => said.push(t));
+    assert.match(said.at(-1), /not fetched first \(Failed to fetch\)/);
+    // in a thread and on the page: before the first session, and an answer from it keeps the watchdog quiet
+    const w = read('src/scan/engine/worker.ts'), e = read('src/scan/engine/engines.ts');
+    assert.ok(w.indexOf('await runtime;') > 0 && w.indexOf('await runtime;') < w.indexOf('await openSession('), 'worker.ts fetches it first');
+    assert.ok(e.indexOf('await runtime;') > 0 && e.indexOf('await runtime;') < e.indexOf('await openSession('), 'the page way fetches it first');
+    // the thread's bytes count as an answer
+    workers.length = 0; policy = () => undefined;
+    const { eng, clock } = newEngines(SU.siteSurface(), { gpu: false });
+    const eng1 = eng.workerEngine(1), load = eng1.load('lite.onnx', null, 'wasm', true);
+    load.catch(() => {});
+    for (let i = 0; i < 4; i++) { await clock.advance(20000); workers.at(-1).onmessage({ data: { type: 'alive' } }); }
+    assert.ok(!workers.at(-1).dead);
+    eng1.stop();
+    await load.catch(() => {});
+  } finally { globalThis.fetch = realFetch; }
+});
 
 await run('every live way fails: the gate opens all the same, the readers load and the accurate model starts for photos and PDFs', () => withReaders(async () => {
   policy = (w, m) => (m.type === 'load' ? (m.live === 'lite.onnx' ? { error: 'no way' } : loadOk(w, m)) : undefined);

@@ -61,7 +61,7 @@
 // frame. wake() starts it at once and forgets the documents taken (Retake: the same document again).
 //
 // The gate (the frame first, 2026-11-01; docs/scan-plan.md → The GPU first): on open only the live frame's models start;
-// the readers' sessions and then the accurate model wait for its opening — the first model answer, or FIRST_WAIT_MS after
+// the readers (their files too; before it only models.json is read) and then the accurate model wait for its opening — the first model answer, or FIRST_WAIT_MS after
 // the live frame's models ended, up or failed, and the camera came, or could not (no camera, an early start), or a pick,
 // which does not wait for the readers either. It opens once per session (stop arms it anew); the log says when and by what
 // ("Time: next loads begin"). The readers also wait for a start of the live frame's models still at work (readersHold):
@@ -332,7 +332,7 @@ export class ScanSession {
     this.gate.open();
   }
   private gateWait(): Promise<void> { return this.gateState === 'armed' ? this.gate.p : Promise.resolve(); }
-  /** What the readers' sessions wait for: the gate, then the live frame's models at work (a pick opens the gate and
+  /** What the readers wait for, past models.json: the gate, then the live frame's models at work (a pick opens the gate and
    *  stops their load; on the page's own thread, which cannot be stopped, the pick waits with them). */
   private async readersHold(): Promise<void> {
     await this.gateWait();
@@ -370,7 +370,7 @@ export class ScanSession {
 
   /** The models made ready on open — the light model first (owner, 2026-10-27): the live frame's model on its way,
    *  so the live frame comes as soon as it is ready (the camera does not wait for it: startCamera); behind the gate
-   *  the readers' sessions, then the accurate model (photos and PDFs picked meanwhile go past the readers and wait
+   *  the readers, then the accurate model (photos and PDFs picked meanwhile go past the readers and wait
    *  for it). */
   //
   // early (the manager's new worker window, keep.ts prepareEarly): the same start with no scanner open yet — the
