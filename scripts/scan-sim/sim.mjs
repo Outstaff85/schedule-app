@@ -5,8 +5,8 @@
 // that fails or hangs. A tool to run by hand on a Windows PC, not a test of CI:
 //   cd tests/e2e && npm install --no-save --no-package-lock playwright@1.56.1
 //   node scripts/scan-sim/sim.mjs --out <folder outside the repo> [--profiles 1-weak,4-strong] [--runs 3] [--watch 62]
-//   the same with --picks: Photos/PDF during the start and once everything is loaded (results-picks.json, .md; --results
-//   gives those two another name, so a run beside earlier results overwrites nothing)
+//   the same with --picks: Photos/PDF during the start and once everything is loaded (results-picks.json, .md); --results
+//   gives a run's two files another name, so a run beside earlier results overwrites nothing
 // It never signs in and blocks every host but its own and the one pdf.js comes from, so nothing reaches scan_feedback.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -27,7 +27,7 @@ const PREVIEW = arg('preview', 'https://schedule-odinson--scan-test-rtl82jvf.web
 const CHANNEL = arg('channel', 'chrome');
 // a first open's run with a warm one after it is watched less: its figures are the warm run's, what it shows is the start
 const COLD_WATCH_S = +arg('cold-watch', 32);
-const WATCH_S = +arg('watch', 62), ONLY = arg('profiles', ''), RUNS = arg('runs', ''), DBG_PORT = +arg('port', 9477), PICK_RESULTS = arg('results', 'results-picks');
+const WATCH_S = +arg('watch', 62), ONLY = arg('profiles', ''), RUNS = arg('runs', ''), DBG_PORT = +arg('port', 9477), PICK_RESULTS = arg('results', 'results-picks'), RESULTS = arg('results', 'results');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // rate: every thread of the page slowed by it (brake 'os', the default) or only the main thread (brake 'cdp');
@@ -41,10 +41,12 @@ const PROFILES = [
   P('5-no-adapter', { gpu: 'no-adapter' }),
   P('6-adapter-hangs', { gpu: 'adapter-hang' }),
   P('7-broken-gpu', { gpu: 'session-fail' }),
+  // cold, then warm in the same browser: the warm run is the second open, which starts on the pool at once (a hang remembered)
   P('8a-hung-gpu-start', { gpu: 'session-hang', limit: 170 }),
   P('8b-hung-gpu-run', { gpu: 'run-hang', hangAfter: 60, limit: 170 }),
   P('9-no-figures', { memory: null, cores: null }),
   P('10-slow-first-open', { memory: 2, cores: 4, rate: 6, gpu: 'none', net: { kbps: 1500, rttMs: 120 }, phases: ['cold'], limit: 420 }),
+  P('10b-5-mbit-first-open', { memory: 2, cores: 4, rate: 6, gpu: 'none', net: { kbps: 5000, rttMs: 120 }, phases: ['cold'], limit: 240 }),
   // the same weak phone under Chrome's throttling alone, to show what it leaves out
   P('1c-weak-chrome-throttle-only', { memory: 2, cores: 4, rate: 6, gpu: 'none', brake: 'cdp' }),
 ];
@@ -102,7 +104,7 @@ const collector = () => {
     const L = window.ScanLab;
     if (!L || !L.session) return;
     clearInterval(hook);
-    const s = L.session;
+    const s = L.session, E0 = () => s.engines;
     S.hooked = Math.round(now());
     L.log.on('err', t => S.errors.push([Math.round(now()), t]));
     s.on('frame', (q, ok) => {
@@ -114,6 +116,9 @@ const collector = () => {
     document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.testid === 'scan-files') S.pickAt = Math.round(now()); }, true);
     setInterval(() => {
       if (S.pickAt == null) return;
+      // the shutter on with no model behind it: a tap could only say no_frame
+      const shutter = document.querySelector('[data-testid="scan-shutter"]');
+      if (S.pickEnd != null && shutter && !shutter.disabled && !E0().engine) S.shutterOnNoModel = (S.shutterOnNoModel || 0) + 25;
       if (S.pickEnd == null) { if (s.picking) S.sawPicking = true; else if (S.sawPicking) S.pickEnd = Math.round(now()); return; }
       // the live frame back: running again, with a model answer since the pick took it off
       if (S.liveBack == null && s.live.running && s.live.lastRes) S.liveBack = Math.round(now());
@@ -146,7 +151,7 @@ function summary(p, runNo, phase, sim, extra) {
     greenS: sim.green != null ? +(sim.green / 1000).toFixed(1) : null, firstBoxS: sim.firstBox != null ? +(sim.firstBox / 1000).toFixed(1) : null,
     autoShots: new Set(sim.pages.filter(x => !x[4] || x[4] === 'camera').map(x => x[1].split(':')[0])).size, firstShotS: sim.pages.length ? +(sim.pages[0][0] / 1000).toFixed(1) : null, autoOffS: sim.autoOff != null ? +(sim.autoOff / 1000).toFixed(1) : null,
     captureMs: last.capture != null ? Math.round(last.capture) : null, resolution: last.res || null, statuses: sim.statuses, errors: sim.errors.map(e => (e[0] / 1000).toFixed(1) + ' s ' + e[1]), pageFaults: sim.boot,
-    timeLines: sim.logs.filter(x => /^(Time:|Ready:|First frame:|Auto:|Trying|Model:|Accurate model:|The accurate model could|GPU check)/.test(x[1])).map(x => (x[0] / 1000).toFixed(1) + ' s ' + x[1]),
+    timeLines: sim.logs.filter(x => /^(Time:|Ready:|First frame:|Auto:|Trying|Model:|Accurate model:|The accurate model could|GPU check|The GPU hang|The GPU hung)/.test(x[1])).map(x => (x[0] / 1000).toFixed(1) + ' s ' + x[1]),
     peakPageHeapMB: +(sim.peakHeap / 1048576).toFixed(1), samples: sim.samples.length, ...extra,
   };
 }
@@ -328,16 +333,16 @@ async function pickRun(R, p, runNo, spec, url, mirror) {
     pickAtS: sim.pickAt != null ? +(sim.pickAt / 1000).toFixed(2) : null, beforeFirstFrame: !!(sim.pickAt != null && (!firstLine || firstLine[0] > sim.pickAt)), firstFrameS: sim.first != null ? +(sim.first / 1000).toFixed(1) : null,
     pages: new Set(got.map(x => x[1])).size, firstPageS: got.length ? s(got[0][0]) : null, lastPageS: got.length ? s(Math.max(...got.map(x => x[0]))) : null,
     firstReadyS: got.some(x => x[2]) ? s(got.find(x => x[2])[0]) : null, allReadyS: got.some(x => x[2]) ? s(Math.max(...got.filter(x => x[2]).map(x => x[0]))) : null, pickEndS: s(sim.pickEnd),
-    liveBack: after.some(x => x.running) || sim.liveBack != null, liveBackS: s(sim.liveBack), liveAfterPickS: sim.liveBack != null && sim.pickEnd != null ? +((sim.liveBack - sim.pickEnd) / 1000).toFixed(2) : null, statuses: sim.statuses.filter(x => sim.pickAt == null || x[0] >= sim.pickAt).map(x => x[1]), errors: sim.errors.map(e => (e[0] / 1000).toFixed(1) + ' s ' + e[1]), pageFaults: sim.boot, consoleErrors: [...new Set(consoleErrors)],
+    shutterOnNoModelMs: sim.shutterOnNoModel || 0, liveBack: after.some(x => x.running) || sim.liveBack != null, liveBackS: s(sim.liveBack), liveAfterPickS: sim.liveBack != null && sim.pickEnd != null ? +((sim.liveBack - sim.pickEnd) / 1000).toFixed(2) : null, statuses: sim.statuses.filter(x => sim.pickAt == null || x[0] >= sim.pickAt).map(x => x[1]), errors: sim.errors.map(e => (e[0] / 1000).toFixed(1) + ' s ' + e[1]), pageFaults: sim.boot, consoleErrors: [...new Set(consoleErrors)],
     timeLines: sim.logs.filter(x => /^(Time:|Ready:|Picked|Picture timing|Model:|Accurate model:|Trying)/.test(x[1])).map(x => (x[0] / 1000).toFixed(1) + ' s ' + x[1]),
   };
 }
 
 function picksMarkdown(meta, rows) {
   const out = ['# Photos/PDF during the start', '', `Chrome ${meta.browser} · ${meta.when}. Seconds from the pick (the file input's change). GPU figures are the PC's.`, '',
-    '| profile | run | file | when | cache | runs on | picked at s | before first frame | first frame s | pages | first page s | all pages s | ready (read) s | pick over s | live back | live back s | after pick over s | errors |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
+    '| profile | run | file | when | cache | runs on | picked at s | before first frame | first frame s | pages | first page s | all pages s | ready (read) s | pick over s | live back | live back s | after pick over s | shutter on with no model, ms | errors |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of rows) out.push(r.failed ? `| ${r.profile} | ${r.run} | ${r.what} | ${r.when} | ${r.cache} | **${r.failed}** |||||||||||` :
-    `| ${r.profile} | ${r.run} | ${r.what} | ${r.when} | ${r.cache} | ${r.runsOn} | ${fmt(r.pickAtS, 2)} | ${r.beforeFirstFrame ? 'yes' : 'no'} | ${fmt(r.firstFrameS)} | ${r.pages} | ${fmt(r.firstPageS, 2)} | ${fmt(r.lastPageS, 2)} | ${fmt(r.allReadyS, 2)} | ${fmt(r.pickEndS, 2)} | ${r.liveBack ? 'yes' : 'NO'} | ${fmt(r.liveBackS, 2)} | ${fmt(r.liveAfterPickS, 2)} | ${r.errors.length} |`);
+    `| ${r.profile} | ${r.run} | ${r.what} | ${r.when} | ${r.cache} | ${r.runsOn} | ${fmt(r.pickAtS, 2)} | ${r.beforeFirstFrame ? 'yes' : 'no'} | ${fmt(r.firstFrameS)} | ${r.pages} | ${fmt(r.firstPageS, 2)} | ${fmt(r.lastPageS, 2)} | ${fmt(r.allReadyS, 2)} | ${fmt(r.pickEndS, 2)} | ${r.liveBack ? 'yes' : 'NO'} | ${fmt(r.liveBackS, 2)} | ${fmt(r.liveAfterPickS, 2)} | ${r.shutterOnNoModelMs} | ${r.errors.length} |`);
   out.push('', '## Every error line', '');
   for (const r of rows) for (const e of [...(r.errors || []), ...(r.consoleErrors || []).map(x => 'console: ' + x), ...(r.pageFaults || []).map(x => 'page: ' + x[1])]) out.push(`- ${r.profile} #${r.run} ${r.what} ${r.when} ${r.cache}: ${e}`);
   return out.join('\n') + '\n';
@@ -385,8 +390,8 @@ async function main() {
     process.exit(0);
   }
   const save = () => {
-    fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, rows }, null, 1));
-    fs.writeFileSync(path.join(OUT, 'results.md'), markdown(meta, rows));
+    fs.writeFileSync(path.join(OUT, RESULTS + '.json'), JSON.stringify({ meta, rows }, null, 1));
+    fs.writeFileSync(path.join(OUT, RESULTS + '.md'), markdown(meta, rows));
   };
   for (const p of picked) {
     const n = RUNS ? +RUNS : p.runs;
