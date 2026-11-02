@@ -390,6 +390,12 @@ def photos_on_page(img):
                 continue
             out.append(((run[1] - run[0]) * (y1 - y0) / (w * h),
                         (int(run[0] / sc), int(y0 / sc), min(W, int(np.ceil(run[1] / sc))), min(H, int(np.ceil(y1 / sc))))))
+    for b in solid_blocks(small):
+        if any(min(b[2], o[2] * sc) > max(b[0], o[0] * sc) and min(b[3], o[3] * sc) > max(b[1], o[1] * sc) for _, o in out):
+            continue
+        x0, y0, x1, y1 = b
+        out.append(((x1 - x0) * (y1 - y0) / (w * h),
+                    (int(x0 / sc), int(y0 / sc), min(W, int(np.ceil(x1 / sc))), min(H, int(np.ceil(y1 / sc))))))
     for b in ink_blocks(small):
         if any(_overlap(_small_box(box, sc), b) > 0.5 for _, box in out):
             continue
@@ -408,6 +414,34 @@ def photos_on_page(img):
     if rest.sum() and mid[rest].mean() > REST_BUSY:
         return []
     return [box for _, box in out]
+
+
+SOLID_BELOW, SOLID_FILL, SOLID_INK, SOLID_MIN = 12, 0.85, 0.6, 0.02   # src/scan/engine/pictures.ts solidBlocks
+
+
+def solid_blocks(small):
+    """The solid blocks the bands miss (an ID card at its real size on A4 is 41 % of the page wide): what is darker
+    than the page's paper (SOLID_BELOW under the median of its outer 3 % ring, never above 225), its holes filled,
+    each piece at least 15 % × 10 % of the page and SOLID_MIN of it, filling SOLID_FILL of its box and SOLID_INK of
+    it not paper (a form's framed table is white inside) — boxes on the small picture. The phone's copy:
+    src/scan/engine/pictures.ts solidBlocks."""
+    h, w = small.shape[:2]
+    m = small.min(axis=2).astype(int)
+    r = max(2, round(0.03 * w))
+    ring = np.concatenate([m[:r].ravel(), m[h - r:].ravel(), m[r:h - r, :r].ravel(), m[r:h - r, w - r:].ravel()])
+    dark = (m < max(225, int(np.sort(ring)[len(ring) >> 1]) - SOLID_BELOW)).astype(np.uint8)
+    pad = np.pad(1 - dark, 1, constant_values=1)
+    cv2.floodFill(pad, None, (0, 0), 2)   # the paper reached from the edge (4-neighbours)
+    filled = (pad[1:-1, 1:-1] != 2).astype(np.uint8)
+    n, _, st, _ = cv2.connectedComponentsWithStats(filled, connectivity=4)
+    out = []
+    for j in range(1, n):
+        x, y, bw, bh, area = (int(v) for v in st[j])
+        if bw < 0.15 * w or bh < 0.1 * h or bw * bh < SOLID_MIN * w * h or area / (bw * bh) < SOLID_FILL:
+            continue
+        if dark[y:y + bh, x:x + bw].mean() >= SOLID_INK:
+            out.append((x, y, x + bw, y + bh))
+    return out
 
 
 def _small_box(box, sc):
