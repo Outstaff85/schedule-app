@@ -79,7 +79,7 @@ import { Engines, latch, type EngineSettings } from './engines';
 import { Live, trackFollower, type Bitmapper, type Figures, type Follower, type SessionClock } from './live';
 import { ScanLog } from './log';
 import { Readers, type DoctypeAnswer } from './readers';
-import { analyzePicture, defaultFilesEnv, pickedPictures, workPictures, type FilesEnv, type LaneEngine, type PickFile, type PictureStage } from './files';
+import { analyzePicture, defaultFilesEnv, pickedPictures, workPictures, type FilesEnv, type LaneEngine, type PickFile, type PictureStage, type PickedPicture } from './files';
 import { docShape, goodQuad } from './geometry';
 import { freeze, info, readPage, takeShot, toCanvas, type ShotPage, type ShotRecord } from './shot';
 import { mkCanvas } from './upright';
@@ -860,6 +860,16 @@ export class ScanSession {
     if (gen !== this.scanGen) return 0;
     // picked files go only to the accurate model: one picked before it is up waits for it (it starts at once: a start
     // of the live frame's model has given way to the pick), the status line says so
+    // its first picture shown at once (owner, 2026-11-02: 5 s of the camera after a pick looked like nothing happening)
+    const pictures = pickedPictures(files, this.env.files, log.log);
+    let head: IteratorResult<PickedPicture> | null = null, unread: unknown = null;
+    try { head = await pictures.next(); } catch (e) { unread = e || new Error('the file could not be read'); }  // met in its turn, below
+    if (head && !head.done && gen === this.scanGen) this.emit('preview', { batch, n: 1, url: head.value.url, file: head.value.file, files: head.value.files, page: head.value.page, pages: head.value.pages, stage: 'finding', quad: null });
+    const queue = (async function* (): AsyncGenerator<PickedPicture> {
+      if (unread) throw unread;
+      if (head && !head.done) yield head.value;
+      yield* pictures;
+    })();
     if (!this.engines.capReady()) { this.emit('status', { key: 'preparing_accurate' }); log.log('Picked files wait for the accurate model'); }
     try { await this.engines.ensureCap(); }
     catch (e) {
@@ -871,7 +881,7 @@ export class ScanSession {
     // are all given at once and the next picture is not held up by them
     let reads: Promise<void> = Promise.resolve();
     const where = (pic: { file: number; files: number; page: number; pages: number }) => ({ file: pic.file, files: pic.files, page: pic.page, pages: pic.pages });
-    const res = await workPictures(pickedPictures(files, this.env.files, log.log), {
+    const res = await workPictures(queue, {
       // only the accurate model's threads: the capture thread (lane 0, shared with the live frame's pool) and a
       // file thread — never the live frame's (a picked picture sent to the light model's GPU thread hung, 2026-10-20)
       engineOf: async (k): Promise<LaneEngine> => {
