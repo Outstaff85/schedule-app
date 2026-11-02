@@ -37,9 +37,10 @@ export const ortThreads = (): number =>
 const loaded = new Map<string, Promise<Ort>>();
 
 /** The ONNX Runtime build `dir` of the surface, loaded once in this page or thread; its .wasm files are
- *  fetched from the same folder, and it runs on `threads` CPU threads. */
-export function loadOrt(s: SurfaceRef, dir: OrtDir, threads: number = ortThreads()): Promise<Ort> {
-  const url = ortModuleUrl(s, dir);
+ *  fetched from the same folder, and it runs on `threads` CPU threads. gpu false: only the CPU is asked for, so the
+ *  plain build (surface.ts ortModuleUrl). */
+export function loadOrt(s: SurfaceRef, dir: OrtDir, threads: number = ortThreads(), gpu = true): Promise<Ort> {
+  const url = ortModuleUrl(s, dir, gpu);
   let p = loaded.get(url);
   if (!p) {
     p = importer(url).then(m => {

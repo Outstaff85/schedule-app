@@ -55,11 +55,12 @@ export function ScanAdmin({ snap, api }: { snap: AdminSnapshot; api: ManagerBrid
   return (
     <div data-testid="scan-admin">
       {!stats ? <Skeleton className="mb-3 h-[66px] rounded-[14px]" /> : (
-        <Figures items={[
-          { key: 'edges', label: tr('Document edges: corrections'), value: `${stats.edgesSince}/${RETRAIN_AT}`, color: stats.due ? 'var(--ok)' : undefined },
-          { key: 'doctype', label: tr('Document type: pages of each type'), value: `${Number.isFinite(docMin) ? docMin : 0}/${DOCTYPE_AT}`, color: stats.doctypesDue ? 'var(--ok)' : undefined },
-          { key: 'docs', label: tr('Full documents collected'), value: Number(s.documents || 0) },
-          { key: 'fixed', label: tr('Fields the user corrected'), value: Number(s.fieldsCorrected || 0) },
+        <Figures strip items={[
+          { key: 'attempts', label: tr('New scans'), value: `${stats.attemptsSince ?? 0}/${stats.attemptsAt ?? 15}`, color: stats.attemptsDue ? 'var(--ok)' : undefined },
+          { key: 'edges', label: tr('Edges'), value: `${stats.edgesSince}/${RETRAIN_AT}`, color: stats.due ? 'var(--ok)' : undefined },
+          { key: 'doctype', label: tr('Types'), value: `${Number.isFinite(docMin) ? docMin : 0}/${DOCTYPE_AT}`, color: stats.doctypesDue ? 'var(--ok)' : undefined },
+          { key: 'docs', label: tr('Documents'), value: Number(s.documents || 0) },
+          { key: 'fixed', label: tr('Fields'), value: Number(s.fieldsCorrected || 0) },
         ]} />
       )}
 

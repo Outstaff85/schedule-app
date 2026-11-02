@@ -10,6 +10,11 @@
 //  - the light model first: prepare (and the early start) starts the accurate model only once the live frame's
 //    models are up; a shot before the accurate model is up is shown by the live frame's corners at once and
 //    refined once it is up (kept as it is when it cannot start);
+//  - the gate: the readers' sessions and the accurate model wait for the first answer, or FIRST_WAIT_MS after the live
+//    frame's models ended (up or failed), or a pick (which goes past the readers too); closing at it loads nothing
+//    again and arms it anew; a shutter tap before the readers are up still gives the type; readers that hang cost one
+//    READERS_WAIT_MS per open, shared by every wait; it counts from the camera's end too (a permission prompt);
+//  - the live frame goes one frame at a time while the accurate model loads; the last scan's corners reach no next open;
 //  - the other documents: findNext stops at 4 documents in all, findInside at MAX_DOCS (5);
 //  - Looks good while the shot still looks for more documents: the attempt goes once the search is over, with
 //    every document the shot gave;
@@ -118,6 +123,8 @@ globalThis.ImageData = StubImageData;
 
 const M = await import(pathToFileURL(path.join(TMP, 'session.js')).href);
 const { session: Sess, steady: St, camera: Cam, log: Log, surface: Surf } = M;
+const TIMING_NOW = { ...St.TIMING };
+Object.assign(St.TIMING, { shot: 1000, hold: 0.04, drift: 0.03, jerk: 0.02 });  // the logic's checks run on the old lab's figures
 
 // ── a fake clock: screen frames every 16 ms, timers ──
 const flush = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r)); };
@@ -162,7 +169,7 @@ function fakeEngine(script, clock, delay) {
 function fakeEngines(engine) {
   return {
     engine, engineWay: 'bg-pool', state: { phase: 'ready', label: 'CPU · 2 bg threads + 1', worker: true, loadSeconds: 1.5 }, settings: { cpuDir: 'ort' },
-    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, onChange: () => () => {}, stopAll() { this.stopped = true; },
+    log: new Log.ScanLog(null, () => null), ensureSession: async () => {}, ensureCap: async () => {}, capInLive: () => false, onChange: () => () => {}, stopAll() { this.stopped = true; }, yieldToPick() {}, pickOver() {},
   };
 }
 function fakeVideo() {
@@ -210,6 +217,28 @@ await run('a steady document turns green after 250 ms and Auto takes the shot af
   return 'green at ' + (green.t - t0) + ' ms, the shot at ' + (shotAt - t0) + ' ms';
 });
 
+await run('the green frame sticks: on the figures in use Auto shoots after 3 s through a shaking hand, a camera gone far starts it again', async () => {
+  const old = { ...St.TIMING };
+  Object.assign(St.TIMING, TIMING_NOW);
+  try {
+    assert.deepEqual(TIMING_NOW, { shot: 3000, hold: 0.06, drift: 0.06, jerk: 0.04 });
+    let k = 0;
+    const shake = q => { const dx = (k++ % 2 ? -1 : 1) * 0.03; return { pts: shift(q, dx), apply: p => shift(p, dx), moved: 0.03, points: 16 }; };
+    const a = setup(steadyLive(Q), { follow: shake });
+    await a.s.startCamera(a.video);
+    await a.clock.runFor(2800, () => a.log.pages.length > 0);
+    assert.equal(a.log.pages.length, 0, 'not before 3 s');
+    await a.clock.runFor(1200, () => a.log.pages.length > 0);
+    assert.ok(a.log.pages.length, 'taken, the hand shaking');
+    const t = a.log.pages[0].t - firstAnswer(a.log);
+    assert.ok(t >= 3000 && t < 3400, 'on time, the frame sticking only from 250 ms (' + t + ' ms)');
+    const c = new St.Steady(() => 0); c.answer({ pts: Q, conf: 0.9 });
+    assert.equal(c.follow(p => p, 0.039), false); assert.equal(c.follow(p => p, 0.041), true, 'a jump');
+    const d = new St.Steady(() => 0); d.answer({ pts: Q, conf: 0.9 });
+    assert.equal(d.follow(p => shift(p, 0.05), 0.01), false); assert.equal(d.follow(p => shift(p, 0.02), 0.01), true, 'gone far from where it stuck');
+  } finally { Object.assign(St.TIMING, old); }
+});
+
 await run('a tremble under JERK does not start the countdown again; a drift over DRIFT does', async () => {
   // a tremble: ±0.005 a camera frame
   let k = 0;
@@ -233,7 +262,7 @@ await run('a tremble under JERK does not start the countdown again; a drift over
   assert.ok(restarts.length >= 3, 'the countdown started again (' + restarts.length + ' times)');
   assert.ok(b.log.status.filter(x => x.key === 'found').length === 0, 'never found as still');
   // a jump over JERK in one camera frame starts it again too
-  assert.equal(St.JERK, 0.02); assert.equal(St.DRIFT, 0.03); assert.equal(St.HOLD, 0.04);
+  assert.equal(St.TIMING.jerk, 0.02); assert.equal(St.TIMING.drift, 0.03); assert.equal(St.TIMING.hold, 0.04);
   const c = new St.Steady(() => 0); c.answer({ pts: Q, conf: 0.9 });
   assert.equal(c.follow(p => p, 0.019), false); assert.equal(c.follow(p => p, 0.021), true);
   return restarts.length + ' restarts in 2 s of drift';
@@ -262,7 +291,7 @@ for (const [moved, replaced] of [[0.001, false], [0.01, true]]) {
   await run(`the refined corners ${replaced ? 'replace' : 'do not replace'} the live page when they moved ${moved}`, async () => {
     const exact = shift(Q, moved);
     // readers that tell which cut they read
-    const readers = { info: { version: 't' }, load: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, turnConf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
+    const readers = { info: { version: 't' }, load: async () => {}, settled: async () => {}, release() {}, doctypeAnswer: async c => ({ doctype: 'passport', conf: 1, turnConf: 1, read: c }), mrzRead: async () => null, heRead: async () => null };
     const { s, clock, log, video, engine } = setup((call, e) => call.which === 'live' && !e.shooting ? { pts: Q, conf: 0.9 } : call.which === 'cap' && !e.capped ? (e.capped = true, { pts: exact, conf: 0.9 }) : NONE, { auto: false, readers, delay: call => call.which === 'live' ? 30 : 0 });
     // the frame shown when the shot says what it found (the live frame goes on by itself once it settled)
     let shownAtFound = null;
@@ -677,7 +706,7 @@ for (const at of [0, 1]) {
     };
     // readers that take 50 ms a page
     const clockRef = {};
-    const readers = { info: { version: 't' }, load: async () => {}, release() {},
+    const readers = { info: { version: 't' }, load: async () => {}, settled: async () => {}, release() {},
       doctypeAnswer: () => new Promise(r => clockRef.c.setTimeout(() => r({ doctype: 'passport', conf: 1 }), 50)), mrzRead: async () => null, heRead: async () => null };
     const { s, clock, log, video, engine } = setup(script, { auto: false, readers });
     clockRef.c = clock;
@@ -879,7 +908,7 @@ await run('Auto takes only a document\'s shape: a sliver or a speck stays, the s
 
 // readers whose document type model answers by the test's script; doctype: its session (null: none in this version)
 function typeReaders(answer, { doctype = {}, load = async () => {} } = {}) {
-  const r = { doctype, info: { version: 't' }, asked: 0, load: () => load(r), release() {}, mrzRead: async () => null, heRead: async () => null,
+  const r = { doctype, info: { version: 't' }, asked: 0, load: () => load(r), settled: async () => {}, release() {}, mrzRead: async () => null, heRead: async () => null,
     doctypeAnswer: async c => { r.asked++; return answer(c, r.asked); } };
   return r;
 }
@@ -1315,6 +1344,314 @@ await run('the Workers tab (owner, 2026-10-27): its first opening starts the ses
     const b = openWorkersTab(); assert.ok(b && b !== a && made.length === 2);
     fire(); assert.equal(b.stopped, 1); assert.equal(K.keptSession(), null);
   } finally { globalThis.setTimeout = realST; globalThis.clearTimeout = realCT; }
+});
+
+// ── the gate (the frame first, docs/scan-plan.md → The GPU first) ──
+/** Real readers on a fake ONNX Runtime: `created` holds a line per session, at the time it started. */
+function gated(script = steadyLive(Q), o = {}) {
+  const a = setup(script, { auto: false, realReaders: true, ...o }), created = [];
+  a.engines.modelsInfo = async () => ({ version: 'v5', doctype: true, mrz: false, he: false });
+  a.created = created;
+  const said = []; a.engines.log.on('log', t => said.push(t)); a.said = said;
+  const ort = {
+    env: { wasm: {} }, Tensor: function Tensor(type, data, dims) { this.data = data; this.dims = dims; },
+    InferenceSession: { create: async () => { created.push(a.clock.t); return { inputNames: ['x'], outputNames: ['y'], release: async () => {},
+      run: async () => ({ doctype: { data: [0.9, 0.1] }, turn: { data: [1, 0, 0, 0] } }) }; } },
+  };
+  M.ort.setOrtImport(async url => { a.imported = url; return ort; });
+  a.realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(new Uint8Array(4), { status: 200, headers: { etag: '"e"' } });
+  a.done = () => { globalThis.fetch = a.realFetch; a.s.stop(); };
+  return a;
+}
+
+await run('the gate: the readers\' sessions wait for the first answer, on the plain ONNX Runtime; the log tells when, with the first frame\'s parts', async () => {
+  let up = null;
+  const a = gated(steadyLive(Q), { ensureSession: () => new Promise(r => { up = r; }) });
+  const v = a.video, start = a.s.startCamera(v);
+  await flush(20);
+  await a.clock.runFor(3000);
+  assert.deepEqual(a.created, [], 'no session while the live frame\'s models load');
+  assert.ok(!a.imported, 'nor ONNX Runtime');
+  assert.equal(a.s.readers.info.version, 'v5', 'a shot knows the model version meanwhile');
+  a.s.markOpen();  // the "Ready" line counts from the open
+  up(); await start;
+  await a.clock.runFor(200, () => a.created.length > 0);
+  assert.equal(a.created.length, 1, 'once answered');
+  assert.match(a.imported, /ort\.wasm\.min\.mjs$/);
+  assert.ok(a.said.some(t => /^Ready: first frame after \d+ ms$/.test(t)), a.said.join(' | '));
+  assert.ok(a.said.some(t => /^First frame: bitmap \d+ ms, model 40 ms, back \d+ ms$/.test(t)), a.said.join(' | '));
+  const line = a.said.filter(t => t.startsWith('Time: next loads begin'));
+  assert.equal(line.length, 1, 'once');
+  assert.match(line[0], /^Time: next loads begin \(first frame\) — \d+ ms \(at \d+ ms\)$/);
+  a.done();
+});
+
+await run('the gate: with no answer it opens FIRST_WAIT_MS after the live frame\'s models ended — up with no camera, or failed', async () => {
+  assert.equal(Sess.FIRST_WAIT_MS, 1500);
+  for (const fail of [false, true]) {
+    let end = null;
+    const a = gated(steadyLive(Q), { ensureSession: () => new Promise((yes, no) => { end = () => (fail ? no(new Error('no way')) : yes()); }) });
+    const p = a.s.prepare(true);
+    await flush(20);
+    await a.clock.runFor(5000);
+    assert.deepEqual(a.created, [], 'not while they load, however long');
+    end(); await flush(20);
+    await a.clock.runFor(Sess.FIRST_WAIT_MS - 100);
+    assert.deepEqual(a.created, [], 'not before FIRST_WAIT_MS (failed ' + fail + ')');
+    await a.clock.runFor(200);
+    await flush(20);
+    assert.equal(a.created.length, 1, 'then at once (failed ' + fail + ')');
+    assert.ok(a.said.some(t => /^Time: next loads begin \(no frame\) — \d+ ms$/.test(t)), a.said.join(' | '));
+    await p;
+    a.done();
+  }
+});
+
+await run('the gate: a pick opens it at once, and the accurate model does not wait for the readers; without a pick it does, the gate first', async () => {
+  let end = null;
+  const order = [], load = new Promise(() => {});  // readers that never end
+  const readers = { info: { version: 't' }, load: () => load, release() {}, settled: () => { order.push('readers'); return new Promise(r => { end = r; }); }, doctypeAnswer: async () => null, mrzRead: async () => null, heRead: async () => null };
+  const a = setup(steadyLive(Q), { auto: false, readers, ensureSession: () => new Promise(() => {}) });
+  void a.s.startCamera(a.video);
+  await flush(20);
+  const said = []; a.engines.log.on('log', t => said.push(t));
+  let held = false; a.engines.capHold().then(() => { held = true; order.push('cap'); });
+  await a.clock.runFor(3000);
+  assert.deepEqual(order, [], 'the gate first');
+  await a.s.pick([]);
+  await flush(20);
+  assert.ok(held, 'the pick goes past the gate and the readers: ' + order.join());
+  assert.ok(said.some(t => /^Time: next loads begin \(a pick\) — \d+ ms/.test(t)), said.join(' | '));
+  // a gate opened by the first answer: the accurate model waits for the readers, until a pick comes
+  const b = setup(steadyLive(Q), { auto: false, readers });
+  await b.s.startCamera(b.video);
+  await b.clock.runFor(200);
+  order.length = 0;
+  let held2 = false; b.engines.capHold().then(() => { held2 = true; });
+  await flush(20);
+  assert.deepEqual(order, ['readers']); assert.equal(held2, false, 'it waits for them');
+  end(); await flush(20);
+  assert.equal(held2, true, 'their end lets it go');
+  let held3 = false; b.engines.capHold().then(() => { held3 = true; });
+  await flush(20);
+  assert.equal(held3, false);
+  await b.s.pick([]); await flush(20);
+  assert.equal(held3, true, 'a pick while it waits for them');
+  a.s.stop(); b.s.stop();
+});
+
+await run('a pick and the live start: the engines are told of a pick with files at once, and that it is over only when the last pick in work settled; a pick queued behind a scan that ended starts nothing', async () => {
+  const a = setup(steadyLive(Q), { auto: false }), said = [];
+  a.engines.yieldToPick = () => said.push('yield');
+  a.engines.pickOver = () => said.push('over');
+  let caps = 0, end = null;
+  a.engines.capReady = () => false;
+  a.engines.ensureCap = () => { caps++; return new Promise((_, no) => { end = () => no(new Error('it stopped')); }); };
+  await a.s.pick([]);
+  assert.deepEqual(said, ['over'], 'an empty pick stops nothing');
+  said.length = 0;
+  const file = { name: 'a.jpg', type: 'image/jpeg', arrayBuffer: async () => new ArrayBuffer(0) };
+  const p1 = a.s.pick([file]), p2 = a.s.pick([file]);
+  assert.deepEqual(said, ['yield', 'yield'], 'at once, before the accurate model is asked for');
+  await flush();
+  assert.equal(caps, 1);
+  end(); await p1; await flush();
+  assert.equal(caps, 2, 'the next pick in the row');
+  assert.deepEqual(said, ['yield', 'yield'], 'not over while one is in work');
+  end(); await p2; await flush();
+  assert.deepEqual(said, ['yield', 'yield', 'over']);
+  // closed with a pick in work and one behind it: the one behind asks for nothing
+  caps = 0; said.length = 0; a.log.status.length = 0;
+  const p3 = a.s.pick([file]), p4 = a.s.pick([file]);
+  await flush();
+  assert.equal(caps, 1);
+  a.s.stop();
+  end(); await p3; await p4; await flush();
+  assert.equal(caps, 1, 'nothing started after the close');
+  assert.ok(!a.log.status.some(st => st.key === 'pick_failed'), 'a close is no failure of the pick');
+});
+
+await run('closing at the gate: what waits leaves, the readers do not load again, and the gate is armed anew', async () => {
+  const a = gated(steadyLive(Q));
+  void a.s.prepare(true);
+  await flush(20);
+  const first = a.s.readers.settled(60000);
+  let capGone = false; a.engines.capHold().then(() => { capGone = true; });
+  let asked = 0; const load = a.s.readers.load.bind(a.s.readers); a.s.readers.load = () => { asked++; return load(); };
+  a.s.stop();
+  await first; await flush(20);
+  assert.equal(capGone, true, 'the accurate model\'s wait ended');
+  assert.deepEqual(a.created, [], 'no session opened');
+  assert.equal(asked, 0, 'no load begun again'); assert.equal(a.s.readers.doctype, null);
+  assert.ok(!a.said.some(t => t.startsWith('Time: next loads begin')), 'a close is no opening');
+  await a.clock.runFor(3000);  // the closed open's timer
+  assert.deepEqual(a.created, []);
+  // the next open: armed again, the readers wait again
+  void a.s.prepare(true);
+  await flush(20);
+  assert.deepEqual(a.created, [], 'armed anew');
+  await a.clock.runFor(Sess.FIRST_WAIT_MS + 100); await flush(20);
+  assert.equal(a.created.length, 1, 'and opened');
+  a.done();
+});
+
+await run('the gate stays open for the rest of the session: sleep and a new start do not arm it again, nothing is opened twice', async () => {
+  const a = gated();
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(200, () => a.created.length > 0);
+  assert.equal(a.created.length, 1);
+  a.s.sleep();
+  await a.s.startCamera(a.video);
+  await a.clock.runFor(300);
+  assert.equal(a.said.filter(t => t.startsWith('Time: next loads begin')).length, 1);
+  a.done();
+});
+
+await run('a shutter tap right after the first frame, the readers still loading: the page waits for them and carries its type', async () => {
+  let up = null;
+  const r = { doctype: null, info: { version: 't' }, release() {}, mrzRead: async () => null, heRead: async () => null,
+    load: () => new Promise(() => {}),
+    settled: () => new Promise(res => { up = () => { r.doctype = {}; res(); }; }),
+    doctypeAnswer: async () => (r.doctype ? { doctype: 'passport', conf: 1, turnConf: 1, turn: 0, ms: 1 } : null) };
+  const { s, clock, log, video } = setup(steadyLive(Q), { auto: false, readers: r });
+  await s.startCamera(video);
+  await clock.runFor(200);
+  let done = null; s.snap().then(n => { done = n; });
+  await clock.runFor(200, () => !!up);
+  assert.ok(up, 'it waits for the readers');
+  assert.ok(log.pages.length >= 1 && log.pages[0].readouts === null, 'the page is out at once, its readouts to come');
+  up();
+  await clock.runFor(1000, () => done !== null);
+  assert.equal(log.pages.at(-1).readouts.doctype.doctype, 'passport', 'and it has its type');
+  s.stop();
+});
+
+await run('readers that hang: one deadline per open, shared by every wait: the first shot waits READERS_WAIT_MS, its other reads and the next shots go on at once', async () => {
+  const a = gated();
+  a.engines.modelsInfo = () => new Promise(() => {});  // models.json never answers
+  const real = globalThis.setTimeout, waits = [];
+  // the readers' own timer (a real one) runs on the fake clock
+  globalThis.setTimeout = (fn, ms, ...r) => { if (ms < 1000) return real(fn, ms, ...r); waits.push(ms); a.clock.t += ms; return real(fn, 0); };
+  try {
+    await a.s.startCamera(a.video);
+    await a.clock.runFor(200);
+    const shot = async () => { let n = null; a.s.snap().then(x => { n = x; }); for (let i = 0; i < 500 && n === null; i++) await a.clock.tick(); return n; };
+    assert.equal(await shot(), 1, 'the shot went on without the readers');
+    assert.deepEqual(waits, [St.READERS_WAIT_MS], 'one wait');
+    await a.clock.runFor(200);
+    assert.equal(await shot(), 1);
+    assert.deepEqual(waits, [St.READERS_WAIT_MS], 'none for the next shot');
+    assert.ok(a.log.pages.at(-1).readouts, 'its page has its (empty) readouts');
+  } finally { globalThis.setTimeout = real; a.done(); }
+});
+
+await run('a new open has a deadline of its own, and what is left of it is what a later wait gets', async () => {
+  const given = [];
+  const r = { doctype: null, info: { version: 't' }, release() {}, mrzRead: async () => null, heRead: async () => null, doctypeAnswer: async () => null,
+    load: () => new Promise(() => {}), settled: async ms => { given.push(ms); } };
+  const { s, clock, video } = setup(steadyLive(Q), { auto: false, readers: r });
+  await s.startCamera(video);
+  await clock.runFor(200);
+  await s.snap();
+  const first = given[0];
+  assert.equal(first, St.READERS_WAIT_MS);
+  await clock.runFor(1000);
+  await s.snap();
+  assert.ok(given.at(-1) <= first - 1000, 'what is left: ' + given.join());
+  s.markOpen();
+  await clock.runFor(200);
+  await s.snap();
+  assert.equal(given.at(-1), St.READERS_WAIT_MS, 'a new open');
+  s.stop();
+});
+
+await run('the last scan\'s corners do not reach a kept session\'s next open, nor a wake: a shutter tap before the first new answer takes nothing', async () => {
+  const { s, clock, log, video } = setup(steadyLive(Q), { auto: false });
+  await s.startCamera(video);
+  await clock.runFor(200);
+  assert.ok(s.live.lastRes, 'it had an answer');
+  s.sleep();
+  assert.equal(s.live.lastRes, null);
+  await s.startCamera(video);
+  assert.equal(await s.snap(), 0);
+  assert.equal(log.status.at(-1).key, 'no_frame'); assert.equal(log.pages.length, 0);
+  await clock.runFor(200);
+  assert.ok(s.live.lastRes);
+  s.wake();
+  assert.equal(s.live.lastRes, null);
+  assert.equal(await s.snap(), 0);
+  assert.equal(log.pages.length, 0);
+  s.stop();
+});
+
+await run('the live frame eases off while the accurate model loads: one frame at a time, the pool\'s size again after it', async () => {
+  const { s, clock, engine, engines, video } = setup(steadyLive(Q), { auto: false, size: 3, delay: () => 200 });
+  engines.capLoads = true;
+  await s.startCamera(video);
+  let most = 0;
+  await clock.runFor(1000, () => { most = Math.max(most, engine.pendingLive); return false; });
+  assert.equal(most, 1, 'one at a time');
+  engines.capLoads = false;
+  most = 0;
+  await clock.runFor(1000, () => { most = Math.max(most, engine.pendingLive); return false; });
+  assert.equal(most, 3, 'all of them again');
+  s.stop();
+});
+
+await run('the gate counts from the camera too: a permission prompt over FIRST_WAIT_MS keeps it shut, and the first answer opens it; a camera refused opens it FIRST_WAIT_MS later', async () => {
+  let give = null;
+  const a = gated(steadyLive(Q), { getUserMedia: () => new Promise(r => { give = r; }) });
+  const start = a.s.startCamera(a.video);
+  await a.clock.runFor(Sess.FIRST_WAIT_MS * 3);
+  assert.ok(!a.said.some(t => t.startsWith('Time: next loads begin')), a.said.join(' | '));
+  give({ getTracks: () => [{ stop() {} }] });
+  await start;
+  await a.clock.runFor(300);
+  assert.ok(a.said.some(t => /^Time: next loads begin \(first frame\)/.test(t)), a.said.join(' | '));
+  a.done();
+  let no = null;
+  const b = gated(steadyLive(Q), { getUserMedia: () => new Promise((_, r) => { no = r; }) });
+  const open = b.s.startCamera(b.video);
+  await b.clock.runFor(Sess.FIRST_WAIT_MS * 2);
+  assert.ok(!b.said.some(t => t.startsWith('Time: next loads begin')));
+  no(new Error('refused'));
+  await open;
+  await b.clock.runFor(Sess.FIRST_WAIT_MS - 100);
+  assert.ok(!b.said.some(t => t.startsWith('Time: next loads begin')), 'FIRST_WAIT_MS from the camera\'s end');
+  await b.clock.runFor(200);
+  assert.ok(b.said.some(t => /^Time: next loads begin \(no frame\)/.test(t)), b.said.join(' | '));
+  b.done();
+});
+
+await run('a way that holds the accurate model itself: prepare starts no second copy of it', async () => {
+  const { s, engines } = setup(steadyLive(Q), { auto: false });
+  let asked = 0;
+  engines.ensureCap = async () => { asked++; };
+  engines.capInLive = () => true;
+  await s.prepare();
+  assert.equal(asked, 0);
+  s.stop();
+});
+
+await run('the settings changed at the gate (the lab): the first answer on the new way opens it', async () => {
+  const a = gated();
+  a.engines.setSettings = function (p) { this.settings = { ...this.settings, ...p }; };
+  let n = 0;
+  const hold = []; a.engines.ensureSession = () => { n++; return new Promise(r => hold.push(r)); };
+  void a.s.startCamera(a.video);
+  await flush(20);
+  const sw = a.s.switchWay({ backend: 'webgpu' });
+  await flush(20);
+  assert.deepEqual(a.created, [], 'still at the gate');
+  for (const r of hold.splice(0)) r();
+  await flush(20);
+  for (const r of hold.splice(0)) r();
+  await sw;
+  await a.clock.runFor(300, () => a.created.length > 0);
+  assert.equal(a.created.length, 1);
+  assert.ok(a.said.some(t => /^Time: next loads begin \(first frame\)/.test(t)), a.said.join(' | '));
+  a.done();
 });
 
 fs.rmSync(TMP, { recursive: true, force: true });

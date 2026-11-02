@@ -341,9 +341,9 @@ const READS = {
     + JSON.stringify({siteStart, ...shot, greenPixels: green}));
   ok(shot.shutters === '1', 'site: the Auto shot sounds the shutter once (a click and a buzz at "captured") ' + JSON.stringify({shutters: shot.shutters}));
   const eng = shot.engine || {}, th = shot.threads || {};
-  ok(eng.worker === true && /^bg-(pool|gpulive)$/.test(eng.way || '') && eng.size > 1 && eng.shared === true && th.spawned >= eng.size + 1
-    && th.bitmaps > 0 && th.copied === 0 && th.maxInFlight >= 2 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,
-    'site: the models run in background threads as on a phone — a pool of live threads (several frames at once) beside the shared capture thread, which found and cut the shot\'s pages; every frame handed over as a bitmap (none copied) '
+  ok(eng.worker === true && /^bg-(pool|gpulive)$/.test(eng.way || '') && (eng.way === 'bg-pool' ? eng.size > 1 && th.maxInFlight >= 2 : eng.size === 1) && eng.shared === true && th.spawned >= eng.size + 1
+    && th.bitmaps > 0 && th.copied === 0 && th.live.detect > 0 && th.cap.detect >= 1 && th.cap.warp >= 2,
+    'site: the models run in background threads as on a phone — one live thread on the GPU where this browser gives an adapter, else a pool of live threads (several frames at once), beside the shared capture thread, which found and cut the shot\'s pages; every frame handed over as a bitmap (none copied) '
     + JSON.stringify({engine: eng, threads: th}));
   const lightFirst = (loads, [live, cap]) => {
     const at = loads.indexOf('load ' + cap); if (at < 0) return false;
@@ -353,8 +353,8 @@ const READS = {
   ok(lightFirst(shot.loads || [], shot.models || []),
     'site: the light model first — the live frame\'s threads loaded, then the accurate model\'s capture thread right after them, never both loading at once ' + JSON.stringify(shot.loads));
   const ps = shot.passes || {};
-  ok(eng.way === 'bg-gpulive' ? !!ps.site && JSON.parse(ps.site)[(shot.models || [])[0]] && !ps.lab : !ps.site && !ps.lab,
-    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); none without the GPU way ' + JSON.stringify({way: eng.way, ...ps}));
+  ok(!ps.lab && (ps.site ? !!JSON.parse(ps.site)[(shot.models || [])[0]] : eng.way !== 'bg-gpulive'),
+    'site: a GPU check that passed is remembered under the site\'s own key (the lab\'s apart); none on the GPU way without it ' + JSON.stringify({way: eng.way, ...ps}));
   ok(look.w === 390 && look.h === 844 && look.statusTop && look.autoTopRight && look.doneBottomRight && look.stripAboveBar && look.barBottom && look.noScroll && look.bar === 'scan-pick,scan-shutter,scan-done' && look.video,
     'site, screen 1 at 390×844 (template 6): the camera fills the screen, the status line at the top centre, Auto at the top right, the photos\' strip above the bottom bar (Photos/PDF, the shutter, Done at the bottom right) ' + JSON.stringify(look));
   const fr = (asked[0] || {}).video || {};
@@ -775,7 +775,8 @@ const READS = {
 // Vite-built module worker, src/scan/engine/worker.ts) loads the corners model on the CPU (wasm) and answers
 // detect on a grey frame with the planted corners and on a black one with none, and the page's readers
 // (readers.ts: loadOrt + cpuSession in the page) load the document type model from models.json and answer on a
-// grey page — the import() of ort.all.min.mjs, wasmPaths from the surface, the loaders and the .wasm all real.
+// grey page — the import() of ort.wasm.min.mjs (the CPU alone) and of ort.all.min.mjs (a load that may use the GPU,
+// on the CPU here: no WebGPU in the tests), wasmPaths from the surface, the loaders and the .wasm all real.
 async function realRuntime(b) {
   const { execSync } = require('child_process');
   const path = require('path');
@@ -814,7 +815,7 @@ async function realRuntime(b) {
     p.on('request', r => reqs.push(r.url()));
     await p.goto(BASE + 'scan-lab/' + (dir === 'ort130' ? '?ort=130' : ''));
     await p.waitForFunction(() => window.ScanLab, null, {timeout: 20000});
-    const r = await p.evaluate(async dir => {
+    const cpu = await p.evaluate(async dir => {
       const out = {}, w = ScanLab.session.engines.workerEngine(1, dir, () => {});
       try {
         out.ep = await w.load('lite.onnx', null, 'wasm', false);
@@ -824,22 +825,35 @@ async function realRuntime(b) {
         out.black = (await w.detect('live', {rgba: black})).res;
       } catch (e) { out.err = String(e && e.message || e); }
       w.stop();
+      return out;
+    }, dir).catch(e => ({error: e.message}));
+    // up to here only CPU threads ran (the readers' page import does not tell, it is the same file): the big build unasked
+    const allFile = '/scan-lab/' + dir + '/ort.all.min.mjs', plainOnly = !served.includes(allFile);
+    const r = await p.evaluate(async dir => {
+      const out = {}, all = ScanLab.session.engines.workerEngine(1, dir, () => {});
+      try {
+        out.allEp = await all.load('lite.onnx', null, 'auto', false);
+        const grey = new Uint8ClampedArray(256 * 256 * 4).fill(128);
+        out.allGrey = (await all.detect('live', {rgba: grey})).res;
+      } catch (e) { out.allErr = String(e && e.message || e); }
+      all.stop();
       const R = ScanLab.session.readers;
       out.version = ((await R.load()) || {}).version;
       const c = new OffscreenCanvas(256, 256), g = c.getContext('2d');
       g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, 256, 256);
       try { const a = await R.doctypeAnswer(c); out.doctype = a && [a.doctype, a.conf.toFixed(2), a.turn, a.turnConf.toFixed(2)].join(); } catch (e) { out.readErr = String(e && e.message || e); }
       return out;
-    }, dir).catch(e => ({error: e.message}));
+    }, dir).catch(e => ({error: e.message})).then(o => ({...cpu, ...o}));
     const near = (pts, want) => Array.isArray(pts) && pts.every((q, i) => q && Math.abs(q[0] - want[i][0]) < 0.01 && Math.abs(q[1] - want[i][1]) < 0.01);
     const got = [...new Set(served)], own = f => got.includes('/scan-lab/' + dir + '/' + f);
-    const files = {module: own('ort.all.min.mjs'), loader: got.some(f => f.startsWith('/scan-lab/' + dir + '/ort-wasm-simd-threaded') && f.endsWith('.mjs')),
+    const files = {module: own('ort.wasm.min.mjs'), gpuModule: own('ort.all.min.mjs'), loader: got.some(f => f.startsWith('/scan-lab/' + dir + '/ort-wasm-simd-threaded') && f.endsWith('.mjs')),
       wasm: got.some(f => f.startsWith('/scan-lab/' + dir + '/') && f.endsWith('.wasm'))};
     const site = reqs.filter(u => /\/scan\//.test(u));
     ok(!r.error && !r.err && r.ep === 'wasm' && near(r.grey && r.grey.pts, SPOTS) && r.grey.conf > 0.7 && !!r.black && r.black.pts.every(q => q === null)
-      && files.module && files.loader && files.wasm && site.length === 0,
-      'the real ONNX Runtime ' + (dir === 'ort' ? '1.22 (ort/)' : '1.30 (ort130/)') + ' in the engine\'s module worker: the corners model loads on the CPU (wasm) and detect answers the planted corners on a grey frame, none on a black one; ort.all.min.mjs, its loader .mjs and .wasm come from the lab\'s own folder '
-      + JSON.stringify({r: {ep: r.ep, err: r.err || r.error, grey: r.grey, black: r.black && r.black.conf}, files, site: site.slice(0, 3)}));
+      && !r.allErr && r.allEp === 'wasm' && near(r.allGrey && r.allGrey.pts, SPOTS)
+      && files.module && files.gpuModule && plainOnly && files.loader && files.wasm && site.length === 0,
+      'the real ONNX Runtime ' + (dir === 'ort' ? '1.22 (ort/)' : '1.30 (ort130/)') + ' in the engine\'s module worker: the corners model loads on the CPU (wasm) and detect answers the planted corners on a grey frame, none on a black one, through ort.wasm.min.mjs and through ort.all.min.mjs; both, their loader .mjs and .wasm come from the lab\'s own folder '
+      + JSON.stringify({r: {ep: r.ep, err: r.err || r.error || r.allErr, allEp: r.allEp, grey: r.grey, allGrey: r.allGrey, black: r.black && r.black.conf}, plainOnly, files, site: site.slice(0, 3)}));
     ok(r.version === 'tiny' && r.doctype === 'passport,0.90,1,0.80' && !r.readErr,
       'the real ONNX Runtime ' + (dir === 'ort' ? '1.22' : '1.30') + ' in the page: the readers load the document type model from models.json and answer on a grey page ' + JSON.stringify({version: r.version, doctype: r.doctype, err: r.readErr}));
     ok(errs.length === 0, 'the real ONNX Runtime ' + dir + ': no page errors ' + errs.join(' | '));

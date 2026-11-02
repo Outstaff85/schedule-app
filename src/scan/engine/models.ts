@@ -6,7 +6,7 @@
 import { corners, S } from './geometry';
 import { tensor, type ExecutionProvider, type GpuLayout, type Ort, type OrtSession } from './ort';
 import type { EngineStatus, StatusOn } from './status';
-import { modelUrl, modelsJsonUrl, type SurfaceRef } from './surface';
+import { modelUrl, modelsJsonUrl, ortWasmUrl, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas } from './upright';
 import type { Corners, Pt } from './types';
 
@@ -89,6 +89,24 @@ export async function fetchModel(s: SurfaceRef, name: string, onProgress: (got: 
   throw failed;
 }
 
+// ONNX Runtime fetches its .wasm inside the first InferenceSession.create, under the step's limit (openSession): on a slow
+// first open that download alone used up the 20 s and the way was left. So the thread fetches it first, and create then
+// finds it in the browser's HTTP cache (one revalidation): the runtime's own streaming compile stays, which
+// env.wasm.wasmBinary would lose, and a thread's limit counts no download. Beside the model's file, with nothing shown
+// (the model's progress is the line), onBytes telling the page the thread is alive. Never fails: with no answer here
+// the runtime fetches it itself, as before.
+export async function fetchRuntime(s: SurfaceRef, dir: OrtDir, gpu: boolean, onBytes: () => void, said?: OnLog): Promise<void> {
+  const t0 = now();
+  try {
+    const res = await fetch(ortWasmUrl(s, dir, gpu));
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    const reader = res.body.getReader();
+    let got = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; got += value.length; onBytes(); }
+    if (said) said('Time: ONNX Runtime\'s wasm (' + dir + ') fetched first, ' + mb(got) + ' — ' + Math.round(now() - t0) + ' ms');
+  } catch (e) { if (said) said('Time: ONNX Runtime\'s wasm (' + dir + ') not fetched first (' + errText(e) + ') — it fetches it itself'); }
+}
+
 /** A model file's stamp from models.json: its fingerprint when the file list has it ("sha:" + 16 hex), else the
  *  surface's version ("v:" + version); null when neither is known (the ETag check). */
 export function modelStamp(info: ModelsInfo | null | undefined, name: string): string | null {
@@ -148,6 +166,30 @@ export function newGpuPass(o: Opened, stamp: string | null, ort: string, ua: str
 // passed: the GPU layout whose check passed before on this device with the same key (gpuPassed): it is tried first
 // and its check skipped — "Time: GPU check skipped — passed before on this device (<layout>)".
 export interface OpenOpts { bytes?: Promise<Uint8Array>; stamp?: string | null; time?: OnLog; passed?: GpuLayout | null }
+/** A step given up after 20 s of running time: a page the phone froze meanwhile (the screen off, another app) does not
+ *  count, or a thaw would read as a hang, and a hang keeps the GPU away for a day (engines.ts gpuHang). */
+export function stepLimit<T>(p: Promise<T>, what: string): Promise<T> {
+  const clock = (): number => performance.now();
+  let last = clock(), frozen = 0;
+  const seen = (): void => { const t = clock(); if (t - last > 3000) frozen += t - last; last = t; };
+  const tick = setInterval(seen, 1000);
+  const late = new Promise<never>((_, no) => {
+    const arm = (ms: number): void => {
+      setTimeout(() => {
+        seen();
+        if (!frozen) { no(new Error(what + ' took over 20 s')); return; }
+        const more = frozen;
+        frozen = 0;
+        arm(more);
+      }, ms);
+    };
+    arm(20000);
+  });
+  return Promise.race([p, late]).finally(() => clearInterval(tick));
+}
+
+/** The error of a step given up on (openSession's limit). */
+export const isStepHang = (text: string): boolean => / took over 20 s$/.test(text);
 export const downloadProgress = (model: string, onStatus: OnStatus) => (got: number, total: number): void => onStatus({ key: 'downloading', model, got, total }, total ? got / total : 0);
 
 export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: Want, onStatus: OnStatus, onLog: OnLog, gpuLayout?: string | null, opts: OpenOpts = {}): Promise<Opened> {
@@ -157,15 +199,17 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
   const first = opts.passed || gpuLayout;
   const layouts: GpuLayout[] = first === 'NCHW' ? ['NCHW', 'NHWC'] : ['NHWC', 'NCHW'];
   const order = (want === 'auto' ? ['webgpu', 'wasm'] as Ep[] : [want]).flatMap((ep): [Ep, GpuLayout?][] => ep === 'webgpu' ? layouts.map(l => ['webgpu', l]) : [[ep]]);
-  let gpuWrong = false;
+  let gpuWrong = false, gpuHung = false;
   for (const [ep, layout] of order) {
+    if (ep === 'webgpu' && gpuHung) continue;  // a GPU that hung hangs on the other layout too: 20 s more on every open
     if (ep === 'webgpu' && !hasGpu()) { onLog('WebGPU is not available here'); continue; }
     const name = ep === 'webgpu' ? 'the GPU (' + layout + ')' : 'the CPU';
     const on: StatusOn = ep === 'webgpu' ? { on: 'gpu', layout: layout as GpuLayout } : { on: 'cpu' };
     try {
       onStatus({ key: 'starting', model, ...on }, 1);
-      // A step that hangs (seen on a phone) is given up after 20 s.
-      const limit = <T>(p: Promise<T>, what: string): Promise<T> => Promise.race([p, new Promise<never>((_, no) => setTimeout(() => no(new Error(what + ' took over 20 s')), 20000))]);
+      // A step that hangs (seen on a phone) is given up after 20 s. No download counts: the model's bytes are here, and a
+      // thread fetched ONNX Runtime's .wasm before it came here (fetchRuntime).
+      const limit = stepLimit;
       const provider: ExecutionProvider = ep === 'webgpu' ? { name: 'webgpu', preferredLayout: layout as GpuLayout } : ep;
       let t0 = now();
       const sess = await limit(ort.InferenceSession.create(bytes, { executionProviders: [provider], graphOptimizationLevel: 'all' }), 'starting');
@@ -192,6 +236,11 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
       return { sess, ep, layout: ep === 'webgpu' ? layout as GpuLayout : null, checked };
     } catch (e) {
       onLog('Could not start ' + model + ' on ' + name + ': ' + errText(e));
+      if (ep === 'webgpu' && isStepHang(errText(e))) {
+        if (want !== 'auto') throw e;
+        gpuHung = true;
+        continue;
+      }
       if (want !== 'auto' && !(ep === 'webgpu' && layout === 'NHWC')) throw e;
     }
   }

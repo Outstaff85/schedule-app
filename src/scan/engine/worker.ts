@@ -6,7 +6,7 @@
 // 'status', 'log' and 'reply' (the call's id, or its error). Uses no DOM: it type-checks under the WebWorker
 // lib too.
 import { S, warpRGBA } from './geometry';
-import { cpuSession, detectRGBA, downloadProgress, fetchModel, gpuPassed, newGpuPass, openSession, ortVersion, userAgent, errText, type GpuPasses, type Opened, type Want } from './models';
+import { cpuSession, detectRGBA, downloadProgress, fetchModel, fetchRuntime, gpuPassed, newGpuPass, openSession, ortVersion, userAgent, errText, type GpuPasses, type Opened, type Want } from './models';
 import { loadOrt, type GpuLayout, type Ort, type OrtSession } from './ort';
 import type { EngineStatus } from './status';
 import type { OrtDir, SurfaceRef } from './surface';
@@ -31,6 +31,8 @@ export type WorkerIn =
 export type WorkerOut =
   | { type: 'status'; status: EngineStatus; frac?: number }
   | { type: 'log'; text: string }
+  /** Bytes came (ONNX Runtime's .wasm): the thread is no silent one, and there is nothing to show. */
+  | { type: 'alive' }
   | { type: 'reply'; id: number; error?: string; [k: string]: unknown };
 
 interface Scope {
@@ -62,11 +64,13 @@ scope.onmessage = async ({ data: m }) => {
       // file and the face finder's (0.2 MB) — files only, no session: the sessions still start one after the
       // other, the second model's file is fetched after the first model's session (one heavy model in memory at a time)
       let t0 = performance.now();
-      const ortP = loadOrt(m.surface, m.ort, m.threads).then(o => {
+      const ortP = loadOrt(m.surface, m.ort, m.threads, m.want !== 'wasm').then(o => {
         onLog('Time: ONNX Runtime (' + m.ort + ') loaded for ' + m.live + ' — ' + Math.round(performance.now() - t0) + ' ms');
         return o;
       });
       ortP.catch(() => {});  // its failure is the load's, below
+      // its .wasm too, before the sessions: their 20 s limit counts no download (models.ts fetchRuntime)
+      const runtime = fetchRuntime(m.surface, m.ort, m.want !== 'wasm', () => say({ type: 'alive' }), onLog);
       if (m.stamps === undefined) {
         const t1 = performance.now();
         stampsGot = await stampsLater();
@@ -78,6 +82,7 @@ scope.onmessage = async ({ data: m }) => {
       const faceBytes = m.face ? fetchModel(m.surface, 'yunet.onnx', () => {}, { stamp: stamp('yunet.onnx'), said: onLog }) : null;
       firstBytes.catch(() => {}); if (faceBytes) faceBytes.catch(() => {});  // their failure is the session's, below
       ort = await ortP;
+      await runtime;
       // the GPU check skipped for a model whose pass is remembered with the same key; a check that ran and passed
       // now goes back in the reply (the page keeps it)
       const ov = ortVersion(ort, m.ort), ua = userAgent(), passes: GpuPasses = {}, gpu: string[] = [];

@@ -32,8 +32,8 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await ctx.route('**/*', async r => {
       const u = r.request().url();
       // the scanner's ONNX Runtime is fetched at deploy, not in the tests' build: a stand-in whose models never
-      // start — the ES module each surface's scanner imports (<base>ort(130)/ort.all.min.mjs, src/scan/engine/ort.ts)
-      if (/\/scan(-lab)?\/ort(130)?\/ort\.all\.min\.mjs$/.test(u)) return r.fulfill({status:200, contentType:'text/javascript',
+      // start — the ES modules each surface's scanner imports (<base>ort(130)/ort.all.min.mjs and ort.wasm.min.mjs, src/scan/engine/ort.ts)
+      if (/\/scan(-lab)?\/ort(130)?\/ort\.(all|wasm)\.min\.mjs$/.test(u)) return r.fulfill({status:200, contentType:'text/javascript',
         body:"export const env={wasm:{},webgpu:{}};export function Tensor(){};export const InferenceSession={create:async()=>{throw new Error('no models in the tests')}};"});
       if (u.startsWith('http://127.0.0.1')) return r.continue();
       if (u === FB + 'firebase-app.js') return r.fulfill({status:200, contentType:'application/javascript', headers:{'Access-Control-Allow-Origin':'*'}, body:BUNDLE});
@@ -68,6 +68,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
         tap(sel){ const el = (T.el(sel) || {}).classList && T.el(sel).classList.contains('og-plate') ? T.el(sel) : T.el(sel) && T.el(sel).querySelector('.og-plate'); if(!el) return false;
           for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new PointerEvent(t, {bubbles: true, pointerType: 'touch', isPrimary: true})); return true; },
         esc: () => document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})),
+        // the scan window really gone before the next one opens: the next check waits for a scanner, and the one closing
+        // would answer it
+        scanClosed: () => T.until(() => !document.querySelector('[data-testid="scanner"]'), 5000),
         // a photo in the scanner's strip opened large (template 6): a tap grows it, a tap on its type and % opens it
         async openThumb(el){ if (!el.dataset.selected) el.click(); await T.until(() => el.querySelector('[data-testid="scan-thumb-open"]'), 3000); el.querySelector('[data-testid="scan-thumb-open"]').click(); },
         fill(sel, v){ const el = T.el(sel); const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -965,7 +968,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.autoOn = await T.until(() => H.session().auto === true, 3000);
     r.done = document.querySelector('[data-testid="scan-done"]').textContent;
     await T.tick(700); // kept on the phone a moment after a change
-    T.esc(); await going; r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000);
+    T.esc(); await going; r.closed = await T.until(() => !document.querySelector('[data-testid="scanner"]'), 4000); await T.scanClosed();
     r.camOff = !H.session().camera.on;
     await T.tick(500); // the window gone, as a person opens it again
     going = startNewScan();
@@ -973,7 +976,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.restored = await T.until(() => thumbs('[data-kept]') === 2, 4000);
     r.keptKinds = [...document.querySelectorAll('[data-testid="scan-thumb"][data-kept]')].map(e => e.dataset.kind).sort().join();
     r.same2 = H.session() === s0;
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
     return r;
   }, [JPG, JPG2]);
@@ -1018,7 +1021,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   };
   alignTurn = 0;
   await p.evaluate(async () => {
-    T.esc(); await window.__turnGoing;
+    T.esc(); await window.__turnGoing; await T.scanClosed();
     await new Promise(res => { const d = indexedDB.deleteDatabase('scanner'); d.onsuccess = d.onerror = d.onblocked = res; setTimeout(res, 1000); });
   });
   const tc = t => [t.typed ? 'typed' : 'untyped', t.size, t.corner, 'haiku' + t.haiku].join(' ');
@@ -1056,7 +1059,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     await T.until(() => !document.querySelector('[data-testid="scan-shutter"]').disabled, 10000);
     document.querySelector('[data-testid="scan-shutter"]').click();
     await T.tick(1000);
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     return r;
   }, [JPG, PDF2]);
   ctx.off('request', onScanReq);
@@ -1106,7 +1109,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     A.done();
     r.sent = await T.until(() => A.attemptDirs.has(b), 8000);
     await A.pageDeleted(b, 1);
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     return r;
   });
   const sent = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts);
@@ -1133,9 +1136,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const H = await ManagerScan.hooks(), A = H.attempts();
     await A.flush();
     const r = {gone: await T.until(() => !document.querySelector('[data-testid="scan-queue"]'), 8000), waiting: (await A.queued()).length};
-    T.esc(); await window.__queueGoing;
-    // really gone: the next check waits for a scanner on the screen, and the one closing here would answer it
-    await T.until(() => !document.querySelector('[data-testid="scanner"]'), 5000);
+    T.esc(); await window.__queueGoing; await T.scanClosed();
     return r;
   });
   ok(queue.shown && queue.waiting === 5 && online.gone && online.waiting === 0,
@@ -1146,14 +1147,18 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     const H = await ManagerScan.hooks();
     const going = startNewScan();
     await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const before = H.session();
     const give = () => H.inject({pics: [{b64: jpg}], w: 800, h: 600, edges: [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]});
     // the pages kept on the phone by the batches check above come first in the strip: this shot's page is the one not kept
-    const shown = () => T.until(() => document.querySelectorAll('[data-testid="scan-thumb"][data-kind]:not([data-kept])').length >= 1, 8000);
-    // given while the window still takes over from the one closed before, a page can land on the old session: given once more
-    let a = await give();
-    if (!(await shown())) { console.log('corner editor check: the page was not shown, given again'); a = await give(); await shown(); }
+    const a = await give();
+    const thumb = () => document.querySelector(`[data-testid="scan-thumb"][data-id^="${a.attempt}:"]:not([data-kept])`);
+    await T.until(() => { const t = thumb(); return t && t.dataset.kind; }, 6000);
+    if (!thumb()) throw new Error('corner editor check: no page of ' + a.attempt + ' in the strip ' + JSON.stringify({
+      scanner: !!document.querySelector('[data-testid="scanner"]'), status: (document.querySelector('[data-testid="scan-status"]') || {}).textContent,
+      held: [...H.session().pages.keys()].slice(-4), same: H.session() === before,
+      thumbs: [...document.querySelectorAll('[data-testid="scan-thumb"]')].slice(-4).map(t => [t.dataset.id, t.dataset.kept || '', t.dataset.kind || '']) }));
     // its Edit corners button on the photo grown in the strip (template 6)
-    document.querySelector('[data-testid="scan-thumb"]:not([data-kept])').click();
+    thumb().click();
     const r = {button: await T.until(() => document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]'), 4000)};
     document.querySelector('[data-testid="scan-thumb"][data-selected] [data-testid="scan-thumb-fix"]').click();
     r.editor = await T.until(() => document.querySelector('[data-testid="corner-canvas"][data-fit]'), 4000);
@@ -1166,12 +1171,30 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
     r.id = a.attempt;
     H.attempts().done();
     r.sent = await T.until(() => H.attempts().attemptDirs.has(a.attempt), 8000);
-    T.esc(); await going;
+    T.esc(); await going; await T.scanClosed();
     return r;
   }, JPG);
   const sentFix = feedbackCalls.filter(c => c.action === 'attempt').flatMap(c => c.attempts).find(x => x.id === fixed.id) || {};
   ok(fixed.button && fixed.editor && fixed.closed && fixed.fixed === '20,15' && fixed.sent && sentFix.edgesFixed && Math.round(sentFix.edgesFixed[0][0] * 100) === 20 && Math.round(sentFix.edgesFixed[0][1] * 100) === 15,
     'scan corner editor: Fix corners opens the editor on the page\'s photo; a dragged corner is the attempt\'s answer (edgesFixed), sent with it ' + JSON.stringify({fixed, sent: sentFix.edgesFixed}));
+  // A window opened while the closed one's history.go is under way (src/scan/ui/back.ts): that step's popstate closes
+  // nothing, the new window stays, and its history entry comes once it has landed
+  const backGap = await p.evaluate(async () => {
+    const going = startNewScan();
+    await T.until(() => document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]'));
+    const r = {depthOpen: (history.state || {}).scanBack || 0, hit: false};
+    let again = null;
+    const go = history.go;
+    history.go = function (n) { history.go = go; go.call(history, n); r.hit = true; again = startNewScan(); };
+    T.esc(); await going;
+    await T.until(() => r.hit, 4000);
+    await T.tick(800);
+    r.open = !!document.querySelector('[data-testid="scanner"] [data-testid="scan-status"]');
+    r.depthAgain = (history.state || {}).scanBack || 0;
+    T.esc(); await again; await T.scanClosed();
+    return r;
+  });
+  ok(backGap.hit && backGap.open && backGap.depthOpen === 1 && backGap.depthAgain === 1, 'scan window: one opened while the last one\'s history.go is under way stays open, with its own history entry ' + JSON.stringify(backGap));
   // The scanner lab (/scan-lab/, src/scan/lab/; docs/scan-plan.md → S9): the same
   // full-screen scanner in lab mode, on the lab's own surface (/scan-lab/ and its models — never the site's /scan/),
   // with the Lab tools drawer — the figures, the Errors block (this opening's only; why a way to run the models
@@ -2333,6 +2356,9 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.waitForSelector('[data-testid="contract-marks"]');
   const ctMarks = await p.evaluate(() => [...document.querySelectorAll('[data-testid="contract-mark"]')].map(b => b.dataset.mark));
   ok(ctMarks.length === 53 && new Set(ctMarks).size === 53 && ctMarks.includes('client_name') && ctMarks.includes('terms_5'), 'contract templates: the { } button lists every mark once ' + ctMarks.length);
+  await p.type('[data-testid="contract-marks-search"]', 'client_rate');
+  await waitFor(p, () => document.querySelectorAll('[data-testid="contract-mark"]').length === 1, 3000);
+  ok(await p.evaluate(() => document.querySelector('[data-testid="contract-mark"]').dataset.mark === 'client_rate'), 'contract templates: the search finds a mark');
   await p.keyboard.press('Escape');
   await waitFor(p, () => !document.querySelector('[data-testid="contract-marks"]'), 3000);
   await p.click('[data-testid="contracts-view"] [data-kind="client"]');
@@ -3782,7 +3808,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
       && r.querySelector('[data-testid="scan-collect"] [data-firm="tenant-one"]').getAttribute('data-state') === 'unchecked'; }, 8000);
   sa.sent = sfCalls.filter(c => c.action === 'setSettings').map(c => JSON.stringify(c.doctypeMode || c.collect)).join(' ');
   await p.unroute(/cloudfunctions\.net\/scan_feedback$/);
-  ok(sa.shown && sa.figs === '42/20,5/20,7,3' && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && /5 ID cards/.test(sa.he) && /80%/.test(sa.he) && /60%/.test(sa.he) && sa.on === 'checked'
+  ok(sa.shown && sa.figs.endsWith(',42/20,5/20,7,3') && sa.mode === 'shadow' && /10 pages/.test(sa.shadow) && /90%/.test(sa.shadow) && /80%/.test(sa.shadow) && /4 passports/.test(sa.mrz) && /75%/.test(sa.mrz) && /50%/.test(sa.mrz) && /5 ID cards/.test(sa.he) && /80%/.test(sa.he) && /60%/.test(sa.he) && sa.on === 'checked'
     && sa.after && /"mixed"/.test(sa.sent) && /"tenant-one":false/.test(sa.sent),
     'Admin → Scanner: the figures, the shadow, the passport zone reader\'s and the Hebrew field reader\'s shadow, the document type model set to Mixed and a firm\'s full documents turned off (scan_feedback) ' + JSON.stringify(sa));
   ok(/^rejected\|Not better — nothing published.*Document type: not better.*Document type: turn exam under 98%\| \/ published\|Published to the lab · v9.*Document edges: better.*Merge the pull request.*\|https:\/\/github\.com\/Outstaff85\/schedule-app\/pull\/400$/.test(sa.loop || ''),

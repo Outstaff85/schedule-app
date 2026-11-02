@@ -30,8 +30,9 @@
 // After a shot or a pick the live frame goes on by itself (the session's rule, owner 2026-10-26: no Next to tap;
 // Auto does not take the same document twice — it waits until the document taken has left the frame). The
 // shutter is off while a shot is still in work (refining, looking for more documents: `busy`) or a pick is
-// (`picking`), so the shot finishes and gives its other documents; and until the session's first status (`ready`):
-// the camera shows beside the models' start, with nothing behind the shutter yet.
+// (`picking`), so the shot finishes and gives its other documents; and until the session's first status that is not a
+// pick's (`ready`): the camera shows beside the models' start, with nothing behind the shutter yet — after a pick that
+// stopped the start too, while the light model starts again.
 import * as React from 'react';
 import { finishUndo, undoDelete } from '@/components/shared/undo';
 import { tr } from '@/lib/i18n';
@@ -40,7 +41,7 @@ import type { Doctype } from '../engine/doctypes';
 import type { PickFile } from '../engine/files';
 import type { PreviewEvent, SessionEvents } from '../engine/session';
 import type { ShotPage } from '../engine/shot';
-import type { SessionStatus } from '../engine/status';
+import { pickStatus, type SessionStatus } from '../engine/status';
 import type { Quad } from '../engine/types';
 import { playShutter, unlockShutter } from './shutter';
 
@@ -135,7 +136,8 @@ export interface ScanScreenState {
   auto: boolean;
   /** Auto turned itself off after AUTO_MAX shots in a row (the screen says so until Auto is tapped). */
   autoStopped: boolean;
-  /** The session has said something: until then the models are starting and there is nothing to shoot with. */
+  /** The session has said something of the live frame (a pick's statuses do not count): until then the models are
+   *  starting and there is nothing to shoot with. */
   ready: boolean;
   /** A shot is still in work (refining, looking for more documents). */
   busy: boolean;
@@ -245,7 +247,7 @@ export function useScanSession(session: ScanSessionLike, opts: {
     let alive = true;
     const offs = [
       session.on('status', s => {
-        if (!now.current.ready) { now.current.ready = true; setReady(true); }
+        if (!now.current.ready && !pickStatus(s)) { now.current.ready = true; setReady(true); }
         if (s.key === 'captured') playShutter();   // the shot's click and buzz (shutter.ts)
         putBusy(SHOT_WORK.has(s.key));
         if (LIVE.has(s.key)) clearPreview();

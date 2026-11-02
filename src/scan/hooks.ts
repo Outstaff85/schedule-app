@@ -113,7 +113,8 @@ export interface ThreadStats {
 }
 /** The threads' stand-ins as the checks drive them: their figures, hang(model) — the threads holding that model
  *  (by default the live model) stop answering, as a phone's hung GPU did; returns how many —, and skew(ms) —
- *  the engine's clock moved on by ms, so a call left unanswered meets the 25 s watchdog without a 25 s wait. */
+ *  the engine's clock moved on by ms, its timers ticking each second as they would (a jump of the clock alone is a
+ *  frozen page, no silence), so a call left unanswered meets the 25 s watchdog without a 25 s wait. */
 export interface StubThreads { stats: ThreadStats; hang(model?: string): number; skew(ms: number): void }
 
 /** The corners model's stand-in behind the real thread protocol (CI has no models): the engine's background
@@ -186,8 +187,11 @@ export function stubWorkers(s: ScanSession, o: { ms?: number; loadMs?: number } 
     }
   }
   E.env.spawn = () => { const f = new Fake(); all.push(f); stats.spawned++; return f; };
-  const realNow = E.env.now;
+  const realNow = E.env.now, setTick = E.env.setInterval, clearTick = E.env.clearInterval, ticks = new Map<unknown, () => void>();
+  E.env.setInterval = (fn, t) => { const id = setTick(fn, t); ticks.set(id, fn); return id; };
+  E.env.clearInterval = id => { ticks.delete(id); clearTick(id); };
   let ahead = 0;
+  E.env.now = () => realNow() + ahead;
   return {
     stats,
     hang(model = E.settings.model.split('+')[0]) {
@@ -195,7 +199,7 @@ export function stubWorkers(s: ScanSession, o: { ms?: number; loadMs?: number } 
       for (const f of hit) f.hung = true;
       return hit.length;
     },
-    skew(t) { ahead += t; E.env.now = () => realNow() + ahead; },
+    skew(t) { for (let left = t; left > 0; left -= 1000) { ahead += Math.min(left, 1000); for (const fn of [...ticks.values()]) fn(); } },
   };
 }
 

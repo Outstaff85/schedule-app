@@ -1,15 +1,18 @@
 // The scanner's engine (docs/scan-plan.md → S9): the sticky green frame. The corners are averaged over the
 // model's answers so the frame does not jitter, a big jump starts it again; once green it sticks (owner,
-// 2026-10-24: it kept moving and the 1 s countdown kept starting again): an answer within HOLD of it leaves
+// 2026-10-24: it kept moving and the 1 s countdown kept starting again): an answer close to it leaves
 // it where it is, a weak or missed answer is outlived for MISS_MS (a blur, a glare), and the follow between
-// answers starts the countdown again only when the document went DRIFT away since it stuck, or jumped (JERK
-// in one camera frame) — not on every tremble of the hand. Ported unchanged from the lab's former plain page
+// answers starts the countdown again only when the document went far since it stuck, or jumped (TIMING) — not on every tremble of the hand. Ported unchanged from the lab's former plain page
 // (smoothen, restartSteady, the follow's restart rule and the hint; tests/scan/engine.test.mjs).
 import type { Corners, Pt, Quad } from './types';
 
-/** Green after 0.25 s on the edges, the shot after 1 s; a move over MOVE is not still. */
-export const STEADY_MS = 1000, MOVE = 0.02, LOCK_MS = 250;
-export const HOLD = 0.04, MISS_MS = 600, DRIFT = 0.03, JERK = 0.02;
+/** Green after 0.25 s on the edges, a second of the model's own answers; a move over MOVE is not still. */
+export const STEADY_MS = 1000, MOVE = 0.02, LOCK_MS = 250, MISS_MS = 600;
+/** The shot, and what the stuck frame outlives until then (owner, 2026-11-01: the green frame sticks for 3-4 s unless
+ *  the camera went far, then shoots): `shot` ms still; an answer within `hold` of it, up to the jump that takes it for a
+ *  new document (MOVE * 3); the follow's `drift` from where it stuck, or a `jerk` in one camera frame. An object, as the
+ *  frozen checks of the logic run on the old lab's figures (1 s, 0.04, 0.03, 0.02); nothing else changes it. */
+export const TIMING = { shot: 3000, hold: 0.06, drift: 0.06, jerk: 0.04 };
 /** Auto turns itself off after this many of its shots in a row with no touch (owner, 2026-10-31: pointed at a
  *  keyboard it went on shooting keys and the phone grew hot). */
 export const AUTO_MAX = 5;
@@ -86,7 +89,7 @@ export class Steady {
     this.missSince = 0; this.smoothConf = res.conf;
     const move = this.smooth ? farthest(pts, this.smooth) : 1;
     if (move > MOVE * 3 || !this.smooth) { this.smooth = pts.map(p => p.slice() as Pt); this.restart(now); }
-    else if (!(stuck && move <= HOLD)) { const s = this.smooth; this.smooth = s.map((q, i) => [q[0] * 0.6 + pts[i][0] * 0.4, q[1] * 0.6 + pts[i][1] * 0.4] as Pt); if (move > MOVE) this.restart(now); }
+    else if (!(stuck && move <= TIMING.hold)) { const s = this.smooth; this.smooth = s.map((q, i) => [q[0] * 0.6 + pts[i][0] * 0.4, q[1] * 0.6 + pts[i][1] * 0.4] as Pt); if (move > MOVE) this.restart(now); }
     return { pts: this.smooth, conf: res.conf, steady: now - this.steadySince };
   }
 
@@ -94,22 +97,22 @@ export class Steady {
    *  the frame moves with it; a jump, or a drift from where it stuck, starts the countdown again. */
   follow(apply: (q: Quad) => Quad, moved: number): boolean {
     if (this.smooth) this.smooth = apply(this.smooth);
-    if (moved > JERK || (this.anchor && this.smooth && farthest(this.smooth, this.anchor) > DRIFT)) { this.restart(this.now()); return true; }
+    if (moved > TIMING.jerk || (this.anchor && this.smooth && farthest(this.smooth, this.anchor) > TIMING.drift)) { this.restart(this.now()); return true; }
     return false;
   }
 }
 
 /** The frame is green: sure, and (on the camera) still for LOCK_MS. */
 export const isGreen = (res: SteadyAnswer, live: boolean): boolean => res.conf >= 0.5 && (!live || (res.steady as number) >= LOCK_MS);
-/** Auto takes the shot: still for STEADY_MS on a real answer (not a held one). */
-export const autoShot = (res: SteadyAnswer): boolean => (res.steady as number) >= STEADY_MS && !res.held;
+/** Auto takes the shot: still for TIMING.shot on a real answer (not a held one). */
+export const autoShot = (res: SteadyAnswer): boolean => (res.steady as number) >= TIMING.shot && !res.held;
 
 /** The status line for the raw answer and the smoothed one. */
 export function hintOf(raw: Corners, res: SteadyAnswer): SteadyHint {
   const missing = raw.pts.filter(p => !p).length;
   if (missing) return missing === 4 ? { key: 'no_document' } : { key: 'corners_out', n: missing };
   if (res.conf < 0.5) return { key: 'edges_unclear' };
-  if (res.steady != null && res.steady < STEADY_MS) return { key: 'hold', seconds: (STEADY_MS - res.steady) / 1000 };
+  if (res.steady != null && res.steady < TIMING.shot) return { key: 'hold', seconds: (TIMING.shot - res.steady) / 1000 };
   return { key: 'found' };
 }
 

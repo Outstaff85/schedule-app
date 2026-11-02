@@ -42,7 +42,7 @@ const ENGINE_CHOICES: { value: OrtDir; label: () => string }[] = [
   { value: 'ort130', label: () => tr('CPU engine: ONNX Runtime 1.30') },
 ];
 const BACKEND_CHOICES: { value: Want; label: () => string }[] = [
-  { value: 'auto', label: () => tr('Auto (GPU, else CPU)') },
+  { value: 'auto', label: () => tr('Auto (CPU threads, else GPU)') },
   { value: 'webgpu', label: () => tr('GPU (WebGPU)') },
   { value: 'wasm', label: () => tr('CPU (WASM)') },
 ];

@@ -11,6 +11,9 @@
  *  light model right on a phone where 1.22 returned zeros). The lab may pick 1.30 for the CPU too. */
 export type OrtDir = 'ort' | 'ort130';
 export const CPU_ORT: OrtDir = 'ort', GPU_ORT: OrtDir = 'ort130';
+/** The GPU build's version, known with no thread started (a hang remembered, engines.ts, is tied to it); mirrored in the
+ *  fetch scripts' `1.30.0:ort130` (tests/scan/runtime.test.mjs holds them equal). */
+export const GPU_ORT_VERSION = '1.30.0';
 
 /** What a background thread needs of the surface (sent in its 'load' message; no functions). */
 export interface SurfaceRef {
@@ -42,5 +45,9 @@ export const modelsJsonUrl = (s: SurfaceRef): string => s.base + 'models.json';
 export const layoutsUrl = (s: SurfaceRef): string => s.base + 'he-layouts.json';
 /** The folder of one ONNX Runtime build (its .wasm and the .mjs its loader imports). */
 export const ortDirUrl = (s: SurfaceRef, dir: OrtDir): string => s.base + dir + '/';
-/** The ONNX Runtime build's ES module. */
-export const ortModuleUrl = (s: SurfaceRef, dir: OrtDir): string => ortDirUrl(s, dir) + 'ort.all.min.mjs';
+/** The .wasm that build's module loads, fetched ahead (models.ts fetchRuntime; a name that no longer holds only loses that). */
+export const ortWasmUrl = (s: SurfaceRef, dir: OrtDir, gpu = true): string => ortDirUrl(s, dir) + (gpu ? 'ort-wasm-simd-threaded.jsep.wasm' : 'ort-wasm-simd-threaded.wasm');
+/** The ONNX Runtime build's ES module: `ort.all.min.mjs`, with the GPU, or — gpu false, a model asked for on the CPU
+ *  alone — the plain `ort.wasm.min.mjs` (measured on a PC: a session and its first run take half the time, the same
+ *  answers; docs/scan-plan.md → The GPU first). */
+export const ortModuleUrl = (s: SurfaceRef, dir: OrtDir, gpu = true): string => ortDirUrl(s, dir) + (gpu ? 'ort.all.min.mjs' : 'ort.wasm.min.mjs');

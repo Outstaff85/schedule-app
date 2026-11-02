@@ -15,7 +15,7 @@ export interface WayFail { at: string; way: string; kind: FailKind; text: string
 export function failKind(text: unknown): FailKind {
   const t = String(text || '');
   if (/memory|alloc|oom|out of range|rangeerror|bad_alloc/i.test(t)) return 'memory';
-  if (/no answer|silent|timed? ?out|stopped answering/i.test(t)) return 'hang';
+  if (/no answer|silent|timed? ?out|stopped answering|took over/i.test(t)) return 'hang';
   if (/webgpu|gpu|adapter|device (was )?lost|shader/i.test(t)) return 'GPU';
   return 'error';
 }

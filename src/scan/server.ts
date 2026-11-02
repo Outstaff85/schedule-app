@@ -71,6 +71,8 @@ function tellSaved(s: Session) {
  * background, on the save of the worker window (the scan's attempts are told the worker's id then too); the
  * server keeps it when the firm collects documents. Never throws. */
 export type ScanDocument = {
+  /** a super-admin's scan belongs to the firm it is viewing */
+  asTenantId?: string;
   workerId: string; pages: { b64: string; mediaType: string; doctype: string | null; primary: boolean }[];
   read: Record<string, unknown>; reads: (Record<string, unknown> | null)[]; scanned: Record<string, unknown>; saved: Record<string, unknown>;
   /** the passport zone reader's lines and values on the primary page, in shadow (H8b) */

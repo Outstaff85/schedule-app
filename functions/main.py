@@ -191,7 +191,10 @@ def _scan_settings(payload, db):
 def _scan_document(payload, claims, db, stats_ref, storage):
     """A full document with the fields the user saved (H8a): kept when the firm collects them."""
     from firebase_admin import firestore
+    # a super-admin has no firm of its own: its scan belongs to the firm it is viewing
     tenant = claims.get("tenantId") or ""
+    if not tenant and claims.get("role") == "superadmin" and isinstance(payload.get("asTenantId"), str):
+        tenant = payload["asTenantId"]
     if not collects_documents(db, tenant):
         return _json({"ok": True, "kept": False, "why": "off for this firm"})
     doc, why = feedback.check_document(payload)
