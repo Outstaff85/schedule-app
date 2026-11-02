@@ -17,6 +17,8 @@ table and the documents").
   the card is written as the flat cut of the outer page, gen/outputs/edges.py); painted (another document found first,
   painted over in the border's colour); none (no document; a photo with text but no document preferred half the time);
   partial (a document partly out of the frame — weight 0 until the owner confirms its label: no corners, conf 0).
+  twins (two ID-1 cards close together — a card's two sides one above the other or side by side, 0.5–15 mm apart:
+  the upper one, or the left one, is the answer, the other found next; owner, 2026-11-02).
 - A page may be bent (lifted off the plane by a sine) or folded (a crease), paper may have worn rounded corners; a
   finger holds a page by an edge (never over a corner); occluders (the bank's cut-outs, else a pen, a phone, keys, a
   coin) lie over an edge or beside, never over a corner.
@@ -36,8 +38,12 @@ import numpy as np
 
 from . import camera as gcam
 
-RECIPES = ("single", "pair", "card_on_sheet", "painted", "none", "partial")
-WEIGHTS = {"single": 0.37, "pair": 0.30, "card_on_sheet": 0.15, "painted": 0.10, "none": 0.08, "partial": 0.0}
+RECIPES = ("single", "pair", "card_on_sheet", "painted", "none", "partial", "twins")
+WEIGHTS = {"single": 0.31, "pair": 0.26, "card_on_sheet": 0.15, "painted": 0.10, "none": 0.08, "partial": 0.0, "twins": 0.10}
+# Two ID-1 cards close together, as a scan or a photo of both sides puts them (owner, 2026-11-02: the edges model v5 put
+# one frame round both): one above the other or side by side, TWIN_GAP mm apart, nearly the same turn; the answer is
+# the upper one (the left one side by side, roles), the other found next.
+TWIN_GAP, TWIN_STACKED, TWIN_TURN, TWIN_SHIFT = (0.5, 15.0), 0.6, 1.5, 3.0
 ANY_ANGLE = 0.15
 BEND_SHARE, FOLD_SHARE, WORN_SHARE = 0.2, 0.12, 0.2      # of the paper pages
 FINGER_SHARE, OCCLUDER_SHARE = 0.2, 0.3
@@ -225,6 +231,43 @@ def _on_sheet(rng, sheet, card, tries=30):
     return None
 
 
+def _twins(rs, rp, pool, F, tries=20):
+    """Two ID-1 cards close together (TWIN_*): mostly a card's two sides, else two cards of one side; the second
+    one above / below or beside the first along the first's own sides, TWIN_GAP mm apart, turned up to TWIN_TURN°
+    more and shifted along the shared side up to TWIN_SHIFT mm → [Placed, Placed], or None."""
+    k1 = rs.choice(("id_front", "id_back"))
+    k2 = ("id_back" if k1 == "id_front" else "id_front") if rs.random() < 0.8 else k1
+    first, second = pool.page(rp, F, k1), pool.page(rp, F, k2)
+    if first.material != "card" or second.material != "card":
+        return None
+    base = angle(rs)
+    one = Placed(first, put(first, base, (0.0, 0.0)))
+    w1, h1 = first.size_mm
+    w2, h2 = second.size_mm
+    for _ in range(tries):
+        gap, shift = rs.uniform(*TWIN_GAP), rs.gauss(0, TWIN_SHIFT)
+        side = rs.choice((-1, 1))
+        # in the first card's own frame (x along its width, y along its height), then turned with it
+        off = np.array([shift, side * ((h1 + h2) / 2 + gap)]) if rs.random() < TWIN_STACKED else np.array([side * ((w1 + w2) / 2 + gap), shift])
+        A = put(second, base + rs.uniform(-TWIN_TURN, TWIN_TURN), _rot(base) @ off)
+        two = Placed(second, A)
+        if separated(one.corners(), two.corners(), 0.0):
+            return [one, two]
+    return None
+
+
+def _reading_first(labels):
+    """Of two pages side by side (sharing most of their height in the frame) the left one, else the upper one."""
+    def box(l):
+        q = np.asarray(l["quadDoc"])
+        return q[:, 0].min(), q[:, 1].min(), q[:, 0].max(), q[:, 1].max()
+    a, b = labels
+    (ax0, ay0, _, ay1), (bx0, by0, _, by1) = box(a), box(b)
+    share = min(ay1, by1) - max(ay0, by0)
+    first_a = ax0 <= bx0 if share > 0.5 * min(ay1 - ay0, by1 - by0) else ay0 <= by0
+    return [a, b] if first_a else [b, a]
+
+
 def _worn(rng, page):
     """Paper with its corners a little rounded (worn): the page's alpha only, the corners' labels stay."""
     from PIL import Image, ImageDraw
@@ -278,6 +321,10 @@ def plan(rngs, pool, F, bank=None, occluders=None, recipe=None, weights=None, fo
         if A is None:
             return None
         docs = [sheet, Placed(card_page, A, inside_of=0)]
+    elif recipe == "twins":
+        docs = _twins(rs, rp, pool, F)
+        if docs is None:
+            return None
     elif recipe != "none":
         raise ValueError(f"unknown recipe {recipe!r}")
     for i, d in enumerate(docs):
@@ -723,10 +770,14 @@ def doc_labels(sc):
 
 
 def roles(sc, labels=None):
-    """The phone's order: the answer (the largest page in sight, not painted, not lying inside another), then the next
-    ones (larger first), then the pages inside another (found on its flat cut). → [(label, role)]."""
+    """The phone's order: the answer (the largest page in sight, not painted, not lying inside another; of twin cards,
+    which are one size, the upper one — the left one side by side — so the answer never hangs on a few pixels of
+    perspective), then the next ones (larger first), then the pages inside another (found on its flat cut).
+    → [(label, role)]."""
     labels = labels or doc_labels(sc)
     tops = sorted([l for l in labels if l["insideOf"] is None and not l["painted"]], key=lambda l: -l["area"])
+    if sc.recipe == "twins" and len(tops) == 2:
+        tops = _reading_first(tops)
     out = [(l, "answer" if i == 0 else "next") for i, l in enumerate(tops)]
     out += [(l, "inside") for l in labels if l["insideOf"] is not None]
     return out
