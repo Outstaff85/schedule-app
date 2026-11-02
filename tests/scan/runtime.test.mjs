@@ -19,6 +19,10 @@
 //  - a slow first open: the readers fetch nothing but models.json before the gate, a thread fetches ONNX Runtime's .wasm
 //    before its first session (so the 20 s limit counts no download) and a failed fetch of it stops nothing, and a
 //    one-thread CPU way replies after the light model, the accurate one following on the capture thread;
+//  - a GPU that hangs at start: no second layout after a timeout (a wrong answer still tries it, an error too), the way
+//    left after 20 s; a hang (a start step, a silence on the GPU) remembered on the device for 24 hours by browser and
+//    ONNX Runtime, the site's and the lab's apart: Auto starts on the pool at once, said once in the errors, the WebGPU
+//    choice still tries the GPU and its success removes it; errors, wrong answers and a silent download are not kept;
 //  - the GPU check remembered on success only: a pass kept with the model's stamp, the ONNX Runtime version and the
 //    browser, the same three skip it (the session still started and warmed up), any one changed checks again, a
 //    failure is never kept, a run-time failure (an error, a hang, a wrong answer, a failed GPU way) removes it, the
@@ -147,7 +151,7 @@ function newEngines(surface, env = {}) {
   const clock = fakeClock(), store = memStore(), failStore = memStore(), log = new LG.ScanLog(failStore, () => 4);
   const said = { status: [], log: [], err: [] };
   log.on('status', s => said.status.push(ST.statusEnglish(s))); log.on('log', t => said.log.push(t)); log.on('err', t => said.err.push(t));
-  const eng = new EN.Engines(surface, log, { cores: 8, memory: 8, gpu: true, adapter: async () => true, isolated: false, now: clock.now, setInterval: clock.setInterval, clearInterval: clock.clearInterval, store, ...env });
+  const eng = new EN.Engines(surface, log, { cores: 8, memory: 8, gpu: true, adapter: async () => true, isolated: false, now: clock.now, wall: () => 1e12 + clock.now(), setInterval: clock.setInterval, clearInterval: clock.clearInterval, store, ...env });
   return { eng, clock, store, failStore, log, said };
 }
 const ids = ways => ways.map(w => w.id);
@@ -1514,6 +1518,208 @@ await run('a GPU way that hangs while it starts: dropped by the watchdog after 2
   assert.equal(timeline.at(-1), 'up sa24_w16.onnx');
   session.stop();
 }));
+
+// ── a GPU that hangs ──
+const hangOrt = (created, hangIf) => {
+  const ort = fakeOrt(created), create = ort.InferenceSession.create;
+  ort.InferenceSession.create = (b, o) => { const p = o.executionProviders[0]; return hangIf(typeof p === 'string' ? p : p.preferredLayout) ? (created.push('hang ' + (p.preferredLayout || p)), new Promise(() => {})) : create(b, o); };
+  return ort;
+};
+async function withLimit(fn) {
+  const realST = globalThis.setTimeout, limits = [];
+  globalThis.setTimeout = (f, ms, ...a) => (ms === 20000 ? (limits.push(f), 0) : realST(f, ms, ...a));
+  setNav({ hardwareConcurrency: 8, deviceMemory: 8, gpu: {}, userAgent: 'ua' });
+  try { return await fn(async () => { await flush(5); for (const f of limits.splice(0)) f(); await flush(5); }); }
+  finally { globalThis.setTimeout = realST; setNav({ hardwareConcurrency: 8, deviceMemory: 8 }); }
+}
+const noStatus = () => {};
+
+await run('openSession: a step that hangs on the GPU tries no second layout; on auto the CPU comes next; a wrong answer or an error still tries the second; the first-ever open too', () => withLimit(async fire => {
+  const s = SU.siteSurface(), bytes = Promise.resolve(new Uint8Array(4)), log = [];
+  // the GPU asked for, the first layout hangs: over after one limit
+  let made = [];
+  let p = MO.openSession(hangOrt(made, () => true), s, 'lite.onnx', 'webgpu', noStatus, t => log.push(t), null, { bytes });
+  p.catch(() => {});
+  await fire();
+  await assert.rejects(p, /starting took over 20 s/);
+  assert.deepEqual(made, ['hang NHWC']);
+  // auto: the CPU after it, no second layout
+  made = [];
+  p = MO.openSession(hangOrt(made, l => l !== 'wasm'), s, 'lite.onnx', 'auto', noStatus, t => log.push(t), null, { bytes });
+  await fire();
+  assert.equal((await p).ep, 'wasm'); assert.deepEqual(made, ['hang NHWC', 'wasm']);
+  // the warm-up and the check hang as a start does (their limit is the same)
+  const stuck = fakeOrt([]);
+  stuck.InferenceSession.create = async () => ({ inputNames: ['img'], outputNames: ['heatmap'], run: () => new Promise(() => {}), release: async () => {} });
+  p = MO.openSession(stuck, s, 'lite.onnx', 'webgpu', noStatus, t => log.push(t), 'NCHW', { bytes });
+  p.catch(() => {});
+  await fire();
+  await assert.rejects(p, /warm-up took over 20 s/);
+  // an error on the first layout: the second is tried, as ever
+  made = [];
+  const failing = fakeOrt(made, n => (n === 'webgpu:NHWC' ? 'broken' : null));
+  p = MO.openSession(failing, s, 'lite.onnx', 'webgpu', noStatus, t => log.push(t), null, { bytes });
+  await p.catch(() => {});
+  assert.deepEqual(made.slice(0, 2), ['webgpu:NHWC', 'webgpu:NCHW']);
+  assert.equal(MO.isStepHang('starting took over 20 s'), true); assert.equal(MO.isStepHang('it broke'), false);
+}));
+
+await run('a first-ever open whose first layout gives a wrong answer tries the second, and the layout that worked is saved', () => withReaders(async () => {
+  policy = (w, m) => (m.type === 'load' ? { ep: m.want === 'webgpu' ? 'webgpu' : 'wasm', layout: m.want === 'webgpu' ? 'NCHW' : null } : undefined);
+  const { eng, store } = newEngines(SU.siteSurface());
+  assert.equal(store.getItem('scanGpuLayout'), null);
+  await eng.ensureSession();
+  assert.equal(store.getItem('scanGpuLayout'), 'NCHW');
+  eng.stopAll();
+  // the check itself, on a GPU that gets the first layout wrong: the second tried, its layout the answer
+  setNav({ hardwareConcurrency: 8, deviceMemory: 8, gpu: {}, userAgent: 'ua' });
+  const pen = new Proxy({}, { get: (_, k) => (k === 'getImageData' ? (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }) : () => {}), set: () => true });
+  globalThis.OffscreenCanvas = class { getContext() { return pen; } };
+  try {
+    const made = [], ort = fakeOrt(made);
+    const o = await MO.openSession(ort, SU.siteSurface(), 'lite.onnx', 'webgpu', noStatus, noStatus, null, { bytes: Promise.resolve(new Uint8Array(4)) }).catch(e => e);
+    assert.deepEqual(made, ['webgpu:NHWC', 'webgpu:NCHW'], 'all-zero maps are wrong on both: ' + (o.message || ''));
+    assert.match(o.message, /this GPU gives wrong results/);
+  } finally { delete globalThis.OffscreenCanvas; setNav({ hardwareConcurrency: 8, deviceMemory: 8 }); }
+}));
+
+await run('a hang at start: remembered with the browser and ONNX Runtime; the next open starts on the pool at once, says so once in the errors; a reopen, a pool restart say no more', () => withReaders(async () => {
+  await flush(10);
+  setNav({ hardwareConcurrency: 8, deviceMemory: 8, userAgent: 'ua' });
+  try {
+    policy = (w, m) => (m.type === 'load' ? (m.want === 'webgpu' ? { error: 'starting took over 20 s' } : loadOk(w, m)) : undefined);
+    const a = newEngines(SU.siteSurface());
+    await a.eng.ensureSession();
+    assert.equal(a.eng.engineWay, 'bg-pool');
+    const rec = JSON.parse(a.store.getItem('scanGpuHang:scan-models'));
+    assert.deepEqual([rec.ua, rec.ort, rec.why], ['ua', '1.30.0', 'starting took over 20 s']);
+    assert.ok(rec.at >= 1e12);
+    assert.deepEqual(JSON.parse(a.failStore.getItem('scanWayFails')).map(f => f.kind), ['hang']);
+    a.eng.stopAll();
+    // the next open, on the same device
+    workers.length = 0;
+    let asked = 0;
+    const b = newEngines(SU.siteSurface(), { store: a.store, adapter: async () => { asked++; return true; } });
+    await b.eng.ensureSession();
+    assert.equal(b.eng.engineWay, 'bg-pool'); assert.equal(asked, 0, 'the adapter not even asked');
+    assert.ok(!workers.some(w => w.sent[0].want === 'webgpu'), 'no thread on the GPU');
+    assert.equal(b.said.err.filter(t => /^The GPU hung on this device/.test(t)).length, 1, b.said.err.join(' | '));
+    assert.ok(b.said.log.some(t => /^Time: the GPU left out of Auto — it hung on this device/.test(t)));
+    assert.deepEqual(JSON.parse(b.failStore.getItem('scanWayFails') || '[]'), [], 'no failure: nothing was tried');
+    // a later start in that open (the pool hung): still the pool's side, no second line in the errors
+    b.eng.onStuck(); await b.eng.ensureSession();
+    assert.equal(b.said.err.filter(t => /^The GPU hung on this device/.test(t)).length, 1);
+    b.eng.stopAll();
+    // the lab's memory is its own
+    assert.ok(!newEngines(SU.labSurface(), { store: a.store }).eng.gpuHang());
+    assert.equal(newEngines(SU.labSurface(), { store: a.store }).eng.waysFor('auto', true)[0].id, 'bg-gpulive');
+    // the lab's explicit choices are not filtered
+    assert.deepEqual(ids(new EN.Engines(SU.siteSurface(), b.log, { cores: 8, memory: 8, gpu: true, store: a.store, isolated: false, now: () => 0, wall: () => 1e12, setInterval: () => 0, clearInterval: () => {} }).waysFor('webgpu', true)), ['bg-gpu']);
+  } finally { setNav({ hardwareConcurrency: 8, deviceMemory: 8 }); }
+}));
+
+await run('a hang remembered goes: after 24 hours, with a new browser or ONNX Runtime, and when the WebGPU choice starts — that choice is tried while it holds', () => withReaders(async () => {
+  await flush(10);
+  setNav({ hardwareConcurrency: 8, deviceMemory: 8, userAgent: 'ua' });
+  try {
+    policy = loadOk;
+    const KEY = 'scanGpuHang:scan-models', put = (store, o) => store.setItem(KEY, JSON.stringify({ at: 1e12, ua: 'ua', ort: '1.30.0', why: 'x', ...o }));
+    const store = memStore();
+    // within the 24 hours; a minute over them
+    put(store);
+    const c = newEngines(SU.siteSurface(), { store, wall: () => 1e12 + EN.GPU_HANG_MS - 1 });
+    assert.ok(c.eng.gpuHang()); assert.equal(c.eng.waysFor('auto', true)[0].id, 'bg-pool');
+    const d = newEngines(SU.siteSurface(), { store, wall: () => 1e12 + EN.GPU_HANG_MS });
+    assert.equal(d.eng.gpuHang(), null); assert.equal(store.getItem(KEY), '', 'removed');
+    assert.equal(d.eng.waysFor('auto', true)[0].id, 'bg-gpulive');
+    assert.ok(d.said.log.some(t => /forgotten \(its 24 hours are over\)/.test(t)));
+    // a new browser, a new ONNX Runtime, the clock set back
+    for (const o of [{ ua: 'old browser' }, { ort: '1.22.0' }, { at: 1e12 + 5000 }]) {
+      put(store, o);
+      assert.equal(newEngines(SU.siteSurface(), { store, wall: () => 1e12 }).eng.gpuHang(), null, JSON.stringify(o));
+      assert.equal(store.getItem(KEY), '');
+    }
+    // garbage in the store
+    store.setItem(KEY, '{broken'); assert.equal(newEngines(SU.siteSurface(), { store }).eng.gpuHang(), null);
+    // the WebGPU choice is tried while it holds, and its success removes it
+    put(store);
+    workers.length = 0;
+    const e = newEngines(SU.siteSurface(), { store, wall: () => 1e12 + 1000 });
+    assert.ok(e.eng.gpuHang());
+    e.eng.setSettings({ backend: 'webgpu' });
+    await e.eng.ensureSession();
+    assert.equal(e.eng.engineWay, 'bg-gpu'); assert.equal(workers[0].sent[0].want, 'webgpu');
+    assert.equal(store.getItem(KEY), '', 'removed');
+    assert.ok(e.said.log.some(t => /forgotten \(the WebGPU choice started\)/.test(t)));
+    e.eng.stopAll();
+    // its failure leaves it
+    put(store);
+    policy = (w, m) => (m.type === 'load' ? { error: 'broken' } : undefined);
+    const f = newEngines(SU.siteSurface(), { store, wall: () => 1e12 + 1000 });
+    f.eng.setSettings({ backend: 'webgpu' });
+    await assert.rejects(f.eng.ensureSession());
+    assert.ok(store.getItem(KEY), 'kept');
+    f.eng.stopAll();
+  } finally { setNav({ hardwareConcurrency: 8, deviceMemory: 8 }); }
+}));
+
+await run('a silence on the GPU is remembered, at start and at work; an error, a wrong answer, a silent download and a capture thread that hangs are not', () => withReaders(async () => {
+  await flush(10);
+  setNav({ hardwareConcurrency: 8, deviceMemory: 8, userAgent: 'ua' });
+  const KEY = 'scanGpuHang:scan-models', kept = e => e.store.getItem(KEY);
+  const status = (w, st) => w.onmessage({ data: { type: 'status', status: st } });
+  try {
+    // silent on a step on the GPU, at start: the second status of a retry cannot come, so about 25 s
+    policy = (w, m) => (m.type === 'load' ? (m.want === 'webgpu' ? undefined : loadOk(w, m)) : undefined);
+    const a = newEngines(SU.siteSurface());
+    const up = a.eng.ensureSession();
+    await flush(10);
+    status(workers.at(-1), { key: 'starting', model: 'lite.onnx', on: 'gpu', layout: 'NHWC' });
+    await a.clock.advance(26000); await up;
+    assert.equal(a.eng.engineWay, 'bg-pool'); assert.equal(JSON.parse(kept(a)).why, 'no answer for 25 s');
+    a.eng.stopAll();
+    // silent in a download: the network's, not kept
+    const b = newEngines(SU.siteSurface());
+    const up2 = b.eng.ensureSession();
+    await flush(10);
+    status(workers.at(-1), { key: 'downloading', model: 'lite.onnx', got: 1, total: 9 });
+    await b.clock.advance(26000); await up2;
+    assert.equal(b.eng.engineWay, 'bg-pool'); assert.ok(!kept(b));
+    b.eng.stopAll();
+    // silent at work on the GPU: kept; the way left as ever
+    policy = (w, m) => (m.type === 'load' ? { ...loadOk(w, m), gpu: m.want === 'webgpu' ? ['lite.onnx'] : [] } : undefined);
+    const c = newEngines(SU.siteSurface());
+    await c.eng.ensureSession();
+    assert.equal(c.eng.engineWay, 'bg-gpulive');
+    c.eng.engine.detect('live', { rgba: new Uint8ClampedArray(4) }).catch(() => {});
+    await c.clock.advance(26000);
+    assert.equal(JSON.parse(kept(c)).why, 'no answer for 25 s'); assert.equal(c.eng.engine, null);
+    c.eng.stopAll();
+    // the capture thread (the CPU) silent at work: not the GPU's
+    const d = newEngines(SU.siteSurface());
+    await d.eng.ensureSession(); const cap = await d.eng.ensureCap();
+    cap.detect('live', { rgba: new Uint8ClampedArray(4) }).catch(() => {});
+    await d.clock.advance(26000);
+    assert.ok(!kept(d));
+    d.eng.stopAll();
+    // a way that fails with an error, a wrong answer at work
+    policy = (w, m) => (m.type === 'load' ? (m.want === 'webgpu' ? { error: 'WebGPU adapter not found' } : loadOk(w, m)) : undefined);
+    const e = newEngines(SU.siteSurface());
+    await e.eng.ensureSession();
+    assert.ok(!kept(e)); e.eng.stopAll();
+    policy = (w, m) => (m.type === 'load' ? { ...loadOk(w, m), gpu: m.want === 'webgpu' ? ['lite.onnx'] : [] } : m.type === 'detect' ? { error: 'wrong output on the GPU (a heatmap all zeros)' } : undefined);
+    const g = newEngines(SU.siteSurface());
+    await g.eng.ensureSession();
+    await g.eng.engine.detect('live', { rgba: new Uint8ClampedArray(4) }).catch(() => {});
+    await flush(5);
+    assert.equal(g.eng.engine, null, 'the way left'); assert.ok(!kept(g));
+    g.eng.stopAll();
+  } finally { setNav({ hardwareConcurrency: 8, deviceMemory: 8 }); }
+}));
+
+await run('a hang\'s ONNX Runtime version is the one the fetch scripts put there', () => {
+  for (const f of ['scripts/scan/fetch-models.sh', 'scripts/scan-lab/fetch-models.sh']) assert.ok(read(f).includes(SU.GPU_ORT_VERSION + ':ort130'), f);
+});
 
 await run('a slow first open: a one-thread CPU way gives the frame after the light model, the accurate one following on the capture thread; the page way and one model for both as before', async () => {
   await flush(10);

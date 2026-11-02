@@ -166,6 +166,8 @@ export function newGpuPass(o: Opened, stamp: string | null, ort: string, ua: str
 // passed: the GPU layout whose check passed before on this device with the same key (gpuPassed): it is tried first
 // and its check skipped — "Time: GPU check skipped — passed before on this device (<layout>)".
 export interface OpenOpts { bytes?: Promise<Uint8Array>; stamp?: string | null; time?: OnLog; passed?: GpuLayout | null }
+/** The error of a step given up on (openSession's limit). */
+export const isStepHang = (text: string): boolean => / took over 20 s$/.test(text);
 export const downloadProgress = (model: string, onStatus: OnStatus) => (got: number, total: number): void => onStatus({ key: 'downloading', model, got, total }, total ? got / total : 0);
 
 export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: Want, onStatus: OnStatus, onLog: OnLog, gpuLayout?: string | null, opts: OpenOpts = {}): Promise<Opened> {
@@ -175,8 +177,9 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
   const first = opts.passed || gpuLayout;
   const layouts: GpuLayout[] = first === 'NCHW' ? ['NCHW', 'NHWC'] : ['NHWC', 'NCHW'];
   const order = (want === 'auto' ? ['webgpu', 'wasm'] as Ep[] : [want]).flatMap((ep): [Ep, GpuLayout?][] => ep === 'webgpu' ? layouts.map(l => ['webgpu', l]) : [[ep]]);
-  let gpuWrong = false;
+  let gpuWrong = false, gpuHung = false;
   for (const [ep, layout] of order) {
+    if (ep === 'webgpu' && gpuHung) continue;  // a GPU that hung hangs on the other layout too: 20 s more on every open
     if (ep === 'webgpu' && !hasGpu()) { onLog('WebGPU is not available here'); continue; }
     const name = ep === 'webgpu' ? 'the GPU (' + layout + ')' : 'the CPU';
     const on: StatusOn = ep === 'webgpu' ? { on: 'gpu', layout: layout as GpuLayout } : { on: 'cpu' };
@@ -211,6 +214,11 @@ export async function openSession(ort: Ort, s: SurfaceRef, model: string, want: 
       return { sess, ep, layout: ep === 'webgpu' ? layout as GpuLayout : null, checked };
     } catch (e) {
       onLog('Could not start ' + model + ' on ' + name + ': ' + errText(e));
+      if (ep === 'webgpu' && isStepHang(errText(e))) {
+        if (want !== 'auto') throw e;
+        gpuHung = true;
+        continue;
+      }
       if (want !== 'auto' && !(ep === 'webgpu' && layout === 'NHWC')) throw e;
     }
   }

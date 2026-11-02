@@ -11,6 +11,9 @@
  *  light model right on a phone where 1.22 returned zeros). The lab may pick 1.30 for the CPU too. */
 export type OrtDir = 'ort' | 'ort130';
 export const CPU_ORT: OrtDir = 'ort', GPU_ORT: OrtDir = 'ort130';
+/** The GPU build's version, known with no thread started (a hang remembered, engines.ts, is tied to it); mirrored in the
+ *  fetch scripts' `1.30.0:ort130` (tests/scan/runtime.test.mjs holds them equal). */
+export const GPU_ORT_VERSION = '1.30.0';
 
 /** What a background thread needs of the surface (sent in its 'load' message; no functions). */
 export interface SurfaceRef {

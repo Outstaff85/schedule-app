@@ -13,10 +13,11 @@
 //    and the next starts clean; a GPU way that failed its start, a way whose live thread stopped answering while
 //    scanning, or whose GPU keeps failing, is not tried again until the scanner closes. The capture thread is no way:
 //    when it stops answering it alone is dropped and started again, the live frame goes on.
-//    Nothing is remembered between opens (owner, 2026-10-22) but the GPU layout that worked, the failures' log and
+//    Nothing is remembered between opens (owner, 2026-10-22) but the GPU layout that worked, the failures' log,
 //    a GPU check that passed (owner, 2026-10-27: kept with the model's stamp, the ONNX Runtime version and the
 //    browser — the same three skip the check next time; removed by a run-time failure of that GPU session; a
-//    failure never kept): the lab reloaded its page on every open, the engine now outlives a close in the manager page, so
+//    failure never kept) and a GPU that hung (owner, 2026-11-02, the one failure kept, see GPU_HANG_KEY: a hang costs
+//    20 s on every open, an error or a wrong answer costs nothing): the lab reloaded its page on every open, the engine now outlives a close in the manager page, so
 //    stopAll() forgets the stuck ways and a fall back to the page, and stops every start still loading (a
 //    generation number: a load that ends after the close stops its threads instead of keeping them).
 //  - every session is released when its way stops (the page way's sessions live in the page's own heap).
@@ -41,9 +42,9 @@
 // from /scan-lab/.
 import { S, warpRGBA } from './geometry';
 import type { ScanLog } from './log';
-import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, fetchRuntime, gpuPassed, modelStamps, newGpuPass, openSession, ortVersion, readModels, userAgent, WRONG_GPU, type Ep, type GpuPasses, type ModelsInfo, type Opened, type Want } from './models';
+import { cpuSession, detectRGBA, downloadProgress, errText, fetchModel, fetchRuntime, gpuPassed, isStepHang, modelStamps, newGpuPass, openSession, ortVersion, readModels, userAgent, WRONG_GPU, type Ep, type GpuPasses, type ModelsInfo, type Opened, type Want } from './models';
 import { loadOrt, type Ort, type OrtSession } from './ort';
-import { CPU_ORT, GPU_ORT, surfaceRef, type OrtDir, type SurfaceRef } from './surface';
+import { CPU_ORT, GPU_ORT, GPU_ORT_VERSION, surfaceRef, type OrtDir, type SurfaceRef } from './surface';
 import { mkCanvas, uprightRGBA, type Upright } from './upright';
 import type { WorkerIn, WorkerOut } from './worker';
 import type { Corners, KeyValue, Quad } from './types';
@@ -92,6 +93,8 @@ export interface EngineEnv {
   gpu: boolean;
   isolated: boolean;
   now(): number;
+  /** The wall clock (ms since 1970): a hang remembered outlives the page. */
+  wall(): number;
   setInterval(fn: () => void, ms: number): unknown;
   clearInterval(id: unknown): void;
   /** Whether the browser gives a GPU adapter (asked before the GPU's ways: `gpu` only says the API is there). */
@@ -112,6 +115,7 @@ export function defaultEnv(): EngineEnv {
     gpu: !!nav.gpu,
     isolated: !!(globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated,
     now: () => performance.now(),
+    wall: () => Date.now(),
     setInterval: (fn, ms) => setInterval(fn, ms),
     clearInterval: id => clearInterval(id as ReturnType<typeof setInterval>),
     adapter: async () => !!nav.gpu && !!(await nav.gpu.requestAdapter()),
@@ -137,6 +141,16 @@ const GPU_LAYOUT_KEY = 'scanGpuLayout';
 /** Where the GPU checks that passed are kept: this key + ':' + the surface's cache name, so the site's and the lab's
  *  are apart (scanGpuPassed:scan-models, scanGpuPassed:scan-lab-models). */
 export const GPU_PASS_KEY = 'scanGpuPassed';
+/** A GPU that hung on this device (owner, 2026-11-02; the one deliberate exception to "nothing about failures is
+ *  remembered between opens", 2026-10-22, since a hang costs 20 s on every open): a start step given up on, or a thread
+ *  on the GPU silent for 25 s. Kept on the device for GPU_HANG_MS under this key + ':' + the surface's cache name (the
+ *  site's and the lab's apart), with the browser and the ONNX Runtime version: while it holds, Auto leaves the GPU's way
+ *  out and starts on the pool, saying so in the log and once an open in the errors. It goes by the lab's own WebGPU choice
+ *  starting (that choice is always tried), by a new browser or ONNX Runtime, or by the 24 hours. Errors and wrong answers
+ *  stay unremembered: they cost nothing on the next open. */
+export const GPU_HANG_KEY = 'scanGpuHang';
+export const GPU_HANG_MS = 24 * 60 * 60 * 1000;
+export interface GpuHang { at: number; ua: string; ort: string; why: string }
 const WATCH_MS = 25000;
 /** A promise opened once from outside. */
 export const latch = (): { p: Promise<void>; open: () => void } => { let open = (): void => {}; const p = new Promise<void>(r => { open = r; }); return { p, open }; };
@@ -196,6 +210,8 @@ export class Engines {
   fileThreads: ThreadEngine[] = [];
   private fileThreadsFor: LoadableEngine | null = null;
   private ensuring: Promise<void> | null = null;
+  /** The errors said this open that a remembered hang left the GPU out. */
+  private hangSaid = false;
   /** A pick holds the start running (yieldToPick): it starts no way until pickOver. */
   private pickHold: ReturnType<typeof latch> | null = null;
   /** Opened when a pick begins to hold the start: what waits for that start's end goes on (startEnd). */
@@ -296,6 +312,34 @@ export class Engines {
     this.log.log('GPU check of ' + hit.join(', ') + ' forgotten (' + why + ') — the next open checks the GPU again');
   }
 
+  // A GPU that hung on this device (GPU_HANG_KEY): the surface's own key.
+  private hangKey(): string { return GPU_HANG_KEY + ':' + this.ref.cache; }
+  /** The hang remembered, while it holds; one over its time, or of another browser or ONNX Runtime, is removed. */
+  gpuHang(): GpuHang | null {
+    let rec: GpuHang | null = null;
+    try {
+      const v = this.env.store ? this.env.store.getItem(this.hangKey()) : null, o = v ? JSON.parse(v) : null;
+      if (o && typeof o === 'object' && typeof o.at === 'number') rec = o as GpuHang;
+    } catch { return null; }
+    if (!rec) return null;
+    const age = this.env.wall() - rec.at;
+    if (age >= 0 && age < GPU_HANG_MS && rec.ua === userAgent() && rec.ort === GPU_ORT_VERSION) return rec;
+    this.hangForget(age >= GPU_HANG_MS || age < 0 ? 'its 24 hours are over' : 'a new browser or ONNX Runtime');
+    return null;
+  }
+  private hangNote(why: string): void {
+    const rec: GpuHang = { at: this.env.wall(), ua: userAgent(), ort: GPU_ORT_VERSION, why };
+    try { if (this.env.store) this.env.store.setItem(this.hangKey(), JSON.stringify(rec)); } catch { /* blocked */ }
+    this.log.log('The GPU hung (' + why + ') — remembered on this device for 24 hours, Auto starts on the pool');
+  }
+  private hangForget(why: string): void {
+    try {
+      if (!this.env.store || !this.env.store.getItem(this.hangKey())) return;
+      this.env.store.setItem(this.hangKey(), '');
+    } catch { return; }
+    this.log.log('The GPU hang remembered on this device is forgotten (' + why + ')');
+  }
+
   private rgbaOf(input: DetectInput): Uint8ClampedArray {
     if (input.rgba) return input.rgba;
     const c = mkCanvas(S, S), g = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
@@ -357,7 +401,8 @@ export class Engines {
 
   /** The models in a background thread (worker.ts) with `threads` CPU threads and the ONNX Runtime build `dir`.
    *  A thread that says nothing for 25 s while a call waits is taken as stuck: its calls fail and onHang runs — as
-   *  when a GPU session whose check was skipped gives a wrong answer (onHang(why)). A run-time failure of a thread
+   *  when a GPU session whose check was skipped gives a wrong answer (onHang(why)). A silence on the GPU is remembered
+   *  on the device (GPU_HANG_KEY), a wrong answer not. A run-time failure of a thread
    *  that runs a model on the GPU (a hang, a thread error, an error or a wrong answer on a detect) removes that
    *  model's remembered GPU check. A page that was frozen meanwhile (a phone's screen off, no timers run) is no
    *  silence: the thread stood still with it. */
@@ -365,17 +410,23 @@ export class Engines {
     const { env, log } = this;
     const w = env.spawn(), waiting = new Map<number, { resolve: (m: WorkerOut & { type: 'reply' }) => void; reject: (e: Error) => void; kind: string }>();
     let n = 0, two = false, heard = env.now(), stopped = false, gpuModels: string[] = [], gpuErrors = 0, tick = heard;
+    // the thread's last word was a step on the GPU (a silence then is the GPU's; a silence in a download is the network's)
+    let gpuStep = false;
     const forgetGpu = (why: string) => { if (gpuModels.length) this.forgetGpuPasses(gpuModels, why); };
     const failAll = (why: string) => { for (const p of waiting.values()) p.reject(new Error(why)); waiting.clear(); };
     const watch = env.setInterval(() => {
       const t = env.now();
       if (t - tick > 3000) heard = t;  // the timers stood still: so did the thread
       tick = t;
-      if (waiting.size && t - heard > WATCH_MS) { failAll('no answer for ' + WATCH_MS / 1000 + ' s'); forgetGpu('the thread stopped answering'); onHang(); }
+      if (waiting.size && t - heard > WATCH_MS) {
+        const why = 'no answer for ' + WATCH_MS / 1000 + ' s';
+        if (gpuStep || gpuModels.length) this.hangNote(why);
+        failAll(why); forgetGpu('the thread stopped answering'); onHang();
+      }
     }, 1000);
     w.onmessage = ({ data: m }) => {
       heard = env.now();
-      if (m.type === 'status') log.status(m.status, m.frac);
+      if (m.type === 'status') { gpuStep = 'on' in m.status && m.status.on === 'gpu'; log.status(m.status, m.frac); }
       else if (m.type === 'log') log.any(m.text);
       else if (m.type === 'reply') {
         const p = waiting.get(m.id); waiting.delete(m.id);
@@ -573,6 +624,8 @@ export class Engines {
     // a weak phone starts on the pool and stays there. Only with a light model apart: a pool of one model would hold
     // three copies of the accurate one.
     if (want === 'auto' && this.settings.model.includes('+') && this.weak()) ways = [...ways.filter(w => w.pool), ...ways.filter(w => !w.pool)];
+    // a GPU that hung on this device: left out of Auto, while that holds (GPU_HANG_KEY)
+    if (want === 'auto' && this.gpuHang()) ways = ways.filter(w => !w.gpuLive);
     if (ways.some(w => !this.stuckWays.has(w.id))) ways = ways.filter(w => !this.stuckWays.has(w.id));
     return ways;
   }
@@ -639,6 +692,17 @@ export class Engines {
     return up;
   }
 
+  /** A hang remembered leaves the GPU out of this start: said in the log, and once an open in the errors. */
+  private sayHang(): void {
+    const h = this.gpuHang();
+    if (!h) return;
+    const hours = Math.max(0, (this.env.wall() - h.at) / 3600000);
+    this.log.log('Time: the GPU left out of Auto — it hung on this device ' + hours.toFixed(1) + ' h ago (' + h.why + ')');
+    if (this.hangSaid) return;
+    this.hangSaid = true;
+    this.log.err('The GPU hung on this device ' + hours.toFixed(1) + ' h ago (' + h.why + ') — Auto starts on the pool for 24 hours; the WebGPU choice still tries it');
+  }
+
   async startSession(): Promise<void> {
     const { log } = this, { model, backend: want, cpuDir } = this.settings, inWorker = this.inWorkerNow(), g = this.gen;
     const [live, cap] = model.split('+') as [string, string | undefined];
@@ -652,6 +716,7 @@ export class Engines {
     // the pool ways share the accurate model's capture thread, asked for once their live threads are loaded
     const capOf = cap ? () => this.ensureCap().then(t => t.raw as LoadableEngine) : null;
     let ways = this.waysFor(want, inWorker);
+    if (want === 'auto' && this.env.gpu && inWorker) this.sayHang();
     if (ways[0] && ways[0].gpuLive && !(await this.adapterUp())) ways = ways.filter(w => !w.gpuLive);
     ways: for (const w of ways) {
       // a way a pick stopped is tried again after it, no failure noted
@@ -678,6 +743,8 @@ export class Engines {
           if (w.gpuLive || w.ep === 'webgpu') this.forgetGpuPasses([live, ...(cap ? [cap] : [])], 'its way failed: ' + errText(err));
           // not tried again in this open: a later start (a pool that hung) would wait for the GPU once more with no frame
           if (w.gpuLive) this.stuckWays.add(w.id);
+          // a step of it given up on: remembered on the device (a silence is, at the watchdog)
+          if ((w.gpuLive || w.ep === 'webgpu') && isStepHang(errText(err))) this.hangNote(errText(err));
           log.noteFail(w.label, errText(err)); log.log('Trying the next way'); continue ways;
         } finally { if (this.trying === trial) this.trying = null; }
         gone = this.closed(g);
@@ -689,6 +756,7 @@ export class Engines {
     log.log('Live ' + live + (cap ? ', capture ' + cap : '') + ' running as ' + used.label);
     log.log('Time: live frame\'s models ready on ' + used.label + ' — ' + Math.round(this.env.now() - t0) + ' ms');
     this.engine = e; this.engineWay = used.id;
+    if (want === 'webgpu') this.hangForget('the WebGPU choice started');
     if (!this.fileThreadsFor) this.fileThreadsFor = e;  // a file thread started for a pick that came first is this engine's
     // a start that fell back to the page stays there until the scanner closes (the lab unticked its
     // "background threads"); the key then matches the next asks, so the model is not started again each use
@@ -736,7 +804,7 @@ export class Engines {
     if (this.engine) { try { this.engine.stop(); } catch { /* gone */ } this.engine = null; this.engineKey = ''; }
     if (this.capThread) { this.capThread.stop(); this.capThread = null; }
     this.capFor = '';
-    this.stuckWays.clear(); this.engineWay = null; this.pageOnly = false; this.capRetried = false;
+    this.stuckWays.clear(); this.engineWay = null; this.pageOnly = false; this.capRetried = false; this.hangSaid = false;
     this.info = null;
     this.setState({ phase: 'idle', label: '—', worker: true, loadSeconds: null });
   }

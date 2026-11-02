@@ -335,6 +335,10 @@ Measured on v5 before choosing, with the model on the PC: type ≥ 0.5 alone wou
 
 The real fix for keyboards and desks is more examples of them as `other` in the next training (the exam has no `other` or `contract` pages of its own: `byDoctype` null in the v5 report).
 
+## A GPU that hangs is remembered for a day (2026-11-02)
+
+The simulator's hung GPU cost 41 s on every open: the 20 s limit ran per memory layout, and the status at the second layout reset the watchdog's `heard`. The owner decided: after a timeout the second layout is not tried, and a hang is remembered on the device for 24 hours, so Auto starts on the pool. This is a deliberate exception to "nothing about failures is remembered between opens" (owner, 2026-10-22; docs/history.md → A remembered way kept a phone slow): that rule stands for errors and wrong answers, which cost nothing on the next open, and the exception is bounded by the 24 hours, the browser and the ONNX Runtime version, and removed by the lab's WebGPU choice starting (owner, 2026-11-02; docs/scan-plan.md → A GPU that hung remembered).
+
 ## A slow first open took 326 s to the first frame (2026-11-02)
 
 The weak-phone simulator's profile 10 (2 GB, 4 cores, x6, 1.5 Mbit/s, first open) gave its first frame after 326 s where the files it needs would take about 85 s. Three causes one after the other. The readers' file downloads ran beside the light model (only their sessions waited at the gate), so `lite.onnx` took 60 s; ONNX Runtime's `.wasm` then came inside `InferenceSession.create`, under the 20 s limit meant for a hung step, and a healthy pool was left ("starting took over 20 s"); and the next way, `bg-cpu`, was one thread loading both models that replied after both, so the frame waited for `sa24_w16` (235 s). Fixed in that order: docs/scan-plan.md → A slow first open. The `.wasm` is fetched ahead into the HTTP cache rather than handed over through `env.wasm.wasmBinary`, which would lose the streaming compile.
