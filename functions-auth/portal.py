@@ -546,7 +546,7 @@ def supplier_action(db, caller, body, bucket=None):
                 return {"error": "Not available"}
             import signed_archive
             try:
-                signed_archive.delete_worker(db, bucket, tid, wid)
+                signed_archive.delete_worker(db, bucket() if callable(bucket) else bucket, tid, wid)
             except signed_archive.NotArchived:
                 return {"error": signed_archive.E_WORKER}
             return {"ok": True}
