@@ -116,11 +116,14 @@ def test_what_was_not_signed_by_hand_is_deleted_with_no_copy():
     assert F101 not in b.store and _archived(b) == []
 
 
-def test_a_scan_a_signature_was_given_on_is_archived_when_deleted_alone():
+def test_a_rescan_just_replaces_the_pages_and_a_later_delete_takes_the_new_ones():
     db, b = _world()
-    assert _delete(db, b, PAGE1, manual=False) == {"ok": True}  # a rescan's delete on its own
-    assert PAGE1 not in b.store and _archived(b) == ["Scans/2026-11-03 scans r1abcd.pdf"]
-    _delete(db, b, PAGE2, manual=False)  # the next page of the same rescan: the sheets made with both stay
+    for p in (PAGE1, PAGE2):  # the rescan's deletes on their own: nothing archived (owner, 2026-11-03)
+        assert _delete(db, b, p, manual=False) == {"ok": True} and p not in b.store
+    assert _archived(b) == []
+    assert _delete(db, b, CTR) == {"ok": True}
+    note = json.loads(b.store[BASE + "Contracts/2026-11-03 Hourly - Avi r1abcd.json"])
+    assert note["files"][2]["from"] == [NEWPAGE]  # the worker's pages now
     assert _sheets(b.store[BASE + "Scans/2026-11-03 scans r1abcd.pdf"]) == [(595, 842, 1)]
 
 

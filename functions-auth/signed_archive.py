@@ -14,8 +14,9 @@ worker outside the firm's own files, and only then deleted:
 
 The scans go with the documents: the pages a signing was given on (its frozen pages) are laid on A4 sheets, two pictures
 to a sheet — the document (ID card or passport) first, then its back or the appendix, then any other page; a third
-picture starts another sheet (scans_pdf) — and kept as one PDF with its documents; such a page deleted on its own (a
-rescan) makes that PDF first too. For a document from before the signing requests, the worker's pages. What the worker did not sign (an upload, an unsigned form, other scans, the signature picture) is
+picture starts another sheet (scans_pdf) — and kept as one PDF with its documents. A rescan simply replaces the pages (owner,
+2026-11-03: an old passport is overwritten by the new one), nothing archived; so when those pages are gone, the worker's
+pages now go with the document. For a document from before the signing requests, the worker's pages. What the worker did not sign (an upload, an unsigned form, other scans, the signature picture) is
 deleted with no copy. Nothing
 is archived or deleted on its own: only a person's delete does it. The folder lies outside tenants/<t>/, so no delete of a
 worker or a firm reaches it; no login reads it (storage.rules match nothing under archive/). A copy is never written over.
@@ -56,9 +57,6 @@ def find(path, worker, requests):
         for which, part in ((r or {}).get("parts") or {}).items():
             if isinstance(part, dict) and part.get("path") == path and which in FOLDERS:
                 return {"which": which, "req": r}
-    for r in requests or []:  # a page a signature was given on
-        if (r or {}).get("parts") and path in _pages_of(r, None):
-            return {"which": "scan", "req": r}
     w = worker or {}
     if (w.get("signedAt") or w.get("signedRequestId")) and path == w.get("docFileId"):
         return {"which": "form101", "req": None}
@@ -138,8 +136,11 @@ def _page_refs(req, worker):
 
 
 def _put_scans(bucket, base, day, key, req, worker):
-    """The signing's scans as A4 sheets in Scans/ (never written over) -> its note entry, or None when no page is left."""
+    """The signing's scans as A4 sheets in Scans/ (never written over) -> its note entry, or None when no page is left.
+    The pages it was signed on while they are all there; replaced by a rescan, the worker's pages now."""
     refs = _page_refs(req, worker)
+    if not refs or not all(bucket.blob(r["path"]).exists() for r in refs):
+        refs = _page_refs(None, worker)
     pdf = scans_pdf(_pictures(bucket, refs)) if refs else None
     if not pdf:
         return None
@@ -147,17 +148,6 @@ def _put_scans(bucket, base, day, key, req, worker):
     _put(bucket, base + "/" + name, pdf, "application/pdf")
     return {"file": "../" + FOLDERS["scan"] + "/" + name, "from": [r["path"] for r in refs],
             "sha256": hashlib.sha256(pdf).hexdigest(), "size": len(pdf)}
-
-
-def _pages_of(req, worker):
-    """The scanned pages a signing was given on (its frozen refs: page files or an old sidecar); one from before the
-    signing requests: the worker's own pages."""
-    refs = ((req or {}).get("frozen") or {}).get("pages")
-    if isinstance(refs, list):
-        return [str(r.get("fileId") or r.get("sidecar") or "") for r in refs if isinstance(r, dict) and (r.get("fileId") or r.get("sidecar"))]
-    w = worker or {}
-    out = [str(p.get("fileId") or "") for p in w.get("scanPages") or [] if isinstance(p, dict) and p.get("fileId")]
-    return out + ([w["assetsFileId"]] if not out and w.get("assetsFileId") else [])
 
 
 def worker_folder(worker, req, wid):
@@ -209,9 +199,6 @@ def put(db, bucket, tenant, path, worker, requests, firm=None):
         day = _date(sign_date)
         key = rid[:6] or hashlib.sha256(path.encode()).hexdigest()[:6]  # two signings on one day never share a name
         sbase = "/".join((ROOT, firm or firm_folder(db, tenant), worker_folder(worker, req, wid), FOLDERS["scan"]))
-        if which == "scan":  # a page a signature was given on, deleted alone: the signing's sheets are made first
-            got = _put_scans(bucket, sbase, day, key, hit["req"], worker)
-            return sbase + "/" + got["file"].rsplit("/", 1)[-1] if got else None
         base = "/".join((ROOT, firm or firm_folder(db, tenant), worker_folder(worker, req, wid), FOLDERS[which]))
         stem = clean(" ".join(x for x in (day, re.sub(r"\.pdf$", "", path.rsplit("/", 1)[-1].split("-", 1)[-1], flags=re.I)) if x), which)
         stem += " " + key

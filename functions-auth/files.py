@@ -19,9 +19,10 @@ on the bucket, which this way never has to be made by hand.
                     rescan, a new signing (E_SIGNED; signed_file below); only a
                     person's own delete removes it: Remove on the card, Delete worker
                     (manual: true; owner, 2026-10-25 — docs/contracts.md → Signed files are kept).
-                    A document the worker signed by hand, and a scan it was signed on,
-                    is first copied to the signed archive (keep → archive.put; owner,
-                    2026-11-03); a copy that fails stops the delete (E_NOT_ARCHIVED)
+                    A person's delete of a document the worker signed by hand first copies
+                    it, with its scans, to the signed archive (keep → signed_archive.put;
+                    owner, 2026-11-03); a copy that fails stops the delete (E_NOT_ARCHIVED).
+                    A rescan's pages are just replaced.
 
 A fileId is the object's path, tenants/<tenantId>/workers/...; only a path in
 the caller's own firm is accepted (a superadmin's: the firm it is viewing).
@@ -156,7 +157,7 @@ def run(bucket, caller, body, worker_hr=None, signed_lookup=None, keep=None):
         worker, requests = signed_lookup(wid)
         if body.get("manual") is not True and signed_file(path, worker, requests):
             return {"error": E_SIGNED}
-        if keep is not None and blob.exists():
+        if keep is not None and body.get("manual") is True and blob.exists():
             try:
                 keep(path, worker, requests)
             except Exception:
