@@ -6,7 +6,7 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "functions"))
 sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "migrate"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "migrate"))
 
 import signed_archive  # noqa: E402
 import signing  # noqa: E402

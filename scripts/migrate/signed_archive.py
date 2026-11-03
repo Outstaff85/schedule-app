@@ -18,7 +18,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "functions"))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "functions"))  # last: in a test run functions-auth's main stays `main`
 
 import archive  # noqa: E402
 
