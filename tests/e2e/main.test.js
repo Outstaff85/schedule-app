@@ -2136,7 +2136,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   ok(keep.refused.every(e => /signed document is kept/.test(e)) && keep.sigBack === 1 && keepF101.pages > 0 && keepCtr.pages > 0,
     'signed files are kept: a delete on its own (no manual) is refused for the signed Form 101, contract and signature ' + JSON.stringify(keep));
   const kP = 'tenants/tenant-one/workers/wS/';
-  ok(keep.entry && keep.gone && JSON.stringify(keep.asked) === JSON.stringify([kP + 'docs/c.pdf manual', 'deleteWorker wS']),
+  ok(keep.entry && keep.gone && JSON.stringify(keep.asked) === JSON.stringify(['deleteWorker wS', kP + 'docs/c.pdf manual']),
     "a person's own delete: Remove takes a signed document off (sent as manual), Delete worker is one server call (documents plan N1: the archive, the files, the record) " + JSON.stringify(keep));
   // D4: a change to what the signed documents print asks for a new signature; the firm's own details don't.
   const d4 = await p.evaluate(async () => {
