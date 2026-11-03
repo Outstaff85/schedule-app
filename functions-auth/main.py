@@ -235,7 +235,8 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
     caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId"),
               "supplierId": decoded.get("supplierId"), "rights": core.caller_rights(decoded)}
     try:
-        return _json(portal.supplier_action(_db(), caller, _body(req), storage.bucket)  # reached only by a delete)
+        # storage.bucket is passed uncalled: Storage is reached only by a delete
+        return _json(portal.supplier_action(_db(), caller, _body(req), storage.bucket))
     except Exception as e:
         return _json({"error": str(e)}, 500)
 
