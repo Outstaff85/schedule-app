@@ -409,6 +409,16 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
 });
 
+test('storage: the signed archive (archive/, functions/archive.py) is server-only — no login reads, writes or deletes it', async () => {
+  const p = 'archive/Firm A/Avi Cohen 123456782/Contracts/2026-11-03 Hourly abc123.pdf';
+  await env.withSecurityRulesDisabled(async ctx => { await uploadString(ref(ctx.storage(), p), 'pdf'); });
+  for (const name of ['ownerA', 'staffAll', 'hrAll', 'hrOwn', 'superadmin', 'ownerB', 'supplierA', 'clientA', 'anon']) {
+    await assertFails(getBytes(ref(st(name), p)));
+    await assertFails(uploadString(ref(st(name), 'archive/Firm A/x.pdf'), 'pdf'));
+    await assertFails(deleteObject(ref(st(name), p)));
+  }
+});
+
 test('storage: the firm\'s signature and stamp are server-only — no login reads or writes them, other firm files still read', async () => {
   const pSeal = 'tenants/' + A + '/firmSeal/stamp-1.png';
   // a send's frozen copies (seal.freeze) sit under firmSeal/frozen/, never in the send's own folder

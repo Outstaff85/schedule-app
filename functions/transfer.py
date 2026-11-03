@@ -422,8 +422,35 @@ def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None
                 return {"error": signing.E_NOT_BUILT}
             if move(db, ref, lambda x: x.get("status") == "signing", {"status": "done", "copyDone": True, "doneAt": _iso(_now()), "buildErrors.copy": None}):
                 cur["status"] = "done"
+                archive_signed(db, bucket, rid, cur, ref)
         return {"ok": True, "part": part, "status": cur.get("status")}
     return {"error": "Unknown action"}
+
+
+def archive_request(rid, req):
+    """A done move as archive.put_signed takes a signing: the new firm's worker, signed by their own link."""
+    fz = req.get("frozen") or {}
+    return {"workerId": req.get("newWorkerId"), "signDate": req.get("signDate") or fz.get("date"), "way": "remote",
+            "signedAtIso": req.get("signedAtIso") or "", "templatePath": fz.get("templatePath"),
+            "templateName": re.sub(r"\.pdf$", "", str(fz.get("contractName") or "contract"))}
+
+
+def archive_signed(db, bucket, rid, req, ref):
+    """Both signed documents of a done move copied into the worker's archive folder in the new firm (archive.py), as
+    every signing's are; a failure never undoes the move: it goes to Admin → Errors and
+    scripts/migrate/signed_archive.py makes the copy."""
+    import archive
+    fz = req.get("frozen") or {}
+    for which in signing.WHICH:
+        part = (req.get("parts") or {}).get(which) or {}
+        if part.get("archived"):
+            continue
+        try:
+            path = archive.put_signed(db, bucket, req["toTenant"], rid, archive_request(rid, req), which, part, fz.get("personal"))
+            if path:
+                ref.update({"parts." + which + ".archived": path})
+        except Exception as e:
+            contracts.log_error(db, req.get("toTenant"), f"A signed document was not copied to the archive ({which}, move {rid}): {e}", "transfer.archive")
 
 
 def _claim(db, ref):

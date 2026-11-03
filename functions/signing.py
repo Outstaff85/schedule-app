@@ -523,6 +523,22 @@ def _finish(db, ref):
     return (ref.get().to_dict() or {}).get("status")
 
 
+def _archive(db, bucket, tenant, rid, req, which, part, worker, ref):
+    """The signed part copied into the worker's archive folder (archive.py; owner, 2026-11-03), once: its path is kept
+    as parts.<which>.archived. A failure never stops the signing: it goes to Admin → Errors and the next `build`, or
+    scripts/migrate/signed_archive.py, makes the copy."""
+    if part.get("archived"):
+        return
+    import archive
+    try:
+        path = archive.put_signed(db, bucket, tenant, rid, req, which, part, worker)
+        if path:
+            ref.update({"parts." + which + ".archived": path})
+            part["archived"] = path
+    except Exception as e:
+        contracts.log_error(db, tenant, f"A signed document was not copied to the archive ({which}, request {rid}): {e}", "signing.archive")
+
+
 def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time):
     """view / sign / build — the same for the worker's page and the manager's phone."""
     action = str(body.get("action") or "")
@@ -588,6 +604,7 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             return {"error": E_NO_REQUEST}
         part = (req.get("parts") or {}).get(which)
         if part:
+            _archive(db, bucket, tenant, rid, req, which, part, worker, ref)  # a copy missed before is made now
             return {"ok": True, "part": part, "status": _finish(db, ref)}
         sig = bucket.blob(req["sigPath"]).download_as_bytes()
         try:
@@ -616,6 +633,9 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             if not have or kept.get("status") not in ("signing", "signed"):
                 return {"error": E_NO_REQUEST}
             part = have
+        elif which == "contract":
+            contracts.count_signed(db, tenant, req.get("templateId"))  # kept by this build: one more signed on it
+        _archive(db, bucket, tenant, rid, req, which, part, worker, ref)
         return {"ok": True, "part": part, "status": _finish(db, ref)}
 
     return {"error": "Unknown action"}

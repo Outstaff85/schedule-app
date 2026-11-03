@@ -2333,7 +2333,7 @@ const srv = async path => (await fetch('http://127.0.0.1:5055' + path, {method:'
   await p.click('[role="menuitem"]:has-text("Delete")');
   await p.waitForTimeout(6500);
   const ctAfter = await (await fetch('http://127.0.0.1:5055/contractTemplates', {method: 'POST'})).json();
-  ok(ctMenu === 'Edit,Category,Replace file,Stamp on every page: turn on,Delete' && ctAfter.length === 0, 'contract templates: ⋮ holds Edit (the name), Category, Replace file, the every-page stamp (turned off above), Delete; Delete goes through the Undo snack ' + JSON.stringify({ctMenu, after: ctAfter.length}));
+  ok(ctMenu === 'Edit,Category,Replace file,Stamp on every page: turn on,Delete' && ctAfter.length === 1 && ctAfter.every(t => t.deletedAt && t.isDefault === false), 'contract templates: ⋮ holds Edit (the name), Category, Replace file, the every-page stamp (turned off above), Delete; Delete goes through the Undo snack and is soft — the record kept with deletedAt (S3) ' + JSON.stringify({ctMenu, after: ctAfter.map(t => ({d: !!t.deletedAt, def: t.isDefault}))}));
   // D7: several files at once — a PDF and a Word file — each prepared and saved in the background.
   const docxBuf = Buffer.from(await (await fetch('http://127.0.0.1:5055/contractDocx', {method: 'POST'})).arrayBuffer());
   await p.setInputFiles('[data-testid="contract-file"]', [

@@ -148,6 +148,78 @@ def test_deleting_the_template_withdraws_a_waiting_send():
     assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=finder(db))["request"] is None
 
 
+def test_a_deleted_template_cannot_be_sent_and_a_signing_counts_on_its_template():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    for which in ("form101", "contract"):
+        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)
+    signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)  # again: no second count
+    assert db.data[("tenants", "t1", "contractTemplates", t["id"])]["signedCount"] == 1
+    contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]})
+    assert _send(db, bucket, OWNER, t)["error"]
+
+
+def test_every_signed_document_is_copied_to_the_worker_s_archive_folder():
+    import json
+    db, bucket, t = _setup()
+    db.collection("tenants").document("t1").set({"companyName": "Odinson / Ltd"})
+    w = db.data[("tenants", "t1", "workers", "w1")]
+    w.update(docGiven="Avi", docSurname="Cohen", docId="123456782")
+    f = _signing(db, bucket, t)
+    for which in ("form101", "contract"):
+        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)
+    req = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    base = "archive/Odinson Ltd/Avi Cohen 123456782/"
+    got = sorted(k[len(base):] for k in bucket.store if k.startswith(base))
+    assert [g.split("/")[0] for g in got] == ["Contracts"] * 3 + ["Form 101"] * 2, got
+    assert req["parts"]["form101"]["archived"].startswith(base + "Form 101/")
+    assert req["parts"]["contract"]["archived"].startswith(base + "Contracts/")
+    assert bucket.store[req["parts"]["contract"]["archived"]] == bucket.store[req["parts"]["contract"]["path"]]
+    tpl = [g for g in got if " - template v1 " in g]
+    assert len(tpl) == 1 and bucket.store[base + tpl[0]] == bucket.store[req["templatePath"]]
+    note = json.loads(bucket.store[req["parts"]["contract"]["archived"][:-4] + ".json"])
+    assert note["way"] == "remote" and note["document"] == "contract" and len(note["files"]) == 2
+    # nothing else of the worker goes there (the scan page is not signed by hand)
+    assert not any(k.startswith("archive/") and k.endswith(".jpg") for k in bucket.store)
+    # deleting the firm's files leaves the archive
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("auth_files", os.path.join(os.path.dirname(__file__), "..", "..", "functions-auth", "files.py"))
+    files = importlib.util.module_from_spec(spec); spec.loader.exec_module(files)
+    class Listed:
+        def __init__(self, name):
+            self.name = name
+
+        def delete(self):
+            bucket.store.pop(self.name)
+
+    bucket.list_blobs = lambda prefix="": [Listed(k) for k in list(bucket.store) if k.startswith(prefix)]
+    files.delete_tenant_files(bucket, "t1")
+    assert not any(k.startswith("tenants/t1/") for k in bucket.store) and len([k for k in bucket.store if k.startswith(base)]) == 5
+
+
+def test_an_archive_copy_that_fails_never_stops_the_signing_and_the_next_build_makes_it():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    real = bucket.blob
+
+    def blob(path):
+        b = real(path)
+        if path.startswith("archive/"):
+            def up(*a, **k):
+                raise Blip("no storage")
+            b.upload_from_string = up
+        return b
+
+    bucket.blob = blob
+    a = signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)
+    assert a["part"] and not a["part"].get("archived")
+    assert any("not copied to the archive" in d.get("message", "") for p, d in db.data.items() if p[0] == "errors")
+    bucket.blob = real
+    signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "form101"}, build101, finder=f)
+    req = next(v for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert req["parts"]["form101"]["archived"] in bucket.store
+
+
 def test_rights_rules():
     assert signing.may_see_pay(OWNER) and not signing.may_see_pay(STAFF_NO_PAY) and signing.may_see_pay(STAFF_DATE) and signing.may_see_pay(HR_OWN)
     assert signing.may_set_date(OWNER) and signing.may_set_date(STAFF_DATE) and not signing.may_set_date(HR_OWN)
