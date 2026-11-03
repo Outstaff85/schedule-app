@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done: S0 (the inventory, run 2026-11-03), S0b (no signed file deleted on its own), S1 (the frozen builders, then b2), S2 (Download data with the A4 ID sheet), S3 (template versions, merged 2026-11-03, PR #374, with the signed archive made at a person's delete). **The rest of the plan was rewritten on 2026-11-03** after the owner's decisions of that day — see "The plan rewritten on 2026-11-03" below, whose N1–N6 replace the old S3b–S10. Next: N1 (one server delete for a worker, the supplier's too).
+Status: **in progress**. Done: S0 (the inventory, run 2026-11-03), S0b (no signed file deleted on its own), S1 (the frozen builders, then b2), S2 (Download data with the A4 ID sheet), S3 (template versions, merged 2026-11-03, PR #374, with the signed archive made at a person's delete). **The rest of the plan was rewritten on 2026-11-03** after the owner's decisions of that day — see "The plan rewritten on 2026-11-03" below, whose N1–N6 replace the old S3b–S10. N1 built 2026-11-03. Next: N2.
 
 ## What and why
 
@@ -303,7 +303,8 @@ PDF once, and keep what was signed by hand in the archive when the worker goes.
 - Tests: the delete in one call (archive first, then the files, then the record), a failed copy deleting nothing, the HR
   scope, the supplier's delete archiving a signed worker; e2e: Delete worker leaves no file behind and the archive holds
   the signed set.
-- Status: not started. **Recommended next.**
+- **As built (2026-11-03):** `signed_archive.delete_worker` / `archive_worker` (`functions-auth/signed_archive.py`), `users_admin` `deleteWorker` (`main.py`; the rights as `deleteWorkerDoc`, an own-workers HR only for its own), `portal.supplier_action(…, bucket)`; the app's `gsDeleteWorker` (`src/manager/data/api.ts`), `deleteWorkerNow` (async, the worker back on a refusal), `ManagerBridge.deleteWorkers` saving once the server answered. The firm's signing requests stay. Tests: `tests/auth/test_signed_archive.py` (one call; a failed copy deletes nothing), `test_portal.py` (the supplier's delete archives a signed worker, its files gone), e2e (Delete worker is one `deleteWorker` call).
+- Status: built 2026-11-03.
 
 ### N2 — the server writes the signed fields; status from data; downloads through `worker_docs` (the old S5)
 - When both parts exist, `signing.build` writes the worker's signed fields itself (`signedAt`, `signDate`,

@@ -93,7 +93,7 @@ A separate codebase so a login never loads OpenCV/PyMuPDF. `main.py` holds the H
 | Function | Auth | Module | Notes |
 |---|---|---|---|
 | `login` | none | `core.login` | 30 s; `min_instances=0` (no standing cost; the login screen's `{ping:true}` wakes it while the user types, but after a long idle the first login can still wait for a cold start) |
-| `users_admin` | `Bearer <ID token>`, checked with `check_revoked`; `{ping:true}` needs no token | `core.run_action`, `files.run`, `signed_archive` | a superadmin's firm = `asTenantId`; before `deleteTenant` `signed_archive.archive_tenant`, after it `files.delete_tenant_files`; `deleteWorkerDoc` copies a document signed by hand to the archive first (`signed_archive.put`); `{ping:true}` answers `{ok: True, warm: True}` at once (the app sends it on open to skip a cold start on the first real call) |
+| `users_admin` | `Bearer <ID token>`, checked with `check_revoked`; `{ping:true}` needs no token | `core.run_action`, `files.run`, `signed_archive` | a superadmin's firm = `asTenantId`; before `deleteTenant` `signed_archive.archive_tenant`, after it `files.delete_tenant_files`; `deleteWorkerDoc` copies a document signed by hand to the archive first (`signed_archive.put`); `deleteWorker {workerId}` (Workers + Edit workers, an own-workers HR only for its own) is Delete worker in one call (`signed_archive.delete_worker`); `{ping:true}` answers `{ok: True, warm: True}` at once (the app sends it on open to skip a cold start on the first real call) |
 | `punch` | the worker link token | `portal.punch_action` | 30 s; `{ping:true}` |
 | `supplier` | `Bearer <ID token>` of a supplier | `portal.supplier_action` | |
 | `hours` | `Bearer <ID token>` of a client, supplier or HR login (review), or a manager (`list` / `resolve`) | `hours.hours_action` ([hours-review.md](hours-review.md)) | |
@@ -154,7 +154,7 @@ See [punch.md](punch.md) and [portals.md](portals.md) for the pages.
 - **`supplier`:** role `supplier` with `tenantId` and `supplierId` in the claims, else "Supplier role only".
   - `loadSchedule` → own workers through `strip_worker` (the `SUPPLIER_WORKER_FIELDS` allow-list + `supplierRate` and `supplierDayRate`; never a wage, the worker's punch-link token or a file link), clients as `{id, name, object}`, `commission` (this supplier's own rate list from its document, `[{from, mode, rate}]`), `suppliers: []`;
   - `loadPunchLog` → own workers' punches of the last 13 months with `id, workerId, workerName, type, time, date, site, clientId, ts` (`workerId in` queries of 30, each bounded by `ts >=` 13 months back — the `workerId` + `ts` index — so the older history is never read);
-  - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list (a new worker also gets `createdAt`; a signed worker may be deleted: a person's own delete);
+  - `supplierAddWorker` / `supplierUpdateWorker` / `supplierDeleteWorker` with the `SUPPLIER_EDITABLE` list (a new worker also gets `createdAt`; a signed worker may be deleted: a person's own delete, through `signed_archive.delete_worker` — the archive, the files, the record);
   - `supplierSubmitHours` (a pending hours batch for an own worker) and `supplierListHours` (its batches with their status) ([portals.md](portals.md)).
 
 ### `ai.py` — `ai_read`

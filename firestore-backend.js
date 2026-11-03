@@ -36,7 +36,8 @@
 		"listTemplates",
 		"saveTemplate",
 		"deleteTemplate",
-		"linkToTemplates"
+		"linkToTemplates",
+		"deleteWorker"
 	];
 	var UPLOAD_ACTIONS = [
 		"saveWorkerDoc",

@@ -68,7 +68,7 @@ The worker window closes like every window: a tap outside it (or a swipe down on
 
 Only these actions:
 - `supplierAddWorker` — a new worker with `supplierId` forced to the caller's own, `clientIds: []`, `schedule: []`, `createdAt` (now, ISO — the "NEW" badge for 3 days, shown in the app and in the portal's worker list), and only the editable fields;
-- `supplierUpdateWorker` / `supplierDeleteWorker` — only a worker whose `supplierId` is the caller's; otherwise "Worker not found";
+- `supplierUpdateWorker` / `supplierDeleteWorker` — only a worker whose `supplierId` is the caller's; otherwise "Worker not found"; the delete goes through the manager's server delete (`signed_archive.delete_worker`: what the worker signed by hand to the signed archive, then their files and the record — docs/contracts.md → The signed archive);
 - `supplierSubmitHours` `{workerId, clientId, entries:[{date dd/MM/yyyy, inTime, outTime}]}` — shifts for its own worker, at most 62 rows, invalid rows dropped, a client that isn't the worker's dropped; written as a `pending` batch (`supplierId`, `createdBy`) for the owner to approve; `supplierListHours` → its batches with `status`, `uploadedAt`, `decidedAt` and the rows;
 - editable fields (`SUPPLIER_EDITABLE`): `docGiven, docSurname, phone, docId, address, houseNumber, city, docDob, docSex, maritalStatus, healthFund, startDate, notes, status`; `name` is rebuilt from given name + surname.
 

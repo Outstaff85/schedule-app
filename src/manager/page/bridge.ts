@@ -209,10 +209,14 @@ provideBridge({
   openPay:(id?: any)=>openPayModal(id),
   copyLink:(id?: any)=>copyWorkerLink(id),
   setStatus:(ids?: any,v?: any)=>setWorkersStatus(ids,v),
-  deleteWorkers(ids?: any){
+  async deleteWorkers(ids?: any){
     const one=ids.length===1?workers.find((x?: any)=>x.id===ids[0]):null;
-    ids.forEach((id?: any)=>deleteWorkerNow(id)); render(); autoSave({allowEmpty:true}); // the last worker too
-    showToast(one?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ids.length,1:''}));
+    // each in one server call (archive, files, record); the list redrawn at once, saved once they are done
+    const done=Promise.all(ids.map((id?: any)=>deleteWorkerNow(id)));
+    render();
+    const ok=(await done).filter(Boolean).length;
+    render(); autoSave({allowEmpty:true}); // the last worker too
+    if(ok) showToast(one&&ok===1?tr('{0} removed',{0:one.name}):tr('{0} workers{1}',{0:ok,1:''}));
   },
   // ── Clients and Suppliers (stage 6d): the tabs and their windows are React;
   // the records, the figures (salaryEntriesFor, workersMonthHours), the map

@@ -468,7 +468,7 @@ def _own_workers(db, tid, supplier_id):
     return out
 
 
-def supplier_action(db, caller, body):
+def supplier_action(db, caller, body, bucket=None):
     if caller.get("role") != "supplier" or not caller.get("tenantId") or not caller.get("supplierId"):
         return {"error": E_SUPPLIER_ONLY}
     tid, sid = caller["tenantId"], caller["supplierId"]
@@ -540,8 +540,15 @@ def supplier_action(db, caller, body):
         if not snap or not snap.exists or (snap.to_dict() or {}).get("supplierId") != sid:
             return {"error": "Worker not found"}
         if action == "supplierDeleteWorker":
-            # a person's own delete: a signed worker goes too (owner, 2026-10-25; docs/contracts.md → Signed files are kept)
-            ref.delete()
+            # a person's own delete, as the manager's Delete worker (documents plan N1): what the worker signed by hand
+            # into the signed archive first, then their files and the record; a failed copy deletes nothing
+            if bucket is None:
+                return {"error": "Not available"}
+            import signed_archive
+            try:
+                signed_archive.delete_worker(db, bucket, tid, wid)
+            except signed_archive.NotArchived:
+                return {"error": signed_archive.E_WORKER}
             return {"ok": True}
         upd = {k: fields[k] for k in SUPPLIER_EDITABLE if fields.get(k) is not None}
         d = dict(snap.to_dict(), **upd)
