@@ -18,7 +18,11 @@ on the bucket, which this way never has to be made by hand.
                     a signed file is never deleted on its own — a file replaced, a
                     rescan, a new signing (E_SIGNED; signed_file below); only a
                     person's own delete removes it: Remove on the card, Delete worker
-                    (manual: true; owner, 2026-10-25 — docs/contracts.md → Signed files are kept)
+                    (manual: true; owner, 2026-10-25 — docs/contracts.md → Signed files are kept).
+                    A person's delete of a document the worker signed by hand first copies
+                    it, with its scans, to the signed archive (keep → signed_archive.put;
+                    owner, 2026-11-03); a copy that fails stops the delete (E_NOT_ARCHIVED).
+                    A rescan's pages are just replaced.
 
 A fileId is the object's path, tenants/<tenantId>/workers/...; only a path in
 the caller's own firm is accepted (a superadmin's: the firm it is viewing).
@@ -41,6 +45,7 @@ E_NO_FILE = "No fileId"
 E_NOT_FOUND = "File not found"
 E_NO_RIGHT = "No rights to workers"
 E_SIGNED = "A signed document is kept and can't be deleted"
+E_NOT_ARCHIVED = "The signed document could not be put in the archive, so it was not deleted — try again"
 
 
 def signed_file(path, worker, requests):
@@ -90,12 +95,15 @@ def _workers_writer(caller):
     return role in ("staff", "hr") and "workers" in rights and "editWorkers" in rights
 
 
-def run(bucket, caller, body, worker_hr=None, signed_lookup=None):
+def run(bucket, caller, body, worker_hr=None, signed_lookup=None, keep=None):
     """bucket: a google.cloud.storage Bucket (or anything with .blob(path)
     returning an object with exists/download_as_bytes/delete).
     signed_lookup(workerId) -> (the worker record or None, [its signing requests]):
     what deleteWorkerDoc checks the path against (signed_file); without it,
-    deleteWorkerDoc deletes nothing."""
+    deleteWorkerDoc deletes nothing.
+    keep(path, worker, requests): copies a document signed by hand (or a scan it was
+    signed on) to the signed archive before its delete (archive.put); raises when it
+    cannot, and the delete stops."""
     action = str(body.get("action") or "")
     if action not in ACTIONS:
         return {"error": "Unknown action"}
@@ -141,18 +149,19 @@ def run(bucket, caller, body, worker_hr=None, signed_lookup=None):
             return {"error": E_NO_RIGHT}
         # one check for every browser path that deletes a file on its own (docs/contracts.md → Signed files are
         # kept); a person's own delete (manual) removes a signed file too
-        if body.get("manual") is True:
-            if blob.exists():
-                blob.delete()
-            return {"ok": True}
         if signed_lookup is None:
             return {"error": E_SIGNED}
         wid = path.split("/")[3]
         if not wid:
             return {"error": E_NOT_FIRM}
         worker, requests = signed_lookup(wid)
-        if signed_file(path, worker, requests):
+        if body.get("manual") is not True and signed_file(path, worker, requests):
             return {"error": E_SIGNED}
+        if keep is not None and body.get("manual") is True and blob.exists():
+            try:
+                keep(path, worker, requests)
+            except Exception:
+                return {"error": E_NOT_ARCHIVED}
         if blob.exists():
             blob.delete()
         return {"ok": True}

@@ -102,11 +102,17 @@ class Blob:
     def download_as_bytes(self):
         return self.store[self.path]
 
-    def upload_from_string(self, data, content_type=None):
+    def upload_from_string(self, data, content_type=None, if_generation_match=None):
+        if if_generation_match == 0 and self.path in self.store:  # GCS: only where no object is
+            raise PreconditionFailed("412 conditionNotMet " + self.path)
         self.store[self.path] = data
 
     def delete(self):
         del self.store[self.path]
+
+
+class PreconditionFailed(Exception):
+    pass
 
 
 class Bucket:
@@ -220,14 +226,17 @@ def test_prepare_save_list_sample_update_delete():
     contracts.run(db, bucket, OWNER, {"action": "update", "id": s2["template"]["id"], "isDefault": True})
     by = {x["name"]: x for x in contracts.run(db, bucket, OWNER, {"action": "list"})["templates"]}
     assert by["Hourly 2"]["isDefault"] and not by["Hourly"]["isDefault"]
-    # a new version replaces the file
+    # a new version keeps the old one's file (S3)
     old_file = db.data[("tenants", "t1", "contractTemplates", t["id"])]["fileId"]
     r = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "replaceId": t["id"]})
-    assert r["template"]["version"] == 2 and r["template"]["name"] == "Hourly" and old_file not in bucket.store
-    # delete: the file goes, the default passes on
-    contracts.run(db, bucket, OWNER, {"action": "delete", "id": s2["template"]["id"]})
+    assert r["template"]["version"] == 2 and r["template"]["name"] == "Hourly" and old_file in bucket.store
+    # delete of a template no one signed on: for real — its record, versions and file; the default passes on
+    gone = s2["template"]["id"]
+    gone_file = db.data[("tenants", "t1", "contractTemplates", gone)]["fileId"]
+    contracts.run(db, bucket, OWNER, {"action": "delete", "id": gone})
     left = contracts.run(db, bucket, OWNER, {"action": "list"})["templates"]
     assert [x["name"] for x in left] == ["Hourly"] and left[0]["isDefault"]
+    assert not [p for p in db.data if p[:4] == ("tenants", "t1", "contractTemplates", gone)] and gone_file not in bucket.store
 
 
 def test_a_super_admin_works_in_the_firm_it_views():
@@ -381,3 +390,81 @@ def test_the_sample_shows_the_firms_real_seal_or_made_up_ones():
     # unticked: only the worker's made-up signature at its mark
     contracts.run(db, bucket, OWNER, {"action": "update", "id": t["id"], "sealEveryPage": False})
     assert len(widths()) == 1
+
+
+
+# ---- S3: versions kept, delete soft (docs/documents-plan.md → S3) -----------------------------
+
+def _versions(db, tid):
+    return {p[-1]: d for p, d in db.data.items() if p[:5] == ("tenants", "t1", "contractTemplates", tid, "versions")}
+
+
+def test_a_replace_keeps_v1_and_adds_v2_each_with_its_record():
+    import hashlib
+    db, bucket = Db(), Bucket()
+    a, b = contracts.light(_pdf())[0], contracts.light(_pdf(picture=True))[0]
+    t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]
+    contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(b), "replaceId": t["id"]})
+    v = _versions(db, t["id"])
+    assert sorted(v) == ["1", "2"]
+    assert v["1"]["fileId"] == "tenants/t1/contracts/" + t["id"] + "/v1.pdf" and bucket.store[v["1"]["fileId"]] == a
+    assert v["2"]["fileId"].endswith("/v2.pdf") and bucket.store[v["2"]["fileId"]] == b
+    assert v["1"]["sha256"] == hashlib.sha256(a).hexdigest() and v["2"]["pictures"] == [1] and v["2"]["createdBy"] == "u1"
+    rec = db.data[("tenants", "t1", "contractTemplates", t["id"])]
+    assert rec["version"] == 2 and rec["fileId"] == v["2"]["fileId"]
+
+
+def test_two_saves_at_once_get_two_versions():
+    db, bucket = Db(), Bucket()
+    a = contracts.light(_pdf())[0]
+    t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]
+    # another save took number 2 a moment ago, its record not yet on the template
+    contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]})
+    db.data[("tenants", "t1", "contractTemplates", t["id"])]["version"] = 1
+    r = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]})
+    assert r["template"]["version"] == 3 and sorted(_versions(db, t["id"])) == ["1", "2", "3"]
+    # a file already where a number's file goes is never overwritten: that number is not taken
+    bucket.store["tenants/t1/contracts/" + t["id"] + "/v4.pdf"] = b"someone else's"
+    with pytest.raises(PreconditionFailed):
+        contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]})
+    assert bucket.store["tenants/t1/contracts/" + t["id"] + "/v4.pdf"] == b"someone else's" and "4" not in _versions(db, t["id"])
+
+
+def test_a_template_no_one_signed_on_is_deleted_for_real_with_every_version():
+    db, bucket = Db(), Bucket()
+    a = contracts.light(_pdf())[0]
+    t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]
+    contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]})
+    # a send still waiting is no signature: it is withdrawn, and the template goes
+    db.collection("tenants").document("t1").collection("signRequests").document("r1").set({"templateId": t["id"], "status": "sent"})
+    assert contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]}) == {"ok": True}
+    assert not [p for p in db.data if p[:4] == ("tenants", "t1", "contractTemplates", t["id"])]
+    assert not [k for k in bucket.store if "/contracts/" + t["id"] + "/" in k]
+    assert db.data[("tenants", "t1", "signRequests", "r1")]["status"] == "withdrawn"
+    # and a new one can be added as before
+    assert contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]["version"] == 1
+
+
+def test_a_deleted_template_someone_signed_on_is_hidden_kept_and_cannot_be_changed_or_sent():
+    db, bucket = Db(), Bucket()
+    a = contracts.light(_pdf())[0]
+    t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]
+    contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]})
+    db.collection("tenants").document("t1").collection("clientSignRequests").document("c1").set({"templateId": t["id"], "status": "signed"})
+    assert contracts.signed_on(db, "t1", t["id"])
+    assert contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]}) == {"ok": True}
+    assert contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]}) == {"ok": True}  # again: nothing more
+    assert contracts.run(db, bucket, OWNER, {"action": "list", "kind": "all"})["templates"] == []
+    assert contracts.run(db, bucket, OWNER, {"action": "file", "id": t["id"]}) == {"error": contracts.E_NOT_FOUND}
+    assert contracts.run(db, bucket, OWNER, {"action": "update", "id": t["id"], "name": "B"}) == {"error": contracts.E_NOT_FOUND}
+    assert contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]}) == {"error": contracts.E_NOT_FOUND}
+    assert sorted(_versions(db, t["id"])) == ["1", "2"] and all(v["fileId"] in bucket.store for v in _versions(db, t["id"]).values())
+
+
+def test_count_signed_counts_and_never_throws():
+    db = Db()
+    db.collection("tenants").document("t1").collection("contractTemplates").document("x").set({"signedCount": 2})
+    contracts.count_signed(db, "t1", "x")
+    contracts.count_signed(db, "t1", "missing")
+    contracts.count_signed(db, "t1", "")
+    assert db.data[("tenants", "t1", "contractTemplates", "x")]["signedCount"] == 3

@@ -20,7 +20,7 @@
 //    before its first session (so the 20 s limit counts no download) and a failed fetch of it stops nothing, and a
 //    one-thread CPU way replies after the light model, the accurate one following on the capture thread;
 //  - a GPU that hangs at start: no second layout after a timeout (a wrong answer still tries it, an error too), the way
-//    left after 20 s; a hang (a start step, a silence on the GPU) remembered on the device for 24 hours by browser and
+//    left after 20 s; a hang (a start step, a silence on the GPU) remembered on the device for 30 minutes by browser and
 //    ONNX Runtime, the site's and the lab's apart: Auto starts on the pool at once, said once in the errors, the WebGPU
 //    choice still tries the GPU and its success removes it; errors, wrong answers and a silent download are not kept;
 //  - the GPU check remembered on success only: a pass kept with the model's stamp, the ONNX Runtime version and the
@@ -1628,21 +1628,22 @@ await run('a hang at start: remembered with the browser and ONNX Runtime; the ne
   } finally { setNav({ hardwareConcurrency: 8, deviceMemory: 8 }); }
 }));
 
-await run('a hang remembered goes: after 24 hours, with a new browser or ONNX Runtime, and when the WebGPU choice starts — that choice is tried while it holds', () => withReaders(async () => {
+await run('a hang remembered goes: after 30 minutes, with a new browser or ONNX Runtime, and when the WebGPU choice starts — that choice is tried while it holds', () => withReaders(async () => {
   await flush(10);
   setNav({ hardwareConcurrency: 8, deviceMemory: 8, userAgent: 'ua' });
   try {
     policy = loadOk;
     const KEY = 'scanGpuHang:scan-models', put = (store, o) => store.setItem(KEY, JSON.stringify({ at: 1e12, ua: 'ua', ort: '1.30.0', why: 'x', ...o }));
     const store = memStore();
-    // within the 24 hours; a minute over them
+    // within the 30 minutes (the owner's, 2026-11-03); just over them
+    assert.equal(EN.GPU_HANG_MS, 30 * 60 * 1000);
     put(store);
     const c = newEngines(SU.siteSurface(), { store, wall: () => 1e12 + EN.GPU_HANG_MS - 1 });
     assert.ok(c.eng.gpuHang()); assert.equal(c.eng.waysFor('auto', true)[0].id, 'bg-pool');
     const d = newEngines(SU.siteSurface(), { store, wall: () => 1e12 + EN.GPU_HANG_MS });
     assert.equal(d.eng.gpuHang(), null); assert.equal(store.getItem(KEY), '', 'removed');
     assert.equal(d.eng.waysFor('auto', true)[0].id, 'bg-gpulive');
-    assert.ok(d.said.log.some(t => /forgotten \(its 24 hours are over\)/.test(t)));
+    assert.ok(d.said.log.some(t => /forgotten \(its 30 minutes are over\)/.test(t)));
     // a new browser, a new ONNX Runtime, the clock set back
     for (const o of [{ ua: 'old browser' }, { ort: '1.22.0' }, { at: 1e12 + 5000 }]) {
       put(store, o);

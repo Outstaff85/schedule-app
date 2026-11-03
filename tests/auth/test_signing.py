@@ -148,6 +148,17 @@ def test_deleting_the_template_withdraws_a_waiting_send():
     assert signing.run_worker(db, bucket, {"action": "mine", "token": "tok-avi"}, build101, finder=finder(db))["request"] is None
 
 
+def test_a_deleted_template_cannot_be_sent_and_a_signing_counts_on_its_template():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    for which in ("form101", "contract"):
+        signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)
+    signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": "contract"}, build101, finder=f)  # again: no second count
+    assert db.data[("tenants", "t1", "contractTemplates", t["id"])]["signedCount"] == 1
+    contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]})
+    assert _send(db, bucket, OWNER, t)["error"]
+
+
 def test_rights_rules():
     assert signing.may_see_pay(OWNER) and not signing.may_see_pay(STAFF_NO_PAY) and signing.may_see_pay(STAFF_DATE) and signing.may_see_pay(HR_OWN)
     assert signing.may_set_date(OWNER) and signing.may_set_date(STAFF_DATE) and not signing.may_set_date(HR_OWN)

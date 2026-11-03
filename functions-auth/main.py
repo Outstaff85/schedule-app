@@ -40,6 +40,7 @@ from firebase_functions.params import SecretParam
 
 import ai
 import core
+import signed_archive
 import files
 import hours as hours_mod
 import portal
@@ -163,13 +164,25 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
                 from google.cloud.firestore_v1.base_query import FieldFilter
                 t_ref = _db().collection("tenants").document(tid)
                 snap = t_ref.collection("workers").document(wid).get()
-                reqs = [d.to_dict() for d in t_ref.collection("signRequests")
+                reqs = [dict(d.to_dict(), _id=d.id) for d in t_ref.collection("signRequests")
                         .where(filter=FieldFilter("workerId", "==", wid)).stream()]
-                reqs += [d.to_dict() for d in _db().collection("transferRequests")
+                reqs += [dict(d.to_dict(), _id=d.id) for d in _db().collection("transferRequests")
                          .where(filter=FieldFilter("toTenant", "==", tid))
                          .where(filter=FieldFilter("newWorkerId", "==", wid)).stream()]
                 return (snap.to_dict() if snap.exists else None), reqs
-            return _json(files.run(storage.bucket(), caller, body, worker_hr, signed_lookup))
+
+            def keep(path, worker, requests):
+                # the signed archive: a document signed by hand (and its scans) copied before its delete
+                signed_archive.put(_db(), storage.bucket(), tid, path, worker, requests)
+            return _json(files.run(storage.bucket(), caller, body, worker_hr, signed_lookup, keep))
+        if body.get("action") == "deleteTenant" and caller["role"] == "superadmin" and body.get("tenantId"):
+            # before anything of the firm goes: what its workers signed by hand, into the signed archive; a failure
+            # stops the delete, so nothing signed is lost
+            try:
+                signed_archive.archive_tenant(_db(), storage.bucket(), str(body["tenantId"]))
+            except signed_archive.NotArchived as e:
+                print("deleteTenant stopped: " + str(e))
+                return _json({"error": signed_archive.E_FIRM})
         result = core.run_action(_db(), caller, body, _revoke)
         if body.get("action") == "deleteTenant" and result.get("ok"):
             result["removed"]["files"] = files.delete_tenant_files(storage.bucket(), body.get("tenantId"))

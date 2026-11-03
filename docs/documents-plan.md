@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). S1 (the frozen builders) is merged, and builder b2 (the attached sheet's language) follows it. Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. Next: S3.
+Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). S1 (the frozen builders) is merged, and builder b2 (the attached sheet's language) follows it. Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. S0's inventory was run on the real project on 2026-11-03 (its figures under Weight). S3 is built (2026-11-03, with the owner's signed archive, made at a delete, in place of the zip at a firm's delete). Next: S3b.
 
 ## What and why
 
@@ -250,7 +250,14 @@ Keeping the files is the safe default, so this does not wait for Q2.
   - docs/contracts.md: templates, versions, soft delete.
   - docs/admin.md: Delete firm's archive step.
 - Rollback: revert the code. The extra version records and kept files are harmless.
-- Status: not started.
+- **The owner's answers (2026-11-03), which change this stage:**
+  - **Template delete:** a template no one signed on is deleted for real, with its versions; one someone signed on is kept hidden (soft). New templates are added as before; a replaced one keeps its earlier versions.
+  - **The signed archive, made at a delete only:** while the worker is there, what they signed stays with them. When a person deletes a signed document, the worker or the firm, each document the worker signed with their own hand — and the scans it was signed on — is first copied to `<firm name>/<given surname ID>/Form 101`, `…/Contracts` (the contract beside the template it was made from) and `…/Scans` (the scans on A4 sheets, two pictures to a sheet — the document, then its back or the ספח; a third starts another sheet), then deleted. A rescan simply overwrites the scans (an old passport replaced by the new one): nothing archived then. Read as both ways of signing (the worker's own link and the manager's phone: the worker signs by hand in both) and a move's documents into the new firm.
+  - **What the worker did not sign by hand is just deleted.** Nothing is deleted or archived on its own: only a person's delete.
+  - So Delete firm gets no archive download step: the firm's delete copies the hand-signed documents into `archive/`, outside the firm's files, before anything goes.
+- **As built:** `contracts.py` — `save` writes `versions/<n>` with `create()` (a number taken goes to the next one) and `contracts/<id>/v<n>.pdf` with `if_generation_match=0` (`new_version`), never deletes the old file; `delete` is real for a template no one signed on (`signed_on`) and soft otherwise (`deletedAt`, `deletedBy`, `isDefault: false`), and `update`, a replace, `file` and a send refuse a soft-deleted template; `count_signed` adds one to `signedCount` when the worker's or the client's `build` keeps a signed contract. The signed archive — `functions-auth/signed_archive.py`: `put` before every `deleteWorkerDoc` (`files.run`'s `keep`), `archive_tenant` before `deleteTenant`, a failure stopping the delete — is described in docs/contracts.md → The signed archive. The backfill is `scripts/migrate/template_versions.py` (`migrate-docs.yml`, `template_versions-dry-run` / `template_versions-apply`): the current version's record for every template; it only adds. Not built here: the holds (S3b), the sweep (S10).
+- Tests: `tests/auth/test_contracts.py`, `test_signing.py`, `test_signed_archive.py`, `test_migrate_template_versions.py`, `tests/rules/rules.test.mjs` (docs/contracts.md → Tests).
+- Status: built 2026-11-03; the backfill to be run with the owner's yes after the merge.
 
 ### S3b — the locks (temporary holds), before any signing depends on them (never reverted)
 Shipped on its own, before S4, so reverting S4 can never take the lock enforcement with it.
@@ -491,7 +498,7 @@ Shipped on its own, before S4, so reverting S4 can never take the lock enforceme
 
 ## Weight
 
-This is an estimate until S0's inventory (`migrate-docs.yml`, `task: inventory`) is run with the owner's yes; its figures then replace it. Measured builds: an unsigned Form 101 with its scans is 0.2–1.2 MB (198 KB with three small JPEGs, 1.16 MB with three large ones), and 140 KB without pages. The scan pages are about 300–600 KB each, about 1–2 MB per worker.
+**S0's inventory, run on the real project on 2026-11-03** (every firm, totals): 6 workers (2 signed, 3 still on a sidecar), 3 signing requests (all signed and applied); Form 101: 2 signed (0.5 MB), 4 unsigned (2.2 MB) and 4 no record points at (2.3 MB); 0 signed contracts under `docs/`; 3 template copies of signed sends (0.3 MB); 6 scan pages (0.7 MB); 4 signatures (54 KB), 1 orphan; 4 old sidecars (0.7 MB); 1 template (0.1 MB); 5 files of deleted workers (1.5 MB) — about 8.4 MB in all. The data is still small, so the order of S6–S10 needs no change for weight. The estimate below was made before it. Measured builds: an unsigned Form 101 with its scans is 0.2–1.2 MB (198 KB with three small JPEGs, 1.16 MB with three large ones), and 140 KB without pages. The scan pages are about 300–600 KB each, about 1–2 MB per worker.
 
 | Per worker | Today | When done |
 |---|---|---|

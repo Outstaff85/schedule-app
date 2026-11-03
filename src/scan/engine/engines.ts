@@ -16,7 +16,7 @@
 //    Nothing is remembered between opens (owner, 2026-10-22) but the GPU layout that worked, the failures' log,
 //    a GPU check that passed (owner, 2026-10-27: kept with the model's stamp, the ONNX Runtime version and the
 //    browser — the same three skip the check next time; removed by a run-time failure of that GPU session; a
-//    failure never kept) and a GPU that hung (owner, 2026-11-02, the one failure kept, see GPU_HANG_KEY: a hang costs
+//    failure never kept) and a GPU that hung (owner, 2026-11-02, the one failure kept, 30 minutes since 2026-11-03, see GPU_HANG_KEY: a hang costs
 //    20 s on every open, an error or a wrong answer costs nothing): the lab reloaded its page on every open, the engine now outlives a close in the manager page, so
 //    stopAll() forgets the stuck ways and a fall back to the page, and stops every start still loading (a
 //    generation number: a load that ends after the close stops its threads instead of keeping them).
@@ -141,15 +141,15 @@ const GPU_LAYOUT_KEY = 'scanGpuLayout';
 /** Where the GPU checks that passed are kept: this key + ':' + the surface's cache name, so the site's and the lab's
  *  are apart (scanGpuPassed:scan-models, scanGpuPassed:scan-lab-models). */
 export const GPU_PASS_KEY = 'scanGpuPassed';
-/** A GPU that hung on this device (owner, 2026-11-02; the one deliberate exception to "nothing about failures is
+/** A GPU that hung on this device (owner, 2026-11-02, for 30 minutes since 2026-11-03; the one deliberate exception to "nothing about failures is
  *  remembered between opens", 2026-10-22, since a hang costs 20 s on every open): a start step given up on, or a thread
  *  on the GPU silent for 25 s. Kept on the device for GPU_HANG_MS under this key + ':' + the surface's cache name (the
  *  site's and the lab's apart), with the browser and the ONNX Runtime version: while it holds, Auto leaves the GPU's way
  *  out and starts on the pool, saying so in the log and once an open in the errors. It goes by the lab's own WebGPU choice
- *  starting (that choice is always tried), by a new browser or ONNX Runtime, or by the 24 hours. Errors and wrong answers
+ *  starting (that choice is always tried), by a new browser or ONNX Runtime, or by the 30 minutes. Errors and wrong answers
  *  stay unremembered: they cost nothing on the next open. */
 export const GPU_HANG_KEY = 'scanGpuHang';
-export const GPU_HANG_MS = 24 * 60 * 60 * 1000;
+export const GPU_HANG_MS = 30 * 60 * 1000;
 export interface GpuHang { at: number; ua: string; ort: string; why: string }
 const WATCH_MS = 25000;
 /** A promise opened once from outside. */
@@ -324,13 +324,13 @@ export class Engines {
     if (!rec) return null;
     const age = this.env.wall() - rec.at;
     if (age >= 0 && age < GPU_HANG_MS && rec.ua === userAgent() && rec.ort === GPU_ORT_VERSION) return rec;
-    this.hangForget(age >= GPU_HANG_MS || age < 0 ? 'its 24 hours are over' : 'a new browser or ONNX Runtime');
+    this.hangForget(age >= GPU_HANG_MS || age < 0 ? 'its 30 minutes are over' : 'a new browser or ONNX Runtime');
     return null;
   }
   private hangNote(why: string): void {
     const rec: GpuHang = { at: this.env.wall(), ua: userAgent(), ort: GPU_ORT_VERSION, why };
     try { if (this.env.store) this.env.store.setItem(this.hangKey(), JSON.stringify(rec)); } catch { /* blocked */ }
-    this.log.log('The GPU hung (' + why + ') — remembered on this device for 24 hours, Auto starts on the pool');
+    this.log.log('The GPU hung (' + why + ') — remembered on this device for 30 minutes, Auto starts on the pool');
   }
   private hangForget(why: string): void {
     try {
@@ -696,11 +696,11 @@ export class Engines {
   private sayHang(): void {
     const h = this.gpuHang();
     if (!h) return;
-    const hours = Math.max(0, (this.env.wall() - h.at) / 3600000);
-    this.log.log('Time: the GPU left out of Auto — it hung on this device ' + hours.toFixed(1) + ' h ago (' + h.why + ')');
+    const mins = Math.round(Math.max(0, (this.env.wall() - h.at) / 60000));
+    this.log.log('Time: the GPU left out of Auto — it hung on this device ' + mins + ' min ago (' + h.why + ')');
     if (this.hangSaid) return;
     this.hangSaid = true;
-    this.log.err('The GPU hung on this device ' + hours.toFixed(1) + ' h ago (' + h.why + ') — Auto starts on the pool for 24 hours; the WebGPU choice still tries it');
+    this.log.err('The GPU hung on this device ' + mins + ' min ago (' + h.why + ') — Auto starts on the pool for 30 minutes from then; the WebGPU choice still tries it');
   }
 
   async startSession(): Promise<void> {

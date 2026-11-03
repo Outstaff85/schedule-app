@@ -282,6 +282,7 @@ def _documents(db, bucket, tenant, rid, req, body, server_time):
             _doc_safe(db, tenant, rid, kept, kept["part"])
             return {"ok": True, "part": kept["part"], "status": kept.get("status")}
         _doc_safe(db, tenant, rid, req, part)
+        contracts.count_signed(db, tenant, req.get("templateId"))  # kept by this build: one more signed on it
         return {"ok": True, "part": part, "status": "signed"}
 
     return {"error": "Unknown action"}

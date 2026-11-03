@@ -616,6 +616,8 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             if not have or kept.get("status") not in ("signing", "signed"):
                 return {"error": E_NO_REQUEST}
             part = have
+        elif which == "contract":
+            contracts.count_signed(db, tenant, req.get("templateId"))  # kept by this build: one more signed on it
         return {"ok": True, "part": part, "status": _finish(db, ref)}
 
     return {"error": "Unknown action"}

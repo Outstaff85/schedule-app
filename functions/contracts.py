@@ -20,10 +20,20 @@ The server side of Admin → Contract templates is run(): every action of the
 `contracts` function (functions/main.py), with the Firestore client, the
 Storage bucket and the caller's verified claims. A firm sees only its own
 templates: tenants/<t>/contractTemplates/<id> (no client reads or writes it —
-firestore.rules grant nothing) and the file at tenants/<t>/contracts/<id>/<ms>.pdf.
+firestore.rules grant nothing) and the file at tenants/<t>/contracts/<id>/v<n>.pdf (the files saved before the
+versions: <ms>.pdf).
+
+Versions (docs/documents-plan.md → S3): every save writes a version, never changed and never deleted —
+tenants/<t>/contractTemplates/<id>/versions/<n> {fileId, sha256, size, pages, placed, marks, unknown, pictures,
+createdAt, createdBy}, <n> taken with create() (two saves at once get two numbers) and its file uploaded only where
+none is (if_generation_match=0). A new version leaves the old one's file; the template record keeps the current
+`version` and `fileId`. Delete (owner, 2026-11-03): a template no one signed on goes for real, with its versions and
+files; one someone signed on (signed_on) is soft — `deletedAt`, `isDefault: false`, the record and every version's file
+kept, the `deletedAt` filters hiding it everywhere. `signedCount` counts the contracts signed on it (count_signed).
 """
 
 import base64
+import hashlib
 import io
 import re
 import time
@@ -630,6 +640,55 @@ def convert_docx(db, data, authorization):
     return base64.b64decode(out["pdfBase64"])
 
 
+def new_version(ref, bucket, tenant, tid, data, n, rec, now, uid, tries=20):
+    """Writes version n (or the next free one) of template tid: its record with create() — two saves at once never
+    get the same number — then its file, uploaded only where none is. Returns (n, the file's path)."""
+    sha = hashlib.sha256(data).hexdigest()
+    for _ in range(tries):
+        vref = ref.collection("versions").document(str(n))
+        path = f"tenants/{tenant}/contracts/{tid}/v{n}.pdf"
+        try:
+            vref.create(dict(rec, fileId=path, sha256=sha, createdAt=now, createdBy=uid))
+        except Exception as e:  # taken (AlreadyExists): the next number
+            if "exist" not in str(e).lower() and type(e).__name__ not in ("AlreadyExists", "Conflict"):
+                raise
+            n += 1
+            continue
+        try:
+            bucket.blob(path).upload_from_string(data, content_type="application/pdf", if_generation_match=0)
+        except Exception:
+            vref.delete()  # its number is free again; nothing points at a missing file
+            raise
+        return n, path
+    raise RuntimeError("No free version number")
+
+
+def signed_on(db, tenant, template_id):
+    """Has anyone signed on this template — a worker's or a client's signing, signing or signed? (Its delete is then
+    soft: the text a signature was given on is kept.)"""
+    t = db.collection("tenants").document(tenant)
+    for coll in ("signRequests", "clientSignRequests"):
+        for r in t.collection(coll).stream():
+            x = r.to_dict() or {}
+            if x.get("templateId") == template_id and x.get("status") in ("signing", "signed"):
+                return True
+    return int((t.collection("contractTemplates").document(template_id).get().to_dict() or {}).get("signedCount") or 0) > 0
+
+
+def count_signed(db, tenant, template_id):
+    """One more contract signed on the template (its `signedCount`, shown in Admin → Contract templates).
+    A count only: a failure here never stops a signing."""
+    if not template_id:
+        return
+    try:
+        ref = db.collection("tenants").document(tenant).collection("contractTemplates").document(str(template_id))
+        snap = ref.get()
+        if snap.exists:
+            ref.update({"signedCount": int((snap.to_dict() or {}).get("signedCount") or 0) + 1})
+    except Exception:
+        pass
+
+
 def run(db, bucket, claims, body, authorization="", docx=None):
     """One action of the `contract_templates` function. claims: the caller's verified token claims;
     authorization: the caller's own "Bearer <ID token>", forwarded to the docx2pdf service for a Word file
@@ -744,26 +803,24 @@ def run(db, bucket, claims, body, authorization="", docx=None):
             tid = uuid.uuid4().hex[:20]
             ref = col.document(tid)
             old = None
-        path = f"tenants/{tenant}/contracts/{tid}/{int(time.time() * 1000)}.pdf"
-        blob = bucket.blob(path)
-        blob.upload_from_string(data, content_type="application/pdf")
-        rec = {"name": name if not old or body.get("name") else old.get("name"), "fileId": path, "size": len(data),
-               "origSize": int(body.get("origSize") or len(data)), "pages": doc.page_count,
-               "marks": sorted({f["mark"] for f in found} | {p["mark"] for p in placed}, key=MARKS.index),
-               "unknown": unknown, "placed": placed, "pictures": picture_pages(doc), "updatedAt": now}
+        now_rec = {"size": len(data), "pages": doc.page_count,
+                   "marks": sorted({f["mark"] for f in found} | {p["mark"] for p in placed}, key=MARKS.index),
+                   "unknown": unknown, "placed": placed, "pictures": picture_pages(doc)}
+        n, path = new_version(ref, bucket, tenant, tid, data, int((old or {}).get("version") or 0) + 1, now_rec, now,
+                              claims.get("uid", ""))
+        rec = dict(now_rec, name=name if not old or body.get("name") else old.get("name"), fileId=path,
+                   origSize=int(body.get("origSize") or len(data)), updatedAt=now, version=n)
         if old:
-            rec["version"] = int(old.get("version") or 1) + 1
             if "sealEveryPage" in body:  # a new version keeps the old one's tick unless it sends its own
                 rec["sealEveryPage"] = bool(body.get("sealEveryPage"))
-            ref.update(rec)
-            if old.get("fileId") and old["fileId"] != path:
-                b = bucket.blob(old["fileId"])
-                if b.exists():
-                    b.delete()
+            cur = (ref.get().to_dict() or {})
+            if int(cur.get("version") or 0) > n:  # a save at the same moment took a later number: it stays the current one
+                rec.pop("version"); rec.pop("fileId")
+            ref.update(rec)  # the old version's file is kept (versions/<n-1>)
         else:
             # the first firm template of a category is its default — within its kind (a worker's and a client's are apart)
             same = [d for d in col.stream() if _firm_of_kind(d.to_dict(), kind) and (d.to_dict() or {}).get("category", "") == category]
-            rec.update({"category": category, "isDefault": not worker_id and not client_id and not same, "createdAt": now, "version": 1,
+            rec.update({"category": category, "isDefault": not worker_id and not client_id and not same, "createdAt": now,
                         "workerId": worker_id, "clientId": client_id, "kind": kind, "signedCount": 0, "createdBy": claims.get("uid", ""),
                         # the firm's signature and stamp on every page: on unless the upload unticked it
                         "sealEveryPage": seal_every_page(body)})
@@ -777,6 +834,8 @@ def run(db, bucket, claims, body, authorization="", docx=None):
     d = snap.to_dict() or {}
 
     if action == "update":
+        if d.get("deletedAt"):
+            return {"error": E_NOT_FOUND}
         ch = {"updatedAt": _now()}
         if "name" in body and _clean(body.get("name"), 120):
             ch["name"] = _clean(body.get("name"), 120)
@@ -797,13 +856,22 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         return {"ok": True, "template": _public(snap.id, ref.get().to_dict())}
 
     if action == "delete":
-        # The Undo snack has already run out: the template and its file go. Signed contracts are
-        # kept in the workers' documents (D3); a default passes to another of its category.
-        if d.get("fileId"):
-            b = bucket.blob(d["fileId"])
-            if b.exists():
-                b.delete()
-        ref.delete()
+        # The Undo snack has already run out (owner, 2026-11-03). A template no one signed on goes for real: its record,
+        # its versions and their files. One someone signed on is kept, soft (documents plan S3): hidden everywhere by
+        # `deletedAt`, never sent again, its versions and files kept. A default passes to another of its category.
+        if d.get("deletedAt"):
+            return {"ok": True}
+        if signed_on(db, tenant, snap.id):
+            ref.update({"deletedAt": _now(), "deletedBy": claims.get("uid", ""), "isDefault": False})
+        else:
+            for v in ref.collection("versions").stream():
+                f = (v.to_dict() or {}).get("fileId")
+                if f and bucket.blob(f).exists():
+                    bucket.blob(f).delete()
+                ref.collection("versions").document(v.id).delete()
+            if d.get("fileId") and bucket.blob(d["fileId"]).exists():
+                bucket.blob(d["fileId"]).delete()
+            ref.delete()
         # Sends still waiting for a signature on it are withdrawn (the worker or the client needs sending again).
         for r in db.collection("tenants").document(tenant).collection("signRequests").stream():
             x = r.to_dict() or {}

@@ -200,7 +200,7 @@ def test_the_new_firms_seal_is_frozen_when_it_asks():
     widths = [i[2] for i in pymupdf.open(stream=base64.b64decode(v["pdfBase64"]))[0].get_images()]
     assert widths == [120]
     # a template saved before the every-page tick (no field) draws it too; only an explicit false leaves it out
-    (tkey,) = [p for p in db.data if p[:3] == ("tenants", "t2", "contractTemplates")]
+    (tkey,) = [p for p in db.data if p[:3] == ("tenants", "t2", "contractTemplates") and len(p) == 4]
     db.data[tkey].pop("sealEveryPage", None)
     v = w(db, bucket, {"action": "view", "which": "contract"})
     assert [i[2] for i in pymupdf.open(stream=base64.b64decode(v["pdfBase64"]))[0].get_images()] == [120]
@@ -495,3 +495,4 @@ def test_a_move_signed_with_no_language_stays_on_b1():
     assert _call(db, bucket, build, action="sign", signaturePng=SIG)["ok"]
     assert _call(db, bucket, build, action="build", which="form101")["part"]["builder"] == "b1"
     assert seen[-1]["builder"] == "b1" and "sheetLang" not in seen[-1]
+
