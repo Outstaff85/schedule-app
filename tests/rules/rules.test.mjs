@@ -409,7 +409,7 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
 });
 
-test('storage: the signed archive (archive/, functions/archive.py) is server-only — no login reads, writes or deletes it', async () => {
+test('storage: the signed archive (archive/, functions-auth/signed_archive.py) is server-only — no login reads, writes or deletes it', async () => {
   const p = 'archive/Firm A/Avi Cohen 123456782/Contracts/2026-11-03 Hourly abc123.pdf';
   await env.withSecurityRulesDisabled(async ctx => { await uploadString(ref(ctx.storage(), p), 'pdf'); });
   for (const name of ['ownerA', 'staffAll', 'hrAll', 'hrOwn', 'superadmin', 'ownerB', 'supplierA', 'clientA', 'anon']) {

@@ -124,31 +124,41 @@ An unknown mark (a typo) is listed on upload and placed by hand or fixed in the 
   | `save` `{pdfBase64, name, category, placed, origSize, workerId?, clientId?, kind?, replaceId?, sealEveryPage?}` | owner, super-admin | the light PDF to Storage `tenants/<t>/contracts/<id>/v<n>.pdf` (templates saved before 2026-11-03: `<ms>.pdf`), its version record `contractTemplates/<id>/versions/<n>` (`fileId`, `sha256`, `size`, `pages`, `placed`, `marks`, `unknown`, `pictures`, `createdAt`, `createdBy`; written once and never changed — `<n>` taken with `create()`, so two saves at once get two numbers, the file uploaded only where none is, `if_generation_match=0`) and the record `tenants/<t>/contractTemplates/<id>` with its `kind` (`worker` / `client`; another, or a worker's own made a client's, is refused: "A template is for a worker or for a client"); the first of a category within its kind is its default; a worker's or a client's own is never a default; a new template's `sealEveryPage` is true unless sent false; `replaceId` = a new version (`version` + 1; the old version's file and record are kept; it keeps its `sealEveryPage` unless one is sent; a deleted template is not found) |
   | `update` `{id, name?, category?, isDefault?, sealEveryPage?}` | owner, super-admin | (a deleted template is not found) rename, another category (no longer the default), make the category's default (the old one stops being it), the every-page seal on or off |
   | `seal`, `sealSave`, `sealDelete` | — | the firm's signature and stamp (`functions/seal.py`, below) |
-  | `delete` `{id}` | owner, super-admin | soft (documents plan S3): `deletedAt`, `deletedBy`, `isDefault: false` — the record, its versions and their files are kept, and `deletedAt` hides it from `list`, `file`, `update`, a new version and a send; a default passes to another template of its category and kind; the waiting sends on it — a worker's and a client's — are withdrawn |
+  | `delete` `{id}` | owner, super-admin | a template no one signed on (`signed_on`: no worker's or client's signing, signing or signed, and `signedCount` 0) is deleted for real — its record, its versions and their files; one someone signed on is soft (documents plan S3; owner, 2026-11-03): `deletedAt`, `deletedBy`, `isDefault: false`, the record, versions and files kept, and `deletedAt` hides it from `list`, `file`, `update`, a new version and a send; a default passes to another template of its category and kind; the waiting sends on it — a worker's and a client's — are withdrawn |
 
 - No client reads or writes `contractTemplates` or `contracts/` (no rule grants them): everything goes through the function.
 
 ### The signed archive
 
-Every document a worker signed with their own hand (owner, 2026-11-03) — a signing's Form 101 and contract, by the
-worker's own link or on the manager's phone, and a move's two documents into the new firm — is copied, the moment its
-`build` keeps it, into one folder per worker outside the firm's files (`functions/archive.py`):
+While a worker is there, what they signed stays with them (their documents, as before). **Only when a person deletes it —
+Remove on the worker's card, Delete worker, or Delete firm — is a document the worker signed with their own hand first
+copied into the archive, then deleted** (owner, 2026-11-03; `functions-auth/signed_archive.py`):
 
 - `archive/<firm name>/<given surname ID>/Form 101/<sign date YYYY-MM-DD> <name> <request id[:6]>.pdf`;
 - `archive/<firm name>/<given surname ID>/Contracts/…pdf`, and beside it the template it was filled from
   (`… - template v<n> <id>.pdf`, the send's own frozen copy);
+- `archive/<firm name>/<given surname ID>/Scans/<sign date> scans <id>.pdf` — the scanned pages the signing was given on
+  (its frozen pages; for a document from before the signing requests, the worker's pages) on A4 sheets, **two pictures
+  to a sheet**, one above the other, each fitted to its half — the document (ID card front or passport) first, then its
+  back or the ספח, then any other page; a third picture starts another sheet (owner, 2026-11-03; `scans_pdf`, Pillow,
+  200 dpi). Made with the document, never written over; a page a signing was given on deleted on its own (a rescan)
+  makes it first;
 - beside each document a `.json` of its signing: request id, worker id, the way (`remote` / `person`), the sign date,
   `signedAt`, the template's id, name and version, and every copied file's SHA-256 and size.
 
-The firm folder is the firm's `companyName`, the worker folder the names and number read from their document
-(`docGiven`, `docSurname`, `docId` / `passportNo` / `israeliId`), else the worker's `name`; path characters are made
-spaces. A copy is never written over (`if_generation_match=0`). Its path is kept on the part (`parts.<which>.archived`).
-A failed copy never stops a signing: it goes to Admin → Errors (`signing.archive`, `transfer.archive`), the next `build`
-of that request makes it, and `scripts/migrate/signed_archive.py` (`migrate-docs.yml`, `signed_archive-*`) makes any
-left. What the worker did not sign by hand — scans, uploads, unsigned forms, signatures — is not copied: a person's
-delete of a worker or a firm deletes it, while `archive/` lies outside `tenants/<t>/`, so no delete reaches it. Nothing
-in the app deletes anything on its own (owner, 2026-11-03). No login reads or writes `archive/` (no storage rule
-matches it); it is seen in the Firebase console's Storage browser.
+Signed by hand = a part of a signing request (the worker's own link or the manager's phone) or of a move into this firm,
+or, from before the signing requests, a signed worker's Form 101 (`docFileId` with `signedAt`) or a `docs[]` entry
+marked `signed`. Everything else — uploads, unsigned forms, other scans, the signature picture — is deleted with no copy.
+The firm folder is the firm's `companyName`, the worker folder the names and number read from their document (`docGiven`,
+`docSurname`, `docId` / `passportNo` / `israeliId`), else what the signing kept (its values, a move's personal fields);
+path characters become spaces. A copy is never written over (`if_generation_match=0`).
+
+Where: `files.run` `deleteWorkerDoc` (a person's delete, `manual`, and a delete on its own of a page a signature was given
+on) calls `keep` → `signed_archive.put` before the delete — a copy that fails stops it ("The signed document could not
+be put in the archive…"); `users_admin` `deleteTenant` first runs `signed_archive.archive_tenant` over every worker,
+signing and move of the firm — a failure stops the whole delete, nothing removed. `archive/` lies outside
+`tenants/<t>/`, so no delete reaches it; nothing is archived or deleted on its own. No login reads or writes `archive/`
+(no storage rule matches it); it is seen in the Firebase console's Storage browser.
 
 ### Admin → Contract templates (`src/manager/ContractTemplates.tsx`)
 
@@ -224,7 +234,7 @@ On the worker (`src/manager/WorkerContract.tsx`, the worker window's **Contract*
 
 ### Tests (D2)
 
-`tests/auth/test_contracts.py` (marks in both directions and a typo; made light, same look, pictures shrunk; not a PDF refused; a picture page; filling, also by hand, and the signature; the actions — prepare, save, defaults, a worker's own, another firm sees none, staff may not manage, a new version keeping the old one's file, a soft delete; Admin → Errors entries; S3: v1 and v2 each with its record and hash, two saves at once get two numbers and a file already there is never overwritten, a deleted template hidden, kept, not changed, not replaced, not sent, `count_signed`), `tests/auth/test_signing.py` / `test_transfer.py` (every signed document copied to the worker's archive folder with its template and note, nothing else of the worker, the archive left by the firm's delete; a failed copy stops nothing and the next build makes it; a move's documents in the new firm's folder), `tests/auth/test_migrate_signed_archive.py` (the backfill: dry-run writes nothing, apply only adds, once), `tests/rules/rules.test.mjs` (no login reads, writes or deletes `archive/`), and the browser check "contract templates" (`tests/e2e/main.test.js`: the upload made light with its marks — the Hebrew line too — and the typo, the sample, Save as the category's default, a tap opens the sample, the worker window's Contract section saved, ⋮ and Delete through Undo).
+`tests/auth/test_contracts.py` (marks in both directions and a typo; made light, same look, pictures shrunk; not a PDF refused; a picture page; filling, also by hand, and the signature; the actions — prepare, save, defaults, a worker's own, another firm sees none, staff may not manage, a new version keeping the old one's file, a soft delete; Admin → Errors entries; S3: v1 and v2 each with its record and hash, two saves at once get two numbers and a file already there is never overwritten, a deleted template hidden, kept, not changed, not replaced, not sent, `count_signed`; a template no one signed on deleted for real with every version, one signed on kept), `tests/auth/test_signed_archive.py` (a removed signed contract archived with its template, scans and note, then deleted; two pictures to an A4 sheet, the document first, a third on another; Form 101 in its folder, never overwritten; what was not signed by hand deleted with no copy; a page a signature was given on archived when a rescan deletes it; the worker record gone; a signing from before the requests; a failed copy stops the delete; a firm's delete archives first and the archive stays, and stops when a copy fails), `tests/auth/test_migrate_template_versions.py` (the backfill: dry-run writes nothing, apply only adds, once), `tests/rules/rules.test.mjs` (no login reads, writes or deletes `archive/`), and the browser check "contract templates" (`tests/e2e/main.test.js`: the upload made light with its marks — the Hebrew line too — and the typo, the sample, Save as the category's default, a tap opens the sample, the worker window's Contract section saved, ⋮ and Delete through Undo).
 
 ## Signing (D3)
 

@@ -5,21 +5,20 @@ name: Workers' documents (inventory and migrations)
 # signing requests, contract templates and Storage files and reports counts and
 # bytes per prefix; it writes, moves and deletes nothing (read-only wrappers,
 # tests/auth/test_migrate_docs_inventory.py). It still reads real workers' data,
-# so it is run only with the owner's yes. signed_archive (S3):
-# scripts/migrate/signed_archive.py gives every template its current version's
-# record and copies every signed part not yet copied into the workers' archive
-# folders; it only adds, never deletes (dry-run lists, apply writes). The later
+# so it is run only with the owner's yes. template_versions (S3):
+# scripts/migrate/template_versions.py gives every template its current
+# version's record; it only adds, never deletes (dry-run lists, apply writes). The later
 # stages' migrations (hold_signed, unsigned_docs, sign_copies) are added here
 # as their own choices, each with its dry-run.
 on:
   workflow_dispatch:
     inputs:
       task:
-        description: 'inventory (read-only report) | signed_archive-dry-run | signed_archive-apply (S3, adds only)'
+        description: 'inventory (read-only report) | template_versions-dry-run | template_versions-apply (S3, adds only)'
         required: true
         default: 'inventory'
         type: choice
-        options: ['inventory', 'signed_archive-dry-run', 'signed_archive-apply']
+        options: ['inventory', 'template_versions-dry-run', 'template_versions-apply']
       tenant:
         description: 'One firm id only (empty: every firm)'
         required: false
@@ -46,12 +45,12 @@ jobs:
         run: |
           pip install -q firebase-admin
           if [ -n "$TENANT" ]; then python scripts/migrate/docs_inventory.py --tenant "$TENANT"; else python scripts/migrate/docs_inventory.py; fi
-      - name: Signed archive and template versions (S3, adds only)
-        if: ${{ startsWith(inputs.task, 'signed_archive-') }}
+      - name: Template versions (S3, adds only)
+        if: ${{ startsWith(inputs.task, 'template_versions-') }}
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-sa.json
           TENANT: ${{ inputs.tenant }}
-          MODE: ${{ inputs.task == 'signed_archive-apply' && 'apply' || 'dry-run' }}
+          MODE: ${{ inputs.task == 'template_versions-apply' && 'apply' || 'dry-run' }}
         run: |
           pip install -q firebase-admin
-          if [ -n "$TENANT" ]; then python scripts/migrate/signed_archive.py "$MODE" --tenant "$TENANT"; else python scripts/migrate/signed_archive.py "$MODE"; fi
+          if [ -n "$TENANT" ]; then python scripts/migrate/template_versions.py "$MODE" --tenant "$TENANT"; else python scripts/migrate/template_versions.py "$MODE"; fi

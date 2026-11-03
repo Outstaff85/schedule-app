@@ -27,8 +27,9 @@ Versions (docs/documents-plan.md → S3): every save writes a version, never cha
 tenants/<t>/contractTemplates/<id>/versions/<n> {fileId, sha256, size, pages, placed, marks, unknown, pictures,
 createdAt, createdBy}, <n> taken with create() (two saves at once get two numbers) and its file uploaded only where
 none is (if_generation_match=0). A new version leaves the old one's file; the template record keeps the current
-`version` and `fileId`. Delete is soft: `deletedAt`, `isDefault: false`, the record and every version's file kept
-(the `deletedAt` filters hide it everywhere). `signedCount` counts the contracts signed on it (count_signed).
+`version` and `fileId`. Delete (owner, 2026-11-03): a template no one signed on goes for real, with its versions and
+files; one someone signed on (signed_on) is soft — `deletedAt`, `isDefault: false`, the record and every version's file
+kept, the `deletedAt` filters hiding it everywhere. `signedCount` counts the contracts signed on it (count_signed).
 """
 
 import base64
@@ -662,6 +663,18 @@ def new_version(ref, bucket, tenant, tid, data, n, rec, now, uid, tries=20):
     raise RuntimeError("No free version number")
 
 
+def signed_on(db, tenant, template_id):
+    """Has anyone signed on this template — a worker's or a client's signing, signing or signed? (Its delete is then
+    soft: the text a signature was given on is kept.)"""
+    t = db.collection("tenants").document(tenant)
+    for coll in ("signRequests", "clientSignRequests"):
+        for r in t.collection(coll).stream():
+            x = r.to_dict() or {}
+            if x.get("templateId") == template_id and x.get("status") in ("signing", "signed"):
+                return True
+    return int((t.collection("contractTemplates").document(template_id).get().to_dict() or {}).get("signedCount") or 0) > 0
+
+
 def count_signed(db, tenant, template_id):
     """One more contract signed on the template (its `signedCount`, shown in Admin → Contract templates).
     A count only: a failure here never stops a signing."""
@@ -843,12 +856,22 @@ def run(db, bucket, claims, body, authorization="", docx=None):
         return {"ok": True, "template": _public(snap.id, ref.get().to_dict())}
 
     if action == "delete":
-        # The Undo snack has already run out. Soft (documents plan S3): the record and every version's file stay
-        # (a signed contract's own copy is under its worker, sign/<rid>/), it is hidden everywhere by `deletedAt`
-        # and can no longer be sent; a default passes to another of its category.
+        # The Undo snack has already run out (owner, 2026-11-03). A template no one signed on goes for real: its record,
+        # its versions and their files. One someone signed on is kept, soft (documents plan S3): hidden everywhere by
+        # `deletedAt`, never sent again, its versions and files kept. A default passes to another of its category.
         if d.get("deletedAt"):
             return {"ok": True}
-        ref.update({"deletedAt": _now(), "deletedBy": claims.get("uid", ""), "isDefault": False})
+        if signed_on(db, tenant, snap.id):
+            ref.update({"deletedAt": _now(), "deletedBy": claims.get("uid", ""), "isDefault": False})
+        else:
+            for v in ref.collection("versions").stream():
+                f = (v.to_dict() or {}).get("fileId")
+                if f and bucket.blob(f).exists():
+                    bucket.blob(f).delete()
+                ref.collection("versions").document(v.id).delete()
+            if d.get("fileId") and bucket.blob(d["fileId"]).exists():
+                bucket.blob(d["fileId"]).delete()
+            ref.delete()
         # Sends still waiting for a signature on it are withdrawn (the worker or the client needs sending again).
         for r in db.collection("tenants").document(tenant).collection("signRequests").stream():
             x = r.to_dict() or {}

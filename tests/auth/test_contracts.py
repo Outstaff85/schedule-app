@@ -230,14 +230,13 @@ def test_prepare_save_list_sample_update_delete():
     old_file = db.data[("tenants", "t1", "contractTemplates", t["id"])]["fileId"]
     r = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": p["lightBase64"], "replaceId": t["id"]})
     assert r["template"]["version"] == 2 and r["template"]["name"] == "Hourly" and old_file in bucket.store
-    # delete: soft — hidden, its files kept, the default passes on
+    # delete of a template no one signed on: for real — its record, versions and file; the default passes on
     gone = s2["template"]["id"]
     gone_file = db.data[("tenants", "t1", "contractTemplates", gone)]["fileId"]
     contracts.run(db, bucket, OWNER, {"action": "delete", "id": gone})
     left = contracts.run(db, bucket, OWNER, {"action": "list"})["templates"]
     assert [x["name"] for x in left] == ["Hourly"] and left[0]["isDefault"]
-    rec = db.data[("tenants", "t1", "contractTemplates", gone)]
-    assert rec["deletedAt"] and rec["isDefault"] is False and rec["deletedBy"] == "u1" and gone_file in bucket.store
+    assert not [p for p in db.data if p[:4] == ("tenants", "t1", "contractTemplates", gone)] and gone_file not in bucket.store
 
 
 def test_a_super_admin_works_in_the_firm_it_views():
@@ -431,11 +430,28 @@ def test_two_saves_at_once_get_two_versions():
     assert bucket.store["tenants/t1/contracts/" + t["id"] + "/v4.pdf"] == b"someone else's" and "4" not in _versions(db, t["id"])
 
 
-def test_a_deleted_template_is_hidden_kept_and_cannot_be_changed_or_sent():
+def test_a_template_no_one_signed_on_is_deleted_for_real_with_every_version():
     db, bucket = Db(), Bucket()
     a = contracts.light(_pdf())[0]
     t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]
     contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]})
+    # a send still waiting is no signature: it is withdrawn, and the template goes
+    db.collection("tenants").document("t1").collection("signRequests").document("r1").set({"templateId": t["id"], "status": "sent"})
+    assert contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]}) == {"ok": True}
+    assert not [p for p in db.data if p[:4] == ("tenants", "t1", "contractTemplates", t["id"])]
+    assert not [k for k in bucket.store if "/contracts/" + t["id"] + "/" in k]
+    assert db.data[("tenants", "t1", "signRequests", "r1")]["status"] == "withdrawn"
+    # and a new one can be added as before
+    assert contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]["version"] == 1
+
+
+def test_a_deleted_template_someone_signed_on_is_hidden_kept_and_cannot_be_changed_or_sent():
+    db, bucket = Db(), Bucket()
+    a = contracts.light(_pdf())[0]
+    t = contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "name": "A"})["template"]
+    contracts.run(db, bucket, OWNER, {"action": "save", "pdfBase64": _b64(a), "replaceId": t["id"]})
+    db.collection("tenants").document("t1").collection("clientSignRequests").document("c1").set({"templateId": t["id"], "status": "signed"})
+    assert contracts.signed_on(db, "t1", t["id"])
     assert contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]}) == {"ok": True}
     assert contracts.run(db, bucket, OWNER, {"action": "delete", "id": t["id"]}) == {"ok": True}  # again: nothing more
     assert contracts.run(db, bucket, OWNER, {"action": "list", "kind": "all"})["templates"] == []
