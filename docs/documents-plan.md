@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done (merged 2026-10-25, PR #362): S0's inventory script (run on the real project with the owner's yes), S0b (signed files are never deleted on their own — only by a person's own delete) and S2 (Download data with the picker and the A4 ID sheet). S1 (the frozen builders) is merged, and builder b2 (the attached sheet's language) follows it. Owner's answers of 2026-10-31 are recorded under the questions. Q6 and Q10 are put off by the owner. S0's inventory was run on the real project on 2026-11-03 (its figures under Weight). S3 is built (2026-11-03, with the owner's signed archive, made at a delete, in place of the zip at a firm's delete). Next: S3b.
+Status: **in progress**. Done: S0 (the inventory, run 2026-11-03), S0b (no signed file deleted on its own), S1 (the frozen builders, then b2), S2 (Download data with the A4 ID sheet), S3 (template versions, merged 2026-11-03, PR #374, with the signed archive made at a person's delete). **The rest of the plan was rewritten on 2026-11-03** after the owner's decisions of that day — see "The plan rewritten on 2026-11-03" below, whose N1–N6 replace the old S3b–S10. Next: N1 (one server delete for a worker, the supplier's too).
 
 ## What and why
 
@@ -37,6 +37,8 @@ PDFs are then built on request: view, download, and the "Download data" bundle. 
 Signed PDFs that exist today are legal copies. **No stage rewrites, moves or deletes them**, and S0b stops the deletes that happen today. The new scheme applies to new signings. The existing unsigned `docUrl` files are migrated (S7).
 
 ## Decisions
+
+**Changed on 2026-11-03** (see The plan rewritten on 2026-11-03): decisions 2 (the input manifest proves a signing), 4 (a rebuilt signed PDF checked by its hash), 5 (the signing's files locked in place by holds) and the slim copies of decision 1 are **dropped** — a rescan overwrites the pages and a person's delete archives then deletes, so the stored signed PDF is the record and is kept full, for good. Decisions 3, 6, 7, 8, 9, 10 (write-once versions) and 11 still hold.
 
 1. **Signed copies first.** Every new signing must stay provable at every stage. A signed PDF stops being stored only after S9's legal and technical gates are passed. Until then, a small signed copy is kept (recommended for good, Q1). Keeping a file is the safe default: deleting it later is always possible, getting it back is not.
 2. **What proves a signing is its input manifest, not the PDF's bytes.** At signing, the server writes a canonical JSON manifest of every input as its own locked file (`sign/<rid>/manifest.json`) and stores its SHA-256 (`manifestSha256`) on the request and in the worker's `signed`. A rebuild reads only that file, never the live request fields. The manifest holds:
@@ -259,244 +261,123 @@ Keeping the files is the safe default, so this does not wait for Q2.
 - Tests: `tests/auth/test_contracts.py`, `test_signing.py`, `test_signed_archive.py`, `test_migrate_template_versions.py`, `tests/rules/rules.test.mjs` (docs/contracts.md → Tests).
 - Status: built 2026-11-03; the backfill to be run with the owner's yes after the merge.
 
-### S3b — the locks (temporary holds), before any signing depends on them (never reverted)
-Shipped on its own, before S4, so reverting S4 can never take the lock enforcement with it.
-- **One small helper** `hold(blob, rid, worker)` / `release(blob, rid)`, duplicated on purpose in `functions/` and `functions-auth/` (added to CLAUDE.md's list): sets `temporary_hold`, adds `lock_<rid>=1`, stamps `hrId` from the worker. It reads the object with `bucket.get_blob()` (a bare `bucket.blob(path).metadata` is `None` until `reload()`), and **fails closed**: when the state cannot be read, the caller treats the object as locked. `release` removes only its own key and lifts the hold only when no `lock_*` key is left.
-- **`signing.build`** holds each part it stores.
-- **A one-off backfill** `scripts/migrate/hold_signed.py` (dry-run / apply, in `migrate-docs.yml`) holds every existing `signRequests` `parts.*.path`, every signed worker's `docFileId` and signed `docs[].fileId`, and the signature of every signed worker. It runs before any cleanup script (S7, S10) exists.
-- **Every delete path stops at a hold.** GCS refuses the delete itself; each path turns that into a clear answer instead of an error:
-  - `deleteWorkerDoc` (covers every browser path, listed in S0b);
-  - `delete_tenant_files` (S3's override);
-  - `src/manager/data/pages.ts` (119, 128): a rescan keeps a replaced file that is held;
-  - `functions/transfer.py` `_copy`: copies, never deletes;
-  - `contracts.run` delete (S3);
-  - `scripts/migrate/scan_pages.py` cleanup, and the later `unsigned_docs.py` and `sign_copies.py`.
-- `storage.rules` also refuses a browser update or delete of an object with any `lock_*` metadata (defence in depth; managers can still read it).
-- Tests: `test_files.py` (a held path is refused, an unheld one deletes); a helper test that a second request's lock survives the first's release, and that an unreadable object counts as locked; `tests/rules/` (a browser cannot update or delete a locked object); the backfill's dry-run and idempotence.
-- Docs: docs/contracts.md (the locks), docs/backend.md, docs/hr.md (the `hrId` stamp on locked files), CLAUDE.md (the duplicated helper).
+## The plan rewritten on 2026-11-03 (after S3)
+
+The stages below replace the old S3b–S10. The owner's decisions of 2026-11-03 changed the ground under them:
+
+- **A person's delete archives, then deletes.** What the worker signed by hand (Form 101, contracts, and the scans they
+  were signed on, on A4 sheets) is copied to `archive/<firm>/<given surname ID>/` and then deleted from the worker; what
+  was not signed by hand is just deleted. Nothing is deleted or archived on its own (docs/contracts.md → The signed
+  archive).
+- **A rescan overwrites the scans** (an old passport replaced by the new one): the pages a signing was given on are not
+  kept in place.
+- **A template no one signed on is deleted for real**; one someone signed on is kept hidden.
+
+**Dropped, because they conflict with these decisions:**
+
+- **The old S3b, holds on the worker's files:** they would stop a person's delete and a rescan, which the owner wants
+  to work. The protection moves to the archive (N5 below).
+- **The old S9, slim signed copies and no stored signed PDF:** once a rescan overwrites the pages, the signed PDF is the
+  only copy of what was signed, with its photos. **The signed PDFs stay stored, full, for good.**
+- **From the old S4, the input manifest, the rebuild of a signed PDF and its shadow check:** nothing is rebuilt from
+  inputs any more (the stored PDF is the record). The part of S4 still useful — a send points at the template version
+  instead of making its own copy — is N3 below.
+- **Q11's "hidden and held for seven years in compressed storage":** replaced by the archive. **Q3's "the old photos stay
+  hidden beside the new ones":** replaced by the rescan overwrite.
+
+What stays from the goal: keep the worker's data and pages once, build every unsigned PDF on request, store each signed
+PDF once, and keep what was signed by hand in the archive when the worker goes.
+
+### N1 — one server delete for a worker, the supplier's too (closes the gaps found)
+- **`users_admin deleteWorker {workerId}`** (functions-auth): in one call — the signed archive for every document the
+  worker signed by hand (`signed_archive.put`, as `archive_tenant` does for a firm), then every file under
+  `tenants/<t>/workers/<w>/` (pages, signature, form101/, docs/, sign/), then the record. A copy that fails stops it all:
+  nothing deleted. HR scope as `deleteWorkerDoc`.
+- **The manager app's Delete worker** (`deleteWorkerNow`, `src/manager/page/worker-window.ts`) calls it instead of a
+  loop of `deleteWorkerDoc` calls fired while the record is removed by a later save (today the record can go first,
+  and a worker signed before the signing requests then loses its archive copy).
+- **The supplier's delete** (`supplierDeleteWorker`, `functions-auth/portal.py`) goes through the same server delete:
+  today it removes only the record, leaving the files behind and archiving nothing.
+- `sign/<rid>/` copies of a deleted worker go with it (the contract's template is already copied beside it in the
+  archive).
+- Tests: the delete in one call (archive first, then the files, then the record), a failed copy deleting nothing, the HR
+  scope, the supplier's delete archiving a signed worker; e2e: Delete worker leaves no file behind and the archive holds
+  the signed set.
+- Status: not started. **Recommended next.**
+
+### N2 — the server writes the signed fields; status from data; downloads through `worker_docs` (the old S5)
+- When both parts exist, `signing.build` writes the worker's signed fields itself (`signedAt`, `signDate`,
+  `signedRequestId`, `sigFileId`, the `docs[]` contract entry with `templateId`, `templateVersion`, `signRequestId` and no
+  `url`); the legacy requests with no `appliedAt` are applied by a one-off script, deleting nothing; `adoptSigned` stops
+  writing from the browser.
+- `worker_docs` gets `signed {workerId, requestId, which}` (the stored signed PDF) and `file {workerId, fileId}` (one
+  `docs[]` file), replacing the token links.
+- The worker's notices (`workerDocStatus`) read data, not `docUrl`; every Open / Download goes through `worker_docs`.
+- `saveSchedule` copies the server's signed fields from the stored doc; `firestore.rules` refuse a browser change of them.
+- Tests and docs as the old S5 listed them (`test_worker_docs.py`, the rules, the legacy-apply script, e2e).
 - Status: not started.
 
-### S4 — a frozen snapshot at signing, the input manifest, the signed PDF still stored (shadow mode)
-- **On `signRequests/<rid>`** (server-only):
-  - **At `send`:**
-    - `templateFile` = the version's `fileId`, plus `templateSha256`;
-    - **the copy to `sign/<rid>/contract-template.pdf` stops** (signing.py:265–266), and `templatePath = templateFile` is written for old code;
-    - `snapshot.pages = [{fileId, kind, sha256}]` from the worker's `scanPages` at send time;
-    - `snapshot.form101Template = "v1"`, `snapshot.builder = BUILDER_VERSION`;
-    - the cleaned `form101` already freezes the employer block.
-  - **At `sign`, in this order:**
-    1. `snapshot.today`, and `signDate` (always fixed now); `snapshot.taxYear` from that final `signDate` (a form sent on 28/12 and signed on 02/01 prints the new year);
-    2. `sigPath` and `sigSha256`;
-    3. the snapshot pages and the signature are **held first** (S3b's helper);
-    4. then every snapshot page is re-checked: it exists and its sha256 matches. A page that changed or vanished between `send` and `sign` refuses the signing with `E_DOCS_CHANGED` (the holds of this request are released), and the request must be sent again. This closes the gap where `view` and `build` read different pages;
-    5. the manifest is written as `sign/<rid>/manifest.json` (`if_generation_match=0`), held, and its hash is stored as `manifestSha256`.
-  - **At `build`:**
-    - the frozen builder runs on the inputs read from the manifest file, in strict mode; **whenever a snapshot exists, the pages come from `snapshot.pages`, never from the live `scanPages`**;
-    - the PDF is stored at `sign/<rid>/<which>.pdf` with `if_generation_match=0`; a losing double build returns the part already there;
-    - the part is held;
-    - `parts.<which> = {path, name, size, sha256, builder}`.
-- **Shadow check:** every view or bundle of a new-scheme signed part rebuilds it and compares hashes. A mismatch is logged (Admin → Errors, `kind: signedRebuildMismatch`), and the **stored** bytes are served.
-- **`E_DOCS_CHANGED` on both screens:** the worker's page (`src/punch/Documents.tsx`, `src/punch/sign.ts`) and the manager's `SignWindow.tsx` show it through `tr()`, with a Hebrew entry.
-- `src/manager/page/form101.ts`: `keep.sig` / `keep.others` keep working, since the paths do not change.
-- Tests:
-  - `test_signing.py`:
-    - no `sign/<rid>/` copy, and `templateFile` is a version file (a new assertion: no test checks the copy today);
-    - the snapshot and the manifest file are complete, and `manifestSha256` is the hash of the stored file;
-    - the pages, the signature, the manifest and the parts get held;
-    - a page changed or deleted after `send` gives `E_DOCS_CHANGED`;
-    - `taxYear` follows the final `signDate`;
-    - a double `build` stores one part;
-    - `parts.sha256` equals the stored bytes and a rebuild.
-  - e2e 1517–1607 are updated: the copy check at `main.test.js:1523` (`/\/sign\//.test(templatePath)`) now expects a version file, and the pages still show; a punch-page case shows `E_DOCS_CHANGED`.
-- Docs:
-  - docs/contracts.md: the snapshot, the manifest, the shadow check.
-  - docs/backend.md: the data model.
-- Rollback: revert the code. Requests that already hold a snapshot keep working, because `templatePath` is still written. The holds stay (S3b is not reverted).
+### N3 — a send uses the template version, no copy per send (from the old S4)
+- At `send`: `templatePath` = the version's file (`contracts/<id>/v<n>.pdf`) with its `templateSha256`; the copy to
+  `sign/<rid>/contract-template.pdf` stops. A template signed on is never deleted for real, so the version file stays.
+- The signed archive takes the template from that version file (it already reads `templatePath`).
+- The move to another firm (N5's transfer below) does the same.
+- Tests: no `sign/<rid>/` copy, the version file used, an old request with its own copy still built.
 - Status: not started.
 
-### S5 — the server writes the signed fields; the UI reads status from data; downloads go through `worker_docs`
-- **Server:**
-  - When both parts exist, `signing.build` writes the worker's fields with a field update:
-    - `signedAt`, `signDate`, `signedRequestId`, `signedPrint`, `signedPrintPay`, `signedPrintMarks`, `sigFileId`;
-    - `signed: {requestId, at, date, scheme: 2, builder, manifestSha256, form101Sha256, contractSha256}`;
-    - the `docs[]` contract entry `{signed, templateId, templateVersion, signRequestId, sha256}`, with **no `url`**.
-  - A legacy signed set keeps its `fileId` / `url`.
-  - **The legacy requests move to the server:** before the rule below lands, a one-off script (and `signing.build` from then on) applies every built legacy request that has no `appliedAt`, the way `adoptSigned` does but deleting nothing. `adoptSigned` (`src/manager/logic/signing.ts:63–94`) stops writing from the browser.
-- **`worker_docs` gets two more actions:**
-  - `signed {workerId, requestId, which}`:
-    - the new scheme: a rebuild checked against `parts.sha256`, or the stored copy while one exists;
-    - legacy (`parts.path` or `docFileId` with no snapshot): the stored file.
-  - `file {workerId, fileId}`: streams one `docs[]` file of this worker, replacing its token `url`.
-  - The worker page reaches its signed parts only through `signing.view` (the same rebuild and check).
-- **Client:**
-  - `workerDocStatus` (`src/manager/logic/workers.ts:78–98`) reads data instead of `docUrl`, `docHasSignature` and `docExtraPages`:
-    - "Form 101" is complete when the Form 101 fields, the primary `scanPages` page (or an `assetsFileId` sidecar) and the signature exist (new `form101Ready(w)`);
-    - "signature" is `!!w.sigFileId`, or a sidecar (`assetsFileId`), so a worker still on a sidecar is not flagged before S7;
-    - "ספח" is missing when an Israeli ID worker has no `scanPages` page of kind `sefach` (and no sidecar).
-  - These read through `worker_docs` (a bridge action `openWorkerPdf(kind)`): `WorkerCard.tsx:188` and `:124` (the docs pane's Open), `Workers.tsx:175`, `WorkerEditor.tsx:471/489/495` and `page/bridge.ts:187`.
-  - `WorkerCard.tsx:230` (the Rescan / Scan document label) keys on the scan pages instead of `docUrl`.
-  - "Saved:" (`WorkerCard.tsx:215/229`) shows `sigSavedAt` or the latest `scanPages.savedAt`.
-  - The `WorkerEditor.tsx:495` hint (the stored document updates itself) is reworded to "the PDF is built when you open it", with its Hebrew entry.
-  - **`saveSchedule` writes the server's signed fields, not the device's copy** (`src/lib/firestore-backend.ts`): before each worker `set`, it copies `signedAt`, `signDate`, `signedRequestId`, `signed`, `signedPrint`, `signedPrintPay`, `signedPrintMarks` from the stored doc, the way `CLIENT_PAY` is handled (349–358). A manager who has the worker open or edited while it is signed remotely (the listener keeps unsaved edits, line 429) then saves without dropping them.
-- **Firestore rules** (126–138): a browser update of a worker may not change `signedAt`, `signDate`, `signedRequestId`, `signed`, `signedPrint`, `signedPrintPay` or `signedPrintMarks` (listed by name; `diff().affectedKeys()`). A write that leaves them equal to the stored values passes.
-  - A current device passes because `saveSchedule` copies them from the stored doc.
-  - An old device that sends stale signed values is refused, and its whole batch with it; the version bar forces its reload. This window is short because the legacy apply moves to the server first.
-  - It is checked on the emulator with a whole-document `set` from an old snapshot.
-- Tests:
-  - `test_worker_docs.py`:
-    - `signed`: a legacy file is served as stored, and a new part matches its hash;
-    - `file`: the rights matrix and path escapes.
-  - The legacy-apply script: applies, deletes nothing, idempotent.
-  - A unit test of `form101Ready` / `workerDocStatus` (scan pages, sidecar, passport, missing ספח).
-  - `tests/rules`: the signed fields are immutable from the browser, the other fields still save, and an equal value passes.
-  - e2e:
-    - the notices come from data;
-    - Download document returns a PDF without `docUrl`;
-    - a worker edited while the server signs it saves, and keeps its signed fields;
-    - suppliers and clients still get nothing (2851, 3025 kept).
-  - `test_portal.py` is unchanged.
-- Docs:
-  - docs/workers.md: status from data, downloads.
-  - docs/portals.md: the no-links rule now also holds in the endpoint.
-  - docs/hr.md, docs/backend.md (`saveSchedule`'s copied fields).
-  - docs/contracts.md: the server writes the signed state.
-- Rollback: revert. `docUrl` is still written for unsigned workers until S6.
+### N4 — stop storing the unsigned Form 101, then migrate the old ones (the old S6 + S7)
+- The unsigned Form 101 is never stored: the scan saves only the pages and the signature; the preview and Download are
+  built on request (`worker_docs`, already there). `regenerateWorkerDoc`, `regenerateAllWorkerDocs` and the per-edit
+  re-upload go; `fill_form_101` answers `E_RELOAD` to an old device.
+- **Migration** `scripts/migrate/unsigned_docs.py` (dry-run / apply / restore; cleanup on the owner's yes): the unsigned
+  `docFileId` / `docUrl` fields of unsigned workers removed, the file kept until cleanup. Signed workers never touched.
+- Tests and docs as the old S6 + S7 listed them.
 - Status: not started.
 
-### S6 — stop storing the unsigned Form 101
-- **`aiFillForm101`** (`src/manager/page/form101.ts`):
-  - keeps reading the scan and saving the pages and the signature (`saveScanPages`);
-  - no longer calls `FORM101_FN_URL` or uploads a PDF;
-  - the `docUrl` / `docFileId` / `docSavedAt` / `docHasSignature` / `docExtraPages` / `docUploadFailed` writes are removed (170–177, 190).
-- **Removed:** `regenerateWorkerDoc`, `regenerateAllWorkerDocs`, `maybeRegenAfterFirmEdit` and their callers:
-  - the `regenerateDoc` call (`worker-save.ts:99–101`), `WorkerCard.tsx:79`, `page/admin.ts:142`, `page/wiring.ts:55`;
-  - the `form101Regen:*` localStorage keys;
-  - `FORM101_WATCHED` too, unless something else still uses it.
-- **Kept, slimmed:** the `api.uploadForm101` calls at `worker-save.ts:92` (rescan) and `:113` (new worker) save only the pages and the signature; their "Building the PDF, please do not close…" progress text (91, 112) is removed.
-- **`fill_form_101` is retired from the client:** nothing calls it after this stage (the preview is `worker_docs` `form101`). It answers `{error: "E_RELOAD"}` to every call but `{ping}` / `{ping, selftest}`, so an old device fails loudly; it is removed in S10. `FORM101_FN_URL` leaves `SCAN_WARM_URLS` (`logic/functions.ts:21`), `globals.ts:92` and the save warm-up (`worker-window.ts:163`).
-- **`storage.rules`** refuses a browser create under `tenants/{t}/workers/{w}/form101/**`.
-- **`saveScanContract`** (Q6): the scanned contract photos become `scanPages` of kind `contract` instead of a client-built PDF in `docs[]`. This can be deferred.
-- Tests:
-  - e2e 1400–1452 are rewritten: a rescan stores the pages and the signature, no `docFileId` appears, and the editor's status comes from data. The e2e worker fixture (`tests/e2e/server.py:101`) loses its `docUrl` / `docFileId`.
-  - `fill_form_101` answers `E_RELOAD` to a build call and still answers `{ping}`.
-  - `tests/rules`: a browser create under `form101/` is refused.
-  - A small grep check under `tests/build/` (run with the build check): no `regenerateWorkerDoc` / `regenerateAllWorkerDocs` / `form101Regen:` left in `src/`.
-- Docs: docs/form101.md (no stored unsigned PDF), docs/workers.md, docs/app-core.md (uploads, the warm-ups).
-- Rollback: revert the client and the rule. The builder and the endpoint still exist.
+### N5 — the archive protected; the move to another firm on the new scheme
+- **The archive cannot be deleted for seven years** (Q4's retention): a retention rule on the `archive/` folder (an
+  object hold or a bucket retention policy on an archive bucket — the owner's choice, a cloud setting). After the seven
+  years, a deletion only on the owner's yes, never on its own.
+- **Optional, the owner's choice:** Admin → Archive for the super-admin — the folders and files listed, a file opened or
+  a worker's folder downloaded as a zip (today only the Firebase console shows it).
+- **The move to another firm** (`functions/transfer.py`, the old S8): the new firm's template version frozen at ask time
+  (N3), the old firm's pages copied into the new firm's worker at ask time, so a rescan in the old firm after asking
+  changes nothing; `_copy` writes no token links.
 - Status: not started.
 
-### S7 — migrate the existing unsigned `docUrl` (data; the owner's yes for each step)
-- **Preconditions:**
-  - S6 is deployed and every manager device has reloaded;
-  - S3b's backfill has run (every signed file is held);
-  - the `scan_pages.py` dry-run reports no sidecar workers, or this script skips them and lists them.
-- **`scripts/migrate/unsigned_docs.py`** in `migrate-docs.yml` (dry-run / apply / cleanup / restore, with an optional `tenant`).
-- **Selection:** workers with `docFileId` and **without** `signedAt` or `signed`, whose `docFileId` is not the `parts.form101.path` of any `signRequests` doc (a guard against a legacy signed file), and not held. **Skipped and listed:** workers with no `scanPages` and no `assetsFileId`, whose photos and signature may exist only inside that PDF, until their images are extracted into `scanPages` and the signature (an extract step of this script, on the owner's yes).
-- **dry-run:** for each firm, the count, the bytes and the exceptions.
-- **apply:**
-  - writes `tenants/<t>/migrations/unsignedDoc_<w>` = `{docFileId, docUrl, size, downloadTokens, at}`;
-  - a field update deletes `docUrl`, `docFileId`, `docSavedAt`, `docHasSignature`, `docExtraPages` and `docUploadFailed`, and sets `docScheme: 2`;
-  - strips `firebaseStorageDownloadTokens` from the file, so the old links stop working at once;
-  - the file is kept;
-  - running it again repairs fields that a stale whole-document save put back.
-- **cleanup:** deletes the file only when the worker still has no `docFileId` and the record matches.
-- **restore** (before cleanup): writes the fields back from the records, and puts the saved `firebaseStorageDownloadTokens` value back on the file, so the restored `docUrl` works.
-- Signed legacy workers are never touched.
-- Tests: `tests/auth/test_migrate_unsigned_docs.py`, modelled on `test_migrate_pages.py`:
-  - the selection, with signed, held and photo-less workers skipped;
-  - idempotence and the stale-save repair;
-  - the token strip, and restore putting the token back;
-  - the cleanup guard.
-- Docs: docs/form101.md (the migration section), docs/history.md.
-- Rollback: `restore`. After cleanup, the preview is still built on request, so nothing is lost.
+### N6 — cleanup and the read rule (the old S10's remainder)
+- **The leftovers found by the inventory**, each deleted only on the owner's yes, after a dry-run list: the 4 Form 101
+  files no record points at (2.3 MB), the 5 files of workers already deleted (1.5 MB), the orphan signature, the
+  `sign/<rid>/` copies of `replaced` / `withdrawn` sends. Nothing signed is touched.
+- **Q5:** the download tokens stripped from the stored files and `docUrl` / `docs[].url` cleared, once every reader uses
+  `worker_docs` (N2).
+- **The Storage read rule narrowed** (after Q5): worker files read in the browser only with the Workers right, `form101/`
+  and `docs/` only through `worker_docs`.
+- **Removed code:** the old `signing.bundle`, `fill_form_101`'s build path, `adoptSigned`, the `form101` upload kind.
 - Status: not started.
 
-### S8 — transfer (D6) on the new scheme
-- **`functions/transfer.py`:**
-  - At ask time it freezes the new firm's default template **version** (`templateFile`, `templateVersion`, `templateSha256`), the profile, `start` and the page snapshot with each page's sha256. View and build no longer read the live template (164–179). The tax year is frozen at `sign`, from the final `signDate` (as S4).
-  - **The pages are copied at ask time, not at build:** today the build reads the old firm's live `scanPages`, which the old firm can rescan or delete before the copy is made. The snapshot pages are copied into the new firm's worker (`tenants/<toTenant>/workers/<new_id>/pages/`) and held there before the worker signs, and view and build read only those copies.
-  - The manifest and the holds follow S4. The signature is already written under the new firm (`transfer.py:223–224`), and so are both parts.
-  - `_copy` (262–291) uses the copied pages and writes `signed{…}` and the `docs[]` entry with `templateId`, `templateVersion` and `signRequestId`, and **no `_download_url` tokens**.
-- Tests:
-  - `test_transfer.py` 141–143: a frozen version, no token, the pages copied and held at ask time, a rescan in the old firm after asking changes nothing;
-  - e2e 1635/1654.
-- Docs: docs/contracts.md D6.
-- Status: not started.
+### Not changed, put off by the owner
+- **Q10, the safety net:** bucket soft delete and Firestore point-in-time recovery — a cloud setting for the owner's
+  hands. Without it, a mistaken delete outside the archive cannot be undone.
+- **Q6:** scanned contracts stay a PDF in `docs[]`.
 
-### S9 — slim signed copies; then, only with counsel's and the owner's yes, no signed PDF at all
-- **S9a, the default (Q1 option A), brings `form101_b2`:** a changed output is a new builder version.
-  - For signings made under b2, the view at signing is already slim: the two form pages with the signature, and the pages shown after it as separate S1 sheets, so the worker signs exactly what is stored. About 140 KB.
-  - The filled contract is stored as now.
-  - The photos then live once, held, with their hashes in the manifest.
-  - The bundle and the worker page put the held pages after the slim copy, in the S1 sheet layout.
-  - Signings made under b1 keep their full stored copy.
-- **S9b, option B, store no signed PDF.** It needs all of these gates:
-  - **counsel's answer** (Q4) that a rebuilt PDF counts as the signed original under the Electronic Signature Law 2001 and the Tax Authority's conditions for a digital Form 101;
-  - the S4 shadow check has logged zero mismatches for N weeks (Q1);
-  - a library bump policy, chosen by the owner:
-    - **(i) materialize, then bump:** before any pin change, every new-scheme signing is rebuilt on the old pins, and a held PDF is stored for any whose hash would change. This is cheaper and needs no new service.
-    - **(ii) a frozen builder service:** `services/pdf-builder/`, Cloud Run deployed by image digest, with `BUILDER_VERSION` → digest in `functions/builders/registry.json` and old images kept.
+## Data model now and when done
 
-  Then `build` stores no PDF: `parts.<which> = {sha256, size, name, builder}`. A view rebuilds and serves only on a hash match. On a mismatch the user gets an error, and the manifest still proves the inputs. The flag `appConfig/signedStore = true` turns storing back on.
-- **CI tripwire, both options:** the golden output hashes on python312 (S1) and the production self-check fail any unannounced library change.
-- Tests:
-  - the slim copy has two pages, the view at signing equals the stored copy, and the bundle shows the photos once;
-  - S9b: a rebuild matches the golden hash, a mismatch is refused, and the materialize script (or the service image) passes the determinism test.
-- Docs: docs/contracts.md, docs/backend.md, docs/history.md.
-- Status: not started.
-
-### S10 — deletion and cleanup
-- **Deleting a worker moves to the server:** `users_admin deleteWorker` replaces the loop of client deletes in `src/manager/page/worker-window.ts:224–233` (which already deletes each file through `deleteWorkerDoc`, one call per file). It removes the worker's unsigned files and old unheld signatures in one call, with the HR scope.
-  - **Kept for Q4's seven years, compressed (Q11):** every signed request, its manifest, its inputs and its template version stay with `deletedWorker: true` and a lifecycle date; a super-admin's real delete is the only exception. A worker's `signRequests` are the only place a signing's snapshot lives, so they are never deleted with a signed worker.
-  - `supplierDeleteWorker` goes through the same server delete.
-  - `firestore.rules`: a browser cannot delete a worker that has `signed` / `signedAt` (the `saveSchedule` delete of a missing worker, line 344, is refused for it).
-- **One-off `scripts/migrate/sign_copies.py`** (dry-run / apply):
-  - deletes only the exact path `tenants/<t>/workers/<w>/sign/<rid>/contract-template.pdf`, matched by pattern and never read from a stored field (from S4 on, `req.templatePath` points at the shared version file), and only for requests that are `replaced` or `withdrawn`, or `signed` with a stored contract part (the signed PDF is the record there);
-  - keeps the rest;
-  - lists, and on cleanup deletes, signature PNGs that no record refers to and that are not held;
-  - sweeps template version files that no **kept** request refers to.
-- **Removed:** the old `signing.bundle`; `fill_form_101`'s build path; `adoptSigned`, once the dry-run finds no legacy request without `appliedAt`; and the `form101` upload kind in `uploadWorkerFile`.
-- **Q5:** strip the download tokens from the legacy signed files and clear `docUrl` / `docs[].url`, once every reader uses `worker_docs`.
-- **The Storage read rule is narrowed** (after Q5): today `match /tenants/{t}/{path=**}` lets any `manager(t)` read every worker file, staff without the Workers right and logins without `seePay` included. Browser reads of worker files then need the Workers right (own HR by its stamp), and `form101/` and `docs/` are read only through `worker_docs`; `pages/` and `signature/` stay readable for those logins (`loadWorkerPages`). Only from here do `worker_docs`' Workers and pay checks really protect anything.
-- Tests:
-  - `test_core.py` (the `users_admin` tests) / `test_files.py`: the delete scope, the HR scope, the retention flag, held files kept, `signRequests` kept for a signed worker;
-  - `test_portal.py`: the supplier delete goes through the server delete;
-  - `tests/rules`: a browser cannot delete a signed worker; the narrowed read rule (staff without Workers refused, `docs/` refused from the browser);
-  - `test_migrate_sign_copies.py`: only the pattern path is deleted, never a version file.
-- Docs:
-  - docs/contracts.md, docs/workers.md, docs/tests.md;
-  - CLAUDE.md "Files": `services/pdf-builder/` if S9b(ii) is chosen;
-  - docs/history.md: why the stored unsigned PDFs and the per-send copies were removed.
-- Status: not started.
-
-## Data model when done
-
-- **Worker:**
-  - kept:
-    - the Form 101 fields;
-    - `scanPages[] {fileId, kind, primary, savedAt}` (a signing's pages stay in place, held);
-    - `sigFileId`, `sigSavedAt`, `signedAt`, `signDate`, `signedRequestId`, `signedPrint`, `signedPrintPay`, `signedPrintMarks`;
-    - `docs[]` (without `url` for new entries);
-  - new:
-    - `signed {requestId, at, date, scheme, builder, manifestSha256, form101Sha256, contractSha256}`, written by the server and immutable from the browser;
-    - `docScheme: 2`;
-  - removed for unsigned workers: `docUrl`, `docFileId`, `docSavedAt`, `docHasSignature`, `docExtraPages`, `docUploadFailed`;
-  - legacy signed workers keep `docFileId` / `docUrl` and `docs[].fileId` / `url` (the tokens stripped after Q5).
-- **Template:** `contractTemplates/<tid>` plus `versions/<n>` (an immutable file, sha256, `placed`, `marks`), with soft delete.
-- **signRequest:**
-  - `templateFile`, `templateSha256`;
-  - `snapshot {pages[{fileId, kind, sha256}], sigPath, sigSha256, taxYear, today, signDate, form101Template, builder}`;
-  - `manifestSha256` (the manifest itself is the held file `sign/<rid>/manifest.json`);
-  - `parts.<which> {sha256, size, name, builder, path?}`.
-- **Storage per worker:**
-  - `pages/*.jpg`, once (held when signed);
-  - `signature/*.png` (held when signed);
-  - `sign/<rid>/manifest.json` and, while stored, `sign/<rid>/<which>.pdf` (held);
-  - `docs/*`, the uploaded documents;
-  - the slim signed copies (S9a);
-  - the legacy `form101/` and `docs/` signed PDFs, kept and held.
+- **Worker:** the Form 101 fields; `scanPages[] {fileId, kind, primary, savedAt}` (replaced by a rescan); `sigFileId`,
+  `signedAt`, `signDate`, `signedRequestId`, `signedPrint*` (written by the server from N2); `docs[]` (no `url` for new
+  entries); the unsigned `docUrl` / `docFileId` gone after N4.
+- **Template:** `contractTemplates/<tid>` + `versions/<n>` (the file, its SHA-256, `placed`, `marks`); a template no one
+  signed on deleted for real, one signed on kept hidden (`deletedAt`). Built.
+- **signRequest:** `templatePath` = the version file (N3), `parts.<which> {path, name, size, builder}` — the stored signed
+  PDFs, kept for good.
+- **Storage per worker:** `pages/*.jpg` once; `signature/*.png`; `form101/` and `docs/` — the signed PDFs and the
+  uploaded documents; no unsigned Form 101 (N4), no per-send template copy (N3).
+- **Archive:** `archive/<firm>/<given surname ID>/Form 101 | Contracts | Scans` + a `.json` per document — made at a
+  person's delete, protected for seven years (N5). Built (the protection: N5).
 
 ## Weight
+
+(The table's "when done" column assumed the slim signed copies of the old S9, dropped on 2026-11-03: a signed worker keeps its full signed PDFs; the savings come from the unsigned Form 101 and the per-send copies, N3–N4.)
 
 **S0's inventory, run on the real project on 2026-11-03** (every firm, totals): 6 workers (2 signed, 3 still on a sidecar), 3 signing requests (all signed and applied); Form 101: 2 signed (0.5 MB), 4 unsigned (2.2 MB) and 4 no record points at (2.3 MB); 0 signed contracts under `docs/`; 3 template copies of signed sends (0.3 MB); 6 scan pages (0.7 MB); 4 signatures (54 KB), 1 orphan; 4 old sidecars (0.7 MB); 1 template (0.1 MB); 5 files of deleted workers (1.5 MB) — about 8.4 MB in all. The data is still small, so the order of S6–S10 needs no change for weight. The estimate below was made before it. Measured builds: an unsigned Form 101 with its scans is 0.2–1.2 MB (198 KB with three small JPEGs, 1.16 MB with three large ones), and 140 KB without pages. The scan pages are about 300–600 KB each, about 1–2 MB per worker.
 
@@ -513,7 +394,7 @@ Each signing send also stops adding a template copy, and each firm profile edit 
   - **A (recommended):** a small signed copy without the photos (S9a).
   - **B:** only the hashes and the manifest (S9b). This needs counsel and a library bump policy. If B, how many weeks of zero mismatches first?
 - **Q2 — keep earlier signed sets when a worker signs again? — answered (owner, 2026-10-31):** kept for Q4's period, held, read from the owner's "yes" (the safe reading: nothing is deleted). The 2026-10-20 rule is "no archive", and `adoptSigned` deletes them today. S0b stops that delete anyway (keeping is the safe default); the question is whether they are later deleted on purpose or kept for Q4's period, held.
-- **Q3 — a rescan after signing.** The signed photos stay, held, beside the new ones (two sets of the worker's photos in Storage). Acceptable? **Answered (owner, 2026-10-31):** every screen shows only the new photos (`scanPages`); the old ones stay hidden and held for the retention period, because Q1's slim copy holds no photos and they are the proof of what was signed.
+- **Q3 — a rescan after signing. Changed by the owner on 2026-11-03: a rescan overwrites the scans (an old passport replaced by the new one); the signed PDF keeps the photos it was signed with.** The earlier text: The signed photos stay, held, beside the new ones (two sets of the worker's photos in Storage). Acceptable? **Answered (owner, 2026-10-31):** every screen shows only the new photos (`scanPages`); the old ones stay hidden and held for the retention period, because Q1's slim copy holds no photos and they are the proof of what was signed.
 - **Q4 — retention and the legal question — the owner's answers (2026-10-31), checked on the web the same day; no lawyer has seen them:**
   - **Retention: seven years, not the one year first answered** (owner's go after the check): at least seven years from the end of the tax year a document belongs to, or six from the filing of that year's report, whichever is later, counted from the worker's last year (Income Tax bookkeeping instructions, section 25(c)); a wage claim also runs seven years (Limitation Law, section 5). Whether a Form 101 is formally part of the accounting system was not found in a primary source; commercial sources say seven years.
   - **The Tax Authority does have conditions for a digital Form 101** (the rules for 2026, 12 January 2026, no. 2026-000058): a system approved by the Authority; the worker's personal password, entered again before sending; mandatory fields and attachments enforced; the worker's declaration in its set wording; the form locked; the employer's check, then a PDF locked and signed with an approved electronic signature; the worker told and given the signed form; every earlier version kept; an archive that retrieves them. A form not completed this way is defective, which means the maximum tax deduction for the worker. An employer's own system applies at least four months before the end of the tax year before the year of use. Nothing in this repo shows this app registered, and its signature is a drawn PNG: this is open, for the owner (see Risks).
@@ -529,7 +410,7 @@ Each signing send also stops adding a template copy, and each firm profile edit 
 - **Q8 — the bundle's default ticks — answered (owner, 2026-10-25):** ticked by default: Form 101 and the ID sheet (the ID card or passport with the ספח); the contract and the other documents unticked. The summary page is always the first page and has no tick of its own.
 - **Q9 — deleting a firm — answered (owner, 2026-10-31):** its signed documents and template versions are kept as a preserved archive for Q4's seven years (first answered as up to one year; raised with Q4's retention), then deleted.
 - **Q10 — the safety net — put off (owner, 2026-10-31).** It was to come before S3b; S3b does not depend on it technically, but until it is on, a deleted file or record is not recoverable. (Needs the owner's hands in the cloud console.) Turn on bucket soft delete (or object versioning) and Firestore point-in-time recovery or a scheduled export? Before S3b.
-- **Q11 — a person's delete of a signed file against the locks — answered (owner, 2026-10-31):** Remove and Delete worker take the document off every screen, and its file stays hidden and held for Q4's seven years. Hidden files go into compressed storage: a lossless archive whose unpacked bytes still match their hashes, in the cheapest storage class that keeps the hold (photos and PDFs barely shrink when zipped, so the class is most of the saving; S3b settles the format). After the seven years a sweep deletes them; its first run needs the owner's yes. The one exception: a super-admin may delete a file for real at once (a wrong person's document), confirmed and logged. Until S3b and S10 are built, a person's delete still deletes for real (S0b).
+- **Q11 — a person's delete of a signed file against the locks. Changed by the owner on 2026-11-03: a person's delete copies what was signed by hand to the signed archive, then deletes it (built in S3); no holds on the worker's files.** The earlier answer (owner, 2026-10-31): Remove and Delete worker take the document off every screen, and its file stays hidden and held for Q4's seven years. Hidden files go into compressed storage: a lossless archive whose unpacked bytes still match their hashes, in the cheapest storage class that keeps the hold (photos and PDFs barely shrink when zipped, so the class is most of the saving; S3b settles the format). After the seven years a sweep deletes them; its first run needs the owner's yes. The one exception: a super-admin may delete a file for real at once (a wrong person's document), confirmed and logged. Until S3b and S10 are built, a person's delete still deletes for real (S0b).
 
 ## Risks still open
 
