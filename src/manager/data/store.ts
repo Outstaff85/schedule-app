@@ -281,6 +281,16 @@ export function latestHoursBatch(workerId: unknown): Rec | null {
 type WorkerChange = {added: Rec[]; removed: string[]; changed: {data: Rec; unsaved: (item: Rec) => boolean}[]};
 let hrWorkersWatched = false;
 const hrWorkerChanges: WorkerChange[] = [];
+
+// A worker's signed fields and the documents a signing puts on (only the server writes them: functions/signing.py
+// SIGNED_FIELDS and apply_signed; the same lists as SIGNED_FIELDS / SIGNED_DOCS in src/lib/firestore-backend.ts).
+const SIGNED_FIELDS = ['signedAt', 'signDate', 'signedRequestId', 'signedPrint', 'signedPrintPay', 'signedPrintMarks'];
+const SIGNED_DOCS = ['docUrl', 'docFileId', 'docSavedAt', 'docHasSignature', 'docUploadFailed', 'sigFileId', 'sigSavedAt'];
+function takeSigned(w: Rec, server: Rec): void {
+  for (const k of [...SIGNED_FIELDS, ...SIGNED_DOCS]) { if (server[k] !== undefined) w[k] = server[k]; }
+  w.docs = [...((w.docs || []) as Rec[]).filter(d => !(d && d.signed)), ...((server.docs || []) as Rec[]).filter(d => d && d.signed)];
+}
+
 export function watchHrWorkers(): void {
   if (hrWorkersWatched) return;
   hrWorkersWatched = true;
@@ -307,7 +317,12 @@ function applyHrWorkerChanges(): void {
     // of its own not yet saved (those win and are saved over it).
     (changed || []).forEach(({data, unsaved}) => {
       const i = state.workers.findIndex(w => String(w.id) === String(data.id));
-      if (i < 0 || unsaved(state.workers[i])) return;
+      if (i < 0) return;
+      if (unsaved(state.workers[i])) {
+        // the edits here win, but a signing the server put on meanwhile shows at once (documents plan N2)
+        if (data.signedRequestId && data.signedRequestId !== state.workers[i].signedRequestId) { takeSigned(state.workers[i], data); n++; }
+        return;
+      }
       const x = normWorker(data);
       state.workers[i] = x; inStep.push(x); n++;
     });
