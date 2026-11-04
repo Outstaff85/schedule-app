@@ -163,6 +163,15 @@ export async function gsUpdatePunch(data: Rec): Promise<void> {
 // 101 or sidecar, or every file of a deleted worker). Never blocks anything.
 /** manual: a person's own delete (Remove, Delete worker) — it removes a signed file too; every other
  * delete (a file replaced, a rescan) leaves a signed one (the server refuses; docs/contracts.md → Signed files are kept). */
+/** Delete worker in one server call (documents plan N1): what the worker signed by hand into the signed archive first,
+ * then their files and the record (docs/contracts.md → The signed archive). → the reply ({ok} or {error}). */
+export async function gsDeleteWorker(workerId: string): Promise<Rec> {
+  try {
+    return await (await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteWorker', ...gsAuth(), workerId }) })).json();
+  } catch (e) {
+    return { error: tr('No network') };
+  }
+}
 export async function gsDeleteWorkerDoc(fileId: unknown, manual = false): Promise<void> {
   try {
     await fetch(API_URL, {

@@ -206,3 +206,39 @@ def test_two_pictures_to_an_a4_sheet_the_document_first_a_third_starts_another()
     im = Image.open(io.BytesIO(page.get_pixmap(dpi=20).tobytes("png"))).convert("L")
     assert im.getpixel((im.width // 2, im.height // 4)) < 60 and im.getpixel((im.width // 2, im.height * 3 // 4)) > 120  # front above
     assert signed_archive.scans_pdf([b"not a picture"]) is None
+
+
+def test_delete_worker_in_one_call_archives_then_deletes_files_and_record():
+    db, b = _world()
+    t = db.collection("tenants").document(T)
+    t.collection("workers").document("w1").set({k: v for k, v in WORKER.items() if k != "id"})
+    t.collection("signRequests").document("r1abcdef").set({k: v for k, v in REQ.items() if k != "_id"})
+    r = signed_archive.delete_worker(db, b, T, "w1")
+    assert r["ok"] and r["archived"] == 2 and r["files"] == 8
+    assert not [k for k in b.store if k.startswith(W + "/")] and not t.collection("workers").document("w1").get().exists
+    assert db.data.get(("tenants", T, "signRequests", "r1abcdef"))  # the firm's record of the signing stays
+    got = _archived(b)
+    assert [g.split("/")[0] for g in got] == ["Contracts"] * 3 + ["Form 101"] * 2 + ["Scans"], got
+
+
+def test_delete_worker_deletes_nothing_when_a_copy_fails():
+    db, b = _world()
+    t = db.collection("tenants").document(T)
+    t.collection("workers").document("w1").set({k: v for k, v in WORKER.items() if k != "id"})
+    before = dict(b.store)
+    real = b.blob
+
+    def blob(path):
+        x = real(path)
+        if path.startswith("archive/"):
+            def up(*a, **k):
+                raise ConnectionError("no storage")
+            x.upload_from_string = up
+        return x
+    b.blob = blob
+    try:
+        signed_archive.delete_worker(db, b, T, "w1")
+        assert False, "should stop"
+    except signed_archive.NotArchived:
+        pass
+    assert b.store == before and t.collection("workers").document("w1").get().exists

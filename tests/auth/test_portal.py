@@ -332,20 +332,56 @@ def test_supplier_worker_crud():
     assert W(T1, "w1").get().to_dict()["name"] == "Avi Cohen"
     assert portal.supplier_action(DB, SUP1, {"action": "supplierUpdateWorker", "workerId": "w2",
                                              "worker": {"phone": "1"}})["error"] == "Worker not found"
-    assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": "w2"})["error"]
+    assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": "w2"}, MemBucket())["error"]
     assert W(T1, "w2").get().exists
-    assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": wid})["ok"]
+    assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": wid}, MemBucket())["ok"]
     assert not W(T1, wid).get().exists
 
 
+class MemBucket:
+    """Storage in memory: what signed_archive.delete_worker reaches (blob, list_blobs)."""
+    def __init__(self, store=None):
+        self.store = dict(store or {})
+
+    def blob(self, path):
+        bucket = self
+
+        class B:
+            name = path
+
+            def exists(self):
+                return path in bucket.store
+
+            def download_as_bytes(self):
+                return bucket.store[path]
+
+            def upload_from_string(self, data, content_type=None, if_generation_match=None):
+                if if_generation_match == 0 and path in bucket.store:
+                    raise Exception("412 exists")
+                bucket.store[path] = data
+
+            def delete(self):
+                bucket.store.pop(path, None)
+        return B()
+
+    def list_blobs(self, prefix=""):
+        return [self.blob(k) for k in list(self.store) if k.startswith(prefix)]
+
+
 def test_supplier_may_delete_a_signed_worker():
-    # a person's own delete: a signed worker goes too (owner, 2026-10-25; docs/contracts.md → Signed files are kept)
+    # a person's own delete: a signed worker goes too (owner, 2026-10-25), what they signed by hand first copied to the
+    # signed archive, then their files and the record (documents plan N1)
     for mark in ({"signedAt": "2026-10-20T10:00:00Z"}, {"signedRequestId": "r1"}):
         wid = portal.supplier_action(DB, SUP1, {"action": "supplierAddWorker",
                                                 "worker": {"docGiven": "Signed", "docSurname": "Guy"}})["worker"]["id"]
-        W(T1, wid).update(mark)
-        assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": wid}) == {"ok": True}
+        f101 = f"tenants/{T1}/workers/{wid}/form101/1-signed.pdf"
+        W(T1, wid).update(dict(mark, docFileId=f101))
+        b = MemBucket({f101: b"%PDF signed", f"tenants/{T1}/workers/{wid}/docs/2-visa.pdf": b"%PDF visa"})
+        assert portal.supplier_action(DB, SUP1, {"action": "supplierDeleteWorker", "workerId": wid}, b) == {"ok": True}
         assert not W(T1, wid).get().exists
+        assert not [k for k in b.store if k.startswith(f"tenants/{T1}/workers/{wid}/")]
+        assert [k for k in b.store if k.startswith("archive/") and "/Signed Guy/Form 101/" in k and k.endswith(".pdf")]
+        assert not [k for k in b.store if "visa" in k]
 
 
 def test_non_suppliers_are_refused():

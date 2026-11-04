@@ -175,6 +175,23 @@ def users_admin(req: https_fn.Request) -> https_fn.Response:
                 # the signed archive: a document signed by hand (and its scans) copied before its delete
                 signed_archive.put(_db(), storage.bucket(), tid, path, worker, requests)
             return _json(files.run(storage.bucket(), caller, body, worker_hr, signed_lookup, keep))
+        if body.get("action") == "deleteWorker":
+            # Delete worker in one call (documents plan N1): the signed archive first, then the files and the record
+            caller["rights"] = core.caller_rights(decoded)
+            tid, wid = caller["tenantId"], str(body.get("workerId") or "")
+            if caller["role"] not in files.MANAGER_ROLES or not tid or not files._workers_writer(caller):
+                return _json({"error": files.E_NO_RIGHT})
+            if not wid or "/" in wid:
+                return _json({"error": "No worker"})
+            if caller["role"] == "hr" and decoded.get("own") is True:
+                snap = _db().collection("tenants").document(tid).collection("workers").document(wid).get()
+                if snap.exists and (snap.to_dict() or {}).get("hrId") != caller["uid"]:
+                    return _json({"error": files.E_NOT_FIRM})
+            try:
+                return _json(signed_archive.delete_worker(_db(), storage.bucket(), tid, wid))
+            except signed_archive.NotArchived as e:
+                print("deleteWorker stopped: " + str(e))
+                return _json({"error": signed_archive.E_WORKER})
         if body.get("action") == "deleteTenant" and caller["role"] == "superadmin" and body.get("tenantId"):
             # before anything of the firm goes: what its workers signed by hand, into the signed archive; a failure
             # stops the delete, so nothing signed is lost
@@ -218,7 +235,8 @@ def supplier(req: https_fn.Request) -> https_fn.Response:
     caller = {"uid": decoded["uid"], "role": decoded.get("role"), "tenantId": decoded.get("tenantId"),
               "supplierId": decoded.get("supplierId"), "rights": core.caller_rights(decoded)}
     try:
-        return _json(portal.supplier_action(_db(), caller, _body(req)))
+        # storage.bucket is passed uncalled: Storage is reached only by a delete
+        return _json(portal.supplier_action(_db(), caller, _body(req), storage.bucket))
     except Exception as e:
         return _json({"error": str(e)}, 500)
 

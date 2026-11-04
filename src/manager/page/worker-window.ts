@@ -8,7 +8,7 @@
 // other parts and the browser tests use them).
 import { byId } from './dom';
 import { DAYS } from '../logic/schedule';
-import { API_URL, gsDeleteWorkerDoc } from '../data/api';
+import { API_URL, gsDeleteWorker } from '../data/api';
 import { gsAuth } from '../data/session';
 import { FORM101_FN_URL, SCAN_WARM_URLS, warmCloudFunctions } from '../logic/functions';
 import { tr } from '../logic/i18n';
@@ -240,14 +240,17 @@ export function copyWorkerLink(wid?: any){
     prompt(tr('Copy this link:'), link);
   }
 }
-// Removes the worker, then best-effort deletes their files (Form 101 PDF,
-// the scanned pages and the signature, the contract / visa / permit files) —
-// a person's own delete, so the signed ones go too (manual; docs/contracts.md →
-// Signed files are kept: only a delete on its own leaves them).
-export function deleteWorkerNow(id?: any){
-  const wi=workers.findIndex((x?: any)=>x.id===id); if(wi<0) return;
+// Removes the worker in one server call (documents plan N1): what they signed by hand goes
+// to the signed archive first, then all their files and the record (docs/contracts.md →
+// The signed archive). The worker leaves the list at once; when the server refuses (a copy
+// to the archive failed, no right), they come back with the error. → true when deleted.
+export async function deleteWorkerNow(id?: any): Promise<boolean>{
+  const wi=workers.findIndex((x?: any)=>x.id===id); if(wi<0) return false;
   const w=workers[wi];
-  const docFileIds=(w.docs||[]).map((d?: any)=>d.fileId).filter(Boolean);
   workers.splice(wi,1);
-  [w.docFileId, ...scanFileIds(w), ...docFileIds].filter(Boolean).forEach((f?: any)=>gsDeleteWorkerDoc(f, true));
+  const r=await gsDeleteWorker(String(id));
+  if(r && r.ok) return true;
+  if(!workers.some((x?: any)=>x.id===id)) workers.splice(Math.min(wi,workers.length),0,w);
+  showToast((r && r.error) || tr('Error'));
+  return false;
 }
