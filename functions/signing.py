@@ -474,8 +474,8 @@ def run(db, bucket, claims, body, build101, server_time=None):
         return {"error": E_NO_REQUEST}
 
     if action == "applied":
-        col.document(rid).update({"appliedAt": _now_iso()})
-        return {"ok": True}
+        # a signed request the server has not put on its worker yet (one signed before N2, or an apply that failed): now
+        return {"ok": True, "changed": apply_signed(db, bucket, tenant, rid)}
 
     if action == "withdraw":
         if req.get("status") == "sent":
@@ -517,10 +517,72 @@ def run_worker(db, bucket, body, build101, server_time=None, finder=None):
     return _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time)
 
 
-def _finish(db, ref):
-    """Whoever sees both parts marks it signed, never a request withdrawn or replaced meanwhile → its status now."""
+def _finish(db, ref, bucket=None, tenant=None):
+    """Whoever sees both parts marks it signed, never a request withdrawn or replaced meanwhile → its status now. Signed,
+    its documents are put on the worker by the server (apply_signed; documents plan N2)."""
     move(db, ref, lambda x: x.get("status") == "signing" and _both(x), {"status": "signed"})
-    return (ref.get().to_dict() or {}).get("status")
+    status = (ref.get().to_dict() or {}).get("status")
+    if status == "signed" and bucket is not None and tenant:
+        try:
+            apply_signed(db, bucket, tenant, ref.id)
+        except Exception as e:  # never undoes the signing: the app's `applied` call or the next build puts it on
+            contracts.log_error(db, tenant, f"A signing could not be put on the worker (request {ref.id}): {e}", "signing.apply")
+    return status
+
+
+# The worker's signed fields: written only by the server (apply_signed, transfer._copy); firestore.rules refuse a browser
+# change of them and saveSchedule writes the stored values (documents plan N2).
+SIGNED_FIELDS = ("signedAt", "signDate", "signedRequestId", "signedPrint", "signedPrintPay", "signedPrintMarks")
+
+
+def download_url(bucket, blob, path):
+    """A Firebase Storage download URL for a file the server wrote (as getDownloadURL gives)."""
+    from urllib.parse import quote
+    tok = uuid.uuid4().hex
+    blob.metadata = dict(blob.metadata or {}, firebaseStorageDownloadTokens=tok)
+    try:
+        blob.patch()
+    except Exception:
+        pass
+    return f"https://firebasestorage.googleapis.com/v0/b/{getattr(bucket, 'name', '')}/o/{quote(path, safe='')}?alt=media&token={tok}"
+
+
+def apply_signed(db, bucket, tenant, rid):
+    """A signed request's documents put on its worker, once (documents plan N2; what the app's adoptSigned did): the signed
+    Form 101 as the worker's Form 101, the signed contract in place of an earlier signed one in docs[], the signature, the
+    signing's date and what it printed. A field update of the worker, never the whole record; the replaced documents'
+    files are kept. → True when the worker was changed. Marks the request applied (appliedAt)."""
+    ref = _req_ref(db, tenant, rid)
+    snap = ref.get()
+    r = snap.to_dict() if snap.exists else None
+    if not r or r.get("status") != "signed" or not _both(r):
+        return False
+    wref = db.collection("tenants").document(tenant).collection("workers").document(str(r.get("workerId") or ""))
+    wsnap = wref.get()
+    changed = False
+    if wsnap.exists:
+        w = wsnap.to_dict() or {}
+        if w.get("signedRequestId") != rid:
+            now = _now_iso()
+            f101, ctr = r["parts"]["form101"], r["parts"]["contract"]
+            signed_at = r.get("signedAtIso") or now
+            entry = {"id": "d" + hashlib.sha256(rid.encode()).hexdigest()[:10], "type": "contract", "name": ctr.get("name") or "",
+                     "fileId": ctr["path"], "url": download_url(bucket, bucket.blob(ctr["path"]), ctr["path"]),
+                     "mediaType": "application/pdf", "uploadedAt": now, "expiry": "", "signed": True,
+                     "templateId": r.get("templateId") or "", "templateVersion": r.get("templateVersion"), "signRequestId": rid}
+            upd = {"docUrl": download_url(bucket, bucket.blob(f101["path"]), f101["path"]), "docFileId": f101["path"],
+                   "docSavedAt": now, "docUploadFailed": False, "docHasSignature": True,
+                   "docs": [d for d in (w.get("docs") or []) if not (isinstance(d, dict) and d.get("signed"))] + [entry],
+                   "signedAt": signed_at, "signDate": r.get("signDate") or "", "signedRequestId": rid,
+                   "signedPrint": r.get("printHash") or "", "signedPrintPay": bool(r.get("printPay")),
+                   "signedPrintMarks": r.get("printMarks") or []}
+            if r.get("sigPath"):
+                upd.update(sigFileId=r["sigPath"], sigSavedAt=signed_at)
+            wref.update(upd)
+            changed = True
+    if not r.get("appliedAt"):
+        ref.update({"appliedAt": _now_iso()})
+    return changed
 
 
 def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time):
@@ -588,7 +650,7 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             return {"error": E_NO_REQUEST}
         part = (req.get("parts") or {}).get(which)
         if part:
-            return {"ok": True, "part": part, "status": _finish(db, ref)}
+            return {"ok": True, "part": part, "status": _finish(db, ref, bucket, tenant)}
         sig = bucket.blob(req["sigPath"]).download_as_bytes()
         try:
             data, name = _pdf(req, which, worker, bucket, build101, signature=sig, date=req.get("signDate"))
@@ -618,7 +680,7 @@ def _documents(db, bucket, tenant, rid, req, worker, body, build101, server_time
             part = have
         elif which == "contract":
             contracts.count_signed(db, tenant, req.get("templateId"))  # kept by this build: one more signed on it
-        return {"ok": True, "part": part, "status": _finish(db, ref)}
+        return {"ok": True, "part": part, "status": _finish(db, ref, bucket, tenant)}
 
     return {"error": "Unknown action"}
 

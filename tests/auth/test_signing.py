@@ -127,7 +127,14 @@ def test_the_worker_signs_once_in_their_own_page_and_both_pdfs_are_built():
     # the manager app takes it once
     lst = signing.run(db, bucket, OWNER, {"action": "list"}, build101)["requests"]
     assert lst[0]["status"] == "signed" and lst[0]["parts"]["form101"]["path"] and "values" not in lst[0]
-    assert signing.run(db, bucket, OWNER, {"action": "applied", "id": rid}, build101) == {"ok": True}
+    # the server has put it on the worker (documents plan N2): the signed Form 101, the contract, the signature, the date
+    w = db.data[("tenants", "t1", "workers", "w1")]
+    assert w["signedRequestId"] == rid and w["docFileId"] == req["parts"]["form101"]["path"] and w["sigFileId"] == req["sigPath"]
+    assert w["signDate"] == "01/09/2026" and w["docHasSignature"] and w["signedAt"]
+    assert [d["fileId"] for d in w["docs"] if d.get("signed")] == [req["parts"]["contract"]["path"]]
+    assert db.data[("tenants", "t1", "signRequests", rid)]["appliedAt"]
+    # the app's `applied` call: nothing more to put on
+    assert signing.run(db, bucket, OWNER, {"action": "applied", "id": rid}, build101) == {"ok": True, "changed": False}
 
 
 def test_signing_date_is_the_day_of_signing_by_default_and_a_new_send_replaces_the_old():
@@ -696,3 +703,25 @@ def test_a_supplier_or_client_gets_no_answer_on_it():
     db, bucket, t = _setup()
     for role in ("supplier", "client"):
         assert signing.run(db, bucket, {"role": role, "tenantId": "t1"}, {"action": "list"}, build101) == {"error": signing.E_NO_RIGHT}
+
+
+
+def test_a_signing_not_put_on_its_worker_is_put_on_by_applied_once_and_keeps_the_other_documents():
+    db, bucket, t = _setup()
+    f = _signing(db, bucket, t)
+    real = signing.apply_signed
+    signing.apply_signed = lambda *a, **k: (_ for _ in ()).throw(ConnectionError("no firestore"))  # the apply at build fails
+    try:
+        for which in ("form101", "contract"):
+            signing.run_worker(db, bucket, {"action": "build", "token": "tok-avi", "which": which}, build101, finder=f)
+    finally:
+        signing.apply_signed = real
+    rid, req = next((k[3], v) for k, v in db.data.items() if k[:3] == ("tenants", "t1", "signRequests"))
+    assert req["status"] == "signed" and not req.get("appliedAt")
+    assert any("could not be put on the worker" in d.get("message", "") for p, d in db.data.items() if p[0] == "errors")
+    w = db.data[("tenants", "t1", "workers", "w1")]
+    w["docs"] = [{"id": "v", "type": "visa", "fileId": "x/visa.pdf"}, {"id": "old", "signed": True, "fileId": "x/old.pdf"}]
+    assert signing.run(db, bucket, OWNER, {"action": "applied", "id": rid}, build101) == {"ok": True, "changed": True}
+    w = db.data[("tenants", "t1", "workers", "w1")]
+    assert [d["id"] for d in w["docs"]][0] == "v" and len(w["docs"]) == 2 and w["docs"][1]["signRequestId"] == rid
+    assert signing.run(db, bucket, OWNER, {"action": "applied", "id": rid}, build101) == {"ok": True, "changed": False}

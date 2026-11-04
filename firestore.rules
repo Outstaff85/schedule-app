@@ -110,6 +110,11 @@ service cloud.firestore {
         && noField('bankAccountNumber') && noField('clientRates') && noField('dayOverrides');
     }
     function noField(k) { return request.resource.data.get(k, null) in [null, 0, '', {}]; }
+    // A worker's signed fields, written only by the server (documents plan N2).
+    function signedSame() {
+      return sameField('signedAt') && sameField('signDate') && sameField('signedRequestId')
+        && sameField('signedPrint') && sameField('signedPrintPay') && sameField('signedPrintMarks');
+    }
 
     // Firm profile fields a tenant_admin may edit on their own firm
     // (updateTenant). Activation and counters stay superadmin/function-only.
@@ -133,7 +138,9 @@ service cloud.firestore {
         allow create: if mayEd('editWorkers') && ((workerWriter(t) && staffNewPayOk(t) && (isAdmin(t) || newHr() == null))
           || (hrAll(t) && hrWorkers(t) && (newHr() == null || newHr() == uid()) && hrNewPayOk(t))
           || (hrMine(t) && hrWorkers(t) && newHr() == uid() && hrNewPayOk(t)));
-        allow update: if workerEdOk() && ((workerWriter(t) && staffPayOk(t) && (isAdmin(t) || newHr() == oldHr()))
+        // The signed fields are the server's (functions/signing.py SIGNED_FIELDS; documents plan N2): a browser update
+        // leaves them as they are (saveSchedule writes the stored values).
+        allow update: if workerEdOk() && signedSame() && ((workerWriter(t) && staffPayOk(t) && (isAdmin(t) || newHr() == oldHr()))
           || (hrAll(t) && hrWorkers(t) && newHr() == oldHr() && hrPayOk(t))
           || (hrMine(t) && hrWorkers(t) && oldHr() == uid() && newHr() == uid() && hrPayOk(t)));
         allow delete: if mayEd('editWorkers') && (workerWriter(t)

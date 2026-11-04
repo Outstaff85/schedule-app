@@ -2,7 +2,7 @@
 
 The plan (owner's request, 2026-10-25; approved in principle, each stage still needs the owner's yes) for keeping each worker's documents as **data** and building the PDFs only when someone opens, downloads or bundles them. The documents as they are today are described in docs/contracts.md (the scanned pages, the signature, the contract templates, signing), docs/form101.md (the Form 101 build) and docs/workers.md (the worker card).
 
-Status: **in progress**. Done: S0 (the inventory, run 2026-11-03), S0b (no signed file deleted on its own), S1 (the frozen builders, then b2), S2 (Download data with the A4 ID sheet), S3 (template versions, merged 2026-11-03, PR #374, with the signed archive made at a person's delete). **The rest of the plan was rewritten on 2026-11-03** after the owner's decisions of that day — see "The plan rewritten on 2026-11-03" below, whose N1–N6 replace the old S3b–S10. N1 built 2026-11-03. Next: N2.
+Status: **in progress**. Done: S0 (the inventory, run 2026-11-03), S0b (no signed file deleted on its own), S1 (the frozen builders, then b2), S2 (Download data with the A4 ID sheet), S3 (template versions, merged 2026-11-03, PR #374, with the signed archive made at a person's delete). **The rest of the plan was rewritten on 2026-11-03** after the owner's decisions of that day — see "The plan rewritten on 2026-11-03" below, whose N1–N6 replace the old S3b–S10. N1 built 2026-11-03, N2a 2026-11-04. Next: N2b.
 
 ## What and why
 
@@ -316,7 +316,15 @@ PDF once, and keep what was signed by hand in the archive when the worker goes.
 - The worker's notices (`workerDocStatus`) read data, not `docUrl`; every Open / Download goes through `worker_docs`.
 - `saveSchedule` copies the server's signed fields from the stored doc; `firestore.rules` refuse a browser change of them.
 - Tests and docs as the old S5 listed them (`test_worker_docs.py`, the rules, the legacy-apply script, e2e).
-- Status: not started.
+- **Built first, N2a (2026-11-04):** the server's `apply_signed` (`functions/signing.py`) at the `build` that completes a
+  signing and on the app's `applied` call (no one-off script: the inventory found no request left unapplied, and
+  `adoptSigned` now only asks the server); `saveSchedule` writes the stored `SIGNED_FIELDS` (and a newer signing's
+  documents); `firestore.rules` `signedSame()`. Tests: `test_signing.py` (put on at build, once; a failed apply logged and
+  done by `applied`, the other documents kept), `tests/rules` (each signed field refused, an equal whole record saves, a
+  stale record dropping them refused).
+- **Left, N2b:** `worker_docs` `signed` / `file`, the notices from data, every Open / Download through the server, the
+  stored `url`s no longer written.
+- Status: N2a built; N2b not started.
 
 ### N3 — a send uses the template version, no copy per send (from the old S4)
 - At `send`: `templatePath` = the version's file (`contracts/<id>/v<n>.pdf`) with its `templateSha256`; the copy to

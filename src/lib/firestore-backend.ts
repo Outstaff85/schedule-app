@@ -134,6 +134,11 @@ export type SaveBase = ScheduleBase | 'unknown';
 const itemHash = (item: unknown): string => sigHash(sig(plain(item)));
 // A client's worker pay: written only with Edit pay (saveSchedule).
 const CLIENT_PAY = ['defaultHourlyRate', 'defaultOtRate', 'defaultShabbatRate'];
+// A worker's signed fields: written only by the server (functions/signing.py SIGNED_FIELDS, apply_signed); a save writes
+// the stored values (firestore.rules refuse a change), and a device that has not seen a newer signing yet also takes the
+// documents that signing put on the worker (SIGNED_DOCS and the signed docs[] entries) — documents plan N2.
+const SIGNED_FIELDS = ['signedAt', 'signDate', 'signedRequestId', 'signedPrint', 'signedPrintPay', 'signedPrintMarks'];
+const SIGNED_DOCS = ['docUrl', 'docFileId', 'docSavedAt', 'docHasSignature', 'docUploadFailed', 'sigFileId', 'sigSavedAt'];
 // The save base of data the app holds (after a load or a save).
 export function scheduleBaseOf(data: Rec): ScheduleBase {
   const out: ScheduleBase = {};
@@ -355,6 +360,18 @@ export async function initFirestoreBackend() {
         const stored: Rec = cur.exists() ? cur.data() : {};
         for (const k of CLIENT_PAY) { if (stored[k] !== undefined) op[2][k] = stored[k]; else delete op[2][k]; }
       }
+    }
+    for (const op of ops) {
+      if (op[0] !== 'set' || op[1].parent.id !== 'workers') continue;
+      const cur = await F.getDoc(op[1]);
+      if (!cur.exists()) continue;
+      const stored: Rec = cur.data(), body = op[2];
+      if (stored.signedRequestId && stored.signedRequestId !== body.signedRequestId) {
+        for (const k of SIGNED_DOCS) { if (stored[k] !== undefined) body[k] = stored[k]; }
+        const signedDocs = ((stored.docs || []) as Rec[]).filter(d => d && d.signed);
+        body.docs = [...((body.docs || []) as Rec[]).filter(d => !(d && d.signed)), ...signedDocs];
+      }
+      for (const k of SIGNED_FIELDS) { if (stored[k] !== undefined) body[k] = stored[k]; else delete body[k]; }
     }
     if (first) {
       const linked = new Set((first.ids || []).map(String));

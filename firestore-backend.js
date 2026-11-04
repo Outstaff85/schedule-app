@@ -101,6 +101,23 @@
 		"defaultOtRate",
 		"defaultShabbatRate"
 	];
+	var SIGNED_FIELDS = [
+		"signedAt",
+		"signDate",
+		"signedRequestId",
+		"signedPrint",
+		"signedPrintPay",
+		"signedPrintMarks"
+	];
+	var SIGNED_DOCS = [
+		"docUrl",
+		"docFileId",
+		"docSavedAt",
+		"docHasSignature",
+		"docUploadFailed",
+		"sigFileId",
+		"sigSavedAt"
+	];
 	function scheduleBaseOf(data) {
 		const out = {};
 		for (const kind of [
@@ -338,6 +355,19 @@
 				const stored = cur.exists() ? cur.data() : {};
 				for (const k of CLIENT_PAY) if (stored[k] !== void 0) op[2][k] = stored[k];
 				else delete op[2][k];
+			}
+			for (const op of ops) {
+				if (op[0] !== "set" || op[1].parent.id !== "workers") continue;
+				const cur = await F.getDoc(op[1]);
+				if (!cur.exists()) continue;
+				const stored = cur.data(), body = op[2];
+				if (stored.signedRequestId && stored.signedRequestId !== body.signedRequestId) {
+					for (const k of SIGNED_DOCS) if (stored[k] !== void 0) body[k] = stored[k];
+					const signedDocs = (stored.docs || []).filter((d) => d && d.signed);
+					body.docs = [...(body.docs || []).filter((d) => !(d && d.signed)), ...signedDocs];
+				}
+				for (const k of SIGNED_FIELDS) if (stored[k] !== void 0) body[k] = stored[k];
+				else delete body[k];
 			}
 			if (first) {
 				const linked = new Set((first.ids || []).map(String));

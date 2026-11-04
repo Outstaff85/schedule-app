@@ -304,15 +304,7 @@ def _pdf(db, bucket, req, worker, which, build101, signature=None, strict=False,
 
 
 def _download_url(bucket, blob, path):
-    """A Firebase Storage download URL for a file the server wrote (as getDownloadURL gives)."""
-    from urllib.parse import quote
-    tok = uuid.uuid4().hex
-    blob.metadata = dict(blob.metadata or {}, firebaseStorageDownloadTokens=tok)
-    try:
-        blob.patch()
-    except Exception:
-        pass
-    return f"https://firebasestorage.googleapis.com/v0/b/{getattr(bucket, 'name', '')}/o/{quote(path, safe='')}?alt=media&token={tok}"
+    return signing.download_url(bucket, blob, path)
 
 
 def run_worker(db, bucket, tenant, wid, worker, body, build101, server_time=None):

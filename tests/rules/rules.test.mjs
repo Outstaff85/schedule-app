@@ -409,6 +409,22 @@ test('storage: firm files readable by its managers, written by owner/workers sta
   await assertSucceeds(deleteObject(ref(st('ownerA'), pA)));
 });
 
+test("workers: the signed fields are the server's — a browser update leaves them as they are, the rest still saves (documents plan N2)", async () => {
+  const signed = { name: 'Signed', hourlyRate: 40, signedAt: '2026-11-03T10:00:00Z', signDate: '03/11/2026', signedRequestId: 'r1',
+    signedPrint: 'h', signedPrintPay: false, signedPrintMarks: ['given'] };
+  await env.withSecurityRulesDisabled(async ctx => { await setDoc(doc(ctx.firestore(), 'tenants', A, 'workers', 'wSig'), signed); });
+  for (const name of ['ownerA', 'staffWorkers']) {
+    const ref = doc(db(name), 'tenants', A, 'workers', 'wSig');
+    await assertSucceeds(setDoc(ref, { ...signed, phone: '050' + name.length }));          // the whole record, signed fields equal
+    for (const [k, v] of [['signedAt', '2026-12-01T10:00:00Z'], ['signDate', '01/12/2026'], ['signedRequestId', 'r9'],
+                          ['signedPrint', 'x'], ['signedPrintPay', true], ['signedPrintMarks', []]])
+      await assertFails(updateDoc(ref, { [k]: v }));
+    const { signedAt, ...noDate } = signed;
+    await assertFails(setDoc(ref, noDate));                                                // a stale device dropping them
+  }
+  await assertSucceeds(setDoc(doc(db('ownerA'), 'tenants', A, 'workers', 'wNew'), { name: 'New' }));  // a new worker as before
+});
+
 test('storage: the signed archive (archive/, functions-auth/signed_archive.py) is server-only — no login reads, writes or deletes it', async () => {
   const p = 'archive/Firm A/Avi Cohen 123456782/Contracts/2026-11-03 Hourly abc123.pdf';
   await env.withSecurityRulesDisabled(async ctx => { await uploadString(ref(ctx.storage(), p), 'pdf'); });

@@ -6,7 +6,6 @@
 // signed documents' files kept (docs/contracts.md → Signed files are kept). Never draws: it emits events.
 import { state, type Rec } from '../data/state';
 import { emit } from '../data/events';
-import { autoSave } from '../data/store';
 import { loadFirestoreBackend } from '../data/api';
 import { gsAuth } from '../data/session';
 import { SIGN_FN_URL } from './functions';
@@ -81,31 +80,13 @@ export function rememberRequest(r: SignRequest): void {
   emit('requests');
 }
 
+/** A signed request the server has not put on its worker yet (signed before documents plan N2, or an apply that failed):
+ * the server puts it on (`applied`) — the browser never writes the signed fields (firestore.rules refuse it); the
+ * worker's record comes back through the live listener. */
 async function adoptSigned(): Promise<void> {
   const todo = reqs.filter(r => r.status === 'signed' && !r.appliedAt && r.parts?.form101 && r.parts?.contract);
-  if (!todo.length) return;
-  const b = await loadFirestoreBackend();
-  let changed = false;
   for (const r of todo) {
-    const w = state.workers.find(x => x.id === r.workerId);
-    if (!w) continue;
-    if (w.signedRequestId !== r.id) {
-      const [u101, uC] = await Promise.all([b.storageUrl(r.parts!.form101.path), b.storageUrl(r.parts!.contract.path)]);
-      const now = new Date().toISOString();
-      w.docUrl = u101; w.docFileId = r.parts!.form101.path; w.docSavedAt = now; w.docUploadFailed = false; w.docHasSignature = true;
-      w.docs = [...(w.docs || []).filter((d: Rec) => !d.signed), {
-        id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: 'contract', name: r.parts!.contract.name,
-        fileId: r.parts!.contract.path, url: uC, mediaType: 'application/pdf', uploadedAt: now, expiry: '',
-        signed: true, templateId: r.templateId, templateVersion: r.templateVersion, signRequestId: r.id,
-      }];
-      w.signedAt = r.signedAt || now; w.signDate = r.signDate || ''; w.signedRequestId = r.id;
-      if (r.sigPath) { w.sigFileId = r.sigPath; w.sigSavedAt = w.signedAt; }
-      w.signedPrint = r.printHash || ''; w.signedPrintPay = !!r.printPay; w.signedPrintMarks = r.printMarks || [];
-      // the replaced documents' files are kept: an earlier signed set stays in Storage, named by its own request's parts
-      changed = true;
-    }
     r.appliedAt = new Date().toISOString();
-    void signCall({ action: 'applied', id: r.id }).catch(() => {});
+    await signCall({ action: 'applied', id: r.id }).catch(() => {});
   }
-  if (changed) { autoSave(); emit('data'); }
 }
