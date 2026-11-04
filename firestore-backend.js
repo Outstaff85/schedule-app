@@ -358,8 +358,8 @@
 			}
 			for (const op of ops) {
 				if (op[0] !== "set" || op[1].parent.id !== "workers") continue;
-				const cur = await F.getDoc(op[1]);
-				if (!cur.exists()) continue;
+				const cur = await F.getDoc(op[1]).catch(() => null);
+				if (!cur || !cur.exists()) continue;
 				const stored = cur.data(), body = op[2];
 				if (stored.signedRequestId && stored.signedRequestId !== body.signedRequestId) {
 					for (const k of SIGNED_DOCS) if (stored[k] !== void 0) body[k] = stored[k];
