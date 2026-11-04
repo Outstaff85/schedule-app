@@ -421,6 +421,12 @@ export async function initFirestoreBackend() {
   // storedPos / workerHr) follows, so the next save neither deletes an added
   // worker nor tries to delete one it can no longer touch.
   let workersUnsub: (() => void) | null = null;
+  /** One worker as stored (null when there is none): what the app reads after the server put a signing on it. */
+  async function readWorker(t: string, id: string): Promise<Rec | null> {
+    const d = await F.getDoc(F.doc(db, 'tenants', t, 'workers', String(id)));
+    return d.exists() ? d.data() : null;
+  }
+
   function listenWorkers(t: string, onChange: (c: {added: Rec[]; removed: string[]; changed: {data: Rec; unsaved: (item: Rec) => boolean}[]}) => void): Promise<void> {
     if (workersUnsub) workersUnsub();
     return hrOnly().then(hr => {
@@ -895,7 +901,7 @@ export async function initFirestoreBackend() {
   }
 
   return {
-    login, loadSchedule, saveSchedule, scheduleBaseOf, listenWorkers, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
+    login, loadSchedule, saveSchedule, scheduleBaseOf, listenWorkers, readWorker, listenPendingHours, listenPunches, punchesBetween, punchesOfBatch, savePunch, updatePunch, deletePunch, handleAction,
     uploadWorkerFile, UPLOAD_ACTIONS, isStoragePath,
     // A link to open a firm's file (storage.rules: the firm's managers read),
     // e.g. a client's signed month (hours.py sign).

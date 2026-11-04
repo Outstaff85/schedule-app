@@ -418,6 +418,11 @@
 			return body;
 		}
 		let workersUnsub = null;
+		/** One worker as stored (null when there is none): what the app reads after the server put a signing on it. */
+		async function readWorker(t, id) {
+			const d = await F.getDoc(F.doc(db, "tenants", t, "workers", String(id)));
+			return d.exists() ? d.data() : null;
+		}
 		function listenWorkers(t, onChange) {
 			if (workersUnsub) workersUnsub();
 			return hrOnly().then((hr) => {
@@ -1013,6 +1018,7 @@
 			saveSchedule,
 			scheduleBaseOf,
 			listenWorkers,
+			readWorker,
 			listenPendingHours,
 			listenPunches,
 			punchesBetween,

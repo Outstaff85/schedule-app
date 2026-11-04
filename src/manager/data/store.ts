@@ -286,7 +286,7 @@ const hrWorkerChanges: WorkerChange[] = [];
 // SIGNED_FIELDS and apply_signed; the same lists as SIGNED_FIELDS / SIGNED_DOCS in src/lib/firestore-backend.ts).
 const SIGNED_FIELDS = ['signedAt', 'signDate', 'signedRequestId', 'signedPrint', 'signedPrintPay', 'signedPrintMarks'];
 const SIGNED_DOCS = ['docUrl', 'docFileId', 'docSavedAt', 'docHasSignature', 'docUploadFailed', 'sigFileId', 'sigSavedAt'];
-function takeSigned(w: Rec, server: Rec): void {
+export function takeSigned(w: Rec, server: Rec): void {
   for (const k of [...SIGNED_FIELDS, ...SIGNED_DOCS]) { if (server[k] !== undefined) w[k] = server[k]; }
   w.docs = [...((w.docs || []) as Rec[]).filter(d => !(d && d.signed)), ...((server.docs || []) as Rec[]).filter(d => d && d.signed)];
 }

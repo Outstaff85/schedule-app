@@ -7,6 +7,8 @@
 import { state, type Rec } from '../data/state';
 import { emit } from '../data/events';
 import { loadFirestoreBackend } from '../data/api';
+import { takeSigned } from '../data/store';
+import { fsTenantId } from '../data/session';
 import { gsAuth } from '../data/session';
 import { SIGN_FN_URL } from './functions';
 
@@ -80,13 +82,29 @@ export function rememberRequest(r: SignRequest): void {
   emit('requests');
 }
 
-/** A signed request the server has not put on its worker yet (signed before documents plan N2, or an apply that failed):
- * the server puts it on (`applied`) — the browser never writes the signed fields (firestore.rules refuse it); the
- * worker's record comes back through the live listener. */
+/** A signing the server has put on its worker (or should have: signed before documents plan N2, or an apply that failed —
+ * then `applied` asks the server to) shown on this device's copy: the worker's signed fields and documents read back from
+ * the server (`readWorker`, `takeSigned`). The browser never writes them (firestore.rules refuse it). */
 async function adoptSigned(): Promise<void> {
-  const todo = reqs.filter(r => r.status === 'signed' && !r.appliedAt && r.parts?.form101 && r.parts?.contract);
-  for (const r of todo) {
-    r.appliedAt = new Date().toISOString();
-    await signCall({ action: 'applied', id: r.id }).catch(() => {});
+  const latest = new Map<string, SignRequest>();
+  for (const r of reqs) {
+    if (r.status !== 'signed' || !r.parts?.form101 || !r.parts?.contract) continue;
+    const had = latest.get(r.workerId);
+    if (!had || String(r.signedAtIso || '') > String(had.signedAtIso || '')) latest.set(r.workerId, r);
   }
+  const todo = [...latest.values()].filter(r => {
+    const w = state.workers.find(x => x.id === r.workerId);
+    return (w && w.signedRequestId !== r.id) || !r.appliedAt;
+  });
+  if (!todo.length) return;
+  const b = await loadFirestoreBackend();
+  let changed = false;
+  for (const r of todo) {
+    if (!r.appliedAt) { r.appliedAt = new Date().toISOString(); await signCall({ action: 'applied', id: r.id }).catch(() => {}); }
+    const w = state.workers.find(x => x.id === r.workerId);
+    if (!w || w.signedRequestId === r.id) continue;
+    const stored = await b.readWorker(fsTenantId(), r.workerId).catch(() => null);
+    if (stored && stored.signedRequestId === r.id) { takeSigned(w, stored); changed = true; }
+  }
+  if (changed) emit('data');
 }
